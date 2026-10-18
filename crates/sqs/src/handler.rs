@@ -5,6 +5,7 @@ use crate::models::{MoveTask, Queue, SqsMessage, SqsStore};
 use crate::protocol::{AwsRequest, AwsResponse, SqsHandler};
 use chrono::Utc;
 use md5;
+use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use serde_json::{json, Value};
 use std::collections::{HashMap, VecDeque};
@@ -15,10 +16,10 @@ type StoreMap = Arc<RwLock<HashMap<(u64, String), Arc<SqsStore>>>>;
 
 /// Process-wide store map shared by every `DefaultSqsHandler` instance.
 ///
-/// Cross-service callers (SNS message delivery) construct their own handler
-/// instance; sharing the store map lets those instances see the same queues
-/// as the server's registered SQS handler, mirroring Moto's in-process
-/// backend semantics.
+/// Cross-service callers (SNS delivery, S3 notifications, EventBridge
+/// targets) construct their own handler instance; sharing the store map
+/// lets those instances see the same queues as the server's registered
+/// SQS handler, mirroring Moto's in-process backend semantics.
 fn global_stores() -> StoreMap {
     use std::sync::OnceLock;
     static STORES: OnceLock<StoreMap> = OnceLock::new();
@@ -54,9 +55,8 @@ impl DefaultSqsHandler {
 
     fn get_store(&self, account: u64, region: &str) -> Arc<SqsStore> {
         let mut stores = self.stores.write();
-        let key = (account, region.to_string());
         stores
-            .entry(key)
+            .entry((account, region.to_string()))
             .or_insert_with(|| Arc::new(SqsStore::new()))
             .clone()
     }
@@ -467,7 +467,8 @@ impl DefaultSqsHandler {
             let id = entry.get("Id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
             let receipt_handle = entry.get("ReceiptHandle")
                 .and_then(|v| v.as_str()).unwrap_or_default().to_string();
-            let visibility = entry.get("VisibilityTimeout")
+            let visibility = entry
+                .get("VisibilityTimeout")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(30);
             let mut q = queue_arc.write();

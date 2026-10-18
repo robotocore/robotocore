@@ -3,13 +3,24 @@
 use crate::models::{EventsState, Rule};
 use crate::pattern::matches_pattern;
 use crate::protocol::{AwsRequest, AwsResponse};
+use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub struct EventsHandler {
-    state: RwLock<HashMap<(u64, String), EventsState>>,
+
+/// Process-global EventBridge state registry, shared by every handler
+/// instance so cross-service publishers (S3, ...) can reach the same rules.
+static GLOBAL_STATE: Lazy<RwLock<HashMap<(u64, String), EventsState>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
+
+fn global_state(account: u64, region: &str) -> EventsState {
+    let mut states = GLOBAL_STATE.write();
+    states
+        .entry((account, region.to_string()))
+        .or_default()
+        .clone()
 }
 
 fn now_f() -> f64 {
@@ -20,17 +31,42 @@ fn now_rfc3339() -> String {
     chrono::Utc::now().to_rfc3339()
 }
 
+/// Routing target ARN supported for delivery.
+const SQS_ARN_PREFIX: &str = "arn:aws:sqs:";
+
+/// Route a pre-built event through EventBridge rule matching and deliver it
+/// to matching rules' SQS targets, using the shared pattern matcher.
+pub fn publish_event_to_bus(event: &Value, account: u64, region: &str) {
+    let state = global_state(account, region);
+    let rules = state.rules.read();
+    for rule in rules.values() {
+        if *rule.state.read() != "ENABLED" {
+            continue;
+        }
+        let pattern: Value = serde_json::from_str(&rule.event_pattern).unwrap_or(json!({}));
+        if matches_pattern(&pattern, event) {
+            for target in rule.targets.read().iter() {
+                let arn = target
+                    .get("Arn")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                if arn.starts_with(SQS_ARN_PREFIX) {
+                    sqs::bridge::deliver_to_arn(&arn, &serde_json::to_string(event).unwrap_or_default());
+                }
+            }
+        }
+    }
+}
+
+pub struct EventsHandler {}
 impl EventsHandler {
     pub fn new() -> Self {
-        Self { state: RwLock::new(HashMap::new()) }
+        Self {}
     }
 
     fn get_state(&self, account: u64, region: &str) -> EventsState {
-        let mut states = self.state.write();
-        states
-            .entry((account, region.to_string()))
-            .or_default()
-            .clone()
+        global_state(account, region)
     }
 
     fn param_str(req: &AwsRequest, keys: &[&str]) -> String {
@@ -42,7 +78,9 @@ impl EventsHandler {
         String::new()
     }
 
+
     // ---------------- Rules ----------------
+
 
     fn put_rule(&self, req: &AwsRequest) -> AwsResponse {
         let name = Self::param_str(req, &["Name"]);
@@ -149,6 +187,8 @@ impl EventsHandler {
         }
         AwsResponse::json(200, json!({}))
     }
+
+
 
     fn set_rule_state(&self, req: &AwsRequest, state: &str) -> AwsResponse {
         let key = Self::rule_key(req);
@@ -1417,7 +1457,6 @@ mod tests {
 
     #[test]
     fn test_pattern_prefix_and_numeric() {
-        use crate::pattern::matches_pattern;
         let pattern: Value = serde_json::json!({
             "source": [{"prefix": "my."}],
             "detail": {"amount": [{"numeric": [">", 10]}]}
