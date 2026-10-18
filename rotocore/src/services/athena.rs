@@ -1030,6 +1030,266 @@ fn op_list_named_queries(body: &Value, st: &AthenaState) -> OpResult {
 }
 
 // ---------------------------------------------------------------------------
+// Data catalogs
+// ---------------------------------------------------------------------------
+
+fn op_create_data_catalog(
+    body: &Value,
+    st: &mut AthenaState,
+    account: u64,
+    region: &str,
+) -> OpResult {
+    let name = body
+        .get("Name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    if st.data_catalogs.iter().any(|(key, _)| *key == name) {
+        return Err(invalid_request("DataCatalog already exists"));
+    }
+    let catalog = DataCatalog {
+        catalog_type: body.get("Type").cloned().unwrap_or(Value::Null),
+        description: body.get("Description").cloned().unwrap_or(Value::Null),
+        parameters: body.get("Parameters").cloned().unwrap_or(Value::Null),
+    };
+    st.data_catalogs.push((name.clone(), catalog));
+    let arn = resource_arn(region, account, "datacatalog", &name);
+    st.tagger.tag_resource(&arn, body.get("Tags"));
+    Ok(json!({
+        "CreateDataCatalogResponse": {
+            "ResponseMetadata": {
+                "RequestId": "384ac68d-3775-11df-8963-01868b7c937a",
+            },
+        },
+    }))
+}
+
+fn op_get_data_catalog(body: &Value, st: &AthenaState) -> OpResult {
+    let name = body.get("Name").and_then(Value::as_str).unwrap_or_default();
+    match st.data_catalogs.iter().find(|(key, _)| *key == name) {
+        Some((key, catalog)) => Ok(json!({ "DataCatalog": catalog.get_json(key) })),
+        None => Ok(json!({ "DataCatalog": Value::Null })),
+    }
+}
+
+fn op_list_data_catalogs(st: &AthenaState) -> OpResult {
+    let summary: Vec<Value> = st
+        .data_catalogs
+        .iter()
+        .map(|(key, catalog)| {
+            json!({
+                "CatalogName": key,
+                "Type": catalog.catalog_type,
+            })
+        })
+        .collect();
+    Ok(json!({ "DataCatalogsSummary": summary }))
+}
+
+fn op_delete_data_catalog(
+    body: &Value,
+    st: &mut AthenaState,
+    account: u64,
+    region: &str,
+) -> OpResult {
+    let name = body
+        .get("Name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let Some(index) = st.data_catalogs.iter().position(|(key, _)| *key == name) else {
+        return Err(invalid_argument(&format!(
+            "DataCatalog {name} is not found"
+        )));
+    };
+    st.data_catalogs.remove(index);
+    st.tagger
+        .delete_all(&resource_arn(region, account, "datacatalog", &name));
+    Ok(json!({}))
+}
+
+fn op_update_data_catalog(body: &Value, st: &mut AthenaState) -> OpResult {
+    let name = body
+        .get("Name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let Some((_, catalog)) = st.data_catalogs.iter_mut().find(|(key, _)| *key == name) else {
+        return Err(invalid_argument(&format!(
+            "DataCatalog {name} is not found"
+        )));
+    };
+    if let Some(kind) = body.get("Type").filter(|t| !t.is_null()) {
+        catalog.catalog_type = kind.clone();
+    }
+    if let Some(description) = body.get("Description").filter(|d| !d.is_null()) {
+        catalog.description = description.clone();
+    }
+    if let Some(parameters) = body.get("Parameters").filter(|p| !p.is_null()) {
+        catalog.parameters = parameters.clone();
+    }
+    Ok(json!({}))
+}
+
+// ---------------------------------------------------------------------------
+// Capacity reservations
+// ---------------------------------------------------------------------------
+
+fn op_create_capacity_reservation(
+    body: &Value,
+    st: &mut AthenaState,
+    account: u64,
+    region: &str,
+) -> OpResult {
+    let name = body
+        .get("Name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    // moto: `CapacityReservation.__init__` calls `create_tags(tags)` before
+    // storing — iterating a `None` tag list is a TypeError (sidecar 500).
+    let tags = body.get("Tags").filter(|tags| !tags.is_null()).cloned();
+    if tags.is_none() {
+        return Err(null_tags_internal_error());
+    }
+    let reservation = CapacityReservation {
+        target_dpus: body.get("TargetDpus").cloned().unwrap_or(Value::Null),
+        tags: tags.clone(),
+    };
+    st.capacity_reservations.push((name.clone(), reservation));
+    st.tagger.tag_resource(
+        &resource_arn(region, account, "capacity-reservation", &name),
+        tags.as_ref(),
+    );
+    Ok(json!({}))
+}
+
+fn op_get_capacity_reservation(body: &Value, st: &AthenaState) -> OpResult {
+    let name = body.get("Name").and_then(Value::as_str).unwrap_or_default();
+    match st
+        .capacity_reservations
+        .iter()
+        .find(|(key, _)| *key == name)
+    {
+        Some((key, reservation)) => Ok(json!({
+            "CapacityReservation": {
+                "Name": key,
+                "TargetDpus": reservation.target_dpus,
+                "Tags": reservation.tags.clone(),
+            }
+        })),
+        None => Err(invalid_request("Capacity reservation does not exist")),
+    }
+}
+
+fn op_list_capacity_reservations(st: &AthenaState) -> OpResult {
+    let reservations: Vec<Value> = st
+        .capacity_reservations
+        .iter()
+        .map(|(key, reservation)| {
+            json!({
+                "Name": key,
+                "TargetDpus": reservation.target_dpus,
+                "CreationTime": crate::proto::now_unix(),
+            })
+        })
+        .collect();
+    Ok(json!({ "CapacityReservations": reservations }))
+}
+
+fn op_update_capacity_reservation(body: &Value, st: &mut AthenaState) -> OpResult {
+    let name = body
+        .get("Name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let Some((_, reservation)) = st
+        .capacity_reservations
+        .iter_mut()
+        .find(|(key, _)| *key == name)
+    else {
+        return Err(invalid_argument("Capacity Reservation does not exist"));
+    };
+    if let Some(dpus) = body.get("TargetDpus").filter(|d| !d.is_null()) {
+        reservation.target_dpus = dpus.clone();
+    }
+    Ok(json!({}))
+}
+
+fn op_cancel_capacity_reservation(body: &Value, st: &mut AthenaState) -> OpResult {
+    let name = body
+        .get("Name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let Some((_, reservation)) = st
+        .capacity_reservations
+        .iter_mut()
+        .find(|(key, _)| *key == name)
+    else {
+        return Err(invalid_argument("Capacity Reservation does not exist"));
+    };
+    reservation.target_dpus = Value::from(0);
+    Ok(json!({}))
+}
+
+fn op_delete_capacity_reservation(
+    body: &Value,
+    st: &mut AthenaState,
+    account: u64,
+    region: &str,
+) -> OpResult {
+    let name = body
+        .get("Name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let Some(index) = st
+        .capacity_reservations
+        .iter()
+        .position(|(key, _)| *key == name)
+    else {
+        return Err(invalid_argument("Capacity Reservation does not exist"));
+    };
+    st.capacity_reservations.remove(index);
+    st.tagger.delete_all(&resource_arn(
+        region,
+        account,
+        "capacity-reservation",
+        &name,
+    ));
+    Ok(json!({}))
+}
+
+/// No existence check in moto — always answers with an empty assignment
+/// list even for unknown reservation names.
+fn op_get_capacity_assignment_configuration(body: &Value) -> OpResult {
+    let name = body
+        .get("CapacityReservationName")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    Ok(json!({
+        "CapacityAssignmentConfiguration": {
+            "CapacityReservationName": name,
+            "CapacityAssignments": [],
+        }
+    }))
+}
+
+fn op_put_capacity_assignment_configuration(body: &Value, st: &mut AthenaState) -> OpResult {
+    let name = body
+        .get("CapacityReservationName")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    if !st.capacity_reservations.iter().any(|(key, _)| *key == name) {
+        return Err(invalid_argument("Capacity Reservation does not exist"));
+    }
+    Ok(json!({}))
+}
+
+// ---------------------------------------------------------------------------
 // dispatch
 // ---------------------------------------------------------------------------
 
@@ -1061,6 +1321,27 @@ pub fn dispatch(req: &Request) -> Response {
             "UpdateNamedQuery" => op_update_named_query(&body, st),
             "BatchGetNamedQuery" => op_batch_get_named_query(&body, st),
             "ListNamedQueries" => op_list_named_queries(&body, st),
+            // data catalogs
+            "CreateDataCatalog" => op_create_data_catalog(&body, st, req.account, &req.region),
+            "GetDataCatalog" => op_get_data_catalog(&body, st),
+            "ListDataCatalogs" => op_list_data_catalogs(st),
+            "DeleteDataCatalog" => op_delete_data_catalog(&body, st, req.account, &req.region),
+            "UpdateDataCatalog" => op_update_data_catalog(&body, st),
+            // capacity reservations
+            "CreateCapacityReservation" => {
+                op_create_capacity_reservation(&body, st, req.account, &req.region)
+            }
+            "GetCapacityReservation" => op_get_capacity_reservation(&body, st),
+            "ListCapacityReservations" => op_list_capacity_reservations(st),
+            "UpdateCapacityReservation" => op_update_capacity_reservation(&body, st),
+            "CancelCapacityReservation" => op_cancel_capacity_reservation(&body, st),
+            "DeleteCapacityReservation" => {
+                op_delete_capacity_reservation(&body, st, req.account, &req.region)
+            }
+            "GetCapacityAssignmentConfiguration" => op_get_capacity_assignment_configuration(&body),
+            "PutCapacityAssignmentConfiguration" => {
+                op_put_capacity_assignment_configuration(&body, st)
+            }
             other => Err(json_error(
                 501,
                 "NotImplemented",
@@ -1584,6 +1865,183 @@ mod tests {
         let mut all = page_ids.clone();
         all.extend(page2_ids.iter().cloned());
         assert!(ids.iter().all(|id| all.contains(id)));
+    }
+
+    // ------------------------------------------------------------------
+    // Family 4: data catalogs + capacity reservations
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn data_catalog_crud() {
+        let account = fresh_account();
+        let resp = run(
+            account,
+            "CreateDataCatalog",
+            json!({
+                "Name": "dc-1",
+                "Type": "LAMBDA",
+                "Description": "cat",
+                "Parameters": {"metadata-function": "arn:x"},
+            }),
+        );
+        assert_eq!(resp.status, 200);
+
+        let catalog = body_of(&run(account, "GetDataCatalog", json!({"Name": "dc-1"})))
+            ["DataCatalog"]
+            .clone();
+        assert_eq!(catalog["Name"], "dc-1");
+        assert_eq!(catalog["Type"], "LAMBDA");
+        assert_eq!(catalog["Description"], "cat");
+        assert_eq!(catalog["Parameters"]["metadata-function"], "arn:x");
+
+        let resp = run(account, "ListDataCatalogs", json!({}));
+        let list = body_of(&resp)["DataCatalogsSummary"]
+            .as_array()
+            .unwrap()
+            .clone();
+        let names: Vec<&str> = list
+            .iter()
+            .map(|c| c["CatalogName"].as_str().unwrap_or_default())
+            .collect();
+        assert!(names.contains(&"dc-1"));
+
+        run(
+            account,
+            "UpdateDataCatalog",
+            json!({"Name": "dc-1", "Type": "LAMBDA", "Description": "updated"}),
+        );
+        let catalog = body_of(&run(account, "GetDataCatalog", json!({"Name": "dc-1"})))
+            ["DataCatalog"]
+            .clone();
+        assert_eq!(catalog["Description"], "updated");
+
+        run(account, "DeleteDataCatalog", json!({"Name": "dc-1"}));
+        let resp = run(account, "ListDataCatalogs", json!({}));
+        let list = body_of(&resp)["DataCatalogsSummary"]
+            .as_array()
+            .unwrap()
+            .clone();
+        let names: Vec<&str> = list
+            .iter()
+            .map(|c| c["CatalogName"].as_str().unwrap_or_default())
+            .collect();
+        assert!(!names.contains(&"dc-1"));
+
+        let resp = run(account, "DeleteDataCatalog", json!({"Name": "gone"}));
+        assert_eq!(resp.status, 400);
+        assert_eq!(body_of(&resp)["message"], "DataCatalog gone is not found");
+        let resp = run(account, "UpdateDataCatalog", json!({"Name": "gone"}));
+        assert_eq!(resp.status, 400);
+    }
+
+    #[test]
+    fn capacity_reservation_lifecycle_and_errors() {
+        let account = fresh_account();
+        // no Tags → the sidecar's moto crash
+        let resp = run(
+            account,
+            "CreateCapacityReservation",
+            json!({"Name": "cr-no-tags", "TargetDpus": 24}),
+        );
+        assert_eq!(resp.status, 500);
+        let err = body_of(&resp);
+        assert_eq!(err["__type"], "InternalError");
+        assert_eq!(err["message"], "'NoneType' object is not iterable");
+
+        // with tags the reservation is created
+        run(
+            account,
+            "CreateCapacityReservation",
+            json!({
+                "Name": "cr-1",
+                "TargetDpus": 8,
+                "Tags": [{"Key": "env", "Value": "prod"}],
+            }),
+        );
+        let cr = body_of(&run(
+            account,
+            "GetCapacityReservation",
+            json!({"Name": "cr-1"}),
+        ))["CapacityReservation"]
+            .clone();
+        assert_eq!(cr["TargetDpus"], 8);
+        assert_eq!(cr["Tags"][0]["Key"], "env");
+
+        let resp = run(account, "ListCapacityReservations", json!({}));
+        let list = body_of(&resp)["CapacityReservations"]
+            .as_array()
+            .unwrap()
+            .clone();
+        let names: Vec<&str> = list
+            .iter()
+            .map(|c| c["Name"].as_str().unwrap_or_default())
+            .collect();
+        assert!(names.contains(&"cr-1"));
+
+        run(
+            account,
+            "UpdateCapacityReservation",
+            json!({"Name": "cr-1", "TargetDpus": 16}),
+        );
+        let cr = body_of(&run(
+            account,
+            "GetCapacityReservation",
+            json!({"Name": "cr-1"}),
+        ))["CapacityReservation"]
+            .clone();
+        assert_eq!(cr["TargetDpus"], 16);
+        run(
+            account,
+            "CancelCapacityReservation",
+            json!({"Name": "cr-1"}),
+        );
+        let cr = body_of(&run(
+            account,
+            "GetCapacityReservation",
+            json!({"Name": "cr-1"}),
+        ))["CapacityReservation"]
+            .clone();
+        assert_eq!(cr["TargetDpus"], 0);
+
+        run(
+            account,
+            "DeleteCapacityReservation",
+            json!({"Name": "cr-1"}),
+        );
+        let resp = run(account, "GetCapacityReservation", json!({"Name": "cr-1"}));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            body_of(&resp)["message"],
+            "Capacity reservation does not exist"
+        );
+
+        let resp = run(
+            account,
+            "CancelCapacityReservation",
+            json!({"Name": "nope"}),
+        );
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            body_of(&resp)["message"],
+            "Capacity Reservation does not exist"
+        );
+        let resp = run(
+            account,
+            "PutCapacityAssignmentConfiguration",
+            json!({
+                "CapacityReservationName": "nope",
+                "CapacityAssignments": [{"WorkGroupNames": ["primary"]}],
+            }),
+        );
+        assert_eq!(resp.status, 400);
+        // get always answers (moto does no existence check)
+        let resp = run(
+            account,
+            "GetCapacityAssignmentConfiguration",
+            json!({"CapacityReservationName": "not-there"}),
+        );
+        assert_eq!(resp.status, 200);
+        assert!(!body_of(&resp)["CapacityAssignmentConfiguration"].is_null());
     }
 
     // ------------------------------------------------------------------
