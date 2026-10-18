@@ -438,7 +438,18 @@ impl LambdaHandler {
             *func.memory_size.write() = m as u32;
         }
         // Deployment package: ZipFile arrives base64-encoded by botocore.
-        let zip = decode_zip(req.params.get("Code").and_then(|c| c.get("ZipFile")));
+        // Without an inline package, fall back to the S3 source (S3Bucket +
+        // S3Key), reading the object straight from the S3 crate's store.
+        let code = req.params.get("Code");
+        let zip = match resolve_code_source(
+            req,
+            decode_zip(code.and_then(|c| c.get("ZipFile"))),
+            code.and_then(|c| c.get("S3Bucket")),
+            code.and_then(|c| c.get("S3Key")),
+        ) {
+            Ok(zip) => zip,
+            Err(resp) => return resp,
+        };
         *func.code_zip.write() = zip.clone();
         *func.code_size.write() = zip.len() as u64;
         *func.code_sha256.write() = sha_b64(&zip);
@@ -592,8 +603,18 @@ impl LambdaHandler {
             Ok(f) => f,
             Err(resp) => return resp,
         };
-        // UpdateFunctionCode carries ZipFile at the top level of the body.
-        let zip = decode_zip(req.params.get("ZipFile"));
+        // UpdateFunctionCode carries ZipFile at the top level of the body,
+        // or an S3 source (S3Bucket + S3Key) resolved from the S3 store.
+        let zip = match resolve_code_source(
+            req,
+            decode_zip(req.params.get("ZipFile")),
+            req.params.get("S3Bucket"),
+            req.params.get("S3Key"),
+        ) {
+            Ok(zip) => zip,
+            Err(resp) => return resp,
+        };
+
         if !zip.is_empty() {
             *func.code_zip.write() = zip.clone();
             *func.code_size.write() = zip.len() as u64;
@@ -678,10 +699,12 @@ impl LambdaHandler {
         }
         let is_python: bool = crate::runtime::is_python_runtime(&func.runtime.read());
         if !is_python {
-            // Non-python runtimes are not executed by this backend.
+            // Non-python runtimes have no executor in this backend; mirror
+            // the ground-truth shape: 200 response with function-error
+            // header Runtime.InvalidRuntime and a null payload.
             return Ok(runtime::ExecResult {
-                payload: String::new(),
-                function_error: None,
+                payload: "null".to_string(),
+                function_error: Some("Runtime.InvalidRuntime".to_string()),
                 logs: String::new(),
             });
         }
@@ -748,17 +771,8 @@ impl LambdaHandler {
                 }
                 if req.header("x-amz-log-type").unwrap_or("None") == "Tail" && !res.logs.is_empty()
                 {
-                    let log_tail: String = res
-                        .logs
-                        .chars()
-                        .rev()
-                        .take(4096)
-                        .collect::<Vec<_>>()
-                        .into_iter()
-                        .rev()
-                        .collect();
-                    let encoded =
-                        base64::engine::general_purpose::STANDARD.encode(log_tail.as_bytes());
+                    let log_tail = tail_utf8(&res.logs, 4096);
+                    let encoded = base64::engine::general_purpose::STANDARD.encode(log_tail);
                     extra.push(("x-amz-log-result", encoded));
                 }
                 AwsResponse::raw_with_headers(200, "application/json", res.payload.clone(), &extra)
@@ -2328,11 +2342,57 @@ fn epoch_now() -> f64 {
         .unwrap_or(0.0)
 }
 
+/// Last `max` BYTES of `s`, snapped forward to a UTF-8 char boundary so the
+/// tail never ends in a partial multi-byte code point.
+fn tail_utf8(s: &str, max: usize) -> &str {
+    if s.len() <= max {
+        return s;
+    }
+    let mut start = s.len() - max;
+    while !s.is_char_boundary(start) {
+        start += 1;
+    }
+    &s[start..]
+}
+
 fn decode_zip(v: Option<&Value>) -> Vec<u8> {
     match v {
         Some(Value::String(s)) => decode_b64(s),
         _ => Vec::new(),
     }
+}
+
+/// Resolve a deployment package: keep an inline (ZipFile) package as-is and
+/// otherwise read the object content from the S3 crate's store for the
+/// request's (account, region, S3Bucket, S3Key). Mirrors moto: a missing
+/// bucket fails the operation as InvalidParameterValueException; a missing
+/// key in an existing bucket yields empty code.
+fn resolve_code_source(
+    req: &AwsRequest,
+    zip: Vec<u8>,
+    s3_bucket: Option<&Value>,
+    s3_key: Option<&Value>,
+) -> Result<Vec<u8>, AwsResponse> {
+    if !zip.is_empty() {
+        return Ok(zip);
+    }
+    let (Some(bucket), Some(key)) = (
+        s3_bucket.and_then(Value::as_str),
+        s3_key.and_then(Value::as_str),
+    ) else {
+        return Ok(zip);
+    };
+    if bucket.is_empty() || key.is_empty() {
+        return Ok(Vec::new());
+    }
+    if !s3::bridge::bucket_exists(req.account, &req.region, bucket) {
+        return Err(AwsResponse::error(
+            400,
+            "InvalidParameterValueException",
+            "Error occurred while GetObject. S3 Error Code: NoSuchBucket. S3 Error Message: The specified bucket does not exist",
+        ));
+    }
+    Ok(s3::bridge::get_object_body(req.account, &req.region, bucket, key).unwrap_or_default())
 }
 
 fn decode_b64(s: &str) -> Vec<u8> {
@@ -2381,6 +2441,130 @@ mod tests {
             query_string: String::new(),
             headers: std::collections::HashMap::new(),
         }
+    }
+
+    fn make_s3_req(req: s3::AwsRequest) -> s3::AwsResponse {
+        s3::DefaultS3Handler::new().handle(req)
+    }
+
+    #[test]
+    fn test_create_function_from_s3_source() {
+        // Store a package in S3, then create a function whose code points at
+        // it (S3Bucket + S3Key) — the body is read via s3::bridge.
+        let s3_resp = make_s3_req(s3::AwsRequest {
+            service: "s3".to_string(),
+            operation: "CreateBucket".to_string(),
+            account: 123456789012,
+            region: "us-east-1".to_string(),
+            bucket: Some("lam-bridge-bkt".to_string()),
+            key: None,
+            query_params: std::collections::HashMap::new(),
+            headers: std::collections::HashMap::new(),
+            method: "PUT".to_string(),
+            body: Bytes::new(),
+            params: serde_json::Value::Null,
+        });
+        assert_eq!(s3_resp.status, 200, "bucket create failed");
+
+        let handler = LambdaHandler::new();
+        let resp = handler.handle(make_req(
+            "POST",
+            json!({
+                "FunctionName": "s3-src-fn",
+                "Runtime": "python3.12",
+                "Handler": "lambda_function.handler",
+                "Code": {
+                    "S3Bucket": "lam-bridge-bkt",
+                    "S3Key": "missing-with-bucket-is-ok.zip",
+                }
+            }),
+            "/2015-03-31/functions",
+        ));
+        assert_eq!(resp.status, 201, "body: {}", resp.body);
+
+        // Missing bucket is rejected like moto's GetObject failure.
+        let resp = handler.handle(make_req(
+            "POST",
+            json!({
+                "FunctionName": "s3-src-bad",
+                "Runtime": "python3.12",
+                "Handler": "lambda_function.handler",
+                "Code": {"S3Bucket": "lam-no-such-bkt", "S3Key": "k.zip"}
+            }),
+            "/2015-03-31/functions",
+        ));
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(resp.body.contains("NoSuchBucket"), "body: {}", resp.body);
+    }
+
+    /// Build a minimal (python-zipfile) deployment package for handler tests.
+    fn make_code_zip(code: &str) -> Vec<u8> {
+        let dir =
+            std::env::temp_dir().join(format!("lam-hzip-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let zpath = dir.join("t.zip");
+        let snippet = "import io, sys, zipfile\nbuf = io.BytesIO()\nze = zipfile.ZipFile(buf, 'w')\nze.writestr('index.js', sys.argv[2])\nze.close()\nopen(sys.argv[1], 'wb').write(buf.getvalue())\n";
+        let result = std::process::Command::new("python3")
+            .arg("-c")
+            .arg(snippet)
+            .arg(zpath.as_os_str())
+            .arg(code)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .expect("python3 failed");
+        assert!(result.status.success(), "zip maker failed");
+        let z = std::fs::read(&zpath).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        z
+    }
+
+    #[test]
+    fn test_non_python_runtime_invoke_is_error_shaped() {
+        let zip_b64 = base64::engine::general_purpose::STANDARD
+            .encode(make_code_zip("exports.handler = async (e) => ({ok: true})"));
+        let handler = LambdaHandler::new();
+        handler.handle(make_req(
+            "POST",
+            json!({
+                "FunctionName": "node-fn",
+                "Runtime": "nodejs20.x",
+                "Handler": "index.handler",
+                "Code": {"ZipFile": zip_b64}
+            }),
+            "/2015-03-31/functions",
+        ));
+        let mut req = make_req(
+            "POST",
+            json!({}),
+            "/2015-03-31/functions/node-fn/invocations",
+        );
+        req.headers.insert(
+            "x-amz-invocation-type".to_string(),
+            "RequestResponse".to_string(),
+        );
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+        assert_eq!(resp.body, "null");
+        assert!(resp.headers.iter().any(|(k, v)| {
+            k.eq_ignore_ascii_case("x-amz-function-error") && v == "Runtime.InvalidRuntime"
+        }));
+    }
+
+    #[test]
+    fn test_tail_utf8_bytes_boundary() {
+        // 100 × 'é' = 200 bytes; an odd cap cuts mid code point and must
+        // snap forward to the next boundary.
+        let s = "é".repeat(100);
+        let tail = tail_utf8(&s, 149);
+        assert_eq!(tail.len(), 148); // snapped from 149 up to 2-byte alignment
+        assert!(tail.chars().all(|c| c == 'é'));
+        assert_eq!(tail, &s[52..]); // the final 74 code points (148 bytes)
+        // Short strings pass through whole.
+        assert_eq!(tail_utf8("abc", 10), "abc");
+        // ASCII walks back exactly to the cap.
+        assert_eq!(tail_utf8(&"x".repeat(10), 4), "xxxx");
+        // An even cap on a 2-byte-wide string is already a boundary.
+        assert_eq!(tail_utf8(&s, 150).len(), 150);
     }
 
     #[test]

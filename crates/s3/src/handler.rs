@@ -360,10 +360,13 @@ impl S3Handler {
 
     fn get_state(&self, account: u64, region: &str) -> S3State {
         let mut states = self.state.write();
-        states
+        let state = states
             .entry((account, region.to_string()))
             .or_default()
-            .clone()
+            .clone();
+        // Expose the live state to other crates via the bridge.
+        crate::bridge::register_state(account, region, &state);
+        state
     }
 
     fn with_bucket(&self, req: &AwsRequest) -> Result<(S3State, Arc<Bucket>), AwsResponse> {

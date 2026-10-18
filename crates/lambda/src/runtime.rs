@@ -11,10 +11,9 @@
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::fs;
-use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Child, Stdio};
-use std::sync::OnceLock;
+use std::sync::mpsc;
 
 /// Result of executing a function handler.
 pub struct ExecResult {
@@ -26,22 +25,7 @@ pub struct ExecResult {
     pub logs: String,
 }
 
-fn shim_path() -> PathBuf {
-    let dir = std::env::temp_dir().join("robotocore-lambda-exec");
-    static INIT: OnceLock<()> = OnceLock::new();
-    INIT.get_or_init(|| {
-        let _ = fs::create_dir_all(&dir);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = fs::set_permissions(&dir, fs::Permissions::from_mode(0o700));
-        }
-        if let Ok(mut f) = fs::File::create(dir.join("lambda_shim.py")) {
-            let _ = f.write_all(SHIM_PY.as_bytes());
-        }
-    });
-    dir.join("lambda_shim.py")
-}
+
 
 const SHIM_PY: &str = r#"#!/usr/bin/env python3
 """robotocore Lambda shim: unpack code, import handler, call it, emit result JSON."""
@@ -65,7 +49,7 @@ class Ctx:
         self.memory_limit_in_mb = str(meta.get("memory_size", 128))
         self.invoked_function_arn = meta.get("function_arn", "")
         self.log_group_name = f"/aws/lambda/{self.function_name}"
-        self.log_stream_name = "{date}/[$LATEST]{rid}".format(date=time.strftime("%Y/%m/%d"), rid=uuid.uuid4().hex[:32])
+        self.log_stream_name = "{date}/[$LATEST]{rid}".format(date=time.strftime("%Y/%m/%d", time.gmtime()), rid=uuid.uuid4().hex[:32])
         self._timeout_ms = int(meta.get("timeout", 3)) * 1000
 
     def get_remaining_time_in_millis(self):
@@ -93,6 +77,16 @@ def main():
         code_dir = os.path.join(work, "code")
         os.makedirs(code_dir, exist_ok=True)
         safe_extract(os.path.join(work, "code.zip"), code_dir)
+
+        # Unpack each layerN.zip into layerN/ so its python/ subtree (or
+        # package dirs) lands there and the sys.path scan below finds it.
+        for layer_zip in sorted(
+            p for p in os.listdir(work)
+            if p.startswith("layer") and p.endswith(".zip")
+        ):
+            dest = os.path.join(work, layer_zip[:-4])
+            os.makedirs(dest, exist_ok=True)
+            safe_extract(os.path.join(work, layer_zip), dest)
 
         sys.path.insert(0, code_dir)
         for layer_name in sorted(
@@ -157,15 +151,43 @@ fn missing_runtime_result(msg: &str) -> ExecResult {
     }
 }
 
-/// Read remaining output of a child pipe and close it.
-fn drain(mut pipe: Option<std::process::ChildStdout>) -> String {
-    use std::io::Read;
-    if let Some(p) = pipe.take() {
-        let mut buf = String::new();
-        let _ = std::io::BufReader::new(p).read_to_string(&mut buf);
-        return buf;
-    }
-    String::new()
+/// Cap on captured handler output per stream (stdout, stderr). When a
+/// stream exceeds the cap only the last bytes are kept (tail semantics).
+const OUTPUT_CAP: usize = 128 * 1024;
+
+/// Drain a spawned child pipe on a dedicated thread, keeping at most
+/// `OUTPUT_CAP` bytes (tail semantics) and returning a channel the caller
+/// can wait on with a deadline. Reading blocks until EOF, which never
+/// arrives while a grandchild inherited the pipe, so the caller must bound
+/// how long it waits and abandon the thread (and its text) on timeout.
+fn drain_thread<R: std::io::Read + Send + 'static>(pipe: Option<R>) -> mpsc::Receiver<String> {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let mut kept: Vec<u8> = Vec::new();
+        if let Some(mut p) = pipe {
+            let mut chunk = [0u8; 8192];
+            loop {
+                match p.read(&mut chunk) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        kept.extend_from_slice(&chunk[..n]);
+                        if kept.len() > OUTPUT_CAP {
+                            let excess = kept.len() - OUTPUT_CAP;
+                            kept.drain(..excess);
+                        }
+                    }
+                }
+            }
+        }
+        let _ = tx.send(String::from_utf8_lossy(&kept).into_owned());
+    });
+    rx
+}
+
+/// Take the drained text, bounded by the absolute `deadline`; on timeout
+/// abandon the drain thread and return nothing.
+fn collect_by(rx: &mpsc::Receiver<String>, deadline: std::time::Instant) -> String {
+    rx.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now())).unwrap_or_default()
 }
 
 /// Execute a Python Lambda handler in a subprocess shim.
@@ -227,7 +249,10 @@ pub fn execute_python(
         let _ = fs::write(work.join(format!("layer{}.zip", i)), layer);
     }
 
-    let shim = shim_path();
+    let shim = work.join("lambda_shim.py");
+    if fs::write(&shim, SHIM_PY).is_err() {
+        return missing_runtime_result("failed to write handler shim");
+    }
     let mut cmd = std::process::Command::new(find_python3());
     cmd.arg(shim)
         .arg(work.as_os_str())
@@ -254,6 +279,13 @@ pub fn execute_python(
         Err(e) => return missing_runtime_result(&e.to_string()),
     };
 
+    // Start draining pipes immediately, from dedicated threads. Output
+    // beyond the OS pipe buffer blocks the child's writes until somebody
+    // reads, so waiting here for child exit first would deadlock on any
+    // handler that prints more than a pipe buffer.
+    let stdout_rx = drain_thread(child.stdout.take());
+    let stderr_rx = drain_thread(child.stderr.take());
+
     // Wait up to the function timeout; kill on overrun.
     let wait_secs = u64::from(timeout_secs.max(1)) + 5;
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(wait_secs);
@@ -274,24 +306,18 @@ pub fn execute_python(
         }
     }
 
-    // The child died or finished — drain pipes fully now (process gone, EOF immediate).
-    let (stdout, stderr) = match (child.stdout.take(), child.stderr.take()) {
-        (Some(so), Some(mut se)) => {
-            let s = drain(Some(so));
-            use std::io::Read;
-            let mut buf = String::new();
-            let _ = se.read_to_string(&mut buf);
-            (s, buf)
-        }
-        (Some(so), None) => (drain(Some(so)), String::new()),
-        (None, Some(mut se)) => {
-            use std::io::Read;
-            let mut buf = String::new();
-            let _ = se.read_to_string(&mut buf);
-            (String::new(), buf)
-        }
-        (None, None) => (String::new(), String::new()),
+    // The child died or finished — drain threads run until EOF, but EOF
+    // never arrives while a grandchild inherited the pipes, so collecting
+    // is bounded by a shared absolute deadline; after it passes the drained
+    // text is abandoned alongside the drain threads.
+    let drain_deadline = if timed_out {
+        // The function timeout already elapsed; allow a short grace only.
+        std::time::Instant::now() + std::time::Duration::from_secs(1)
+    } else {
+        deadline
     };
+    let stdout = collect_by(&stdout_rx, drain_deadline);
+    let stderr = collect_by(&stderr_rx, drain_deadline);
 
     let result_raw = fs::read_to_string(work.join("result.json")).unwrap_or_default();
     cleanup(&work);
@@ -415,6 +441,38 @@ mod tests {
     }
 
     #[test]
+    fn test_grandchild_holding_pipes_does_not_block() {
+        // A grandchild that inherits stdout/stderr keeps the pipes open past
+        // the handler process's exit; result delivery must stay bounded.
+        let code = "import subprocess, sys\ndef handler(e, c):\n    subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])\n    return 'spawned'\n";
+        let zip = make_zip(code);
+        let started = std::time::Instant::now();
+        let res = execute_python(
+            &zip,
+            &[],
+            "lambda_function.handler",
+            r#"{}"#,
+            "test-fn",
+            "$LATEST",
+            "arn:aws:lambda:us-east-1:123456789012:function:test-fn",
+            &HashMap::new(),
+            1,
+            128,
+            "us-east-1",
+            "123456789012",
+        );
+        // The shim's own timeout budget is timeout_secs + 5; previously this
+        // scenario blocked until the grandchild (30s sleep) exited.
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(10),
+            "invocation blocked on grandchild-inherited pipes for {:?}",
+            started.elapsed()
+        );
+        assert_eq!(res.function_error, None, "logs: {}", res.logs);
+        assert_eq!(res.payload, json!("spawned").to_string());
+    }
+
+    #[test]
     fn test_execute_error() {
         let code = "def handler(e, c):\n    raise ValueError('boom')";
         let zip = make_zip(code);
@@ -436,6 +494,100 @@ mod tests {
         let payload: Value = serde_json::from_str(&res.payload).unwrap();
         assert_eq!(payload["errorType"], "ValueError");
         assert_eq!(payload["errorMessage"], "boom");
+    }
+
+    /// Zip an existing directory tree (one entry per file, paths relative
+    /// to the root) with python's zipfile, like a real layer package.
+    fn make_zip_dir(root: &std::path::Path, out: &std::path::Path) -> Vec<u8> {
+        let snippet = "import os, sys, zipfile\nroot, out = sys.argv[1], sys.argv[2]\nwith zipfile.ZipFile(out, 'w') as zf:\n    for dirpath, _, files in os.walk(root):\n        for f in files:\n            p = os.path.join(dirpath, f)\n            zf.write(p, os.path.relpath(p, root))\n";
+        let result = std::process::Command::new("python3")
+            .arg("-c")
+            .arg(snippet)
+            .arg(root.as_os_str())
+            .arg(out.as_os_str())
+            .stdin(Stdio::null())
+            .output()
+            .expect("python3 failed");
+        assert!(
+            result.status.success(),
+            "zip dir maker failed: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        fs::read(out).unwrap()
+    }
+
+    #[test]
+    fn test_layers_extracted_and_importable() {
+        // A layer zip with python/laymod.py; the handler imports it. Before
+        // the shim extracted layers this raised ModuleNotFoundError.
+        let laydir =
+            std::env::temp_dir().join(format!("lam-lay-{}", uuid::Uuid::new_v4().simple()));
+        fs::create_dir_all(laydir.join("python")).unwrap();
+        fs::write(
+            laydir.join("python").join("laymod.py"),
+            "def val():\n    return 'from-layer'\n",
+        )
+        .unwrap();
+        let zpath = laydir.parent().unwrap().join("lay.zip");
+        let layer_zip = make_zip_dir(&laydir, &zpath);
+
+        let code = "import laymod\ndef handler(e, c):\n    return {'val': laymod.val()}\n";
+        let zip = make_zip(code);
+        let res = execute_python(
+            &zip,
+            &[layer_zip],
+            "lambda_function.handler",
+            r#"{}"#,
+            "test-fn",
+            "$LATEST",
+            "arn:aws:lambda:us-east-1:123456789012:function:test-fn",
+            &HashMap::new(),
+            20,
+            128,
+            "us-east-1",
+            "123456789012",
+        );
+        assert_eq!(res.function_error, None, "logs: {}", res.logs);
+        let payload: Value = serde_json::from_str(&res.payload).unwrap();
+        assert_eq!(payload["val"], json!("from-layer"));
+    }
+
+    #[test]
+    fn test_output_capture_is_capped_tail() {
+        // ~600KB of stdout must not buffer unboundedly; the tail is kept.
+        let code = "def handler(e, c):\n    for i in range(6000):\n        print('x' * 100, i)\n    return 'done'\n";
+        let zip = make_zip(code);
+        let res = execute_python(
+            &zip,
+            &[],
+            "lambda_function.handler",
+            r#"{}"#,
+            "test-fn",
+            "$LATEST",
+            "arn:aws:lambda:us-east-1:123456789012:function:test-fn",
+            &HashMap::new(),
+            20,
+            128,
+            "us-east-1",
+            "123456789012",
+        );
+        assert_eq!(
+            res.function_error,
+            None,
+            "exec logs: {} | payload: {}",
+            res.logs,
+            res.payload
+        );
+        assert!(
+            res.logs.len() <= OUTPUT_CAP + 8,
+            "captured {} bytes of output",
+            res.logs.len()
+        );
+        assert!(
+            res.logs.contains("5999"),
+            "tail semantics: end of stream must be kept, got ending {:?}",
+            &res.logs[res.logs.len().saturating_sub(64)..]
+        );
     }
 
     #[test]
