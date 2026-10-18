@@ -44,8 +44,14 @@ impl MotoProxy {
         &self,
         req: &ParsedRequest,
     ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
-        // Send to the sidecar root - the service is identified by the header
-        let url = format!("{}/", self.base_url);
+        // Preserve the original path and query: moto handlers route on the
+        // URL shape (rest-json/rest-xml services live at their REST paths,
+        // e.g. POST /restapis for API Gateway; a bare "/" would 501).
+        let mut url = format!("{}{}", self.base_url, req.path);
+        if !req.query_string.is_empty() {
+            url.push('?');
+            url.push_str(&req.query_string);
+        }
 
         // Build the proxy request
         let mut proxy_req = self
@@ -141,4 +147,34 @@ impl MotoProxy {
             })
         }
     }
+
+    /// GET a config record from the sidecar (JSON), for the apigateway executor.
+    pub async fn sidecar_get(
+        &self,
+        path: &str,
+        region: &str,
+    ) -> Result<SidecarResponse, Box<dyn std::error::Error>> {
+        let url = format!("{}{}", self.base_url, path);
+        let resp = self
+            .client
+            .get(&url)
+            .header("x-robotocore-service", "apigateway")
+            .header(
+                "authorization",
+                format!(
+                    "AWS4-HMAC-SHA256 Credential=123456789012/20240101/{region}/apigateway/aws4_request"
+                ),
+            )
+            .send()
+            .await?;
+        let status = resp.status();
+        let body: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
+        Ok(SidecarResponse { status, body })
+    }
+}
+
+/// A parsed config response from the sidecar.
+pub struct SidecarResponse {
+    pub status: reqwest::StatusCode,
+    pub body: serde_json::Value,
 }

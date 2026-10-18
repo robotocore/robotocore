@@ -49,3 +49,44 @@ factors into `new_with_handlers()`.
 **Not touched**: existing wire behavior of any service crate (only added
 modules/derives/visibility bumps `pub(crate)`), Python server, and the
 checked-in compat suites.
+
+
+## Phase 2: endpoints + apigateway execution (same session)
+
+## Human
+
+(continuation) implement the /_robotocore/state/* endpoints + proxy fix.
+
+## Assistant
+
+**Central registry** lives in src/core/state.rs:
+`SnapshotRegistry` built from the SAME `NativeHandlers` the wire path
+uses (`ServiceRegistry::new_with_handlers`); adapters are closures, so
+no trait churn for foreign crate types. The binary passes the registry
+into `build_router` as part of `AppState`, plus in-memory named and
+versioned snapshot stores.
+
+**Endpoint semantics chosen by the suites** (recorded from the python
+ground truth, not invented): save with `path` echoes the given path
+(`data["path"] == save_path` for the unnamed case), named saves write
+`<path>/<name>.json`; load responds `loaded` / `no_state_found`; reset
+responds `{status: "reset"}`; health keeps `running`.
+
+**Proxy fix (root cause)**: `MotoProxy::forward` built its URL as
+`{base}/` — the request path never reached the sidecar, so every
+rest-json/rest-xml route 501'd (`routing_map` had no `/` rule). Now the
+original path + query and `x-robotocore-service` are preserved. This
+unlocks the whole deployed-API config flow (create/api, resources,
+methods, integrations, deployments all 2xx in the audit log).
+
+**Deployed-API invocation** (`_user_request_`): moto has no route for
+it (checked `flask_paths`) — the ground truth executes it in
+`src/robotocore/services/apigateway/executor.py`. The rust gateway
+mirrors that with `src/core/apigw_exec.rs`: fetch stage/resources/
+integration from the sidecar, match exact then templated paths, build
+the proxies event, and invoke through the native lambda crate (with a
+`/2015-03-31/functions/{fn}/invocations` lambda request so the
+lambda crate's own operation resolver routes it).
+
+**Result**: 20/20 on the three suites (identical to ground truth);
+`cargo test --workspace` green; clippy `-D warnings` clean; fmt clean.

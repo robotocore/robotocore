@@ -6,6 +6,55 @@ auto-tags and publishes a versioned + `:latest` Docker image. Each release
 gets a top-level section here; the project source of truth for the
 maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
 
+## 2026.5.14 (unreleased, `port/rot-state` branch)
+
+### Added: state save/load/reset on the pure-Rust server
+
+The Rust server now speaks the Python server's state-management surface:
+
+- `GET|POST /_robotocore/state/save` — `{name, path?, services?}`; with a
+  `path` writes `<path>/<name>.json` (unnamed: `<dir>/robotocore_state.json`),
+  without one keeps an in-memory named snapshot; responses carry
+  `{status: "saved", path, services}`.
+- `POST /_robotocore/state/load` — `{name, path?, services?}`; restores from a
+  saved file or an in-memory snapshot (`{status: "loaded"}`, or
+  `{status: "no_state_found"}` when absent).
+- `POST /_robotocore/state/reset` — clears every native service's state
+  (`{status: "reset"}`).
+- `GET /_robotocore/state/snapshots` (also `/robotocore/state/snapshots`)
+  — lists in-memory named and versioned snapshots.
+- `POST /_robotocore/state/snapshots/save|load` — versioned named snapshots
+  (each save appends a revision; load restores a chosen or the latest one).
+- `GET /_robotocore/state/export`, `POST /_robotocore/state/import` — JSON
+  dump/reload channel (`native_state` envelope).
+
+Every native service crate exposes a `snapshot_json` / `restore_json` /
+`reset` surface (serde derives + lock-tolerant helpers keyed by
+`account|region`), wired through a central registry built from the same
+handler instances the wire path uses. File writes are atomic (temp +
+rename). This is the last gateway feature the Python branch provided that
+the Rust port lacked; the state/persistence/concurrency compat suites pass
+at parity (20/20).
+
+#### Migration
+
+State endpoints previously returned `NotImplemented` on the Rust server;
+they are now live. `POST /state/reset` wipes native service state for the
+whole process (including cross-service handler instances), matching
+`docker restart` semantics; callers that used the endpoint for
+test-isolation must switch to unique account ids.
+
+### Fixed: deployed-API invocation through the Rust gateway
+
+Proxied (moto-sidecar) requests previously dropped the request path (they
+arrived as `POST /`), which broke rest-json/rest-xml services such as API
+Gateway resource/configuration calls with `501 NotImplemented`. The proxy
+now forwards the original path + query and the `x-robotocore-service`
+header. `/restapis/{api}/{stage}/_user_request_/{path}` invocations are
+served by a rust-side executor that reads the deployed integration config
+from the sidecar and dispatches `AWS_PROXY` integrations into the native
+lambda crate, mirroring the Python executor.
+
 ## 2026.5.13 (2026-05-13)
 
 ### Breaking: Docker Hub image renamed to `jackdanger/robotocore`
