@@ -52,9 +52,12 @@ fn with_scope<T>(
     f(map.entry((req.account, req.region.clone())).or_default())
 }
 
+type RuleEntry = (String, Value, Vec<(String, String)>);
+
 #[derive(Default)]
 pub struct ConfigState {
-    config_rules: Vec<(String, Value, Vec<(String, String)>)>,
+    /// (name, stored rule echo, tags)
+    config_rules: Vec<RuleEntry>,
     recorders: Vec<(String, Value)>,
     recorder_recording: Vec<String>,
     recorder_started: Vec<String>,
@@ -78,7 +81,7 @@ pub struct ConfigState {
 }
 
 /// Rule narrowed from the stored echo: names snapshot for lookups.
-fn rule_field<'a>(rule: &'a Value, key: &str) -> String {
+fn rule_field(rule: &Value, key: &str) -> String {
     rule.get(key)
         .and_then(|k| k.as_str())
         .unwrap_or_default()
@@ -219,7 +222,7 @@ fn handle(req: &Request, body: &Value) -> Result<Response, Response> {
                 stored["__ruleId"] = json!(id);
                 let arn = format!("arn:aws:config:{region}:{account}:config-rule/{id}");
                 stored["__ruleArn"] = json!(arn);
-                if let Some(pos) = st.config_rules.iter_mut().position(|(n, r, _)| *n == name) {
+                if let Some(pos) = st.config_rules.iter_mut().position(|(n, ..)| *n == name) {
                     stored["__ruleId"] = st.config_rules[pos].1["__ruleId"].clone();
                     stored["__ruleArn"] = st.config_rules[pos].1["__ruleArn"].clone();
                     st.config_rules[pos].1 = stored;
@@ -880,7 +883,7 @@ fn handle_3(req: &Request, body: &Value, slot: Slot<ConfigState>) -> Result<Resp
             ),
         )),
         "GetOrganizationCustomRulePolicy" => Ok(ok_json(
-            json!({ "PolicyText": format!("{{\"Version\":\"2012-10-17\",\"Statement\":[]}}") }),
+            json!({ "PolicyText": r#"{"Version":"2012-10-17","Statement":[]}"# }),
         )),
         "DeleteOrganizationConfigRule" => {
             let name = body_field(body, "OrganizationConfigRuleName");
