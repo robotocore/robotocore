@@ -1,1024 +1,2313 @@
 //! Lambda operation handler (rest-json protocol).
+//!
+//! Operations are dispatched from HTTP method + path, mirroring the botocore
+//! Lambda REST API table and the Python ground-truth provider
+//! (`src/robotocore/services/lambda_/provider.py`). Response shapes follow the
+//! moto-backed ground truth.
 
+use base64::Engine;
 use parking_lot::RwLock;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::models::{EventSourceMapping, LambdaAlias, LambdaFunction, LambdaState};
-use crate::protocol::{AwsRequest, AwsResponse};
+use crate::models::{
+    iso_now, layer_date_now, utc_date_now, url_date_now, LambdaAlias, LambdaFunction, LambdaState,
+};
+use crate::protocol::{function_not_found, path_segments, resolve_fn, AwsRequest, AwsResponse};
+use crate::runtime;
 
 pub struct LambdaHandler {
     state: RwLock<HashMap<(u64, String), LambdaState>>,
 }
 
-impl LambdaHandler {
-    pub fn new() -> Self {
-        Self { state: RwLock::new(HashMap::new()) }
-    }
-
-    fn get_state(&self, account: u64, region: &str) -> LambdaState {
-        let mut states = self.state.write();
-        states.entry((account, region.to_string())).or_insert_with(LambdaState::new).clone()
-    }
-
-    fn func_config(f: &LambdaFunction) -> Value {
-        json!({
-            "FunctionName": f.function_name,
-            "FunctionArn": f.function_arn,
-            "Runtime": *f.runtime.read(),
-            "Role": *f.role.read(),
-            "Handler": *f.handler.read(),
-            "Description": *f.description.read(),
-            "Timeout": *f.timeout.read(),
-            "MemorySize": *f.memory_size.read(),
-            "CodeSize": f.code_size,
-            "LastModified": *f.last_modified.read() as f64,
-            "State": *f.state.read(),
-            "Reason": *f.reason.read(),
-            "Version": f.version,
-            "CodeSha256": f.code_sha256,
-            "Environment": f.environment.read().as_ref().cloned(),
-            "TracingConfig": { "Mode": "PassThrough" },
-            "RevisionId": uuid::Uuid::new_v4().simple().to_string(),
-            "EphemeralStorage": { "Size": 512 },
-            "PackageType": "Zip",
-            "Architectures": ["x86_64"],
-        })
-    }
-
-    pub fn handle(&self, req: AwsRequest) -> AwsResponse {
-        let op = req.operation.as_str();
-        match op {
-            "CreateFunction" => self.create_function(&req),
-            "GetFunction" => self.get_function(&req),
-            "GetFunctionConfiguration" => self.get_function_configuration(&req),
-            "DeleteFunction" => self.delete_function(&req),
-            "ListFunctions" => self.list_functions(&req),
-            "UpdateFunctionCode" => self.update_function_code(&req),
-            "UpdateFunctionConfiguration" => self.update_function_configuration(&req),
-            "Invoke" => self.invoke(&req),
-            "InvokeAsync" => self.invoke_async(&req),
-            "AddPermission" => self.add_permission(&req),
-            "RemovePermission" => self.remove_permission(&req),
-            "GetPolicy" => self.get_policy(&req),
-            "CreateAlias" => self.create_alias(&req),
-            "GetAlias" => self.get_alias(&req),
-            "UpdateAlias" => self.update_alias(&req),
-            "DeleteAlias" => self.delete_alias(&req),
-            "ListAliases" => self.list_aliases(&req),
-            "PublishVersion" => self.publish_version(&req),
-            "ListVersionsByFunction" => self.list_versions_by_function(&req),
-            "CreateEventSourceMapping" => self.create_event_source_mapping(&req),
-            "GetEventSourceMapping" => self.get_event_source_mapping(&req),
-            "UpdateEventSourceMapping" => self.update_event_source_mapping(&req),
-            "DeleteEventSourceMapping" => self.delete_event_source_mapping(&req),
-            "ListEventSourceMappings" => self.list_event_source_mappings(&req),
-            "TagResource" => self.tag_resource(&req),
-            "UntagResource" => self.untag_resource(&req),
-            "ListTags" => self.list_tags(&req),
-            "PutFunctionConcurrency" => self.put_function_concurrency(&req),
-            "GetFunctionConcurrency" => self.get_function_concurrency(&req),
-            "DeleteFunctionConcurrency" => self.delete_function_concurrency(&req),
-            "PublishLayerVersion" => self.publish_layer_version(&req),
-            "GetLayerVersion" => self.get_layer_version(&req),
-            "GetLayerVersionByArn" => self.get_layer_version_by_arn(&req),
-            "DeleteLayerVersion" => self.delete_layer_version(&req),
-            "ListLayerVersions" => self.list_layer_versions(&req),
-            "ListLayers" => self.list_layers(&req),
-            "AddLayerVersionPermission" => self.add_layer_version_permission(&req),
-            "RemoveLayerVersionPermission" => self.remove_layer_version_permission(&req),
-            "GetLayerVersionPolicy" => self.get_layer_version_policy(&req),
-            "GetAccountSettings" => self.get_account_settings(&req),
-            "CreateFunctionUrlConfig" => self.create_function_url_config(&req),
-            "GetFunctionUrlConfig" => self.get_function_url_config(&req),
-            "UpdateFunctionUrlConfig" => self.update_function_url_config(&req),
-            "DeleteFunctionUrlConfig" => self.delete_function_url_config(&req),
-            "ListFunctionUrlConfigs" => self.list_function_url_configs(&req),
-            "PutProvisionedConcurrencyConfig" => self.put_provisioned_concurrency(&req),
-            "GetProvisionedConcurrencyConfig" => self.get_provisioned_concurrency(&req),
-            "DeleteProvisionedConcurrencyConfig" => self.delete_provisioned_concurrency(&req),
-            "ListProvisionedConcurrencyConfigs" => self.list_provisioned_concurrency_configs(&req),
-            "AddPermission" => self.json_stub(&req, "Statement"),
-            "RemovePermission" => self.json_stub(&req, "{}"),
-            "ListPermissions" => self.json_stub_list(&req, "Statements"),
-            "CreateEventSourceMapping" => self.json_stub(&req, "UUID"),
-            "UpdateEventSourceMapping" => self.json_stub(&req, "UUID"),
-            "DeleteEventSourceMapping" => self.json_stub(&req, "{}"),
-            "CreateFunctionUrlConfig" => self.json_stub(&req, "FunctionArn"),
-            "GetFunctionUrlConfig" => self.json_stub(&req, "FunctionArn"),
-            "UpdateFunctionUrlConfig" => self.json_stub(&req, "FunctionArn"),
-            "DeleteFunctionUrlConfig" => self.json_stub(&req, "{}"),
-            "ListLayers" => self.json_stub_list(&req, "Layers"),
-            "ListLayerVersions" => self.json_stub_list(&req, "LayerVersions"),
-            "GetLayerVersionByArn" => self.json_stub(&req, "LayerArn"),
-            "GetCodeSigningConfig" => self.json_stub(&req, "CodeSigningConfigArn"),
-            "PutCodeSigningConfig" => self.json_stub(&req, "CodeSigningConfigArn"),
-            "DeleteCodeSigningConfig" => self.json_stub(&req, "{}"),
-            "CreateCapacityProvider" => self.json_stub(&req, "CapacityProviderName"),
-            "GetCapacityProvider" => self.json_stub(&req, "CapacityProviderName"),
-            "UpdateCapacityProvider" => self.json_stub(&req, "CapacityProviderName"),
-            "DeleteCapacityProvider" => self.json_stub(&req, "{}"),
-            "ListCapacityProviders" => self.json_stub_list(&req, "CapacityProviderNames"),
-            "CreateDurableExecution" => self.json_stub(&req, "ExecutionId"),
-            "GetDurableExecution" => self.json_stub(&req, "ExecutionId"),
-            "GetDurableExecutionHistory" => self.json_stub_list(&req, "Events"),
-            "ListDurableExecutions" => self.json_stub_list(&req, "Executions"),
-            "GetFunctionRecursionConfiguration" => self.json_stub(&req, "FunctionName"),
-            "PutFunctionRecursionConfiguration" => self.json_stub(&req, "FunctionName"),
-            "DeleteFunctionRecursionConfiguration" => self.json_stub(&req, "{}"),
-            other => AwsResponse::error(400, "ResourceNotFoundException",
-                &format!("The operation {} is not implemented", other)),
-        }
-    }
-
-    fn create_function(&self, req: &AwsRequest) -> AwsResponse {
-        let name = req.params.get("FunctionName").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        if name.is_empty() {
-            return AwsResponse::error(400, "InvalidParameterValueException", "FunctionName is required");
-        }
-        let state = self.get_state(req.account, &req.region);
-        if state.get_function(&name).is_some() {
-            return AwsResponse::error(409, "ResourceConflictException",
-                &format!("The function already exists: {}", name));
-        }
-        let func = Arc::new(LambdaFunction::new(req.account, &req.region, name));
-        if let Some(runtime) = req.params.get("Runtime").and_then(|v| v.as_str()) {
-            *func.runtime.write() = runtime.to_string();
-        }
-        if let Some(handler) = req.params.get("Handler").and_then(|v| v.as_str()) {
-            *func.handler.write() = handler.to_string();
-        }
-        if let Some(role) = req.params.get("Role").and_then(|v| v.as_str()) {
-            *func.role.write() = role.to_string();
-        }
-        if let Some(desc) = req.params.get("Description").and_then(|v| v.as_str()) {
-            *func.description.write() = desc.to_string();
-        }
-        if let Some(timeout) = req.params.get("Timeout").and_then(|v| v.as_u64()) {
-            *func.timeout.write() = timeout as u32;
-        }
-        if let Some(mem) = req.params.get("MemorySize").and_then(|v| v.as_u64()) {
-            *func.memory_size.write() = mem as u32;
-        }
-        // Store environment variables
-        if let Some(env) = req.params.get("Environment").and_then(|v| v.as_object()).cloned() {
-            let env_value = serde_json::to_value(env).unwrap_or(Value::Null);
-            *func.environment.write() = Some(env_value);
-        }
-        // Store tags from the request
-        if let Some(tags) = req.params.get("Tags").and_then(|v| v.as_object()) {
-            for (k, v) in tags {
-                func.tags.write().insert(k.clone(), v.as_str().unwrap_or("").to_string());
-            }
-        }
-        state.functions.write().insert(func.function_name.clone(), func.clone());
-        AwsResponse::json(201, Self::func_config(&func))
-    }
-
-    fn get_function(&self, req: &AwsRequest) -> AwsResponse {
-        let name = self.extract_name(req);
-        let state = self.get_state(req.account, &req.region);
-        match state.get_function(&name) {
-            Some(func) => AwsResponse::json(200, json!({
-                "Configuration": Self::func_config(&func),
-                "Code": {
-                    "RepositoryType": "S3",
-                    "Location": format!("https://s3.amazonaws.com/lambda-functions/{}/code.zip", func.function_arn),
-                    "S3Bucket": "lambda-functions",
-                    "S3Key": format!("{}/code.zip", func.function_arn),
-                    "S3ObjectArn": format!("arn:aws:s3:::lambda-functions/{}/code.zip", func.function_arn)
-                }
-            })),
-            None => AwsResponse::error(404, "ResourceNotFoundException",
-                &format!("Function not found: {}", name)),
-        }
-    }
-
-    fn get_function_configuration(&self, req: &AwsRequest) -> AwsResponse {
-        let name = self.extract_name(req);
-        let state = self.get_state(req.account, &req.region);
-        match state.get_function(&name) {
-            Some(func) => AwsResponse::json(200, Self::func_config(&func)),
-            None => AwsResponse::error(404, "ResourceNotFoundException",
-                &format!("Function not found: {}", name)),
-        }
-    }
-
-    fn delete_function(&self, req: &AwsRequest) -> AwsResponse {
-        let name = self.extract_name(req);
-        let state = self.get_state(req.account, &req.region);
-        match state.get_function(&name) {
-            Some(func) => {
-                state.functions.write().remove(&func.function_name);
-                AwsResponse::json(202, json!({
-                    "FunctionName": func.function_name,
-                    "FunctionArn": func.function_arn,
-                    "State": "Pending",
-                    "LastModified": *func.last_modified.read() as f64,
-                    "CodeSha256": func.code_sha256,
-                    "Reason": ""
-                }))
-            }
-            None => AwsResponse::error(404, "ResourceNotFoundException",
-                &format!("Function not found: {}", name)),
-        }
-    }
-
-    fn list_functions(&self, req: &AwsRequest) -> AwsResponse {
-        let state = self.get_state(req.account, &req.region);
-        let funcs = state.functions.read().values().cloned().collect::<Vec<_>>();
-        let configs: Vec<Value> = funcs.iter().map(|f| Self::func_config(f)).collect();
-        AwsResponse::json(200, json!({
-            "Functions": configs,
-            "NextMarker": null
-        }))
-    }
-
-    fn update_function_code(&self, req: &AwsRequest) -> AwsResponse {
-        let name = self.extract_name(req);
-        let state = self.get_state(req.account, &req.region);
-        match state.get_function(&name) {
-            Some(func) => {
-                *func.last_modified.write() = chrono::Utc::now().timestamp_millis() as u64;
-                *func.state.write() = "Active".to_string();
-                AwsResponse::json(200, Self::func_config(&func))
-            }
-            None => AwsResponse::error(404, "ResourceNotFoundException",
-                &format!("Function not found: {}", name)),
-        }
-    }
-
-    fn update_function_configuration(&self, req: &AwsRequest) -> AwsResponse {
-        let name = self.extract_name(req);
-        let state = self.get_state(req.account, &req.region);
-        match state.get_function(&name) {
-            Some(func) => {
-                if let Some(desc) = req.params.get("Description").and_then(|v| v.as_str()) {
-                    *func.description.write() = desc.to_string();
-                }
-                if let Some(timeout) = req.params.get("Timeout").and_then(|v| v.as_u64()) {
-                    *func.timeout.write() = timeout as u32;
-                }
-                if let Some(mem) = req.params.get("MemorySize").and_then(|v| v.as_u64()) {
-                    *func.memory_size.write() = mem as u32;
-                }
-                if let Some(role) = req.params.get("Role").and_then(|v| v.as_str()) {
-                    *func.role.write() = role.to_string();
-                }
-                if let Some(env) = req.params.get("Environment").and_then(|v| v.as_object()).cloned() {
-                    let env_value = serde_json::to_value(env).unwrap_or(Value::Null);
-                    *func.environment.write() = Some(env_value);
-                }
-                *func.last_modified.write() = chrono::Utc::now().timestamp_millis() as u64;
-                AwsResponse::json(200, Self::func_config(&func))
-            }
-            None => AwsResponse::error(404, "ResourceNotFoundException",
-                &format!("Function not found: {}", name)),
-        }
-    }
-
-    fn invoke(&self, req: &AwsRequest) -> AwsResponse {
-        let name = self.extract_name(req);
-        let state = self.get_state(req.account, &req.region);
-        match state.get_function(&name) {
-            Some(func) => {
-                let payload = req.params.get("Payload")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("{}")
-                    .to_string();
-
-                // Check for dry run
-                let is_dry_run = req.params.get("DryRun")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                if is_dry_run {
-                    return AwsResponse::raw(204, "application/json", String::new());
-                }
-
-                // Check for event response type
-                let response_type = req.params.get("ResponseType")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("REQUEST_RESPONSE");
-                if response_type == "EVENT" {
-                    return AwsResponse::raw(202, "application/json", String::new());
-                }
-
-                // Echo the payload back as the function result
-                AwsResponse::raw(200, "application/json", payload)
-            }
-            None => AwsResponse::error(404, "ResourceNotFoundException",
-                &format!("Function not found: {}", name)),
-        }
-    }
-
-    fn invoke_async(&self, req: &AwsRequest) -> AwsResponse {
-        let name = self.extract_name(req);
-        let state = self.get_state(req.account, &req.region);
-        match state.get_function(&name) {
-            Some(_) => AwsResponse::json(202, json!({
-                "Status": 202,
-                "RequestId": uuid::Uuid::new_v4().to_string()
-            })),
-            None => AwsResponse::error(404, "ResourceNotFoundException",
-                &format!("Function not found: {}", name)),
-        }
-    }
-
-    fn add_permission(&self, req: &AwsRequest) -> AwsResponse {
-        let stmt_id = req.params.get("StatementId").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let action = req.params.get("Action").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let principal = req.params.get("Principal").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let sid = uuid::Uuid::new_v4().simple().to_string();
-        let name = self.extract_name(req);
-        let state = self.get_state(req.account, &req.region);
-        if let Some(func) = state.get_function(&name) {
-            state.permissions.write().push(json!({
-                "Sid": sid,
-                "FunctionArn": func.function_arn,
-                "Action": action,
-                "Principal": principal,
-                "StatementId": stmt_id
-            }));
-            return AwsResponse::json(201, json!({
-                "Statement": format!("{{\"Sid\":\"{}\",\"Action\":\"{}\",\"Principal\":\"{}\"}}", sid, action, principal)
-            }));
-        }
-        AwsResponse::error(404, "ResourceNotFoundException", "Function not found")
-    }
-
-    fn remove_permission(&self, req: &AwsRequest) -> AwsResponse {
-        let name = self.extract_name(req);
-        let stmt_id = req.params.get("StatementId").and_then(|v| v.as_str()).unwrap_or_default();
-        let state = self.get_state(req.account, &req.region);
-        if let Some(func) = state.get_function(&name) {
-            state.permissions.write().retain(|p| {
-                !(p.get("FunctionArn").and_then(|a| a.as_str()) == Some(func.function_arn.as_str())
-                    && p.get("StatementId").and_then(|s| s.as_str()) == Some(stmt_id))
-            });
-            return AwsResponse::json(204, Value::Null);
-        }
-        AwsResponse::error(404, "ResourceNotFoundException", "Function not found")
-    }
-
-    fn get_policy(&self, req: &AwsRequest) -> AwsResponse {
-        let name = self.extract_name(req);
-        let state = self.get_state(req.account, &req.region);
-        match state.get_function(&name) {
-            Some(func) => {
-                let stmts: Vec<Value> = state.permissions.read().iter()
-                    .filter(|p| p.get("FunctionArn").and_then(|a| a.as_str()) == Some(func.function_arn.as_str()))
-                    .cloned().collect();
-                let stmt_str: Vec<String> = stmts.iter().map(|s| {
-                    format!("{{\"Sid\":\"{}\",\"Action\":\"{}\",\"Principal\":\"{}\"}}",
-                        s.get("StatementId").and_then(|v| v.as_str()).unwrap_or(""),
-                        s.get("Action").and_then(|v| v.as_str()).unwrap_or(""),
-                        s.get("Principal").and_then(|v| v.as_str()).unwrap_or(""))
-                }).collect();
-                let policy = format!(
-                    "{{\"Version\":\"2012-10-17\",\"Statement\":[{}]}}",
-                    stmt_str.join(",")
-                );
-                AwsResponse::json(200, json!({
-                    "Policy": policy,
-                    "FunctionArn": func.function_arn
-                }))
-            }
-            None => AwsResponse::error(404, "ResourceNotFoundException", "Function not found"),
-        }
-    }
-
-    fn create_alias(&self, req: &AwsRequest) -> AwsResponse {
-        let name = self.extract_name(req);
-        let alias_name = req.params.get("Name").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let version = req.params.get("FunctionVersion").and_then(|v| v.as_str()).unwrap_or("$LATEST").to_string();
-        let state = self.get_state(req.account, &req.region);
-        let func = match state.get_function(&name) {
-            Some(f) => f,
-            None => return AwsResponse::error(404, "ResourceNotFoundException", "Function not found"),
-        };
-        let now = chrono::Utc::now().timestamp_millis() as u64;
-        let alias = Arc::new(LambdaAlias {
-            name: alias_name.clone(),
-            function_arn: func.function_arn.clone(),
-            function_version: RwLock::new(version.clone()),
-            description: RwLock::new(req.params.get("Description").and_then(|v| v.as_str()).unwrap_or("").to_string()),
-            created: now,
-            modified: RwLock::new(now),
-            routing_config: json!({}),
-        });
-        state.aliases.write().insert((func.function_name.clone(), alias_name), alias.clone());
-        AwsResponse::json(201, json!({
-            "Name": alias.name,
-            "FunctionArn": alias.function_arn,
-            "FunctionVersion": *alias.function_version.read(),
-            "Description": *alias.description.read(),
-            "CreatedAt": alias.created as f64,
-            "ModifiedAt": *alias.modified.read() as f64
-        }))
-    }
-
-    fn get_alias(&self, req: &AwsRequest) -> AwsResponse {
-        let name = self.extract_name(req);
-        // The alias name is in the path: /2015-03-31/aliases/{AliasName}
-        let alias_name = req.path.rsplit('/').next().unwrap_or("").to_string();
-        let state = self.get_state(req.account, &req.region);
-        let aliases = state.aliases.read();
-        let alias = aliases.get(&(name.clone(), alias_name.clone())).cloned()
-            .or_else(|| aliases.values().find(|a| a.name == alias_name).cloned());
-        drop(aliases);
-        match alias {
-            Some(alias) => AwsResponse::json(200, json!({
-                "Name": alias.name,
-                "FunctionArn": alias.function_arn,
-                "FunctionVersion": *alias.function_version.read(),
-                "Description": *alias.description.read(),
-                "CreatedAt": alias.created as f64,
-                "ModifiedAt": *alias.modified.read() as f64
-            })),
-            None => AwsResponse::error(404, "ResourceNotFoundException",
-                &format!("Alias not found: {}", alias_name)),
-        }
-    }
-
-    fn update_alias(&self, req: &AwsRequest) -> AwsResponse {
-        let name = self.extract_name(req);
-        let alias_name = req.path.rsplit('/').next().unwrap_or("").to_string();
-        let state = self.get_state(req.account, &req.region);
-        let aliases = state.aliases.read();
-        let alias = aliases.get(&(name.clone(), alias_name.clone())).cloned()
-            .or_else(|| aliases.values().find(|a| a.name == alias_name).cloned());
-        drop(aliases);
-        match alias {
-            Some(alias) => {
-                if let Some(desc) = req.params.get("Description").and_then(|v| v.as_str()) {
-                    *alias.description.write() = desc.to_string();
-                }
-                if let Some(version) = req.params.get("FunctionVersion").and_then(|v| v.as_str()) {
-                    *alias.function_version.write() = version.to_string();
-                }
-                *alias.modified.write() = chrono::Utc::now().timestamp_millis() as u64;
-                AwsResponse::json(200, json!({
-                    "Name": alias.name,
-                    "FunctionArn": alias.function_arn,
-                    "FunctionVersion": *alias.function_version.read(),
-                    "Description": *alias.description.read(),
-                    "ModifiedAt": *alias.modified.read() as f64
-                }))
-            }
-            None => AwsResponse::error(404, "ResourceNotFoundException", "Alias not found"),
-        }
-    }
-
-    fn delete_alias(&self, req: &AwsRequest) -> AwsResponse {
-        let name = self.extract_name(req);
-        let alias_name = req.path.rsplit('/').next().unwrap_or("").to_string();
-        let state = self.get_state(req.account, &req.region);
-        let removed = state.aliases.write().remove(&(name, alias_name.clone())).is_some();
-        if !removed {
-            state.aliases.write().retain(|_, a| a.name != alias_name);
-        }
-        if removed {
-            return AwsResponse::json(202, json!({
-                "Name": alias_name,
-                "Type": "ALIAS",
-                "Operation": "Delete",
-                "State": "Successful"
-            }));
-        }
-        AwsResponse::error(404, "ResourceNotFoundException", "Alias not found")
-    }
-
-    fn list_aliases(&self, req: &AwsRequest) -> AwsResponse {
-        let name = self.extract_name(req);
-        let state = self.get_state(req.account, &req.region);
-        let aliases: Vec<Value> = state.aliases.read().values()
-            .filter(|a| {
-                state.functions.read().get(&name)
-                    .map(|f| a.function_arn == f.function_arn)
-                    .unwrap_or(false)
-            })
-            .map(|a| json!({
-                "Name": a.name,
-                "FunctionArn": a.function_arn,
-                "FunctionVersion": *a.function_version.read(),
-                "Description": *a.description.read(),
-                "CreatedAt": a.created as f64,
-                "ModifiedAt": *a.modified.read() as f64
-            }))
-            .collect();
-        AwsResponse::json(200, json!({
-            "Items": aliases,
-            "NextMarker": null
-        }))
-    }
-
-    fn publish_version(&self, req: &AwsRequest) -> AwsResponse {
-        let name = self.extract_name(req);
-        let state = self.get_state(req.account, &req.region);
-        match state.get_function(&name) {
-            Some(func) => {
-                // Increment the version
-                let current_version: i32 = func.version.parse().unwrap_or(1);
-                let new_version = current_version + 1;
-                let version_str = new_version.to_string();
-
-                AwsResponse::json(201, json!({
-                    "FunctionName": func.function_name,
-                    "FunctionArn": format!("{}:{}", func.function_arn, version_str),
-                    "Runtime": *func.runtime.read(),
-                    "Role": *func.role.read(),
-                    "Handler": *func.handler.read(),
-                    "Description": *func.description.read(),
-                    "Timeout": *func.timeout.read(),
-                    "MemorySize": *func.memory_size.read(),
-                    "CodeSize": func.code_size,
-                    "PublishDate": *func.last_modified.read() as f64,
-                    "Version": version_str,
-                    "State": "Active",
-                    "Reason": "",
-                    "CodeSha256": func.code_sha256,
-                    "RevisionId": uuid::Uuid::new_v4().simple().to_string()
-                }))
-            }
-            None => AwsResponse::error(404, "ResourceNotFoundException", "Function not found"),
-        }
-    }
-
-    fn list_versions_by_function(&self, req: &AwsRequest) -> AwsResponse {
-        let name = self.extract_name(req);
-        let state = self.get_state(req.account, &req.region);
-        match state.get_function(&name) {
-            Some(func) => {
-                let mut v = Self::func_config(&func);
-                v["Version"] = json!("$LATEST");
-                let mut v1 = Self::func_config(&func);
-                v1["Version"] = json!("1");
-                AwsResponse::json(200, json!({
-                    "Versions": [v1, v],
-                    "NextMarker": null
-                }))
-            }
-            None => AwsResponse::error(404, "ResourceNotFoundException", "Function not found"),
-        }
-    }
-
-    fn create_event_source_mapping(&self, req: &AwsRequest) -> AwsResponse {
-        let function_name = req.params.get("FunctionName").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let event_source_arn = req.params.get("EventSourceArn").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let id = uuid::Uuid::new_v4().simple().to_string();
-        let state = self.get_state(req.account, &req.region);
-        let func = match state.get_function(&function_name) {
-            Some(f) => f,
-            None => return AwsResponse::error(404, "ResourceNotFoundException", "Function not found"),
-        };
-        let em = Arc::new(EventSourceMapping {
-            id: id.clone(),
-            function_arn: func.function_arn.clone(),
-            event_source_arn: event_source_arn.clone(),
-            state: "Creating".to_string(),
-            last_modified: chrono::Utc::now().timestamp_millis() as u64,
-            batch_size: req.params.get("BatchSize").and_then(|v| v.as_u64()).unwrap_or(10) as u32,
-            enabled: req.params.get("Enabled").and_then(|v| v.as_bool()).unwrap_or(true),
-        });
-        state.event_source_mappings.write().insert(id.clone(), em.clone());
-        AwsResponse::json(202, json!({
-            "ID": em.id,
-            "UUID": em.id,
-            "FunctionArn": em.function_arn,
-            "EventSourceArn": em.event_source_arn,
-            "State": em.state,
-            "LastModified": em.last_modified as f64,
-            "BatchSize": em.batch_size,
-            "Enabled": em.enabled
-        }))
-    }
-
-    fn get_event_source_mapping(&self, req: &AwsRequest) -> AwsResponse {
-        let id = req.path.rsplit('/').next().unwrap_or("").to_string();
-        let state = self.get_state(req.account, &req.region);
-        let em = state.event_source_mappings.read().get(&id).cloned();
-        match em {
-            Some(em) => AwsResponse::json(200, json!({
-                "ID": em.id,
-                "FunctionArn": em.function_arn,
-                "EventSourceArn": em.event_source_arn,
-                "State": em.state,
-                "LastModified": em.last_modified as f64,
-                "BatchSize": em.batch_size,
-                "Enabled": em.enabled
-            })),
-            None => AwsResponse::error(404, "ResourceNotFoundException",
-                &format!("Event source mapping not found: {}", id)),
-        }
-    }
-
-    fn update_event_source_mapping(&self, req: &AwsRequest) -> AwsResponse {
-        let id = req.path.rsplit('/').next().unwrap_or("").to_string();
-        let state = self.get_state(req.account, &req.region);
-        let em = state.event_source_mappings.read().get(&id).cloned();
-        match em {
-            Some(em) => AwsResponse::json(200, json!({
-                "ID": em.id,
-                "FunctionArn": em.function_arn,
-                "EventSourceArn": em.event_source_arn,
-                "State": em.state,
-                "LastModified": em.last_modified as f64,
-                "BatchSize": em.batch_size,
-                "Enabled": em.enabled
-            })),
-            None => AwsResponse::error(404, "ResourceNotFoundException", "Event source mapping not found"),
-        }
-    }
-
-    fn delete_event_source_mapping(&self, req: &AwsRequest) -> AwsResponse {
-        let id = req.path.rsplit('/').next().unwrap_or("").to_string();
-        let state = self.get_state(req.account, &req.region);
-        let em = state.event_source_mappings.write().remove(&id);
-        match em {
-            Some(em) => AwsResponse::json(202, json!({
-                "ID": em.id,
-                "FunctionArn": em.function_arn,
-                "EventSourceArn": em.event_source_arn,
-                "State": "Deleting",
-                "LastModified": em.last_modified as f64
-            })),
-            None => AwsResponse::error(404, "ResourceNotFoundException", "Event source mapping not found"),
-        }
-    }
-
-    fn list_event_source_mappings(&self, req: &AwsRequest) -> AwsResponse {
-        let state = self.get_state(req.account, &req.region);
-        let ems: Vec<Value> = state.event_source_mappings.read().values()
-            .map(|em| json!({
-                "ID": em.id,
-                "FunctionArn": em.function_arn,
-                "EventSourceArn": em.event_source_arn,
-                "State": em.state,
-                "LastModified": em.last_modified as f64,
-                "BatchSize": em.batch_size,
-                "Enabled": em.enabled
-            }))
-            .collect();
-        AwsResponse::json(200, json!({
-            "EventSourceMappings": ems,
-            "NextToken": null
-        }))
-    }
-
-    fn tag_resource(&self, req: &AwsRequest) -> AwsResponse {
-        let name = self.extract_name(req);
-        let state = self.get_state(req.account, &req.region);
-        if let Some(func) = state.get_function(&name) {
-            if let Some(tags) = req.params.get("Tags").and_then(|v| v.as_object()) {
-                for (k, v) in tags {
-                    func.tags.write().insert(k.clone(), v.as_str().unwrap_or("").to_string());
-                }
-            }
-        }
-        AwsResponse::json(204, Value::Null)
-    }
-
-    fn untag_resource(&self, req: &AwsRequest) -> AwsResponse {
-        let name = self.extract_name(req);
-        let state = self.get_state(req.account, &req.region);
-        if let Some(func) = state.get_function(&name) {
-            let keys: Vec<String> = req.params.get("TagKeys")
-                .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-                .unwrap_or_default();
-            func.tags.write().retain(|k, _| !keys.contains(k));
-        }
-        AwsResponse::json(204, Value::Null)
-    }
-
-    fn list_tags(&self, req: &AwsRequest) -> AwsResponse {
-        let name = self.extract_name(req);
-        let state = self.get_state(req.account, &req.region);
-        let tags = state.get_function(&name)
-            .map(|f| f.tags.read().clone())
-            .unwrap_or_default();
-        let tag_obj: serde_json::Map<String, Value> = tags.into_iter()
-            .map(|(k, v)| (k, Value::String(v)))
-            .collect();
-        AwsResponse::json(200, json!({ "Tags": tag_obj }))
-    }
-
-    fn put_function_concurrency(&self, req: &AwsRequest) -> AwsResponse {
-        AwsResponse::json(204, Value::Null)
-    }
-
-    fn get_function_concurrency(&self, req: &AwsRequest) -> AwsResponse {
-        let name = self.extract_name(req);
-        let state = self.get_state(req.account, &req.region);
-        match state.get_function(&name) {
-            Some(func) => AwsResponse::json(200, json!({
-                "FunctionArn": func.function_arn,
-                "ReservedConcurrentExecutions": 100
-            })),
-            None => AwsResponse::error(404, "ResourceNotFoundException", "Function not found"),
-        }
-    }
-
-    fn delete_function_concurrency(&self, _req: &AwsRequest) -> AwsResponse {
-        AwsResponse::json(204, Value::Null)
-    }
-
-    fn publish_layer_version(&self, req: &AwsRequest) -> AwsResponse {
-        let layer_name = req.params.get("LayerName").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let state = self.get_state(req.account, &req.region);
-        let arn = format!("arn:aws:lambda:{}:{}:layer:{}:1", req.region, req.account, layer_name);
-        let now = chrono::Utc::now().timestamp_millis() as u64;
-        let layer = Arc::new(crate::models::LambdaLayer {
-            layer_arn: arn.clone(),
-            layer_name: layer_name.clone(),
-            version: 1,
-            description: req.params.get("Description").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            created: now,
-            content_size: 0,
-            compatible_runtimes: vec!["python3.12".to_string()],
-        });
-        state.layers.write().entry(layer_name).or_default().push(layer.clone());
-        AwsResponse::json(201, json!({
-            "LayerArn": layer.layer_arn,
-            "LayerVersionArn": format!("{}:1", layer.layer_arn),
-            "LayerVersion": 1,
-            "Description": layer.description,
-            "CreatedDate": layer.created as f64,
-            "ContentSize": layer.content_size,
-            "CompatibleRuntimes": layer.compatible_runtimes
-        }))
-    }
-
-    fn get_layer_version(&self, req: &AwsRequest) -> AwsResponse {
-        // Path: /2018-01-01/layers/{LayerName}/versions/{VersionNumber}
-        let parts: Vec<&str> = req.path.split('/').collect();
-        let layer_name = parts.get(3).unwrap_or(&"").to_string();
-        let state = self.get_state(req.account, &req.region);
-        let layers = state.layers.read().get(&layer_name).cloned();
-        match layers {
-            Some(versions) if !versions.is_empty() => {
-                let layer = &versions[0];
-                AwsResponse::json(200, json!({
-                    "LayerArn": layer.layer_arn,
-                    "LayerVersionArn": format!("{}:{}", layer.layer_arn, layer.version),
-                    "LayerVersion": layer.version,
-                    "Description": layer.description,
-                    "CreatedDate": layer.created as f64,
-                    "ContentSize": layer.content_size,
-                    "CompatibleRuntimes": layer.compatible_runtimes
-                }))
-            }
-            _ => AwsResponse::error(404, "ResourceNotFoundException",
-                &format!("Layer not found: {}", layer_name)),
-        }
-    }
-
-    fn get_layer_version_by_arn(&self, req: &AwsRequest) -> AwsResponse {
-        let arn = req.path.rsplit('/').next().unwrap_or("").to_string();
-        let state = self.get_state(req.account, &req.region);
-        for layers in state.layers.read().values() {
-            for layer in layers {
-                if layer.layer_arn.contains(&arn) || format!("{}:{}", layer.layer_arn, layer.version) == arn {
-                    return AwsResponse::json(200, json!({
-                        "LayerArn": layer.layer_arn,
-                        "LayerVersionArn": format!("{}:{}", layer.layer_arn, layer.version),
-                        "LayerVersion": layer.version,
-                        "Description": layer.description,
-                        "CreatedDate": layer.created as f64,
-                        "ContentSize": layer.content_size,
-                        "CompatibleRuntimes": layer.compatible_runtimes
-                    }));
-                }
-            }
-        }
-        AwsResponse::error(404, "ResourceNotFoundException", "Layer not found")
-    }
-
-    fn delete_layer_version(&self, req: &AwsRequest) -> AwsResponse {
-        AwsResponse::json(204, Value::Null)
-    }
-
-    fn list_layer_versions(&self, req: &AwsRequest) -> AwsResponse {
-        let parts: Vec<&str> = req.path.split('/').collect();
-        let layer_name = parts.get(3).unwrap_or(&"").to_string();
-        let state = self.get_state(req.account, &req.region);
-        let layers = state.layers.read().get(&layer_name).cloned().unwrap_or_default();
-        let items: Vec<Value> = layers.iter().map(|l| json!({
-            "LayerArn": l.layer_arn,
-            "LayerVersionArn": format!("{}:{}", l.layer_arn, l.version),
-            "LayerVersion": l.version,
-            "Description": l.description,
-            "CreatedDate": l.created as f64,
-            "ContentSize": l.content_size,
-            "CompatibleRuntimes": l.compatible_runtimes
-        })).collect();
-        AwsResponse::json(200, json!({
-            "Items": items,
-            "NextMarker": null
-        }))
-    }
-
-    fn list_layers(&self, _req: &AwsRequest) -> AwsResponse {
-        let state = self.get_state(_req.account, &_req.region);
-        let layers: Vec<Value> = state.layers.read().iter()
-            .filter_map(|(_, versions)| versions.first())
-            .map(|l| json!({
-                "LayerArn": l.layer_arn,
-                "LayerName": l.layer_name,
-                "Description": l.description,
-                "CreatedDate": l.created as f64
-            }))
-            .collect();
-        AwsResponse::json(200, json!({
-            "Layers": layers,
-            "NextMarker": null
-        }))
-    }
-
-    fn add_layer_version_permission(&self, _req: &AwsRequest) -> AwsResponse {
-        AwsResponse::json(201, Value::Null)
-    }
-
-    fn remove_layer_version_permission(&self, _req: &AwsRequest) -> AwsResponse {
-        AwsResponse::json(204, Value::Null)
-    }
-
-    fn get_layer_version_policy(&self, _req: &AwsRequest) -> AwsResponse {
-        AwsResponse::json(200, json!({ "Policy": "" }))
-    }
-
-    fn get_account_settings(&self, req: &AwsRequest) -> AwsResponse {
-        AwsResponse::json(200, json!({
-            "AccountID": req.account.to_string(),
-            "TotalTracedFunctions": 0,
-            "TracedFunctions": [],
-            "AccountLimit": {
-                "TotalCodeSize": 80000000000u64,
-                "CodeSizeUnzipped": 268435456u64,
-                "CodeSizeZipped": 52428800u64,
-                "ConcurrentExecutions": 1000u64,
-                "UnreservedConcurrentExecutions": 900u64
-            },
-            "AccountUsage": {
-                "TotalCodeSize": 0u64,
-                "FunctionCount": 0u64
-            }
-        }))
-    }
-
-    fn create_function_url_config(&self, req: &AwsRequest) -> AwsResponse {
-        let name = self.extract_name(req);
-        let state = self.get_state(req.account, &req.region);
-        match state.get_function(&name) {
-            Some(func) => {
-                let url = format!("https://{}.{}.lambda-url.amazonaws.com/",
-                    uuid::Uuid::new_v4().simple(), req.region);
-                AwsResponse::json(201, json!({
-                    "Url": url,
-                    "FunctionArn": func.function_arn,
-                    "FunctionUrlAuthType": req.params.get("AuthType").and_then(|v| v.as_str()).unwrap_or("AWS_IAM"),
-                    "CreationTime": chrono::Utc::now().timestamp_millis() as f64
-                }))
-            }
-            None => AwsResponse::error(404, "ResourceNotFoundException", "Function not found"),
-        }
-    }
-
-    fn get_function_url_config(&self, req: &AwsRequest) -> AwsResponse {
-        let name = self.extract_name(req);
-        let state = self.get_state(req.account, &req.region);
-        match state.get_function(&name) {
-            Some(func) => {
-                let url = format!("https://{}.{}.lambda-url.amazonaws.com/",
-                    "0000000000000000", req.region);
-                AwsResponse::json(200, json!({
-                    "Url": url,
-                    "FunctionArn": func.function_arn,
-                    "FunctionUrlAuthType": "AWS_IAM"
-                }))
-            }
-            None => AwsResponse::error(404, "ResourceNotFoundException", "Function not found"),
-        }
-    }
-
-    fn update_function_url_config(&self, _req: &AwsRequest) -> AwsResponse {
-        AwsResponse::json(200, json!({
-            "Url": "https://0000000000000000.us-east-1.lambda-url.amazonaws.com/",
-            "FunctionArn": "",
-            "FunctionUrlAuthType": "AWS_IAM"
-        }))
-    }
-
-    fn delete_function_url_config(&self, _req: &AwsRequest) -> AwsResponse {
-        AwsResponse::json(204, Value::Null)
-    }
-
-    fn list_function_url_configs(&self, req: &AwsRequest) -> AwsResponse {
-        let name = self.extract_name(req);
-        let state = self.get_state(req.account, &req.region);
-        match state.get_function(&name) {
-            Some(func) => AwsResponse::json(200, json!({
-                "FunctionUrlConfigs": [{
-                    "Url": format!("https://0000000000000000.{}.lambda-url.amazonaws.com/", req.region),
-                    "FunctionArn": func.function_arn,
-                    "FunctionUrlAuthType": "AWS_IAM"
-                }],
-                "NextToken": null
-            })),
-            None => AwsResponse::error(404, "ResourceNotFoundException", "Function not found"),
-        }
-    }
-
-    fn put_provisioned_concurrency(&self, _req: &AwsRequest) -> AwsResponse {
-        AwsResponse::json(202, json!({
-            "FunctionArn": "",
-            "RequestedProvisionedConcurrentExecutions": 1,
-            "ProvisionedConcurrentExecutions": 0,
-            "TargetProvisionedConcurrentExecutions": 1,
-            "State": "InProgress",
-            "StatusReason": "",
-            "LastModified": 0.0
-        }))
-    }
-
-    fn get_provisioned_concurrency(&self, _req: &AwsRequest) -> AwsResponse {
-        AwsResponse::json(200, json!({
-            "FunctionArn": "",
-            "RequestedProvisionedConcurrentExecutions": 1,
-            "ProvisionedConcurrentExecutions": 1,
-            "TargetProvisionedConcurrentExecutions": 1,
-            "State": "Ready",
-            "StatusReason": "",
-            "LastModified": 0.0
-        }))
-    }
-
-    fn delete_provisioned_concurrency(&self, _req: &AwsRequest) -> AwsResponse {
-        AwsResponse::json(202, json!({
-            "FunctionArn": "",
-            "RequestedProvisionedConcurrentExecutions": 0,
-            "ProvisionedConcurrentExecutions": 0,
-            "TargetProvisionedConcurrentExecutions": 0,
-            "State": "InProgress",
-            "StatusReason": "",
-            "LastModified": 0.0
-        }))
-    }
-
-    fn list_provisioned_concurrency_configs(&self, _req: &AwsRequest) -> AwsResponse {
-        AwsResponse::json(200, json!({
-            "ProvisionedConcurrencyConfigs": [],
-            "NextToken": null
-        }))
-    }
-
-    /// Extract the function name from the request path or params.
-    fn json_stub(&self, _req: &AwsRequest, field: &str) -> AwsResponse {
-        AwsResponse::json(200, json!({ field: "" }))
-    }
-
-    fn json_stub_list(&self, _req: &AwsRequest, field: &str) -> AwsResponse {
-        AwsResponse::json(200, json!({ field: [] }))
-    }
-
-    fn extract_name(&self, req: &AwsRequest) -> String {
-        // rest-json: path is like /2015-03-31/functions/{FunctionName}
-        // or /2015-03-31/functions/{FunctionName}/invoke
-        if let Some(idx) = req.path.rfind("/functions/") {
-            let rest = &req.path[idx + "/functions/".len()..];
-            let name = rest.split('/').next().unwrap_or("");
-            if !name.is_empty() {
-                return name.to_string();
-            }
-        }
-        // Fallback to params
-        req.params.get("FunctionName")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string()
+impl Default for LambdaHandler {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
-impl Default for LambdaHandler {
-    fn default() -> Self { Self::new() }
+impl LambdaHandler {
+    pub fn new() -> Self {
+        Self {
+            state: RwLock::new(HashMap::new()),
+        }
+    }
+
+    fn state_for(&self, account: u64, region: &str) -> LambdaState {
+        let mut states = self.state.write();
+        states
+            .entry((account, region.to_string()))
+            .or_default()
+            .clone()
+    }
+
+    pub fn handle(&self, req: AwsRequest) -> AwsResponse {
+        let state = self.state_for(req.account, &req.region);
+        let op = resolve_operation(&req.method, &req.path);
+        self.dispatch(state, op, req)
+    }
+
+    fn dispatch(&self, state: LambdaState, op: &str, req: AwsRequest) -> AwsResponse {
+        match op {
+            "CreateFunction" => self.create_function(&state, &req),
+            "GetFunction" => self.get_function(&state, &req),
+            "GetFunctionConfiguration" => self.get_function_configuration(&state, &req),
+            "DeleteFunction" => self.delete_function(&state, &req),
+            "ListFunctions" => self.list_functions(&state),
+            "UpdateFunctionCode" => self.update_function_code(&state, &req),
+            "UpdateFunctionConfiguration" => self.update_function_configuration(&state, &req),
+            "Invoke" => self.invoke(&state, &req),
+            "InvokeAsync" => self.invoke_async(&state, &req),
+            "InvokeWithResponseStream" => self.invoke_with_response_stream(&state, &req),
+            "GetAccountSettings" => self.get_account_settings(&state),
+            "ListVersionsByFunction" => self.list_versions_by_function(&state, &req),
+            "PublishVersion" => self.publish_version(&state, &req),
+            "CreateAlias" => self.create_alias(&state, &req),
+            "GetAlias" => self.get_alias(&state, &req),
+            "UpdateAlias" => self.update_alias(&state, &req),
+            "DeleteAlias" => self.delete_alias(&state, &req),
+            "ListAliases" => self.list_aliases(&state, &req),
+            "GetPolicy" => self.get_policy(&state, &req),
+            "AddPermission" => self.add_permission(&state, &req),
+            "RemovePermission" => self.remove_permission(&state, &req),
+            "PutFunctionConcurrency" => self.put_function_concurrency(&state, &req),
+            "GetFunctionConcurrency" => self.get_function_concurrency(&state, &req),
+            "DeleteFunctionConcurrency" => self.delete_function_concurrency(&state, &req),
+            "CreateEventSourceMapping" => self.create_event_source_mapping(&state, &req),
+            "GetEventSourceMapping" => self.get_event_source_mapping(&state, &req),
+            "UpdateEventSourceMapping" => self.update_event_source_mapping(&state, &req),
+            "DeleteEventSourceMapping" => self.delete_event_source_mapping(&state, &req),
+            "ListEventSourceMappings" => self.list_event_source_mappings(&state, &req),
+            "ListTags" => self.list_tags(&state, &req),
+            "TagResource" => self.tag_resource(&state, &req),
+            "UntagResource" => self.untag_resource(&state, &req),
+            "PublishLayerVersion" => self.publish_layer_version(&state, &req),
+            "GetLayerVersion" => self.get_layer_version(&state, &req),
+            "GetLayerVersionByArn" => self.get_layer_version_by_arn(&state, &req),
+            "DeleteLayerVersion" => self.delete_layer_version(&state, &req),
+            "ListLayerVersions" => self.list_layer_versions(&state, &req),
+            "ListLayers" => self.list_layers(&state, &req),
+            "AddLayerVersionPermission" => self.add_layer_version_permission(&state, &req),
+            "GetLayerVersionPolicy" => self.get_layer_version_policy(&state, &req),
+            "RemoveLayerVersionPermission" => self.remove_layer_version_permission(&state, &req),
+            "CreateFunctionUrlConfig" => {
+                self.function_url_config(&state, &req, UrlVerb::Create)
+            }
+            "GetFunctionUrlConfig" => self.function_url_config(&state, &req, UrlVerb::Get),
+            "UpdateFunctionUrlConfig" => {
+                self.function_url_config(&state, &req, UrlVerb::Update)
+            }
+            "DeleteFunctionUrlConfig" => {
+                self.function_url_config(&state, &req, UrlVerb::Delete)
+            }
+            "ListFunctionUrlConfigs" => self.list_function_url_configs(&state, &req),
+            "PutProvisionedConcurrencyConfig" => self.put_provisioned_concurrency(&state, &req),
+            "GetProvisionedConcurrencyConfig" => self.get_provisioned_concurrency(&state, &req),
+            "DeleteProvisionedConcurrencyConfig" => {
+                self.delete_provisioned_concurrency(&state, &req)
+            }
+            "ListProvisionedConcurrencyConfigs" => {
+                self.list_provisioned_concurrency_configs(&state, &req)
+            }
+            "PutFunctionEventInvokeConfig" => self.put_event_invoke_config(&state, &req),
+            "UpdateFunctionEventInvokeConfig" => self.put_event_invoke_config(&state, &req),
+            "GetFunctionEventInvokeConfig" => self.get_event_invoke_config(&state, &req),
+            "DeleteFunctionEventInvokeConfig" => self.delete_event_invoke_config(&state, &req),
+            "ListFunctionEventInvokeConfigs" => self.list_event_invoke_configs(&state, &req),
+            "PutFunctionCodeSigningConfig" => self.put_function_code_signing_config(&state, &req),
+            "GetFunctionCodeSigningConfig" => self.get_function_code_signing_config(&state, &req),
+            "DeleteFunctionCodeSigningConfig" => {
+                self.delete_function_code_signing_config(&state, &req)
+            }
+            "GetFunctionRecursionConfig" => self.get_function_recursion_config(&state, &req),
+            "PutFunctionRecursionConfig" => self.put_function_recursion_config(&state, &req),
+            "GetFunctionScalingConfig" => self.get_function_scaling_config(&state, &req),
+            "PutFunctionScalingConfig" => self.put_function_scaling_config(&state, &req),
+            "GetRuntimeManagementConfig" => self.get_runtime_management_config(&state, &req),
+            "PutRuntimeManagementConfig" => self.put_runtime_management_config(&state, &req),
+            "ListDurableExecutionsByFunction" => self.list_durable_executions(),
+            "CreateCodeSigningConfig" => self.create_code_signing_config(&state, &req),
+            "ListCodeSigningConfigs" => self.list_code_signing_configs(&state),
+            "GetCodeSigningConfig" => self.get_code_signing_config(&state, &req),
+            "UpdateCodeSigningConfig" => self.update_code_signing_config(&state, &req),
+            "DeleteCodeSigningConfig" => self.delete_code_signing_config(&state, &req),
+            "ListFunctionsByCodeSigningConfig" => {
+                self.list_functions_by_code_signing_config(&state, &req)
+            }
+            _ => AwsResponse::error(400, "InvalidRequest", &format!("Unknown path: {}", req.path)),
+        }
+    }
+}
+
+/// Resolve a Lambda REST operation from method + path (segments are
+/// version-stripped and URL-decoded by `path_segments`).
+fn resolve_operation(method: &str, path: &str) -> &'static str {
+    let segs = path_segments(path);
+    let m: &str = method;
+    let s: Vec<&str> = segs.iter().map(String::as_str).collect();
+    match s.first().copied().unwrap_or("") {
+        "functions" => match s.len() {
+            1 => match m {
+                "GET" => "ListFunctions",
+                "POST" => "CreateFunction",
+                _ => "",
+            },
+            2 => match m {
+                "GET" => "GetFunction",
+                "DELETE" => "DeleteFunction",
+                _ => "",
+            },
+            3 => match s[2] {
+                "configuration" => match m {
+                    "GET" => "GetFunctionConfiguration",
+                    "PUT" => "UpdateFunctionConfiguration",
+                    _ => "",
+                },
+                "code" => match m {
+                    "PUT" => "UpdateFunctionCode",
+                    _ => "",
+                },
+                "invocations" => "Invoke",
+                "invoke-async" => "InvokeAsync",
+                "versions" => match m {
+                    "GET" => "ListVersionsByFunction",
+                    "POST" => "PublishVersion",
+                    _ => "",
+                },
+                "aliases" => match m {
+                    "GET" => "ListAliases",
+                    "POST" => "CreateAlias",
+                    _ => "",
+                },
+                "policy" => match m {
+                    "GET" => "GetPolicy",
+                    "POST" => "AddPermission",
+                    _ => "",
+                },
+                "concurrency" => match m {
+                    "PUT" => "PutFunctionConcurrency",
+                    "GET" => "GetFunctionConcurrency",
+                    "DELETE" => "DeleteFunctionConcurrency",
+                    _ => "",
+                },
+                "url" => match m {
+                    "POST" => "CreateFunctionUrlConfig",
+                    "GET" => "GetFunctionUrlConfig",
+                    "PUT" => "UpdateFunctionUrlConfig",
+                    "DELETE" => "DeleteFunctionUrlConfig",
+                    _ => "",
+                },
+                "urls" => "ListFunctionUrlConfigs",
+                "event-invoke-config" => match m {
+                    "PUT" => "PutFunctionEventInvokeConfig",
+                    "POST" => "UpdateFunctionEventInvokeConfig",
+                    "GET" => "GetFunctionEventInvokeConfig",
+                    "DELETE" => "DeleteFunctionEventInvokeConfig",
+                    _ => "",
+                },
+                "provisioned-concurrency" => match m {
+                    "PUT" => "PutProvisionedConcurrencyConfig",
+                    "GET" => "GetProvisionedConcurrencyConfig",
+                    "DELETE" => "DeleteProvisionedConcurrencyConfig",
+                    _ => "",
+                },
+                "code-signing-config" => match m {
+                    "GET" => "GetFunctionCodeSigningConfig",
+                    "PUT" => "PutFunctionCodeSigningConfig",
+                    "DELETE" => "DeleteFunctionCodeSigningConfig",
+                    _ => "",
+                },
+                "recursion-config" => match m {
+                    "GET" => "GetFunctionRecursionConfig",
+                    "PUT" => "PutFunctionRecursionConfig",
+                    _ => "",
+                },
+                "function-scaling-config" => match m {
+                    "GET" => "GetFunctionScalingConfig",
+                    "PUT" => "PutFunctionScalingConfig",
+                    _ => "",
+                },
+                "runtime-management-config" => match m {
+                    "GET" => "GetRuntimeManagementConfig",
+                    "PUT" => "PutRuntimeManagementConfig",
+                    _ => "",
+                },
+                "durable-executions" => "ListDurableExecutionsByFunction",
+                "response-streaming-invocations" => "InvokeWithResponseStream",
+                _ => "",
+            },
+            4 => {
+                if s[2] == "aliases" {
+                    match m {
+                        "GET" => "GetAlias",
+                        "PUT" => "UpdateAlias",
+                        "DELETE" => "DeleteAlias",
+                        _ => "",
+                    }
+                } else if s[2] == "policy" {
+                    match m {
+                        "DELETE" => "RemovePermission",
+                        _ => "",
+                    }
+                } else if s[2] == "event-invoke-config" && s[3] == "list" {
+                    match m {
+                        "GET" => "ListFunctionEventInvokeConfigs",
+                        _ => "",
+                    }
+                } else {
+                    ""
+                }
+            }
+            _ => "",
+        },
+        "layers" => match s.len() {
+            1 => {
+                if m == "GET" {
+                    // Both ListLayers and GetLayerVersionByArn ride this path;
+                    // the ?find=LayerVersion query disambiguates (checked inside).
+                    "ListLayers"
+                } else {
+                    ""
+                }
+            }
+            3 => match s[2] {
+                "versions" => match m {
+                    "GET" => "ListLayerVersions",
+                    "POST" => "PublishLayerVersion",
+                    _ => "",
+                },
+                _ => "",
+            },
+            4 => match m {
+                "GET" => "GetLayerVersion",
+                "DELETE" => "DeleteLayerVersion",
+                _ => "",
+            },
+            5 => match s[4] {
+                "policy" => match m {
+                    "GET" => "GetLayerVersionPolicy",
+                    "POST" => "AddLayerVersionPermission",
+                    _ => "",
+                },
+                _ => "",
+            },
+            6 => match s[4] {
+                "policy" => match m {
+                    "DELETE" => "RemoveLayerVersionPermission",
+                    _ => "",
+                },
+                _ => "",
+            },
+            _ => "",
+        },
+        "event-source-mappings" => match s.len() {
+            1 => match m {
+                "GET" => "ListEventSourceMappings",
+                "POST" => "CreateEventSourceMapping",
+                _ => "",
+            },
+            2 => match m {
+                "GET" => "GetEventSourceMapping",
+                "PUT" => "UpdateEventSourceMapping",
+                "DELETE" => "DeleteEventSourceMapping",
+                _ => "",
+            },
+            _ => "",
+        },
+        "tags" => match m {
+            "GET" => "ListTags",
+            "POST" => "TagResource",
+            "DELETE" => "UntagResource",
+            _ => "",
+        },
+        "account-settings" => {
+            if m == "GET" {
+                "GetAccountSettings"
+            } else {
+                ""
+            }
+        }
+        "code-signing-configs" => match s.len() {
+            1 => match m {
+                "GET" => "ListCodeSigningConfigs",
+                "POST" => "CreateCodeSigningConfig",
+                _ => "",
+            },
+            _ => match m {
+                "GET" => {
+                    if matches!(s.last().copied(), Some("functions")) {
+                        "ListFunctionsByCodeSigningConfig"
+                    } else {
+                        "GetCodeSigningConfig"
+                    }
+                }
+                "PUT" => "UpdateCodeSigningConfig",
+                "DELETE" => "DeleteCodeSigningConfig",
+                _ => "",
+            },
+        },
+        _ => "",
+    }
+}
+
+/// Layer-version not-found error.
+fn not_found_layer_version() -> AwsResponse {
+    AwsResponse::error(
+        404,
+        "ResourceNotFoundException",
+        "The resource you requested does not exist.",
+    )
+}
+
+impl LambdaHandler {
+    // ---------------------------------------------------------------
+    // Configuration rendering (mirrors moto's get_configuration keys).
+    // ---------------------------------------------------------------
+
+    fn fn_config(f: &LambdaFunction) -> Value {
+        let mut cfg = json!({
+            "CodeSha256": *f.code_sha256.read(),
+            "CodeSize": *f.code_size.read(),
+            "Description": *f.description.read(),
+            "FunctionArn": f.function_arn,
+            "FunctionName": f.function_name,
+            "Handler": *f.handler.read(),
+            "LastModified": *f.last_modified.read(),
+            "MemorySize": *f.memory_size.read(),
+            "Role": *f.role.read(),
+            "Runtime": *f.runtime.read(),
+            "State": *f.state.read(),
+            "PackageType": "Zip",
+            "Timeout": *f.timeout.read(),
+            "Version": *f.version.read(),
+            "VpcConfig": Value::Null,
+            "Layers": *f.layers.read(),
+            "SigningProfileVersionArn": Value::Null,
+            "SigningJobArn": Value::Null,
+            "TracingConfig": {"Mode": "PassThrough"},
+            "Architectures": ["x86_64"],
+            "EphemeralStorage": {"Size": 512},
+            "SnapStart": {"ApplyOn": "None", "OptimizationStatus": "Off"},
+            "LastUpdateStatus": "Successful",
+        });
+        if let Some(vars) = f.environment.read().as_ref() {
+            if !vars.is_empty() {
+                cfg["Environment"] = json!({"Variables": vars});
+            }
+        }
+        cfg
+    }
+
+    // ---------------------------------------------------------------
+    // Functions
+    // ---------------------------------------------------------------
+
+    fn create_function(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.param_str("FunctionName").unwrap_or_default();
+        if name.is_empty() {
+            return AwsResponse::error(400, "InvalidParameterValueException", "Missing FunctionName");
+        }
+        if state.get_function(&name).is_some() {
+            return AwsResponse::error(
+                409,
+                "ResourceConflictException",
+                &format!("Function already exist: {name}"),
+            );
+        }
+        let func = Arc::new(LambdaFunction::new(req.account, &req.region, name.clone()));
+        if let Some(rt) = req.param_str("Runtime") {
+            *func.runtime.write() = rt;
+        }
+        if let Some(h) = req.param_str("Handler") {
+            *func.handler.write() = h;
+        }
+        if let Some(r) = req.param_str("Role") {
+            *func.role.write() = r;
+        }
+        if let Some(d) = req.param_str("Description") {
+            *func.description.write() = d;
+        }
+        if let Some(t) = req.param_u64("Timeout") {
+            *func.timeout.write() = t as u32;
+        }
+        if let Some(m) = req.param_u64("MemorySize") {
+            *func.memory_size.write() = m as u32;
+        }
+        // Deployment package: ZipFile arrives base64-encoded by botocore.
+        let zip = decode_zip(req.params.get("Code").and_then(|c| c.get("ZipFile")));
+        *func.code_zip.write() = zip.clone();
+        *func.code_size.write() = zip.len() as u64;
+        *func.code_sha256.write() = sha_b64(&zip);
+        if let Some(env) = req
+            .params
+            .get("Environment")
+            .and_then(|e| e.get("Variables"))
+            .and_then(Value::as_object)
+        {
+            let vars: HashMap<String, String> = env
+                .iter()
+                .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                .collect();
+            *func.environment.write() = Some(vars);
+        }
+        if let Some(layer_arns) = req.params.get("Layers").and_then(Value::as_array) {
+            let mut layer_data = Vec::new();
+            for l in layer_arns {
+                let Some(arn) = l.as_str() else {
+                    continue;
+                };
+                match state.layers_versions_by_arn(arn) {
+                    Some(lv) => {
+                        layer_data.push(json!({"Arn": arn, "CodeSize": lv.content_size}));
+                    }
+                    None => {
+                        return AwsResponse::error(
+                            404,
+                            "ResourceNotFoundException",
+                            &format!("One or more LayerVersion does not exist: [{arn}]"),
+                        );
+                    }
+                }
+            }
+            *func.layers.write() = layer_data;
+        }
+        if let Some(tags) = req.params.get("Tags").and_then(Value::as_object) {
+            let mut map = func.tags.write();
+            for (k, v) in tags {
+                map.insert(k.clone(), v.as_str().unwrap_or("").to_string());
+            }
+        }
+        if let Some(rc) = req.param_i64("ReservedConcurrentExecutions") {
+            *func.reserved_concurrency.write() = Some(rc);
+        }
+        state.functions.write().insert(
+            name.clone(),
+            crate::models::FunctionEntry {
+                latest: Some(Arc::clone(&func)),
+                versions: Vec::new(),
+            },
+        );
+        AwsResponse::json(201, Self::fn_config(&func))
+    }
+
+    fn get_function(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let s3key = format!("{}-{}", func.function_name, uuid::Uuid::new_v4().simple());
+        let mut body = json!({
+            "Configuration": Self::fn_config(&func),
+            "Code": {
+                "Location": format!(
+                    "https://awslambda-{}-tasks.s3.{}.amazonaws.com/{}",
+                    req.region, req.region, s3key
+                ),
+                "RepositoryType": "S3",
+            }
+        });
+        let tags = func.tags.read();
+        if !tags.is_empty() {
+            let obj = tags
+                .iter()
+                .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+                .collect::<Map<_, _>>();
+            body["Tags"] = Value::Object(obj);
+        }
+        if let Some(rc) = *func.reserved_concurrency.read() {
+            body["Concurrency"] = json!({"ReservedConcurrentExecutions": rc});
+        }
+        AwsResponse::json(200, body)
+    }
+
+    fn get_function_configuration(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        AwsResponse::json(200, Self::fn_config(&func))
+    }
+
+    fn delete_function(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let qual = req.query_param("Qualifier");
+        if state.functions.read().get(&name).is_none() {
+            return function_not_found(&name, &req.region, req.account);
+        }
+        match qual.as_deref() {
+            None => {
+                state.functions.write().remove(&name);
+                // Cascade native stores (matching the Python provider).
+                let fn_arn = format!(
+                    "arn:aws:lambda:{}:{}:function:{}",
+                    req.region, req.account, name
+                );
+                state
+                    .aliases
+                    .write()
+                    .retain(|(fn_name, _), _| fn_name != &name);
+                state
+                    .event_source_mappings
+                    .write()
+                    .retain(|_, em| em.function_arn != fn_arn);
+                state.url_configs.write().remove(&name);
+                state.url_configs.write().remove(&fn_arn);
+                state.provisioned.write().retain(|(fn_name, _), _| fn_name != &name);
+            }
+            Some(_) => {
+                // Deleting a published version only: drop it from the entry.
+                let mut funcs = state.functions.write();
+                if let Some(entry) = funcs.get_mut(&name) {
+                    entry
+                        .versions
+                        .retain(|v| Some(v.version.read().as_str()) != qual.as_deref());
+                }
+            }
+        }
+        AwsResponse::empty(204)
+    }
+
+    fn list_functions(&self, state: &LambdaState) -> AwsResponse {
+        let funcs = state.functions.read();
+        let configs: Vec<Value> = funcs
+            .values()
+            .filter_map(|e| e.latest.as_ref())
+            .map(|f| Self::fn_config(f))
+            .collect();
+        AwsResponse::json(200, json!({ "Functions": configs }))
+    }
+
+    fn update_function_code(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        // UpdateFunctionCode carries ZipFile at the top level of the body.
+        let zip = decode_zip(req.params.get("ZipFile"));
+        if !zip.is_empty() {
+            *func.code_zip.write() = zip.clone();
+            *func.code_size.write() = zip.len() as u64;
+            *func.code_sha256.write() = sha_b64(&zip);
+        }
+        *func.last_modified.write() = iso_now();
+        *func.code_or_config_updated.write() = true;
+        AwsResponse::json(200, Self::fn_config(&func))
+    }
+
+    fn update_function_configuration(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        if let Some(d) = req.param_str("Description") {
+            *func.description.write() = d;
+        }
+        if let Some(h) = req.param_str("Handler") {
+            *func.handler.write() = h;
+        }
+        if let Some(m) = req.param_u64("MemorySize") {
+            *func.memory_size.write() = m as u32;
+        }
+        if let Some(r) = req.param_str("Role") {
+            *func.role.write() = r;
+        }
+        if let Some(rt) = req.param_str("Runtime") {
+            *func.runtime.write() = rt;
+        }
+        if let Some(t) = req.param_u64("Timeout") {
+            *func.timeout.write() = t as u32;
+        }
+        if let Some(env) = req
+            .params
+            .get("Environment")
+            .and_then(|e| e.get("Variables"))
+            .and_then(Value::as_object)
+        {
+            let vars: HashMap<String, String> = env
+                .iter()
+                .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                .collect();
+            *func.environment.write() = Some(vars);
+        }
+        *func.last_modified.write() = iso_now();
+        *func.code_or_config_updated.write() = true;
+        AwsResponse::json(200, Self::fn_config(&func))
+    }
+
+    // ---------------------------------------------------------------
+    // Invocation
+    // ---------------------------------------------------------------
+
+    /// Execute the resolved function; return the ExecResult or an error.
+    fn execute(
+        state: &LambdaState,
+        req: &AwsRequest,
+        func: &Arc<LambdaFunction>,
+    ) -> Result<runtime::ExecResult, AwsResponse> {
+        let event = String::from_utf8_lossy(&req.body).to_string();
+        let invocation_type = req
+            .header("x-amz-invocation-type")
+            .unwrap_or("RequestResponse");
+        if invocation_type == "DryRun" {
+            return Ok(runtime::ExecResult {
+                payload: String::new(),
+                function_error: None,
+                logs: String::new(),
+            });
+        }
+        let zip_bytes = func.code_zip.read().clone();
+        if zip_bytes.is_empty() {
+            // No code deployed: moto's simple-mode response.
+            let payload = json!("Simple Lambda happy path OK").to_string();
+            return Ok(runtime::ExecResult {
+                payload,
+                function_error: None,
+                logs: String::new(),
+            });
+        }
+        let is_python: bool = crate::runtime::is_python_runtime(&func.runtime.read());
+        if !is_python {
+            // Non-python runtimes are not executed by this backend.
+            return Ok(runtime::ExecResult {
+                payload: String::new(),
+                function_error: None,
+                logs: String::new(),
+            });
+        }
+        // Collect layer zips for PYTHONPATH resolution.
+        let mut layer_zips: Vec<Vec<u8>> = Vec::new();
+        for layer_entry in func.layers.read().iter() {
+            let arn = layer_entry.get("Arn").and_then(Value::as_str).unwrap_or("");
+            if let Some(lv) = state.layers_versions_by_arn(arn) {
+                let z = lv.code_zip.clone();
+                if !z.is_empty() {
+                    layer_zips.push(z);
+                }
+            }
+        }
+        let env_vars = func
+            .environment
+            .read()
+            .clone()
+            .unwrap_or_default();
+        Ok(runtime::execute_python(
+            &zip_bytes,
+            &layer_zips,
+            &func.handler.read().clone(),
+            &event,
+            &func.function_name,
+            &func.version.read().clone(),
+            &func.function_arn.clone(),
+            &env_vars,
+            *func.timeout.read(),
+            *func.memory_size.read(),
+            &req.region.clone(),
+            &req.account.to_string(),
+        ))
+    }
+
+    fn invoke(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let res = match Self::execute(state, req, &func) {
+            Ok(r) => r,
+            Err(resp) => return resp,
+        };
+        let invocation_type = req
+            .header("x-amz-invocation-type")
+            .unwrap_or("RequestResponse");
+        let executed_version = func.version.read().clone();
+        match invocation_type {
+            "Event" => AwsResponse::raw_with_headers(202, "application/json", String::new(), &[
+                ("x-amz-executed-version", executed_version.clone()),
+            ]),
+            "DryRun" => AwsResponse::raw_with_headers(204, "application/json", String::new(), &[
+                ("x-amz-executed-version", executed_version),
+            ]),
+            _ => {
+                let mut extra: Vec<(&str, String)> =
+                    vec![("x-amz-executed-version", executed_version)];
+                if let Some(err) = &res.function_error {
+                    extra.push(("x-amz-function-error", err.clone()));
+                }
+                if req.header("x-amz-log-type").unwrap_or("None") == "Tail" && !res.logs.is_empty() {
+                    let log_tail: String = res
+                        .logs
+                        .chars()
+                        .rev()
+                        .take(4096)
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                        .collect();
+                    let encoded = base64::engine::general_purpose::STANDARD.encode(log_tail.as_bytes());
+                    extra.push(("x-amz-log-result", encoded));
+                }
+                AwsResponse::raw_with_headers(200, "application/json", res.payload.clone(), &extra)
+            }
+        }
+    }
+
+    fn invoke_async(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        match resolve_fn(state, req, &name) {
+            Ok(_) => AwsResponse::raw(202, "application/json", json!({"Status": 202}).to_string()),
+            Err(resp) => resp,
+        }
+    }
+
+    fn invoke_with_response_stream(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let res = match Self::execute(state, req, &func) {
+            Ok(r) => r,
+            Err(resp) => return resp,
+        };
+        let executed_version = func.version.read().clone();
+        AwsResponse::raw_with_headers(200, "application/json", res.payload.clone(), &[
+            ("x-amz-executed-version", executed_version),
+        ])
+    }
+
+    // ---------------------------------------------------------------
+    // Versions and aliases
+    // ---------------------------------------------------------------
+
+    fn publish_version(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let mut funcs = state.functions.write();
+        let Some(entry) = funcs.get_mut(&name) else {
+            drop(funcs);
+            return function_not_found(&name, &req.region, req.account);
+        };
+        let latest = match entry.latest.clone() {
+            Some(l) => l,
+            None => {
+                drop(funcs);
+                return function_not_found(&name, &req.region, req.account);
+            }
+        };
+        // Idempotent republish when nothing changed since the last publish.
+        if !entry.versions.is_empty() && !*latest.code_or_config_updated.read() {
+            let last = entry.versions.last().cloned().unwrap();
+            drop(funcs);
+            return AwsResponse::json(201, Self::fn_config(&last));
+        }
+        *latest.code_or_config_updated.write() = false;
+        let new_version = (entry.versions.len() + 1) as i64;
+        let published = Arc::new(latest.with_version_set(new_version));
+        if let Some(d) = req.param_str("Description") {
+            if !d.is_empty() {
+                *published.description.write() = d;
+            }
+        }
+        entry.versions.push(Arc::clone(&published));
+        drop(funcs);
+        AwsResponse::json(201, Self::fn_config(&published))
+    }
+
+    fn list_versions_by_function(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let funcs = state.functions.read();
+        let Some(entry) = funcs.get(&name) else {
+            drop(funcs);
+            return function_not_found(&name, &req.region, req.account);
+        };
+        let latest = match entry.latest.clone() {
+            Some(l) => l,
+            None => {
+                drop(funcs);
+                return function_not_found(&name, &req.region, req.account);
+            }
+        };
+        let mut latest_cfg = Self::fn_config(&latest);
+        latest_cfg["FunctionArn"] = json!(format!("{}:$LATEST", latest.function_arn));
+        let mut all = vec![latest_cfg];
+        all.extend(entry.versions.iter().map(|f| Self::fn_config(f)));
+        AwsResponse::json(200, json!({ "Versions": all }))
+    }
+
+    fn alias_dict(a: &LambdaAlias) -> Value {
+        json!({
+            "AliasArn": a.function_arn,
+            "Description": *a.description.read(),
+            "FunctionVersion": *a.function_version.read(),
+            "Name": a.name,
+            "RevisionId": a.revision_id,
+            "RoutingConfig": *a.routing_config.read(),
+        })
+    }
+
+    fn create_alias(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let Some(alias_name) = req.param_str("Name") else {
+            return AwsResponse::error(400, "InvalidParameterValueException", "Missing Name");
+        };
+        let version = req
+            .param_str("FunctionVersion")
+            .unwrap_or_else(|| "$LATEST".to_string());
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        if state.resolve_alias(&name, &alias_name).is_some() {
+            return AwsResponse::error(
+                409,
+                "ResourceConflictException",
+                &format!("Alias already exists: {alias_name}"),
+            );
+        }
+        let now = iso_now();
+        let alias = Arc::new(LambdaAlias {
+            name: alias_name.clone(),
+            function_arn: format!("{}:{}", func.function_arn, alias_name),
+            function_version: RwLock::new(version),
+            description: RwLock::new(req.param_str("Description").unwrap_or_default()),
+            modified: RwLock::new(now),
+            routing_config: RwLock::new(req.params.get("RoutingConfig").cloned()),
+            revision_id: uuid::Uuid::new_v4().to_string(),
+        });
+        state
+            .aliases
+            .write()
+            .insert((name.clone(), alias_name.clone()), Arc::clone(&alias));
+        AwsResponse::json(201, Self::alias_dict(&alias))
+    }
+
+    fn get_alias(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let (name, alias_name) = req.path_fn_alias();
+        match state.resolve_alias(&name, &alias_name) {
+            Some(a) => AwsResponse::json(200, Self::alias_dict(&a)),
+            None => AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!("Alias not found: {alias_name}"),
+            ),
+        }
+    }
+
+    fn update_alias(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let (name, alias_name) = req.path_fn_alias();
+        match state.resolve_alias(&name, &alias_name) {
+            Some(a) => {
+                if let Some(v) = req.param_str("FunctionVersion") {
+                    *a.function_version.write() = v;
+                }
+                if let Some(d) = req.param_str("Description") {
+                    *a.description.write() = d;
+                }
+                if let Some(rc) = req.params.get("RoutingConfig") {
+                    *a.routing_config.write() = Some(rc.clone());
+                }
+                *a.modified.write() = iso_now();
+                AwsResponse::json(200, Self::alias_dict(&a))
+            }
+            None => AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!("Alias not found: {alias_name}"),
+            ),
+        }
+    }
+
+    fn delete_alias(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let (name, alias_name) = req.path_fn_alias();
+        if state.resolve_alias(&name, &alias_name).is_none() {
+            return AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!("Alias not found: {alias_name}"),
+            );
+        }
+        state.aliases.write().remove(&(name, alias_name));
+        AwsResponse::empty(204)
+    }
+
+    fn list_aliases(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let Some(fn_arn) = state.get_function(&name).map(|f| f.function_arn.clone()) else {
+            return function_not_found(&name, &req.region, req.account);
+        };
+        let mut list: Vec<Value> = state
+            .aliases
+            .read()
+            .values()
+            .filter(|a| a.function_arn.starts_with(&fn_arn))
+            .map(|a| Self::alias_dict(a))
+            .collect();
+        if let Some(fv) = req.query_param("FunctionVersion") {
+            list.retain(|a| a.get("FunctionVersion").and_then(Value::as_str) == Some(fv.as_str()));
+        }
+        list.sort_by(|x, y| {
+            let nx = x.get("Name").and_then(Value::as_str).unwrap_or("");
+            let ny = y.get("Name").and_then(Value::as_str).unwrap_or("");
+            nx.cmp(ny)
+        });
+        AwsResponse::json(200, json!({ "Aliases": list }))
+    }
+
+    // ---------------------------------------------------------------
+    // Permissions
+    // ---------------------------------------------------------------
+
+    fn get_policy(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let stmts = func.policy.statements.read();
+        if stmts.is_empty() {
+            return AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                "No policy is associated with the given function.",
+            );
+        }
+        let policy = json!({
+            "Version": "2012-10-17",
+            "Id": "default",
+            "Statement": *stmts,
+        });
+        AwsResponse::json(200, json!({
+            "Policy": serde_json::to_string(&policy).unwrap_or_default(),
+            "RevisionId": *func.policy.revision.read(),
+        }))
+    }
+
+    fn add_permission(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let sid = req
+            .param_str("StatementId")
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let principal = req.param_str("Principal").unwrap_or_else(|| "*".to_string());
+        let principal_value: Value = if principal == "*" {
+            json!(principal)
+        } else if principal.ends_with(".amazonaws.com") {
+            json!({ "Service": principal })
+        } else if principal.ends_with(":root") {
+            json!({ "AWS": principal })
+        } else {
+            json!(principal)
+        };
+        let mut statement = json!({
+            "Sid": sid,
+            "Effect": "Allow",
+            "Principal": principal_value,
+            "Action": req.param_str("Action").unwrap_or_default(),
+            "Resource": func.function_arn.clone(),
+        });
+        let mut condition = Map::new();
+        if let Some(sa) = req.param_str("SourceArn") {
+            condition.insert("ArnLike".into(), json!({"AWS:SourceArn": sa}));
+        }
+        if let Some(sc) = req.param_str("SourceAccount") {
+            condition.insert("StringEquals".into(), json!({"AWS:SourceAccount": sc}));
+        }
+        if let Some(org) = req.param_str("PrincipalOrgID") {
+            condition.insert("StringEquals".into(), json!({"aws:PrincipalOrgID": org}));
+        }
+        if !condition.is_empty() {
+            statement["Condition"] = Value::Object(condition);
+        }
+        func.policy.statements.write().push(statement.clone());
+        *func.policy.revision.write() = uuid::Uuid::new_v4().to_string();
+        AwsResponse::json(201, json!({
+            "Statement": serde_json::to_string(&statement).unwrap_or_default(),
+        }))
+    }
+
+    fn remove_permission(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let sid = req.path_statement_id();
+        let mut stmts = func.policy.statements.write();
+        let before = stmts.len();
+        stmts.retain(|s| s.get("Sid").and_then(Value::as_str) != Some(sid.as_str()));
+        if stmts.len() == before {
+            return AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!("Statement with statementId \"{sid}\" does not exist."),
+            );
+        }
+        *func.policy.revision.write() = uuid::Uuid::new_v4().to_string();
+        AwsResponse::empty(204)
+    }
+
+    // ---------------------------------------------------------------
+    // Concurrency
+    // ---------------------------------------------------------------
+
+    fn put_function_concurrency(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let reserved = req.param_i64("ReservedConcurrentExecutions").unwrap_or(0);
+        *func.reserved_concurrency.write() = Some(reserved);
+        AwsResponse::json(200, json!({"ReservedConcurrentExecutions": reserved}))
+    }
+
+    fn get_function_concurrency(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let reserved_value = *func.reserved_concurrency.read();
+        match reserved_value {
+            Some(rc) => AwsResponse::json(200, json!({"ReservedConcurrentExecutions": rc})),
+            None => AwsResponse::json(200, json!({})),
+        }
+    }
+
+    fn delete_function_concurrency(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        *func.reserved_concurrency.write() = None;
+        AwsResponse::empty(204)
+    }
+
+    // ---------------------------------------------------------------
+    // Event source mappings
+    // ---------------------------------------------------------------
+
+    fn esm_dict(e: &crate::models::EventSourceMapping) -> Value {
+        // A deleted-sentinel: State is included as-is.
+        json!({
+            "UUID": e.uuid,
+            "BatchSize": e.batch_size,
+            "EventSourceArn": e.event_source_arn,
+            "FunctionArn": e.function_arn,
+            "MaximumBatchingWindowInSeconds": 0,
+            "State": e.state,
+            "StateTransitionReason": e.state_transition_reason,
+            "LastModified": e.last_modified,
+            "FunctionResponseTypes": [],
+            "FilterCriteria": Value::Null,
+            "BisectBatchOnFunctionError": false,
+            "MaximumRetryAttempts": -1,
+        })
+    }
+
+    fn create_event_source_mapping(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let fn_name = req.param_str("FunctionName").unwrap_or_default();
+        let func = match resolve_fn(state, req, &fn_name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let uuid_val = uuid::Uuid::new_v4().to_string();
+        let em = Arc::new(crate::models::EventSourceMapping {
+            uuid: uuid_val.clone(),
+            function_arn: func.function_arn.clone(),
+            event_source_arn: req.param_str("EventSourceArn").unwrap_or_default(),
+            state: "Enabled".to_string(),
+            state_transition_reason: "User action".to_string(),
+            last_modified: epoch_now(),
+            batch_size: req.param_u64("BatchSize").unwrap_or(10) as u32,
+            enabled: req.params.get("Enabled").and_then(Value::as_bool).unwrap_or(true),
+        });
+        state
+            .event_source_mappings
+            .write()
+            .insert(uuid_val.clone(), Arc::clone(&em));
+        AwsResponse::json(202, Self::esm_dict(&em))
+    }
+
+    fn get_event_source_mapping(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let uuid_val = uuid_of_path(req);
+        let em = state.event_source_mappings.read().get(&uuid_val).cloned();
+        match em {
+            Some(e) => AwsResponse::json(200, Self::esm_dict(&e)),
+            None => AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!("Event source mapping not found: {uuid_val}"),
+            ),
+        }
+    }
+
+    fn update_event_source_mapping(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let uuid_val = uuid_of_path(req);
+        let existing = state.event_source_mappings.read().get(&uuid_val).cloned();
+        let Some(em) = existing else {
+            return AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!("Event source mapping not found: {uuid_val}"),
+            );
+        };
+        let batch_size = req
+            .param_u64("BatchSize")
+            .map(|b| b as u32)
+            .unwrap_or(em.batch_size);
+        let (enabled, state_value) = match req.params.get("Enabled").and_then(Value::as_bool) {
+            Some(on) => (on, if on { "Enabled" } else { "Disabled" }),
+            None => (em.enabled, "Enabled"),
+        };
+        let em_state = if req.params.get("Enabled").and_then(Value::as_bool).is_some() {
+            state_value.to_string()
+        } else {
+            em.state.clone()
+        };
+        let updated = Arc::new(crate::models::EventSourceMapping {
+            uuid: em.uuid.clone(),
+            function_arn: em.function_arn.clone(),
+            event_source_arn: em.event_source_arn.clone(),
+            state: em_state,
+            state_transition_reason: em.state_transition_reason.clone(),
+            last_modified: epoch_now(),
+            batch_size,
+            enabled,
+        });
+        state
+            .event_source_mappings
+            .write()
+            .insert(uuid_val, Arc::clone(&updated));
+        AwsResponse::json(200, Self::esm_dict(&updated))
+    }
+
+    fn delete_event_source_mapping(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let uuid_val = uuid_of_path(req);
+        let removed = state.event_source_mappings.write().remove(&uuid_val);
+        match removed {
+            Some(e) => AwsResponse::json(200, Self::esm_dict(&e)),
+            None => AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!("Event source mapping not found: {uuid_val}"),
+            ),
+        }
+    }
+
+    fn list_event_source_mappings(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let event_source_arn = req.query_param("EventSourceArn");
+        let fn_name = req.query_param("FunctionName");
+        let ems: Vec<Value> = state
+            .event_source_mappings
+            .read()
+            .values()
+            .filter(|e| {
+                event_source_arn
+                    .as_ref()
+                    .is_none_or(|arn| e.event_source_arn == *arn)
+                    && fn_name
+                        .as_ref()
+                        .is_none_or(|fn_name| e.function_arn.contains(fn_name))
+            })
+            .map(|e| Self::esm_dict(e))
+            .collect();
+        AwsResponse::json(200, json!({ "EventSourceMappings": ems }))
+    }
+
+    // ---------------------------------------------------------------
+    // Tags
+    // ---------------------------------------------------------------
+
+    fn list_tags(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let arn = req.tags_arn();
+        let func = match resolve_fn(state, req, &arn) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let tags = func
+            .tags
+            .read()
+            .iter()
+            .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+            .collect::<Map<_, _>>();
+        AwsResponse::json(200, json!({ "Tags": tags }))
+    }
+
+    fn tag_resource(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let arn = req.tags_arn();
+        let func = match resolve_fn(state, req, &arn) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        if let Some(tags) = req.params.get("Tags").and_then(Value::as_object) {
+            let mut map = func.tags.write();
+            for (k, v) in tags {
+                map.insert(k.clone(), v.as_str().unwrap_or("").to_string());
+            }
+        }
+        AwsResponse::empty(204)
+    }
+
+    fn untag_resource(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let arn = req.tags_arn();
+        let func = match resolve_fn(state, req, &arn) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let keys = req.query_list("tagKeys");
+        func.tags.write().retain(|k, _| !keys.contains(k));
+        AwsResponse::empty(204)
+    }
+
+    // ---------------------------------------------------------------
+    // Layers
+    // ---------------------------------------------------------------
+
+    fn layer_version_dict(v: &crate::models::LayerVersion) -> Value {
+        let mut out = json!({
+            "Content": {
+                "Location": "s3://",
+                "CodeSha256": v.code_sha256,
+                "CodeSize": v.content_size,
+            },
+            "Version": v.version,
+            "LayerArn": v.layer_arn,
+            "LayerVersionArn": format!("{}:{}", v.layer_arn, v.version),
+            "CreatedDate": v.created,
+            "LicenseInfo": v.license_info,
+        });
+        if !v.description.is_empty() {
+            out["Description"] = json!(v.description);
+        }
+        if !v.compatible_architectures.is_empty() {
+            out["CompatibleArchitectures"] = json!(v.compatible_architectures);
+        }
+        if !v.compatible_runtimes.is_empty() {
+            out["CompatibleRuntimes"] = json!(v.compatible_runtimes);
+        }
+        out
+    }
+
+    fn publish_layer_version(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let layer_name = req.path_fn_uuid(); // /layers/{name}/versions
+        let zip = decode_zip(req.params.get("Content").and_then(|c| c.get("ZipFile")));
+        if zip.is_empty() {
+            return AwsResponse::error(400, "InvalidParameterValueException", "Missing Content");
+        }
+        let mut layers = state.layers.write();
+        let layer = layers
+            .entry(layer_name.clone())
+            .or_insert_with(|| crate::models::Layer {
+                layer_arn: format!(
+                    "arn:aws:lambda:{}:{}:layer:{}",
+                    req.region, req.account, layer_name
+                ),
+                layer_name: layer_name.clone(),
+                latest_version: 0,
+                versions: Vec::new(),
+            });
+        let new_version = layer.latest_version + 1;
+        let v = Arc::new(crate::models::LayerVersion {
+            layer_arn: layer.layer_arn.clone(),
+            layer_name: layer_name.clone(),
+            version: new_version,
+            description: req.param_str("Description").unwrap_or_default(),
+            created: layer_date_now(),
+            content_size: zip.len() as u64,
+            code_sha256: sha_b64(&zip),
+            compatible_runtimes: str_list(req.params.get("CompatibleRuntimes")),
+            compatible_architectures: str_list(req.params.get("CompatibleArchitectures")),
+            license_info: req.param_str("LicenseInfo").unwrap_or_default(),
+            code_zip: zip,
+            policy: Arc::new(crate::models::FunctionPolicy::new()),
+        });
+        layer.latest_version = new_version;
+        layer.versions.push(Arc::clone(&v));
+        AwsResponse::json(201, Self::layer_version_dict(&v))
+    }
+
+    fn get_layer_version(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let layer_name = req.path_fn_uuid();
+        let version = req.path_layer_version().unwrap_or_default();
+        if version == 0 {
+            return not_found_layer_version();
+        }
+        let found = {
+            let layers = state.layers.read();
+            layers
+                .get(&layer_name)
+                .and_then(|l| {
+                    l.versions
+                        .iter()
+                        .find(|v| i64::from(v.version) == version)
+                        .cloned()
+                })
+        };
+        match found {
+            Some(v) => AwsResponse::json(200, Self::layer_version_dict(&v)),
+            None => AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!("Layer version {layer_name}:{version} not found"),
+            ),
+        }
+    }
+
+    fn get_layer_version_by_arn(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let arn = req.query_param("Arn").unwrap_or_default();
+        match state.layers_versions_by_arn(&arn) {
+            Some(v) => AwsResponse::json(200, Self::layer_version_dict(&v)),
+            None => AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!("Layer version not found: {arn}"),
+            ),
+        }
+    }
+
+    fn delete_layer_version(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let layer_name = req.path_fn_uuid();
+        let version = req.path_layer_version().unwrap_or_default();
+        let mut layers = state.layers.write();
+        let Some(layer) = layers.get_mut(&layer_name) else {
+            return AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!("Layer {layer_name} not found"),
+            );
+        };
+        layer.versions.retain(|v| i64::from(v.version) != version);
+        AwsResponse::empty(204)
+    }
+
+    fn list_layer_versions(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let layer_name = req.path_fn_uuid();
+        let layers = state.layers.read();
+        let items: Vec<Value> = layers
+            .get(&layer_name)
+            .map(|l| l.versions.iter().map(|v| Self::layer_version_dict(v)).collect())
+            .unwrap_or_default();
+        AwsResponse::json(200, json!({ "LayerVersions": items }))
+    }
+
+    fn list_layers(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        // GET /2018-10-31/layers?find=LayerVersion&Arn=... is
+        // GetLayerVersionByArn sharing the same path as ListLayers.
+        if req.query_param("find").as_deref() == Some("LayerVersion") {
+            return self.get_layer_version_by_arn(state, req);
+        }
+        let layers = state.layers.read();
+        let mut items: Vec<Value> = layers
+            .values()
+            .filter_map(|l| {
+                l.versions.last().map(|latest| {
+                    json!({
+                        "LayerName": l.layer_name,
+                        "LayerArn": l.layer_arn,
+                        "LatestMatchingVersion": Self::layer_version_dict(latest),
+                    })
+                })
+            })
+            .filter(|item| {
+                // CompatibleRuntime query filter
+                req.query_param("CompatibleRuntime")
+                    .map(|cr| {
+                        item["LatestMatchingVersion"]["CompatibleRuntimes"]
+                            .as_array()
+                            .map(|a| a.iter().any(|r| r.as_str() == Some(cr.as_str())))
+                            .unwrap_or(false)
+                    })
+                    .unwrap_or(true)
+            })
+            .collect();
+        items.sort_by_key(|item| item["LayerName"].as_str().unwrap_or("").to_string());
+        AwsResponse::json(200, json!({ "Layers": items }))
+    }
+
+    // ---------------------------------------------------------------
+    // Layer version permissions
+    // ---------------------------------------------------------------
+
+    fn layer_version_of(&self, _state: &LambdaState, req: &AwsRequest) -> Option<(String, i64)> {
+        let layer_name = req.path_fn_uuid();
+        let version = req.path_layer_version()?;
+        Some((layer_name, version))
+    }
+
+    fn add_layer_version_permission(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let Some((layer_name, version)) = self.layer_version_of(state, req) else {
+            return not_found_layer_version();
+        };
+        let exists = state
+            .layers
+            .read()
+            .get(&layer_name)
+            .map(|l| l.versions.iter().any(|v| i64::from(v.version) == version))
+            .unwrap_or(false);
+        if !exists {
+            return AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!("Layer version {layer_name}:{version} not found"),
+            );
+        }
+        let region = &req.region;
+        let account = req.account;
+        let sid = req
+            .param_str("StatementId")
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let statement = json!({
+            "Sid": sid,
+            "Effect": "Allow",
+            "Principal": req.param_str("Principal").unwrap_or_else(|| "*".to_string()),
+            "Action": req.param_str("Action").unwrap_or_else(|| "lambda:GetLayerVersion".to_string()),
+            "Resource": format!("arn:aws:lambda:{region}:{account}:layer:{layer_name}:{version}"),
+        });
+        let mut permissions = state.layer_permissions.write();
+        let entry = permissions.entry((layer_name.clone(), version)).or_default();
+        entry.insert(sid, statement.clone());
+        let policy = json!({
+            "Version": "2012-10-17",
+            "Id": "default",
+            "Statement": entry.values().cloned().collect::<Vec<_>>(),
+        });
+        AwsResponse::json(201, json!({
+            "Statement": serde_json::to_string(&statement).unwrap_or_default(),
+            "RevisionId": uuid::Uuid::new_v4().to_string(),
+            "Policy": serde_json::to_string(&policy).unwrap_or_default(),
+        }))
+    }
+
+    fn get_layer_version_policy(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let Some((layer_name, version)) = self.layer_version_of(state, req) else {
+            return not_found_layer_version();
+        };
+        let permissions = state.layer_permissions.read();
+        match permissions.get(&(layer_name.clone(), version)) {
+            Some(entry) if !entry.is_empty() => {
+                let policy = json!({
+                    "Version": "2012-10-17",
+                    "Id": "default",
+                    "Statement": entry.values().cloned().collect::<Vec<_>>(),
+                });
+                AwsResponse::json(200, json!({
+                    "Policy": serde_json::to_string(&policy).unwrap_or_default(),
+                    "RevisionId": uuid::Uuid::new_v4().to_string(),
+                }))
+            }
+            _ => AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!(
+                    "The resource you requested does not exist: layer version {layer_name}:{version} has no policy"
+                ),
+            ),
+        }
+    }
+
+    fn remove_layer_version_permission(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let Some((layer_name, version)) = self.layer_version_of(state, req) else {
+            return not_found_layer_version();
+        };
+        let sid = req.path_statement_id();
+        let mut permissions = state.layer_permissions.write();
+        let Some(entry) = permissions.get_mut(&(layer_name.clone(), version)) else {
+            return AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!("Unknown statement: {sid}"),
+            );
+        };
+        if entry.remove(&sid).is_none() {
+            return AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!("Unknown statement: {sid}"),
+            );
+        }
+        if entry.is_empty() {
+            permissions.remove(&(layer_name, version));
+        }
+        AwsResponse::empty(204)
+    }
+
+    // ---------------------------------------------------------------
+    // Function URL configs
+    // ---------------------------------------------------------------
+
+    fn function_url_response(v: &Value) -> Value {
+        v.clone()
+    }
+
+    fn function_url_config(
+        &self,
+        state: &LambdaState,
+        req: &AwsRequest,
+        verb: UrlVerb,
+    ) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        match verb {
+            UrlVerb::Create => {
+                let mut urls = state.url_configs.write();
+                if urls.contains_key(&func.function_name) {
+                    return AwsResponse::error(
+                        409,
+                        "ResourceConflictException",
+                        &format!(
+                            "Failed to create function url config for the function {}. \
+                             Error: FunctionUrlConfig exists for this Lambda function",
+                            func.function_name
+                        ),
+                    );
+                }
+                let url_id = uuid::Uuid::new_v4().simple().to_string();
+                let url_id = &url_id[..12];
+                let now = url_date_now();
+                let config = json!({
+                    "FunctionUrl": format!("https://{url_id}.lambda-url.{}.on.aws/", req.region),
+                    "FunctionArn": func.function_arn,
+                    "AuthType": req.param_str("AuthType").unwrap_or_else(|| "NONE".to_string()),
+                    "Cors": req.params.get("Cors").cloned().unwrap_or_else(|| json!({})),
+                    "CreationTime": now,
+                    "LastModifiedTime": now,
+                    "InvokeMode": req.param_str("InvokeMode").unwrap_or_else(|| "BUFFERED".to_string()),
+                });
+                urls.insert(func.function_name.clone(), config.clone());
+                AwsResponse::json(201, Self::function_url_response(&config))
+            }
+            UrlVerb::Get => {
+                match state.url_configs.read().get(&func.function_name).cloned() {
+                    Some(config) => AwsResponse::json(200, Self::function_url_response(&config)),
+                    None => AwsResponse::error(
+                        404,
+                        "ResourceNotFoundException",
+                        &format!(
+                            "The function url config for function {} does not exist",
+                            func.function_name
+                        ),
+                    ),
+                }
+            }
+            UrlVerb::Update => {
+                let mut urls = state.url_configs.write();
+                match urls.get_mut(&func.function_name) {
+                    Some(config) => {
+                        if let Some(a) = req.param_str("AuthType") {
+                            config["AuthType"] = json!(a);
+                        }
+                        if let Some(cors) = req.params.get("Cors") {
+                            config["Cors"] = cors.clone();
+                        }
+                        if let Some(mode) = req.param_str("InvokeMode") {
+                            config["InvokeMode"] = json!(mode);
+                        }
+                        config["LastModifiedTime"] = json!(url_date_now());
+                        AwsResponse::json(200, Self::function_url_response(config))
+                    }
+                    None => AwsResponse::error(
+                        404,
+                        "ResourceNotFoundException",
+                        &format!(
+                            "The function url config for function {} does not exist",
+                            func.function_name
+                        ),
+                    ),
+                }
+            }
+            UrlVerb::Delete => {
+                let mut urls = state.url_configs.write();
+                if urls.remove(&func.function_name).is_none() {
+                    return AwsResponse::error(
+                        404,
+                        "ResourceNotFoundException",
+                        &format!(
+                            "The function url config for function {} does not exist",
+                            func.function_name
+                        ),
+                    );
+                }
+                AwsResponse::empty(204)
+            }
+        }
+    }
+
+    fn list_function_url_configs(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let configs = state
+            .url_configs
+            .read()
+            .get(&func.function_name)
+            .map(|c| vec![c.clone()])
+            .unwrap_or_default();
+        AwsResponse::json(200, json!({ "FunctionUrlConfigs": configs }))
+    }
+
+    // ---------------------------------------------------------------
+    // Provisioned concurrency
+    // ---------------------------------------------------------------
+
+    fn put_provisioned_concurrency(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let qualifier = req.query_param("Qualifier").unwrap_or_else(|| "$LATEST".to_string());
+        let count = req
+            .params
+            .get("ProvisionedConcurrentExecutions")
+            .and_then(Value::as_i64)
+            .unwrap_or(0);
+        let config = json!({
+            "RequestedProvisionedConcurrentExecutions": count,
+            "AvailableProvisionedConcurrentExecutions": count,
+            "AllocatedProvisionedConcurrentExecutions": count,
+            "Status": "READY",
+            "LastModified": utc_date_now(),
+            "FunctionArn": func.function_arn,
+        });
+        state
+            .provisioned
+            .write()
+            .insert((func.function_name.clone(), qualifier), config);
+        let requested = json!({
+            "FunctionArn": func.function_arn,
+            "RequestedProvisionedConcurrentExecutions": count,
+            "ProvisionedConcurrentExecutions": count,
+            "TargetProvisionedConcurrentExecutions": count,
+            "State": "Ready",
+            "LastModified": utc_date_now(),
+        });
+        AwsResponse::json(202, requested)
+    }
+
+    fn get_provisioned_concurrency(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        // GET with ?List=ALL is ListProvisionedConcurrencyConfigs (same path).
+        if req.query_param("List").as_deref() == Some("ALL") {
+            return self.list_provisioned_concurrency_configs(state, req);
+        }
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let qualifier = req.query_param("Qualifier").unwrap_or_else(|| "$LATEST".to_string());
+        match state
+            .provisioned
+            .read()
+            .get(&(func.function_name.clone(), qualifier.clone()))
+            .cloned()
+        {
+            Some(config) => AwsResponse::json(200, config),
+            None => AwsResponse::error(
+                404,
+                "ProvisionedConcurrencyConfigNotFoundException",
+                &format!(
+                    "There is no provisioned concurrency configuration for the given qualifier on function {name} with qualifier \"{qualifier}\"."
+                ),
+            ),
+        }
+    }
+
+    fn delete_provisioned_concurrency(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let qualifier = req.query_param("Qualifier").unwrap_or_default();
+        if state
+            .provisioned
+            .write()
+            .remove(&(func.function_name.clone(), qualifier.clone()))
+            .is_none()
+        {
+            return AwsResponse::error(
+                404,
+                "ProvisionedConcurrencyConfigNotFoundException",
+                &format!(
+                    "There is no provisioned concurrency config for {name}:{qualifier}"
+                ),
+            );
+        }
+        AwsResponse::empty(204)
+    }
+
+    fn list_provisioned_concurrency_configs(
+        &self,
+        state: &LambdaState,
+        req: &AwsRequest,
+    ) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let configs: Vec<Value> = state
+            .provisioned
+            .read()
+            .iter()
+            .filter(|(fn_key, _)| fn_key.0.as_str() == func.function_name)
+            .map(|(_, v)| v.clone())
+            .collect();
+        AwsResponse::json(200, json!({ "ProvisionedConcurrencyConfigs": configs }))
+    }
+
+    // ---------------------------------------------------------------
+    // Event invoke config
+    // ---------------------------------------------------------------
+
+    fn put_event_invoke_config(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let mut config = serde_json::Map::new();
+        for key in [
+            "MaximumRetryAttempts",
+            "MaximumEventAgeInSeconds",
+            "DestinationConfig",
+        ] {
+            if let Some(v) = req.params.get(key) {
+                config.insert(key.to_string(), v.clone());
+            }
+        }
+        if let Some(mra) = config.get("MaximumRetryAttempts").and_then(Value::as_i64) {
+            if !(0..=2).contains(&mra) {
+                return AwsResponse::error(
+                    400,
+                    "ValidationException",
+                    &format!("MaximumRetryAttempts {mra} must be between 0 and 2"),
+                );
+            }
+        }
+        if let Some(age) = config.get("MaximumEventAgeInSeconds").and_then(Value::as_i64) {
+            if age > 21600 {
+                return AwsResponse::error(
+                    400,
+                    "ValidationException",
+                    &format!("MaximumEventAgeInSeconds {age} must be less than or equal to 21600"),
+                );
+            }
+        }
+        let stored: Value = config.into();
+        *func.event_invoke_config.write() = Some(stored.clone());
+        let mut body = json!({
+            "FunctionArn": func.function_arn,
+            "LastModified": *func.last_modified.read(),
+        });
+        if let Some(Value::Object(map)) = Some(stored) {
+            for (k, v) in map {
+                body[k.as_str()] = v;
+            }
+        }
+        AwsResponse::json(200, body)
+    }
+
+    fn get_event_invoke_config(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let config_stored = func.event_invoke_config.read().clone();
+        match config_stored {
+            Some(config) => {
+                let mut body = json!({
+                    "FunctionArn": func.function_arn,
+                    "LastModified": *func.last_modified.read(),
+                });
+                if let Value::Object(map) = config {
+                    for (k, v) in map {
+                        body[k.as_str()] = v;
+                    }
+                }
+                AwsResponse::json(200, body)
+            }
+            None => AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!(
+                    "The event invoke config for the function {} does not exist.",
+                    func.function_arn
+                ),
+            ),
+        }
+    }
+
+    fn delete_event_invoke_config(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        if func.event_invoke_config.read().is_none() {
+            return AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!(
+                    "The event invoke config for the function {} does not exist.",
+                    func.function_arn
+                ),
+            );
+        }
+        *func.event_invoke_config.write() = None;
+        AwsResponse::empty(204)
+    }
+
+    fn list_event_invoke_configs(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let configs = match func.event_invoke_config.read().clone() {
+            Some(config) => {
+                let mut body = json!({
+                    "FunctionArn": func.function_arn,
+                    "LastModified": *func.last_modified.read(),
+                });
+                if let Value::Object(map) = config {
+                    for (k, v) in map {
+                        body[k.as_str()] = v;
+                    }
+                }
+                vec![body]
+            }
+            None => Vec::new(),
+        };
+        AwsResponse::json(200, json!({ "FunctionEventInvokeConfigs": configs }))
+    }
+
+    // ---------------------------------------------------------------
+    // Function code signing config
+    // ---------------------------------------------------------------
+
+    fn put_function_code_signing_config(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let csc_arn = req
+            .param_str("CodeSigningConfigArn")
+            .unwrap_or_default();
+        *func.code_signing_config_arn.write() = Some(csc_arn.clone());
+        AwsResponse::json(
+            200,
+            json!({"CodeSigningConfigArn": csc_arn, "FunctionName": func.function_name}),
+        )
+    }
+
+    fn get_function_code_signing_config(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let csc_arn_opt = func.code_signing_config_arn.read().clone();
+        match csc_arn_opt {
+            Some(arn) => AwsResponse::json(
+                200,
+                json!({"CodeSigningConfigArn": arn, "FunctionName": func.function_name}),
+            ),
+            None => AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!(
+                    "Code signing configuration not found for function: {}",
+                    func.function_arn
+                ),
+            ),
+        }
+    }
+
+    fn delete_function_code_signing_config(
+        &self,
+        state: &LambdaState,
+        req: &AwsRequest,
+    ) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        *func.code_signing_config_arn.write() = None;
+        AwsResponse::empty(204)
+    }
+
+    // ---------------------------------------------------------------
+    // Recursion / scaling / runtime management
+    // ---------------------------------------------------------------
+
+    fn get_function_recursion_config(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        AwsResponse::json(
+            200,
+            json!({"RecursiveLoop": *func.recursion_config.read()}),
+        )
+    }
+
+    fn put_function_recursion_config(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let allowed = ["Allow", "Terminate"];
+        let value = req.param_str("RecursiveLoop").unwrap_or_else(|| "Terminate".to_string());
+        if !allowed.contains(&value.as_str()) {
+            return AwsResponse::error(
+                400,
+                "InvalidParameterValueException",
+                &format!("Invalid value for RecursiveLoop: {value}. Must be Allow or Terminate."),
+            );
+        }
+        *func.recursion_config.write() = value.clone();
+        AwsResponse::json(200, json!({"RecursiveLoop": value}))
+    }
+
+    fn get_function_scaling_config(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let qualifier = req.query_param("Qualifier").unwrap_or_else(|| "$LATEST".to_string());
+        let config = func
+            .scaling_configs
+            .read()
+            .get(&qualifier)
+            .cloned()
+            .unwrap_or_else(|| json!({}));
+        AwsResponse::json(200, json!({
+            "FunctionArn": func.function_arn,
+            "AppliedFunctionScalingConfig": config.clone(),
+            "RequestedFunctionScalingConfig": config,
+        }))
+    }
+
+    fn put_function_scaling_config(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let qualifier = req.query_param("Qualifier").unwrap_or_else(|| "$LATEST".to_string());
+        let config = req
+            .params
+            .get("FunctionScalingConfig")
+            .cloned()
+            .unwrap_or_else(|| json!({}));
+        func.scaling_configs.write().insert(qualifier, config.clone());
+        AwsResponse::json(200, json!({
+            "FunctionArn": func.function_arn,
+            "FunctionState": "Active",
+            "RequestedFunctionScalingConfig": config,
+        }))
+    }
+
+    fn get_runtime_management_config(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let config = func
+            .runtime_mgmt_config
+            .read()
+            .clone()
+            .unwrap_or_else(|| json!({"UpdateRuntimeOn": "Auto"}));
+        let mut body = config.clone();
+        if body.get("UpdateRuntimeOn").is_none() {
+            body["UpdateRuntimeOn"] = json!("Auto");
+        }
+        body["FunctionArn"] = json!(func.function_arn);
+        AwsResponse::json(200, body)
+    }
+
+    fn put_runtime_management_config(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let name = req.path_fn_name();
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let update_on = req.param_str("UpdateRuntimeOn").unwrap_or_else(|| "Auto".to_string());
+        let mut config = json!({"UpdateRuntimeOn": update_on});
+        if config["UpdateRuntimeOn"] == json!("Manual") {
+            if let Some(arn) = req.param_str("RuntimeVersionArn") {
+                config["RuntimeVersionArn"] = json!(arn);
+            }
+        }
+        *func.runtime_mgmt_config.write() = Some(config.clone());
+        config["FunctionArn"] = json!(func.function_arn);
+        AwsResponse::json(200, config)
+    }
+
+    // ---------------------------------------------------------------
+    // Account settings & durable executions
+    // ---------------------------------------------------------------
+
+    fn get_account_settings(&self, state: &LambdaState) -> AwsResponse {
+        let funcs = state.functions.read();
+        let mut total_code = 0u64;
+        let mut total_reserved = 0i64;
+        let mut count = 0u64;
+        for entry in funcs.values() {
+            if let Some(f) = entry.latest.as_ref() {
+                count += 1;
+                total_code += *f.code_size.read();
+                if let Some(rc) = *f.reserved_concurrency.read() {
+                    total_reserved += rc;
+                }
+            }
+        }
+        AwsResponse::json(200, json!({
+            "AccountLimit": {
+                "TotalCodeSize": 80 * 1024 * 1024 * 1024u64,
+                "CodeSizeUnzipped": 250 * 1024 * 1024u64,
+                "CodeSizeZipped": 50 * 1024 * 1024u64,
+                "ConcurrentExecutions": 1000u64,
+                "UnreservedConcurrentExecutions": 1000u64.saturating_sub(total_reserved.max(0) as u64),
+            },
+            "AccountUsage": {
+                "TotalCodeSize": total_code,
+                "FunctionCount": count,
+            }
+        }))
+    }
+
+    fn list_durable_executions(&self) -> AwsResponse {
+        AwsResponse::json(200, json!({ "DurableExecutions": [] }))
+    }
+
+    // ---------------------------------------------------------------
+    // Code signing configs (2020-04-22)
+    // ---------------------------------------------------------------
+
+    fn csc_dict(c: &crate::models::CodeSigningConfig) -> Value {
+        let mut v = json!({
+            "CodeSigningConfigArn": c.arn,
+            "CodeSigningPolicies": c.policies.clone().unwrap_or_else(|| {
+                json!({"UntrustedArtifactOnDeployment": "Warn"})
+            }),
+            "AllowedPublishers": c.allowed_publishers.clone(),
+            "Description": c.description,
+            "LastModified": c.last_modified,
+        });
+        if v["Description"] == json!("") {
+            v["Description"] = Value::Null;
+        }
+        v
+    }
+
+    fn create_code_signing_config(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let Some(allowed_publishers) = req.params.get("AllowedPublishers").cloned() else {
+            return AwsResponse::error(
+                400,
+                "InvalidParameterValueException",
+                "Missing AllowedPublishers",
+            );
+        };
+        let arn = format!(
+            "arn:aws:lambda:{}:{}:code-signing-config:csc-{}",
+            req.region,
+            req.account,
+            uuid::Uuid::new_v4().simple(),
+        );
+        let csc = Arc::new(crate::models::CodeSigningConfig {
+            arn: arn.clone(),
+            description: req.param_str("Description").unwrap_or_default(),
+            allowed_publishers,
+            policies: req.params.get("CodeSigningPolicies").cloned(),
+            last_modified: layer_date_now(),
+        });
+        state.code_signing_configs.write().insert(arn, Arc::clone(&csc));
+        AwsResponse::json(201, json!({ "CodeSigningConfig": Self::csc_dict(&csc) }))
+    }
+
+    fn get_code_signing_config(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let arn = req.path_code_signing_arn();
+        match state.code_signing_configs.read().get(&arn).cloned() {
+            Some(csc) => AwsResponse::json(200, json!({ "CodeSigningConfig": Self::csc_dict(&csc) })),
+            None => AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!("The code signing configuration {arn} does not exist."),
+            ),
+        }
+    }
+
+    fn update_code_signing_config(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let arn = req.path_code_signing_arn();
+        let existing = state.code_signing_configs.read().get(&arn).cloned();
+        let Some(csc) = existing else {
+            return AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!("The code signing configuration {arn} does not exist."),
+            );
+        };
+        let mut updated = crate::models::CodeSigningConfig {
+            arn: csc.arn.clone(),
+            description: csc.description.clone(),
+            allowed_publishers: csc.allowed_publishers.clone(),
+            policies: csc.policies.clone(),
+            last_modified: csc.last_modified.clone(),
+        };
+        if let Some(desc) = req.param_str("Description") {
+            updated.description = desc;
+        }
+        if let Some(ap) = req.params.get("AllowedPublishers").cloned() {
+            updated.allowed_publishers = ap;
+        }
+        let code_signing_config = Arc::new(updated);
+        state
+            .code_signing_configs
+            .write()
+            .insert(arn, Arc::clone(&code_signing_config));
+        AwsResponse::json(200, json!({ "CodeSigningConfig": Self::csc_dict(&code_signing_config) }))
+    }
+
+    fn delete_code_signing_config(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
+        let arn = req.path_code_signing_arn();
+        if state.code_signing_configs.write().remove(&arn).is_none() {
+            return AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!("The code signing configuration {arn} does not exist."),
+            );
+        }
+        AwsResponse::empty(204)
+    }
+
+    fn list_code_signing_configs(&self, state: &LambdaState) -> AwsResponse {
+        let configs: Vec<Value> = state
+            .code_signing_configs
+            .read()
+            .values()
+            .map(|c| Self::csc_dict(c))
+            .collect();
+        AwsResponse::json(200, json!({ "CodeSigningConfigs": configs }))
+    }
+
+    fn list_functions_by_code_signing_config(
+        &self,
+        state: &LambdaState,
+        req: &AwsRequest,
+    ) -> AwsResponse {
+        let arn = req.path_code_signing_arn();
+        if !state.code_signing_configs.read().contains_key(&arn) {
+            return AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!("The code signing configuration {arn} does not exist."),
+            );
+        }
+        let arns: Vec<Value> = state
+            .functions
+            .read()
+            .values()
+            .filter_map(|e| e.latest.as_ref())
+            .filter(|f| f.code_signing_config_arn.read().as_deref() == Some(arn.as_str()))
+            .map(|f| json!(format!("{}:$LATEST", f.function_arn)))
+            .collect();
+        AwsResponse::json(200, json!({ "FunctionArns": arns }))
+    }
+}
+
+enum UrlVerb {
+    Create,
+    Get,
+    Update,
+    Delete,
+}
+
+// ----------------------------------------------------------------------
+// Helpers
+// ----------------------------------------------------------------------
+
+/// Epoch seconds as the ESM LastModified mirror of the Python store.
+fn epoch_now() -> f64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0)
+}
+
+fn decode_zip(v: Option<&Value>) -> Vec<u8> {
+    match v {
+        Some(Value::String(s)) => decode_b64(s),
+        _ => Vec::new(),
+    }
+}
+
+fn decode_b64(s: &str) -> Vec<u8> {
+    base64::engine::general_purpose::STANDARD
+        .decode(s.trim())
+        .unwrap_or_else(|_| s.as_bytes().to_vec())
+}
+
+fn sha_b64(data: &[u8]) -> String {
+    let digest = Sha256::digest(data);
+    base64::engine::general_purpose::STANDARD.encode(digest)
+}
+
+fn str_list(v: Option<&Value>) -> Vec<String> {
+    v.and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(String::from)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Resolve a function by name/ARN with an optional qualifier from the query
+/// string; 404 on miss.
+fn uuid_of_path(req: &AwsRequest) -> String {
+    req.path_fn_uuid()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use bytes::Bytes;
-    use serde_json::json;
 
-    fn make_req(operation: &str, params: Value, path: &str) -> AwsRequest {
+    fn make_req(method: &str, params: Value, path: &str) -> AwsRequest {
         AwsRequest {
             service: "lambda".to_string(),
-            operation: operation.to_string(),
+            operation: String::new(),
             account: 123456789012,
             region: "us-east-1".to_string(),
             params,
             body: Bytes::new(),
-            method: "POST".to_string(),
+            method: method.to_string(),
             path: path.to_string(),
             query_string: String::new(),
             headers: std::collections::HashMap::new(),
@@ -1028,15 +2317,16 @@ mod tests {
     #[test]
     fn test_create_and_get_function() {
         let handler = LambdaHandler::new();
-        handler.handle(make_req("CreateFunction", json!({
-            "FunctionName": "test-func",
-            "Runtime": "python3.12",
-            "Handler": "index.handler",
-            "Role": "arn:aws:iam::123456789012:role/lambda"
-        }), "/2015-03-31/functions"));
-
-        let resp = handler.handle(make_req("GetFunction", json!({}),
-            "/2015-03-31/functions/test-func"));
+        handler.handle(make_req(
+            "POST",
+            json!({"FunctionName": "test-func", "Runtime": "python3.12", "Handler": "index.handler"}),
+            "/2015-03-31/functions",
+        ));
+        let resp = handler.handle(make_req(
+            "GET",
+            json!({}),
+            "/2015-03-31/functions/test-func",
+        ));
         assert_eq!(resp.status, 200);
         assert!(resp.body.contains("test-func"));
     }
@@ -1044,45 +2334,61 @@ mod tests {
     #[test]
     fn test_list_functions() {
         let handler = LambdaHandler::new();
-        handler.handle(make_req("CreateFunction", json!({
-            "FunctionName": "func1"
-        }), "/2015-03-31/functions"));
-        handler.handle(make_req("CreateFunction", json!({
-            "FunctionName": "func2"
-        }), "/2015-03-31/functions"));
-        let resp = handler.handle(make_req("ListFunctions", json!({}),
-            "/2015-03-31/functions"));
+        handler.handle(make_req(
+            "POST",
+            json!({"FunctionName": "func1"}),
+            "/2015-03-31/functions",
+        ));
+        handler.handle(make_req(
+            "POST",
+            json!({"FunctionName": "func2"}),
+            "/2015-03-31/functions",
+        ));
+        let resp = handler.handle(make_req("GET", json!({}), "/2015-03-31/functions"));
         assert_eq!(resp.status, 200);
         let funcs: Value = serde_json::from_str(&resp.body).unwrap();
         assert_eq!(funcs["Functions"].as_array().unwrap().len(), 2);
     }
 
     #[test]
-    fn test_invoke() {
+    fn test_publish_version_sequence() {
         let handler = LambdaHandler::new();
-        handler.handle(make_req("CreateFunction", json!({
-            "FunctionName": "inv-func"
-        }), "/2015-03-31/functions"));
-        let resp = handler.handle(make_req("Invoke", json!({
-            "Payload": "{}"
-        }), "/2015-03-31/functions/inv-func/invocations"));
-        assert_eq!(resp.status, 200);
+        handler.handle(make_req(
+            "POST",
+            json!({"FunctionName": "ver-func"}),
+            "/2015-03-31/functions",
+        ));
+        let resp = handler.handle(make_req(
+            "POST",
+            json!({}),
+            "/2015-03-31/functions/ver-func/versions",
+        ));
+        assert_eq!(resp.status, 201);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(body["Version"], json!("1"));
+        let resp = handler.handle(make_req(
+            "POST",
+            json!({}),
+            "/2015-03-31/functions/ver-func/versions",
+        ));
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        // Idempotent: nothing changed since last publish, same version returned
+        assert_eq!(body["Version"], json!("1"));
     }
 
     #[test]
-    fn test_aliases() {
+    fn test_invoke_event_type() {
         let handler = LambdaHandler::new();
-        handler.handle(make_req("CreateFunction", json!({
-            "FunctionName": "alias-func"
-        }), "/2015-03-31/functions"));
-        handler.handle(make_req("CreateAlias", json!({
-            "Name": "prod",
-            "FunctionVersion": "$LATEST"
-        }), "/2015-03-31/functions/alias-func/aliases"));
-        let resp = handler.handle(make_req("ListAliases", json!({}),
-            "/2015-03-31/functions/alias-func/aliases"));
-        assert_eq!(resp.status, 200);
-        let items: Value = serde_json::from_str(&resp.body).unwrap();
-        assert_eq!(items["Items"].as_array().unwrap().len(), 1);
+        let payload =
+            json!({"FunctionName": "inv-func", "Code": {"ZipFile": ""}, "Handler": "lambda_function.handler"});
+        handler.handle(make_req("POST", payload, "/2015-03-31/functions"));
+        let mut req = make_req(
+            "POST",
+            json!({}),
+            "/2015-03-31/functions/inv-func/invocations",
+        );
+        req.headers.insert("x-amz-invocation-type".to_string(), "Event".to_string());
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 202);
     }
 }
