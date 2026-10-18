@@ -115,11 +115,17 @@ fn handle_get_access_key_info(
 }
 
 
+/// A session expiry ~12h out from now, RFC3339 UTC — matches real STS
+/// semantics (session credentials expire) and avoids stale hardcoded dates.
+fn session_expiry() -> String {
+    let t = chrono::Utc::now() + chrono::Duration::hours(12);
+    t.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+}
+
 /// GetSessionToken operation.
 fn handle_get_session_token(
-    req: &ParsedRequest,
+    _req: &ParsedRequest,
 ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
-    let _account = req.account;
     let body = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <GetSessionTokenResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">
@@ -128,13 +134,14 @@ fn handle_get_session_token(
             <AccessKeyId>ASIAIOSFODNN7EXAMPLE</AccessKeyId>
             <SecretAccessKey>wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY</SecretAccessKey>
             <SessionToken>session-token-001</SessionToken>
-            <Expiration>2024-12-31T23:59:59Z</Expiration>
+            <Expiration>{}</Expiration>
         </Credentials>
     </GetSessionTokenResult>
     <ResponseMetadata>
         <RequestId>00000000-0000-0000-0000-000000000000</RequestId>
     </ResponseMetadata>
-</GetSessionTokenResponse>"#
+</GetSessionTokenResponse>"#,
+        session_expiry()
     );
     Ok(xml_response(&body))
 }
@@ -157,14 +164,14 @@ fn handle_get_federation_token(
             <AccessKeyId>ASIAIOSFODNN7EXAMPLE</AccessKeyId>
             <SecretAccessKey>wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY</SecretAccessKey>
             <SessionToken>session-token-001</SessionToken>
-            <Expiration>2024-12-31T23:59:59Z</Expiration>
+            <Expiration>{}</Expiration>
         </Credentials>
     </GetFederationTokenResult>
     <ResponseMetadata>
         <RequestId>00000000-0000-0000-0000-000000000000</RequestId>
     </ResponseMetadata>
 </GetFederationTokenResponse>"#,
-        account, name, account, name
+        account, name, account, name, session_expiry()
     );
     Ok(xml_response(&body))
 }
@@ -205,7 +212,7 @@ fn handle_assume_role(
             <AccessKeyId>ASIAIOSFODNN7EXAMPLE</AccessKeyId>
             <SecretAccessKey>wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY</SecretAccessKey>
             <SessionToken>session-token-001</SessionToken>
-            <Expiration>2024-12-31T23:59:59Z</Expiration>
+            <Expiration>{}</Expiration>
         </Credentials>
         <AssumedRoleUser>
             <Arn>{}</Arn>
@@ -216,7 +223,7 @@ fn handle_assume_role(
         <RequestId>00000000-0000-0000-0000-000000000000</RequestId>
     </ResponseMetadata>
 </{}Response>"#,
-        op, op, arn, role_id, op, op
+        op, op, session_expiry(), arn, role_id, op, op
     );
     Ok(xml_response(&body))
 }
@@ -235,7 +242,7 @@ fn handle_assume_root(
             <AccessKeyId>ASIAIOSFODNN7EXAMPLE</AccessKeyId>
             <SecretAccessKey>wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY</SecretAccessKey>
             <SessionToken>session-token-root</SessionToken>
-            <Expiration>2024-12-31T23:59:59Z</Expiration>
+            <Expiration>{}</Expiration>
         </Credentials>
         <AssumedRoleUser>
             <Arn>{}</Arn>
@@ -246,7 +253,7 @@ fn handle_assume_root(
         <RequestId>00000000-0000-0000-0000-000000000000</RequestId>
     </ResponseMetadata>
 </AssumeRootResponse>"#,
-        arn
+        session_expiry(), arn
     );
     Ok(xml_response(&body))
 }
@@ -264,13 +271,14 @@ fn handle_get_delegated_access_token(
             <AccessKeyId>ASIADELEGATED0000001</AccessKeyId>
             <SecretAccessKey>delegated-secret-key-0000000000000000</SecretAccessKey>
             <SessionToken>delegated-session-token-0000000000000000</SessionToken>
-            <Expiration>2027-12-31T23:59:59Z</Expiration>
+            <Expiration>{}</Expiration>
         </Credentials>
     </GetDelegatedAccessTokenResult>
     <ResponseMetadata>
         <RequestId>00000000-0000-0000-0000-000000000000</RequestId>
     </ResponseMetadata>
-</GetDelegatedAccessTokenResponse>"#
+</GetDelegatedAccessTokenResponse>"#,
+        session_expiry()
     );
     Ok(xml_response(&body))
 }
@@ -279,17 +287,20 @@ fn handle_get_delegated_access_token(
 fn handle_get_web_identity_token(
     _req: &ParsedRequest,
 ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
-    let body = r#"<?xml version="1.0" encoding="UTF-8"?>
+    let body = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
 <GetWebIdentityTokenResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">
     <GetWebIdentityTokenResult>
         <WebIdentityToken>eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c</WebIdentityToken>
-        <Expiration>2027-12-31T23:59:59Z</Expiration>
+        <Expiration>{}</Expiration>
     </GetWebIdentityTokenResult>
     <ResponseMetadata>
         <RequestId>00000000-0000-0000-0000-000000000000</RequestId>
     </ResponseMetadata>
-</GetWebIdentityTokenResponse>"#;
-    Ok(xml_response(body))
+</GetWebIdentityTokenResponse>"#,
+        session_expiry()
+    );
+    Ok(xml_response(&body))
 }
 
 /// DecodeAuthorizationMessage operation.
