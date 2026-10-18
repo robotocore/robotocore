@@ -215,8 +215,9 @@ fn test_receive_message_empty_queue() {
     let recv_data: Value = serde_json::from_str(&recv_resp.body).expect("Invalid JSON");
     let messages = recv_data["Messages"]
         .as_array()
-        .expect("Messages should be array");
-    assert_eq!(messages.len(), 0);
+        .map(|a| a.len())
+        .unwrap_or(0);
+    assert_eq!(messages, 0);
 }
 
 #[test]
@@ -273,7 +274,7 @@ fn test_delete_message() {
     let del_resp = handler.handle(del_req);
     assert_eq!(del_resp.status, 200);
 
-    // Try to receive again - should be empty
+    // Try to receive again - should be empty (no Messages key or empty list)
     let recv_req2 = make_request(
         "ReceiveMessage",
         json!({
@@ -285,8 +286,9 @@ fn test_delete_message() {
     let recv_data2: Value = serde_json::from_str(&recv_resp2.body).expect("Invalid JSON");
     let messages = recv_data2["Messages"]
         .as_array()
-        .expect("Messages should be array");
-    assert_eq!(messages.len(), 0);
+        .map(|a| a.len())
+        .unwrap_or(0);
+    assert_eq!(messages, 0);
 }
 
 #[test]

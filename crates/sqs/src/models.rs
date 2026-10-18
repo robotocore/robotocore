@@ -19,16 +19,48 @@ pub struct SqsMessage {
     pub first_receive_timestamp: Option<u64>,
     pub attributes: HashMap<String, String>,
     pub message_attributes: HashMap<String, serde_json::Value>,
+    /// When set, the message is not deliverable before this time (send delay).
+    #[serde(default)]
+    pub available_at: Option<u64>,
+    /// MessageDeduplicationId (or computed content-based id) for FIFO messages.
+    #[serde(default)]
+    pub deduplication_id: Option<String>,
 }
 
 impl SqsMessage {
-    /// Check if message is currently visible
+    /// Check if message is currently visible (delay passed, not in flight)
     pub fn is_visible(&self) -> bool {
-        if let Some(until) = self.visibility_until {
-            let now_ms = (Utc::now().timestamp_millis()) as u64;
-            now_ms >= until
-        } else {
-            true
+        let now_ms = (Utc::now().timestamp_millis()) as u64;
+        if let Some(at) = self.available_at {
+            if now_ms < at {
+                return false;
+            }
+        }
+        match self.visibility_until {
+            Some(until) => now_ms >= until,
+            None => true,
+        }
+    }
+
+    /// Message is delayed (never delivered, waiting for the delay to pass).
+    pub fn is_delayed(&self) -> bool {
+        match self.available_at {
+            Some(at) => {
+                let now_ms = (Utc::now().timestamp_millis()) as u64;
+                now_ms < at
+            }
+            None => false,
+        }
+    }
+
+    /// Message was received before and its visibility window has not expired.
+    pub fn is_inflight(&self) -> bool {
+        if self.first_receive_timestamp.is_none() {
+            return false;
+        }
+        match self.visibility_until {
+            Some(until) => ((Utc::now().timestamp_millis()) as u64) < until,
+            None => false,
         }
     }
 
@@ -48,6 +80,11 @@ pub struct QueueAttributes {
     pub delay_seconds: u32,             // default 0
     pub receive_message_wait_time: u32, // default 0
     pub policy: Option<String>,
+    pub fifo_queue: bool,                  // FifoQueue attribute
+    pub content_based_deduplication: bool, // ContentBasedDeduplication attribute
+    pub redrive_policy: Option<String>,    // RedrivePolicy JSON attribute
+    #[serde(default)]
+    pub extra: std::collections::HashMap<String, String>, // RedriveAllowPolicy, Kms*, etc.
 }
 
 impl Default for QueueAttributes {
@@ -59,8 +96,73 @@ impl Default for QueueAttributes {
             delay_seconds: 0,
             receive_message_wait_time: 0,
             policy: None,
+            fifo_queue: false,
+            content_based_deduplication: false,
+            redrive_policy: None,
+            extra: std::collections::HashMap::new(),
         }
     }
+}
+
+impl QueueAttributes {
+    /// Apply a JSON-protocol Attributes map (attr name -> string value).
+    pub fn apply(&mut self, attrs: &serde_json::Value) {
+        if let Some(map) = attrs.as_object() {
+            for (key, value) in map {
+                let val = value.as_str().unwrap_or("");
+                match key.as_str() {
+                    "VisibilityTimeout" => {
+                        if let Ok(v) = val.parse::<u32>() {
+                            self.visibility_timeout = v;
+                        }
+                    }
+                    "DelaySeconds" => {
+                        if let Ok(v) = val.parse::<u32>() {
+                            self.delay_seconds = v;
+                        }
+                    }
+                    "ReceiveMessageWaitTimeSeconds" => {
+                        if let Ok(v) = val.parse::<u32>() {
+                            self.receive_message_wait_time = v;
+                        }
+                    }
+                    "MaximumMessageSize" => {
+                        if let Ok(v) = val.parse::<u32>() {
+                            self.maximum_message_size = v;
+                        }
+                    }
+                    "MessageRetentionPeriod" => {
+                        if let Ok(v) = val.parse::<u32>() {
+                            self.message_retention_period = v;
+                        }
+                    }
+                    "Policy" => self.policy = Some(val.to_string()),
+                    "RedrivePolicy" => self.redrive_policy = Some(val.to_string()),
+                    "FifoQueue" => self.fifo_queue = val == "true",
+                    "ContentBasedDeduplication" => {
+                        self.content_based_deduplication = val == "true"
+                    }
+                    _ => {
+                        self.extra.insert(key.clone(), val.to_string());
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// A message move task (DeadLetterQueue redrive reversal).
+#[derive(Debug, Clone)]
+pub struct MoveTask {
+    pub task_handle: String,
+    pub source_arn: String,
+    pub destination_arn: Option<String>,
+    pub status: String,
+    pub max_per_second: u32,
+    pub moved: u64,
+    pub to_move: u64,
+    pub started_at: u64,
+    pub failure_reason: Option<String>,
 }
 
 /// A queue in SQS (behind RwLock for thread-safe mutation)
@@ -76,6 +178,10 @@ pub struct Queue {
     pub attributes: QueueAttributes,
     pub messages: VecDeque<SqsMessage>,
     pub tags: parking_lot::RwLock<std::collections::HashMap<String, String>>,
+    /// Deduplication IDs seen on this FIFO queue -> (MessageId of original send, sent timestamp ms).
+    pub dedup_ids: std::collections::HashMap<String, (String, u64)>,
+    /// Monotonic sequence number counter for FIFO queues.
+    pub next_sequence_number: u64,
 }
 
 impl Queue {
@@ -92,7 +198,35 @@ impl Queue {
             attributes: QueueAttributes::default(),
             messages: VecDeque::new(),
             tags: parking_lot::RwLock::new(std::collections::HashMap::new()),
+            dedup_ids: std::collections::HashMap::new(),
+            next_sequence_number: 1_854_250_000_000_000,
         }
+    }
+
+    /// deadLetterTargetArn parsed from the RedrivePolicy attribute.
+    pub fn redrive_target_arn(&self) -> Option<String> {
+        self.attributes.redrive_policy.as_ref().and_then(|raw| {
+            serde_json::from_str::<serde_json::Value>(raw)
+                .ok()
+                .and_then(|v| {
+                    v.get("deadLetterTargetArn")
+                        .and_then(|t| t.as_str().map(String::from))
+                })
+        })
+    }
+
+    /// maxReceiveCount parsed from the RedrivePolicy attribute.
+    pub fn redrive_max_receive_count(&self) -> Option<u32> {
+        self.attributes.redrive_policy.as_ref().and_then(|raw| {
+            serde_json::from_str::<serde_json::Value>(raw)
+                .ok()
+                .and_then(|v| v.get("maxReceiveCount").cloned())
+                .and_then(|c| {
+                    c.as_u64()
+                        .or_else(|| c.as_str().and_then(|s| s.parse::<u64>().ok()))
+                })
+                .map(|c| c as u32)
+        })
     }
 
     /// Add a message to the queue
@@ -100,7 +234,10 @@ impl Queue {
         self.messages.push_back(message);
     }
 
-    /// Get visible messages (respecting visibility timeout)
+    /// Get visible messages (respecting visibility timeout), queue-order.
+    ///
+    /// Per-group ordering is preserved by keeping messages in their slots;
+    /// VisibilityTimeout=0 leaves the message available immediately.
     pub fn receive_messages(
         &mut self,
         max_count: usize,
@@ -108,58 +245,55 @@ impl Queue {
     ) -> Vec<SqsMessage> {
         let mut result = Vec::new();
         let now_ms = (Utc::now().timestamp_millis()) as u64;
-        let first_receive_ts = now_ms;
 
-        for _ in 0..max_count {
-            // Find next visible message
-            let mut found_idx = None;
-            for (idx, msg) in self.messages.iter().enumerate() {
-                if msg.is_visible() {
-                    found_idx = Some(idx);
-                    break;
-                }
-            }
-
-            if let Some(idx) = found_idx {
-                if let Some(mut msg) = self.messages.remove(idx) {
-                    // Update message state
-                    msg.receive_count += 1;
-                    if msg.first_receive_timestamp.is_none() {
-                        msg.first_receive_timestamp = Some(first_receive_ts);
-                    }
-                    msg.set_visibility_timeout(visibility_timeout);
-
-                    // Update attributes
-                    msg.attributes
-                        .insert("SenderId".to_string(), "123456789012".to_string());
-                    msg.attributes
-                        .insert("SentTimestamp".to_string(), msg.sent_timestamp.to_string());
-                    msg.attributes.insert(
-                        "ApproximateReceiveCount".to_string(),
-                        msg.receive_count.to_string(),
-                    );
-                    msg.attributes.insert(
-                        "ApproximateFirstReceiveTimestamp".to_string(),
-                        msg.first_receive_timestamp
-                            .unwrap_or(first_receive_ts)
-                            .to_string(),
-                    );
-
-                    result.push(msg);
-                } else {
-                    break;
-                }
-            } else {
+        for msg in self.messages.iter_mut() {
+            if result.len() >= max_count {
                 break;
             }
-        }
+            if !msg.is_visible() {
+                continue;
+            }
 
-        // Put messages back in queue at the end
-        for msg in result.iter() {
-            self.messages.push_back(msg.clone());
+            msg.receive_count += 1;
+            if msg.first_receive_timestamp.is_none() {
+                msg.first_receive_timestamp = Some(now_ms);
+            }
+            msg.set_visibility_timeout(visibility_timeout);
+
+            msg.attributes
+                .insert("SenderId".to_string(), self.account_id.clone());
+            msg.attributes
+                .insert("SentTimestamp".to_string(), msg.sent_timestamp.to_string());
+            msg.attributes.insert(
+                "ApproximateReceiveCount".to_string(),
+                msg.receive_count.to_string(),
+            );
+            msg.attributes.insert(
+                "ApproximateFirstReceiveTimestamp".to_string(),
+                msg.first_receive_timestamp.unwrap_or(now_ms).to_string(),
+            );
+
+            result.push(msg.clone());
+            if visibility_timeout == 0 {
+                // Immediately re-available.
+                msg.visibility_until = None;
+            }
         }
 
         result
+    }
+
+    /// Message counts: (visible, inflight, delayed).
+    pub fn message_counts(&self) -> (usize, usize, usize) {
+        let inflight = self.messages.iter().filter(|m| m.is_inflight()).count();
+        let delayed = self.messages.iter().filter(|m| m.is_delayed()).count();
+        let visible = self.messages.len() - inflight - delayed;
+        (visible, inflight, delayed)
+    }
+
+    /// Remove a message by receipt handle (delete already matches this way).
+    pub fn remove_by_receipt_handle(&mut self, receipt_handle: &str) -> bool {
+        self.delete_message(receipt_handle).is_ok()
     }
 
     /// Remove message by receipt handle
@@ -206,13 +340,71 @@ impl Queue {
 /// Thread-safe SQS storage for a single account+region
 pub struct SqsStore {
     queues: Arc<RwLock<HashMap<String, Arc<RwLock<Queue>>>>>,
+    /// Dead-letter queue redrive (message move) tasks by handle.
+    move_tasks: Arc<parking_lot::RwLock<HashMap<String, MoveTask>>>,
 }
 
 impl SqsStore {
     pub fn new() -> Self {
         Self {
             queues: Arc::new(RwLock::new(HashMap::new())),
+            move_tasks: Arc::new(parking_lot::RwLock::new(HashMap::new())),
         }
+    }
+
+    pub fn get_queue_by_arn(&self, arn: &str) -> Option<Arc<RwLock<Queue>>> {
+        let q = self.queues.read();
+        q.values().find(|queue| queue.read().arn == arn).cloned()
+    }
+
+    /// Queues whose RedrivePolicy targets the given DLQ ARN (in name order).
+    pub fn dead_letter_sources(&self, dlq_arn: &str) -> Vec<Arc<RwLock<Queue>>> {
+        let q = self.queues.read();
+        let mut sources: Vec<Arc<RwLock<Queue>>> = q
+            .values()
+            .filter(|queue| {
+                let attr = queue.read();
+                attr.attributes
+                    .redrive_policy
+                    .as_ref()
+                    .map(|raw| {
+                        serde_json::from_str::<serde_json::Value>(raw)
+                            .ok()
+                            .and_then(|v| {
+                                v.get("deadLetterTargetArn")
+                                    .and_then(|t| t.as_str().map(String::from))
+                            })
+                            .as_deref()
+                            == Some(dlq_arn)
+                    })
+                    .unwrap_or(false)
+            })
+            .cloned()
+            .collect();
+        sources.sort_by_key(|queue| queue.read().name.clone());
+        sources
+    }
+
+    /// Record a completed/cancelled message move task.
+    pub fn record_move_task(&self, task: MoveTask) {
+        self.move_tasks.write().insert(task.task_handle.clone(), task);
+    }
+
+    pub fn get_move_task(&self, handle: &str) -> Option<MoveTask> {
+        self.move_tasks.read().get(handle).cloned()
+    }
+
+    /// Tasks whose source is the given ARN, ordered by start time.
+    pub fn move_tasks_for_source(&self, source_arn: &str) -> Vec<MoveTask> {
+        let mut tasks: Vec<MoveTask> = self
+            .move_tasks
+            .read()
+            .values()
+            .filter(|t| t.source_arn == source_arn)
+            .cloned()
+            .collect();
+        tasks.sort_by_key(|t| t.started_at);
+        tasks
     }
 
     pub fn create_queue(&self, queue: Queue) {
