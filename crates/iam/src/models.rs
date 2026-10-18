@@ -446,19 +446,6 @@ impl IamState {
         removed
     }
 
-    pub fn list_instance_profiles(&self) -> Vec<serde_json::Value> {
-        self.instance_profiles.read().iter().map(|(name, roles)| serde_json::json!({
-            "InstanceProfileName": name,
-            "InstanceProfileArn": format!("arn:aws:iam::123456789012:instance-profile/{}", name),
-            "Path": "/",
-            "CreateDate": "2024-01-01T00:00:00Z",
-            "Roles": roles.iter().map(|r| serde_json::json!({
-                "RoleName": r,
-                "RoleArn": format!("arn:aws:iam::123456789012:role/{}", r),
-            })).collect::<Vec<_>>(),
-        })).collect()
-    }
-
     pub fn add_role_to_instance_profile(&self, profile: &str, role: &str) {
         self.instance_profiles
             .write()
