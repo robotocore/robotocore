@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Development server lifecycle and test runner.
 
-Manages starting/stopping the robotocore server and running tests against it.
+Manages starting/stopping the rust robotocore server and running tests
+against it. The server binary is `target/release/robotocore-rust`; it is
+built on demand if missing.
 
 Usage:
     # Run unit tests (parallel, no server needed)
@@ -38,6 +40,15 @@ PIDFILE = os.path.join(os.path.dirname(__file__), "..", ".robotocore.pid")
 PORT = int(os.environ.get("ROBOTOCORE_PORT", "4566"))
 HEALTH_URL = f"http://localhost:{PORT}/_robotocore/health"
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BINARY = os.path.join(PROJECT_ROOT, "target", "release", "robotocore-rust")
+
+
+def _ensure_binary():
+    """Build the rust server if the release binary is missing."""
+    if os.path.exists(BINARY):
+        return True
+    print("Release binary missing; running `cargo build --release` ...")
+    return subprocess.call(["cargo", "build", "--release"], cwd=PROJECT_ROOT) == 0
 
 
 def _is_server_running():
@@ -69,26 +80,22 @@ def _wait_for_server(timeout=30):
 
 
 def server_start(port=None):
-    """Start the robotocore server in the background."""
+    """Start the rust robotocore server in the background."""
     if _is_server_running():
         print(f"Server already running on port {PORT}")
         return True
 
     port = port or PORT
-    env = os.environ.copy()
-    env["ROBOTOCORE_PORT"] = str(port)
-    env["ROBOTOCORE_HOST"] = "0.0.0.0"
-    # Enable diagnostic logging by default for dev server — captures
-    # full tracebacks for all Moto errors to .robotocore-diag.log
-    env.setdefault("ROBOTOCORE_DIAG", "1")
+    if not _ensure_binary():
+        print(f"Could not build the server binary ({BINARY})")
+        return False
 
     log_path = os.path.join(PROJECT_ROOT, ".robotocore.log")
     log_file = open(log_path, "w")
 
     proc = subprocess.Popen(
-        [sys.executable, "-m", "robotocore.main"],
+        [BINARY, "--port", str(port)],
         cwd=PROJECT_ROOT,
-        env=env,
         stdout=log_file,
         stderr=log_file,
         start_new_session=True,
@@ -97,7 +104,7 @@ def server_start(port=None):
     with open(PIDFILE, "w") as f:
         f.write(str(proc.pid))
 
-    print(f"Starting server (PID {proc.pid}) on port {port}...")
+    print(f"Starting rust server (PID {proc.pid}) on port {port}...")
     if _wait_for_server():
         print(f"Server ready on port {port}")
         return True
