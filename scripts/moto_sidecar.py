@@ -14,6 +14,8 @@ import argparse
 import json
 import logging
 import os
+import re
+import time
 
 os.environ.setdefault("MOTO_ALLOW_NONEXISTENT_REGION", "true")
 
@@ -63,6 +65,449 @@ def _error_response(service_name: str, error_code: str, message: str, status_cod
         f"<Message>{safe_message}</Message></Error></ErrorResponse>"
     )
     return Response(content=body, status_code=status_code, media_type="application/xml")
+
+
+# ---------------------------------------------------------------------------
+# CloudFormation parity hooks.
+#
+# On the Python ground-truth server CloudFormation is a native provider whose
+# engine instantiates real resources in the *native* stores (SQS, SNS,
+# DynamoDB, IAM, SSM - see services/cloudformation/resources.py). Moto
+# instead creates moto-side resources which the Rust server's native
+# services cannot see. To keep cross-service behavior on par, these hooks:
+#   1. reimplement the few ops where moto's response shape or error code
+#      diverges from the Python provider (ValidateTemplate, ListStackResources
+#      timestamps, DescribeChangeSet not-found),
+#   2. mirror moto's resulting stack resources into the Rust server's native
+#      stores over the real AWS APIs (boto3 pointed back at the Rust server).
+# Mirroring is best-effort: failures are logged and never break the moto
+# response itself.
+# ---------------------------------------------------------------------------
+
+_MIRROR_ACTIONS_CREATE = {"CreateStack", "UpdateStack", "ExecuteChangeSet"}
+_MIRROR_ACTIONS_DELETE = {"DeleteStack"}
+
+_pre_stack_state: dict = {}
+
+
+def _callback_base() -> str:
+    """Base URL of the Rust (native) server, used for state mirroring."""
+    url = os.environ.get("ROBOTOCORE_CALLBACK_URL")
+    if url:
+        return url.rstrip("/")
+    return f"http://127.0.0.1:{os.environ.get('RUST_PORT', '4567')}"
+
+
+_boto_clients: dict = {}
+
+
+def _boto(service: str, account_id: str, region: str):
+    import boto3
+    import botocore.config
+
+    key = (service, account_id, region)
+    if key not in _boto_clients:
+        _boto_clients[key] = boto3.client(
+            service,
+            endpoint_url=_callback_base(),
+            region_name=region,
+            aws_access_key_id=account_id or DEFAULT_ACCOUNT_ID,
+            aws_secret_access_key="testing",
+            config=botocore.config.Config(
+                retries={"total_max_attempts": 1},
+                read_timeout=20,
+                connect_timeout=3,
+            ),
+        )
+    return _boto_clients[key]
+
+
+def _moto_backend(service: str, account_id: str, region: str):
+    """Fetch a moto service backend for a concrete account/region."""
+    d = moto_backends.get_backend(service)
+    try:
+        if isinstance(d, BackendDict):
+            return d[account_id][region]
+        return d[region]
+    except (KeyError, TypeError):
+        return None
+
+
+def _stack_for(backend, name_or_id):
+    """Find a moto CloudFormation stack by name, stack-id, or arn."""
+    if backend is None:
+        return None
+    for stack in backend.stacks.values():
+        if name_or_id in (stack.name, stack.stack_id):
+            return stack
+    return None
+
+
+def _mirror_sqs(name_url: str, account_id, region):
+    name = name_url.rstrip("/").rsplit("/", 1)[-1]
+    if not name:
+        return
+    _boto("sqs", account_id, region).create_queue(QueueName=name)
+
+
+def _mirror_sqs_delete(name_url: str, account_id, region):
+    name = name_url.rstrip("/").rsplit("/", 1)[-1]
+    if not name:
+        return
+    try:
+        url = _boto("sqs", account_id, region).get_queue_url(QueueName=name)["QueueUrl"]
+        _boto("sqs", account_id, region).delete_queue(QueueUrl=url)
+    except Exception as e:  # noqa: BLE001
+        logger.debug("mirror sqs delete %s failed: %s", name, e)
+
+
+def _mirror_sns(topic_arn: str, account_id, region):
+    name = topic_arn.rsplit(":", 1)[-1]
+    if not name:
+        return
+    _boto("sns", account_id, region).create_topic(Name=name)
+
+
+def _mirror_sns_delete(topic_arn: str, account_id, region):
+    try:
+        _boto("sns", account_id, region).delete_topic(TopicArn=topic_arn)
+    except Exception as e:  # noqa: BLE001
+        logger.debug("mirror sns delete %s failed: %s", topic_arn, e)
+
+
+from copy import deepcopy
+
+
+def _resolved_stack_resources(stack):
+    """(logical_id, resource_type, resolved props, physical_resource_id) list.
+
+    Resolves CFN intrinsics through moto's own parse_resource so Ref/Fn::Sub/
+    Fn::GetAtt values in properties are concrete names/ARNs - this is what the
+    mirror layer needs to recreate the same resources in the Rust server.
+    """
+    if stack is None:
+        return []
+    from moto.cloudformation.parsing import parse_resource, clean_json
+
+    tdict = getattr(stack, "template_dict", None) or {}
+    rmap = getattr(stack, "resource_map", {}) or {}
+    out = []
+    for lid, rj in (tdict.get("Resources") or {}).items():
+        rtype = rj.get("Type", "")
+        props: dict = {}
+        try:
+            result = parse_resource(deepcopy(rj), rmap)
+            if result is None:
+                # Unsupported resource type (e.g. AWS::SNS::Subscription):
+                # resolve properties manually with moto's clean_json so
+                # Ref/Fn::Sub/Fn::GetAtt still yield concrete values.
+                raw_props = rj.get("Properties") or {}
+                for k, v in raw_props.items():
+                    try:
+                        props[k] = clean_json(deepcopy(v), rmap)
+                    except Exception:  # noqa: BLE001
+                        props[k] = v
+            else:
+                _cls, resolved, rtype = result
+                props = dict(resolved.get("Properties") or {})
+        except Exception as e:  # noqa: BLE001
+            logger.debug("resolve %s failed (%s), using physical id fallback", lid, e)
+        inst = rmap.get(lid)
+        rtype = getattr(inst, "cf_resource_type", "") or rtype
+        phys = getattr(inst, "physical_resource_id", "") if inst is not None else ""
+        if not isinstance(phys, str):
+            phys = ""
+        out.append((lid, rtype, props, phys))
+    return out
+
+
+def _mirror_sns_subscription(props: dict, account_id, region):
+    topic_arn = props.get("TopicArn") or ""
+    protocol = props.get("Protocol") or "sqs"
+    endpoint = props.get("Endpoint") or ""
+    if not (topic_arn and endpoint):
+        return
+    try:
+        _boto("sns", account_id, region).subscribe(
+            TopicArn=topic_arn, Protocol=protocol, Endpoint=endpoint
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.debug("mirror sns subscribe failed: %s", e)
+
+
+def _mirror_dynamo_table(props: dict, phys: str, account_id, region):
+    name = props.get("TableName") or phys or ""
+    if not name:
+        return
+    ddb = _moto_backend("dynamodb", account_id, region)
+    moto_table = None
+    if ddb is not None:
+        try:
+            moto_table = ddb.get_table(name)
+        except Exception:  # noqa: BLE001
+            moto_table = None
+
+    kwargs = {"TableName": name}
+    if moto_table is not None:
+        for src, dst in (
+            ("attribute_definitions", "AttributeDefinitions"),
+            ("key_schema", "KeySchema"),
+            ("global_secondary_indexes", "GlobalSecondaryIndexes"),
+            ("local_secondary_indexes", "LocalSecondaryIndexes"),
+        ):
+            val = getattr(moto_table, src, None)
+            if val:
+                kwargs[dst] = json.loads(json.dumps(val, default=str))
+        if getattr(moto_table, "billing_mode", None):
+            kwargs["BillingMode"] = moto_table.billing_mode
+        else:
+            pth = getattr(moto_table, "provisioned_throughput", None)
+            kwargs.setdefault(
+                "ProvisionedThroughput",
+                {
+                    "ReadCapacityUnits": pth.get("ReadCapacityUnits", 1)
+                    if isinstance(pth, dict)
+                    else 1,
+                    "WriteCapacityUnits": pth.get("WriteCapacityUnits", 1)
+                    if isinstance(pth, dict)
+                    else 1,
+                },
+            )
+    else:
+        kwargs["AttributeDefinitions"] = props.get("AttributeDefinitions") or [
+            {"AttributeName": "id", "AttributeType": "S"}
+        ]
+        kwargs["KeySchema"] = props.get("KeySchema") or [{"AttributeName": "id", "KeyType": "HASH"}]
+        if props.get("BillingMode"):
+            kwargs["BillingMode"] = props["BillingMode"]
+        kwargs.setdefault(
+            "ProvisionedThroughput", {"ReadCapacityUnits": 1, "WriteCapacityUnits": 1}
+        )
+    try:
+        _boto("dynamodb", account_id, region).create_table(**kwargs)
+    except Exception as e:  # noqa: BLE001
+        logger.debug("mirror dynamo create %s failed: %s", name, e)
+
+
+def _mirror_dynamo_delete(name: str, account_id, region):
+    try:
+        _boto("dynamodb", account_id, region).delete_table(TableName=name)
+    except Exception as e:  # noqa: BLE001
+        logger.debug("mirror dynamo delete %s failed: %s", name, e)
+
+
+def _mirror_iam_role(props: dict, phys: str, account_id, region):
+    name = props.get("RoleName") or phys or ""
+    if not name:
+        return
+    assume = props.get("AssumeRolePolicyDocument")
+    if assume is None:
+        iam = _moto_backend("iam", account_id, region)
+        role = getattr(iam, "roles", {}).get(name) if iam is not None else None
+        assume = getattr(role, "assume_role_policy_document", None) if role else None
+    try:
+        _boto("iam", account_id, region).create_role(
+            RoleName=name,
+            AssumeRolePolicyDocument=assume if isinstance(assume, str) else json.dumps(assume or {}),
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.debug("mirror iam create %s failed: %s", name, e)
+
+
+def _mirror_iam_delete(name: str, account_id, region):
+    try:
+        _boto("iam", account_id, region).delete_role(RoleName=name)
+    except Exception as e:  # noqa: BLE001
+        logger.debug("mirror iam delete %s failed: %s", name, e)
+
+
+def _mirror_ssm_parameter(props: dict, phys: str, account_id, region):
+    name = props.get("Name") or phys or ""
+    value = props.get("Value")
+    ptype = props.get("Type", "String")
+    if not name:
+        return
+    try:
+        _boto("ssm", account_id, region).put_parameter(
+            Name=name, Value=str(value), Type=ptype, Overwrite=True
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.debug("mirror ssm put %s failed: %s", name, e)
+
+
+def _mirror_ssm_delete(name: str, account_id, region):
+    try:
+        _boto("ssm", account_id, region).delete_parameter(Name=name)
+    except Exception as e:  # noqa: BLE001
+        logger.debug("mirror ssm delete %s failed: %s", name, e)
+
+
+def _snapshot_stack_resources(backend, stack_name):
+    """(logical_id, resource_type, props, physical_id) before a delete."""
+    stack = _stack_for(backend, stack_name)
+    if stack is None:
+        return []
+    out = []
+    for lid, rtype, props, phys in _resolved_stack_resources(stack):
+        if not props:
+            # Fallback: derive name-bearing props from the physical id so
+            # deletes can still target the mirrored resource.
+            if rtype == "AWS::SQS::Queue" and phys:
+                props = {"QueueName": phys.rstrip("/").rsplit("/", 1)[-1]}
+            elif rtype == "AWS::SSM::Parameter" and phys:
+                props = {"Name": phys}
+        out.append((lid, rtype, props, phys))
+    return out
+
+
+def _mirror_create_side(backend, params, account_id, region):
+    stack_name = params.get("StackName", "")
+    stack = _stack_for(backend, stack_name)
+    if stack is None:
+        return
+    for lid, rtype, props, phys in _resolved_stack_resources(stack):
+        try:
+            if rtype == "AWS::SQS::Queue":
+                _mirror_sqs(props.get("QueueName") or phys, account_id, region)
+            elif rtype == "AWS::SNS::Topic":
+                if props.get("TopicName"):
+                    _mirror_sns(
+                        f"arn:aws:sns:{region}:{account_id}:{props['TopicName']}",
+                        account_id,
+                        region,
+                    )
+                elif phys:
+                    _mirror_sns(phys, account_id, region)
+            elif rtype == "AWS::SNS::Subscription":
+                _mirror_sns_subscription(props, account_id, region)
+            elif rtype == "AWS::DynamoDB::Table":
+                _mirror_dynamo_table(props, phys, account_id, region)
+            elif rtype == "AWS::IAM::Role":
+                _mirror_iam_role(props, phys, account_id, region)
+            elif rtype == "AWS::SSM::Parameter":
+                _mirror_ssm_parameter(props, phys, account_id, region)
+        except Exception as e:  # noqa: BLE001
+            logger.debug("mirror create %s/%s failed: %s", stack_name, lid, e)
+
+
+def _mirror_delete_side(snapshot, account_id, region):
+    for _lid, rtype, props, phys in snapshot:
+        if not isinstance(phys, str):
+            phys = ""
+        try:
+            if rtype == "AWS::SQS::Queue":
+                name = props.get("QueueName") or (phys.rstrip("/").rsplit("/", 1)[-1] if phys else "")
+                if name:
+                    _mirror_sqs_delete(name, account_id, region)
+            elif rtype == "AWS::SNS::Topic":
+                arn = props.get("TopicArn") or ""
+                arn = arn if isinstance(arn, str) else phys
+                if arn:
+                    _mirror_sns_delete(arn, account_id, region)
+            elif rtype == "AWS::DynamoDB::Table":
+                name = props.get("TableName") or phys
+                if name and isinstance(name, str):
+                    _mirror_dynamo_delete(name, account_id, region)
+            elif rtype == "AWS::IAM::Role":
+                name = props.get("RoleName") or (phys if isinstance(phys, str) else "")
+                if name:
+                    _mirror_iam_delete(name, account_id, region)
+            elif rtype == "AWS::SSM::Parameter":
+                name = props.get("Name") or (phys if isinstance(phys, str) else "")
+                if name:
+                    _mirror_ssm_delete(name, account_id, region)
+        except Exception as e:  # noqa: BLE001
+            logger.debug("mirror delete %s failed: %s", rtype, e)
+
+
+def _cfn_validate_template(params: dict, service: str) -> Response | None:
+    """ValidateTemplate mirroring the Python provider's semantics."""
+    template_body = params.get("TemplateBody") or ""
+    if not template_body:
+        return _error_response(service, "ValidationError", "TemplateBody is required", 400)
+    try:
+        from robotocore.services.cloudformation.engine import parse_template
+
+        template = parse_template(template_body)
+    except Exception as e:  # noqa: BLE001
+        return _error_response(service, "ValidationError", f"Template format error: {e}", 400)
+    if not template.get("Resources"):
+        return _error_response(
+            service, "ValidationError", "Template must contain a Resources section", 400
+        )
+    members = []
+    for pname, pdef in (template.get("Parameters") or {}).items():
+        member = f"<member><ParameterKey>{pname}</ParameterKey>"
+        if "Default" in pdef:
+            member += f"<DefaultValue>{pdef['Default']}</DefaultValue>"
+        if "Type" in pdef:
+            member += f"<ParameterType>{pdef['Type']}</ParameterType>"
+        if "Description" in pdef:
+            member += f"<Description>{pdef['Description']}</Description>"
+        member += "<NoEcho>false</NoEcho></member>"
+        members.append(member)
+    body = '<ValidateTemplateResponse xmlns="http://cloudformation.amazonaws.com/doc/2010-05-15/">'
+    body += "<ValidateTemplateResult>"
+    if template.get("Description"):
+        body += f"<Description>{template['Description']}</Description>"
+    body += "<Parameters>" + "".join(members) + "</Parameters>"
+    body += "</ValidateTemplateResult>"
+    body += "<ResponseMetadata><RequestId>d67839b1-d0d9-4011-a5c5-123456789012</RequestId></ResponseMetadata>"
+    body += "</ValidateTemplateResponse>"
+    return Response(content=body, status_code=200, media_type="application/xml")
+
+
+def _cfn_pre_dispatch(service, action, params, backend):
+    """Pre-dispatch hook. Returns None (fall through to moto) or a Response."""
+    if service != "cloudformation":
+        return None
+    if action == "ValidateTemplate":
+        return _cfn_validate_template(params, service)
+    if action == "DescribeChangeSet":
+        cs_name = params.get("ChangeSetName", "")
+        try:
+            backend.describe_change_set(cs_name)
+        except Exception:
+            return _error_response(
+                service,
+                "ChangeSetNotFoundException",
+                f"ChangeSet [{cs_name}] does not exist",
+                404,
+            )
+    if action in _MIRROR_ACTIONS_DELETE:
+        _pre_stack_state[params.get("StackName", "")] = _snapshot_stack_resources(
+            backend, params.get("StackName", "")
+        )
+    return None
+
+
+def _cfn_post_process(service, action, params, resp_body, backend, account_id, region):
+    """Best-effort normalization after moto produced a response.
+
+    `resp_body` is bytes or None. Returns the (possibly modified) body bytes.
+    """
+    if service != "cloudformation":
+        return resp_body
+    if action == "ListStackResources" and resp_body:
+        body = resp_body.decode("utf-8", "replace")
+        ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        body = re.sub(r"<LastUpdate(d)?Timestamp>[^<]*</LastUpdate(d)?Timestamp>", "", body)
+        body = re.sub(
+            r"(<ResourceStatus>[^<]*</ResourceStatus>)",
+            r"\1<LastUpdatedTimestamp>" + ts + "</LastUpdatedTimestamp>",
+            body,
+        )
+        return body.encode("utf-8")
+    if action in _MIRROR_ACTIONS_CREATE:
+        try:
+            _mirror_create_side(backend, params, account_id, region)
+        except Exception as e:  # noqa: BLE001
+            logger.debug("mirror create side failed: %s", e)
+    elif action in _MIRROR_ACTIONS_DELETE:
+        snapshot = _pre_stack_state.pop(params.get("StackName", ""), [])
+        if snapshot:
+            _mirror_delete_side(snapshot, account_id, region)
+    return resp_body
 
 
 class WerkzeugRawBodyRequest(WerkzeugRequest):
@@ -337,6 +782,26 @@ async def moto_handler(request: Request) -> Response:
 
     werkzeug_request = WerkzeugRawBodyRequest(environ, body)
 
+    # CloudFormation parity hooks: params dict for pre-dispatch interception.
+    cfn_backend = None
+    params: dict = {}
+    if service in ("cloudformation",):
+        try:
+            cfn_backend = _moto_backend(service, account_id_from_headers, region)
+        except Exception:  # noqa: BLE001
+            cfn_backend = None
+        for k, v in werkzeug_request.form.items():
+            params[k] = v
+        for k, v in parse_qsl(query, keep_blank_values=True):
+            params.setdefault(k, v)
+        try:
+            pre = _cfn_pre_dispatch(service, params.get("Action", ""), params, cfn_backend)
+        except Exception as e:  # noqa: BLE001
+            logger.debug("cfn pre-dispatch failed: %s", e)
+            pre = None
+        if pre is not None:
+            return pre
+
     # Route to the correct Moto handler
     try:
         binding = routing_map.bind_to_environ(environ)
@@ -364,6 +829,22 @@ async def moto_handler(request: Request) -> Response:
         status_code, resp_headers, resp_body = result
         if isinstance(resp_body, (str, bytes)) and len(resp_body) == 0:
             resp_body = None
+        if isinstance(resp_body, str):
+            resp_body = resp_body.encode("utf-8")
+
+        if service == "cloudformation" and resp_body:
+            try:
+                resp_body = _cfn_post_process(
+                    service,
+                    params.get("Action", ""),
+                    params,
+                    resp_body,
+                    cfn_backend,
+                    account_id_from_headers,
+                    region,
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.debug("cfn post-process failed: %s", e)
 
         headers_dict = dict(resp_headers) if resp_headers else {}
         # Moto handlers don't set Content-Type on their response headers; the
@@ -468,7 +949,7 @@ def main():
     parser.add_argument("--host", type=str, default="127.0.0.1")
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG if os.environ.get("SIDECAR_DEBUG") else logging.INFO)
     logger.info(f"Starting Moto sidecar on {args.host}:{args.port}")
 
     app = create_app()
