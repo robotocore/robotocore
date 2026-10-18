@@ -2724,12 +2724,9 @@ impl IamHandler {
     // ---------------- Instance profiles ----------------
 
     fn instance_profile_xml(&self, state: &IamState, name: &str) -> String {
-        let arn = format!(
-            "arn:aws:iam::{}:instance-profile/{}",
-            state_account_id(state),
-            name
-        );
-        let _ = arn;
+        // AWS stamps CreateDate as RFC3339 with seconds precision,
+        // e.g. 2026-10-17T12:00:00Z.
+        let create_date = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
         let ip_id = state
             .instance_profile_ids
             .read()
@@ -2737,8 +2734,8 @@ impl IamHandler {
             .cloned()
             .unwrap_or_default();
         let mut s = format!(
-            "<InstanceProfile><Path>/</Path><InstanceProfileName>{}</InstanceProfileName><InstanceProfileId>{}</InstanceProfileId><Arn>arn:aws:iam::{}:instance-profile/{}</Arn><CreateDate>2024-01-01T00:00:00Z</CreateDate>",
-            xml_escape(name), ip_id, state_account_id(state), name
+            "<InstanceProfile><Path>/</Path><InstanceProfileName>{}</InstanceProfileName><InstanceProfileId>{}</InstanceProfileId><Arn>arn:aws:iam::{}:instance-profile/{}</Arn><CreateDate>{}</CreateDate>",
+            xml_escape(name), ip_id, state_account_id(state), name, create_date
         );
         {
             let profiles = state.instance_profiles.read();
