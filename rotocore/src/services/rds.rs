@@ -4418,4 +4418,290 @@ fn cluster_snapshot_attrs_xml(identifier: &str, attrs: &[(String, Vec<String>)])
     }
 }
 
+
+// Snapshot attributes (cluster) + restore flows ------------------------------
+
+fn describe_db_cluster_snapshot_attributes(
+    st: &RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let ident = p_string(p, "DBClusterSnapshotIdentifier").unwrap_or_default();
+    let snap_id = ident.to_lowercase();
+    match find_cluster_snapshot(st, &snap_id) {
+        Some(s) => {
+            let attrs = vec![("restore".to_string(), s.attributes_restore.clone())];
+            Ok(Some(cluster_snapshot_attrs_xml(&snap_id, &attrs)))
+        }
+        None => Err(RdsError::not_found404(
+            "DBClusterSnapshotNotFoundFault",
+            format!("DBClusterSnapshot {ident} not found."),
+        )),
+    }
+}
+
+fn modify_db_cluster_snapshot_attribute(
+    st: &mut RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let ident = p_string(p, "DBClusterSnapshotIdentifier").unwrap_or_default();
+    let snap_id = ident.to_lowercase();
+    let existing = match find_cluster_snapshot(st, &snap_id) {
+        Some(s) => s.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBClusterSnapshotNotFoundFault",
+                format!("DBClusterSnapshot {ident} not found."),
+            ))
+        }
+    };
+    if existing.snapshot_type != "manual" {
+        return Err(RdsError::client400(
+            "InvalidDBClusterSnapshotStateFault",
+            "automated snapshots cannot be modified.",
+        ));
+    }
+    let attribute_name = p_string(p, "AttributeName").unwrap_or_default();
+    if attribute_name != "restore" {
+        return Err(RdsError::client400(
+            "InvalidParameterValue",
+            format!("Invalid snapshot attribute {attribute_name}"),
+        ));
+    }
+    let mut merged = existing.attributes_restore.clone();
+    for v in p_list(p, "ValuesToAdd") {
+        if !merged.contains(&v) {
+            merged.push(v);
+        }
+    }
+    let mut remove = p_list(p, "ValuesToRemove");
+    remove.retain(|v| !p_list(p, "ValuesToAdd").contains(v));
+    let mut merged2: Vec<String> = Vec::new();
+    for v in merged {
+        if !remove.contains(&v) && !merged2.contains(&v) {
+            merged2.push(v);
+        }
+    }
+    if merged2.len() > 20 {
+        return Err(RdsError::client400(
+            "SharedSnapshotQuotaExceeded",
+            "The request cannot be processed because it would exceed the maximum number of snapshots.",
+        ));
+    }
+    st.cluster_snapshots
+        .get_mut(&snap_id)
+        .unwrap()
+        .attributes_restore = merged2;
+    let attrs = vec![(
+        "restore".to_string(),
+        st.cluster_snapshots[&snap_id].attributes_restore.clone(),
+    )];
+    Ok(Some(cluster_snapshot_attrs_xml(&snap_id, &attrs)))
+}
+
+fn restore_db_instance_from_db_snapshot(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let snapshot_name = p_string(p, "DBSnapshotIdentifier").unwrap_or_default();
+    let snap_id = snapshot_name.to_lowercase();
+    let src = match find_snapshot(st, &snap_id) {
+        Some(s) => s.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBSnapshotNotFound",
+                format!("DBSnapshot {snapshot_name} not found."),
+            ))
+        }
+    };
+    let identifier = p_string(p, "DBInstanceIdentifier").unwrap_or_default();
+    let new_id = identifier.to_lowercase();
+    if st.databases.contains_key(&new_id) {
+        return Err(RdsError::client400(
+            "DBInstanceAlreadyExists",
+            "DB instance already exists",
+        ));
+    }
+    let mut db = src.source.clone();
+    db.id = new_id.clone();
+    db.original_id = identifier.clone();
+    db.option_group_name = DBCluster::compute_default_option_group(&db.engine, &db.engine_version);
+    db.option_group_supplied = false;
+    db.created = Utc::now();
+    if let Some(v) = p_i64(p, "AllocatedStorage") {
+        db.allocated_storage = v;
+    }
+    if let Some(v) = p_string(p, "DBInstanceClass") {
+        db.db_instance_class = v;
+    }
+    if p_string(p, "Engine").is_none() && db.engine.contains("aurora") {
+        db.engine_version = DBInstance::default_engine_version(&db.engine)
+            .unwrap_or(&db.engine_version)
+            .to_string();
+    }
+    ensure_pg_for_instance(st, &db);
+    st.databases.insert(new_id.clone(), db.clone());
+    let arn = format!("arn:aws:rds:{region}:{acct}:db:{new_id}");
+    st.add_event("DB_INSTANCE_CREATE", &new_id, arn);
+    create_automated_snapshot(st, acct, region, &new_id, &auto_snapshot_id(&new_id));
+    match st.databases.get(&new_id) {
+        Some(found) => Ok(Some(db_instance_xml(st, acct, region, found))),
+        None => Ok(None),
+    }
+}
+
+fn restore_db_instance_to_point_in_time(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let source = p_string(p, "SourceDBInstanceIdentifier").unwrap_or_default();
+    let target = p_string(p, "TargetDBInstanceIdentifier").unwrap_or_default();
+    let src_id = source.to_lowercase();
+    let src = match find_instance(st, &src_id) {
+        Some(d) => d.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBInstanceNotFound",
+                format!("DBInstance {source} not found."),
+            ))
+        }
+    };
+    let new_id = target.to_lowercase();
+    if st.databases.contains_key(&new_id) {
+        return Err(RdsError::client400(
+            "DBInstanceAlreadyExists",
+            "DB instance already exists",
+        ));
+    }
+    let mut db = src.clone();
+    db.id = new_id.clone();
+    db.original_id = target.clone();
+    db.db_name = src.db_name.clone();
+    db.option_group_name = DBCluster::compute_default_option_group(&db.engine, &db.engine_version);
+    db.option_group_supplied = false;
+    db.created = Utc::now();
+    if let Some(v) = p_i64(p, "AllocatedStorage") {
+        db.allocated_storage = v;
+    }
+    if let Some(v) = p_string(p, "DBInstanceClass") {
+        db.db_instance_class = v;
+    }
+    ensure_pg_for_instance(st, &db);
+    st.databases.insert(new_id.clone(), db.clone());
+    let arn = format!("arn:aws:rds:{region}:{acct}:db:{new_id}");
+    st.add_event("DB_INSTANCE_CREATE", &new_id, arn);
+    create_automated_snapshot(st, acct, region, &new_id, &auto_snapshot_id(&new_id));
+    match st.databases.get(&new_id) {
+        Some(found) => Ok(Some(db_instance_xml(st, acct, region, found))),
+        None => Ok(None),
+    }
+}
+
+fn restore_db_cluster_from_snapshot(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let snapshot_name = p_string(p, "SnapshotIdentifier").unwrap_or_default();
+    let snap_id = snapshot_name.to_lowercase();
+    let src = match find_cluster_snapshot(st, &snap_id) {
+        Some(s) => s.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBClusterSnapshotNotFoundFault",
+                format!("DBClusterSnapshot {snapshot_name} not found."),
+            ))
+        }
+    };
+    let identifier = p_string(p, "DBClusterIdentifier").unwrap_or_default();
+    let new_id = identifier.to_lowercase();
+    if st.clusters.contains_key(&new_id) {
+        return Err(RdsError::client400(
+            "DBClusterAlreadyExistsFault",
+            format!("DBCluster {identifier} already exists."),
+        ));
+    }
+    let mut cluster = src.cluster.clone();
+    cluster.id = new_id;
+    cluster.original_id = identifier;
+    let (url_id, hz, resource) = new_cluster_ids();
+    cluster.url_identifier = url_id;
+    cluster.hosted_zone_id = hz;
+    cluster.resource_id = resource;
+    cluster.created = Utc::now();
+    cluster.status = "creating".into();
+    cluster.status_shown = std::sync::atomic::AtomicBool::new(false);
+    cluster.engine_version = src.cluster.engine_version.clone();
+    if let Some(engine) = p_string(p, "Engine") {
+        cluster.engine = engine;
+    }
+    let key = cluster.id.clone();
+    st.clusters.insert(key.clone(), cluster);
+    let timestamp = Utc::now().format("%Y-%m-%d-%H-%M");
+    let snap_name = format!("rds:{}-{}", key, timestamp);
+    if let Some(cl) = st.clusters.get(&key).cloned() {
+        let snap = cluster_snapshot_from(&cl, &snap_name, "automated", &[]);
+        st.cluster_snapshots.insert(snap.id.clone(), snap);
+    }
+    match st.clusters.get(&key) {
+        Some(found) => Ok(Some(db_cluster_xml(st, acct, region, found))),
+        None => Ok(None),
+    }
+}
+
+fn restore_db_cluster_to_point_in_time(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let source = p_string(p, "SourceDBClusterIdentifier").unwrap_or_default();
+    let identifier = p_string(p, "DBClusterIdentifier").unwrap_or_default();
+    let src_id = source.to_lowercase();
+    let src = match find_cluster(st, &src_id) {
+        Some(c) => c.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBClusterNotFoundFault",
+                format!("DBCluster {source} not found."),
+            ))
+        }
+    };
+    let new_id = identifier.to_lowercase();
+    if st.clusters.contains_key(&new_id) {
+        return Err(RdsError::client400(
+            "DBClusterAlreadyExistsFault",
+            format!("DBCluster {identifier} already exists."),
+        ));
+    }
+    let mut cluster = src.clone();
+    cluster.id = new_id;
+    cluster.original_id = identifier;
+    cluster.database_name = src.database_name.clone();
+    let (url_id, hz, resource) = new_cluster_ids();
+    cluster.url_identifier = url_id;
+    cluster.hosted_zone_id = hz;
+    cluster.resource_id = resource;
+    cluster.created = Utc::now();
+    cluster.status = "creating".into();
+    cluster.status_shown = std::sync::atomic::AtomicBool::new(false);
+    cluster.global_cluster_identifier = None;
+    let key = cluster.id.clone();
+    st.clusters.insert(key.clone(), cluster);
+    let timestamp = Utc::now().format("%Y-%m-%d-%H-%M");
+    let snap_name = format!("rds:{}-{}", key, timestamp);
+    if let Some(cl) = st.clusters.get(&key).cloned() {
+        let snap = cluster_snapshot_from(&cl, &snap_name, "automated", &[]);
+        st.cluster_snapshots.insert(snap.id.clone(), snap);
+    }
+    match st.clusters.get(&key) {
+        Some(found) => Ok(Some(db_cluster_xml(st, acct, region, found))),
+        None => Ok(None),
+    }
+}
+
 // __APPEND_MARKER__
