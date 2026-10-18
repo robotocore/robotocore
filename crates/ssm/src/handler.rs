@@ -1240,11 +1240,20 @@ impl SsmHandler {
                 "The document version is not valid or does not exist.",
             );
         }
-        let old = container
-            .versions
-            .get(&container.default_version)
-            .cloned()
-            .unwrap();
+        // A concurrent default-version change (or race with another updater)
+        // can leave the default version missing from the container; return an
+        // error instead of panicking. Same shape as the invalid-version error
+        // above.
+        let old = match container.versions.get(&container.default_version).cloned() {
+            Some(old) => old,
+            None => {
+                return AwsResponse::error(
+                    400,
+                    "InvalidDocumentVersion",
+                    "The document version is not valid or does not exist.",
+                )
+            }
+        };
         let new_version = (container.latest_version.parse::<u64>().unwrap_or(0) + 1).to_string();
         for existing in container.versions.values() {
             if existing.content == content {
@@ -2146,14 +2155,13 @@ impl SsmHandler {
             .unwrap_or("")
             .to_string();
         let state = self.get_state(req.account, &req.region);
-        if state.windows.read().get(&wid).is_none() {
-            return AwsResponse::error(
-                400,
-                "DoesNotExistException",
-                &format!("Maintenance window {wid} does not exist"),
-            );
-        }
-        let window = self.window_by_id(&state, &wid).ok().unwrap();
+        // Use the lookup result directly: the earlier check-then-re-lock
+        // pattern panicked when a concurrent delete removed the window
+        // between the two scopes.
+        let window = match self.window_by_id(&state, &wid) {
+            Ok(w) => w,
+            Err(e) => return e,
+        };
         let mut targets = window.targets.write();
         let Some(target) = targets.get_mut(&tid) else {
             return AwsResponse::error(
