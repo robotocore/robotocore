@@ -13,6 +13,7 @@ use crate::{Request, Response};
 mod acm;
 mod amp;
 mod appmesh;
+mod greengrass;
 mod kinesisanalyticsv2;
 
 pub fn dispatch(req: &Request) -> Option<Response> {
@@ -21,6 +22,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "kinesisanalyticsv2" => Some(kinesisanalyticsv2::dispatch(req)),
         "amp" => Some(amp::dispatch(req)),
         "appmesh" => Some(appmesh::dispatch(req)),
+        "greengrass" => Some(greengrass::dispatch(req)),
         _ => None,
     }
 }
