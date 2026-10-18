@@ -297,13 +297,13 @@ impl EcsHandler {
                 .unwrap_or_default(),
         );
         let state = self.get_state(req.account, &req.region);
-        let exists = state.clusters.read().contains_key(name);
-        if !exists {
-            return cluster_not_found(name);
-        }
         let updated = {
             let mut clusters = state.clusters.write();
-            let cluster = clusters.get_mut(name).unwrap();
+            // Match under the write lock: a concurrent DeleteCluster could
+            // remove the entry between a check and this lookup.
+            let Some(cluster) = clusters.get_mut(name) else {
+                return cluster_not_found(name);
+            };
             if apply_settings {
                 if let Some(settings) = req.params.get("settings") {
                     cluster["settings"] = settings.clone();
@@ -335,9 +335,6 @@ impl EcsHandler {
                 .unwrap_or_default(),
         );
         let state = self.get_state(req.account, &req.region);
-        if !state.clusters.read().contains_key(name) {
-            return cluster_not_found(name);
-        }
         let updated = {
             let providers = req
                 .params
@@ -350,7 +347,11 @@ impl EcsHandler {
                 .cloned()
                 .unwrap_or(json!([]));
             let mut clusters = state.clusters.write();
-            let cluster = clusters.get_mut(name).unwrap();
+            // Match under the write lock: a concurrent DeleteCluster could
+            // remove the entry between a check and this lookup.
+            let Some(cluster) = clusters.get_mut(name) else {
+                return cluster_not_found(name);
+            };
             cluster["capacityProviders"] = providers;
             cluster["defaultCapacityProviderStrategy"] = strategy;
             cluster.clone()
@@ -455,14 +456,6 @@ impl EcsHandler {
             .and_then(|v| v.as_str())
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
-        let exists = state.capacity_providers.read().contains_key(name);
-        if !exists {
-            return AwsResponse::error(
-                400,
-                "CapacityProviderNotFoundException",
-                &format!("The specified capacity provider {} was not found", name),
-            );
-        }
         let asg = req
             .params
             .get("autoScalingGroupProvider")
@@ -470,7 +463,16 @@ impl EcsHandler {
             .unwrap_or(json!({}));
         let updated = {
             let mut cps = state.capacity_providers.write();
-            let cp = cps.get_mut(name).unwrap();
+            // Match under the write lock: a concurrent
+            // DeleteCapacityProvider could remove the entry between a check
+            // and this lookup.
+            let Some(cp) = cps.get_mut(name) else {
+                return AwsResponse::error(
+                    400,
+                    "CapacityProviderNotFoundException",
+                    &format!("The specified capacity provider {} was not found", name),
+                );
+            };
             merge_asg(cp, &asg);
             cp.clone()
         };
