@@ -189,7 +189,13 @@ impl EcrHandler {
                         name));
             }
         }
-        let repo = state.repositories.write().remove(name).unwrap();
+        // A concurrent DeleteRepository can remove the entry between the
+        // existence check above and this lock — handle absence instead of
+        // panicking.
+        let repo = match state.repositories.write().remove(name) {
+            Some(repo) => repo,
+            None => return repo_not_found(req, name),
+        };
         state.images.write().remove(name);
         state.repository_policies.write().remove(name);
         state.lifecycle_policies.write().remove(name);
