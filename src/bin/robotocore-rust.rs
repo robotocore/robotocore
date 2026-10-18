@@ -35,6 +35,10 @@ struct Args {
     /// Start the Moto sidecar automatically
     #[arg(long)]
     auto_moto: bool,
+
+    /// Address to listen on (default 127.0.0.1; containers pass 0.0.0.0)
+    #[arg(long, default_value = "127.0.0.1")]
+    host: String,
 }
 
 #[tokio::main]
@@ -97,7 +101,7 @@ async fn main() {
     let app = build_router(registry, snapshots, moto_proxy);
 
     // Create listener
-    let addr = format!("127.0.0.1:{}", args.port);
+    let addr = format!("{}:{}", args.host, args.port);
     let listener = match TcpListener::bind(&addr).await {
         Ok(l) => l,
         Err(e) => {

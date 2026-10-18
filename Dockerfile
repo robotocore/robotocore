@@ -39,4 +39,4 @@ HEALTHCHECK --interval=5s --timeout=3s --start-period=5s --retries=6 \
 # `docker run -p` won't be reachable from the host until src/bin gains a
 # bind-address flag (post-python phase). Healthcheck + --network host runs
 # work today; the in-container probe hits the server over loopback.
-ENTRYPOINT ["/server/robotocore-rust", "--port", "4566"]
+ENTRYPOINT ["/server/robotocore-rust", "--host", "0.0.0.0", "--port", "4566"]

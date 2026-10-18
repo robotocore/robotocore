@@ -55,14 +55,20 @@ fn with_scope<T>(
 }
 
 fn body_field(v: &Value, key: &str) -> String {
-    v.get(key).and_then(Value::as_str).unwrap_or_default().to_string()
+    v.get(key)
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string()
 }
 
 /// nth path segment after `marker`.
 fn seg_after(path: &str, marker: &str) -> String {
     let segs: Vec<&str> = path.split('/').collect();
     match segs.iter().position(|s| *s == marker) {
-        Some(pos) => segs.get(pos + 1).map(|s| decode_path_seg(s)).unwrap_or_default(),
+        Some(pos) => segs
+            .get(pos + 1)
+            .map(|s| decode_path_seg(s))
+            .unwrap_or_default(),
         None => String::new(),
     }
 }
@@ -298,7 +304,10 @@ pub fn handle(req: &Request, body: &Value, op: &str) -> Response {
                 cs["Tags"] = t.clone();
                 with_scope(&slot, req, |st| {
                     st.tags.insert(
-                        format!("arn:aws:ses:{}:{}:configuration-set/{name}", req.region, req.account),
+                        format!(
+                            "arn:aws:ses:{}:{}:configuration-set/{name}",
+                            req.region, req.account
+                        ),
                         t.clone(),
                     );
                 });
@@ -327,20 +336,28 @@ pub fn handle(req: &Request, body: &Value, op: &str) -> Response {
         }
         "DeleteConfigurationSet" => {
             let name = seg_after(&req.path, "configuration-sets");
-            let removed = with_scope(&slot, req, |st| st.configuration_sets.remove(&name).is_some());
+            let removed = with_scope(&slot, req, |st| {
+                st.configuration_sets.remove(&name).is_some()
+            });
             if !removed {
                 return not_found(format!("Configuration set {name} not found"));
             }
             with_scope(&slot, req, |st| {
-                st.tags
-                    .remove(&format!("arn:aws:ses:{}:{}:configuration-set/{name}", req.region, req.account));
+                st.tags.remove(&format!(
+                    "arn:aws:ses:{}:{}:configuration-set/{name}",
+                    req.region, req.account
+                ));
             });
             ok_json(json!({}))
         }
         // ---- Identity CRUD ----
         "CreateEmailIdentity" => {
             let name = body_field(body, "EmailIdentity");
-            let identity_type = if name.contains('@') { "EMAIL_ADDRESS" } else { "DOMAIN" };
+            let identity_type = if name.contains('@') {
+                "EMAIL_ADDRESS"
+            } else {
+                "DOMAIN"
+            };
             let identity = json!({
                 "IdentityName": name,
                 "IdentityType": identity_type,
@@ -382,7 +399,9 @@ pub fn handle(req: &Request, body: &Value, op: &str) -> Response {
         "GetEmailIdentityPolicies" => {
             let name = seg_after(&req.path, "identities");
             let policies = with_scope(&slot, req, |st| {
-                st.email_identities.get(&name).map(|i| i["Policies"].clone())
+                st.email_identities
+                    .get(&name)
+                    .map(|i| i["Policies"].clone())
             });
             match policies {
                 Some(p) => ok_json(json!({ "Policies": p })),
@@ -434,7 +453,8 @@ fn handler_2(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
             }
             ok_json(json!({}))
         }
-        "PutEmailIdentityDkimAttributes" | "PutEmailIdentityFeedbackAttributes"
+        "PutEmailIdentityDkimAttributes"
+        | "PutEmailIdentityFeedbackAttributes"
         | "PutEmailIdentityMailFromAttributes" => {
             let name = seg_after(&req.path, "identities");
             let found = with_scope(&slot, req, |st| st.email_identities.contains_key(&name));
@@ -449,7 +469,9 @@ fn handler_2(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
             if !found {
                 return not_found(format!("Email identity {name} not found"));
             }
-            ok_json(json!({ "DkimStatus": "PENDING", "DkimTokens": [percent(16), percent(16), percent(16)] }))
+            ok_json(
+                json!({ "DkimStatus": "PENDING", "DkimTokens": [percent(16), percent(16), percent(16)] }),
+            )
         }
         _ => handler_3(req, body, op, slot),
     }
@@ -506,7 +528,8 @@ fn handler_3(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
             }
             with_scope(&slot, req, |st| {
                 if let Some(cs) = st.configuration_sets.get_mut(&name) {
-                    cs["TrackingOptions"] = json!({ "CustomRedirectDomain": body_field(body, "CustomRedirectDomain") });
+                    cs["TrackingOptions"] =
+                        json!({ "CustomRedirectDomain": body_field(body, "CustomRedirectDomain") });
                 }
             });
             ok_json(json!({}))
@@ -568,7 +591,9 @@ fn handler_3(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
         "GetConfigurationSetEventDestinations" => {
             let name = cs_name(&req.path);
             let dests = with_scope(&slot, req, |st| {
-                st.configuration_sets.get(&name).map(|cs| cs["EventDestinations"].clone())
+                st.configuration_sets
+                    .get(&name)
+                    .map(|cs| cs["EventDestinations"].clone())
             });
             match dests {
                 Some(d) => ok_json(json!({ "EventDestinations": d })),
@@ -717,7 +742,9 @@ fn handler_4(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
             let contact = with_scope(&slot, req, |st| {
                 st.contact_lists.get(&name).and_then(|cl| {
                     cl["Contacts"].as_array().and_then(|c| {
-                        c.iter().find(|x| x["EmailAddress"].as_str() == Some(&email)).cloned()
+                        c.iter()
+                            .find(|x| x["EmailAddress"].as_str() == Some(&email))
+                            .cloned()
                     })
                 })
             });
@@ -732,14 +759,16 @@ fn handler_4(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
             let found = with_scope(&slot, req, |st| {
                 st.contact_lists.get_mut(&name).and_then(|cl| {
                     cl["Contacts"].as_array_mut().and_then(|c| {
-                        c.iter_mut().find(|x| x["EmailAddress"].as_str() == Some(&email)).map(|contact| {
-                            if let Some(b) = body.get("UnsubscribeAll") {
-                                contact["UnsubscribeAll"] = b.clone();
-                            }
-                            if let Some(p) = body.get("TopicPreferences") {
-                                contact["TopicPreferences"] = p.clone();
-                            }
-                        })
+                        c.iter_mut()
+                            .find(|x| x["EmailAddress"].as_str() == Some(&email))
+                            .map(|contact| {
+                                if let Some(b) = body.get("UnsubscribeAll") {
+                                    contact["UnsubscribeAll"] = b.clone();
+                                }
+                                if let Some(p) = body.get("TopicPreferences") {
+                                    contact["TopicPreferences"] = p.clone();
+                                }
+                            })
                     })
                 })
             });
@@ -752,13 +781,16 @@ fn handler_4(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
             let name = seg_after(&req.path, "contact-lists");
             let email = seg_after(&req.path, "contacts");
             let removed = with_scope(&slot, req, |st| {
-                st.contact_lists.get_mut(&name).and_then(|cl| {
-                    cl["Contacts"].as_array_mut().map(|c| {
-                        let before = c.len();
-                        c.retain(|x| x["EmailAddress"].as_str() != Some(&email));
-                        c.len() != before
+                st.contact_lists
+                    .get_mut(&name)
+                    .and_then(|cl| {
+                        cl["Contacts"].as_array_mut().map(|c| {
+                            let before = c.len();
+                            c.retain(|x| x["EmailAddress"].as_str() != Some(&email));
+                            c.len() != before
+                        })
                     })
-                }).unwrap_or(false)
+                    .unwrap_or(false)
             });
             match removed {
                 true => ok_json(json!({})),
@@ -805,7 +837,9 @@ fn handler_5(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
             let name = seg_after(&req.path, "templates");
             let got = with_scope(&slot, req, |st| st.email_templates.get(&name).cloned());
             match got {
-                Some(content) => ok_json(json!({ "TemplateName": name, "TemplateContent": content })),
+                Some(content) => {
+                    ok_json(json!({ "TemplateName": name, "TemplateContent": content }))
+                }
                 None => not_found(format!("No template found for name {name}")),
             }
         }
@@ -813,7 +847,9 @@ fn handler_5(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
             let name = seg_after(&req.path, "templates");
             let found = with_scope(&slot, req, |st| st.email_templates.contains_key(&name));
             if !found {
-                return not_found(format!("The email template with name {name} does not exist"));
+                return not_found(format!(
+                    "The email template with name {name} does not exist"
+                ));
             }
             let content = body.get("TemplateContent").cloned().unwrap_or(json!({}));
             with_scope(&slot, req, |st| {
@@ -863,19 +899,28 @@ fn handler_5(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
             let got = with_scope(&slot, req, |st| st.custom_templates.get(&name).cloned());
             match got {
                 Some(c) => ok_json(c),
-                None => not_found(format!("Custom verification email template {name} does not exist")),
+                None => not_found(format!(
+                    "Custom verification email template {name} does not exist"
+                )),
             }
         }
         "UpdateCustomVerificationEmailTemplate" => {
             let name = seg_after(&req.path, "custom-verification-email-templates");
             let found = with_scope(&slot, req, |st| st.custom_templates.contains_key(&name));
             if !found {
-                return not_found(format!("Custom verification email template {name} does not exist"));
+                return not_found(format!(
+                    "Custom verification email template {name} does not exist"
+                ));
             }
             with_scope(&slot, req, |st| {
                 if let Some(c) = st.custom_templates.get_mut(&name) {
-                    for key in ["FromEmailAddress", "TemplateSubject", "TemplateContent",
-                                "SuccessRedirectionURL", "FailureRedirectionURL"] {
+                    for key in [
+                        "FromEmailAddress",
+                        "TemplateSubject",
+                        "TemplateContent",
+                        "SuccessRedirectionURL",
+                        "FailureRedirectionURL",
+                    ] {
                         if let Some(v) = body.get(key) {
                             c[key] = v.clone();
                         }
@@ -888,7 +933,9 @@ fn handler_5(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
             let name = seg_after(&req.path, "custom-verification-email-templates");
             let removed = with_scope(&slot, req, |st| st.custom_templates.remove(&name).is_some());
             if !removed {
-                return not_found(format!("Custom verification email template {name} does not exist"));
+                return not_found(format!(
+                    "Custom verification email template {name} does not exist"
+                ));
             }
             ok_json(json!({}))
         }
@@ -910,7 +957,10 @@ fn handler_6(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
         }
         "ListDedicatedIpPools" => {
             let names: Vec<Value> = with_scope(&slot, req, |st| {
-                st.dedicated_ip_pools.iter().map(|n| json!(n.clone())).collect()
+                st.dedicated_ip_pools
+                    .iter()
+                    .map(|n| json!(n.clone()))
+                    .collect()
             });
             ok_json(json!({ "DedicatedIpPools": names }))
         }
@@ -945,11 +995,7 @@ fn handler_6(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
         "GetDedicatedIps" => ok_json(json!({ "DedicatedIps": [] })),
         "GetDedicatedIp" => {
             let ip = seg_after(&req.path, "dedicated-ips");
-            let resp = json_error(
-                400,
-                "NotFoundException",
-                &format!("{ip} not available"),
-            );
+            let resp = json_error(400, "NotFoundException", &format!("{ip} not available"));
             resp
         }
         "PutDedicatedIpInPool" | "PutDedicatedIpWarmupAttributes" => ok_json(json!({})),
@@ -969,8 +1015,11 @@ fn handler_6(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
             }
             ok_json(out)
         }
-        "PutAccountDetails" | "PutAccountSendingAttributes" | "PutAccountSuppressionAttributes"
-        | "PutAccountVdmAttributes" | "PutAccountDedicatedIpWarmupAttributes" => {
+        "PutAccountDetails"
+        | "PutAccountSendingAttributes"
+        | "PutAccountSuppressionAttributes"
+        | "PutAccountVdmAttributes"
+        | "PutAccountDedicatedIpWarmupAttributes" => {
             with_scope(&slot, req, |st| {
                 for (k, v) in body.as_object().map(|m| m.clone()).unwrap_or_default() {
                     st.account.insert(k, v);
@@ -987,7 +1036,11 @@ fn handler_7(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
         // ---- Tags ----
         "TagResource" => {
             let arn = body_field(body, "ResourceArn");
-            eprintln!("DBG_TAG arn={arn:?} body_keys={:?}", body.as_object().map(|m| m.keys().cloned().collect::<Vec<_>>()));
+            eprintln!(
+                "DBG_TAG arn={arn:?} body_keys={:?}",
+                body.as_object()
+                    .map(|m| m.keys().cloned().collect::<Vec<_>>())
+            );
             with_scope(&slot, req, |st| {
                 let entry = st.tags.entry(arn.clone()).or_insert(json!({}));
                 if !entry.is_object() {
@@ -996,7 +1049,10 @@ fn handler_7(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
                 let map = entry.as_object_mut().unwrap();
                 if let Some(tags) = body.get("Tags").and_then(Value::as_array) {
                     for t in tags {
-                        if let (Some(k), Some(v)) = (t.get("Key").and_then(Value::as_str), t.get("Value").and_then(Value::as_str)) {
+                        if let (Some(k), Some(v)) = (
+                            t.get("Key").and_then(Value::as_str),
+                            t.get("Value").and_then(Value::as_str),
+                        ) {
                             map.insert(k.to_string(), json!(v));
                         }
                     }
@@ -1009,10 +1065,21 @@ fn handler_7(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
             if arn.is_empty() {
                 arn = query_param(&req.query_string, "ResourceArn");
             }
-            let mut keys: Vec<String> = body.get("TagKeys").and_then(Value::as_array)
-                .map(|a| a.iter().filter_map(Value::as_str).map(String::from).collect())
+            let mut keys: Vec<String> = body
+                .get("TagKeys")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(Value::as_str)
+                        .map(String::from)
+                        .collect()
+                })
                 .unwrap_or_default();
-            for (k, v) in req.query_string.split('&').filter_map(|kv| kv.split_once('=')) {
+            for (k, v) in req
+                .query_string
+                .split('&')
+                .filter_map(|kv| kv.split_once('='))
+            {
                 if k == "TagKeys" {
                     keys.push(urldecode_query(v));
                 }
@@ -1033,17 +1100,27 @@ fn handler_7(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
             if arn.is_empty() {
                 arn = query_param(&req.query_string, "ResourceArn");
             }
-            let tags = with_scope(&slot, req, |st| st.tags.get(&arn).cloned().unwrap_or(json!({})));
+            let tags = with_scope(&slot, req, |st| {
+                st.tags.get(&arn).cloned().unwrap_or(json!({}))
+            });
             let list: Vec<Value> = tags
                 .as_object()
-                .map(|m| m.iter().map(|(k, v)| json!({ "Key": k, "Value": v })).collect())
+                .map(|m| {
+                    m.iter()
+                        .map(|(k, v)| json!({ "Key": k, "Value": v }))
+                        .collect()
+                })
                 .unwrap_or_default();
             ok_json(json!({ "Tags": list }))
         }
         // ---- Send operations ----
         "SendEmail" => ok_json(json!({ "MessageId": percent(32) })),
         "SendBulkEmail" => {
-            let entries = body.get("BulkEmailEntries").and_then(Value::as_array).map(|a| a.len()).unwrap_or(0);
+            let entries = body
+                .get("BulkEmailEntries")
+                .and_then(Value::as_array)
+                .map(|a| a.len())
+                .unwrap_or(0);
             let results: Vec<Value> = (0..entries)
                 .map(|_| json!({ "Status": "SUCCESS", "MessageId": percent(32) }))
                 .collect();
@@ -1053,11 +1130,16 @@ fn handler_7(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
         // ---- Suppression ----
         "ListSuppressedDestinations" => {
             let list: Vec<Value> = with_scope(&slot, req, |st| {
-                st.suppression.values().map(|s| json!({
-                    "EmailAddress": s["EmailAddress"].clone(),
-                    "Reason": s["Reason"].clone(),
-                    "LastUpdateTime": now_epoch(),
-                })).collect()
+                st.suppression
+                    .values()
+                    .map(|s| {
+                        json!({
+                            "EmailAddress": s["EmailAddress"].clone(),
+                            "Reason": s["Reason"].clone(),
+                            "LastUpdateTime": now_epoch(),
+                        })
+                    })
+                    .collect()
             });
             ok_json(json!({ "SuppressedDestinationSummaries": list }))
         }
@@ -1096,11 +1178,19 @@ fn handler_8(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
     match op {
         // ---- Deliverability dashboard ----
         "GetDeliverabilityDashboardOptions" => {
-            let enabled = with_scope(&slot, req, |st| st.account.get("DashboardEnabled").cloned().unwrap_or(json!(false)));
+            let enabled = with_scope(&slot, req, |st| {
+                st.account
+                    .get("DashboardEnabled")
+                    .cloned()
+                    .unwrap_or(json!(false))
+            });
             ok_json(json!({ "DashboardEnabled": enabled, "AccountEnabled": enabled }))
         }
         "PutDeliverabilityDashboardOption" => {
-            let enabled = body.get("DashboardEnabled").cloned().unwrap_or(json!(false));
+            let enabled = body
+                .get("DashboardEnabled")
+                .cloned()
+                .unwrap_or(json!(false));
             with_scope(&slot, req, |st| {
                 st.account.insert("DashboardEnabled".to_string(), enabled);
             });
@@ -1110,39 +1200,50 @@ fn handler_8(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
             let mut report = Map::new();
             if let Some(names) = names_list(body) {
                 for n in names {
-                    report.insert(n, json!([
-                        { "Rbl": "spam", "LastSeenTime": now_epoch() } ]));
+                    report.insert(
+                        n,
+                        json!([
+                        { "Rbl": "spam", "LastSeenTime": now_epoch() } ]),
+                    );
                 }
             }
-            ok_json(Value::Object({ let mut o = Map::new(); o.insert("BlacklistReport".to_string(), Value::Object(report)); o }))
+            ok_json(Value::Object({
+                let mut o = Map::new();
+                o.insert("BlacklistReport".to_string(), Value::Object(report));
+                o
+            }))
         }
         "CreateDeliverabilityTestReport" => {
             ok_json(json!({ "ReportId": format!("rep-{}", percent(16)), "Status": "COMPLETED" }))
         }
-        "ListDeliverabilityTestReports" => {
-            ok_json(json!({ "DeliverabilityTestReports": [] }))
-        }
+        "ListDeliverabilityTestReports" => ok_json(json!({ "DeliverabilityTestReports": [] })),
         "GetDeliverabilityTestReport" => ok_json(json!({
             "ReportId": seg_after(&req.path, "test-reports"),
             "Status": "COMPLETED",
         })),
-        "GetDomainDeliverabilityCampaign" => {
-            ok_json(json!({ "DomainDeliverabilityCampaign": {
+        "GetDomainDeliverabilityCampaign" => ok_json(json!({ "DomainDeliverabilityCampaign": {
                 "CampaignId": body_field(body, "CampaignId"),
                 "EmailAddress": "campaign@example.com",
-            } }))
-        }
+            } })),
         "GetDomainStatisticsReport" => ok_json(json!({ "OverallVolume": {} })),
-        "ListDomainDeliverabilityCampaigns" => ok_json(json!({ "DomainDeliverabilityCampaigns": [] })),
+        "ListDomainDeliverabilityCampaigns" => {
+            ok_json(json!({ "DomainDeliverabilityCampaigns": [] }))
+        }
         // ---- Metrics / insights ----
         "BatchGetMetricData" => {
-            let queries = body.get("Queries").and_then(Value::as_array).map(|a| a.len()).unwrap_or(0);
+            let queries = body
+                .get("Queries")
+                .and_then(Value::as_array)
+                .map(|a| a.len())
+                .unwrap_or(0);
             let results: Vec<Value> = (0..queries)
                 .map(|i| json!({ "Id": format!("q{}", i), "Metric": "SEND", "Value": 0.0 }))
                 .collect();
             ok_json(json!({ "Results": results }))
         }
-        "GetEmailAddressInsights" => ok_json(json!({ "EmailAddress": body_field(body, "EmailAddress") })),
+        "GetEmailAddressInsights" => {
+            ok_json(json!({ "EmailAddress": body_field(body, "EmailAddress") }))
+        }
         "GetMessageInsights" => {
             let id = seg_after(&req.path, "insights");
             ok_json(json!({ "MessageId": id }))
@@ -1152,7 +1253,10 @@ fn handler_8(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
             let name = body_field(body, "TenantName");
             let id = format!("tenant-{}", percent(12));
             with_scope(&slot, req, |st| {
-                st.tenants.insert(name.clone(), json!({ "TenantName": name, "TenantId": id.clone() }));
+                st.tenants.insert(
+                    name.clone(),
+                    json!({ "TenantName": name, "TenantId": id.clone() }),
+                );
             });
             ok_json(json!({ "TenantId": id }))
         }
@@ -1181,11 +1285,15 @@ fn handler_8(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
         "ListTenantResources" => ok_json(json!({ "TenantResources": [] })),
         "ListResourceTenants" => ok_json(json!({ "ResourceTenants": [] })),
         // ---- Export / import jobs ----
-        "CreateExportJob" => ok_json(json!({ "JobId": format!("job-{}", percent(16)), "Status": "PENDING" })),
+        "CreateExportJob" => {
+            ok_json(json!({ "JobId": format!("job-{}", percent(16)), "Status": "PENDING" }))
+        }
         "GetExportJob" => ok_json(json!({ "JobStatus": "COMPLETED" })),
         "CancelExportJob" => ok_json(json!({})),
         "ListExportJobs" => ok_json(json!({ "ExportJobs": [] })),
-        "CreateImportJob" => ok_json(json!({ "JobId": format!("job-{}", percent(16)), "Status": "COMPLETED", "CreatedTimestamp": now_epoch() })),
+        "CreateImportJob" => ok_json(
+            json!({ "JobId": format!("job-{}", percent(16)), "Status": "COMPLETED", "CreatedTimestamp": now_epoch() }),
+        ),
         "GetImportJob" => ok_json(json!({
             "ImportDestination": body.get("ImportDestination").cloned().unwrap_or(json!({})),
             "JobStatus": "COMPLETED",
@@ -1196,19 +1304,25 @@ fn handler_8(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
             let name = body_field(body, "EndpointName");
             let entry = json!({ "EndpointName": name, "Status": "CREATED" });
             with_scope(&slot, req, |st| {
-                st.multi_region_endpoints.insert(name.clone(), entry.clone());
+                st.multi_region_endpoints
+                    .insert(name.clone(), entry.clone());
             });
             ok_json(json!({ "EndpointName": name, "Status": "CREATED" }))
         }
         "ListMultiRegionEndpoints" => {
             let list: Vec<Value> = with_scope(&slot, req, |st| {
-                st.multi_region_endpoints.values().map(|e| e.clone()).collect()
+                st.multi_region_endpoints
+                    .values()
+                    .map(|e| e.clone())
+                    .collect()
             });
             ok_json(json!({ "MultiRegionEndpoints": list }))
         }
         "GetMultiRegionEndpoint" => {
             let name = seg_after(&req.path, "multi-region-endpoints");
-            let got = with_scope(&slot, req, |st| st.multi_region_endpoints.get(&name).cloned());
+            let got = with_scope(&slot, req, |st| {
+                st.multi_region_endpoints.get(&name).cloned()
+            });
             match got {
                 Some(e) => ok_json(e),
                 None => not_found(format!("Endpoint {name} not found")),
@@ -1223,8 +1337,12 @@ fn handler_8(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
         }
         // ---- Reputation + recommendations ----
         "ListReputationEntities" => ok_json(json!({ "ReputationEntities": [] })),
-        "GetReputationEntity" => ok_json(json!({ "ReputationEntityType": "ACCOUNT", "ReputationEntityReference": "" })),
-        "UpdateReputationEntityCustomerManagedStatus" | "UpdateReputationEntityPolicy" => ok_json(json!({})),
+        "GetReputationEntity" => {
+            ok_json(json!({ "ReputationEntityType": "ACCOUNT", "ReputationEntityReference": "" }))
+        }
+        "UpdateReputationEntityCustomerManagedStatus" | "UpdateReputationEntityPolicy" => {
+            ok_json(json!({}))
+        }
         "ListRecommendations" => ok_json(json!({ "Recommendations": [] })),
         _ => ok_json(json!({})),
     }
@@ -1234,7 +1352,11 @@ fn handler_8(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
 fn names_list(body: &Value) -> Option<Vec<String>> {
     body.get("BlacklistItemNames")
         .and_then(Value::as_array)
-        .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(String::from))
+                .collect()
+        })
 }
 
 /// Percent-decoding for rest-json query params (ResourceArn).
@@ -1302,11 +1424,25 @@ mod tests {
     #[test]
     fn suppression_roundtrip_in_process() {
         let ctx = fresh_ctx();
-        dispatch(&ctx.req("PUT", "/v2/email/suppression/addresses", json!({
-            "EmailAddress": "a@example.com", "Reason": "BOUNCE"
-        })));
-        let listed = parsed(&dispatch(&ctx.req("GET", "/v2/email/suppression/addresses", json!({}))));
-        assert_eq!(listed["SuppressedDestinationSummaries"].as_array().unwrap().len(), 1);
+        dispatch(&ctx.req(
+            "PUT",
+            "/v2/email/suppression/addresses",
+            json!({
+                "EmailAddress": "a@example.com", "Reason": "BOUNCE"
+            }),
+        ));
+        let listed = parsed(&dispatch(&ctx.req(
+            "GET",
+            "/v2/email/suppression/addresses",
+            json!({}),
+        )));
+        assert_eq!(
+            listed["SuppressedDestinationSummaries"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
         let got = parsed(&dispatch(&ctx.req(
             "GET",
             "/v2/email/suppression/addresses/a%40example.com",
@@ -1330,27 +1466,54 @@ mod tests {
             json!({}),
         )));
         assert_eq!(got["IdentityType"], "EMAIL_ADDRESS");
-        let listed = parsed(&dispatch(&ctx.req("GET", "/v2/email/identities", json!({}))));
+        let listed = parsed(&dispatch(&ctx.req(
+            "GET",
+            "/v2/email/identities",
+            json!({}),
+        )));
         assert_eq!(listed["EmailIdentities"].as_array().unwrap().len(), 1);
         dispatch(&ctx.req("DELETE", "/v2/email/identities/id-1@example.com", json!({})));
-        let listed = parsed(&dispatch(&ctx.req("GET", "/v2/email/identities", json!({}))));
+        let listed = parsed(&dispatch(&ctx.req(
+            "GET",
+            "/v2/email/identities",
+            json!({}),
+        )));
         assert_eq!(listed["EmailIdentities"].as_array().unwrap().len(), 0);
     }
 
     #[test]
     fn config_set_lifecycle_and_tags() {
         let ctx = fresh_ctx();
-        dispatch(&ctx.req("POST", "/v2/email/configuration-sets", json!({ "ConfigurationSetName": "cs1" })));
-        let dup = dispatch(&ctx.req("POST", "/v2/email/configuration-sets", json!({ "ConfigurationSetName": "cs1" })));
+        dispatch(&ctx.req(
+            "POST",
+            "/v2/email/configuration-sets",
+            json!({ "ConfigurationSetName": "cs1" }),
+        ));
+        let dup = dispatch(&ctx.req(
+            "POST",
+            "/v2/email/configuration-sets",
+            json!({ "ConfigurationSetName": "cs1" }),
+        ));
         assert_eq!(dup.status, 400);
         let arn = "arn:aws:ses:us-east-1:123456789012:configuration-set/cs1";
-        dispatch(&ctx.req("POST", "/v2/email/tags", json!({ "ResourceArn": arn, "Tags": [{"Key": "env", "Value": "t"}] })));
+        dispatch(&ctx.req(
+            "POST",
+            "/v2/email/tags",
+            json!({ "ResourceArn": arn, "Tags": [{"Key": "env", "Value": "t"}] }),
+        ));
         let mut list_req = ctx.req("GET", "/v2/email/tags", json!({}));
-        list_req.query_string = format!("ResourceArn={}", arn.replace(':', "%3A").replace('/', "%2F"));
+        list_req.query_string = format!(
+            "ResourceArn={}",
+            arn.replace(':', "%3A").replace('/', "%2F")
+        );
         let tags = parsed(&dispatch(&list_req));
         assert_eq!(tags["Tags"][0]["Key"], "env");
         dispatch(&ctx.req("DELETE", "/v2/email/configuration-sets/cs1", json!({})));
-        let listed = parsed(&dispatch(&ctx.req("GET", "/v2/email/configuration-sets", json!({}))));
+        let listed = parsed(&dispatch(&ctx.req(
+            "GET",
+            "/v2/email/configuration-sets",
+            json!({}),
+        )));
         assert_eq!(listed["ConfigurationSets"].as_array().unwrap().len(), 0);
         let missing = dispatch(&ctx.req("GET", "/v2/email/configuration-sets/ghost", json!({})));
         assert_eq!(missing.status, 400);
@@ -1359,8 +1522,16 @@ mod tests {
     #[test]
     fn contact_list_with_contacts() {
         let ctx = fresh_ctx();
-        dispatch(&ctx.req("POST", "/v2/email/contact-lists", json!({ "ContactListName": "cl1" })));
-        dispatch(&ctx.req("POST", "/v2/email/contact-lists/cl1/contacts", json!({ "EmailAddress": "c@example.com" })));
+        dispatch(&ctx.req(
+            "POST",
+            "/v2/email/contact-lists",
+            json!({ "ContactListName": "cl1" }),
+        ));
+        dispatch(&ctx.req(
+            "POST",
+            "/v2/email/contact-lists/cl1/contacts",
+            json!({ "EmailAddress": "c@example.com" }),
+        ));
         let listed = parsed(&dispatch(&ctx.req(
             "POST",
             "/v2/email/contact-lists/cl1/contacts/list",
@@ -1383,12 +1554,24 @@ mod tests {
 
     #[test]
     fn routing_specs() {
-        assert_eq!(derive_op("POST", "/v2/email/configuration-sets"), "CreateConfigurationSet");
-        assert_eq!(derive_op("GET", "/v2/email/identities/a%40b.com"), "GetEmailIdentity");
-        assert_eq!(derive_op("PUT", "/v2/email/identities/a%40b.com/policies/p1"), "UpdateEmailIdentityPolicy");
+        assert_eq!(
+            derive_op("POST", "/v2/email/configuration-sets"),
+            "CreateConfigurationSet"
+        );
+        assert_eq!(
+            derive_op("GET", "/v2/email/identities/a%40b.com"),
+            "GetEmailIdentity"
+        );
+        assert_eq!(
+            derive_op("PUT", "/v2/email/identities/a%40b.com/policies/p1"),
+            "UpdateEmailIdentityPolicy"
+        );
         assert_eq!(derive_op("POST", "/v2/email/outbound-emails"), "SendEmail");
         assert_eq!(derive_op("GET", "/v2/email/tags"), "ListTagsForResource");
-        assert_eq!(derive_op("PUT", "/v2/email/account/sending"), "PutAccountSendingAttributes");
+        assert_eq!(
+            derive_op("PUT", "/v2/email/account/sending"),
+            "PutAccountSendingAttributes"
+        );
         assert_eq!(derive_op("GET", "/v2/email/export-jobs/j1"), "GetExportJob");
     }
 }

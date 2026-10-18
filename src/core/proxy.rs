@@ -1,7 +1,7 @@
-        // Preserve the request path + query: rest-json services are bound by
-        // path in moto's URL maps (X-Amz-Target JSON services bind "/"), so
-        // forwarding must mirror the in-process moto bridge, which dispatches
-        // on the original URI.
+// Preserve the request path + query: rest-json services are bound by
+// path in moto's URL maps (X-Amz-Target JSON services bind "/"), so
+// forwarding must mirror the in-process moto bridge, which dispatches
+// on the original URI.
 //! Moto bridge proxy - forwards non-native service requests to the Python sidecar.
 //!
 //! The Rust server handles native services (our crates) directly.
