@@ -251,10 +251,14 @@ fn sub_mag(a: &str, b: &str) -> String {
     let bx: Vec<u8> = b.bytes().rev().collect();
     let mut out = Vec::with_capacity(ax.len());
     let mut borrow = 0u8;
-    for i in 0..ax.len() {
-        let ad = ax[i] - b'0';
+    for (i, &byte) in ax.iter().enumerate() {
+        let ad = byte - b'0';
         let db = bx.get(i).copied().unwrap_or(b'0') - b'0' + borrow;
-        let (d, br) = if ad >= db { (ad - db, 0) } else { (ad + 10 - db, 1) };
+        let (d, br) = if ad >= db {
+            (ad - db, 0)
+        } else {
+            (ad + 10 - db, 1)
+        };
         out.push(d + b'0');
         borrow = br;
     }
@@ -281,8 +285,7 @@ fn parse_decimal(s: &str) -> Option<(bool, String, i64)> {
         Some((i, f)) => (i, f),
         None => (mant, ""),
     };
-    let all_digits =
-        |x: &str| x.chars().all(|c| c.is_ascii_digit());
+    let all_digits = |x: &str| x.chars().all(|c| c.is_ascii_digit());
     if (int_part.is_empty() && frac_part.is_empty())
         || !all_digits(int_part)
         || !all_digits(frac_part)
@@ -425,10 +428,7 @@ fn attr_cmp(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
             Some(av.cmp(bv))
         }
         ("N", "N") => {
-            let ord = dec_cmp(
-                a.get("N")?.as_str()?,
-                b.get("N")?.as_str()?,
-            );
+            let ord = dec_cmp(a.get("N")?.as_str()?, b.get("N")?.as_str()?);
             ord.or_else(|| as_number(a)?.partial_cmp(&as_number(b)?))
         }
         _ => None,
@@ -1264,8 +1264,7 @@ pub fn apply_update(
             }
             UpdateClause::Delete(actions) => {
                 for (path, val) in actions {
-                    let Some(updated) =
-                        delete_from_attr(attrs.get_path(&path).cloned(), &val)?
+                    let Some(updated) = delete_from_attr(attrs.get_path(&path).cloned(), &val)?
                     else {
                         // Attribute absent: DELETE is a no-op, nothing created.
                         item_view = Value::Object(attrs.clone());
@@ -1695,21 +1694,16 @@ mod tests {
         let mut values: Values = HashMap::new();
         values.insert(":d".to_string(), json!({"SS": ["a"]}));
         // DELETE on an attribute that never exists must not create it.
-        let outcome = apply_update(
-            &mut attrs,
-            "DELETE tags :d, ghost :d",
-            &names,
-            &values,
-        )
-        .unwrap();
+        let outcome =
+            apply_update(&mut attrs, "DELETE tags :d, ghost :d", &names, &values).unwrap();
         assert!(attrs.get("ghost").is_none());
+        assert_eq!(attrs.get("tags").cloned(), Some(json!({"SS": ["b"]})));
         assert_eq!(
-            attrs.get("tags").cloned(),
-            Some(json!({"SS": ["b"]}))
+            outcome.add_paths.len(),
+            1,
+            "only the existing attr reported"
         );
-        assert_eq!(outcome.add_paths.len(), 1, "only the existing attr reported");
     }
-
 
     #[test]
     fn test_update_add_delete_sets() {
@@ -1923,19 +1917,16 @@ mod tests {
         assert!(!eval_condition("mylist[0] = :b", &it, &names, &values).unwrap());
         assert!(!eval_condition("mylist[9] = :b", &it, &names, &values).unwrap());
         // attribute_not_exists over an index past the end is true.
-        assert!(eval_condition(
-            "attribute_not_exists(mylist[9])",
-            &it,
-            &names,
-            &values
-        )
-        .unwrap());
+        assert!(eval_condition("attribute_not_exists(mylist[9])", &it, &names, &values).unwrap());
     }
 
     #[test]
     fn test_decimal_add_sub_exact() {
         // Beyond 2^53 precision and up to the 38-digit limit.
-        assert_eq!(dec_add("9007199254740993", "0").unwrap(), "9007199254740993");
+        assert_eq!(
+            dec_add("9007199254740993", "0").unwrap(),
+            "9007199254740993"
+        );
         assert_eq!(
             dec_add("999999999999999999999999999999", "1").unwrap(),
             "1000000000000000000000000000000"
@@ -1949,7 +1940,10 @@ mod tests {
             "123456789012345678901234567891"
         );
         // Fraction alignment, signs and zero normalization.
-        assert_eq!(dec_sub("1.0000000000000002", "1").unwrap(), "0.0000000000000002");
+        assert_eq!(
+            dec_sub("1.0000000000000002", "1").unwrap(),
+            "0.0000000000000002"
+        );
         assert_eq!(dec_add("0.5", "0.5").unwrap(), "1");
         assert_eq!(dec_add("-2", "-3").unwrap(), "-5");
         assert_eq!(dec_add("2", "-5").unwrap(), "-3");
@@ -1987,10 +1981,12 @@ mod tests {
         let diff = json!({"N": "123456789012345678901234567891"});
         let base = json!({"N": "123456789012345678901234567890"});
         assert!(!attr_eq(&diff, &base));
-        assert!(dec_cmp(
-            "123456789012345678901234567891",
-            "123456789012345678901234567890"
-        ) == Some(std::cmp::Ordering::Greater));
+        assert!(
+            dec_cmp(
+                "123456789012345678901234567891",
+                "123456789012345678901234567890"
+            ) == Some(std::cmp::Ordering::Greater)
+        );
     }
 
     #[test]
@@ -2002,8 +1998,14 @@ mod tests {
         // Empty payload.
         assert_eq!(size_of(&json!({ "B": "" })), Some(0.0));
         // L counts elements, M counts entries, SS counts elements.
-        assert_eq!(size_of(&json!({ "L": [{"S": "a"}, {"S": "b"}] })), Some(2.0));
-        assert_eq!(size_of(&json!({ "M": {"a": {"S": "x"}, "b": {"S": "y"}} })), Some(2.0));
+        assert_eq!(
+            size_of(&json!({ "L": [{"S": "a"}, {"S": "b"}] })),
+            Some(2.0)
+        );
+        assert_eq!(
+            size_of(&json!({ "M": {"a": {"S": "x"}, "b": {"S": "y"}} })),
+            Some(2.0)
+        );
         assert_eq!(size_of(&json!({ "SS": ["a", "b", "c"] })), Some(3.0));
         // Strings measure characters, not UTF-8 bytes ("café" is 4 chars).
         assert_eq!(size_of(&json!({ "S": "café" })), Some(4.0));

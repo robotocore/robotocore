@@ -962,11 +962,14 @@ mod tests {
     #[test]
     fn test_handler_instances_share_state() {
         let a = StepfunctionsHandler::new();
-        a.handle(make_req("CreateStateMachine", json!({
-            "stateMachineName": "shared-sm",
-            "roleArn": "arn:aws:iam::123456789012:role/sfn-role",
-            "definition": "{\"StartAt\": \"Pass\", \"States\": {}}"
-        })));
+        a.handle(make_req(
+            "CreateStateMachine",
+            json!({
+                "stateMachineName": "shared-sm",
+                "roleArn": "arn:aws:iam::123456789012:role/sfn-role",
+                "definition": "{\"StartAt\": \"Pass\", \"States\": {}}"
+            }),
+        ));
         // A second instance must see (and be able to use) the same state.
         let b = StepfunctionsHandler::new();
         let resp = b.handle(make_req(
@@ -975,7 +978,11 @@ mod tests {
                 "stateMachineArn": "arn:aws:states:us-east-1:123456789012:stateMachine:shared-sm"
             }),
         ));
-        assert_eq!(resp.status, 200, "second instance sees the machine: {}", resp.body);
+        assert_eq!(
+            resp.status, 200,
+            "second instance sees the machine: {}",
+            resp.body
+        );
         assert!(resp.body.contains("executionArn"));
         let arn = body(&resp)["executionArn"].as_str().unwrap().to_string();
         let c = StepfunctionsHandler::new();

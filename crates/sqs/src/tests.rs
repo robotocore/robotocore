@@ -771,7 +771,10 @@ fn create_fifo_queue(handler: &DefaultSqsHandler, name: &str, content_dedup: boo
     ));
     assert_eq!(resp.status, 200);
     let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
-    data["QueueUrl"].as_str().expect("Missing QueueUrl").to_string()
+    data["QueueUrl"]
+        .as_str()
+        .expect("Missing QueueUrl")
+        .to_string()
 }
 
 #[test]
@@ -945,7 +948,10 @@ fn test_send_message_batch_bad_entry_is_entry_error() {
     assert_eq!(failed[0]["Id"], "bad");
     assert_eq!(failed[0]["SenderFault"], true);
     assert!(
-        failed[0]["Code"].as_str().map(|c| !c.is_empty()).unwrap_or(false),
+        failed[0]["Code"]
+            .as_str()
+            .map(|c| !c.is_empty())
+            .unwrap_or(false),
         "entry failure must carry an error code"
     );
 

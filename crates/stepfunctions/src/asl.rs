@@ -590,8 +590,15 @@ mod tests {
             true
         ));
         // Top-level rules still need a Next target.
-        assert!(!eval_choice(&json!({"Variable": "$.a", "StringEquals": "1"}), &input, true));
-        assert!(eval_choice(&json!({"Variable": "$.a", "StringEquals": "1"}), &input, false));
+        assert!(!eval_choice(
+            &json!({"Variable": "$.a", "StringEquals": "1"}),
+            &input,
+            true
+        ));
+        assert!(eval_choice(
+            &json!({"Variable": "$.a", "StringEquals": "1"}),
+            &input,
+            false
+        ));
     }
 }
-

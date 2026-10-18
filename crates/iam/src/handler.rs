@@ -3194,12 +3194,7 @@ impl IamHandler {
         let state = self.get_state(req.account);
         // Clone under one lock: a concurrent delete could otherwise remove an
         // entry between collecting the names and the per-name lookup.
-        let mut certs: Vec<Arc<ServerCert>> = state
-            .server_certs
-            .read()
-            .values()
-            .cloned()
-            .collect();
+        let mut certs: Vec<Arc<ServerCert>> = state.server_certs.read().values().cloned().collect();
         certs.sort_by(|a, b| a.name.cmp(&b.name));
         let mut body = String::from("<ServerCertificateMetadataList>");
         for cert in &certs {
