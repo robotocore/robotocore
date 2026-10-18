@@ -1,89 +1,271 @@
-//! Kinesis in-memory state models.
+//! Kinesis in-memory state models (mirrors src/robotocore/services/kinesis/models.py).
 
-use parking_lot::RwLock;
-use std::collections::HashMap;
+use base64::Engine as _;
+use parking_lot::{Mutex, RwLock};
+use serde_json::Value;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
-/// A Kinesis stream shard.
+/// Maximum hash key value for shard range partitioning (2^128 - 1).
+pub const MAX_HASH_KEY: u128 = u128::MAX;
+
+/// A stored Kinesis record.
 #[derive(Debug, Clone)]
+pub struct KinesisRecord {
+    pub partition_key: String,
+    pub data: Vec<u8>,
+    /// Zero-padded 20-digit sequence number.
+    pub sequence_number: String,
+    pub timestamp: f64,
+    pub shard_id: String,
+}
+
+impl KinesisRecord {
+    pub fn to_output(&self) -> Value {
+        serde_json::json!({
+            "SequenceNumber": self.sequence_number,
+            "ApproximateArrivalTimestamp": self.timestamp,
+            "Data": base64::engine::general_purpose::STANDARD.encode(&self.data),
+            "PartitionKey": self.partition_key,
+        })
+    }
+}
+
+/// Stream shard with record storage.
+#[derive(Debug, Default)]
 pub struct Shard {
     pub shard_id: String,
-    pub sequence_number: String,
+    pub hash_key_start: u128,
+    pub hash_key_end: u128,
+    pub starting_sequence_number: String,
     pub parent_id: Option<String>,
-    pub hash_range: String,
-    pub created: u64,
+    records: Mutex<Vec<KinesisRecord>>,
+    sequence_counter: Mutex<u64>,
+}
+
+impl Shard {
+    pub fn new(shard_id: String, hash_key_start: u128, hash_key_end: u128) -> Self {
+        Self {
+            shard_id,
+            hash_key_start,
+            hash_key_end,
+            starting_sequence_number: "00000000000000000000".to_string(),
+            parent_id: None,
+            records: Mutex::new(Vec::new()),
+            sequence_counter: Mutex::new(0),
+        }
+    }
+
+    /// Store a record on this shard, returning the assigned sequence number.
+    pub fn put_record(&self, shard_id: &str, partition_key: String, data: Vec<u8>) -> KinesisRecord {
+        let mut counter = self.sequence_counter.lock();
+        *counter += 1;
+        let seq = format!("{:020}", *counter);
+        let record = KinesisRecord {
+            partition_key,
+            data,
+            sequence_number: seq,
+            timestamp: chrono::Utc::now().timestamp_millis() as f64 / 1000.0,
+            shard_id: shard_id.to_string(),
+        };
+        self.records.lock().push(record.clone());
+        record
+    }
+
+    /// Records at or after `start_sequence` plus the sequence to continue from
+    /// (None when the shard has nothing at or after that sequence).
+    pub fn get_records(&self, start_sequence: &str, limit: usize) -> (Vec<KinesisRecord>, Option<String>) {
+        let start = parse_sequence(start_sequence);
+        let records = self.records.lock();
+        let start_idx = match records.iter().position(|r| parse_sequence(&r.sequence_number) >= start) {
+            Some(i) => i,
+            None => return (Vec::new(), None),
+        };
+        let end = (start_idx + limit).min(records.len());
+        if start_idx >= end {
+            return (Vec::new(), None);
+        }
+        let batch = records[start_idx..end].to_vec();
+        let next_seq = batch
+            .last()
+            .map(|r| parse_sequence(&r.sequence_number))
+            .map(|seq| seq.saturating_add(1))
+            .map(format_sequence);
+        (batch, next_seq)
+    }
+
+    /// Sequence that would be assigned to the next record on this shard.
+    pub fn get_latest_sequence(&self) -> String {
+        let counter = self.sequence_counter.lock();
+        format!("{:020}", *counter + 1)
+    }
+}
+
+/// Zero-padded 20-digit sequence format.
+pub fn format_sequence(seq: u128) -> String {
+    format!("{:020}", seq)
+}
+
+/// Parse a (possibly huge) decimal sequence number; invalid input becomes 0.
+pub fn parse_sequence(seq: &str) -> u128 {
+    seq.parse::<u128>().unwrap_or(0)
+}
+
+/// A registered (enhanced fan-out) consumer.
+#[derive(Debug, Clone)]
+pub struct ConsumerInfo {
+    pub name: String,
+    pub arn: String,
+    pub status: String,
+    pub created: f64,
+}
+
+impl ConsumerInfo {
+    pub fn to_value(&self) -> Value {
+        serde_json::json!({
+            "ConsumerName": self.name,
+            "ConsumerARN": self.arn,
+            "ConsumerStatus": self.status,
+            "ConsumerCreationTimestamp": self.created,
+        })
+    }
 }
 
 /// A Kinesis stream.
 #[derive(Debug)]
 pub struct KinesisStream {
-    pub stream_name: String,
-    pub stream_arn: String,
-    pub stream_status: RwLock<String>,
+    pub name: String,
+    pub arn: String,
+    pub status: String,
     pub shard_count: u32,
-    pub retention_period_hours: parking_lot::RwLock<u32>,
+    pub retention_hours: RwLock<u32>,
+    pub tags: RwLock<BTreeMap<String, String>>,
+    pub created: f64,
+    pub encryption_type: RwLock<String>,
+    pub key_id: RwLock<String>,
+    pub consumers: RwLock<BTreeMap<String, ConsumerInfo>>,
     pub shard_level_metrics: RwLock<Vec<String>>,
-    pub stream_mode: String,
-    pub created: u64,
-    pub shards: RwLock<Vec<Shard>>,
-    pub tags: RwLock<Vec<serde_json::Value>>,
+    pub stream_mode: RwLock<String>,
+    pub shards: RwLock<Vec<Arc<Shard>>>,
 }
 
 impl KinesisStream {
-    pub fn new(account: u64, region: &str, stream_name: String, shard_count: u32) -> Self {
-        let arn = format!("arn:aws:kinesis:{}:{}:stream/{}", region, account, stream_name);
-        let shards: Vec<Shard> = (0..shard_count)
-            .map(|i| Shard {
-                shard_id: format!("shardId-000000000000.{}.000000000000", i),
-                sequence_number: format!("4959033827149996696551807410074587034031434670931271809"),
-                parent_id: None,
-                hash_range: "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-                created: chrono::Utc::now().timestamp_millis() as u64,
-            })
-            .collect();
+    pub fn new(account: u64, region: &str, name: String, shard_count: u32) -> Self {
+        let arn = format!("arn:aws:kinesis:{region}:{account}:stream/{name}");
+        let shards: Vec<Arc<Shard>> = build_shards(shard_count).into_iter().map(Arc::new).collect();
         Self {
-            stream_name,
-            stream_arn: arn,
-            stream_status: RwLock::new("ACTIVE".to_string()),
+            name,
+            arn,
+            status: "ACTIVE".to_string(),
             shard_count,
-            retention_period_hours: parking_lot::RwLock::new(24),
+            retention_hours: RwLock::new(24),
+            tags: RwLock::new(BTreeMap::new()),
+            created: chrono::Utc::now().timestamp_millis() as f64 / 1000.0,
+            encryption_type: RwLock::new("NONE".to_string()),
+            key_id: RwLock::new(String::new()),
+            consumers: RwLock::new(BTreeMap::new()),
             shard_level_metrics: RwLock::new(Vec::new()),
-            stream_mode: "ON_DEMAND".to_string(),
-            created: chrono::Utc::now().timestamp_millis() as u64,
+            stream_mode: RwLock::new("PROVISIONED".to_string()),
             shards: RwLock::new(shards),
-            tags: RwLock::new(vec![]),
         }
+    }
+
+    /// Hash a partition key onto the 128-bit space (MD5-like spreading).
+    pub fn hash_key(key: &str) -> u128 {
+        // Two independent 64-bit passes make a stable 128-bit spread; the
+        // exact algorithm only needs to distribute keys across shard ranges.
+        let mut h1: u64 = 0xcbf29ce484222325;
+        let mut h2: u64 = 0x9e3779b97f4a7c15;
+        for b in key.as_bytes() {
+            h1 ^= *b as u64;
+            h1 = h1.wrapping_mul(0x100000001b3);
+            h2 = (h2 ^ (*b as u64)).wrapping_mul(0x2545F4914F6CDD1D).rotate_left(13);
+        }
+        ((h1 as u128) << 64) | (h2 as u128)
+    }
+
+    /// Select the shard covering a hash value (falls back to the first shard).
+    fn select_shard(&self, hash: u128) -> Option<Arc<Shard>> {
+        let shards = self.shards.read();
+        shards
+            .iter()
+            .find(|s| s.hash_key_start <= hash && hash <= s.hash_key_end)
+            .cloned()
+            .or_else(|| shards.first().cloned())
+    }
+
+    /// Write a record; picks the shard via explicit hash key or partition key.
+    pub fn put_record(
+        &self,
+        partition_key: &str,
+        data: Vec<u8>,
+        explicit_hash_key: Option<&str>,
+    ) -> Option<(Arc<Shard>, KinesisRecord)> {
+        let hash = match explicit_hash_key.and_then(|k| k.parse::<u128>().ok()) {
+            Some(h) => h,
+            None => Self::hash_key(partition_key),
+        };
+        let shard = self.select_shard(hash)?;
+        let record = shard.put_record(&shard.shard_id, partition_key.to_string(), data);
+        Some((shard.clone(), record))
+    }
+
+    pub fn shard_by_id(&self, shard_id: &str) -> Option<Arc<Shard>> {
+        self.shards.read().iter().find(|s| s.shard_id == shard_id).cloned()
     }
 }
 
-/// The Kinesis state store.
+/// Rebuild N evenly-spaced shards over the full hash key range.
+pub fn build_shards(count: u32) -> Vec<Shard> {
+    let count = count.max(1);
+    (0..count)
+        .map(|i| {
+            let start = if i == 0 { 0u128 } else { shard_start(i, count) };
+            let end = if i + 1 == count { MAX_HASH_KEY } else { shard_start(i + 1, count) - 1 };
+            Shard::new(format!("shardId-{i:012}"), start, end)
+        })
+        .collect()
+}
+
+/// Start of the hash range for shard `i` of `count` (i >= 1).
+fn shard_start(i: u32, count: u32) -> u128 {
+    // range_size = 2^128 // count, without a u256 intermediate:
+    // 2^128 // count == u128::MAX // count + 1 only when count divides 2^128,
+    // otherwise (q, r) split decides; equivalently use ceil-division:
+    let q = MAX_HASH_KEY / u128::from(count);
+    let r = MAX_HASH_KEY % u128::from(count);
+    let range = if r + 1 == u128::from(count) { q + 1 } else { q };
+    range * u128::from(i)
+}
+
+/// The Kinesis state store for one (account, region).
 #[derive(Clone)]
 pub struct KinesisState {
-    pub streams: Arc<RwLock<HashMap<String, Arc<KinesisStream>>>>,
+    pub streams: Arc<RwLock<BTreeMap<String, Arc<KinesisStream>>>>,
+    pub resource_policies: Arc<Mutex<HashMap<String, String>>>,
 }
 
 impl KinesisState {
     pub fn new() -> Self {
-        Self { streams: Arc::new(RwLock::new(HashMap::new())) }
+        Self {
+            streams: Arc::new(RwLock::new(BTreeMap::new())),
+            resource_policies: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
 
     pub fn get_stream(&self, name: &str) -> Option<Arc<KinesisStream>> {
         self.streams.read().get(name).cloned()
     }
+
+    pub fn find_stream_by_arn(&self, arn: &str) -> Option<Arc<KinesisStream>> {
+        self.streams.read().values().find(|s| s.arn == arn).cloned()
+    }
+
+    pub fn list_stream_names(&self) -> Vec<String> {
+        self.streams.read().keys().cloned().collect()
+    }
 }
 
 impl Default for KinesisState {
     fn default() -> Self { Self::new() }
-}
-
-impl Default for Shard {
-    fn default() -> Self {
-        Self {
-            shard_id: "shardId-default".to_string(),
-            sequence_number: "0".to_string(),
-            parent_id: None,
-            hash_range: "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-            created: 0,
-        }
-    }
 }
