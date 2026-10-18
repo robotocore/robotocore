@@ -199,7 +199,7 @@ fn op_table() -> Vec<(&'static str, &'static str, &'static str)> {
         ("POST", "v2/email/outbound-bulk-emails", "SendBulkEmail"),
         ("POST", "v2/email/outbound-custom-verification-emails", "SendCustomVerificationEmail"),
         ("GET", "v2/email/suppression/addresses", "ListSuppressedDestinations"),
-        ("POST", "v2/email/suppression/addresses", "PutSuppressedDestination"),
+        ("PUT", "v2/email/suppression/addresses", "PutSuppressedDestination"),
         ("GET", "v2/email/suppression/addresses/{EmailAddress}", "GetSuppressedDestination"),
         ("DELETE", "v2/email/suppression/addresses/{EmailAddress}", "DeleteSuppressedDestination"),
         ("GET", "v2/email/deliverability-dashboard", "GetDeliverabilityDashboardOptions"),
@@ -1075,7 +1075,6 @@ fn handler_7(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
         }
         "GetSuppressedDestination" => {
             let email = seg_after(&req.path, "addresses");
-            eprintln!("DBG_SUP path={:?} email={:?} rawpath={:?}", req.path, email, req.headers.get("x-robotocore-path"));
             let got = with_scope(&slot, req, |st| st.suppression.get(&email).cloned());
             match got {
                 Some(s) => ok_json(json!({ "SuppressedDestination": s })),
@@ -1303,7 +1302,7 @@ mod tests {
     #[test]
     fn suppression_roundtrip_in_process() {
         let ctx = fresh_ctx();
-        dispatch(&ctx.req("POST", "/v2/email/suppression/addresses", json!({
+        dispatch(&ctx.req("PUT", "/v2/email/suppression/addresses", json!({
             "EmailAddress": "a@example.com", "Reason": "BOUNCE"
         })));
         let listed = parsed(&dispatch(&ctx.req("GET", "/v2/email/suppression/addresses", json!({}))));
@@ -1362,7 +1361,11 @@ mod tests {
         let ctx = fresh_ctx();
         dispatch(&ctx.req("POST", "/v2/email/contact-lists", json!({ "ContactListName": "cl1" })));
         dispatch(&ctx.req("POST", "/v2/email/contact-lists/cl1/contacts", json!({ "EmailAddress": "c@example.com" })));
-        let listed = parsed(&dispatch(&ctx.req("GET", "/v2/email/contact-lists/cl1/contacts", json!({}))));
+        let listed = parsed(&dispatch(&ctx.req(
+            "POST",
+            "/v2/email/contact-lists/cl1/contacts/list",
+            json!({}),
+        )));
         assert_eq!(listed["Contacts"][0]["EmailAddress"], "c@example.com");
         let removed = dispatch(&ctx.req(
             "DELETE",

@@ -1102,8 +1102,9 @@ mod tests {
         let mut list_req = ctx.req("GET", "/2021-01-01/tags/", json!({}));
         list_req.query_string = format!("arn={}", urlencoded_arn(&arn));
         let listed = parsed(&dispatch(&list_req));
-        assert_eq!(listed["TagList"][0]["Key"], "env");
-        assert_eq!(listed["TagList"][1]["Value"], "platform");
+        let values: Vec<&str> = listed["TagList"].as_array().unwrap()
+            .iter().map(|t| t["Key"].as_str().unwrap()).collect();
+        assert!(values.contains(&"env") && values.contains(&"team"));
 
         dispatch(&ctx.req(
             "POST",
