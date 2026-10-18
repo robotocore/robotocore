@@ -6942,4 +6942,386 @@ fn reboot_db_shard_group(
     Ok(Some(shard_group_xml(acct, region, &group)))
 }
 
+
+// Activity streams -----------------------------------------------------------
+
+fn activity_stream_common(resource_arn: &str) -> (Option<String>, Option<String>, String) {
+    // (mode-free) Kinesis stream name from the arn tail; moto uses this.
+    let stream = format!(
+        "aws-rds-das-{}",
+        resource_arn.split(':').next_back().unwrap_or_default()
+    );
+    (None, None, stream)
+}
+
+fn require_stream_resource(st: &RdsState, arn: &str) -> Result<(), RdsError> {
+    let tail = identifier_from_arn(arn);
+    let is_cluster = arn.split(':').nth(5) == Some("cluster");
+    let found = if is_cluster {
+        find_cluster(st, &tail).is_some() || arn.is_empty()
+    } else {
+        find_instance(st, &tail).is_some() || arn.is_empty()
+    };
+    if !found {
+        return Err(RdsError::not_found404(
+            "DBClusterNotFoundFault",
+            format!("DBCluster {arn} not found."),
+        ));
+    }
+    Ok(())
+}
+
+fn start_activity_stream(
+    st: &RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let arn = p_string(p, "ResourceArn").unwrap_or_default();
+    require_stream_resource(st, &arn)?;
+    let (_, _, stream) = activity_stream_common(&arn);
+    let kms = p_string(p, "KmsKeyId")
+        .unwrap_or_else(|| format!("arn:aws:kms:{region}:{acct}:key/default"));
+    let mut out = String::from("<KmsKeyId>");
+    out.push_str(&esc(&kms));
+    out.push_str("</KmsKeyId>");
+    out.push_str(&format!(
+        "<KinesisStreamName>{}</KinesisStreamName>",
+        esc(&stream)
+    ));
+    out.push_str("<Status>starting</Status>");
+    let mode = p_string(p, "Mode").unwrap_or_else(|| "async".into());
+    out.push_str(&format!("<Mode>{}</Mode>", esc(&mode)));
+    let engine_native = p_bool(p, "EngineNativeAuditFieldsIncluded").unwrap_or(false);
+    out.push_str(&format!(
+        "<EngineNativeAuditFieldsIncluded>{engine_native}</EngineNativeAuditFieldsIncluded>"
+    ));
+    let apply = p_bool(p, "ApplyImmediately").unwrap_or(true);
+    out.push_str(&format!("<ApplyImmediately>{apply}</ApplyImmediately>"));
+    Ok(Some(out))
+}
+
+fn stop_activity_stream(
+    st: &RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let arn = p_string(p, "ResourceArn").unwrap_or_default();
+    require_stream_resource(st, &arn)?;
+    let (_, _, stream) = activity_stream_common(&arn);
+    Ok(Some(format!(
+        "<KmsKeyId>arn:aws:kms:{region}:{acct}:key/default</KmsKeyId>\
+         <KinesisStreamName>{}\
+         </KinesisStreamName>\
+         <Status>stopping</Status>",
+        esc(&stream)
+    )))
+}
+
+fn modify_activity_stream(
+    st: &RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let arn = p_string(p, "ResourceArn");
+    let stream = match &arn {
+        Some(a) => {
+            let (_, _, s) = activity_stream_common(a);
+            format!("<KinesisStreamName>{}</KinesisStreamName>", esc(&s))
+        }
+        None => String::new(),
+    };
+    let policy = p_string(p, "AuditPolicyState").unwrap_or_else(|| "locked".into());
+    Ok(Some(format!(
+        "<KmsKeyId>arn:aws:kms:{region}:{acct}:key/default</KmsKeyId>\
+         {stream}\
+         <Status>started</Status>\
+         <Mode>async</Mode>\
+         <EngineNativeAuditFieldsIncluded>false</EngineNativeAuditFieldsIncluded>\
+         <PolicyStatus>{}</PolicyStatus>",
+        esc(&policy)
+    )))
+}
+
+// Tenant databases -----------------------------------------------------------
+
+fn create_tenant_database(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let db_id = p_string(p, "DBInstanceIdentifier").unwrap_or_default();
+    let tenant_name = p_string(p, "TenantDBName").unwrap_or_default();
+    if !st.databases.contains_key(&db_id.to_lowercase()) {
+        return Err(RdsError::not_found404(
+            "DBInstanceNotFound",
+            format!("DBInstance {db_id} not found."),
+        ));
+    }
+    let key = (db_id.clone(), tenant_name.clone());
+    if st.tenant_databases.contains_key(&key) {
+        return Err(RdsError::client400(
+            "TenantDatabaseAlreadyExists",
+            format!("A tenant database with name {tenant_name} already exists on DB instance {db_id}."),
+        ));
+    }
+    let td = TenantDatabase {
+        db_instance_identifier: db_id.clone(),
+        name: tenant_name.clone(),
+        master_username: p_string(p, "MasterUsername").unwrap_or_default(),
+        character_set_name: p_string(p, "CharacterSetName").unwrap_or_else(|| "AL32UTF8".into()),
+        nchar_character_set_name: p_string(p, "NcharCharacterSetName")
+            .unwrap_or_else(|| "AL16UTF16".into()),
+        status: "available".into(),
+        created: Utc::now(),
+        resource_id: format!("tdb-{}", rand_lower(8)),
+        tags: tags_param(p),
+    };
+    let response = td.clone();
+    st.tenant_databases.insert(key, td);
+    Ok(Some(format!(
+        "<TenantDatabase>{}</TenantDatabase>",
+        tenant_database_xml(acct, region, &response)
+    )))
+}
+
+fn describe_tenant_databases_xml(
+    st: &RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let db_filter = p_string(p, "DBInstanceIdentifier");
+    let name_filter = p_string(p, "TenantDBName");
+    let matched: Vec<&TenantDatabase> = st
+        .tenant_databases
+        .values()
+        .filter(|t| match &db_filter {
+            Some(d) => t.db_instance_identifier == *d,
+            None => true,
+        })
+        .filter(|t| match &name_filter {
+            Some(f) => t.name == *f,
+            None => true,
+        })
+        .collect();
+    let mut list = String::new();
+    for t in &matched {
+        list.push_str(&tenant_database_xml(acct, region, t));
+    }
+    Ok(Some(format!("<TenantDatabases>{list}</TenantDatabases>")))
+}
+
+fn name_filter_helper_name() -> &'static str {
+    "TenantDBName"
+}
+
+fn name_filter_helper(p: &Params) -> Option<String> {
+    p_string(p, "TenantDBName")
+}
+
+fn name_filter_helper_fail(p: &Params) -> Option<String> {
+    p_string(p, "TenantDBName")
+}
+
+fn matched_finalize<'a>(
+    matched: &'a [&'a TenantDatabase],
+    _name: &str,
+    filter: &Option<String>,
+) -> Vec<&'a TenantDatabase> {
+    matched
+        .iter()
+        .filter(|t| match filter {
+            Some(f) => t.name == *f,
+            None => true,
+        })
+        .map(|t| *t)
+        .collect()
+}
+
+fn delete_tenant_database(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let db_id = p_string(p, "DBInstanceIdentifier").unwrap_or_default();
+    let tenant_name = p_string(p, "TenantDBName").unwrap_or_default();
+    let key = (db_id.clone(), tenant_name.clone());
+    let td = match st.tenant_databases.remove(&key) {
+        Some(t) => t,
+        None => {
+            return Err(RdsError::not_found404(
+                "TenantDatabaseNotFound",
+                format!("Tenant database {tenant_name} not found."),
+            ))
+        }
+    };
+    let mut response = td.clone();
+    response.status = "deleting".into();
+    Ok(Some(format!(
+        "<TenantDatabase>{}</TenantDatabase>",
+        tenant_database_xml(acct, region, &response)
+    )))
+}
+
+fn modify_tenant_database(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let db_id = p_string(p, "DBInstanceIdentifier").unwrap_or_default();
+    let tenant_name = p_string(p, "TenantDBName").unwrap_or_default();
+    let key = (db_id.clone(), tenant_name.clone());
+    if !st.tenant_databases.contains_key(&key) {
+        return Err(RdsError::not_found404(
+            "TenantDatabaseNotFound",
+            format!("Tenant database {tenant_name} not found."),
+        ));
+    }
+    let td = st.tenant_databases.get_mut(&key).unwrap();
+    if let Some(v) = p_string(p, "NewTenantDBName") {
+        td.name = v.clone();
+        let moved = st.tenant_databases.remove(&key).unwrap();
+        st.tenant_databases
+            .insert((db_id.clone(), v.clone()), moved);
+    }
+    let lookup = match p_string(p, "NewTenantDBName") {
+        Some(n) => (db_id, n),
+        None => key,
+    };
+    let response = st.tenant_databases.get(&lookup).unwrap().clone();
+    Ok(Some(format!(
+        "<TenantDatabase>{}</TenantDatabase>",
+        tenant_database_xml(acct, region, &response)
+    )))
+}
+
+fn describe_db_snapshot_tenant_databases_xml() -> Result<Body, RdsError> {
+    Ok(Some("<DBSnapshotTenantDatabases/>".to_string()))
+}
+
+// Integrations (zero-ETL) ----------------------------------------------------
+
+fn create_integration(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let name = p_string(p, "IntegrationName").unwrap_or_default();
+    for existing in st.integrations.values() {
+        if existing.name == name {
+            return Err(RdsError::client400(
+                "IntegrationAlreadyExistsFault",
+                format!("An integration with the name {name} already exists."),
+            ));
+        }
+    }
+    let integration = Integration {
+        name: name.clone(),
+        source_arn: p_string(p, "SourceArn").unwrap_or_default(),
+        target_arn: p_string(p, "TargetArn").unwrap_or_default(),
+        kms_key_id: p_string(p, "KMSKeyId"),
+        description: p_string(p, "Description"),
+        data_filter: p_string(p, "DataFilter"),
+        status: "active".into(),
+        created: Utc::now(),
+        arn: format!("arn:aws:rds:{region}:{acct}:integration:{}", rand_lower(8)),
+        tags: tags_param(p),
+    };
+    let arn = integration.arn.clone();
+    let response = integration.clone();
+    st.integrations.insert(arn, integration);
+    Ok(Some(integration_xml(&response, true)))
+}
+
+fn delete_integration(
+    st: &mut RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "IntegrationIdentifier").unwrap_or_default();
+    let integration = match st.integrations.get(&identifier) {
+        Some(i) => i.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "IntegrationNotFoundFault",
+                format!("Integration {identifier} not found."),
+            ))
+        }
+    };
+    st.integrations.remove(&identifier);
+    Ok(Some(integration_xml(&integration, false)))
+}
+
+fn describe_integrations_xml(
+    st: &RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let ident = p_string(p, "IntegrationIdentifier");
+    let matched: Vec<&Integration> = st
+        .integrations
+        .values()
+        .filter(|i| match &ident {
+            Some(f) => i.arn == *f || i.arn.ends_with(f),
+            None => true,
+        })
+        .collect();
+    if matched.is_empty() && ident.is_some() {
+        return Err(RdsError::not_found404(
+            "IntegrationNotFoundFault",
+            format!("Integration {} not found.", ident.unwrap_or_default()),
+        ));
+    }
+    let mut list = String::new();
+    for i in &matched {
+        list.push_str(&integration_xml(i, true));
+    }
+    build_integrations_list(&list)
+}
+
+fn build_integrations_list(list: &str) -> Result<Body, RdsError> {
+    if list.is_empty() {
+        Ok(Some("<Integrations/>".to_string()))
+    } else {
+        Ok(Some(format!(
+            "<Integrations>{list}</Integrations>"
+        )))
+    }
+}
+
+fn modify_integration(
+    st: &mut RdsState,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "IntegrationIdentifier").unwrap_or_default();
+    let integration = match st.integrations.get(&identifier) {
+        Some(i) => i.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "IntegrationNotFoundFault",
+                format!("Integration {identifier} not found."),
+            ))
+        }
+    };
+    let target = st.integrations.get_mut(&identifier).unwrap();
+    if let Some(v) = p_string(p, "IntegrationName") {
+        target.name = v;
+    }
+    if let Some(v) = p_string(p, "Description") {
+        target.description = Some(v);
+    }
+    if let Some(v) = p_string(p, "DataFilter") {
+        target.data_filter = Some(v);
+    }
+    let response = target.clone();
+    let _ = integration;
+    Ok(Some(integration_xml(&response, true)))
+}
+
+
 // __APPEND_MARKER__
