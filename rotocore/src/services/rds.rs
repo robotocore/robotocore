@@ -5359,4 +5359,301 @@ fn reset_db_cluster_parameter_group(
     )))
 }
 
+
+// Subnet groups --------------------------------------------------------------
+
+fn create_db_subnet_group(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+    subnet_info: &BTreeMap<String, (Option<String>, Option<String>)>,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBSubnetGroupName").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    if st.subnet_groups.contains_key(&lower) {
+        return Err(RdsError::client400(
+            "DBSubnetGroupAlreadyExists",
+            format!("DBSubnetGroupAlreadyExists: The DB subnet group '{identifier}' already exists."),
+        ));
+    }
+    let description = p_string(p, "DBSubnetGroupDescription").unwrap_or_default();
+    let subnet_ids = p_list(p, "SubnetIds");
+    if subnet_ids.is_empty() {
+        return Err(RdsError::client400(
+            "InvalidParameterValue",
+            "The DB subnet group doesn't meet Availability Zone (AZ) coverage requirement. Add subnets to cover at least 2 Availability Zones.",
+        ));
+    }
+    let mut subnets = Vec::new();
+    for sid in &subnet_ids {
+        let (vpc, az) = subnet_info
+            .get(sid)
+            .cloned()
+            .unwrap_or((None, None));
+        subnets.push(SubnetInfo {
+            id: sid.clone(),
+            az,
+            vpc_id: vpc,
+        });
+    }
+    let group = DBSubnetGroup {
+        name: lower.clone(),
+        description: p_string(p, "DBSubnetGroupDescription").unwrap_or_default(),
+        subnets,
+        tags: tags_param(p),
+    };
+    let response = group.clone();
+    st.subnet_groups.insert(lower, group);
+    Ok(Some(format!(
+        "<DBSubnetGroup>{}</DBSubnetGroup>",
+        subnet_group_xml(acct, region, &response)
+    )))
+}
+
+fn modify_db_subnet_group(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+    subnet_info: &BTreeMap<String, (Option<String>, Option<String>)>,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBSubnetGroupName").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    let group = match st.subnet_groups.get(&lower) {
+        Some(g) => g.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBSubnetGroupNotFoundFault",
+                format!("Subnet Group {identifier} not found."),
+            ))
+        }
+    };
+    let subnet_ids = p_list(p, "SubnetIds");
+    let mut new_group = group;
+    for sid in &subnet_ids {
+        if !new_group.subnets.iter().any(|s| &s.id == sid) {
+            let (vpc, az) = subnet_info
+                .get(sid)
+                .cloned()
+                .unwrap_or((None, None));
+            new_group.subnets.push(SubnetInfo {
+                id: sid.clone(),
+                az,
+                vpc_id: vpc,
+            });
+        }
+    }
+    if let Some(v) = p_string(p, "DBSubnetGroupDescription") {
+        new_group.description = v;
+    }
+    // moto keeps the existing entries when no SubnetIds are provided
+    let response = new_group.clone();
+    st.subnet_groups.insert(lower, new_group);
+    Ok(Some(format!(
+        "<DBSubnetGroup>{}</DBSubnetGroup>",
+        subnet_group_xml(acct, region, &response)
+    )))
+}
+
+fn delete_db_subnet_group(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBSubnetGroupName").unwrap_or_default();
+    let lower = identifier.to_lowercase();
+    if !st.subnet_groups.contains_key(&lower) {
+        return Err(RdsError::not_found404(
+            "DBSubnetGroupNotFoundFault",
+            format!("Subnet Group {identifier} not found."),
+        ));
+    }
+    let group = st.subnet_groups.remove(&lower).unwrap();
+    Ok(Some(format!(
+        "<DBSubnetGroup>{}</DBSubnetGroup>",
+        subnet_group_xml(acct, region, &group)
+    )))
+}
+
+fn describe_db_subnet_groups_xml(
+    st: &RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let filter = p_string(p, "DBSubnetGroupName").map(|s| s.to_lowercase());
+    let matched: Vec<&DBSubnetGroup> = st
+        .subnet_groups
+        .values()
+        .filter(|g| match &filter {
+            Some(f) => g.name == *f,
+            None => true,
+        })
+        .collect();
+    if !matched.is_empty() || filter.is_none() {
+        let mut list = String::new();
+        for g in &matched {
+            list.push_str(&subnet_group_xml(acct, region, g));
+        }
+        return Ok(Some(format!("<DBSubnetGroups>{list}</DBSubnetGroups>")));
+    }
+    Err(RdsError::not_found404(
+        "DBSubnetGroupNotFoundFault",
+        format!("Subnet Group {} not found.", filter.unwrap_or_default()),
+    ))
+}
+
+// Security groups ------------------------------------------------------------
+
+fn create_db_security_group(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBSecurityGroupName").unwrap_or_default();
+    if st.security_groups.contains_key(&identifier) {
+        return Err(RdsError::client400(
+            "DBSecurityGroupAlreadyExists",
+            format!("Security Group {identifier} already exists."),
+        ));
+    }
+    let group = DBSecurityGroup {
+        name: identifier.clone(),
+        description: p_string(p, "DBSecurityGroupDescription").unwrap_or_default(),
+        vpc_id: p_string(p, "VpcId"),
+        ip_ranges: Vec::new(),
+        ec2_security_groups: Vec::new(),
+        tags: tags_param(p),
+    };
+    let response = group.clone();
+    st.security_groups.insert(identifier, group);
+    Ok(Some(format!(
+        "<DBSecurityGroup>{}</DBSecurityGroup>",
+        security_group_xml(acct, region, &response)
+    )))
+}
+
+fn describe_db_security_groups_xml(
+    st: &RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let filter = p_string(p, "DBSecurityGroupName");
+    let matched: Vec<&DBSecurityGroup> = st
+        .security_groups
+        .values()
+        .filter(|g| match &filter {
+            Some(f) => g.name == *f,
+            None => true,
+        })
+        .collect();
+    if matched.is_empty() && filter.is_some() {
+        return Err(RdsError::not_found404(
+            "DBSecurityGroupNotFound",
+            format!("Security Group {} not found.", filter.unwrap_or_default()),
+        ));
+    }
+    let mut list = String::new();
+    for g in &matched {
+        list.push_str(&security_group_xml(acct, region, g));
+    }
+    Ok(Some(format!("<DBSecurityGroups>{list}</DBSecurityGroups>")))
+}
+
+fn delete_db_security_group(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBSecurityGroupName").unwrap_or_default();
+    if !st.security_groups.contains_key(&identifier) {
+        return Err(RdsError::not_found404(
+            "DBSecurityGroupNotFound",
+            format!("Security Group {identifier} not found."),
+        ));
+    }
+    let group = st.security_groups.remove(&identifier).unwrap();
+    Ok(Some(format!(
+        "<DBSecurityGroup>{}</DBSecurityGroup>",
+        security_group_xml(acct, region, &group)
+    )))
+}
+
+fn authorize_db_security_group_ingress(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBSecurityGroupName").unwrap_or_default();
+    let cidr = p_string(p, "CIDRIP");
+    let group = match st.security_groups.get(&identifier) {
+        Some(g) => g.clone(),
+        None => {
+            return Err(RdsError::not_found404(
+                "DBSecurityGroupNotFound",
+                format!("Security Group {identifier} not found."),
+            ))
+        }
+    };
+    if let Some(cidr) = cidr {
+        if !group.ip_ranges.iter().any(|r| r == &cidr) {
+            st.security_groups
+                .get_mut(&identifier)
+                .unwrap()
+                .ip_ranges
+                .push(cidr);
+        }
+    }
+    if let Some(eg_name) = p_string(p, "EC2SecurityGroupName") {
+        let owner = p_string(p, "EC2SecurityGroupOwnerId").unwrap_or_default();
+        st.security_groups
+            .get_mut(&identifier)
+            .unwrap()
+            .ec2_security_groups
+            .push((eg_name.clone(), eg_name, owner));
+    }
+    let updated = st.security_groups.get(&identifier).unwrap().clone();
+    Ok(Some(format!(
+        "<DBSecurityGroup>{}</DBSecurityGroup>",
+        security_group_xml(acct, region, &updated)
+    )))
+}
+
+fn revoke_db_security_group_ingress(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "DBSecurityGroupName").unwrap_or_default();
+    if !st.security_groups.contains_key(&identifier) {
+        return Err(RdsError::not_found404(
+            "DBSecurityGroupNotFound",
+            format!("Security Group {identifier} not found."),
+        ));
+    }
+    let cidr = p_string(p, "CIDRIP");
+    let eg_name = p_string(p, "EC2SecurityGroupName");
+    {
+        let group = st.security_groups.get_mut(&identifier).unwrap();
+        if let Some(cidr) = cidr {
+            group.ip_ranges.retain(|r| r != &cidr);
+        }
+        if let Some(eg) = eg_name {
+            group.ec2_security_groups.retain(|(n, _, _)| n != &eg);
+        }
+    }
+    let updated = st.security_groups.get(&identifier).unwrap().clone();
+    Ok(Some(format!(
+        "<DBSecurityGroup>{}</DBSecurityGroup>",
+        security_group_xml(acct, region, &updated)
+    )))
+}
+
 // __APPEND_MARKER__
