@@ -70,6 +70,9 @@ fn ok_json(v: &Value) -> Response {
 }
 
 pub fn dispatch(req: &Request) -> Option<Response> {
+    if req.service != "identitystore" {
+        return None;
+    }
     let p = parse_json_body(&req.body);
     let slot = state();
     let mut st = slot.write();

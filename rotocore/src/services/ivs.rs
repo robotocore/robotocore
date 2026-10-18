@@ -115,6 +115,9 @@ fn arn_for(region: &str, account: u64, kind: &str, id: &str) -> String {
 }
 
 pub fn dispatch(req: &Request) -> Option<Response> {
+    if req.service != "ivs" {
+        return None;
+    }
     // Tag operations ride on /tags/{resourceArn} (GET list / POST tag /
     // DELETE untag), per botocore's model and moto's url_paths; the ARN
     // comes from the path, params from the body or query string.

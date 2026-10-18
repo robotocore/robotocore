@@ -11,6 +11,7 @@ use crate::{Request, Response};
 // - ec2 (stub)
 // - cloudformation (stub)
 
+pub mod cognito_idp;
 pub mod identitystore;
 pub mod ivs;
 pub mod mediapackage;
@@ -23,6 +24,9 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         return Some(resp);
     }
     if let Some(resp) = ivs::dispatch(req) {
+        return Some(resp);
+    }
+    if let Some(resp) = cognito_idp::dispatch(req) {
         return Some(resp);
     }
     // No other service fully ported yet.

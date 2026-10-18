@@ -47,6 +47,9 @@ fn not_found(what: &str) -> Response {
 }
 
 pub fn dispatch(req: &Request) -> Option<Response> {
+    if req.service != "mediapackage" {
+        return None;
+    }
     // moto binds `[^/.]+` for ids; an id containing a dot fails the bind and
     // the sidecar 501s — fall through to the same outcome here.
     let (root, sub) = path_parts(&req.path)?;
