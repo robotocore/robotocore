@@ -71,60 +71,6 @@ pub fn list_buckets(buckets: &[(String, u64)]) -> String {
     xml
 }
 
-/// Build a ListObjectsV2 XML response.
-pub fn list_objects_v2(
-    bucket: &str,
-    prefix: &str,
-    marker: &str,
-    max_keys: usize,
-    is_truncated: bool,
-    contents: &[(String, String, usize, u64, String)], // (key, etag, size, last_modified, storage_class)
-    common_prefixes: &[String],
-) -> String {
-    let mut xml = format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?>
-<ListBucketResult xmlns="{ns}">
-  <Name>{bucket}</Name>
-  <Prefix>{prefix}</Prefix>
-  <Marker>{marker}</Marker>
-  <MaxKeys>{max_keys}</MaxKeys>
-  <IsTruncated>{is_truncated}</IsTruncated>"#,
-        ns = S3_NS,
-        bucket = bucket,
-        prefix = prefix,
-        marker = marker,
-        max_keys = max_keys,
-        is_truncated = is_truncated,
-    );
-
-    for (key, etag, size, last_modified, storage_class) in contents {
-        let dt = chrono::DateTime::from_timestamp(*last_modified as i64, 0)
-            .map(|d| d.to_rfc3339())
-            .unwrap_or_default();
-        xml.push_str(&format!(
-            r#"
-  <Contents>
-    <Key>{}</Key>
-    <LastModified>{}</LastModified>
-    <ETag>"{}"</ETag>
-    <Size>{}</Size>
-    <StorageClass>{}</StorageClass>
-  </Contents>"#,
-            key, dt, etag, size, storage_class
-        ));
-    }
-
-    for cp in common_prefixes {
-        xml.push_str(&format!(
-            "\n  <CommonPrefixes>\n    <Prefix>{}</Prefix>\n  </CommonPrefixes>",
-            cp
-        ));
-    }
-
-    xml.push_str("\n</ListBucketResult>");
-    xml
-}
-
 /// Build a GetBucketLocation XML response.
 pub fn get_bucket_location(region: &str) -> String {
     if region == "us-east-1" {
@@ -140,28 +86,6 @@ pub fn get_bucket_location(region: &str) -> String {
             ns = S3_NS,
         )
     }
-}
-
-/// Build a HeadObject response headers (no body).
-pub fn head_object_headers(
-    size: usize,
-    etag: &str,
-    content_type: &str,
-    last_modified: u64,
-) -> Vec<(String, String)> {
-    let dt = chrono::DateTime::from_timestamp(last_modified as i64, 0)
-        .map(|d| d.to_rfc3339())
-        .unwrap_or_default();
-    vec![
-        ("Content-Length".to_string(), size.to_string()),
-        ("ETag".to_string(), format!("\"{}\"", etag)),
-        ("Content-Type".to_string(), content_type.to_string()),
-        ("Last-Modified".to_string(), dt),
-        (
-            "x-amz-request-id".to_string(),
-            uuid::Uuid::new_v4().to_string(),
-        ),
-    ]
 }
 
 #[cfg(test)]
@@ -182,13 +106,6 @@ mod tests {
         let xml = list_buckets(&[("my-bucket".to_string(), 1700000000)]);
         assert!(xml.contains("my-bucket"));
         assert!(xml.contains("ListAllMyBucketsResult"));
-    }
-
-    #[test]
-    fn test_get_bucket_location_us_east_1() {
-        let xml = get_bucket_location("us-east-1");
-        assert!(xml.contains("LocationConstraint"));
-        assert!(!xml.contains("us-east-1"));
     }
 
     #[test]
