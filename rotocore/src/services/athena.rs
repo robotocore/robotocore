@@ -890,6 +890,146 @@ fn op_untag_resource(body: &Value, st: &mut AthenaState) -> OpResult {
 }
 
 // ---------------------------------------------------------------------------
+// Named queries
+// ---------------------------------------------------------------------------
+
+fn op_create_named_query(body: &Value, st: &mut AthenaState) -> OpResult {
+    let workgroup = body
+        .get("WorkGroup")
+        .and_then(Value::as_str)
+        .filter(|wg| !wg.is_empty())
+        .unwrap_or("primary")
+        .to_string();
+    if let Some(wg) = body.get("WorkGroup").and_then(Value::as_str) {
+        st.require_work_group(wg).map_err(|e| invalid_request(&e))?;
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    let nq = NamedQuery {
+        name: body
+            .get("Name")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        description: body.get("Description").cloned().unwrap_or(Value::Null),
+        database: body
+            .get("Database")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        query_string: body
+            .get("QueryString")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        workgroup: workgroup.to_string(),
+    };
+    st.named_queries.push((id.clone(), nq));
+    Ok(json!({ "NamedQueryId": id }))
+}
+
+fn op_get_named_query(body: &Value, st: &AthenaState) -> OpResult {
+    let Some(id) = body.get("NamedQueryId").and_then(Value::as_str) else {
+        return Err(invalid_request("NamedQueryId is required"));
+    };
+    match st.named_queries.iter().find(|(key, _)| *key == id) {
+        Some((_, nq)) => Ok(json!({ "NamedQuery": nq.to_json(id) })),
+        None => Err(not_handled()),
+    }
+}
+
+fn op_delete_named_query(body: &Value, st: &mut AthenaState) -> OpResult {
+    let Some(id) = body.get("NamedQueryId").and_then(Value::as_str) else {
+        return Ok(json!({}));
+    };
+    st.named_queries.retain(|(key, _)| key != id);
+    Ok(json!({}))
+}
+
+fn op_update_named_query(body: &Value, st: &mut AthenaState) -> OpResult {
+    let Some(id) = body.get("NamedQueryId").and_then(Value::as_str) else {
+        return Ok(json!({}));
+    };
+    if let Some((_, nq)) = st.named_queries.iter_mut().find(|(key, _)| *key == id) {
+        let name = body.get("Name").and_then(Value::as_str);
+        let description = body.get("Description").and_then(Value::as_str);
+        let query_string = body.get("QueryString").and_then(Value::as_str);
+        if let Some(name) = name {
+            nq.name = name.to_string();
+        }
+        if let Some(description) = description {
+            nq.description = Value::String(description.to_string());
+        }
+        if let Some(query_string) = query_string {
+            nq.query_string = query_string.to_string();
+        }
+    }
+    Ok(json!({}))
+}
+
+fn op_batch_get_named_query(body: &Value, st: &AthenaState) -> OpResult {
+    let ids = body
+        .get("NamedQueryIds")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut named_queries = Vec::new();
+    let mut unprocessed = Vec::new();
+    for id in ids {
+        let Some(id_str) = id.as_str() else { continue };
+        match st.named_queries.iter().find(|(key, _)| key == id_str) {
+            Some((_, nq)) => named_queries.push(nq.to_json(id_str)),
+            None => unprocessed.push(json!({
+                "NamedQueryId": id_str,
+                "ErrorCode": "INVALID_INPUT",
+                "ErrorMessage": "INVALID_INPUT",
+            })),
+        }
+    }
+    Ok(json!({
+        "NamedQueries": named_queries,
+        "UnprocessedNamedQueryIds": unprocessed,
+    }))
+}
+
+/// moto `list_named_queries` (Paginate): work-group filter, default
+/// limit 50, tokens carry the first id of the next page.
+fn op_list_named_queries(body: &Value, st: &AthenaState) -> OpResult {
+    let workgroup = body
+        .get("WorkGroup")
+        .and_then(Value::as_str)
+        .filter(|wg| !wg.is_empty())
+        .unwrap_or("primary");
+    let items: Vec<&(String, NamedQuery)> = st
+        .named_queries
+        .iter()
+        .filter(|(_, nq)| nq.workgroup == workgroup)
+        .collect();
+    let max_results = body
+        .get("MaxResults")
+        .and_then(Value::as_i64)
+        .filter(|n| *n > 0)
+        .unwrap_or(50) as usize;
+    let index_start = match body.get("NextToken").and_then(Value::as_str) {
+        Some(token) => {
+            let token_id = decode_token(token)?;
+            items
+                .iter()
+                .position(|(key, _)| *key == token_id)
+                .ok_or_else(|| invalid_request("Resource not found!"))?
+        }
+        None => 0,
+    };
+    let index_end = (index_start + max_results).min(items.len());
+    let page = &items[index_start..index_end];
+    let ids: Vec<Value> = page.iter().map(|(id, _)| json!(id)).collect();
+    let mut response = json!({ "NamedQueryIds": ids });
+    if !page.is_empty() && index_end < items.len() {
+        response["NextToken"] = json!(encode_token(&items[index_end].0));
+    }
+    Ok(response)
+}
+
+// ---------------------------------------------------------------------------
 // dispatch
 // ---------------------------------------------------------------------------
 
@@ -914,6 +1054,13 @@ pub fn dispatch(req: &Request) -> Response {
             "ListTagsForResource" => op_list_tags_for_resource(&body, st),
             "TagResource" => op_tag_resource(&body, st),
             "UntagResource" => op_untag_resource(&body, st),
+            // named queries
+            "CreateNamedQuery" => op_create_named_query(&body, st),
+            "GetNamedQuery" => op_get_named_query(&body, st),
+            "DeleteNamedQuery" => op_delete_named_query(&body, st),
+            "UpdateNamedQuery" => op_update_named_query(&body, st),
+            "BatchGetNamedQuery" => op_batch_get_named_query(&body, st),
+            "ListNamedQueries" => op_list_named_queries(&body, st),
             other => Err(json_error(
                 501,
                 "NotImplemented",
@@ -1294,6 +1441,149 @@ mod tests {
         );
         assert_eq!(resp.status, 200);
         assert!(body_of(&resp)["Tags"].as_array().unwrap().is_empty());
+    }
+
+    // ------------------------------------------------------------------
+    // Family 3: named queries
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn named_query_crud_and_batch() {
+        let account = fresh_account();
+        let resp = run(
+            account,
+            "CreateNamedQuery",
+            json!({
+                "Name": "nq-1",
+                "Database": "default",
+                "QueryString": "SELECT 1",
+                "Description": "first",
+            }),
+        );
+        let id = body_of(&resp)["NamedQueryId"].as_str().unwrap().to_string();
+
+        let resp = run(account, "GetNamedQuery", json!({"NamedQueryId": &id}));
+        let nq = body_of(&resp)["NamedQuery"].clone();
+        assert_eq!(nq["Name"], "nq-1");
+        assert_eq!(nq["Database"], "default");
+        assert_eq!(nq["QueryString"], "SELECT 1");
+        assert_eq!(nq["WorkGroup"], "primary");
+
+        // update
+        let resp = run(
+            account,
+            "UpdateNamedQuery",
+            json!({
+                "NamedQueryId": &id,
+                "QueryString": "SELECT 2",
+                "Description": "second",
+            }),
+        );
+        assert_eq!(resp.status, 200);
+        let nq = body_of(&run(account, "GetNamedQuery", json!({"NamedQueryId": &id})))
+            ["NamedQuery"]
+            .clone();
+        assert_eq!(nq["QueryString"], "SELECT 2");
+        assert_eq!(nq["Description"], "second");
+
+        // batch get: found + unprocessed
+        let resp = run(
+            account,
+            "BatchGetNamedQuery",
+            json!({"NamedQueryIds": [&id, "missing"]}),
+        );
+        let batch = body_of(&resp);
+        assert_eq!(batch["NamedQueries"][0]["Name"], "nq-1");
+        assert_eq!(
+            batch["UnprocessedNamedQueryIds"][0]["NamedQueryId"],
+            "missing"
+        );
+
+        // missing get is the moto 'NoneType' crash
+        let resp = run(
+            account,
+            "GetNamedQuery",
+            json!({"NamedQueryId": "00000000-0000-0000-0000-000000000000"}),
+        );
+        assert_eq!(resp.status, 500);
+        let err = body_of(&resp);
+        assert_eq!(err["__type"], "InternalError");
+        assert_eq!(err["message"], "'NoneType' object has no attribute 'name'");
+
+        // create against a missing workgroup errors
+        let resp = run(
+            account,
+            "CreateNamedQuery",
+            json!({
+                "Name": "x",
+                "Database": "default",
+                "QueryString": "SELECT 1",
+                "WorkGroup": "missing",
+            }),
+        );
+        assert_eq!(resp.status, 400);
+        assert_eq!(body_of(&resp)["message"], "WorkGroup does not exist");
+
+        // list is workgroup-scoped and paginates
+        let resp = run(
+            account,
+            "ListNamedQueries",
+            json!({"WorkGroup": "primary", "MaxResults": 1}),
+        );
+        assert!(body_of(&resp)["NamedQueryIds"].as_array().unwrap().len() <= 1);
+
+        run(account, "DeleteNamedQuery", json!({"NamedQueryId": &id}));
+        let resp = run(account, "GetNamedQuery", json!({"NamedQueryId": &id}));
+        assert_eq!(resp.status, 500);
+    }
+
+    #[test]
+    fn named_query_list_pagination_and_filter() {
+        let account = fresh_account();
+        let mut ids = Vec::new();
+        for i in 0..3 {
+            let resp = run(
+                account,
+                "CreateNamedQuery",
+                json!({
+                    "Name": format!("nq-{i}"),
+                    "Database": "default",
+                    "QueryString": "SELECT 1",
+                }),
+            );
+            ids.push(body_of(&resp)["NamedQueryId"].as_str().unwrap().to_string());
+        }
+        // page 1
+        let resp = run(
+            account,
+            "ListNamedQueries",
+            json!({"WorkGroup": "primary", "MaxResults": 2}),
+        );
+        let page1 = body_of(&resp);
+        let page_ids: Vec<String> = page1["NamedQueryIds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
+        assert!(page1["NextToken"].as_str().is_some());
+        run(account, "ListNamedQueries", json!({"WorkGroup": "other"}));
+        // follow the token to fetch the rest
+        let resp = run(
+            account,
+            "ListNamedQueries",
+            json!({"WorkGroup": "primary", "MaxResults": 2, "NextToken": page1["NextToken"]}),
+        );
+        let page2 = body_of(&resp);
+        let page2_ids: Vec<String> = page2["NamedQueryIds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
+        let mut all = page_ids.clone();
+        all.extend(page2_ids.iter().cloned());
+        assert!(ids.iter().all(|id| all.contains(id)));
     }
 
     // ------------------------------------------------------------------
