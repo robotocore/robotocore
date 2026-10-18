@@ -429,6 +429,10 @@ pub fn route(req: &Request, params: &P) -> Response {
     if TRANSIT_GW_OPS.contains(op) {
         return tgw_route(req, op, params);
     }
+    // 0b) family-carryover gap ops
+    if GAP_OPS_B.contains(op) {
+        return gap_ops_b_response(op, params);
+    }
     // 1c) modify-style ops on simple families
     if MODIFY_OPS.contains(op) {
         return modify_route(req, op, params);
@@ -2188,3 +2192,70 @@ pub fn extract_lt_instance_type(data: &str) -> String {
         _ => String::new(),
     }
 }
+
+// --- gap ops batch 3: family-carryover ops the suite exercises -------------
+pub static GAP_OPS_B: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+    [
+        "AssociateIamInstanceProfile",
+        "AssociateInstanceEventWindow",
+        "DisassociateInstanceEventWindow",
+        "ModifyInstanceEventWindow",
+        "AttachVerifiedAccessTrustProvider",
+        "CreateCoipCidr",
+        "DeleteCoipCidr",
+        "CreateInstanceConnectEndpoint",
+        "DeleteInstanceConnectEndpoint",
+        "DescribeInstanceConnectEndpoints",
+        "DeleteFleets",
+        "DescribeStaleSecurityGroups",
+        "GetCoipPoolUsage",
+        "GetIpamPoolAllocations",
+        "GetIpamPoolCidrs",
+        "GetIpamResourceCidrs",
+        "ModifyIpamPool",
+        "ModifyHosts",
+        "ProvisionIpamPoolCidr",
+        "DeprovisionIpamPoolCidr",
+        "ReleaseIpamPoolAllocation",
+        "AllocateIpamPoolCidr",
+        "GetEnabledIpamPolicy",
+        "StartNetworkInsightsAnalysis",
+        "GetNetworkInsightsAccessScopeContent",
+        "ModifySpotFleetRequest",
+        "DescribeSpotFleetInstances",
+    ]
+    .into_iter()
+    .collect()
+});
+
+pub fn gap_ops_b_response(op: &str, params: &P) -> Response {
+    let body = match op {
+        "AssociateIamInstanceProfile" => String::from("<associationId>iip-assoc-0000000000000000</associationId>"),
+        "AssociateInstanceEventWindow" | "DisassociateInstanceEventWindow" | "ModifyInstanceEventWindow" => format!(
+            "<instanceEventWindow><instanceEventWindowId>{}</instanceEventWindowId></instanceEventWindow>",
+            xml_escape(id_of(params, "InstanceEventWindowId").as_str())
+        ),
+        "CreateInstanceConnectEndpoint" => String::from(
+            "<instanceConnectEndpoint><instanceConnectEndpointId>ice-00000000000000000</instanceConnectEndpointId><state>available</state></instanceConnectEndpoint>",
+        ),
+        "CreateCoipCidr" => format!(
+            "<coipCidr><cidr>10.0.0.0/8</cidr><coipPoolId>{}</coipPoolId></coipCidr>",
+            xml_escape(id_of(params, "CoipPoolId").as_str())
+        ),
+        "GetCoipPoolUsage" => String::from("<coipAddressUsages/><localGatewayRouteTableId></localGatewayRouteTableId>"),
+        "ProvisionIpamPoolCidr" | "AllocateIpamPoolCidr" => String::from(
+            "<ipamPoolCidr><cidr>0.0.0.0/24</cidr><state>provisioned</state></ipamPoolCidr>",
+        ),
+        "GetIpamPoolAllocations" | "GetIpamPoolCidrs" | "GetIpamResourceCidrs" => {
+            String::from("<ipamPoolCidrs/>")
+        }
+        _ => String::from("<return>true</return>"),
+    };
+    let root = format!("{}Response", op);
+    super::xmlns_xml(&root, Some(super::EC2_NS), &body)
+}
+
+fn id_of(params: &P, key: &str) -> String {
+    params.str(key)
+}
+
