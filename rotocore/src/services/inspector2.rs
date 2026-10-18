@@ -80,16 +80,23 @@ fn not_implemented(svc: &Svc) -> Response {
 }
 
 fn status_to_json(account_id: &str, status: &Value) -> Value {
-    let ec2 = status.get("ec2").and_then(Value::as_str).unwrap_or("DISABLED");
-    let ecr = status.get("ecr").and_then(Value::as_str).unwrap_or("DISABLED");
-    let lambda = status.get("lambda").and_then(Value::as_str).unwrap_or("DISABLED");
+    let ec2 = status
+        .get("ec2")
+        .and_then(Value::as_str)
+        .unwrap_or("DISABLED");
+    let ecr = status
+        .get("ecr")
+        .and_then(Value::as_str)
+        .unwrap_or("DISABLED");
+    let lambda = status
+        .get("lambda")
+        .and_then(Value::as_str)
+        .unwrap_or("DISABLED");
     let lambda_code = status
         .get("lambdaCode")
         .and_then(Value::as_str)
         .unwrap_or("DISABLED");
-    let overall = [ec2, ecr, lambda, lambda_code]
-        .iter()
-        .any(|s| *s == "ENABLED");
+    let overall = [ec2, ecr, lambda, lambda_code].contains(&"ENABLED");
     json!({
         "accountId": account_id,
         "resourceStatus": {"ec2": ec2, "ecr": ecr, "lambda": lambda, "lambdaCode": lambda_code},
@@ -98,7 +105,12 @@ fn status_to_json(account_id: &str, status: &Value) -> Value {
 }
 
 fn status_to_batch_json(account_id: &str, status: &Value) -> Value {
-    let pick = |field: &str| status.get(field).and_then(Value::as_str).unwrap_or("DISABLED");
+    let pick = |field: &str| {
+        status
+            .get(field)
+            .and_then(Value::as_str)
+            .unwrap_or("DISABLED")
+    };
     let overall = ["ec2", "ecr", "lambda", "lambdaCode"]
         .iter()
         .any(|f| pick(f) == "ENABLED");
@@ -289,7 +301,9 @@ fn route_static(svc: &Svc, m: &str, segs: &[&str]) -> Response {
         ("POST", "codesecurity/scan-configuration/delete") => {
             delete_code_security_scan_configuration(svc)
         }
-        ("POST", "codesecurity/scan-configuration/get") => get_code_security_scan_configuration(svc),
+        ("POST", "codesecurity/scan-configuration/get") => {
+            get_code_security_scan_configuration(svc)
+        }
         ("POST", "codesecurity/scan-configuration/update") => {
             update_code_security_scan_configuration(svc)
         }
@@ -300,9 +314,7 @@ fn route_static(svc: &Svc, m: &str, segs: &[&str]) -> Response {
         | ("POST", "codesecurity/scan-configuration/associations/list") => {
             list_scan_configuration_associations(svc)
         }
-        ("POST", "codesecurity/scan-configuration/batch/associate") => {
-            batch_associate(svc, true)
-        }
+        ("POST", "codesecurity/scan-configuration/batch/associate") => batch_associate(svc, true),
         ("POST", "codesecurity/scan-configuration/batch/disassociate") => {
             batch_associate(svc, false)
         }
@@ -314,7 +326,15 @@ fn route_static(svc: &Svc, m: &str, segs: &[&str]) -> Response {
 
 // --- Filters ---
 
-fn filter_dict(svc: &Svc, id: &str, name: &str, action: &str, criteria: &Value, description: &str, reason: &str) -> Value {
+fn filter_dict(
+    svc: &Svc,
+    id: &str,
+    name: &str,
+    action: &str,
+    criteria: &Value,
+    description: &str,
+    reason: &str,
+) -> Value {
     json!({
         "action": action,
         "arn": format!(
@@ -344,11 +364,19 @@ fn create_filter(svc: &Svc) -> Response {
         for (k, v) in tag_map {
             seeded.insert(k.clone(), v.as_str().unwrap_or_default().to_string());
         }
-        let arn = dict.get("arn").and_then(Value::as_str).unwrap_or("").to_string();
+        let arn = dict
+            .get("arn")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
         merge_tags(svc, &arn, &seeded);
         dict["tags"] = json!(seeded);
     }
-    let arn = dict.get("arn").and_then(Value::as_str).unwrap_or("").to_string();
+    let arn = dict
+        .get("arn")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
     svc.with(|st| st.filters.insert(arn, dict.clone()));
     ok(json!({"arn": dict.get("arn").cloned().unwrap_or(json!(""))}))
 }
@@ -363,7 +391,11 @@ fn list_filters(svc: &Svc) -> Response {
     let all = svc.with(|st| st.filters.values().cloned().collect::<Vec<Value>>());
     let mut out = Vec::new();
     for mut dict in all {
-        let arn = dict.get("arn").and_then(Value::as_str).unwrap_or("").to_string();
+        let arn = dict
+            .get("arn")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
         let tags = svc.with(|st| st.tagger.get(&arn).cloned().unwrap_or_default());
         dict["tags"] = json!(tags);
         out.push(dict);
@@ -378,28 +410,26 @@ fn update_filter(svc: &Svc) -> Response {
     let description = svc.body("description");
     let reason = svc.body("reason");
     let criteria = svc.body("filterCriteria");
-    let result = svc.with(|st| {
-        match st.filters.get_mut(&arn) {
-            Some(filter) => {
-                if action.is_string() {
-                    filter["action"] = action.clone();
-                }
-                if name.is_string() {
-                    filter["name"] = name.clone();
-                }
-                if description.is_string() {
-                    filter["description"] = description.clone();
-                }
-                if reason.is_string() {
-                    filter["reason"] = reason.clone();
-                }
-                if criteria.is_object() {
-                    filter["criteria"] = criteria.clone();
-                }
-                Some(arn.clone())
+    let result = svc.with(|st| match st.filters.get_mut(&arn) {
+        Some(filter) => {
+            if action.is_string() {
+                filter["action"] = action.clone();
             }
-            None => None,
+            if name.is_string() {
+                filter["name"] = name.clone();
+            }
+            if description.is_string() {
+                filter["description"] = description.clone();
+            }
+            if reason.is_string() {
+                filter["reason"] = reason.clone();
+            }
+            if criteria.is_object() {
+                filter["criteria"] = criteria.clone();
+            }
+            Some(arn.clone())
         }
+        None => None,
     });
     match result {
         Some(arn) => ok(json!({"arn": arn})),
@@ -457,18 +487,16 @@ fn associate_member(svc: &Svc) -> Response {
             }),
         );
     });
-    ok(json!({"accountId": svc.account}))
+    ok(json!({"accountId": account_id}))
 }
 fn disassociate_member(svc: &Svc) -> Response {
     let account_id = svc.body("accountId").as_str().unwrap_or("").to_string();
-    let found = svc.with(|st| {
-        match st.members.get_mut(&account_id) {
-            Some(member) => {
-                member["relationshipStatus"] = json!("DISABLED");
-                true
-            }
-            None => false,
+    let found = svc.with(|st| match st.members.get_mut(&account_id) {
+        Some(member) => {
+            member["relationshipStatus"] = json!("DISABLED");
+            true
         }
+        None => false,
     });
     if found {
         ok(json!({"accountId": account_id}))
@@ -500,31 +528,31 @@ fn enable_delegated_admin(svc: &Svc, enable: bool) -> Response {
         .unwrap_or("")
         .to_string();
     svc.with(|st| {
-        st.admin_accounts
-            .insert(account_id.clone(), if enable { "ENABLED" } else { "DISABLED" }.to_string());
+        st.admin_accounts.insert(
+            account_id.clone(),
+            if enable { "ENABLED" } else { "DISABLED" }.to_string(),
+        );
     });
     ok(json!({"delegatedAdminAccountId": account_id}))
 }
 
 fn list_delegated_admins(svc: &Svc) -> Response {
-    let accounts = svc
-        .with(|st| {
-            st.admin_accounts
-                .iter()
-                .map(|(id, status)| json!({"accountId": id, "status": status}))
-                .collect::<Vec<Value>>()
-        });
+    let accounts = svc.with(|st| {
+        st.admin_accounts
+            .iter()
+            .map(|(id, status)| json!({"accountId": id, "status": status}))
+            .collect::<Vec<Value>>()
+    });
     ok(json!({"delegatedAdminAccounts": accounts}))
 }
 
 fn get_delegated_admin(svc: &Svc) -> Response {
-    let found = svc
-        .with(|st| {
-            st.admin_accounts
-                .iter()
-                .find(|(_, status)| status.as_str() == "ENABLED")
-                .map(|(id, status)| json!({"accountId": id, "status": status}))
-        });
+    let found = svc.with(|st| {
+        st.admin_accounts
+            .iter()
+            .find(|(_, status)| status.as_str() == "ENABLED")
+            .map(|(id, status)| json!({"accountId": id, "status": status}))
+    });
     match found {
         Some(d) => ok(json!({"delegatedAdmin": d})),
         None => ok(json!({})),
@@ -536,21 +564,19 @@ fn get_delegated_admin(svc: &Svc) -> Response {
 fn enable_disable(svc: &Svc, enable: bool) -> Response {
     let account_ids = str_list(svc.body("accountIds"));
     let resource_types = str_list(svc.body("resourceTypes"));
-    let accounts = svc
-        .with(|st| toggle_accounts(st, &account_ids, &resource_types, enable));
+    let accounts = svc.with(|st| toggle_accounts(st, &account_ids, &resource_types, enable));
     ok(json!({"accounts": accounts, "failedAccounts": []}))
 }
 
 fn batch_get_account_status(svc: &Svc) -> Response {
     let account_ids = str_list(svc.body("accountIds"));
-    let accounts = svc
-        .with(|st| {
-            st.account_status
-                .iter()
-                .filter(|(id, _)| account_ids.iter().any(|a| a == id.as_str()))
-                .map(|(id, status)| status_to_batch_json(id, status))
-                .collect::<Vec<Value>>()
-        });
+    let accounts = svc.with(|st| {
+        st.account_status
+            .iter()
+            .filter(|(id, _)| account_ids.iter().any(|a| a == id.as_str()))
+            .map(|(id, status)| status_to_batch_json(id, status))
+            .collect::<Vec<Value>>()
+    });
     ok(json!({"accounts": accounts, "failedAccounts": []}))
 }
 
@@ -559,9 +585,7 @@ fn batch_get_free_trial_info(svc: &Svc) -> Response {
     let mut accounts = Vec::new();
     for account_id in account_ids {
         let now = now_unix();
-        let trial = |t: &str| {
-            json!({"end": unix_in(86400.0 * 15.0), "start": now, "status": "ACTIVE", "type": t})
-        };
+        let trial = |t: &str| json!({"end": unix_in(86400.0 * 15.0), "start": now, "status": "ACTIVE", "type": t});
         accounts.push(json!({
             "accountId": account_id,
             "freeTrialInfo": [trial("EC2"), trial("ECR"), trial("LAMBDA")],
@@ -611,7 +635,8 @@ fn describe_organization_configuration(svc: &Svc) -> Response {
 fn update_organization_configuration(svc: &Svc) -> Response {
     let auto_enable = svc.body("autoEnable");
     let merged = svc.with(|st| {
-        if let (Some(newmap), Some(map)) = (auto_enable.as_object(), st.org_config.as_object_mut()) {
+        if let (Some(newmap), Some(map)) = (auto_enable.as_object(), st.org_config.as_object_mut())
+        {
             for (k, v) in newmap {
                 map.insert(k.clone(), v.clone());
             }
@@ -640,17 +665,27 @@ fn create_cis_scan_configuration(svc: &Svc) -> Response {
         "tags": {},
     });
     svc.with(|st| st.cis_scan_configurations.insert(arn, dict.clone()));
-    ok(json!({"scanConfigurationArn": dict.get("scanConfigurationArn").cloned().unwrap_or(json!(""))}))
+    ok(
+        json!({"scanConfigurationArn": dict.get("scanConfigurationArn").cloned().unwrap_or(json!(""))}),
+    )
 }
 
 fn delete_cis_scan_configuration(svc: &Svc) -> Response {
-    let arn = svc.body("scanConfigurationArn").as_str().unwrap_or("").to_string();
+    let arn = svc
+        .body("scanConfigurationArn")
+        .as_str()
+        .unwrap_or("")
+        .to_string();
     svc.with(|st| st.cis_scan_configurations.remove(&arn));
     ok(json!({"scanConfigurationArn": arn}))
 }
 
 fn update_cis_scan_configuration(svc: &Svc) -> Response {
-    let arn = svc.body("scanConfigurationArn").as_str().unwrap_or("").to_string();
+    let arn = svc
+        .body("scanConfigurationArn")
+        .as_str()
+        .unwrap_or("")
+        .to_string();
     for field in ["scanName", "securityLevel", "schedule", "targets"] {
         let v = svc.body(field);
         svc.with(|st| {
@@ -665,7 +700,12 @@ fn update_cis_scan_configuration(svc: &Svc) -> Response {
 }
 
 fn list_cis_scan_configurations(svc: &Svc) -> Response {
-    let configs = svc.with(|st| st.cis_scan_configurations.values().cloned().collect::<Vec<Value>>());
+    let configs = svc.with(|st| {
+        st.cis_scan_configurations
+            .values()
+            .cloned()
+            .collect::<Vec<Value>>()
+    });
     ok(json!({"scanConfigurations": configs}))
 }
 
@@ -847,38 +887,58 @@ fn create_code_security_integration(svc: &Svc) -> Response {
 }
 
 fn delete_code_security_integration(svc: &Svc) -> Response {
-    let arn = svc.body("integrationArn").as_str().unwrap_or("").to_string();
+    let arn = svc
+        .body("integrationArn")
+        .as_str()
+        .unwrap_or("")
+        .to_string();
     svc.with(|st| st.code_security_integrations.remove(&arn));
     ok(json!({"integrationArn": arn}))
 }
 
 fn get_code_security_integration(svc: &Svc) -> Response {
-    let arn = svc.body("integrationArn").as_str().unwrap_or("").to_string();
+    let arn = svc
+        .body("integrationArn")
+        .as_str()
+        .unwrap_or("")
+        .to_string();
     let found = svc.with(|st| st.code_security_integrations.get(&arn).cloned());
     ok(found.unwrap_or(json!({})))
 }
 
 fn update_code_security_integration(svc: &Svc) -> Response {
-    let arn = svc.body("integrationArn").as_str().unwrap_or("").to_string();
+    let arn = svc
+        .body("integrationArn")
+        .as_str()
+        .unwrap_or("")
+        .to_string();
     let details = svc.body("details");
-    let (returned_arn, status) = svc.with(|st| {
-        match st.code_security_integrations.get_mut(&arn) {
-            Some(integration) => {
-                if details.is_object() {
-                    integration["details"] = details;
-                }
-                integration["lastUpdateOn"] = json!(now_unix());
-                (arn.clone(), integration.get("status").cloned().unwrap_or(json!("PENDING")))
+    let (returned_arn, status) = svc.with(|st| match st.code_security_integrations.get_mut(&arn) {
+        Some(integration) => {
+            if details.is_object() {
+                integration["details"] = details;
             }
-            None => (arn.clone(), json!("NOT_FOUND")),
+            integration["lastUpdateOn"] = json!(now_unix());
+            (
+                arn.clone(),
+                integration
+                    .get("status")
+                    .cloned()
+                    .unwrap_or(json!("PENDING")),
+            )
         }
+        None => (arn.clone(), json!("NOT_FOUND")),
     });
     ok(json!({"integrationArn": returned_arn, "status": status}))
 }
 
 fn list_code_security_integrations(svc: &Svc) -> Response {
-    let items = svc
-        .with(|st| st.code_security_integrations.values().cloned().collect::<Vec<Value>>());
+    let items = svc.with(|st| {
+        st.code_security_integrations
+            .values()
+            .cloned()
+            .collect::<Vec<Value>>()
+    });
     ok(json!({"integrations": items}))
 }
 
@@ -900,24 +960,36 @@ fn create_code_security_scan_configuration(svc: &Svc) -> Response {
         "associations": [],
     });
     let arn_map = arn.clone();
-        svc.with(|st| st.code_security_scan_configurations.insert(arn_map, dict));
+    svc.with(|st| st.code_security_scan_configurations.insert(arn_map, dict));
     ok(json!({"scanConfigurationArn": arn}))
 }
 
 fn delete_code_security_scan_configuration(svc: &Svc) -> Response {
-    let arn = svc.body("scanConfigurationArn").as_str().unwrap_or("").to_string();
+    let arn = svc
+        .body("scanConfigurationArn")
+        .as_str()
+        .unwrap_or("")
+        .to_string();
     svc.with(|st| st.code_security_scan_configurations.remove(&arn));
     ok(json!({"scanConfigurationArn": arn}))
 }
 
 fn get_code_security_scan_configuration(svc: &Svc) -> Response {
-    let arn = svc.body("scanConfigurationArn").as_str().unwrap_or("").to_string();
+    let arn = svc
+        .body("scanConfigurationArn")
+        .as_str()
+        .unwrap_or("")
+        .to_string();
     let found = svc.with(|st| st.code_security_scan_configurations.get(&arn).cloned());
     ok(found.unwrap_or(json!({})))
 }
 
 fn update_code_security_scan_configuration(svc: &Svc) -> Response {
-    let arn = svc.body("scanConfigurationArn").as_str().unwrap_or("").to_string();
+    let arn = svc
+        .body("scanConfigurationArn")
+        .as_str()
+        .unwrap_or("")
+        .to_string();
     let configuration = svc.body("configuration");
     svc.with(|st| {
         if let Some(config) = st.code_security_scan_configurations.get_mut(&arn) {
@@ -932,7 +1004,12 @@ fn update_code_security_scan_configuration(svc: &Svc) -> Response {
 
 fn list_code_security_scan_configurations(svc: &Svc) -> Response {
     let configs = svc
-        .with(|st| st.code_security_scan_configurations.values().cloned().collect::<Vec<Value>>())
+        .with(|st| {
+            st.code_security_scan_configurations
+                .values()
+                .cloned()
+                .collect::<Vec<Value>>()
+        })
         .into_iter()
         .map(|dict| {
             json!({
@@ -951,16 +1028,10 @@ fn list_scan_configuration_associations(svc: &Svc) -> Response {
         .as_str()
         .unwrap_or("")
         .to_string();
-    let associations = svc
-        .with(|st| {
-            match st.code_security_scan_configurations.get(&arn) {
-                Some(config) => config
-                    .get("associations")
-                    .cloned()
-                    .unwrap_or(json!([])),
-                None => json!([]),
-            }
-        });
+    let associations = svc.with(|st| match st.code_security_scan_configurations.get(&arn) {
+        Some(config) => config.get("associations").cloned().unwrap_or(json!([])),
+        None => json!([]),
+    });
     ok(json!({"associations": associations}))
 }
 
@@ -973,20 +1044,19 @@ fn batch_associate(svc: &Svc, associate: bool) -> Response {
     let requests = svc.body(field).as_array().cloned().unwrap_or_default();
     let mut successful = Vec::new();
     let mut failed = Vec::new();
-    let known: Vec<bool> = svc
-        .with(|st| {
-            requests
-                .iter()
-                .map(|req| {
-                    let arn = req
-                        .get("scanConfigurationArn")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string();
-                    st.code_security_scan_configurations.contains_key(&arn)
-                })
-                .collect()
-        });
+    let known: Vec<bool> = svc.with(|st| {
+        requests
+            .iter()
+            .map(|req| {
+                let arn = req
+                    .get("scanConfigurationArn")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                st.code_security_scan_configurations.contains_key(&arn)
+            })
+            .collect()
+    });
     for (i, req) in requests.into_iter().enumerate() {
         let arn = req
             .get("scanConfigurationArn")
@@ -1090,4 +1160,310 @@ fn str_list(v: Value) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bytes::Bytes;
+    use std::collections::HashMap;
+
+    fn scope() -> ScopeKey {
+        (
+            123456780002,
+            format!("us-east-1-{}", Uuid::new_v4().simple()),
+        )
+    }
+
+    fn r(method: &str, path: &str, body: &str, key: &ScopeKey) -> Request {
+        Request {
+            service: "inspector2".to_string(),
+            operation: String::new(),
+            method: method.to_string(),
+            path: path.to_string(),
+            query_string: String::new(),
+            headers: HashMap::new(),
+            body: Bytes::from(body.to_string()),
+            account: key.0,
+            region: key.1.clone(),
+        }
+    }
+
+    fn body_of(resp: &Response) -> Value {
+        serde_json::from_slice(&resp.body).unwrap()
+    }
+
+    #[test]
+    fn filter_lifecycle() {
+        let key = scope();
+        let created = body_of(&dispatch(&r(
+            "POST",
+            "/filters/create",
+            r#"{"action": "NONE", "filterCriteria": {}, "name": "f1"}"#,
+            &key,
+        )));
+        let arn = created["arn"].as_str().unwrap().to_string();
+        assert!(arn.contains("filter/"));
+        let list = body_of(&dispatch(&r("POST", "/filters/list", "{}", &key)));
+        let arns: Vec<&str> = list["filters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|f| f.get("arn").and_then(Value::as_str))
+            .collect();
+        assert!(arns.contains(&arn.as_str()));
+        let updated = body_of(&dispatch(&r(
+            "POST",
+            "/filters/update",
+            r#"{"filterArn": "NOPE", "action": "SUPPRESS"}"#,
+            &key,
+        )));
+        let _ = updated;
+        dispatch(&r(
+            "POST",
+            "/filters/delete",
+            &json!({"arn": arn.clone()}).to_string(),
+            &key,
+        ));
+        let list = body_of(&dispatch(&r("POST", "/filters/list", "{}", &key)));
+        let arns: Vec<&str> = list["filters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|f| f.get("arn").and_then(Value::as_str))
+            .collect();
+        assert!(!arns.contains(&arn.as_str()));
+    }
+
+    #[test]
+    fn member_associate_get_disassociate() {
+        let key = scope();
+        let assoc = body_of(&dispatch(&r(
+            "POST",
+            "/members/associate",
+            r#"{"accountId": "210987654321"}"#,
+            &key,
+        )));
+        assert_eq!(assoc["accountId"], "210987654321");
+        let member = body_of(&dispatch(&r(
+            "POST",
+            "/members/get",
+            r#"{"accountId": "210987654321"}"#,
+            &key,
+        )));
+        assert_eq!(member["member"]["accountId"], "210987654321");
+        let dis = body_of(&dispatch(&r(
+            "POST",
+            "/members/disassociate",
+            r#"{"accountId": "210987654321"}"#,
+            &key,
+        )));
+        assert_eq!(dis["accountId"], "210987654321");
+    }
+
+    #[test]
+    fn enable_disable_resource_types() {
+        let key = scope();
+        let enable = body_of(&dispatch(&r(
+            "POST",
+            "/enable",
+            r#"{"resourceTypes": ["EC2", "ECR"], "accountIds": ["123456789012"]}"#,
+            &key,
+        )));
+        assert_eq!(enable["accounts"][0]["resourceStatus"]["ec2"], "ENABLED");
+        assert_eq!(enable["accounts"][0]["resourceStatus"]["ecr"], "ENABLED");
+        assert_eq!(enable["failedAccounts"], json!([]));
+        let disable = body_of(&dispatch(&r(
+            "POST",
+            "/disable",
+            r#"{"resourceTypes": ["EC2"], "accountIds": ["123456789012"]}"#,
+            &key,
+        )));
+        assert_eq!(disable["accounts"][0]["resourceStatus"]["ec2"], "DISABLED");
+        let batch = body_of(&dispatch(&r(
+            "POST",
+            "/status/batch/get",
+            r#"{"accountIds": ["123456789012"]}"#,
+            &key,
+        )));
+        assert_eq!(
+            batch["accounts"][0]["resourceState"]["ecr"]["status"],
+            "ENABLED"
+        );
+        assert_eq!(batch["accounts"][0]["state"]["status"], "ENABLED");
+    }
+
+    #[test]
+    fn delegated_admin_lifecycle() {
+        let key = scope();
+        let enable = body_of(&dispatch(&r(
+            "POST",
+            "/delegatedadminaccounts/enable",
+            r#"{"delegatedAdminAccountId": "210987654321"}"#,
+            &key,
+        )));
+        assert_eq!(enable["delegatedAdminAccountId"], "210987654321");
+        let list = body_of(&dispatch(&r(
+            "POST",
+            "/delegatedadminaccounts/list",
+            "{}",
+            &key,
+        )));
+        assert_eq!(list["delegatedAdminAccounts"][0]["status"], "ENABLED");
+        dispatch(&r(
+            "POST",
+            "/delegatedadminaccounts/disable",
+            r#"{"delegatedAdminAccountId": "210987654321"}"#,
+            &key,
+        ));
+        let list = body_of(&dispatch(&r(
+            "POST",
+            "/delegatedadminaccounts/list",
+            "{}",
+            &key,
+        )));
+        assert_eq!(list["delegatedAdminAccounts"][0]["status"], "DISABLED");
+    }
+
+    #[test]
+    fn organization_auto_enable() {
+        let key = scope();
+        let described = body_of(&dispatch(&r(
+            "POST",
+            "/organizationconfiguration/describe",
+            "{}",
+            &key,
+        )));
+        assert!(described["autoEnable"]
+            .as_object()
+            .unwrap()
+            .contains_key("ec2"));
+        dispatch(&r(
+            "POST",
+            "/organizationconfiguration/update",
+            r#"{"autoEnable": {"ec2": true, "ecr": true}}"#,
+            &key,
+        ));
+        let described = body_of(&dispatch(&r(
+            "POST",
+            "/organizationconfiguration/describe",
+            "{}",
+            &key,
+        )));
+        assert_eq!(described["autoEnable"]["ec2"], true);
+    }
+
+    #[test]
+    fn cis_configuration_lifecycle() {
+        let key = scope();
+        let created = body_of(&dispatch(&r(
+            "POST",
+            "/cis/scan-configuration/create",
+            r#"{"scanName": "c", "schedule": {"oneTime": {}}, "securityLevel": "LEVEL_1", "targets": {}}"#,
+            &key,
+        )));
+        let arn = created["scanConfigurationArn"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let updated = body_of(&dispatch(&r(
+            "POST",
+            "/cis/scan-configuration/update",
+            &json!({"scanConfigurationArn": arn.clone(), "scanName": "c2"}).to_string(),
+            &key,
+        )));
+        assert_eq!(updated["scanConfigurationArn"], json!(arn));
+        let deleted = body_of(&dispatch(&r(
+            "POST",
+            "/cis/scan-configuration/delete",
+            &json!({"scanConfigurationArn": arn.clone()}).to_string(),
+            &key,
+        )));
+        assert_eq!(deleted["scanConfigurationArn"], json!(arn));
+    }
+
+    #[test]
+    fn report_and_sbom_lifecycle() {
+        let key = scope();
+        let created = body_of(&dispatch(&r(
+            "POST",
+            "/reporting/create",
+            r#"{"reportFormat": "CSV", "s3Destination": {"bucketName": "b"}}"#,
+            &key,
+        )));
+        let report_id = created["reportId"].as_str().unwrap().to_string();
+        let cancelled = body_of(&dispatch(&r(
+            "POST",
+            "/reporting/cancel",
+            &json!({"reportId": report_id.clone()}).to_string(),
+            &key,
+        )));
+        assert_eq!(cancelled["reportId"], json!(report_id));
+        let export = body_of(&dispatch(&r(
+            "POST",
+            "/sbomexport/create",
+            r#"{"reportFormat": "CYCLONEDX_1_4", "s3Destination": {}}"#,
+            &key,
+        )));
+        assert!(export["reportId"].as_str().is_some());
+    }
+
+    #[test]
+    fn encryption_key_roundtrip() {
+        let key = scope();
+        let mut get = r("GET", "/encryptionkey/get", "{}", &key);
+        get.query_string = "scanType=NETWORK&resourceType=AWS_EC2_INSTANCE".to_string();
+        let empty = body_of(&dispatch(&get.clone()));
+        assert_eq!(empty["kmsKeyId"], "");
+        dispatch(&r(
+            "PUT",
+            "/encryptionkey/update",
+            r#"{"kmsKeyId": "a-key", "scanType": "NETWORK", "resourceType": "AWS_EC2_INSTANCE"}"#,
+            &key,
+        ));
+        get.query_string = "scanType=NETWORK&resourceType=AWS_EC2_INSTANCE".to_string();
+        let got = body_of(&dispatch(&get));
+        assert_eq!(got["kmsKeyId"], "a-key");
+    }
+
+    #[test]
+    fn code_security_scan_lifecycle() {
+        let key = scope();
+        let started = body_of(&dispatch(&r(
+            "POST",
+            "/codesecurity/scan/start",
+            r#"{"resource": {"projectId": "p"}}"#,
+            &key,
+        )));
+        let scan_id = started["scanId"].as_str().unwrap().to_string();
+        let got = body_of(&dispatch(&r(
+            "POST",
+            "/codesecurity/scan/get",
+            &json!({"scanId": scan_id.clone()}).to_string(),
+            &key,
+        )));
+        assert_eq!(got["status"], "IN_PROGRESS");
+        let missing = body_of(&dispatch(&r(
+            "POST",
+            "/codesecurity/scan/get",
+            r#"{"scanId": "gone"}"#,
+            &key,
+        )));
+        assert_eq!(missing["status"], "NOT_FOUND");
+    }
+
+    #[test]
+    fn tags_roundtrip() {
+        let key = scope();
+        let arn = "arn:aws:inspector2:us-east-1:123456789012:owner/123456789012/filter/x";
+        let path = format!("/tags/{arn}");
+        dispatch(&r("POST", &path, r#"{"tags": {"env": "test"}}"#, &key));
+        let tags = body_of(&dispatch(&r("GET", &path, "{}", &key)));
+        assert_eq!(tags["tags"]["env"], "test");
+        let mut untag = r("DELETE", &path, "{}", &key);
+        untag.query_string = "tagKeys=env".to_string();
+        dispatch(&untag);
+        let tags = body_of(&dispatch(&r("GET", &path, "{}", &key)));
+        assert!(tags["tags"].as_object().unwrap().is_empty());
+    }
 }

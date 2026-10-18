@@ -14,12 +14,12 @@ use std::collections::BTreeMap;
 /// Per-(account, region) LakeFormation state.
 #[derive(Default)]
 struct State {
-    resources: BTreeMap<String, Value>,  // arn -> {ResourceArn, RoleArn}
-    settings: BTreeMap<String, Value>,   // catalog id -> DataLakeSettings
-    grants: Vec<Value>,                  // {principal, resource, permissions, with_grant}
-    lf_tags: Value,                      // {TagKey: [values]}
-    database_tags: BTreeMap<String, Vec<Value>>,  // (catalog, db) key string
-    table_tags: BTreeMap<String, Vec<Value>>,     // (catalog, db, table) key string
+    resources: BTreeMap<String, Value>, // arn -> {ResourceArn, RoleArn}
+    settings: BTreeMap<String, Value>,  // catalog id -> DataLakeSettings
+    grants: Vec<Value>,                 // {principal, resource, permissions, with_grant}
+    lf_tags: Value,                     // {TagKey: [values]}
+    database_tags: BTreeMap<String, Vec<Value>>, // (catalog, db) key string
+    table_tags: BTreeMap<String, Vec<Value>>, // (catalog, db, table) key string
     transactions: BTreeMap<String, Value>,
     data_cells_filters: BTreeMap<String, Value>,
     lf_tag_expressions: BTreeMap<String, Value>,
@@ -40,11 +40,7 @@ fn ok(body: Value) -> Response {
 
 fn not_implemented(svc: &Svc) -> Response {
     let _ = svc;
-    json_error(
-        501,
-        "NotImplemented",
-        "The action has not been implemented",
-    )
+    json_error(501, "NotImplemented", "The action has not been implemented")
 }
 
 struct Svc {
@@ -69,7 +65,10 @@ impl Svc {
 
     /// CatalogId body member defaulting to the caller's account id.
     fn catalog(&self) -> String {
-        self.body("CatalogId").as_str().unwrap_or(&self.account).to_string()
+        self.body("CatalogId")
+            .as_str()
+            .unwrap_or(&self.account)
+            .to_string()
     }
 }
 
@@ -100,9 +99,7 @@ pub fn dispatch(req: &Request) -> Response {
         region: req.region.clone(),
         params: parse_json_body(&req.body),
     };
-    let path_op = url_decode(&req.path)
-        .trim_start_matches('/')
-        .to_string();
+    let path_op = url_decode(&req.path).trim_start_matches('/').to_string();
 
     match path_op.as_str() {
         // --- Resources ---
@@ -162,12 +159,8 @@ pub fn dispatch(req: &Request) -> Response {
         "GetWorkUnits" => get_work_units(&svc),
         "GetWorkUnitResults" => get_work_unit_results(&svc),
         // --- Identity-center configuration ---
-        "CreateLakeFormationIdentityCenterConfiguration" => {
-            create_identity_center_config(&svc)
-        }
-        "DescribeLakeFormationIdentityCenterConfiguration" => {
-            describe_identity_center_config(&svc)
-        }
+        "CreateLakeFormationIdentityCenterConfiguration" => create_identity_center_config(&svc),
+        "DescribeLakeFormationIdentityCenterConfiguration" => describe_identity_center_config(&svc),
         "UpdateLakeFormationIdentityCenterConfiguration" => update_identity_center_config(&svc),
         "DeleteLakeFormationIdentityCenterConfiguration" => delete_identity_center_config(&svc),
         // --- Opt-ins & table objects (stub parity for the compat suites) ---
@@ -194,8 +187,10 @@ fn register_resource(svc: &Svc) -> Response {
         return already_exists("Resource is already registered");
     }
     svc.with(|st| {
-        st.resources
-            .insert(arn.clone(), json!({"ResourceArn": arn, "RoleArn": role_arn}));
+        st.resources.insert(
+            arn.clone(),
+            json!({"ResourceArn": arn, "RoleArn": role_arn}),
+        );
     });
     ok(json!({}))
 }
@@ -317,13 +312,14 @@ fn revoke_permissions(svc: &Svc) -> Response {
         let mut updated: Vec<Value> = Vec::new();
         for g in &st.grants {
             if g.get("principal") == Some(&principal) && g.get("resource") == Some(&resource) {
-                let current = g
-                    .get("permissions")
-                    .cloned()
-                    .unwrap_or(json!([]));
+                let current = g.get("permissions").cloned().unwrap_or(json!([]));
                 let cur_list: Vec<String> = current
                     .as_array()
-                    .map(|a| a.iter().map(|e| e.as_str().unwrap_or("").to_string()).collect())
+                    .map(|a| {
+                        a.iter()
+                            .map(|e| e.as_str().unwrap_or("").to_string())
+                            .collect()
+                    })
                     .unwrap_or_default();
                 let remaining: Vec<String> = cur_list
                     .into_iter()
@@ -341,10 +337,7 @@ fn revoke_permissions(svc: &Svc) -> Response {
         st.grants = updated
             .into_iter()
             .filter(|g| {
-                let perms = g
-                    .get("permissions")
-                    .cloned()
-                    .unwrap_or(json!([]));
+                let perms = g.get("permissions").cloned().unwrap_or(json!([]));
                 !perms.as_array().map(|a| a.is_empty()).unwrap_or(false)
                     || g.get("with_grant")
                         .and_then(Value::as_array)
@@ -375,19 +368,12 @@ fn list_permissions(svc: &Svc) -> Response {
 }
 
 fn batch_grant_permissions(svc: &Svc, grant: bool) -> Response {
-    let entries = svc
-        .body("Entries")
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
+    let entries = svc.body("Entries").as_array().cloned().unwrap_or_default();
     let _ = grant;
     for entry in entries {
         let principal = entry.get("Principal").cloned().unwrap_or(json!({}));
         let resource = entry.get("Resource").cloned().unwrap_or(json!({}));
-        let permissions = entry
-            .get("Permissions")
-            .cloned()
-            .unwrap_or(json!([]));
+        let permissions = entry.get("Permissions").cloned().unwrap_or(json!([]));
         let with_grant = entry
             .get("PermissionsWithGrantOption")
             .cloned()
@@ -395,8 +381,7 @@ fn batch_grant_permissions(svc: &Svc, grant: bool) -> Response {
         if grant {
             svc.with(|st| {
                 let existing = st.grants.iter_mut().find(|g| {
-                    g.get("principal") == Some(&principal)
-                        && g.get("resource") == Some(&resource)
+                    g.get("principal") == Some(&principal) && g.get("resource") == Some(&resource)
                 });
                 match existing {
                     Some(g) => {
@@ -479,7 +464,11 @@ fn json_list(values: Vec<String>) -> Value {
 fn str_vec(value: &Value) -> Vec<String> {
     value
         .as_array()
-        .map(|a| a.iter().map(|e| e.as_str().unwrap_or("").to_string()).collect())
+        .map(|a| {
+            a.iter()
+                .map(|e| e.as_str().unwrap_or("").to_string())
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -496,7 +485,11 @@ fn union_p(a: &[String], b: &[String]) -> Vec<String> {
 
 fn create_lf_tag(svc: &Svc) -> Response {
     let key = svc.body("TagKey").as_str().unwrap_or("").to_string();
-    let values = svc.body("TagValues").as_array().cloned().unwrap_or_default();
+    let values = svc
+        .body("TagValues")
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
     svc.with(|st| {
         if let Some(map) = st.lf_tags.as_object_mut() {
             map.insert(key.clone(), json!(values));
@@ -509,12 +502,7 @@ fn create_lf_tag(svc: &Svc) -> Response {
 
 fn get_lf_tag(svc: &Svc) -> Response {
     let key = svc.body("TagKey").as_str().unwrap_or("").to_string();
-    let values = svc.with(|st| {
-        st.lf_tags
-            .get(&key)
-            .cloned()
-            .unwrap_or(json!([]))
-    });
+    let values = svc.with(|st| st.lf_tags.get(&key).cloned().unwrap_or(json!([])));
     ok(json!({
         "CatalogId": svc.catalog(),
         "TagKey": key,
@@ -529,12 +517,20 @@ fn update_lf_tag(svc: &Svc) -> Response {
         .as_array()
         .cloned()
         .unwrap_or_default();
-    let to_add = svc.body("TagValuesToAdd").as_array().cloned().unwrap_or_default();
+    let to_add = svc
+        .body("TagValuesToAdd")
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
     svc.with(|st| {
         let current = st.lf_tags.get(&key).cloned().unwrap_or(json!([]));
         let mut values: Vec<String> = current
             .as_array()
-            .map(|a| a.iter().map(|e| e.as_str().unwrap_or("").to_string()).collect())
+            .map(|a| {
+                a.iter()
+                    .map(|e| e.as_str().unwrap_or("").to_string())
+                    .collect()
+            })
             .unwrap_or_default();
         for v in &to_add {
             let s = v.as_str().unwrap_or("").to_string();
@@ -572,7 +568,9 @@ fn list_lf_tags(svc: &Svc) -> Response {
     let list = match tags.as_object() {
         Some(map) => map
             .iter()
-            .map(|(k, values)| json!({"CatalogId": svc.catalog(), "TagKey": k, "TagValues": values}))
+            .map(
+                |(k, values)| json!({"CatalogId": svc.catalog(), "TagKey": k, "TagValues": values}),
+            )
             .collect::<Vec<Value>>(),
         None => vec![],
     };
@@ -600,7 +598,11 @@ fn add_lf_tags_to_resource(svc: &Svc) -> Response {
                 .get(key)
                 .map(|v| !v.as_array().map(|a| a.is_empty()).unwrap_or(false))
                 .unwrap_or(false)
-                || st.lf_tags.as_object().map(|o| o.contains_key(key)).unwrap_or(false);
+                || st
+                    .lf_tags
+                    .as_object()
+                    .map(|o| o.contains_key(key))
+                    .unwrap_or(false);
             if !exists {
                 let mut t = tag.clone();
                 if t.get("CatalogId").is_none() {
@@ -633,17 +635,18 @@ fn add_lf_tags_to_resource(svc: &Svc) -> Response {
                 .insert(composite(&[&catalog, name]), normalized.clone());
         }
         if let Some(table) = resource.get("Table") {
-            let db_name = table.get("DatabaseName").and_then(Value::as_str).unwrap_or("");
+            let db_name = table
+                .get("DatabaseName")
+                .and_then(Value::as_str)
+                .unwrap_or("");
             let name = table.get("Name").and_then(Value::as_str).unwrap_or("");
             let catalog = table
                 .get("CatalogId")
                 .and_then(Value::as_str)
                 .unwrap_or(&svc.account)
                 .to_string();
-            st.table_tags.insert(
-                composite(&[&catalog, db_name, name]),
-                normalized.clone(),
-            );
+            st.table_tags
+                .insert(composite(&[&catalog, db_name, name]), normalized.clone());
         }
     });
     ok(json!({"Failures": []}))
@@ -669,7 +672,10 @@ fn remove_lf_tags_from_resource(svc: &Svc) -> Response {
             }
         }
         if let Some(table) = resource.get("Table") {
-            let db_name = table.get("DatabaseName").and_then(Value::as_str).unwrap_or("");
+            let db_name = table
+                .get("DatabaseName")
+                .and_then(Value::as_str)
+                .unwrap_or("");
             let name = table.get("Name").and_then(Value::as_str).unwrap_or("");
             let catalog = table
                 .get("CatalogId")
@@ -707,9 +713,7 @@ fn get_resource_lf_tags(svc: &Svc) -> Response {
                 .and_then(Value::as_str)
                 .unwrap_or(&svc.account)
                 .to_string();
-            st.database_tags
-                .get(&composite(&[&catalog, name]))
-                .cloned()
+            st.database_tags.get(&composite(&[&catalog, name])).cloned()
         } else {
             None
         }
@@ -735,11 +739,7 @@ fn create_lf_tag_expression(svc: &Svc) -> Response {
     let catalog = svc.catalog();
     let name = svc.body("Name").as_str().unwrap_or("").to_string();
     let expression = svc.body("Expression");
-    let description = svc
-        .body("Description")
-        .as_str()
-        .unwrap_or("")
-        .to_string();
+    let description = svc.body("Description").as_str().unwrap_or("").to_string();
     let k = composite(&[&catalog, &name]);
     let exists = svc.with(|st| st.lf_tag_expressions.contains_key(&k));
     if exists {
@@ -772,19 +772,17 @@ fn update_lf_tag_expression(svc: &Svc) -> Response {
     let k = composite(&[&catalog, &name]);
     let expression = svc.body("Expression");
     let description = svc.body("Description");
-    let touched = svc.with(|st| {
-        match st.lf_tag_expressions.get_mut(&k) {
-            Some(dict) => {
-                if !expression.is_null() {
-                    dict["Expression"] = expression.clone();
-                }
-                if !description.is_null() {
-                    dict["Description"] = description.clone();
-                }
-                true
+    let touched = svc.with(|st| match st.lf_tag_expressions.get_mut(&k) {
+        Some(dict) => {
+            if !expression.is_null() {
+                dict["Expression"] = expression.clone();
             }
-            None => false,
+            if !description.is_null() {
+                dict["Description"] = description.clone();
+            }
+            true
         }
+        None => false,
     });
     if touched {
         ok(json!({}))
@@ -805,14 +803,13 @@ fn delete_lf_tag_expression(svc: &Svc) -> Response {
 }
 
 fn list_lf_tag_expressions(svc: &Svc) -> Response {
-    let expressions = svc
-        .with(|st| {
-            st.lf_tag_expressions
-                .values()
-                .filter(|e| e.get("CatalogId").and_then(Value::as_str) == Some(svc.catalog().as_str()))
-                .cloned()
-                .collect::<Vec<Value>>()
-        });
+    let expressions = svc.with(|st| {
+        st.lf_tag_expressions
+            .values()
+            .filter(|e| e.get("CatalogId").and_then(Value::as_str) == Some(svc.catalog().as_str()))
+            .cloned()
+            .collect::<Vec<Value>>()
+    });
     ok(json!({"LFTagExpressions": expressions}))
 }
 
@@ -850,15 +847,13 @@ fn describe_transaction(svc: &Svc) -> Response {
 
 fn commit_transaction(svc: &Svc) -> Response {
     let id = svc.body("TransactionId").as_str().unwrap_or("").to_string();
-    let found = svc.with(|st| {
-        match st.transactions.get_mut(&id) {
-            Some(tx) => {
-                tx["TransactionStatus"] = json!("COMMITTED");
-                tx["TransactionEndTime"] = json!(now_unix());
-                true
-            }
-            None => false,
+    let found = svc.with(|st| match st.transactions.get_mut(&id) {
+        Some(tx) => {
+            tx["TransactionStatus"] = json!("COMMITTED");
+            tx["TransactionEndTime"] = json!(now_unix());
+            true
         }
+        None => false,
     });
     if found {
         ok(json!({"TransactionStatus": "COMMITTED"}))
@@ -869,15 +864,13 @@ fn commit_transaction(svc: &Svc) -> Response {
 
 fn cancel_transaction(svc: &Svc) -> Response {
     let id = svc.body("TransactionId").as_str().unwrap_or("").to_string();
-    let found = svc.with(|st| {
-        match st.transactions.get_mut(&id) {
-            Some(tx) => {
-                tx["TransactionStatus"] = json!("ABORTED");
-                tx["TransactionEndTime"] = json!(now_unix());
-                true
-            }
-            None => false,
+    let found = svc.with(|st| match st.transactions.get_mut(&id) {
+        Some(tx) => {
+            tx["TransactionStatus"] = json!("ABORTED");
+            tx["TransactionEndTime"] = json!(now_unix());
+            true
         }
+        None => false,
     });
     if found {
         ok(json!({}))
@@ -923,12 +916,14 @@ fn dcf_key(svc: &Svc, body: &Value) -> String {
         .and_then(Value::as_str)
         .unwrap_or(&svc.account)
         .to_string();
-    let db = body.get("DatabaseName").and_then(Value::as_str).unwrap_or("");
+    let db = body
+        .get("DatabaseName")
+        .and_then(Value::as_str)
+        .unwrap_or("");
     let table = body.get("TableName").and_then(Value::as_str).unwrap_or("");
     let name = body.get("Name").and_then(Value::as_str).unwrap_or("");
     composite(&[&catalog, db, table, name])
 }
-
 
 fn create_data_cells_filter(svc: &Svc) -> Response {
     let body = svc.body("TableData");
@@ -974,22 +969,20 @@ fn delete_data_cells_filter(svc: &Svc) -> Response {
 fn update_data_cells_filter(svc: &Svc) -> Response {
     let body = svc.body("TableData");
     let key = dcf_key(svc, &body);
-    let touched = svc.with(|st| {
-        match st.data_cells_filters.get_mut(&key) {
-            Some(filter) => {
-                if let Some(v) = body.get("RowFilter") {
-                    filter["RowFilter"] = v.clone();
-                }
-                if let Some(v) = body.get("ColumnNames") {
-                    filter["ColumnNames"] = v.clone();
-                }
-                if let Some(v) = body.get("ColumnWildcard") {
-                    filter["ColumnWildcard"] = v.clone();
-                }
-                true
+    let touched = svc.with(|st| match st.data_cells_filters.get_mut(&key) {
+        Some(filter) => {
+            if let Some(v) = body.get("RowFilter") {
+                filter["RowFilter"] = v.clone();
             }
-            None => false,
+            if let Some(v) = body.get("ColumnNames") {
+                filter["ColumnNames"] = v.clone();
+            }
+            if let Some(v) = body.get("ColumnWildcard") {
+                filter["ColumnWildcard"] = v.clone();
+            }
+            true
         }
+        None => false,
     });
     if touched {
         ok(json!({}))
@@ -1000,18 +993,19 @@ fn update_data_cells_filter(svc: &Svc) -> Response {
 
 fn list_data_cells_filter(svc: &Svc) -> Response {
     let filters = svc
-        .with(|st| st.data_cells_filters.values().cloned().collect::<Vec<Value>>())
+        .with(|st| {
+            st.data_cells_filters
+                .values()
+                .cloned()
+                .collect::<Vec<Value>>()
+        })
         .into_iter()
         .map(|mut filter| {
             if let Value::Null = filter.get("ColumnNames").cloned().unwrap_or(Value::Null) {
-                filter
-                    .as_object_mut()
-                    .map(|o| o.remove("ColumnNames"));
+                filter.as_object_mut().map(|o| o.remove("ColumnNames"));
             }
             if let Value::Null = filter.get("ColumnWildcard").cloned().unwrap_or(Value::Null) {
-                filter
-                    .as_object_mut()
-                    .map(|o| o.remove("ColumnWildcard"));
+                filter.as_object_mut().map(|o| o.remove("ColumnWildcard"));
             }
             filter
         })
@@ -1103,25 +1097,23 @@ fn update_identity_center_config(svc: &Svc) -> Response {
     let service_integrations = svc.body("ServiceIntegrations");
     let application_status = svc.body("ApplicationStatus");
     let external_filtering = svc.body("ExternalFiltering");
-    let touched = svc.with(|st| {
-        match &mut st.identity_center_config {
-            Some(dict) => {
-                if !share_recipients.is_null() {
-                    dict["ShareRecipients"] = share_recipients.clone();
-                }
-                if !service_integrations.is_null() {
-                    dict["ServiceIntegrations"] = service_integrations.clone();
-                }
-                if !application_status.is_null() {
-                    dict["ApplicationStatus"] = application_status.clone();
-                }
-                if !external_filtering.is_null() {
-                    dict["ExternalFiltering"] = external_filtering.clone();
-                }
-                true
+    let touched = svc.with(|st| match &mut st.identity_center_config {
+        Some(dict) => {
+            if !share_recipients.is_null() {
+                dict["ShareRecipients"] = share_recipients.clone();
             }
-            None => false,
+            if !service_integrations.is_null() {
+                dict["ServiceIntegrations"] = service_integrations.clone();
+            }
+            if !application_status.is_null() {
+                dict["ApplicationStatus"] = application_status.clone();
+            }
+            if !external_filtering.is_null() {
+                dict["ExternalFiltering"] = external_filtering.clone();
+            }
+            true
         }
+        None => false,
     });
     if touched {
         ok(json!({}))
@@ -1136,5 +1128,500 @@ fn delete_identity_center_config(svc: &Svc) -> Response {
         ok(json!({}))
     } else {
         entity_not_found()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bytes::Bytes;
+    use std::collections::HashMap;
+    use uuid::Uuid;
+
+    fn scope() -> ScopeKey {
+        (
+            123456780003,
+            format!("us-east-1-{}", Uuid::new_v4().simple()),
+        )
+    }
+
+    fn r(method: &str, path: &str, body: &str, key: &ScopeKey) -> Request {
+        Request {
+            service: "lakeformation".to_string(),
+            operation: String::new(),
+            method: method.to_string(),
+            path: path.to_string(),
+            query_string: String::new(),
+            headers: HashMap::new(),
+            body: Bytes::from(body.to_string()),
+            account: key.0,
+            region: key.1.clone(),
+        }
+    }
+
+    fn body_of(resp: &Response) -> Value {
+        serde_json::from_slice(&resp.body).unwrap()
+    }
+
+    #[test]
+    fn data_lake_settings_roundtrip() {
+        let key = scope();
+        let got = body_of(&dispatch(&r("POST", "/GetDataLakeSettings", "{}", &key)));
+        assert!(got["DataLakeSettings"]["DataLakeAdmins"].is_array());
+        let admin = "arn:aws:iam::123456789012:user/admin-1";
+        dispatch(
+            &r("POST", "/PutDataLakeSettings", &json!({"DataLakeSettings": {"DataLakeAdmins": [{"DataLakePrincipalIdentifier": admin}]}}).to_string(), &key),
+        );
+        let got = body_of(&dispatch(&r("POST", "/GetDataLakeSettings", "{}", &key)));
+        let admins = got["DataLakeSettings"]["DataLakeAdmins"]
+            .as_array()
+            .unwrap();
+        assert_eq!(admins[0]["DataLakePrincipalIdentifier"], json!(admin));
+    }
+
+    #[test]
+    fn resource_register_describe_list_deregister() {
+        let key = scope();
+        let arn = "arn:aws:s3:::test-bucket-1";
+        dispatch(&r(
+            "POST",
+            "/RegisterResource",
+            &json!({"ResourceArn": arn}).to_string(),
+            &key,
+        ));
+        let described = body_of(&dispatch(&r(
+            "POST",
+            "/DescribeResource",
+            &json!({"ResourceArn": arn}).to_string(),
+            &key,
+        )));
+        assert_eq!(described["ResourceInfo"]["ResourceArn"], json!(arn));
+        let list = body_of(&dispatch(&r("POST", "/ListResources", "{}", &key)));
+        let arns: Vec<&str> = list["ResourceInfoList"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|r| r.get("ResourceArn").and_then(Value::as_str))
+            .collect();
+        assert!(arns.contains(&arn));
+        assert_eq!(
+            dispatch(&r(
+                "POST",
+                "/DeregisterResource",
+                &json!({"ResourceArn": arn}).to_string(),
+                &key
+            ))
+            .status,
+            200
+        );
+        // unknown resource → EntityNotFoundException
+        let resp = dispatch(&r(
+            "POST",
+            "/DescribeResource",
+            r#"{"ResourceArn": "arn:aws:s3:::nope"}"#,
+            &key,
+        ));
+        assert_eq!(body_of(&resp)["__type"], "EntityNotFoundException");
+    }
+
+    #[test]
+    fn grant_revoke_list_permissions() {
+        let key = scope();
+        let principal = json!({"DataLakePrincipalIdentifier": "arn:aws:iam::123456789012:user/u1"});
+        let resource = json!({"Database": {"Name": "db-x"}});
+        dispatch(&r(
+            "POST",
+            "/GrantPermissions",
+            &json!({"Principal": principal, "Resource": resource, "Permissions": ["ALL"]})
+                .to_string(),
+            &key.clone(),
+        ));
+        let list = body_of(&dispatch(&r("POST", "/ListPermissions", "{}", &key)));
+        let principals: Vec<&str> = list["PrincipalResourcePermissions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|p| {
+                p.pointer("/Principal/DataLakePrincipalIdentifier")
+                    .and_then(Value::as_str)
+            })
+            .collect();
+        assert!(principals.contains(&"arn:aws:iam::123456789012:user/u1"));
+        dispatch(&r(
+            "POST",
+            "/RevokePermissions",
+            &json!({"Principal": principal, "Resource": resource, "Permissions": ["ALL"]})
+                .to_string(),
+            &key,
+        ));
+        let list = body_of(&dispatch(&r("POST", "/ListPermissions", "{}", &key)));
+        let principals: Vec<&str> = list["PrincipalResourcePermissions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|p| {
+                p.pointer("/Principal/DataLakePrincipalIdentifier")
+                    .and_then(Value::as_str)
+            })
+            .collect();
+        assert!(!principals.contains(&"arn:aws:iam::123456789012:user/u1"));
+    }
+
+    #[test]
+    fn lf_tag_crud_cycle() {
+        let key = scope();
+        dispatch(&r(
+            "POST",
+            "/CreateLFTag",
+            r#"{"TagKey": "k1", "TagValues": ["a", "b"]}"#,
+            &key,
+        ));
+        let got = body_of(&dispatch(&r(
+            "POST",
+            "/GetLFTag",
+            r#"{"TagKey": "k1"}"#,
+            &key,
+        )));
+        assert_eq!(got["TagKey"], "k1");
+        let values: Vec<&str> = got["TagValues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect();
+        assert_eq!(values.len(), 2);
+        dispatch(&r(
+            "POST",
+            "/UpdateLFTag",
+            r#"{"TagKey": "k1", "TagValuesToAdd": ["d"], "TagValuesToDelete": ["b"]}"#,
+            &key,
+        ));
+        let got = body_of(&dispatch(&r(
+            "POST",
+            "/GetLFTag",
+            r#"{"TagKey": "k1"}"#,
+            &key,
+        )));
+        let values = got["TagValues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect::<Vec<&str>>();
+        assert!(values.contains(&"d"));
+        assert!(!values.contains(&"b"));
+        dispatch(&r("POST", "/DeleteLFTag", r#"{"TagKey": "k1"}"#, &key));
+        let list = body_of(&dispatch(&r("POST", "/ListLFTags", "{}", &key)));
+        let keys: Vec<&str> = list["LFTags"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|t| t.get("TagKey").and_then(Value::as_str))
+            .collect();
+        assert!(!keys.contains(&"k1"));
+    }
+
+    #[test]
+    fn get_lf_tag_unknown_returns_empty() {
+        let key = scope();
+        let got = body_of(&dispatch(&r(
+            "POST",
+            "/GetLFTag",
+            r#"{"TagKey": "nope-xyz"}"#,
+            &key,
+        )));
+        assert_eq!(got["TagValues"], json!([]));
+        assert_eq!(got["TagKey"], "nope-xyz");
+    }
+
+    #[test]
+    fn transactions_lifecycle() {
+        let key = scope();
+        let started = body_of(&dispatch(&r(
+            "POST",
+            "/StartTransaction",
+            r#"{"TransactionType": "READ_AND_WRITE"}"#,
+            &key,
+        )));
+        let id = started["TransactionId"].as_str().unwrap().to_string();
+        let described = body_of(&dispatch(&r(
+            "POST",
+            "/DescribeTransaction",
+            &json!({"TransactionId": id.clone()}).to_string(),
+            &key,
+        )));
+        assert_eq!(
+            described["TransactionDescription"]["TransactionId"],
+            json!(id)
+        );
+        let listed = body_of(&dispatch(&r("POST", "/ListTransactions", "{}", &key)));
+        let ids: Vec<&str> = listed["Transactions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|t| t.get("TransactionId").and_then(Value::as_str))
+            .collect();
+        assert!(ids.contains(&id.as_str()));
+        let committed = body_of(&dispatch(&r(
+            "POST",
+            "/CommitTransaction",
+            &json!({"TransactionId": id}).to_string(),
+            &key,
+        )));
+        assert_eq!(committed["TransactionStatus"], "COMMITTED");
+        let fake = dispatch(&r(
+            "POST",
+            "/DescribeTransaction",
+            r#"{"TransactionId": "fake-txn"}"#,
+            &key,
+        ));
+        assert_eq!(body_of(&fake)["__type"], "EntityNotFoundException");
+    }
+
+    #[test]
+    fn data_cells_filter_crud() {
+        let key = scope();
+        let filter = json!({
+            "TableCatalogId": "123456789012",
+            "DatabaseName": "db",
+            "TableName": "tbl",
+            "Name": "f1",
+            "ColumnNames": ["c1"],
+        });
+        dispatch(&r(
+            "POST",
+            "/CreateDataCellsFilter",
+            &json!({"TableData": filter}).to_string(),
+            &key.clone(),
+        ));
+        let got = body_of(&dispatch(&r("POST", "/GetDataCellsFilter", &json!({"TableCatalogId": "123456789012", "DatabaseName": "db", "TableName": "tbl", "Name": "f1"}).to_string(), &key)));
+        assert_eq!(got["DataCellsFilter"]["Name"], "f1");
+        // update columns
+        let updated = json!({
+            "TableCatalogId": "123456789012",
+            "DatabaseName": "db",
+            "TableName": "tbl",
+            "Name": "f1",
+            "ColumnNames": ["c1", "c2"],
+        });
+        dispatch(&r(
+            "POST",
+            "/UpdateDataCellsFilter",
+            &json!({"TableData": updated}).to_string(),
+            &key.clone(),
+        ));
+        let got = body_of(&dispatch(&r("POST", "/GetDataCellsFilter", &json!({"TableCatalogId": "123456789012", "DatabaseName": "db", "TableName": "tbl", "Name": "f1"}).to_string(), &key)));
+        let names = got["DataCellsFilter"]["ColumnNames"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect::<Vec<&str>>();
+        assert!(names.contains(&"c2"));
+        // delete + verify gone
+        dispatch(&r("POST", "/DeleteDataCellsFilter", &json!({"TableCatalogId": "123456789012", "DatabaseName": "db", "TableName": "tbl", "Name": "f1"}).to_string(), &key.clone()));
+        let resp = dispatch(&r("POST", "/GetDataCellsFilter", &json!({"TableCatalogId": "123456789012", "DatabaseName": "db", "TableName": "tbl", "Name": "f1"}).to_string(), &key));
+        assert_eq!(body_of(&resp)["__type"], "EntityNotFoundException");
+    }
+
+    #[test]
+    fn lf_tag_expression_crud() {
+        let key = scope();
+        let name = "expr-1";
+        assert_eq!(
+            dispatch(&r(
+                "POST",
+                "/CreateLFTagExpression",
+                r#"{"Name": "expr-1", "Expression": [{"TagKey": "env", "TagValues": ["test"]}]}"#,
+                &key,
+            ))
+            .status,
+            200
+        );
+        let got = body_of(&dispatch(&r(
+            "POST",
+            "/GetLFTagExpression",
+            &json!({"Name": name}).to_string(),
+            &key,
+        )));
+        assert_eq!(got["Name"], "expr-1");
+        let list = body_of(&dispatch(&r("POST", "/ListLFTagExpressions", "{}", &key)));
+        let names: Vec<&str> = list["LFTagExpressions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|e| e.get("Name").and_then(Value::as_str))
+            .collect();
+        assert!(names.contains(&name));
+        let fake = dispatch(&r(
+            "POST",
+            "/GetLFTagExpression",
+            r#"{"Name": "nonexistent-zz"}"#,
+            &key,
+        ));
+        assert_eq!(body_of(&fake)["__type"], "EntityNotFoundException");
+        assert_eq!(
+            dispatch(&r(
+                "POST",
+                "/DeleteLFTagExpression",
+                &json!({"Name": name}).to_string(),
+                &key
+            ))
+            .status,
+            200
+        );
+    }
+
+    #[test]
+    fn identity_center_configuration() {
+        let key = scope();
+        let fake = dispatch(&r(
+            "POST",
+            "/DescribeLakeFormationIdentityCenterConfiguration",
+            "{}",
+            &key,
+        ));
+        assert_eq!(body_of(&fake)["__type"], "EntityNotFoundException");
+        assert_eq!(
+            dispatch(&r(
+                "POST",
+                "/CreateLakeFormationIdentityCenterConfiguration",
+                "{}",
+                &key
+            ))
+            .status,
+            200
+        );
+        let described = body_of(&dispatch(&r(
+            "POST",
+            "/DescribeLakeFormationIdentityCenterConfiguration",
+            "{}",
+            &key,
+        )));
+        assert!(described["ApplicationArn"].as_str().is_some());
+        assert_eq!(
+            dispatch(&r(
+                "POST",
+                "/DeleteLakeFormationIdentityCenterConfiguration",
+                "{}",
+                &key
+            ))
+            .status,
+            200
+        );
+        let again = dispatch(&r(
+            "POST",
+            "/DeleteLakeFormationIdentityCenterConfiguration",
+            "{}",
+            &key,
+        ));
+        assert_eq!(body_of(&again)["__type"], "EntityNotFoundException");
+    }
+
+    #[test]
+    fn stub_ops_return_expected_shapes() {
+        let key = scope();
+        let opt_ins = body_of(&dispatch(&r(
+            "POST",
+            "/ListLakeFormationOptIns",
+            "{}",
+            &key,
+        )));
+        assert_eq!(opt_ins["LakeFormationOptInsInfoList"], json!([]));
+        let optimizers = body_of(&dispatch(&r(
+            "POST",
+            "/ListTableStorageOptimizers",
+            r#"{"DatabaseName": "d", "TableName": "t"}"#,
+            &key,
+        )));
+        assert_eq!(optimizers["StorageOptimizerList"], json!([]));
+        let creds = body_of(&dispatch(&r(
+            "POST",
+            "/GetTemporaryDataLocationCredentials",
+            r#"{"DataLocations": ["s3://b/"]}"#,
+            &key,
+        )));
+        assert!(creds["Credentials"].as_object().is_some());
+        assert_eq!(
+            dispatch(&r(
+                "POST",
+                "/UpdateResource",
+                r#"{"RoleArn": "r", "ResourceArn": "a"}"#,
+                &key
+            ))
+            .status,
+            200
+        );
+        assert_eq!(
+            dispatch(&r("POST", "/UpdateTableObjects", "{}", &key)).status,
+            200
+        );
+        assert_eq!(
+            dispatch(&r("POST", "/DeleteObjectsOnCancel", "{}", &key)).status,
+            200
+        );
+    }
+
+    #[test]
+    fn temporary_credentials_shaped() {
+        let key = scope();
+        let creds = body_of(&dispatch(&r(
+            "POST",
+            "/GetTemporaryGlueTableCredentials",
+            r#"{"TableArn": "arn:aws:glue:us-east-1:123456789012:table/db/tbl"}"#,
+            &key,
+        )));
+        assert!(!creds["AccessKeyId"].as_str().unwrap().is_empty());
+        assert!(!creds["SecretAccessKey"].as_str().unwrap().is_empty());
+        assert!(!creds["SessionToken"].as_str().unwrap().is_empty());
+        assert!(creds["Expiration"].as_f64().is_some());
+    }
+
+    #[test]
+    fn query_planning_ops() {
+        let key = scope();
+        let started = body_of(&dispatch(&r(
+            "POST",
+            "/StartQueryPlanning",
+            r#"{"QueryPlanningContext": {"DatabaseName": "mydb"}, "QueryString": "SELECT 1"}"#,
+            &key,
+        )));
+        let query_id = started["QueryId"].as_str().unwrap().to_string();
+        assert!(!query_id.is_empty());
+        let state = body_of(&dispatch(&r(
+            "POST",
+            "/GetQueryState",
+            &json!({"QueryId": query_id}).to_string(),
+            &key,
+        )));
+        assert_eq!(state["State"], "FINISHED");
+        let stats = body_of(&dispatch(&r(
+            "POST",
+            "/GetQueryStatistics",
+            &json!({"QueryId": query_id}).to_string(),
+            &key,
+        )));
+        assert!(stats["PlanningStatistics"].as_object().is_some());
+        let wu = body_of(&dispatch(&r(
+            "POST",
+            "/GetWorkUnits",
+            &json!({"QueryId": query_id}).to_string(),
+            &key,
+        )));
+        assert_eq!(wu["WorkUnitRanges"], json!([]));
+    }
+
+    #[test]
+    fn data_lake_principal_identity() {
+        let key = scope();
+        let got = body_of(&dispatch(&r("POST", "/GetDataLakePrincipal", "{}", &key)));
+        assert!(got["Identity"].as_str().unwrap().contains(":root"));
+    }
+
+    #[test]
+    fn unknown_op_returns_501() {
+        let key = scope();
+        let resp = dispatch(&r("POST", "/NotAnOperation", "{}", &key));
+        assert_eq!(resp.status, 501);
     }
 }

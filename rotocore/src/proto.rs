@@ -144,4 +144,3 @@ pub fn query_map(query_string: &str) -> BTreeMap<String, Vec<String>> {
 pub fn query_first<'a>(map: &'a BTreeMap<String, Vec<String>>, key: &str) -> Option<&'a str> {
     map.get(key).and_then(|v| v.first()).map(String::as_str)
 }
-

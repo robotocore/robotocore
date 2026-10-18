@@ -161,7 +161,9 @@ pub fn dispatch(req: &Request) -> Response {
             ("PATCH", "classification-scopes", 2) => return update_classification_scope(&svc, id),
             ("GET", "templates", 3) => return get_sensitivity_inspection_template(&svc, id),
             ("PUT", "templates", 3) => return update_sensitivity_inspection_template(&svc, id),
-            ("PATCH", "macie", 3) if segs[1] == "members" => return update_member_session(&svc, id),
+            ("PATCH", "macie", 3) if segs[1] == "members" => {
+                return update_member_session(&svc, id)
+            }
             ("POST", "members", 3) if segs[1] == "disassociate" => {
                 return disassociate_member(&svc, id)
             }
@@ -375,7 +377,11 @@ fn create_allow_list(svc: &Svc) -> Response {
     let tags = svc.body("tags");
     let id = Uuid::new_v4().to_string();
     let dict = allow_list_dict(svc, &id, &name, &criteria, &description);
-    let arn = dict.get("arn").and_then(Value::as_str).unwrap_or("").to_string();
+    let arn = dict
+        .get("arn")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
     svc.with(|st| st.allow_lists.insert(id.clone(), dict));
     if let Some(tag_map) = tags.as_object() {
         let mut seeded = BTreeMap::new();
@@ -400,9 +406,7 @@ fn update_allow_list(svc: &Svc, id: &str) -> Response {
     let criteria = svc.body("criteria");
     let description = svc.body("description");
     let updated = svc.with(|st| {
-        let Some(al) = st.allow_lists.get_mut(id) else {
-            return None;
-        };
+        let al = st.allow_lists.get_mut(id)?;
         if name.is_string() {
             al["name"] = name.clone();
         }
@@ -498,16 +502,14 @@ fn describe_classification_job(svc: &Svc, job_id: &str) -> Response {
 
 fn update_classification_job(svc: &Svc, job_id: &str) -> Response {
     let status = svc.body("jobStatus");
-    let touched = svc.with(|st| {
-        match st.classification_jobs.get_mut(job_id) {
-            Some(job) => {
-                if let Some(s) = status.as_str() {
-                    job["jobStatus"] = json!(s);
-                }
-                true
+    let touched = svc.with(|st| match st.classification_jobs.get_mut(job_id) {
+        Some(job) => {
+            if let Some(s) = status.as_str() {
+                job["jobStatus"] = json!(s);
             }
-            None => false,
+            true
         }
+        None => false,
     });
     if touched {
         ok(json!({}))
@@ -536,7 +538,13 @@ fn list_classification_jobs(svc: &Svc) -> Response {
 
 // --- Custom data identifiers ---
 
-fn custom_data_identifier_dict(svc: &Svc, id: &str, name: &str, regex: &str, description: &str) -> Value {
+fn custom_data_identifier_dict(
+    svc: &Svc,
+    id: &str,
+    name: &str,
+    regex: &str,
+    description: &str,
+) -> Value {
     json!({
         "arn": format!("arn:aws:macie2:{}:{}:custom-data-identifier/{}", svc.region, svc.account, id),
         "createdAt": now_iso(),
@@ -574,14 +582,12 @@ fn get_custom_data_identifier(svc: &Svc, id: &str) -> Response {
 }
 
 fn delete_custom_data_identifier(svc: &Svc, id: &str) -> Response {
-    let touched = svc.with(|st| {
-        match st.custom_data_identifiers.get_mut(id) {
-            Some(dict) => {
-                dict["deleted"] = json!(true);
-                true
-            }
-            None => false,
+    let touched = svc.with(|st| match st.custom_data_identifiers.get_mut(id) {
+        Some(dict) => {
+            dict["deleted"] = json!(true);
+            true
         }
+        None => false,
     });
     if touched {
         ok(json!({}))
@@ -592,7 +598,12 @@ fn delete_custom_data_identifier(svc: &Svc, id: &str) -> Response {
 
 fn list_custom_data_identifiers(svc: &Svc) -> Response {
     let items: Vec<Value> = svc
-        .with(|st| st.custom_data_identifiers.values().cloned().collect::<Vec<Value>>())
+        .with(|st| {
+            st.custom_data_identifiers
+                .values()
+                .cloned()
+                .collect::<Vec<Value>>()
+        })
         .into_iter()
         .filter(|dict| dict.get("deleted").and_then(Value::as_bool) != Some(true))
         .map(|dict| {
@@ -681,9 +692,7 @@ fn update_findings_filter(svc: &Svc, id: &str) -> Response {
     let action = svc.body("action");
     let criteria = svc.body("findingCriteria");
     let updated = svc.with(|st| {
-        let Some(ff) = st.findings_filters.get_mut(id) else {
-            return None;
-        };
+        let ff = st.findings_filters.get_mut(id)?;
         if name.is_string() {
             ff["name"] = name.clone();
         }
@@ -715,7 +724,12 @@ fn delete_findings_filter(svc: &Svc, id: &str) -> Response {
 
 fn list_findings_filters(svc: &Svc) -> Response {
     let items: Vec<Value> = svc
-        .with(|st| st.findings_filters.values().cloned().collect::<Vec<Value>>())
+        .with(|st| {
+            st.findings_filters
+                .values()
+                .cloned()
+                .collect::<Vec<Value>>()
+        })
         .into_iter()
         .map(|dict| {
             json!({
@@ -749,7 +763,10 @@ fn put_classification_export_configuration(svc: &Svc) -> Response {
 
 fn get_reveal_configuration(svc: &Svc) -> Response {
     let (config, status) = svc.with(|st| {
-        (st.reveal_configuration.clone(), st.automated_discovery_status.clone())
+        (
+            st.reveal_configuration.clone(),
+            st.automated_discovery_status.clone(),
+        )
     });
     let _ = status;
     ok(json!({
@@ -762,9 +779,10 @@ fn update_reveal_configuration(svc: &Svc) -> Response {
     let configuration = svc.body("configuration");
     let retrieval = svc.body("retrievalConfiguration");
     svc.with(|st| {
-        if let (Some(newmap), Some(map)) =
-            (configuration.as_object(), st.reveal_configuration.as_object_mut())
-        {
+        if let (Some(newmap), Some(map)) = (
+            configuration.as_object(),
+            st.reveal_configuration.as_object_mut(),
+        ) {
             for (k, v) in newmap {
                 map.insert(k.clone(), v.clone());
             }
@@ -946,13 +964,21 @@ fn disable_macie(svc: &Svc) -> Response {
 // --- Organization admin ---
 
 fn enable_organization_admin_account(svc: &Svc) -> Response {
-    let admin = svc.body("adminAccountId").as_str().unwrap_or("").to_string();
+    let admin = svc
+        .body("adminAccountId")
+        .as_str()
+        .unwrap_or("")
+        .to_string();
     svc.with(|st| st.organization_admin_account_id = Some(admin));
     ok(json!({}))
 }
 
 fn disable_organization_admin_account(svc: &Svc) -> Response {
-    let admin = svc.body("adminAccountId").as_str().unwrap_or("").to_string();
+    let admin = svc
+        .body("adminAccountId")
+        .as_str()
+        .unwrap_or("")
+        .to_string();
     svc.with(|st| {
         if st.organization_admin_account_id.as_deref() == Some(admin.as_str()) {
             st.organization_admin_account_id = None;
@@ -962,11 +988,10 @@ fn disable_organization_admin_account(svc: &Svc) -> Response {
 }
 
 fn list_organization_admin_accounts(svc: &Svc) -> Response {
-    let accounts = svc
-        .with(|st| match &st.organization_admin_account_id {
-            Some(id) => vec![json!({"accountId": id, "status": "ENABLED"})],
-            None => vec![],
-        });
+    let accounts = svc.with(|st| match &st.organization_admin_account_id {
+        Some(id) => vec![json!({"accountId": id, "status": "ENABLED"})],
+        None => vec![],
+    });
     ok(json!({"adminAccounts": accounts}))
 }
 
@@ -1070,4 +1095,266 @@ fn create_member(svc: &Svc) -> Response {
     });
     svc.with(|st| st.members.insert(member_account_id, member));
     ok(json!({"arn": arn}))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bytes::Bytes;
+    use std::collections::HashMap;
+
+    fn req(method: &str, path: &str, body: &str) -> Request {
+        Request {
+            service: "macie2".to_string(),
+            operation: String::new(),
+            method: method.to_string(),
+            path: path.to_string(),
+            query_string: String::new(),
+            headers: HashMap::new(),
+            body: Bytes::from(body.to_string()),
+            account: 123456789012,
+            region: "us-east-1".to_string(),
+        }
+    }
+
+    fn scope() -> ScopeKey {
+        (
+            123456780001,
+            format!("us-east-1-{}", Uuid::new_v4().simple()),
+        )
+    }
+
+    fn r(method: &str, path: &str, body: &str, key: &ScopeKey) -> Request {
+        let mut request = req(method, path, body);
+        request.account = key.0;
+        request.region = key.1.clone();
+        request
+    }
+
+    fn body_of(resp: &Response) -> Value {
+        serde_json::from_slice(&resp.body).unwrap()
+    }
+
+    #[test]
+    fn macie_session_lifecycle() {
+        let key = scope();
+        // not enabled yet → ResourceNotFoundException
+        assert_eq!(dispatch(&r("GET", "/macie", "{}", &key)).status, 400);
+        dispatch(&r(
+            "POST",
+            "/macie",
+            r#"{"findingPublishingFrequency": "ONE_HOUR"}"#,
+            &key,
+        ));
+        let session = body_of(&dispatch(&r("GET", "/macie", "{}", &key)));
+        assert_eq!(session["status"], "ENABLED");
+        assert_eq!(session["findingPublishingFrequency"], "ONE_HOUR");
+        assert!(session["serviceRole"].as_str().unwrap().contains("macie"));
+        // idempotent re-enable and disable
+        dispatch(&r("POST", "/macie", "{}", &key));
+        dispatch(&r("DELETE", "/macie", "{}", &key));
+        assert_eq!(dispatch(&r("GET", "/macie", "{}", &key)).status, 400);
+    }
+
+    #[test]
+    fn member_lifecycle() {
+        let key = scope();
+        let arn = body_of(&dispatch(&r(
+            "POST",
+            "/members",
+            r#"{"account": {"accountId": "222233334444", "email": "t@example.com"}}"#,
+            &key,
+        )))["arn"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert!(arn.contains("member/222233334444"));
+        let member = body_of(&dispatch(&r("GET", "/members/222233334444", "{}", &key)));
+        assert_eq!(member["relationshipStatus"], "Enabled");
+        dispatch(&r("GET", "/members/9999", "{}", &key));
+        // unknown member → RNFE
+        let resp = dispatch(&r("GET", "/members/9999", "{}", &key));
+        assert_eq!(body_of(&resp)["__type"], "ResourceNotFoundException");
+    }
+
+    #[test]
+    fn invitations_flow() {
+        let key = scope();
+        dispatch(&r(
+            "POST",
+            "/invitations",
+            r#"{"accountIds": ["111122223333"]}"#,
+            &key,
+        ));
+        let count = body_of(&dispatch(&r("GET", "/invitations/count", "{}", &key)));
+        assert_eq!(count["invitationsCount"], 1);
+        let list = body_of(&dispatch(&r("GET", "/invitations", "{}", &key)));
+        assert!(list["invitations"][0]["invitationId"].as_str().is_some());
+    }
+
+    #[test]
+    fn allow_list_lifecycle() {
+        let key = scope();
+        let created = body_of(&dispatch(&r(
+            "POST",
+            "/allow-lists",
+            r#"{"name": "al", "criteria": {"regex": "x.*"}}"#,
+            &key,
+        )));
+        let id = created["id"].as_str().unwrap().to_string();
+        let arn = created["arn"].as_str().unwrap().to_string();
+        assert!(arn.contains("allow-list/"));
+        let got = body_of(&dispatch(&r(
+            "GET",
+            &format!("/allow-lists/{id}"),
+            "{}",
+            &key,
+        )));
+        assert_eq!(got["name"], "al");
+        let updated = body_of(&dispatch(&r(
+            "PUT",
+            &format!("/allow-lists/{id}"),
+            r#"{"name": "al2"}"#,
+            &key,
+        )));
+        assert_eq!(updated["id"], created["id"]);
+        assert_eq!(
+            dispatch(&r("DELETE", &format!("/allow-lists/{id}"), "{}", &key)).status,
+            200
+        );
+        let resp = dispatch(&r("GET", &format!("/allow-lists/{id}"), "{}", &key));
+        assert_eq!(body_of(&resp)["__type"], "ResourceNotFoundException");
+    }
+
+    #[test]
+    fn custom_data_identifier_lifecycle() {
+        let key = scope();
+        let created = body_of(&dispatch(&r(
+            "POST",
+            "/custom-data-identifiers",
+            r#"{"name": "cdi", "regex": "SSN-[0-9]{3}"}"#,
+            &key,
+        )));
+        let id = created["customDataIdentifierId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let resp = dispatch(&r(
+            "POST",
+            "/custom-data-identifiers/test",
+            r#"{"regex": "SSN-[0-9]{3}", "sampleText": "a"}"#,
+            &key,
+        ));
+        assert!(body_of(&resp)["matchCount"].is_u64());
+        dispatch(&r(
+            "DELETE",
+            &format!("/custom-data-identifiers/{id}"),
+            "{}",
+            &key,
+        ));
+        let list = body_of(&dispatch(&r(
+            "POST",
+            "/custom-data-identifiers/list",
+            "{}",
+            &key,
+        )));
+        assert!(list["items"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn findings_filters_lifecycle() {
+        let key = scope();
+        let created = body_of(&dispatch(&r(
+            "POST",
+            "/findingsfilters",
+            r#"{"action": "ARCHIVE", "name": "ff", "findingCriteria": {"criterion": {}}}"#,
+            &key,
+        )));
+        let id = created["id"].as_str().unwrap().to_string();
+        let list = body_of(&dispatch(&r("GET", "/findingsfilters", "{}", &key)));
+        assert_eq!(list["findingsFilterListItems"][0]["id"], json!(id));
+        assert_eq!(
+            dispatch(&r("DELETE", &format!("/findingsfilters/{id}"), "{}", &key)).status,
+            200
+        );
+    }
+
+    #[test]
+    fn org_admin_and_configuration() {
+        let key = scope();
+        dispatch(&r(
+            "POST",
+            "/admin",
+            r#"{"adminAccountId": "999988887777"}"#,
+            &key,
+        ));
+        let accounts = body_of(&dispatch(&r("GET", "/admin", "{}", &key)));
+        assert_eq!(accounts["adminAccounts"][0]["accountId"], "999988887777");
+        let config = body_of(&dispatch(&r("GET", "/admin/configuration", "{}", &key)));
+        assert!(config["autoEnable"].is_boolean());
+        assert_eq!(config["maxAccountLimitReached"], false);
+        dispatch(&r(
+            "PATCH",
+            "/admin/configuration",
+            r#"{"autoEnable": true}"#,
+            &key,
+        ));
+        let config = body_of(&dispatch(&r("GET", "/admin/configuration", "{}", &key)));
+        assert_eq!(config["autoEnable"], true);
+    }
+
+    #[test]
+    fn classification_job_lifecycle() {
+        let key = scope();
+        let created = body_of(&dispatch(&r(
+            "POST",
+            "/jobs",
+            r#"{"name": "j", "jobType": "ONE_TIME", "s3JobDefinition": {"bucketDefinitions": []}}"#,
+            &key,
+        )));
+        let job_id = created["jobId"].as_str().unwrap().to_string();
+        let described = body_of(&dispatch(&r("GET", &format!("/jobs/{job_id}"), "{}", &key)));
+        assert_eq!(described["jobStatus"], "RUNNING");
+        dispatch(&r(
+            "PATCH",
+            &format!("/jobs/{job_id}"),
+            r#"{"jobStatus": "CANCELLED"}"#,
+            &key,
+        ));
+        let described = body_of(&dispatch(&r("GET", &format!("/jobs/{job_id}"), "{}", &key)));
+        assert_eq!(described["jobStatus"], "CANCELLED");
+    }
+
+    #[test]
+    fn tag_operations_via_query_string() {
+        let key = scope();
+        let arn = "arn:aws:macie2:us-east-1:123456789012:session";
+        let path = format!("/tags/{arn}");
+        dispatch(&r("POST", &path, r#"{"tags": {"env": "test"}}"#, &key));
+        let tags = body_of(&dispatch(&r("GET", &path, "{}", &key)));
+        assert_eq!(tags["tags"]["env"], "test");
+        let mut delete = req("DELETE", &path, "{}");
+        delete.account = key.0;
+        delete.region = key.1.clone();
+        delete.query_string = "tagKeys=env".to_string();
+        dispatch(&delete);
+        let tags = body_of(&dispatch(&r("GET", &path, "{}", &key)));
+        assert!(tags["tags"].as_object().unwrap().is_empty());
+    }
+
+    #[test]
+    fn findings_and_statistics_empty() {
+        let key = scope();
+        let findings = body_of(&dispatch(&r("POST", "/findings", "{}", &key)));
+        assert_eq!(findings["findingIds"], json!([]));
+        let stats = body_of(&dispatch(&r(
+            "POST",
+            "/findings/statistics",
+            r#"{"groupBy": "type"}"#,
+            &key,
+        )));
+        assert_eq!(stats["countsByGroup"], json!([]));
+        let buckets = body_of(&dispatch(&r("POST", "/datasources/s3", "{}", &key)));
+        assert_eq!(buckets["buckets"], json!([]));
+    }
 }

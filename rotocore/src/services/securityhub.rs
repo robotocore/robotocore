@@ -9,8 +9,8 @@ use crate::proto::{json_error, now_iso, parse_json_body, query_map, url_decode};
 use crate::store::{slot, ScopeKey, Slot};
 use crate::{Request, Response};
 use serde_json::{json, Value};
-use uuid::Uuid;
 use std::collections::BTreeMap;
+use uuid::Uuid;
 
 type Tags = BTreeMap<String, String>;
 
@@ -77,10 +77,26 @@ const BUILTIN_STANDARDS: &[(&str, &str, &str, bool)] = &[
 
 /// Built-in product integrations moto advertises: (arn template, name, company).
 const BUILTIN_PRODUCTS: &[(&str, &str, &str)] = &[
-    ("arn:aws:securityhub:{region}::product/aws/guardduty", "GuardDuty", "Amazon"),
-    ("arn:aws:securityhub:{region}::product/aws/inspector", "Inspector", "Amazon"),
-    ("arn:aws:securityhub:{region}::product/aws/macie", "Macie", "Amazon"),
-    ("arn:aws:securityhub:{region}::product/aws/config", "Config", "Amazon"),
+    (
+        "arn:aws:securityhub:{region}::product/aws/guardduty",
+        "GuardDuty",
+        "Amazon",
+    ),
+    (
+        "arn:aws:securityhub:{region}::product/aws/inspector",
+        "Inspector",
+        "Amazon",
+    ),
+    (
+        "arn:aws:securityhub:{region}::product/aws/macie",
+        "Macie",
+        "Amazon",
+    ),
+    (
+        "arn:aws:securityhub:{region}::product/aws/config",
+        "Config",
+        "Amazon",
+    ),
     (
         "arn:aws:securityhub:{region}::product/aws/firewall-manager",
         "Firewall Manager",
@@ -103,11 +119,7 @@ fn ok(body: Value) -> Response {
 }
 
 fn not_implemented(_svc: &Svc) -> Response {
-    err(
-        501,
-        "NotImplemented",
-        "The action has not been implemented",
-    )
+    err(501, "NotImplemented", "The action has not been implemented")
 }
 
 fn err(status: u16, code: &str, message: &str) -> Response {
@@ -157,7 +169,9 @@ pub fn dispatch(req: &Request) -> Response {
     // Ops whose last path segment is the request's ARN / identifier parameter.
     if segs.len() >= 2 {
         match (m, segs[0], segs[1]) {
-            ("GET", "tags", _) => return list_tags_for_resource(&svc, &tail_after(&svc.path, "tags")),
+            ("GET", "tags", _) => {
+                return list_tags_for_resource(&svc, &tail_after(&svc.path, "tags"))
+            }
             ("POST", "tags", _) => return tag_resource(&svc, &tail_after(&svc.path, "tags")),
             ("DELETE", "tags", _) => return untag_resource(&svc, &tail_after(&svc.path, "tags")),
             ("DELETE", "actionTargets", _) => {
@@ -166,8 +180,12 @@ pub fn dispatch(req: &Request) -> Response {
             ("PATCH", "actionTargets", _) => {
                 return update_action_target(&svc, &tail_after(&svc.path, "actionTargets"))
             }
-            ("DELETE", "insights", _) => return delete_insight(&svc, &tail_after(&svc.path, "insights")),
-            ("PATCH", "insights", _) => return update_insight(&svc, &tail_after(&svc.path, "insights")),
+            ("DELETE", "insights", _) => {
+                return delete_insight(&svc, &tail_after(&svc.path, "insights"))
+            }
+            ("PATCH", "insights", _) => {
+                return update_insight(&svc, &tail_after(&svc.path, "insights"))
+            }
             ("GET", "insights", "results") => {
                 return get_insight_results(&svc, &tail_after(&svc.path, "insights/results"))
             }
@@ -181,10 +199,16 @@ pub fn dispatch(req: &Request) -> Response {
                 return update_aggregator_v2(&svc, &tail_after(&svc.path, "aggregatorv2/update"))
             }
             ("DELETE", "findingAggregator", "delete") => {
-                return delete_finding_aggregator(&svc, &tail_after(&svc.path, "findingAggregator/delete"))
+                return delete_finding_aggregator(
+                    &svc,
+                    &tail_after(&svc.path, "findingAggregator/delete"),
+                )
             }
             ("GET", "findingAggregator", "get") => {
-                return get_finding_aggregator(&svc, &tail_after(&svc.path, "findingAggregator/get"))
+                return get_finding_aggregator(
+                    &svc,
+                    &tail_after(&svc.path, "findingAggregator/get"),
+                )
             }
             ("GET", "automationrulesv2", _) => {
                 return get_automation_rule_v2(&svc, &tail_after(&svc.path, "automationrulesv2"))
@@ -196,13 +220,22 @@ pub fn dispatch(req: &Request) -> Response {
                 return delete_automation_rule_v2(&svc, &tail_after(&svc.path, "automationrulesv2"))
             }
             ("GET", "configurationPolicy", "get") => {
-                return get_configuration_policy(&svc, &tail_after(&svc.path, "configurationPolicy/get"))
+                return get_configuration_policy(
+                    &svc,
+                    &tail_after(&svc.path, "configurationPolicy/get"),
+                )
             }
             ("PATCH", "configurationPolicy", _) => {
-                return update_configuration_policy(&svc, &tail_after(&svc.path, "configurationPolicy"))
+                return update_configuration_policy(
+                    &svc,
+                    &tail_after(&svc.path, "configurationPolicy"),
+                )
             }
             ("DELETE", "configurationPolicy", _) => {
-                return delete_configuration_policy(&svc, &tail_after(&svc.path, "configurationPolicy"))
+                return delete_configuration_policy(
+                    &svc,
+                    &tail_after(&svc.path, "configurationPolicy"),
+                )
             }
             ("GET", "connectorsv2", _) => {
                 return get_connector_v2(&svc, &tail_after(&svc.path, "connectorsv2"))
@@ -220,7 +253,10 @@ pub fn dispatch(req: &Request) -> Response {
                 )
             }
             ("GET", "standards", "controls") => {
-                return describe_standards_controls(&svc, &tail_after(&svc.path, "standards/controls"))
+                return describe_standards_controls(
+                    &svc,
+                    &tail_after(&svc.path, "standards/controls"),
+                )
             }
             ("PATCH", "standards", "control") => {
                 return update_standards_control(&svc, &tail_after(&svc.path, "standards/control"))
@@ -252,15 +288,17 @@ fn route_static(svc: &Svc, m: &str, segs: &[&str]) -> Response {
         ("POST", "findingsv2", "statistics") | ("POST", "resourcesv2", "statistics") => {
             ok(json!({"GroupByResults": []}))
         }
-        ("POST", "findingsTrendsv2", _) | ("POST", "resourcesTrendsv2", _) => ok(
-            json!({"Granularity": "DAILY", "TrendsMetrics": [], "NextToken": null}),
-        ),
+        ("POST", "findingsTrendsv2", _) | ("POST", "resourcesTrendsv2", _) => {
+            ok(json!({"Granularity": "DAILY", "TrendsMetrics": [], "NextToken": null}))
+        }
         ("POST", "findingsv2", _) => get_findings_v2(svc),
         ("PATCH", "findingsv2", _) => batch_update_findings_v2(svc),
         ("POST", "resourcesv2", _) => ok(json!({"Resources": []})),
         ("GET", "administrator", _) => ok(json!({})),
         ("GET", "master", _) => ok(json!({})),
-        ("POST", "administrator", "disassociate") | ("POST", "master", "disassociate") => ok(json!({})),
+        ("POST", "administrator", "disassociate") | ("POST", "master", "disassociate") => {
+            ok(json!({}))
+        }
         ("POST", "administrator", _) | ("POST", "master", _) => ok(json!({})),
         ("POST", "members", "delete") => delete_members(svc),
         ("POST", "members", "get") => get_members(svc),
@@ -299,7 +337,9 @@ fn route_static(svc: &Svc, m: &str, segs: &[&str]) -> Response {
             start_policy_disassociation(svc)
         }
         ("POST", "configurationPolicyAssociation", "get") => get_policy_association(svc),
-        ("POST", "configurationPolicyAssociation", "batchget") => batch_get_policy_associations(svc),
+        ("POST", "configurationPolicyAssociation", "batchget") => {
+            batch_get_policy_associations(svc)
+        }
         ("POST", "configurationPolicyAssociation", _) => list_policy_associations(svc),
         ("POST", "securityControls", "batchGet") => batch_get_security_controls(svc),
         ("PATCH", "securityControl", "update") => update_security_control(svc),
@@ -312,7 +352,10 @@ fn route_static(svc: &Svc, m: &str, segs: &[&str]) -> Response {
         ("GET", "organization", "configuration") => describe_organization_configuration(svc),
         ("POST", "organization", "configuration") => update_organization_configuration(svc),
         ("GET", "organization", "admin") => list_organization_admin_accounts(svc),
-        ("POST", "organization", "enable") | ("POST", "organization", "disable") => org_not_in_use(),
+        ("POST", "organization", "admin") if segs.len() >= 3 => org_not_in_use(),
+        ("POST", "organization", "enable") | ("POST", "organization", "disable") => {
+            org_not_in_use()
+        }
         ("GET", "connectorsv2", _) => list_connectors_v2(svc),
         ("GET", "automationrulesv2", "list") => list_automation_rules_v2(svc),
         ("GET", "aggregatorv2", "list") => list_aggregators_v2(svc),
@@ -412,8 +455,7 @@ fn describe_hub(svc: &Svc) -> Response {
             "Account is not subscribed to AWS Security Hub",
         );
     }
-    let tags = svc
-        .with(|st| st.tags.get(&svc.hub_arn()).cloned().unwrap_or_default());
+    let tags = svc.with(|st| st.tags.get(&svc.hub_arn()).cloned().unwrap_or_default());
     ok(json!({
         "HubArn": svc.hub_arn(),
         "SubscribedAt": subscribed_at,
@@ -499,7 +541,7 @@ fn get_findings(svc: &Svc) -> Response {
     let filters = svc.body("Filters");
     let max_results = svc.body("MaxResults").as_u64();
     if let Some(max) = max_results {
-        if max < 1 || max > 100 {
+        if !(1..=100).contains(&max) {
             return err(
                 400,
                 "InvalidInputException",
@@ -527,11 +569,7 @@ fn merge_tags(st: &mut State, arn: &str, tags: &BTreeMap<String, String>) {
 }
 
 fn batch_import_findings(svc: &Svc) -> Response {
-    let imported_list: Vec<Value> = svc
-        .body("Findings")
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
+    let imported_list: Vec<Value> = svc.body("Findings").as_array().cloned().unwrap_or_default();
     let mut success = 0u64;
     let mut failed: Vec<Value> = Vec::new();
     for finding_data in imported_list {
@@ -627,10 +665,11 @@ fn batch_update_findings(svc: &Svc) -> Response {
                 existing["Types"] = types.clone();
             }
             if let Some(newmap) = user_defined.as_object() {
-                if let Some(m) = existing
-                    .as_object_mut()
-                    .and_then(|o| o.entry("UserDefinedFields").or_insert(json!({})).as_object_mut())
-                {
+                if let Some(m) = existing.as_object_mut().and_then(|o| {
+                    o.entry("UserDefinedFields")
+                        .or_insert(json!({}))
+                        .as_object_mut()
+                }) {
                     for (k, v) in newmap {
                         m.insert(k.clone(), v.clone());
                     }
@@ -650,10 +689,7 @@ fn batch_update_findings(svc: &Svc) -> Response {
                 existing["RelatedFindings"] = related.clone();
             }
             existing["UpdatedAt"] = json!(now_iso());
-            let prod = idf
-                .get("ProductArn")
-                .cloned()
-                .unwrap_or(Value::Null);
+            let prod = idf.get("ProductArn").cloned().unwrap_or(Value::Null);
             processed.push(json!({"Id": fid, "ProductArn": prod}));
         }
     });
@@ -766,8 +802,6 @@ fn batch_update_findings_v2(svc: &Svc) -> Response {
     }))
 }
 
-
-
 // --- Members & invitations ---
 
 fn member_with_defaults(account_id: &str, email: &str) -> Value {
@@ -796,7 +830,10 @@ fn create_members(svc: &Svc) -> Response {
                     .and_then(Value::as_str)
                     .unwrap_or("")
                     .to_string(),
-                d.get("Email").and_then(Value::as_str).unwrap_or("").to_string(),
+                d.get("Email")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
             )
         })
         .collect();
@@ -908,7 +945,11 @@ fn invite_members(svc: &Svc) -> Response {
 }
 
 fn org_not_in_use() -> Response {
-    err(400, "AWSOrganizationsNotInUseException", "AWS Organizations is not in use.")
+    err(
+        400,
+        "AWSOrganizationsNotInUseException",
+        "AWS Organizations is not in use.",
+    )
 }
 
 fn describe_organization_configuration(_svc: &Svc) -> Response {
@@ -948,7 +989,8 @@ fn enable_import_findings_for_product(svc: &Svc) -> Response {
         );
     }
     svc.with(|st| {
-        st.product_subscriptions.insert(product_arn, sub_arn.clone());
+        st.product_subscriptions
+            .insert(product_arn, sub_arn.clone());
     });
     ok(json!({"ProductSubscriptionArn": sub_arn}))
 }
@@ -974,7 +1016,12 @@ fn disable_import_findings_for_product(svc: &Svc, sub_arn: &str) -> Response {
 }
 
 fn list_enabled_products_for_import(svc: &Svc) -> Response {
-    let subs = svc.with(|st| st.product_subscriptions.values().cloned().collect::<Vec<String>>());
+    let subs = svc.with(|st| {
+        st.product_subscriptions
+            .values()
+            .cloned()
+            .collect::<Vec<String>>()
+    });
     ok(json!({"ProductSubscriptions": subs}))
 }
 
@@ -1050,7 +1097,8 @@ fn create_action_target(svc: &Svc) -> Response {
 
 fn describe_action_targets(svc: &Svc) -> Response {
     let filters = str_list(svc.body("ActionTargetArns"));
-    let all: Vec<Value> = svc.with(|st| st.action_targets.values().cloned().collect::<Vec<Value>>());
+    let all: Vec<Value> =
+        svc.with(|st| st.action_targets.values().cloned().collect::<Vec<Value>>());
     let mut targets = Vec::new();
     if !filters.is_empty() {
         let stored = svc.with(|st| st.action_targets.clone());
@@ -1188,7 +1236,6 @@ fn delete_insight(svc: &Svc, arn: &str) -> Response {
 
 // --- Standards ---
 
-
 fn batch_enable_standards(svc: &Svc) -> Response {
     let requests = svc
         .body("StandardsSubscriptionRequests")
@@ -1203,7 +1250,11 @@ fn batch_enable_standards(svc: &Svc) -> Response {
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_string();
-            let tail = standards_arn.split('/').next_back().unwrap_or("").to_string();
+            let tail = standards_arn
+                .split('/')
+                .next_back()
+                .unwrap_or("")
+                .to_string();
             let sub_arn = format!("arn:aws:securityhub:::subscription/{tail}");
             let input = req.get("StandardsInput").cloned().unwrap_or(json!({}));
             let dict = json!({
@@ -1275,7 +1326,12 @@ fn describe_standards_controls(svc: &Svc, sub_arn: &str) -> Response {
         return not_found("standards subscription", sub_arn);
     }
     let controls: Vec<Value> = svc
-        .with(|st| st.standards_controls.values().cloned().collect::<Vec<Value>>())
+        .with(|st| {
+            st.standards_controls
+                .values()
+                .cloned()
+                .collect::<Vec<Value>>()
+        })
         .into_iter()
         .filter(|c| {
             c.get("StandardsControlArn")
@@ -1308,19 +1364,22 @@ fn update_standards_control(svc: &Svc, arn: &str) -> Response {
     let control_status = svc.body("ControlStatus");
     let reason = svc.body("DisabledReason");
     svc.with(|st| {
-        let entry = st.standards_controls.entry(arn.to_string()).or_insert_with(|| {
-            let control_id = arn.split('/').next_back().unwrap_or("").to_string();
-            json!({
-                "StandardsControlArn": arn,
-                "ControlStatus": "ENABLED",
-                "ControlId": control_id,
-                "Title": control_id,
-                "Description": format!("Control {control_id}"),
-                "SeverityRating": "MEDIUM",
-                "RelatedRequirements": [],
-                "RemediationUrl": "",
-            })
-        });
+        let entry = st
+            .standards_controls
+            .entry(arn.to_string())
+            .or_insert_with(|| {
+                let control_id = arn.split('/').next_back().unwrap_or("").to_string();
+                json!({
+                    "StandardsControlArn": arn,
+                    "ControlStatus": "ENABLED",
+                    "ControlId": control_id,
+                    "Title": control_id,
+                    "Description": format!("Control {control_id}"),
+                    "SeverityRating": "MEDIUM",
+                    "RelatedRequirements": [],
+                    "RemediationUrl": "",
+                })
+            });
         if let Some(status) = control_status.as_str() {
             entry["ControlStatus"] = json!(status);
         }
@@ -1510,7 +1569,12 @@ fn batch_update_automation_rules(svc: &Svc) -> Response {
 
 fn list_automation_rules(svc: &Svc) -> Response {
     let metadata: Vec<Value> = svc
-        .with(|st| st.automation_rules.values().cloned().collect::<Vec<Value>>())
+        .with(|st| {
+            st.automation_rules
+                .values()
+                .cloned()
+                .collect::<Vec<Value>>()
+        })
         .into_iter()
         .map(|mut rule| {
             if let Some(obj) = rule.as_object_mut() {
@@ -1555,13 +1619,15 @@ fn get_finding_aggregator(svc: &Svc, arn: &str) -> Response {
 }
 
 fn update_finding_aggregator_body(svc: &Svc) -> Response {
-    let arn = svc.body("FindingAggregatorArn").as_str().unwrap_or("").to_string();
+    let arn = svc
+        .body("FindingAggregatorArn")
+        .as_str()
+        .unwrap_or("")
+        .to_string();
     let mode = svc.body("RegionLinkingMode");
     let regions = svc.body("Regions");
     let updated = svc.with(|st| {
-        let Some(agg) = st.finding_aggregators.get_mut(&arn) else {
-            return None;
-        };
+        let agg = st.finding_aggregators.get_mut(&arn)?;
         if !mode.is_null() {
             agg["RegionLinkingMode"] = mode.clone();
         }
@@ -1602,11 +1668,16 @@ fn list_finding_aggregators(svc: &Svc) -> Response {
 
 // --- Configuration policies & associations ---
 
-fn policy_dict(account: &str, region: &str, name: &str, description: &str, config: Value, created: &str) -> (String, String, Value) {
+fn policy_dict(
+    account: &str,
+    region: &str,
+    name: &str,
+    description: &str,
+    config: Value,
+    created: &str,
+) -> (String, String, Value) {
     let policy_id = Uuid::new_v4().to_string();
-    let arn = format!(
-        "arn:aws:securityhub:{region}:{account}:configuration-policy/{policy_id}"
-    );
+    let arn = format!("arn:aws:securityhub:{region}:{account}:configuration-policy/{policy_id}");
     (
         policy_id.clone(),
         arn.clone(),
@@ -1627,9 +1698,14 @@ fn create_configuration_policy(svc: &Svc) -> Response {
     let description = svc.body("Description").as_str().unwrap_or("").to_string();
     let config = svc.body("ConfigurationPolicy");
     let now = now_iso();
-    let (_id, _arn, dict) = policy_dict(&svc.account, &svc.region, &name, &description, config, &now);
+    let (_id, _arn, dict) =
+        policy_dict(&svc.account, &svc.region, &name, &description, config, &now);
     svc.with(|st| {
-        let pid = dict.get("Id").and_then(Value::as_str).unwrap_or("").to_string();
+        let pid = dict
+            .get("Id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
         st.configuration_policies.insert(pid, dict.clone());
     });
     ok(dict)
@@ -1663,9 +1739,12 @@ fn update_configuration_policy(svc: &Svc, identifier: &str) -> Response {
         let pid = st
             .configuration_policies
             .iter()
-            .find(|(id, p)| id.as_str() == identifier || p.get("Arn").and_then(Value::as_str) == Some(identifier))
+            .find(|(id, p)| {
+                id.as_str() == identifier
+                    || p.get("Arn").and_then(Value::as_str) == Some(identifier)
+            })
             .map(|(id, _)| id.clone());
-        let Some(pid) = pid else { return None };
+        let pid = pid?;
         let existing = st
             .configuration_policies
             .iter_mut()
@@ -1697,7 +1776,10 @@ fn delete_configuration_policy(svc: &Svc, identifier: &str) -> Response {
         let pid = st
             .configuration_policies
             .iter()
-            .find(|(id, p)| id.as_str() == identifier || p.get("Arn").and_then(Value::as_str) == Some(identifier))
+            .find(|(id, p)| {
+                id.as_str() == identifier
+                    || p.get("Arn").and_then(Value::as_str) == Some(identifier)
+            })
             .map(|(id, _)| id.clone());
         match pid {
             Some(pid) => st.configuration_policies.remove(&pid).is_some(),
@@ -1713,7 +1795,12 @@ fn delete_configuration_policy(svc: &Svc, identifier: &str) -> Response {
 
 fn list_configuration_policies(svc: &Svc) -> Response {
     let summaries: Vec<Value> = svc
-        .with(|st| st.configuration_policies.values().cloned().collect::<Vec<Value>>())
+        .with(|st| {
+            st.configuration_policies
+                .values()
+                .cloned()
+                .collect::<Vec<Value>>()
+        })
         .into_iter()
         .map(|policy| {
             json!({
@@ -1827,7 +1914,12 @@ fn batch_get_policy_associations(svc: &Svc) -> Response {
 }
 
 fn list_policy_associations(svc: &Svc) -> Response {
-    let results = svc.with(|st| st.policy_associations.values().cloned().collect::<Vec<Value>>());
+    let results = svc.with(|st| {
+        st.policy_associations
+            .values()
+            .cloned()
+            .collect::<Vec<Value>>()
+    });
     ok(json!({"ConfigurationPolicyAssociationSummaries": results}))
 }
 
@@ -1847,7 +1939,11 @@ fn batch_get_security_controls(svc: &Svc) -> Response {
 }
 
 fn update_security_control(svc: &Svc) -> Response {
-    let id = svc.body("SecurityControlId").as_str().unwrap_or("").to_string();
+    let id = svc
+        .body("SecurityControlId")
+        .as_str()
+        .unwrap_or("")
+        .to_string();
     let parameters = svc.body("Parameters");
     let reason = svc.body("LastUpdateReason");
     svc.with(|st| {
@@ -1939,7 +2035,11 @@ fn describe_security_hub_v2(svc: &Svc) -> Response {
             "HubV2Arn": hub_arn,
             "SubscribedAt": subscribed_at,
         })),
-        _ => err(400, "InvalidAccessException", "Account is not subscribed to AWS Security Hub V2"),
+        _ => err(
+            400,
+            "InvalidAccessException",
+            "Account is not subscribed to AWS Security Hub V2",
+        ),
     }
 }
 
@@ -2072,7 +2172,12 @@ fn delete_automation_rule_v2(svc: &Svc, id: &str) -> Response {
 
 fn list_automation_rules_v2(svc: &Svc) -> Response {
     let rules: Vec<Value> = svc
-        .with(|st| st.automation_rules_v2.values().cloned().collect::<Vec<Value>>())
+        .with(|st| {
+            st.automation_rules_v2
+                .values()
+                .cloned()
+                .collect::<Vec<Value>>()
+        })
         .into_iter()
         .map(|mut r| {
             if let Some(obj) = r.as_object_mut() {
@@ -2118,9 +2223,7 @@ fn update_aggregator_v2(svc: &Svc, arn: &str) -> Response {
     let mode = svc.body("RegionLinkingMode");
     let linked = svc.body("LinkedRegions");
     let updated = svc.with(|st| {
-        let Some(agg) = st.aggregators_v2.get_mut(arn) else {
-            return None;
-        };
+        let agg = st.aggregators_v2.get_mut(arn)?;
         if !mode.is_null() {
             agg["RegionLinkingMode"] = mode.clone();
         }
@@ -2169,7 +2272,8 @@ fn create_connector_v2(svc: &Svc) -> Response {
         "Health": {"ConnectorStatus": "CONNECTED", "Message": ""},
     });
     svc.with(|st| {
-        st.connectors_v2.insert(connector_id.clone(), record.clone());
+        st.connectors_v2
+            .insert(connector_id.clone(), record.clone());
     });
     ok(json!({
         "ConnectorArn": arn,
@@ -2281,4 +2385,391 @@ fn create_ticket_v2(_svc: &Svc) -> Response {
         "TicketId": ticket_id,
         "TicketSrcUrl": format!("https://ticket.example.com/{ticket_id}"),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bytes::Bytes;
+    use std::collections::HashMap;
+
+    fn req(method: &str, path: &str, body: &str) -> Request {
+        Request {
+            service: "securityhub".to_string(),
+            operation: String::new(),
+            method: method.to_string(),
+            path: path.to_string(),
+            query_string: String::new(),
+            headers: HashMap::new(),
+            body: Bytes::from(body.to_string()),
+            account: 123456789012,
+            region: "us-east-1".to_string(),
+        }
+    }
+
+    fn body_of(resp: &Response) -> Value {
+        serde_json::from_slice(&resp.body).unwrap()
+    }
+
+    fn unique_scope() -> ScopeKey {
+        // unique (account, region) per test for state isolation
+        (
+            fastrand_id(),
+            format!("us-east-1-{}", Uuid::new_v4().simple()),
+        )
+    }
+
+    fn fastrand_id() -> u64 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut h = DefaultHasher::new();
+        Uuid::new_v4().simple().to_string().hash(&mut h);
+        h.finish() % 9_000_000_000_000 + 100_000_000_000
+    }
+
+    fn dispatch_scoped(method: &str, path: &str, body: &str, key: ScopeKey) -> Response {
+        let mut r = req(method, path, body);
+        r.account = key.0;
+        r.region = key.1.clone();
+        dispatch(&r)
+    }
+
+    #[test]
+    fn hub_enable_describe_disable() {
+        let key = unique_scope();
+        dispatch_scoped("POST", "/accounts", "{}", key.clone());
+        let describe = body_of(&dispatch_scoped("GET", "/accounts", "{}", key.clone()));
+        assert!(describe["HubArn"].as_str().unwrap().contains("hub/default"));
+        assert!(describe["SubscribedAt"].as_str().is_some());
+        assert_eq!(describe["ControlFindingGenerator"], "SECURITY_CONTROL");
+        let disable = dispatch_scoped("DELETE", "/accounts", "{}", key.clone());
+        assert_eq!(disable.status, 200);
+    }
+
+    #[test]
+    fn describe_hub_when_disabled_is_access_denied() {
+        let key = unique_scope();
+        let resp = dispatch_scoped("GET", "/accounts", "{}", key);
+        assert_eq!(resp.status, 400);
+        let body = body_of(&resp);
+        assert_eq!(body["__type"], "InvalidAccessException");
+    }
+
+    #[test]
+    fn import_and_filter_findings() {
+        let key = unique_scope();
+        let finding = json!({
+            "Id": "f-1",
+            "Severity": {"Label": "CRITICAL"},
+            "Title": "Critical Test",
+            "Resources": [{"Type": "AwsEc2Instance"}],
+        });
+        let resp = dispatch_scoped(
+            "POST",
+            "/findings/import",
+            &json!({"Findings": [finding]}).to_string(),
+            key.clone(),
+        );
+        let body = body_of(&resp);
+        assert_eq!(body["SuccessCount"], 1);
+        assert_eq!(body["FailedCount"], 0);
+        assert_eq!(body["FailedFindings"], json!([]));
+
+        let filter =
+            json!({"Filters": {"SeverityLabel": [{"Value": "CRITICAL", "Comparison": "EQUALS"}]}});
+        let resp = dispatch_scoped("POST", "/findings", &filter.to_string(), key.clone());
+        let body = body_of(&resp);
+        let titles: Vec<&str> = body
+            .get("Findings")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(|f| f.get("Title").and_then(Value::as_str))
+                    .collect()
+            })
+            .unwrap_or_default();
+        assert!(titles.contains(&"Critical Test"));
+
+        // MaxResults caps the page
+        let resp = dispatch_scoped("POST", "/findings", r#"{"MaxResults": 1}"#, key.clone());
+        assert_eq!(body_of(&resp)["Findings"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn import_requires_resources() {
+        let key = unique_scope();
+        let finding = json!({"Id": "f-2", "Title": "no resources", "Resources": []});
+        let resp = dispatch_scoped(
+            "POST",
+            "/findings/import",
+            &json!({"Findings": [finding]}).to_string(),
+            key.clone(),
+        );
+        let body = body_of(&resp);
+        assert_eq!(body["FailedCount"], 1);
+        assert_eq!(body["FailedFindings"][0]["ErrorCode"], "InvalidInput");
+    }
+
+    #[test]
+    fn batch_update_findings_processes_existing() {
+        let key = unique_scope();
+        let finding = json!({
+            "Id": "f-3",
+            "Severity": {"Label": "MEDIUM"},
+            "Resources": [{"Type": "AwsEc2Instance", "Id": "i-1"}],
+        });
+        dispatch_scoped(
+            "POST",
+            "/findings/import",
+            &json!({"Findings": [finding]}).to_string(),
+            key.clone(),
+        );
+        let resp = dispatch_scoped(
+            "PATCH",
+            "/findings/batchupdate",
+            &json!({
+                "FindingIdentifiers": [{"Id": "f-3", "ProductArn": "arn:prod"}],
+                "Severity": {"Label": "CRITICAL"},
+            })
+            .to_string(),
+            key.clone(),
+        );
+        let body = body_of(&resp);
+        assert_eq!(body["ProcessedFindings"][0]["Id"], "f-3");
+        assert_eq!(body["UnprocessedFindings"], json!([]));
+    }
+
+    #[test]
+    fn members_create_get_list() {
+        let key = unique_scope();
+        let create = dispatch_scoped(
+            "POST",
+            "/members",
+            r#"{"AccountDetails": [{"AccountId": "111122223333", "Email": "a@example.com"}]}"#,
+            key.clone(),
+        );
+        assert_eq!(body_of(&create)["UnprocessedAccounts"], json!([]));
+
+        let list = body_of(&dispatch_scoped("GET", "/members", "{}", key.clone()));
+        let ids: Vec<&str> = list["Members"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|m| m.get("AccountId").and_then(Value::as_str))
+            .collect();
+        assert!(ids.contains(&"111122223333"));
+
+        let get = body_of(&dispatch_scoped(
+            "POST",
+            "/members/get",
+            r#"{"AccountIds": ["111122223333"]}"#,
+            key.clone(),
+        ));
+        assert_eq!(get["Members"][0]["Email"], "a@example.com");
+
+        let get_unknown = body_of(&dispatch_scoped(
+            "POST",
+            "/members/get",
+            r#"{"AccountIds": ["999999999999"]}"#,
+            key,
+        ));
+        assert_eq!(
+            get_unknown["UnprocessedAccounts"][0]["AccountId"],
+            "999999999999"
+        );
+    }
+
+    #[test]
+    fn action_target_lifecycle() {
+        let key = unique_scope();
+        let create = body_of(&dispatch_scoped(
+            "POST",
+            "/actionTargets",
+            r#"{"Name": "n", "Description": "d", "Id": "t-1"}"#,
+            key.clone(),
+        ));
+        let arn = create["ActionTargetArn"].as_str().unwrap().to_string();
+        assert!(arn.contains("action/custom/t-1"));
+
+        // botocore sends the ARN percent-encoded in one URI segment
+        let encoded = arn.replace('/', "%2F");
+        dispatch_scoped(
+            "PATCH",
+            &format!("/actionTargets/{encoded}"),
+            r#"{"Name": "updated"}"#,
+            key.clone(),
+        );
+        let describe = body_of(&dispatch_scoped(
+            "POST",
+            "/actionTargets/get",
+            "{}",
+            key.clone(),
+        ));
+        assert_eq!(describe["ActionTargets"][0]["Name"], "updated");
+
+        let del = body_of(&dispatch_scoped(
+            "DELETE",
+            &format!("/actionTargets/{encoded}"),
+            "{}",
+            key,
+        ));
+        assert_eq!(del["ActionTargetArn"], json!(arn));
+    }
+
+    #[test]
+    fn standards_enable_get_disable() {
+        let key = unique_scope();
+        let enable = body_of(&dispatch_scoped(
+            "POST",
+            "/standards/register",
+            r#"{"StandardsSubscriptionRequests": [{"StandardsArn": "arn:aws:securityhub:::standards/aws-foundational-security-best-practices/v/1.0.0"}]}"#,
+            key.clone(),
+        ));
+        let sub_arn = enable["StandardsSubscriptions"][0]["StandardsSubscriptionArn"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert!(!sub_arn.is_empty());
+
+        let disable = body_of(&dispatch_scoped(
+            "POST",
+            "/standards/deregister",
+            &json!({"StandardsSubscriptionArns": [sub_arn]}).to_string(),
+            key,
+        ));
+        assert_eq!(
+            disable["StandardsSubscriptions"][0]["StandardsStatus"],
+            "INCOMPLETE"
+        );
+    }
+
+    #[test]
+    fn standards_controls_require_subscription() {
+        let key = unique_scope();
+        let resp = dispatch_scoped("GET", "/standards/controls/nonexistent", "{}", key);
+        assert_eq!(body_of(&resp)["__type"], "ResourceNotFoundException");
+    }
+
+    #[test]
+    fn automation_rule_create_and_get() {
+        let key = unique_scope();
+        let create = body_of(&dispatch_scoped(
+            "POST",
+            "/automationrules/create",
+            r#"{"RuleName": "r1", "RuleOrder": 1, "RuleStatus": "ENABLED", "Criteria": {}, "Actions": []}"#,
+            key.clone(),
+        ));
+        let arn = create["RuleArn"].as_str().unwrap().to_string();
+        assert!(arn.contains("automation-rule"));
+
+        let get = body_of(&dispatch_scoped(
+            "POST",
+            "/automationrules/get",
+            &json!({"AutomationRulesArns": [arn.clone()]}).to_string(),
+            key.clone(),
+        ));
+        assert_eq!(get["Rules"][0]["RuleName"], "r1");
+        assert_eq!(get["UnprocessedAutomationRules"], json!([]));
+
+        let delete = body_of(&dispatch_scoped(
+            "POST",
+            "/automationrules/delete",
+            &json!({"AutomationRulesArns": [arn]}).to_string(),
+            key,
+        ));
+        assert_eq!(
+            delete["ProcessedAutomationRules"].as_array().unwrap().len(),
+            1
+        );
+    }
+
+    #[test]
+    fn insight_lifecycle() {
+        let key = unique_scope();
+        let create = body_of(&dispatch_scoped(
+            "POST",
+            "/insights",
+            r#"{"Name": "i-1", "Filters": {}, "GroupByAttribute": "SeverityLabel"}"#,
+            key.clone(),
+        ));
+        let arn = create["InsightArn"].as_str().unwrap().to_string();
+
+        let del = body_of(&dispatch_scoped(
+            "DELETE",
+            &format!("/insights/{arn}"),
+            "{}",
+            key.clone(),
+        ));
+        assert_eq!(del["InsightArn"], json!(arn));
+
+        let resp = dispatch_scoped("DELETE", "/insights/arn:missing", "{}", key);
+        assert_eq!(body_of(&resp)["__type"], "ResourceNotFoundException");
+    }
+
+    #[test]
+    fn tags_roundtrip_on_hub() {
+        let key = unique_scope();
+        dispatch_scoped("POST", "/accounts", "{}", key.clone());
+        let hub_arn = format!("arn:aws:securityhub:us-east-1:{}:hub/default", key.0);
+        let hdr = format!("/tags/{hub_arn}");
+        dispatch_scoped("POST", &hdr, r#"{"Tags": {"env": "test"}}"#, key.clone());
+        let tags = body_of(&dispatch_scoped("GET", &hdr, "{}", key.clone()));
+        assert_eq!(tags["Tags"]["env"], "test");
+
+        // untag via query-string keys, as botocore does
+        let mut r = req("DELETE", &hdr, "{}");
+        r.account = key.0;
+        r.region = key.1.clone();
+        let key = key.clone();
+        r.query_string = "tagKeys=env".to_string();
+        let resp = dispatch(&r);
+        assert_eq!(resp.status, 200);
+        let tags = body_of(&dispatch_scoped("GET", &hdr, "{}", key));
+        assert!(tags["Tags"].as_object().unwrap().is_empty());
+    }
+
+    #[test]
+    fn org_ops_fail_without_organizations() {
+        let key = unique_scope();
+        let resp = dispatch_scoped("POST", "/organization/admin/enable", "{}", key.clone());
+        assert_eq!(
+            body_of(&resp)["__type"],
+            "AWSOrganizationsNotInUseException"
+        );
+        let resp = dispatch_scoped("GET", "/organization/configuration", "{}", key);
+        assert_eq!(body_of(&resp)["__type"], "AccessDeniedException");
+    }
+
+    #[test]
+    fn v2_hub_lifecycle() {
+        let key = unique_scope();
+        let enable = body_of(&dispatch_scoped("POST", "/hubv2", "{}", key.clone()));
+        assert!(enable["HubV2Arn"].as_str().is_some());
+        let describe = body_of(&dispatch_scoped("GET", "/hubv2", "{}", key.clone()));
+        assert_eq!(describe["HubV2Arn"], enable["HubV2Arn"]);
+        dispatch_scoped("DELETE", "/hubv2", "{}", key.clone());
+        let resp = dispatch_scoped("GET", "/hubv2", "{}", key);
+        assert_eq!(body_of(&resp)["__type"], "InvalidAccessException");
+    }
+
+    #[test]
+    fn products_listed() {
+        let key = unique_scope();
+        let products = body_of(&dispatch_scoped("GET", "/products", "{}", key.clone()));
+        assert!(products["Products"].as_array().unwrap().len() >= 7);
+        let v2 = body_of(&dispatch_scoped("GET", "/productsV2", "{}", key));
+        assert!(v2["ProductsV2"].as_array().unwrap().len() >= 7);
+    }
+
+    #[test]
+    fn unknown_op_returns_501() {
+        let key = unique_scope();
+        let r = req("PUT", "/unknown/operation", "{}");
+        let resp = dispatch(&Request {
+            account: key.0,
+            region: key.1,
+            ..r
+        });
+        assert_eq!(resp.status, 501);
+    }
 }
