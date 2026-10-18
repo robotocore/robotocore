@@ -1040,7 +1040,7 @@ fn vote_on_proposal(
         .map(|m| m.name.clone())
         .unwrap_or_default();
 
-    let mut approved;
+    let approved;
     {
         let proposals = scope.proposals.iter_mut().filter(|p| p.id == pid);
         for p in proposals {

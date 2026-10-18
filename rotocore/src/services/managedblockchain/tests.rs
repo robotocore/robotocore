@@ -122,13 +122,10 @@ fn create_network_rejects_bad_framework() {
     let resp = dispatch(&payload);
     assert_eq!(resp.status, 400);
     let err = parsed(&resp);
-    assert_eq!(
-        err["message"]
-            .as_str()
-            .unwrap()
-            .contains("BadRequestException"),
-        true
-    );
+    assert!(err["message"]
+        .as_str()
+        .unwrap()
+        .contains("BadRequestException"));
 }
 
 #[test]
