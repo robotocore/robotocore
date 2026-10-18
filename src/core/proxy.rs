@@ -44,8 +44,15 @@ impl MotoProxy {
         &self,
         req: &ParsedRequest,
     ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
-        // Send to the sidecar root - the service is identified by the header
-        let url = format!("{}/", self.base_url);
+        // Forward the original path and query: REST-JSON services (xray,
+        // glacier, resiliencehub, guardduty…) are routed by their request
+        // URI on the moto side, so the bare "/" route would miss. The
+        // service is identified by the x-robotocore-service header either way.
+        let mut url = format!("{}{}", self.base_url, req.path);
+        if !req.query_string.is_empty() {
+            url.push('?');
+            url.push_str(&req.query_string);
+        }
 
         // Build the proxy request
         let mut proxy_req = self
