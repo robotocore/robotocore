@@ -158,3 +158,512 @@ mod tests {
         assert_eq!(items.len(), 2);
     }
 }
+
+// ---------------------------------------------------------------------------
+// State save/load endpoints (Cloud Pods-style snapshots)
+// ---------------------------------------------------------------------------
+
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+
+/// JSON snapshot of one service's state and when it was taken.
+#[derive(Debug, Clone)]
+pub struct NamedSnapshot {
+    pub name: String,
+    pub created_at: f64,
+    pub services: Vec<String>,
+    pub state: serde_json::Map<String, Value>,
+}
+
+/// In-memory named snapshots (`/_robotocore/state/save` without a path).
+#[derive(Default)]
+pub struct NamedSnapshots {
+    entries: RwLock<BTreeMap<String, NamedSnapshot>>,
+}
+
+impl NamedSnapshots {
+    pub fn put(&self, entry: NamedSnapshot) {
+        self.entries.write().insert(entry.name.clone(), entry);
+    }
+
+    pub fn get(&self, name: &str) -> Option<NamedSnapshot> {
+        self.entries.read().get(name).cloned()
+    }
+
+    /// Newest-first listing.
+    pub fn list(&self) -> Vec<NamedSnapshot> {
+        let mut items: Vec<NamedSnapshot> = self.entries.read().values().cloned().collect();
+        items.sort_by(|a, b| {
+            b.created_at
+                .partial_cmp(&a.created_at)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        items
+    }
+}
+
+/// One stored version of a named snapshot (versioned variant endpoints).
+#[derive(Debug, Clone)]
+pub struct VersionedSnapshot {
+    pub version: u64,
+    pub created_at: f64,
+    pub services: Vec<String>,
+    pub state: serde_json::Map<String, Value>,
+}
+
+/// Versioned in-memory snapshots: each name keeps its full version history.
+#[derive(Default)]
+pub struct VersionedSnapshots {
+    versions: RwLock<BTreeMap<String, Vec<VersionedSnapshot>>>,
+}
+
+impl VersionedSnapshots {
+    /// Append a version; returns its 1-based version number.
+    pub fn save(
+        &self,
+        name: &str,
+        services: Vec<String>,
+        state: serde_json::Map<String, Value>,
+    ) -> u64 {
+        let mut all = self.versions.write();
+        let history = all.entry(name.to_string()).or_default();
+        let next = history.last().map(|h| h.version + 1).unwrap_or(1);
+        history.push(VersionedSnapshot {
+            version: next,
+            created_at: epoch_now(),
+            services,
+            state,
+        });
+        next
+    }
+
+    /// The requested version, or the latest when `version` is None.
+    pub fn load(&self, name: &str, version: Option<u64>) -> Option<VersionedSnapshot> {
+        let all = self.versions.read();
+        let history = all.get(name)?;
+        match version {
+            Some(v) => history.iter().find(|h| h.version == v).cloned(),
+            None => history.last().cloned(),
+        }
+    }
+
+    /// Newest-first summary per snapshot name: (name, latest, version count).
+    pub fn list(&self) -> Vec<(String, VersionedSnapshot, u64)> {
+        let all = self.versions.read();
+        let mut out: Vec<(String, VersionedSnapshot, u64)> = all
+            .iter()
+            .filter_map(|(name, history)| {
+                Some((name.clone(), history.last()?.clone(), history.len() as u64))
+            })
+            .collect();
+        out.sort_by(|a, b| {
+            b.1.created_at
+                .partial_cmp(&a.1.created_at)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        out
+    }
+}
+
+fn epoch_now() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0)
+}
+
+/// One service's snapshot surface as opaque closures.
+struct SnapshotEntry {
+    name: &'static str,
+    snapshot: Arc<dyn Fn() -> Value + Send + Sync>,
+    restore: Arc<dyn Fn(&Value) + Send + Sync>,
+    reset: Arc<dyn Fn() + Send + Sync>,
+}
+
+/// Central (service name, snapshot surface) table iterated by the state
+/// endpoints. Sourced from the same handler instances the wire path uses.
+pub struct SnapshotRegistry {
+    entries: Vec<SnapshotEntry>,
+}
+
+fn snapshotter<H>(name: &'static str, handler: Arc<H>) -> SnapshotEntry
+where
+    H: SnapshotSurface + Send + Sync + 'static,
+{
+    SnapshotEntry {
+        name,
+        snapshot: Arc::new({
+            let h = handler.clone();
+            move || h.snapshot_json()
+        }),
+        restore: Arc::new({
+            let h = handler.clone();
+            move |v: &Value| h.restore_json(v)
+        }),
+        reset: Arc::new({
+            let h = handler;
+            move || h.reset()
+        }),
+    }
+}
+
+/// The per-crate snapshot surface every native handler shares.
+pub trait SnapshotSurface {
+    fn snapshot_json(&self) -> Value;
+    fn restore_json(&self, v: &Value);
+    fn reset(&self);
+}
+impl SnapshotSurface for sqs::DefaultSqsHandler {
+    fn snapshot_json(&self) -> Value {
+        sqs::DefaultSqsHandler::snapshot_json(self)
+    }
+
+    fn restore_json(&self, v: &Value) {
+        sqs::DefaultSqsHandler::restore_json(self, v)
+    }
+
+    fn reset(&self) {
+        sqs::DefaultSqsHandler::reset(self)
+    }
+}
+
+impl SnapshotSurface for s3::DefaultS3Handler {
+    fn snapshot_json(&self) -> Value {
+        s3::DefaultS3Handler::snapshot_json(self)
+    }
+
+    fn restore_json(&self, v: &Value) {
+        s3::DefaultS3Handler::restore_json(self, v)
+    }
+
+    fn reset(&self) {
+        s3::DefaultS3Handler::reset(self)
+    }
+}
+
+impl SnapshotSurface for dynamodb::DefaultDynamoDbHandler {
+    fn snapshot_json(&self) -> Value {
+        dynamodb::DefaultDynamoDbHandler::snapshot_json(self)
+    }
+
+    fn restore_json(&self, v: &Value) {
+        dynamodb::DefaultDynamoDbHandler::restore_json(self, v)
+    }
+
+    fn reset(&self) {
+        dynamodb::DefaultDynamoDbHandler::reset(self)
+    }
+}
+
+impl SnapshotSurface for sns::DefaultSnsHandler {
+    fn snapshot_json(&self) -> Value {
+        sns::DefaultSnsHandler::snapshot_json(self)
+    }
+
+    fn restore_json(&self, v: &Value) {
+        sns::DefaultSnsHandler::restore_json(self, v)
+    }
+
+    fn reset(&self) {
+        sns::DefaultSnsHandler::reset(self)
+    }
+}
+
+impl SnapshotSurface for secretsmanager::DefaultSecretsManagerHandler {
+    fn snapshot_json(&self) -> Value {
+        secretsmanager::DefaultSecretsManagerHandler::snapshot_json(self)
+    }
+
+    fn restore_json(&self, v: &Value) {
+        secretsmanager::DefaultSecretsManagerHandler::restore_json(self, v)
+    }
+
+    fn reset(&self) {
+        secretsmanager::DefaultSecretsManagerHandler::reset(self)
+    }
+}
+
+impl SnapshotSurface for kms::DefaultKmsHandler {
+    fn snapshot_json(&self) -> Value {
+        kms::DefaultKmsHandler::snapshot_json(self)
+    }
+
+    fn restore_json(&self, v: &Value) {
+        kms::DefaultKmsHandler::restore_json(self, v)
+    }
+
+    fn reset(&self) {
+        kms::DefaultKmsHandler::reset(self)
+    }
+}
+
+impl SnapshotSurface for ssm::DefaultSsmHandler {
+    fn snapshot_json(&self) -> Value {
+        ssm::DefaultSsmHandler::snapshot_json(self)
+    }
+
+    fn restore_json(&self, v: &Value) {
+        ssm::DefaultSsmHandler::restore_json(self, v)
+    }
+
+    fn reset(&self) {
+        ssm::DefaultSsmHandler::reset(self)
+    }
+}
+
+impl SnapshotSurface for iam::DefaultIamHandler {
+    fn snapshot_json(&self) -> Value {
+        iam::DefaultIamHandler::snapshot_json(self)
+    }
+
+    fn restore_json(&self, v: &Value) {
+        iam::DefaultIamHandler::restore_json(self, v)
+    }
+
+    fn reset(&self) {
+        iam::DefaultIamHandler::reset(self)
+    }
+}
+
+impl SnapshotSurface for lambda::DefaultLambdaHandler {
+    fn snapshot_json(&self) -> Value {
+        lambda::DefaultLambdaHandler::snapshot_json(self)
+    }
+
+    fn restore_json(&self, v: &Value) {
+        lambda::DefaultLambdaHandler::restore_json(self, v)
+    }
+
+    fn reset(&self) {
+        lambda::DefaultLambdaHandler::reset(self)
+    }
+}
+
+impl SnapshotSurface for cloudwatch_logs::DefaultLogsHandler {
+    fn snapshot_json(&self) -> Value {
+        cloudwatch_logs::DefaultLogsHandler::snapshot_json(self)
+    }
+
+    fn restore_json(&self, v: &Value) {
+        cloudwatch_logs::DefaultLogsHandler::restore_json(self, v)
+    }
+
+    fn reset(&self) {
+        cloudwatch_logs::DefaultLogsHandler::reset(self)
+    }
+}
+
+impl SnapshotSurface for events::DefaultEventsHandler {
+    fn snapshot_json(&self) -> Value {
+        events::DefaultEventsHandler::snapshot_json(self)
+    }
+
+    fn restore_json(&self, v: &Value) {
+        events::DefaultEventsHandler::restore_json(self, v)
+    }
+
+    fn reset(&self) {
+        events::DefaultEventsHandler::reset(self)
+    }
+}
+
+impl SnapshotSurface for kinesis::DefaultKinesisHandler {
+    fn snapshot_json(&self) -> Value {
+        kinesis::DefaultKinesisHandler::snapshot_json(self)
+    }
+
+    fn restore_json(&self, v: &Value) {
+        kinesis::DefaultKinesisHandler::restore_json(self, v)
+    }
+
+    fn reset(&self) {
+        kinesis::DefaultKinesisHandler::reset(self)
+    }
+}
+
+impl SnapshotSurface for firehose::DefaultFirehoseHandler {
+    fn snapshot_json(&self) -> Value {
+        firehose::DefaultFirehoseHandler::snapshot_json(self)
+    }
+
+    fn restore_json(&self, v: &Value) {
+        firehose::DefaultFirehoseHandler::restore_json(self, v)
+    }
+
+    fn reset(&self) {
+        firehose::DefaultFirehoseHandler::reset(self)
+    }
+}
+
+impl SnapshotSurface for cloudwatch::DefaultCloudwatchHandler {
+    fn snapshot_json(&self) -> Value {
+        cloudwatch::DefaultCloudwatchHandler::snapshot_json(self)
+    }
+
+    fn restore_json(&self, v: &Value) {
+        cloudwatch::DefaultCloudwatchHandler::restore_json(self, v)
+    }
+
+    fn reset(&self) {
+        cloudwatch::DefaultCloudwatchHandler::reset(self)
+    }
+}
+
+impl SnapshotSurface for ecr::DefaultEcrHandler {
+    fn snapshot_json(&self) -> Value {
+        ecr::DefaultEcrHandler::snapshot_json(self)
+    }
+
+    fn restore_json(&self, v: &Value) {
+        ecr::DefaultEcrHandler::restore_json(self, v)
+    }
+
+    fn reset(&self) {
+        ecr::DefaultEcrHandler::reset(self)
+    }
+}
+
+impl SnapshotSurface for ecs::DefaultEcsHandler {
+    fn snapshot_json(&self) -> Value {
+        ecs::DefaultEcsHandler::snapshot_json(self)
+    }
+
+    fn restore_json(&self, v: &Value) {
+        ecs::DefaultEcsHandler::restore_json(self, v)
+    }
+
+    fn reset(&self) {
+        ecs::DefaultEcsHandler::reset(self)
+    }
+}
+
+impl SnapshotSurface for stepfunctions::DefaultStepfunctionsHandler {
+    fn snapshot_json(&self) -> Value {
+        stepfunctions::DefaultStepfunctionsHandler::snapshot_json(self)
+    }
+
+    fn restore_json(&self, v: &Value) {
+        stepfunctions::DefaultStepfunctionsHandler::restore_json(self, v)
+    }
+
+    fn reset(&self) {
+        stepfunctions::DefaultStepfunctionsHandler::reset(self)
+    }
+}
+
+impl SnapshotRegistry {
+    /// Build the registry over the shared native handler instances.
+    pub fn new(handlers: &crate::core::server::NativeHandlers) -> Self {
+        Self {
+            entries: vec![
+                snapshotter("sqs", handlers.sqs.clone()),
+                snapshotter("s3", handlers.s3.clone()),
+                snapshotter("dynamodb", handlers.dynamodb.clone()),
+                snapshotter("sns", handlers.sns.clone()),
+                snapshotter("secretsmanager", handlers.secretsmanager.clone()),
+                snapshotter("kms", handlers.kms.clone()),
+                snapshotter("ssm", handlers.ssm.clone()),
+                snapshotter("iam", handlers.iam.clone()),
+                snapshotter("lambda", handlers.lambda.clone()),
+                snapshotter("logs", handlers.logs.clone()),
+                snapshotter("events", handlers.events.clone()),
+                snapshotter("kinesis", handlers.kinesis.clone()),
+                snapshotter("firehose", handlers.firehose.clone()),
+                snapshotter("cloudwatch", handlers.cloudwatch.clone()),
+                snapshotter("ecr", handlers.ecr.clone()),
+                snapshotter("ecs", handlers.ecs.clone()),
+                snapshotter("stepfunctions", handlers.stepfunctions.clone()),
+            ],
+        }
+    }
+
+    /// Every registered service name.
+    pub fn names(&self) -> Vec<String> {
+        self.entries.iter().map(|e| e.name.to_string()).collect()
+    }
+
+    /// Filter helper: either a validated requested subset or every service.
+    fn selected(&self, services: Option<&[String]>) -> (Vec<String>, Vec<&SnapshotEntry>) {
+        match services {
+            Some(requested) => {
+                let hits: Vec<_> = self
+                    .entries
+                    .iter()
+                    .filter(|e| requested.iter().any(|r| r == e.name))
+                    .collect();
+                let names = hits.iter().map(|e| e.name.to_string()).collect();
+                (names, hits)
+            }
+            None => {
+                let names = self.names();
+                let hits = self.entries.iter().collect();
+                (names, hits)
+            }
+        }
+    }
+
+    /// Snapshot the selected services; returns (saved names, state).
+    pub fn snapshot(&self, services: Option<&[String]>) -> (Vec<String>, Value) {
+        let (names, selected) = self.selected(services);
+        let mut state = serde_json::Map::new();
+        for e in selected {
+            state.insert(e.name.to_string(), (e.snapshot)());
+        }
+        (names, Value::Object(state))
+    }
+
+    /// Replace state for the selected services from a previous snapshot.
+    pub fn restore(&self, v: &Value, services: Option<&[String]>) {
+        let Some(map) = v.as_object() else {
+            return;
+        };
+        let (_, selected) = self.selected(services);
+        for e in selected {
+            if let Some(value) = map.get(e.name) {
+                (e.restore)(value);
+            }
+        }
+    }
+
+    /// Clear state for the selected services (all when unfiltered).
+    pub fn reset(&self, services: Option<&[String]>) {
+        let (_, selected) = self.selected(services);
+        for e in selected {
+            (e.reset)();
+        }
+    }
+}
+
+/// Effective base dir for pathless operations (mirrors python's state_dir).
+pub fn resolve_state_dir() -> Option<PathBuf> {
+    std::env::var_os("ROBOTOCORE_STATE_DIR").map(PathBuf::from)
+}
+
+/// Write the state JSON file: `<dir>/<name>.json`, or `<dir>/robotocore_state.json`
+/// for unnamed saves. Atomic via temp-file rename.
+pub fn save_to_path(dir: &str, name: Option<&str>, value: &Value) -> std::io::Result<String> {
+    let dir = PathBuf::from(dir);
+    std::fs::create_dir_all(&dir)?;
+    let file = match name {
+        Some(n) => dir.join(format!("{n}.json")),
+        None => dir.join("robotocore_state.json"),
+    };
+    let tmp = dir.join(format!(
+        ".{}.tmp",
+        file.file_name().unwrap_or_default().to_string_lossy()
+    ));
+    std::fs::write(&tmp, serde_json::to_vec_pretty(value).unwrap_or_default())?;
+    std::fs::rename(tmp, &file)?;
+    Ok(file.to_string_lossy().into_owned())
+}
+
+/// Read back a state JSON file written by [`save_to_path`].
+pub fn load_from_path(dir: &str, name: Option<&str>) -> Option<Value> {
+    let dir = PathBuf::from(dir);
+    let file = match name {
+        Some(n) => dir.join(format!("{n}.json")),
+        None => dir.join("robotocore_state.json"),
+    };
+    let bytes = std::fs::read(file).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
