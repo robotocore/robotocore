@@ -121,35 +121,6 @@ def ensure_sidecar():
 
 
 def _bridge_ready():
-    """Probe the bridge with a real EC2 call."""
-    r = sh(
-        f"curl -s -X POST {RUST_URL}/ --max-time 10 "
-        f"-H 'Content-Type: application/x-www-form-urlencoded' "
-        f"-H 'Authorization: AWS4-HMAC-SHA256 Credential=123456789012/20240101/us-east-1/ec2/aws4_request' "
-        f"-H 'X-Amz-Date: 20240101T000000Z' "
-        f"-d 'Action=DescribeInstances&Version=2016-11-15' 2>/dev/null",
-        timeout=15,
-    )
-    return r.returncode == 0 and "<DescribeInstancesResponse" in r.stdout
-
-
-def ensure_rust_server():
-    """Verify the Rust server daemon is up with a working bridge."""
-    r = sh(f"curl -sf --max-time 3 {RUST_URL}/_robotocore/health", timeout=10)
-    if r.returncode != 0:
-        log("[!!] Rust server not running. Start it with: bash scripts/start_parity_servers.sh")
-        return False
-    log("[ok] Rust server up at " + RUST_URL)
-    for _ in range(15):
-        if _bridge_ready():
-            log("[ok] Bridge working")
-            return True
-        time.sleep(2)
-    log("[!!] Bridge not working. Check /tmp/parity_rust.log")
-    return False
-
-
-def _bridge_ready():
     """Probe the bridge with a real EC2 call. Returns True when it works."""
     r = sh(
         f"curl -s -X POST {RUST_URL}/ --max-time 10 "
@@ -163,13 +134,32 @@ def _bridge_ready():
 
 
 def ensure_rust_server():
-    """Ensure the Rust server is up WITH a WORKING moto bridge."""
+    """Ensure the Rust server is up WITH a WORKING moto bridge, using PID files.
+
+    Only touches processes belonging to THIS parity instance (LOG_PREFIX +
+    ports), never servers owned by other worktrees/agents.
+    """
     ensure_sidecar()
     log("[..] (Re)starting Rust server with moto bridge...")
     sh(f"cd {RUST_REPO} && cargo build --release", timeout=600)
-    sh(f"pkill -f robotocore-rust 2>/dev/null; true", timeout=10)
-    subprocess.Popen([RUST_BIN, "--port", RUST_PORT, "--moto-url", SIDECAR_URL],
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    pid_file = f"/tmp/{os.environ.get('LOG_PREFIX', 'parity')}_rust.pid"
+    old_pid = None
+    if os.path.exists(pid_file):
+        try:
+            old_pid = int(open(pid_file).read().strip())
+        except ValueError:
+            old_pid = None
+    if old_pid:
+        sh(f"kill -0 {old_pid} 2>/dev/null && kill {old_pid} 2>/dev/null; true", timeout=10)
+        time.sleep(1)
+    # Belt-and-braces: any process visibly bound to OUR port only
+    sh(f"fuser -k {RUST_PORT}/tcp 2>/dev/null; true", timeout=10)
+    time.sleep(1)
+    proc = subprocess.Popen([RUST_BIN, "--port", RUST_PORT, "--moto-url", SIDECAR_URL],
+                            stdout=open(f"/tmp/{os.environ.get('LOG_PREFIX', 'parity')}_rust.log", "w"),
+                            stderr=subprocess.STDOUT, start_new_session=True)
+    with open(pid_file, "w") as f:
+        f.write(str(proc.pid))
     # Wait for the server to be up
     for _ in range(20):
         time.sleep(1)
@@ -194,11 +184,20 @@ def ensure_rust_server():
 
 
 def _restart_sidecar():
-    sh("pkill -9 -f moto_sidecar 2>/dev/null; true", timeout=10)
+    # Kill only OUR sidecar (by PID file), not other worktrees' sidecars.
+    pid_file = f"/tmp/{os.environ.get('LOG_PREFIX', 'parity')}_sidecar.pid"
+    if os.path.exists(pid_file):
+        try:
+            old_pid = int(open(pid_file).read().strip())
+            sh(f"kill -0 {old_pid} 2>/dev/null && kill -9 {old_pid} 2>/dev/null; true", timeout=10)
+        except ValueError:
+            pass
+    sh(f"fuser -k {SIDECAR_PORT}/tcp 2>/dev/null; true", timeout=10)
     time.sleep(1)
     script = str(REPO / "scripts/moto_sidecar.py")
-    log_cmd = f"cd {REPO} && nohup {PYV} {script} --port {SIDECAR_PORT} > /tmp/parity_sidecar.log 2>&1 &"
-    subprocess.Popen(log_cmd, shell=True, cwd=str(REPO), start_new_session=True)
+    side_log = f"/tmp/{os.environ.get('LOG_PREFIX', 'parity')}_sidecar.log"
+    log_cmd = f"cd {REPO} && nohup {PYV} {script} --port {SIDECAR_PORT} > {side_log} 2>&1 & echo $! > {pid_file}"
+    subprocess.Popen(log_cmd, shell=True, cwd=str(REPO), start_new_session=True, executable="/bin/bash")
     time.sleep(5)
 
 
@@ -236,7 +235,7 @@ def parse_junit(path):
     return result
 
 
-PER_SUITE_TIMEOUT = 300  # seconds per service per endpoint
+PER_SUITE_TIMEOUT = int(os.environ.get("PARITY_SUITE_TIMEOUT", "600"))  # seconds per service per endpoint
 
 
 def run_suite(suite_name, endpoint, out_xml):
@@ -246,6 +245,10 @@ def run_suite(suite_name, endpoint, out_xml):
     returns partial results from whatever XML was written.
     """
     env = dict(os.environ, ENDPOINT_URL=endpoint)
+    # Never let ambient AWS_* endpoint vars redirect the suite to the wrong server
+    for var in ("AWS_ENDPOINT_URL", "AWS_ENDPOINT_URL_S3", "AWS_ENDPOINT_URL_STS",
+                "AWS_DEFAULT_PROFILE", "AWS_PROFILE"):
+        env.pop(var, None)
     cmd = (f"cd {REPO} && ENDPOINT_URL={endpoint} {PYV} -m pytest "
            f"{COMPAT_DIR}/{suite_name} -q -p no:cacheprovider "
            f"--junitxml={out_xml}")
@@ -284,8 +287,12 @@ def classify(py_res, rust_res):
 
 
 def run_all(services, state_dir):
-    ensure_python_server()
-    ensure_rust_server()
+    if not ensure_python_server():
+        log("[!!] aborting: Python ground-truth server unavailable")
+        return {"services": {}, "generated": time.strftime("%Y-%m-%dT%H:%M:%S"), "aborted": True}
+    if not ensure_rust_server():
+        log("[!!] aborting: Rust server / bridge unavailable")
+        return {"services": {}, "generated": time.strftime("%Y-%m-%dT%H:%M:%S"), "aborted": True}
     xml_dir = Path(state_dir) / "xml"
     xml_dir.mkdir(parents=True, exist_ok=True)
     report = {"services": {}, "generated": time.strftime("%Y-%m-%dT%H:%M:%S")}
