@@ -538,6 +538,44 @@ def _ec2_placement_groups(action: str, params: dict, account_id: str, region: st
     )
 
 
+
+def _ec2_mirror_iam_instance_profile(params: dict, account_id: str) -> None:
+    """AssociateIamInstanceProfile validates the profile against moto's IAM
+    backend, but robotocore creates instance profiles in the NATIVE Rust IAM
+    store, invisible to moto. Mirror the profile (with its role, when the
+    name matches a moto-known role) into moto's IAM state on first use —
+    the same cross-store mirroring the CFN pre-dispatch performs.
+    """
+    # Query-protocol params arrive flat: "IamInstanceProfile.Arn=..." /
+    # "IamInstanceProfile.Name=..." (matches moto's own _get_param reads).
+    arn = params.get("IamInstanceProfile.Arn")
+    name = params.get("IamInstanceProfile.Name")
+    if not name and isinstance(arn, str):
+        # arn:aws:iam::<acct>:instance-profile/<path>/<name>
+        tail = arn.split(":instance-profile/", 1)[-1]
+        name = tail.rsplit("/", 1)[-1]
+    if not name:
+        return
+    from moto.backends import get_backend as moto_get_backend
+
+    try:
+        backend_dict = moto_get_backend("iam")
+        if account_id in backend_dict:
+            iam_backend = backend_dict[account_id]["global"]
+        else:
+            iam_backend = backend_dict[DEFAULT_ACCOUNT_ID]["global"]
+    except Exception as e:  # noqa: BLE001
+        logger.debug("iam mirror backend unavailable: %s", e)
+        return
+    if name in getattr(iam_backend, "instance_profiles", {}):
+        return
+    path = "/"
+    if isinstance(arn, str) and ":instance-profile/" in arn:
+        tail = arn.split(":instance-profile/", 1)[1]
+        if "/" in tail:
+            path = "/" + tail.rsplit("/", 1)[0] + "/"
+    iam_backend.create_instance_profile(name, path=path, role_names=[], tags=[])
+
 def _ec2_fill_detach_params(werkzeug_request, params: dict, backend) -> None:
     """DetachVolume may come with only VolumeId (as real SDKs sometimes do).
     Moto's dispatch requires InstanceId/Device; recover them from the
@@ -669,7 +707,10 @@ class WerkzeugRawBodyRequest(WerkzeugRequest):
         self.body = body
         # Single parse for the whole request lifetime: .form and .files must
         # come from the SAME pass (a second parse would read an exhausted
-        # wsgi stream and raise ClientDisconnected).
+        # stream and raise ClientDisconnected). The `_form_cache` attribute is
+        # part of the pre-dispatch contract: mutation hooks (ec2 fill)
+        # overwrite it and moto then sees the amended params.
+        self._form_cache: ImmutableMultiDict | None = None
         self._parsed: WerkzeugRequest | None = None
 
     @property
@@ -679,25 +720,22 @@ class WerkzeugRawBodyRequest(WerkzeugRequest):
     def get_data(self, *args, **kwargs) -> bytes:
         return self.body
 
-    def _parsed_request(self) -> WerkzeugRequest | None:
-        if self._parsed is None:
-            mimetype = (self.mimetype or "").split(";")[0].strip()
-            if mimetype in ("application/x-www-form-urlencoded", "multipart/form-data"):
-                self._parsed = WerkzeugRequest(self.environ)
-        return self._parsed
-
     @property
     def form(self):
-        parsed = self._parsed_request()
-        if parsed is not None:
-            return parsed.form
-        return ImmutableMultiDict(())
+        if self._form_cache is None:
+            mimetype = (self.mimetype or "").split(";")[0].strip()
+            if mimetype in ("application/x-www-form-urlencoded", "multipart/form-data"):
+                if self._parsed is None:
+                    self._parsed = WerkzeugRequest(self.environ)
+                self._form_cache = self._parsed.form
+            else:
+                self._form_cache = ImmutableMultiDict(())
+        return self._form_cache
 
     @property
     def files(self):
-        parsed = self._parsed_request()
-        if parsed is not None:
-            return parsed.files
+        if self._parsed is not None:
+            return self._parsed.files
         return ImmutableMultiDict(())
 
 
@@ -977,6 +1015,11 @@ async def moto_handler(request: Request) -> Response:
             return _ec2_placement_groups(
                 action, params, account_id_from_headers, region
             )
+        if action == "AssociateIamInstanceProfile":
+            try:
+                _ec2_mirror_iam_instance_profile(params, account_id_from_headers)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("iam profile mirror failed: %s", e)
         if action == "DetachVolume":
             try:
                 _ec2_fill_detach_params(
