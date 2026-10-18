@@ -6,13 +6,16 @@
 
 use crate::{Request, Response};
 
-// Pending ports (stubs live in their modules but are not yet wired):
-// - acm (stub)
-// - ec2 (stub)
-// - cloudformation (stub)
+pub mod acm;
+pub mod cloudformation;
+pub mod ec2;
+pub mod transcribe;
 
+/// Dispatch a routed request to its service backend, or `None` when the
+/// service has no ported backend yet (the gateway then uses the fallback).
 pub fn dispatch(req: &Request) -> Option<Response> {
-    let _ = req;
-    // No service fully ported yet.
-    None
+    match req.service.as_str() {
+        "transcribe" => Some(transcribe::dispatch(req)),
+        _ => None,
+    }
 }
