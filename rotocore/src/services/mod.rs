@@ -11,10 +11,12 @@ use crate::{Request, Response};
 // - cloudformation (stub)
 
 mod acm;
+mod kinesisanalyticsv2;
 
 pub fn dispatch(req: &Request) -> Option<Response> {
     match req.service.as_str() {
         "acm" => Some(acm::dispatch(req)),
+        "kinesisanalyticsv2" => Some(kinesisanalyticsv2::dispatch(req)),
         _ => None,
     }
 }
