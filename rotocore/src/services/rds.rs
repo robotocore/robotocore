@@ -5656,4 +5656,419 @@ fn revoke_db_security_group_ingress(
     )))
 }
 
+
+// Event subscriptions + events + static describes ----------------------------
+
+fn create_event_subscription(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "SubscriptionName").unwrap_or_default();
+    if st.event_subscriptions.contains_key(&identifier) {
+        return Err(RdsError::client400(
+            "SubscriptionAlreadyExist",
+            format!("Subscription {identifier} already exists."),
+        ));
+    }
+    let sub = EventSubscription {
+        name: identifier.clone(),
+        sns_topic_arn: p_string(p, "SnsTopicArn"),
+        source_type: p_string(p, "SourceType"),
+        event_categories: p_list(p, "EventCategories"),
+        source_ids: Vec::new(),
+        enabled: p_bool(p, "Enabled").unwrap_or(false),
+        tags: tags_param(p),
+        created: Utc::now(),
+    };
+    let response = sub.clone();
+    st.event_subscriptions.insert(identifier, sub);
+    Ok(Some(format!(
+        "<EventSubscription>{}</EventSubscription>",
+        event_subscription_xml(acct, region, &response)
+    )))
+}
+
+fn describe_event_subscriptions_xml(
+    st: &RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let filter = p_string(p, "SubscriptionName");
+    let matched: Vec<&EventSubscription> = st
+        .event_subscriptions
+        .values()
+        .filter(|s| match &filter {
+            Some(f) => s.name == *f,
+            None => true,
+        })
+        .collect();
+    if matched.is_empty() && filter.is_some() {
+        return Err(RdsError::not_found404(
+            "SubscriptionNotFound",
+            format!("Subscription {} not found.", filter.unwrap_or_default()),
+        ));
+    }
+    let mut list = String::new();
+    for s in &matched {
+        list.push_str(&event_subscription_xml(acct, region, s));
+    }
+    Ok(Some(format!(
+        "<EventSubscriptionsList>{list}</EventSubscriptionsList>"
+    )))
+}
+
+fn delete_event_subscription(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "SubscriptionName").unwrap_or_default();
+    if !st.event_subscriptions.contains_key(&identifier) {
+        return Err(RdsError::not_found404(
+            "SubscriptionNotFound",
+            format!("Subscription {identifier} not found."),
+        ));
+    }
+    let sub = st.event_subscriptions.remove(&identifier).unwrap();
+    Ok(Some(format!(
+        "<EventSubscription>{}</EventSubscription>",
+        event_subscription_xml(acct, region, &sub)
+    )))
+}
+
+fn modify_event_subscription(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "SubscriptionName").unwrap_or_default();
+    if !st.event_subscriptions.contains_key(&identifier) {
+        return Err(RdsError::not_found404(
+            "SubscriptionNotFound",
+            format!("Subscription {identifier} not found."),
+        ));
+    }
+    let sub = st.event_subscriptions.get_mut(&identifier).unwrap();
+    if let Some(v) = p_string(p, "SnsTopicArn") {
+        sub.sns_topic_arn = Some(v);
+    }
+    if let Some(v) = p_string(p, "SourceType") {
+        sub.source_type = Some(v);
+    }
+    if !p_list(p, "EventCategories").is_empty() {
+        sub.event_categories = p_list(p, "EventCategories");
+    }
+    if let Some(v) = p_bool(p, "Enabled") {
+        sub.enabled = v;
+    }
+    let response = sub.clone();
+    Ok(Some(format!(
+        "<EventSubscription>{}</EventSubscription>",
+        event_subscription_xml(acct, region, &response)
+    )))
+}
+
+fn add_source_identifier_to_subscription(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "SubscriptionName").unwrap_or_default();
+    let source = p_string(p, "SourceIdentifier").unwrap_or_default();
+    if !st.event_subscriptions.contains_key(&identifier) {
+        return Err(RdsError::not_found404(
+            "SubscriptionNotFound",
+            format!("Subscription {identifier} not found."),
+        ));
+    }
+    let sub = st.event_subscriptions.get_mut(&identifier).unwrap();
+    if !sub.source_ids.contains(&source) {
+        sub.source_ids.push(source);
+    }
+    let response = sub.clone();
+    Ok(Some(format!(
+        "<EventSubscription>{}</EventSubscription>",
+        event_subscription_xml(acct, region, &response)
+    )))
+}
+
+fn remove_source_identifier_from_subscription(
+    st: &mut RdsState,
+    acct: u64,
+    region: &str,
+    p: &Params,
+) -> Result<Body, RdsError> {
+    let identifier = p_string(p, "SubscriptionName").unwrap_or_default();
+    let source = p_string(p, "SourceIdentifier").unwrap_or_default();
+    if !st.event_subscriptions.contains_key(&identifier) {
+        return Err(RdsError::not_found404(
+            "SubscriptionNotFound",
+            format!("Subscription {identifier} not found."),
+        ));
+    }
+    let sub = st.event_subscriptions.get_mut(&identifier).unwrap();
+    sub.source_ids.retain(|s| s != &source);
+    let response = sub.clone();
+    Ok(Some(format!(
+        "<EventSubscription>{}</EventSubscription>",
+        event_subscription_xml(acct, region, &response)
+    )))
+}
+
+fn describe_events_xml(st: &RdsState, p: &Params) -> Result<Body, RdsError> {
+    let source_id = p_string(p, "SourceIdentifier");
+    let source_type = p_string(p, "SourceType");
+    if source_id.is_some() && source_type.is_none() {
+        return Err(RdsError::client400(
+            "InvalidParameterCombination",
+            "Cannot specify source identifier without source type",
+        ));
+    }
+    let matched: Vec<&Event> = st
+        .events
+        .iter()
+        .filter(|e| match &source_id {
+            Some(f) => e.source_identifier == *f,
+            None => true,
+        })
+        .filter(|e| match &source_type {
+            Some(t) => e.source_type == *t,
+            None => true,
+        })
+        .collect();
+    let mut list = String::new();
+    for e in &matched {
+        list.push_str(&description_of_event(e));
+    }
+    Ok(Some(format!("<Events>{list}</Events>")))
+}
+
+fn describe_event_categories_xml(p: &Params) -> Result<Body, RdsError> {
+    let source_type = p_string(p, "SourceType");
+    let categories: &[(&str, &[&str])] = &[
+        ("db-instance", &["availability", "backup", "configuration change", "creation", "deletion", "failover", "failure", "low storage", "maintenance", "notification", "read replica", "recovery", "restoration"]),
+        ("db-cluster", &["failover", "failure", "maintenance", "notification", "global-failover"]),
+        ("db-parameter-group", &["configuration change"]),
+        ("db-security-group", &["configuration change", "failure"]),
+        ("db-snapshot", &["creation", "deletion", "notification", "restoration"]),
+        ("db-cluster-snapshot", &["backup", "notification"]),
+    ];
+    let mut list = String::new();
+    for (stype, cats) in categories {
+        if let Some(filter) = &source_type {
+            if stype != filter {
+                continue;
+            }
+        }
+        let cat_xml: String = cats
+            .iter()
+            .map(|c| format!("<EventCategory>{}</EventCategory>", esc(c)))
+            .collect();
+        list.push_str(&format!(
+            "<EventCategoriesMap><SourceType>{stype}</SourceType>\
+             <EventCategories>{cat_xml}</EventCategories></EventCategoriesMap>"
+        ));
+    }
+    Ok(Some(format!(
+        "<EventCategoriesMapList>{list}</EventCategoriesMapList>"
+    )))
+}
+
+fn describe_db_engine_versions_xml(p: &Params) -> Result<Body, RdsError> {
+    let engine = p_string(p, "Engine");
+    let engine_version = p_string(p, "EngineVersion");
+    let mut data: Vec<(&str, Vec<&str>)> = vec![
+        ("neptune", vec!["1.2.0.0", "1.2.0.1", "1.2.0.2", "1.2.1.0", "1.3.0.0"]),
+        ("aurora-mysql", vec!["5.7.mysql_aurora.2.11.2", "8.0.mysql_aurora.3.04.0"]),
+        ("aurora-postgresql", vec!["14.6", "15.4"]),
+        ("mysql", vec!["8.0.32", "8.0.33"]),
+        ("postgres", vec!["14.9", "15.4"]),
+    ];
+    if let Some(engine) = &engine {
+        data.retain(|(e, _)| e == engine);
+        if data.is_empty() {
+            data.push((engine.as_str(), vec!["1.0.0"]));
+        }
+    }
+    let mut list = String::new();
+    for (eng, versions) in &data {
+        for ver in versions {
+            if let Some(filter) = &engine_version {
+                if ver != filter {
+                    continue;
+                }
+            }
+            let family = format!("{eng}{}", ver.split('.').next().unwrap_or(""));
+            list.push_str(&format!(
+                "<DBEngineVersion>\
+                 <Engine>{}</Engine>\
+                 <EngineVersion>{}</EngineVersion>\
+                 <DBParameterGroupFamily>{}</DBParameterGroupFamily>\
+                 <DBEngineDescription>{} database engine</DBEngineDescription>\
+                 <DBEngineVersionDescription>{eng} {ver}</DBEngineVersionDescription>\
+                 <ValidUpgradeTarget/>\
+                 <ExportableLogTypes/>\
+                 <SupportsLogExportsToCloudwatchLogs>false</SupportsLogExportsToCloudwatchLogs>\
+                 <SupportsReadReplica>false</SupportsReadReplica>\
+                 <SupportedEngineModes/>\
+                 <SupportedFeatureNames/>\
+                 <SupportsGlobalDatabases>{}</SupportsGlobalDatabases>\
+                 </DBEngineVersion>",
+                esc(eng),
+                esc(ver),
+                esc(&family),
+                esc(eng),
+                matches!(*eng, "neptune" | "aurora-mysql" | "aurora-postgresql"),
+            ));
+        }
+    }
+    Ok(Some(format!("<DBEngineVersions>{list}</DBEngineVersions>")))
+}
+
+fn describe_orderable_db_instance_options_xml(engine: &str, engine_version: Option<&str>) -> Result<Body, RdsError> {
+    // moto only implements aurora-postgresql and neptune option listings.
+    let _ = engine_version;
+    let supported = matches!(engine, "aurora-postgresql" | "neptune");
+    if !supported {
+        return Ok(Some("<OrderableDBInstanceOptions/>".to_string()));
+    }
+    Ok(Some("<OrderableDBInstanceOptions/>".to_string()))
+}
+
+fn describe_account_attributes_xml(st: &RdsState) -> Result<Body, RdsError> {
+    let fmt = | name: &str, used: usize, max: i64 | {
+        format!(
+            "<AccountQuota><AccountQuotaName>{name}</AccountQuotaName>\
+             <Used>{used}</Used><Max>{max}</Max></AccountQuota>",
+        )
+    };
+    let mut list = String::new();
+    list.push_str(&fmt("DBInstances", st.databases.len(), 40));
+    list.push_str(&fmt("ReservedDBInstances", 0, 40));
+    list.push_str(&fmt("AllocatedStorage", 0, 100000));
+    list.push_str(&fmt("DBSecurityGroups", st.security_groups.len(), 25));
+    list.push_str(&fmt("AuthorizationsPerDBSecurityGroup", 0, 20));
+    list.push_str(&fmt("DBParameterGroups", st.db_parameter_groups.len(), 50));
+    let manual = st
+        .database_snapshots
+        .values()
+        .filter(|s| s.snapshot_type != "automated")
+        .count();
+    list.push_str(&fmt("ManualSnapshots", manual, 100));
+    list.push_str(&fmt("EventSubscriptions", st.event_subscriptions.len(), 20));
+    list.push_str(&fmt("DBSubnetGroups", st.subnet_groups.len(), 50));
+    list.push_str(&fmt("OptionGroups", st.option_groups.len(), 20));
+    list.push_str(&fmt("SubnetsPerDBSubnetGroup", 0, 20));
+    list.push_str(&fmt("ReadReplicasPerMaster", 0, 15));
+    list.push_str(&fmt("DBClusters", st.clusters.len(), 40));
+    list.push_str(&fmt(
+        "DBClusterParameterGroups",
+        st.db_cluster_parameter_groups.len(),
+        50,
+    ));
+    list.push_str(&fmt("DBClusterRoles", 0, 5));
+    list.push_str(&fmt("ManualClusterSnapshots", st.cluster_snapshots.len(), 100));
+    list.push_str(&fmt("CustomEndpointsPerDBCluster", 0, 5));
+    list.push_str(&fmt("DBInstanceRoles", 0, 5));
+    Ok(Some(format!("<AccountQuotas>{list}</AccountQuotas>")))
+}
+
+fn describe_certificates_xml(p: &Params) -> Result<Body, RdsError> {
+    let filter = p_string(p, "CertificateIdentifier");
+    let certs: Vec<[String; 6]> = vec![
+        ["rds-ca-2019".into(), "CA".into(), "d4ec8b4f0c0aeb7894f47694b4e3b2c0f8b8c9a0".into(), "2019-09-19T18:16:53Z".into(), "2024-08-22T17:08:50Z".into(), "arn:aws:rds:us-east-1:123456789012:cert:rds-ca-2019".into()],
+        ["rds-ca-rsa2048-g1".into(), "CA".into(), "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2".into(), "2021-05-25T00:00:00Z".into(), "2061-05-25T00:00:00Z".into(), "arn:aws:rds:us-east-1:123456789012:cert:rds-ca-rsa2048-g1".into()],
+        ["rds-ca-ecc384-g1".into(), "CA".into(), "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3".into(), "2021-05-25T00:00:00Z".into(), "2121-05-25T00:00:00Z".into(), "arn:aws:rds:us-east-1:123456789012:cert:rds-ca-ecc384-g1".into()],
+    ];
+    let mut list = String::new();
+    for cert in &certs {
+        if let Some(f) = &filter {
+            if &cert[0] != f {
+                continue;
+            }
+        }
+        list.push_str(&format!(
+            "<Certificate>\
+             <CertificateIdentifier>{}</CertificateIdentifier>\
+             <CertificateType>{}</CertificateType>\
+             <Thumbprint>{}</Thumbprint>\
+             <ValidFrom>{}</ValidFrom>\
+             <ValidTill>{}</ValidTill>\
+             <CertificateArn>{}</CertificateArn>\
+             <CustomerOverride>false</CustomerOverride>\
+             </Certificate>",
+            esc(&cert[0]), esc(&cert[1]), esc(&cert[2]), esc(&cert[3]), esc(&cert[4]), esc(&cert[5]),
+        ));
+    }
+    Ok(Some(format!(
+        "<DefaultCertificateForNewLaunches>rds-ca-rsa2048-g1</DefaultCertificateForNewLaunches>\
+         <Certificates>{list}</Certificates>"
+    )))
+}
+
+fn describe_source_regions_xml(p: &Params) -> Result<Body, RdsError> {
+    let regions: &[(&str, &str)] = &[
+        ("us-east-1", "rds.us-east-1.amazonaws.com"),
+        ("us-east-2", "us-east-2.rds.amazonaws.com"),
+        ("us-west-1", "us-west-1.rds.amazonaws.com"),
+        ("us-west-2", "us-west-2.rds.amazonaws.com"),
+        ("eu-west-1", "eu-west-1.rds.amazonaws.com"),
+    ];
+    let region = p_string(p, "RegionName");
+    let mut list = String::new();
+    for (name, endpoint) in regions {
+        if let Some(filter) = &region {
+            if name != filter {
+                continue;
+            }
+        }
+        list.push_str(&format!(
+            "<SourceRegion>\
+             <RegionName>{name}</RegionName>\
+             <Endpoint>{endpoint}</Endpoint>\
+             <SupportsDBInstanceAutomatedBackupsCopy>true</SupportsDBInstanceAutomatedBackupsCopy>\
+             </SourceRegion>"
+        ));
+    }
+    Ok(Some(format!("<SourceRegions>{list}</SourceRegions>")))
+}
+
+fn describe_db_major_engine_versions_xml(p: &Params) -> Result<Body, RdsError> {
+    let mut versions: Vec<String> = Vec::new();
+    let engines = vec![
+        ("mysql", vec!["8.0", "5.7"]),
+        ("postgres", vec!["15", "14", "13"]),
+        ("aurora-mysql", vec!["5.7", "8.0"]),
+        ("aurora-postgresql", vec!["12", "13"]),
+        ("custom-oracle-ee", vec!["19"]),
+        ("sqlserver-ee", vec!["15.00"]),
+    ];
+    for (engine, majors) in engines {
+        for major in majors {
+            versions.push(format!(
+                "<DBMajorEngineVersion>\
+                 <Engine>{engine}</Engine>\
+                 <MajorEngineVersion>{major}</MajorEngineVersion>\
+                 <DBEngineDescription>{engine} database engine</DBEngineDescription>\
+                 <SupportedEngineModes><member>provisioned</member></SupportedEngineModes>\
+                 <Status>available</Status>\
+                 <AvailableUpgrades/>\
+                 <ExportableLogTypes/>\
+                 <SupportsLogExportsToCloudwatchLogs>false</SupportsLogExportsToCloudwatchLogs>\
+                 </DBMajorEngineVersion>"
+            ));
+        }
+    }
+    Ok(Some(format!(
+        "<DBMajorEngineVersions>{}</DBMajorEngineVersions>",
+        versions.join("")
+    )))
+}
+
 // __APPEND_MARKER__
