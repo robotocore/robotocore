@@ -38,3 +38,4 @@ site/
 
 # Parity test state (generated)
 .parity/
+.worktrees/
