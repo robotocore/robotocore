@@ -381,7 +381,7 @@ mod tests {
     fn voices_list_and_filter() {
         let r = dispatch(&req("GET", "/v1/voices", ""));
         let body: Value = serde_json::from_slice(&r.body).unwrap();
-        assert!(body["Voices"].as_array().unwrap().len() > 0);
+        assert!(!body["Voices"].as_array().unwrap().is_empty());
         assert!(body["Voices"][0]["Id"].is_string());
 
         let r = dispatch(&req("GET", "/v1/voices?LanguageCode=en-US", ""));

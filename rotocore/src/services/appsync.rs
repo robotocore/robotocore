@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! AppSync backend (REST-JSON, `/v1/apis/...` and `/v2/apis/...`).
 //!
 //! Port of moto's `AppSyncBackend` per-(account, region): GraphQL API CRUD,
@@ -1320,10 +1322,7 @@ fn create_domain_name(
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string(),
-        appsync_domain_name: format!(
-            "{}.appsync-api.{region}.amazonaws.com",
-            uuid()[..8].to_string()
-        ),
+        appsync_domain_name: format!("{}.appsync-api.{region}.amazonaws.com", &uuid()[..8]),
         hosted_zone_id: format!(
             "Z{}",
             uuid()[..12].to_string().to_uppercase().replace('-', "A")

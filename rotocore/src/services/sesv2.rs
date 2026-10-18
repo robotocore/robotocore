@@ -74,7 +74,7 @@ fn seg_after(path: &str, marker: &str) -> String {
 }
 
 fn decode_path_seg(s: &str) -> String {
-    s.replace("%40", "@").replace('%', "%")
+    s.replace("%40", "@")
 }
 
 #[derive(Default)]
@@ -268,7 +268,7 @@ fn derive_op(method: &str, path: &str) -> String {
             segs = segs[pos..].to_vec();
         }
     }
-    let refs: Vec<&str> = segs.iter().map(|s| *s).collect();
+    let refs: Vec<&str> = segs.to_vec();
     for (method_spec, path_spec, op) in op_table() {
         if method_spec != method {
             continue;
@@ -439,7 +439,7 @@ pub fn handle(req: &Request, body: &Value, op: &str) -> Response {
                 None => not_found(format!("Email identity {name} not found")),
             }
         }
-        _ => handler_2(req, &body, op, slot),
+        _ => handler_2(req, body, op, slot),
     }
 }
 
@@ -660,7 +660,7 @@ fn handler_4(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
         }
         "ListContactLists" => {
             let lists: Vec<Value> = with_scope(&slot, req, |st| {
-                st.contact_lists.values().map(|cl| cl.clone()).collect()
+                st.contact_lists.values().cloned().collect()
             });
             ok_json(json!({ "ContactLists": lists }))
         }
@@ -890,7 +890,7 @@ fn handler_5(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
         }
         "ListCustomVerificationEmailTemplates" => {
             let list: Vec<Value> = with_scope(&slot, req, |st| {
-                st.custom_templates.values().map(|c| c.clone()).collect()
+                st.custom_templates.values().cloned().collect()
             });
             ok_json(json!({ "CustomVerificationEmailTemplates": list }))
         }
@@ -1021,7 +1021,7 @@ fn handler_6(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
         | "PutAccountVdmAttributes"
         | "PutAccountDedicatedIpWarmupAttributes" => {
             with_scope(&slot, req, |st| {
-                for (k, v) in body.as_object().map(|m| m.clone()).unwrap_or_default() {
+                for (k, v) in body.as_object().cloned().unwrap_or_default() {
                     st.account.insert(k, v);
                 }
             });
@@ -1276,9 +1276,8 @@ fn handler_8(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
             ok_json(json!({}))
         }
         "ListTenants" => {
-            let list: Vec<Value> = with_scope(&slot, req, |st| {
-                st.tenants.values().map(|t| t.clone()).collect()
-            });
+            let list: Vec<Value> =
+                with_scope(&slot, req, |st| st.tenants.values().cloned().collect());
             ok_json(json!({ "Tenants": list }))
         }
         "CreateTenantResourceAssociation" | "DeleteTenantResourceAssociation" => ok_json(json!({})),
@@ -1311,10 +1310,7 @@ fn handler_8(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
         }
         "ListMultiRegionEndpoints" => {
             let list: Vec<Value> = with_scope(&slot, req, |st| {
-                st.multi_region_endpoints
-                    .values()
-                    .map(|e| e.clone())
-                    .collect()
+                st.multi_region_endpoints.values().cloned().collect()
             });
             ok_json(json!({ "MultiRegionEndpoints": list }))
         }

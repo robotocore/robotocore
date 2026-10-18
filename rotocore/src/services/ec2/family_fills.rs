@@ -532,67 +532,9 @@ pub fn create_fills(
                 .max(1);
             let mut items = String::new();
             for _ in 0..count {
-                items.push_str(&format!("<item>{}{}</item>", id.clone(), ""));
+                items.push_str(&format!("<item>{}{}</item>", id, ""));
             }
             f.insert("HostIds".to_string(), Fill::X(items));
-        }
-        "spot-instance-request" => {
-            let inner = "";
-            f.insert(
-                "SpotInstanceRequests".to_string(),
-                Fill::X(format!(
-                    "<item><spotInstanceRequestId>{}</spotInstanceId>{}</item>",
-                    xml_escape(id),
-                    inner
-                )),
-            );
-        }
-        "fleet" => {
-            f.insert("FleetId".to_string(), Fill::S(id.to_string()));
-        }
-        "spot-fleet-request" => {
-            f.insert(
-                "SpotFleetRequestConfig".to_string(),
-                Fill::X(format!(
-                    "<item><spotFleetRequestConfig><targetCapacity>{}</targetCapacity><spotPrice>{}</spotPrice></spotFleetRequestConfig></item>",
-                    params.str("TargetCapacity"),
-                    params.str("SpotPrice")
-                )),
-            );
-        }
-        "tgw-peering" => {
-            f.insert(
-                "TransitGatewayAttachmentId".to_string(),
-                Fill::S(id.to_string()),
-            );
-        }
-        "tgw-connect" => {
-            f.insert(
-                "TransitGatewayAttachmentId".to_string(),
-                Fill::S(id.to_string()),
-            );
-        }
-        "tgw-connect-peer" => {
-            f.insert(
-                "TransitGatewayConnectPeerId".to_string(),
-                Fill::S(id.to_string()),
-            );
-        }
-        "coip-pool" => {
-            f.insert("PoolId".to_string(), Fill::S(id.to_string()));
-            f.insert("PoolArn".to_string(), Fill::S(arn_of("coip-pool")));
-            f.insert(
-                "LocalGatewayRouteTableId".to_string(),
-                Fill::S(params.str("LocalGatewayRouteTableId")),
-            );
-        }
-        "public-ipv4-pool" => {
-            f.insert("PoolId".to_string(), Fill::S(id.to_string()));
-        }
-        "instance-event-window" => {
-            f.insert("InstanceEventWindowId".to_string(), Fill::S(id.to_string()));
-            f.insert("Name".to_string(), Fill::S(params.str("Name")));
-            f.insert("State".to_string(), Fill::S("active".into()));
         }
         _ => {
             f.insert("Id".to_string(), Fill::S(id.to_string()));

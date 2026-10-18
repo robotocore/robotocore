@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! AWS EventBridge Pipes backend — ported from the py provider's pipes
 //! engine (moto does not implement UpdatePipe; the native gateway does).
 //!
@@ -252,7 +254,7 @@ impl PipesState {
     fn op_list(&mut self, req: &Request) -> Response {
         // list_pipes filters arrive as rest-json POST/GET; accept a JSON body
         // first, then query params, mirroring moto's caster order.
-        let mut params: index_map = index_map::new();
+        let mut params = IndexMap::new();
         if !req.body.is_empty() {
             if let Ok(Value::Object(body)) = serde_json::from_slice::<Value>(&req.body) {
                 for (k, v) in body {
@@ -442,6 +444,39 @@ fn without_nulls_entries(pipe: Value) -> Value {
     }
 }
 
+/// Prefix params use startswith; state filters use equality (the py
+/// provider's semantics).
+fn prefix_matches(value: &str, expect: &str, key: &str) -> bool {
+    if key.ends_with("Prefix") {
+        value.starts_with(expect)
+    } else {
+        value == expect
+    }
+}
+
+/// BTreeMap-backed ordered string map for query params.
+struct IndexMap(std::collections::BTreeMap<String, String>);
+
+impl IndexMap {
+    fn new() -> Self {
+        Self(std::collections::BTreeMap::new())
+    }
+
+    fn insert(&mut self, k: &str, v: String) {
+        if let std::collections::btree_map::Entry::Vacant(e) = self.0.entry(k.to_string()) {
+            e.insert(v);
+        }
+    }
+
+    fn contains(&self, k: &str) -> bool {
+        self.0.contains_key(k)
+    }
+
+    fn get(&self, k: &str) -> Option<String> {
+        self.0.get(k).cloned()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -507,38 +542,5 @@ mod tests {
     fn unknown_route_is_not_implemented() {
         let r = dispatch(&request("POST", "/v1/unknown", json!({}), ""));
         assert_eq!(r.status, 501);
-    }
-}
-
-/// Prefix params use startswith; state filters use equality (the py
-/// provider's semantics).
-fn prefix_matches(value: &str, expect: &str, key: &str) -> bool {
-    if key.ends_with("Prefix") {
-        value.starts_with(expect)
-    } else {
-        value == expect
-    }
-}
-
-/// BTreeMap-backed ordered string map for query params.
-struct index_map(std::collections::BTreeMap<String, String>);
-
-impl index_map {
-    fn new() -> Self {
-        index_map(std::collections::BTreeMap::new())
-    }
-
-    fn insert(&mut self, k: &str, v: String) {
-        if let std::collections::btree_map::Entry::Vacant(e) = self.0.entry(k.to_string()) {
-            e.insert(v);
-        }
-    }
-
-    fn contains(&self, k: &str) -> bool {
-        self.0.contains_key(k)
-    }
-
-    fn get(&self, k: &str) -> Option<String> {
-        self.0.get(k).cloned()
     }
 }

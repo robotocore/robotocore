@@ -1647,13 +1647,10 @@ mod tests {
             "DiscoverInputSchema",
             json!({"ServiceExecutionRole": "arn:aws:iam::123456789012:role/test"}),
         ));
-        assert!(
-            resp["InputSchema"]["RecordColumns"]
-                .as_array()
-                .unwrap()
-                .len()
-                >= 1
-        );
+        assert!(!resp["InputSchema"]["RecordColumns"]
+            .as_array()
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

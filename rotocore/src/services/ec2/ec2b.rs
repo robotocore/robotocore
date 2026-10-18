@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! XML field builders shared across the ec2 handler groups.
 
 use super::{

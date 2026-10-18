@@ -241,6 +241,7 @@ fn strip_json_suffix(s: &str) -> String {
 }
 
 impl TranscriptionJob {
+    #[allow(clippy::too_many_arguments)]
     fn regular(
         name: &str,
         language_code: Option<String>,
@@ -291,6 +292,7 @@ impl TranscriptionJob {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn medical(
         name: &str,
         language_code: Option<String>,
@@ -1357,7 +1359,7 @@ impl TranscribeState {
         let status_filter = p.get("Status").and_then(Value::as_str);
         let contains = p.get("JobNameContains").and_then(Value::as_str);
         let mut items = Vec::new();
-        for (name, _) in self.call_analytics_jobs.iter() {
+        for name in self.call_analytics_jobs.keys() {
             if let Some(f) = status_filter {
                 if f != "COMPLETED" {
                     continue;
@@ -1451,7 +1453,7 @@ impl TranscribeState {
         let status_filter = p.get("Status").and_then(Value::as_str);
         let contains = p.get("JobNameContains").and_then(Value::as_str);
         let mut items = Vec::new();
-        for (name, _) in self.medical_scribe_jobs.iter() {
+        for name in self.medical_scribe_jobs.keys() {
             if let Some(f) = status_filter {
                 if f != "COMPLETED" {
                     continue;
@@ -1596,7 +1598,7 @@ impl SimpleJob {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::atomic::AtomicU64;
 
     static ACCOUNT: AtomicU64 = AtomicU64::new(970_000_000_001);
 
@@ -1650,7 +1652,7 @@ mod tests {
         );
         assert_eq!(s, 200);
         assert_eq!(r["TranscriptionJob"]["TranscriptionJobStatus"], "QUEUED");
-        let (s, r) = call(
+        let (_s, r) = call(
             acct,
             "GetTranscriptionJob",
             json!({"TranscriptionJobName": "j1"}),
@@ -1661,7 +1663,7 @@ mod tests {
         );
         assert_eq!(r["TranscriptionJob"]["MediaSampleRateHertz"], 44100);
         assert_eq!(r["TranscriptionJob"]["MediaFormat"], "wav");
-        let (s, r) = call(
+        let (_s, r) = call(
             acct,
             "GetTranscriptionJob",
             json!({"TranscriptionJobName": "j1"}),
@@ -1672,7 +1674,7 @@ mod tests {
             .unwrap()
             .contains("aws-transcribe-us-east-1-prod"));
 
-        let (s, r) = call(acct, "ListTranscriptionJobs", json!({}));
+        let (_s, r) = call(acct, "ListTranscriptionJobs", json!({}));
         let names: Vec<&str> = r["TranscriptionJobSummaries"]
             .as_array()
             .unwrap()
@@ -1699,7 +1701,7 @@ mod tests {
     #[test]
     fn transcription_job_conflict_and_missing() {
         let acct = next_account();
-        let (s, r) = call(
+        let (s, _r) = call(
             acct,
             "StartTranscriptionJob",
             json!({"TranscriptionJobName": "dup", "LanguageCode": "en-US", "Media": media("dup")}),
@@ -1749,14 +1751,14 @@ mod tests {
         assert_eq!(r["Status"], "IN_PROGRESS");
         assert_eq!(r["TranscriptionJobSummaries"].as_array().unwrap().len(), 0);
 
-        let (s, r) = call(
+        let (_s, r) = call(
             acct,
             "ListTranscriptionJobs",
             json!({"JobNameContains": "lm-"}),
         );
         assert_eq!(r["TranscriptionJobSummaries"].as_array().unwrap().len(), 2);
 
-        let (s, r) = call(acct, "ListTranscriptionJobs", json!({"MaxResults": 1}));
+        let (_s, r) = call(acct, "ListTranscriptionJobs", json!({"MaxResults": 1}));
         assert!(r["NextToken"].is_string());
         assert_eq!(r["TranscriptionJobSummaries"].as_array().unwrap().len(), 1);
     }
@@ -1791,17 +1793,17 @@ mod tests {
         assert_eq!(s, 400);
 
         // get advances PENDING -> READY
-        let (s, r) = call(acct, "GetVocabulary", json!({"VocabularyName": "v1"}));
+        let (_s, r) = call(acct, "GetVocabulary", json!({"VocabularyName": "v1"}));
         assert_eq!(r["VocabularyState"], "PENDING");
         assert!(r["DownloadUri"]
             .as_str()
             .unwrap()
             .contains("aws-transcribe-dictionary-model"));
-        let (s, r) = call(acct, "GetVocabulary", json!({"VocabularyName": "v1"}));
+        let (_s, r) = call(acct, "GetVocabulary", json!({"VocabularyName": "v1"}));
         assert_eq!(r["VocabularyState"], "READY");
 
-        let (s, r) = call(acct, "ListVocabularies", json!({}));
-        assert!(r["Vocabularies"].as_array().unwrap().len() >= 1);
+        let (_s, r) = call(acct, "ListVocabularies", json!({}));
+        assert!(!r["Vocabularies"].as_array().unwrap().is_empty());
 
         let (s, _) = call(acct, "DeleteVocabulary", json!({"VocabularyName": "v1"}));
         assert_eq!(s, 200);
@@ -1821,19 +1823,19 @@ mod tests {
                 "VocabularyFileUri": "s3://b/v.txt"
             }),
         );
-        let (s, r) = call(
+        let (_s, r) = call(
             acct,
             "GetMedicalVocabulary",
             json!({"VocabularyName": "mv1"}),
         );
         assert_eq!(r["VocabularyState"], "PENDING");
-        let (s, r) = call(
+        let (_s, r) = call(
             acct,
             "GetMedicalVocabulary",
             json!({"VocabularyName": "mv1"}),
         );
         assert_eq!(r["VocabularyState"], "READY");
-        let (s, r) = call(
+        let (_s, r) = call(
             acct,
             "UpdateMedicalVocabulary",
             json!({"VocabularyName": "mv1", "LanguageCode": "en-US"}),
@@ -1852,13 +1854,13 @@ mod tests {
             json!({"VocabularyFilterName": "f1", "LanguageCode": "en-US", "Words": ["x"]}),
         );
         assert_eq!(s, 200);
-        let (s, r) = call(
+        let (_s, r) = call(
             acct,
             "GetVocabularyFilter",
             json!({"VocabularyFilterName": "f1"}),
         );
         assert_eq!(r["VocabularyFilterName"], "f1");
-        let (s, r) = call(
+        let (_s, r) = call(
             acct,
             "UpdateVocabularyFilter",
             json!({"VocabularyFilterName": "f1", "Words": ["y"]}),
@@ -1883,7 +1885,7 @@ mod tests {
         let acct = next_account();
         let input =
             json!({"S3Uri": "s3://b/d/", "DataAccessRoleArn": "arn:aws:iam::123456789012:role/t"});
-        let (s, r) = call(
+        let (_s, r) = call(
             acct,
             "CreateLanguageModel",
             json!({
@@ -1895,15 +1897,15 @@ mod tests {
         );
         assert_eq!(r["ModelName"], "m1");
         assert_eq!(r["ModelStatus"], "COMPLETED");
-        let (s, r) = call(acct, "DescribeLanguageModel", json!({"ModelName": "m1"}));
+        let (_s, r) = call(acct, "DescribeLanguageModel", json!({"ModelName": "m1"}));
         let lm = &r["LanguageModel"];
         assert_eq!(lm["BaseModelName"], "NarrowBand");
         assert_eq!(lm["UpgradeAvailability"], false);
-        let (s, r) = call(acct, "ListLanguageModels", json!({}));
-        assert!(r["Models"].as_array().unwrap().len() >= 1);
+        let (_s, r) = call(acct, "ListLanguageModels", json!({}));
+        assert!(!r["Models"].as_array().unwrap().is_empty());
         let (s, _) = call(acct, "DeleteLanguageModel", json!({"ModelName": "m1"}));
         assert_eq!(s, 200);
-        let (s, r) = call(acct, "DescribeLanguageModel", json!({"ModelName": "m1"}));
+        let (s, _r) = call(acct, "DescribeLanguageModel", json!({"ModelName": "m1"}));
         assert_eq!(s, 400);
     }
 
@@ -1911,7 +1913,7 @@ mod tests {
     fn call_analytics_category_crud() {
         let acct = next_account();
         let rules = json!([{"NonTalkTimeFilter": {"Threshold": 60}}]);
-        let (s, r) = call(
+        let (_s, r) = call(
             acct,
             "CreateCallAnalyticsCategory",
             json!({"CategoryName": "c1", "Rules": rules}),
@@ -1920,7 +1922,7 @@ mod tests {
         assert_eq!(cat["CategoryName"], "c1");
         assert_eq!(cat["Rules"], rules);
         assert!(cat["CreateTime"].as_f64().is_some());
-        let (s, r) = call(
+        let (_s, r) = call(
             acct,
             "UpdateCallAnalyticsCategory",
             json!({"CategoryName": "c1", "Rules": [{"NonTalkTimeFilter": {"Threshold": 90}}]}),
@@ -1929,15 +1931,15 @@ mod tests {
             r["CategoryProperties"]["Rules"][0]["NonTalkTimeFilter"]["Threshold"],
             90
         );
-        let (s, r) = call(acct, "ListCallAnalyticsCategories", json!({}));
-        assert!(r["Categories"].as_array().unwrap().len() >= 1);
+        let (_s, r) = call(acct, "ListCallAnalyticsCategories", json!({}));
+        assert!(!r["Categories"].as_array().unwrap().is_empty());
         let (s, _) = call(
             acct,
             "DeleteCallAnalyticsCategory",
             json!({"CategoryName": "c1"}),
         );
         assert_eq!(s, 200);
-        let (s, r) = call(
+        let (s, _r) = call(
             acct,
             "GetCallAnalyticsCategory",
             json!({"CategoryName": "c1"}),
@@ -1948,7 +1950,7 @@ mod tests {
     #[test]
     fn call_analytics_job_immediately_completed() {
         let acct = next_account();
-        let (s, r) = call(
+        let (_s, r) = call(
             acct,
             "StartCallAnalyticsJob",
             json!({
@@ -1960,7 +1962,7 @@ mod tests {
         let j = &r["CallAnalyticsJob"];
         assert_eq!(j["CallAnalyticsJobStatus"], "COMPLETED");
         assert_eq!(j["DataAccessRoleArn"], "arn:aws:iam::123456789012:role/t");
-        let (s, r) = call(acct, "ListCallAnalyticsJobs", json!({}));
+        let (_s, r) = call(acct, "ListCallAnalyticsJobs", json!({}));
         let summary = &r["CallAnalyticsJobSummaries"][0];
         assert_eq!(summary["CallAnalyticsJobName"], "ca1");
         // Media is shape-pruned from summaries
@@ -1976,7 +1978,7 @@ mod tests {
     #[test]
     fn medical_scribe_job_state() {
         let acct = next_account();
-        let (s, r) = call(
+        let (_s, r) = call(
             acct,
             "StartMedicalScribeJob",
             json!({
@@ -1990,7 +1992,7 @@ mod tests {
         let j = &r["MedicalScribeJob"];
         assert_eq!(j["MedicalScribeJobStatus"], "COMPLETED");
         assert_eq!(j["LanguageCode"], "en-US");
-        let (s, r) = call(acct, "ListMedicalScribeJobs", json!({}));
+        let (_s, r) = call(acct, "ListMedicalScribeJobs", json!({}));
         assert_eq!(
             r["MedicalScribeJobSummaries"][0]["MedicalScribeJobName"],
             "ms1"
@@ -2012,7 +2014,7 @@ mod tests {
                 "Type": "CONVERSATION"
             }),
         );
-        let (s, r) = call(
+        let (_s, r) = call(
             acct,
             "GetMedicalTranscriptionJob",
             json!({"MedicalTranscriptionJobName": "mj1"}),
@@ -2026,7 +2028,7 @@ mod tests {
             "GetMedicalTranscriptionJob",
             json!({"MedicalTranscriptionJobName": "mj1"}),
         );
-        let (s, r) = call(
+        let (_s, r) = call(
             acct,
             "GetMedicalTranscriptionJob",
             json!({"MedicalTranscriptionJobName": "mj1"}),
@@ -2039,7 +2041,7 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("out/medical/mj1.json"));
-        let (s, r) = call(acct, "ListMedicalTranscriptionJobs", json!({}));
+        let (_s, r) = call(acct, "ListMedicalTranscriptionJobs", json!({}));
         let items = r["MedicalTranscriptionJobSummaries"].as_array().unwrap();
         assert_eq!(items[0]["OutputLocationType"], "CUSTOMER_BUCKET");
         let (s, _) = call(
@@ -2065,14 +2067,14 @@ mod tests {
             json!({"ResourceArn": arn, "Tags": [{"Key": "env", "Value": "test"}]}),
         );
         assert_eq!(s, 200);
-        let (s, r) = call(acct, "ListTagsForResource", json!({"ResourceArn": arn}));
+        let (_s, r) = call(acct, "ListTagsForResource", json!({"ResourceArn": arn}));
         assert_eq!(r["Tags"][0]["Key"], "env");
         call(
             acct,
             "UntagResource",
             json!({"ResourceArn": arn, "TagKeys": ["env"]}),
         );
-        let (s, r) = call(acct, "ListTagsForResource", json!({"ResourceArn": arn}));
+        let (_s, r) = call(acct, "ListTagsForResource", json!({"ResourceArn": arn}));
         assert_eq!(r["Tags"].as_array().unwrap().len(), 0);
         // unknown ARN -> BadRequest
         let (s, r) = call(

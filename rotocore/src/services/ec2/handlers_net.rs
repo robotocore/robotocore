@@ -1,5 +1,8 @@
+#![allow(dead_code)]
+
 //! EC2 handler group 2: security groups, internet gateways, elastic IPs,
 //! route tables.
+
 #![allow(
     clippy::format_in_format_args,
     clippy::type_complexity,

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! EC2 service — the query-protocol (XML) backend in pure Rust.
 //!
 //! Request parsing (flattened EC2 lists `Filter.1.Name=...`), XML rendering
@@ -25,7 +27,6 @@ use state::Ec2State;
 pub use crate::proto::xml_escape;
 
 pub const EC2_NS: &str = "http://ec2.amazonaws.com/doc/2016-11-15/";
-pub const OLD_NS: &str = "http://ec2.amazonaws.com/doc/2013-10-15/";
 
 /// Run `f` with a uniquely-held write lease on the (account, region) state.
 /// The guard is acquired exactly once per call — no nested re-acquire.

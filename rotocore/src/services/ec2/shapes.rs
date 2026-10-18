@@ -160,7 +160,7 @@ pub fn render_list_response(
     op: &str,
     list_pykey: &str,
     items: &[Fills],
-    region: &str,
+    _region: &str,
 ) -> Option<String> {
     let shape = shape_of(op)?;
     let members = shape.get("m")?.as_object()?;
@@ -175,7 +175,7 @@ pub fn render_list_response(
         {
             wire = w.clone();
             if member.get("t").and_then(|t| t.as_str()) == Some("list") {
-                elem_shape = member.get("i").map(|i| i);
+                elem_shape = member.get("i");
             }
             break;
         }

@@ -430,7 +430,7 @@ impl SupportState {
             .get("attachmentSetId")
             .and_then(Value::as_str)
             .map(String::from)
-            .unwrap_or_else(|| Uid::hex32());
+            .unwrap_or_else(Uid::hex32);
         let entry = self.attachment_sets.entry(set_id.clone()).or_default();
         for att in attachments {
             let mut att = att.clone();
@@ -472,6 +472,7 @@ impl SupportState {
 struct Uid;
 
 impl Uid {
+    #[allow(clippy::new_ret_no_self)]
     fn new() -> String {
         let bytes = uuid::Uuid::new_v4();
         bytes

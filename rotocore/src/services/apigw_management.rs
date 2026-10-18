@@ -15,12 +15,9 @@ static SLOT: Lazy<store::Slot<AgwMgmtState>> =
 #[derive(Default)]
 struct AgwMgmtState {
     connections: HashMap<String, Connection>,
-    region: String,
 }
 
 struct Connection {
-    api_id: String,
-    data: Vec<u8>,
     created: i64,
 }
 

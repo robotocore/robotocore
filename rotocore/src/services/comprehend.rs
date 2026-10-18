@@ -1244,18 +1244,18 @@ mod tests {
         assert!(arn.contains(":endpoint/ep1/arn:m"));
         assert_eq!(r["ModelArn"], "arn:m");
 
-        let (s, r) = call("DescribeEndpoint", json!({"EndpointArn": arn}), acct);
+        let (_s, r) = call("DescribeEndpoint", json!({"EndpointArn": arn}), acct);
         assert_eq!(r["EndpointProperties"]["Status"], "IN_SERVICE");
         assert_eq!(r["EndpointProperties"]["DesiredInferenceUnits"], 1);
 
-        let (s, r) = call(
+        let (s, _r) = call(
             "UpdateEndpoint",
             json!({"EndpointArn": arn, "DesiredInferenceUnits": 2}),
             acct,
         );
         assert_eq!(s, 200);
 
-        let (s, r) = call("ListEndpoints", json!({}), acct);
+        let (_s, r) = call("ListEndpoints", json!({}), acct);
         assert_eq!(r["EndpointPropertiesList"].as_array().unwrap().len(), 1);
 
         let (s, _) = call("DeleteEndpoint", json!({"EndpointArn": arn}), acct);
@@ -1267,7 +1267,7 @@ mod tests {
     #[test]
     fn detect_apis_canned() {
         let acct = next_account();
-        let (s, r) = call(
+        let (_s, r) = call(
             "DetectSentiment",
             json!({"Text": "I am very happy", "LanguageCode": "en"}),
             acct,
@@ -1275,24 +1275,24 @@ mod tests {
         assert_eq!(r["Sentiment"], "NEUTRAL");
         assert!(r["SentimentScore"]["Neutral"].as_f64().unwrap() > 0.99);
 
-        let (s, r) = call(
+        let (_s, r) = call(
             "DetectKeyPhrases",
             json!({"Text": "rain", "LanguageCode": "en"}),
             acct,
         );
         assert_eq!(r["KeyPhrases"].as_array().unwrap().len(), 3);
 
-        let (s, r) = call(
+        let (_s, r) = call(
             "DetectPiiEntities",
             json!({"Text": "SSN", "LanguageCode": "en"}),
             acct,
         );
         assert_eq!(r["Entities"][0]["Type"], "NAME");
 
-        let (s, r) = call("DetectDominantLanguage", json!({"Text": "hi"}), acct);
+        let (_s, r) = call("DetectDominantLanguage", json!({"Text": "hi"}), acct);
         assert_eq!(r["Languages"][0]["LanguageCode"], "en");
 
-        let (s, r) = call(
+        let (_s, r) = call(
             "ContainsPiiEntities",
             json!({"Text": "x", "LanguageCode": "en"}),
             acct,
@@ -1300,7 +1300,7 @@ mod tests {
         let labels = r["Labels"].as_array().unwrap();
         assert!(labels.is_empty());
 
-        let (s, r) = call(
+        let (_s, r) = call(
             "ClassifyDocument",
             json!({"Text": "t", "EndpointArn": "arn:x"}),
             acct,
@@ -1311,7 +1311,7 @@ mod tests {
     #[test]
     fn validation_error_language() {
         let acct = next_account();
-        let (s, r) = call(
+        let (_s, r) = call(
             "DetectSentiment",
             json!({"Text": "x", "LanguageCode": "zz"}),
             acct,
@@ -1323,7 +1323,7 @@ mod tests {
     #[test]
     fn job_family_lifecycle() {
         let acct = next_account();
-        let (s, r) = call(
+        let (_s, r) = call(
             "StartSentimentDetectionJob",
             json!({
                 "InputDataConfig": {"S3Uri": "s3://b/in"},
@@ -1340,7 +1340,7 @@ mod tests {
             .contains("sentiment-detection-job"));
         let job_id = r["JobId"].as_str().unwrap().to_string();
 
-        let (s, r) = call(
+        let (_s, r) = call(
             "DescribeSentimentDetectionJob",
             json!({"JobId": job_id.clone()}),
             acct,
@@ -1349,16 +1349,16 @@ mod tests {
         assert_eq!(props["JobStatus"], "SUBMITTED");
         assert!(props["SubmitTime"].as_str().unwrap().ends_with("+00:00"));
 
-        let (s, r) = call("StopSentimentDetectionJob", json!({"JobId": job_id}), acct);
+        let (_s, r) = call("StopSentimentDetectionJob", json!({"JobId": job_id}), acct);
         assert_eq!(r["JobStatus"], "STOP_REQUESTED");
 
-        let (s, r) = call("ListSentimentDetectionJobs", json!({}), acct);
+        let (_s, r) = call("ListSentimentDetectionJobs", json!({}), acct);
         let items = r["SentimentDetectionJobPropertiesList"].as_array().unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0]["JobStatus"], "STOP_REQUESTED");
 
         // wrong family list stays empty
-        let (s, r) = call("ListTopicsDetectionJobs", json!({}), acct);
+        let (_s, r) = call("ListTopicsDetectionJobs", json!({}), acct);
         assert_eq!(
             r["TopicsDetectionJobPropertiesList"]
                 .as_array()
@@ -1379,7 +1379,7 @@ mod tests {
     #[test]
     fn events_job_requires_target_types() {
         let acct = next_account();
-        let (s, r) = call(
+        let (_s, r) = call(
             "StartEventsDetectionJob",
             json!({"InputDataConfig": {"S3Uri": "s3://b"}, "OutputDataConfig": {"S3Uri": "s3://o"}, "DataAccessRoleArn": "r"}),
             acct,
@@ -1390,26 +1390,26 @@ mod tests {
     #[test]
     fn tags_and_flywheel() {
         let acct = next_account();
-        let (s, r) = call(
+        let (_s, r) = call(
             "CreateFlywheel",
             json!({"FlywheelName": "fw", "DataAccessRoleArn": "r", "DataLakeS3Uri": "s3://b/"}),
             acct,
         );
         let arn = r["FlywheelArn"].as_str().unwrap().to_string();
 
-        let (s, r) = call(
+        let (_s, r) = call(
             "DescribeFlywheel",
             json!({"FlywheelArn": arn.clone()}),
             acct,
         );
         assert_eq!(r["FlywheelProperties"]["Status"], "ACTIVE");
 
-        let (s, _) = call(
+        let (_s, _) = call(
             "StartFlywheelIteration",
             json!({"FlywheelArn": arn.clone()}),
             acct,
         );
-        let (s, r) = call(
+        let (_s, r) = call(
             "StartFlywheelIteration",
             json!({"FlywheelArn": "arn:aws:comprehend:us-east-1:971000000001:flywheel/zzz"}),
             acct,
@@ -1417,34 +1417,34 @@ mod tests {
         assert_eq!(r["__type"], "ResourceNotFoundException");
 
         // endpoint tagging roundtrip
-        let (s, r) = call(
+        let (_s, r) = call(
             "CreateEndpoint",
             json!({"EndpointName": "ept", "ModelArn": "arn:m", "DesiredInferenceUnits": 1, "Tags": [{"Key": "env", "Value": "test"}]}),
             acct,
         );
         let ep_arn = r["EndpointArn"].as_str().unwrap().to_string();
-        let (s, r) = call("ListTagsForResource", json!({"ResourceArn": ep_arn}), acct);
+        let (_s, r) = call("ListTagsForResource", json!({"ResourceArn": ep_arn}), acct);
         assert_eq!(r["Tags"][0]["Value"], "test");
-        let (s, _) = call(
+        let (_s, _) = call(
             "UntagResource",
             json!({"ResourceArn": ep_arn, "TagKeys": ["env"]}),
             acct,
         );
-        let (s, r) = call("ListTagsForResource", json!({"ResourceArn": ep_arn}), acct);
+        let (_s, r) = call("ListTagsForResource", json!({"ResourceArn": ep_arn}), acct);
         assert_eq!(r["Tags"].as_array().unwrap().len(), 0);
     }
 
     #[test]
     fn batch_ops_shape() {
         let acct = next_account();
-        let (s, r) = call(
+        let (_s, r) = call(
             "BatchDetectSentiment",
             json!({"TextList": ["a", "b"], "LanguageCode": "en"}),
             acct,
         );
         assert_eq!(r["ResultList"].as_array().unwrap().len(), 2);
         assert_eq!(r["ErrorList"].as_array().unwrap().len(), 0);
-        let (s, r) = call(
+        let (_s, r) = call(
             "BatchDetectEntities",
             json!({"TextList": ["a"], "LanguageCode": "en"}),
             acct,

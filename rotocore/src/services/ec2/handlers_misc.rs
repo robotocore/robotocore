@@ -590,7 +590,7 @@ fn simple_create(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
             if let Some(xml) = super::shapes::render_list_response(
                 fam.create_op,
                 list_pykey_of(fam.create_op).as_str(),
-                &[fills.clone()],
+                std::slice::from_ref(&fills),
                 "us-east-1",
             ) {
                 let inner = strip_op_root(&xml, fam.create_op);
@@ -1906,13 +1906,11 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                     }
                     let _ = write!(
                         items,
-                        "<item><hostId>{}</hostId><autoPlacement>{}</autoPlacement>{}<ownerId>{}</ownerId><availabilityZone>{}</availabilityZone><hostProperties>{}<cores>0</cores><instanceType>{}</instanceType></hostProperties><allocationOwnerIds/><state>{}</state><hostArn>arn:aws:ec2:us-east-1:{}:host/{}</hostArn>{}</item>",
+                        "<item><hostId>{}</hostId><autoPlacement>{}</autoPlacement><ownerId>{}</ownerId><availabilityZone>{}</availabilityZone><hostProperties><cores>0</cores><instanceType>{}</instanceType></hostProperties><allocationOwnerIds/><state>{}</state><hostArn>arn:aws:ec2:us-east-1:{}:host/{}</hostArn>{}</item>",
                         xml_escape(&s.id),
                         s.get("AutoPlacement").unwrap_or("off"),
-                        "",
                         req.account,
                         req.region.clone() + "a",
-                        "",
                         s.get("InstanceType").unwrap_or_default(),
                         s.get("State").unwrap_or("available"),
                         req.account,

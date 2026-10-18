@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! EC2 resource state, keyed by (account, region) like moto's backends.
 //!
 //! One `Ec2State` partition per (account, region). Handlers acquire the

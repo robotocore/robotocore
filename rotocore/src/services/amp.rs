@@ -1406,6 +1406,38 @@ fn route(req: &Request) -> Response {
     }
 }
 
+pub fn dispatch(req: &Request) -> Response {
+    route(req)
+}
+
+/// JSON body (empty bodies parsed as {}).
+fn parse_body(body: &[u8]) -> Value {
+    crate::proto::parse_json_body(body)
+}
+
+fn base64_encode(data: &[u8]) -> String {
+    const ALPHA: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let n = (chunk[0] as u32) << 16
+            | (chunk.get(1).copied().unwrap_or(0) as u32) << 8
+            | (chunk.get(2).copied().unwrap_or(0) as u32);
+        out.push(ALPHA[(n >> 18) as usize & 63] as char);
+        out.push(ALPHA[(n >> 12) as usize & 63] as char);
+        if chunk.len() > 1 {
+            out.push(ALPHA[(n >> 6) as usize & 63] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(ALPHA[n as usize & 63] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1470,7 +1502,7 @@ mod tests {
             &format!("/workspaces/{ws_id}"),
             serde_json::json!({}),
         );
-        let gone = run(
+        let _gone = run(
             "GET",
             &format!("/workspaces/{ws_id}"),
             serde_json::json!({}),
@@ -1627,36 +1659,4 @@ mod tests {
         let deleted = run("DELETE", &path, serde_json::json!({}));
         assert_eq!(deleted.status, 202);
     }
-}
-
-pub fn dispatch(req: &Request) -> Response {
-    route(req)
-}
-
-/// JSON body (empty bodies parsed as {}).
-fn parse_body(body: &[u8]) -> Value {
-    crate::proto::parse_json_body(body)
-}
-
-fn base64_encode(data: &[u8]) -> String {
-    const ALPHA: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
-    for chunk in data.chunks(3) {
-        let n = (chunk[0] as u32) << 16
-            | (chunk.get(1).copied().unwrap_or(0) as u32) << 8
-            | (chunk.get(2).copied().unwrap_or(0) as u32);
-        out.push(ALPHA[(n >> 18) as usize & 63] as char);
-        out.push(ALPHA[(n >> 12) as usize & 63] as char);
-        if chunk.len() > 1 {
-            out.push(ALPHA[(n >> 6) as usize & 63] as char);
-        } else {
-            out.push('=');
-        }
-        if chunk.len() > 2 {
-            out.push(ALPHA[n as usize & 63] as char);
-        } else {
-            out.push('=');
-        }
-    }
-    out
 }

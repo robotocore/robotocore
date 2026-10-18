@@ -1,5 +1,8 @@
+#![allow(dead_code)]
+
 //! EC2 handler group 4: compute — instances, images, volumes, snapshots,
 //! key pairs, launch templates, placement groups.
+
 #![allow(
     clippy::format_in_format_args,
     clippy::type_complexity,

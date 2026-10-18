@@ -37,6 +37,7 @@ struct Entry {
     props: Value,
 }
 
+#[allow(dead_code)]
 struct Family {
     kind: &'static str,
     name_param: &'static str,
@@ -1751,8 +1752,6 @@ impl SagemakerState {
                 }));
             }
 
-            "ListMonitoringAlerts" => return ok(json!({"MonitoringAlertSummaries": []})),
-            "ListMonitoringAlerts" => return ok(json!({"MonitoringAlertSummaries": []})),
             "ListMonitoringAlertHistory" => return ok(json!({"MonitoringAlertHistory": []})),
             "ListMonitoringExecutions" => return ok(json!({"MonitoringExecutionSummaries": []})),
             "ListPipelineExecutionSteps" => return ok(json!({"PipelineExecutionSteps": []})),
@@ -1871,9 +1870,6 @@ impl SagemakerState {
                     return ok(json!({"ModelPackageGroupArn": arn}));
                 }
                 return ok(json!({"ModelPackageGroupArn": null}));
-            }
-            "GetLineageGroupPolicy" => {
-                return ok(json!({"LineageGroupArn": null, "ResourcePolicy": "{}"}))
             }
             "GetDeviceFleetReport" => {
                 let name = get(params, "DeviceFleetName")
@@ -2102,11 +2098,8 @@ impl SagemakerState {
 
         // create response per family (matches moto's response_create)
         let mut body = json!({ f.arn_key: arn.clone() });
-        match f.kind {
-            "domain" => {
-                body["Url"] = json!(format!("{name}.{r}.sagemaker.test.com", r = self.region()));
-            }
-            _ => {}
+        if f.kind == "domain" {
+            body["Url"] = json!(format!("{name}.{r}.sagemaker.test.com", r = self.region()));
         }
         ok(body)
     }
@@ -2130,7 +2123,7 @@ impl SagemakerState {
         let snapshot = {
             let cloned = self
                 .resources
-                .get(&SagemakerState::key(&f.kind, &name))
+                .get(&SagemakerState::key(f.kind, &name))
                 .cloned();
             cloned
         };
@@ -2204,19 +2197,11 @@ impl SagemakerState {
         // extra per-family fields
         match f.kind {
             "notebook-instance" => {
-                if body.get("NotebookInstanceStatus").and_then(Value::as_str) == Some("InService") {
-                    body["Url"] = json!(format!(
-                        "{name}.notebook.{r}.sagemaker.aws",
-                        name = e.name,
-                        r = self.region()
-                    ));
-                } else {
-                    body["Url"] = json!(format!(
-                        "{name}.notebook.{r}.sagemaker.aws",
-                        name = e.name,
-                        r = self.region()
-                    ));
-                }
+                body["Url"] = json!(format!(
+                    "{name}.notebook.{r}.sagemaker.aws",
+                    name = e.name,
+                    r = self.region()
+                ));
                 body["DirectInternetAccess"] = json!("Enabled");
                 body["InstanceMetadataServiceRoute"] = json!(null);
                 body["SubnetId"] = body.get("SubnetId").cloned().unwrap_or(Value::Null);
@@ -2332,7 +2317,7 @@ impl SagemakerState {
                         path = f.arn_path
                     );
                     return validation(
-                        &missing_body(f, &name, &synthetic_arn)["message"]
+                        missing_body(f, &name, &synthetic_arn)["message"]
                             .as_str()
                             .unwrap_or(""),
                     );
@@ -2944,12 +2929,6 @@ impl SagemakerState {
             return Some(ok(json!({"ClusterSchedulerConfigArn": "_arn"})));
         }
         if op == "UpdateImageVersion" || op == "CreateImageVersion" {
-            let key = if op == "UpdateImageVersion" {
-                "ImageVersionArn"
-            } else {
-                "ImageVersionArn"
-            };
-            let _ = key;
             return Some(ok(json!({"ImageVersionArn": "_arn"})));
         }
         if op == "UpdateEndpointWeightsAndCapacities" {

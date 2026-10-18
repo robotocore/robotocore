@@ -8972,7 +8972,7 @@ mod op_tests {
             "ResourceName=arn:aws:rds:us-east-1:123456789012:db:t1&TagKeys.member.1=env",
         );
         assert!(rm.is_ok());
-        let xml2 = run(
+        let _xml2 = run(
             "ListTagsForResource",
             "ResourceName=arn:aws:rds:us-east-1:123456789012:db:t1",
         )
