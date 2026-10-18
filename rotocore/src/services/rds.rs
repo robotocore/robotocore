@@ -2313,44 +2313,53 @@ pub fn custom_engine_version_xml(
     cev: &CustomDBEngineVersion,
     include_bucket: bool,
 ) -> String {
-    let bucket_info = if include_bucket {
-        let b = cev
-            .s3_bucket
-            .as_ref()
-            .map(|b| format!("<DatabaseInstallationFilesS3BucketName>{}</DatabaseInstallationFilesS3BucketName>", esc(b)))
-            .unwrap_or_default();
-        b
-    } else {
-        String::new()
-    };
-    format!(
-        "<Engine>{}</Engine>\
-         <MajorEngineVersion>{}</MajorEngineVersion>\
-         <EngineVersion>{}</EngineVersion>\
-         {bucket}\
-         {prefix_kms_desc}\
-         <DBEngineDescription>{}</DBEngineDescription>\
-         <DBEngineVersionArn>{}</DBEngineVersionArn>\
-         <DBEngineVersionDescription>{}</DBEngineVersionDescription>\
-         <CreateTime>{}</CreateTime>\
-         <SupportedEngineModes><member>provisioned</member></SupportedEngineModes>\
-         <Status>{}</Status>\
-         <SupportsParallelQuery>false</SupportsParallelQuery>\
-         <SupportsGlobalDatabases>false</SupportsGlobalDatabases>\
-         {tags}",
-        esc(&cev.engine),
-        esc(&cev.major_engine_version()),
-        esc(&cev.engine_version),
-        cev.db_engine_description(),
-        cev.arn_for(acct, region),
-        esc(&cev.version_description()),
-        esc(&cev.status),
-        bucket = bucket_info,
-        prefix_kms_desc = String::new(),
-        tags = tags_xml(&cev.tags, "TagList"),
-    )
+    let mut out = String::new();
+    out.push_str(&format!("<Engine>{}</Engine>", esc(&cev.engine)));
+    out.push_str(&format!(
+        "<MajorEngineVersion>{}</MajorEngineVersion>",
+        esc(&cev.major_engine_version())
+    ));
+    out.push_str(&format!(
+        "<EngineVersion>{}</EngineVersion>",
+        esc(&cev.engine_version)
+    ));
+    if include_bucket {
+        if let Some(b) = &cev.s3_bucket {
+            out.push_str(&format!(
+                "<DatabaseInstallationFilesS3BucketName>{}</DatabaseInstallationFilesS3BucketName>",
+                esc(b)
+            ));
+        }
+        if let Some(p) = &cev.s3_prefix {
+            out.push_str(&format!(
+                "<DatabaseInstallationFilesS3Prefix>{}</DatabaseInstallationFilesS3Prefix>",
+                esc(p)
+            ));
+        }
+    }
+    out.push_str(&format!(
+        "<DBEngineDescription>{}</DBEngineDescription>",
+        esc(&cev.db_engine_description())
+    ));
+    out.push_str(&format!(
+        "<DBEngineVersionArn>{}</DBEngineVersionArn>",
+        esc(&cev.arn_for(acct, region))
+    ));
+    out.push_str(&format!(
+        "<DBEngineVersionDescription>{}</DBEngineVersionDescription>",
+        esc(&cev.version_description())
+    ));
+    out.push_str(&format!(
+        "<CreateTime>{}</CreateTime>",
+        esc(&iso(&cev.created))
+    ));
+    out.push_str("<SupportedEngineModes><member>provisioned</member></SupportedEngineModes>");
+    out.push_str(&format!("<Status>{}</Status>", esc(&cev.status)));
+    out.push_str("<SupportsParallelQuery>false</SupportsParallelQuery>");
+    out.push_str("<SupportsGlobalDatabases>false</SupportsGlobalDatabases>");
+    out.push_str(&tags_xml(&cev.tags, "TagList"));
+    out
 }
-
 pub fn integration_xml(i: &Integration, include_kms: bool) -> String {
     let kms = i
         .kms_key_id
@@ -4759,7 +4768,15 @@ fn describe_global_clusters_xml(
         .collect();
     let mut list = String::new();
     for gc in &matched {
-        list.push_str(&global_cluster_xml(acct, gc, st));
+        let inner = global_cluster_xml(acct, gc, st);
+        // global_cluster_xml emits <GlobalCluster>...</GlobalCluster>; the
+        // wire item tag is GlobalClusterMember (see service model).
+        let stripped = inner
+            .strip_prefix("<GlobalCluster>")
+            .and_then(|s| s.strip_suffix("</GlobalCluster>"))
+            .unwrap_or(&inner)
+            .to_string();
+        list.push_str(&format!("<GlobalClusterMember>{stripped}</GlobalClusterMember>"));
     }
     Ok(Some(format!("<GlobalClusters>{list}</GlobalClusters>")))
 }
@@ -6495,7 +6512,10 @@ fn start_export_task(
 }
 
 fn export_task_response(t: &ExportTask) -> Result<Body, RdsError> {
-    Ok(Some(export_task_xml(t)))
+    Ok(Some(format!(
+        "<ExportTask>{}</ExportTask>",
+        export_task_xml(t)
+    )))
 }
 
 fn cancel_export_task(
@@ -6530,7 +6550,10 @@ fn describe_export_tasks_xml(
         .collect();
     let mut list = String::new();
     for t in &matched {
-        list.push_str(&export_task_xml(t));
+        list.push_str(&format!(
+            "<ExportTask>{}</ExportTask>",
+            export_task_xml(t)
+        ));
     }
     Ok(Some(format!("<ExportTasks>{list}</ExportTasks>")))
 }
@@ -6745,7 +6768,10 @@ fn describe_db_shard_groups_xml(
     }
     let mut list = String::new();
     for g in &matched {
-        list.push_str(&shard_group_xml(acct, region, g));
+        list.push_str(&format!(
+            "<DBShardGroup>{}</DBShardGroup>",
+            shard_group_xml(acct, region, g)
+        ));
     }
     Ok(Some(format!("<DBShardGroups>{list}</DBShardGroups>")))
 }
@@ -7150,9 +7176,18 @@ fn describe_integrations_xml(
     }
     let mut list = String::new();
     for i in &matched {
-        list.push_str(&integration_xml(i, true));
+        let inner = integration_xml(i, true);
+        let stripped = inner
+            .strip_prefix("<Integration>")
+            .and_then(|s| s.strip_suffix("</Integration>"))
+            .unwrap_or(&inner);
+        list.push_str(&format!("<Integration>{}</Integration>", stripped.to_string()));
     }
-    build_integrations_list(&list)
+    if list.is_empty() {
+        Ok(Some("<Integrations/>".to_string()))
+    } else {
+        Ok(Some(format!("<Integrations>{list}</Integrations>")))
+    }
 }
 
 fn build_integrations_list(list: &str) -> Result<Body, RdsError> {
