@@ -11,6 +11,7 @@ The Rust server talks to this over HTTP on localhost.
 """
 
 import argparse
+import asyncio
 import io
 import json
 import logging
@@ -996,7 +997,9 @@ async def moto_handler(request: Request) -> Response:
         except Exception:  # noqa: BLE001
             cfn_backend = None
         try:
-            pre = _cfn_pre_dispatch(service, params.get("Action", ""), params, cfn_backend)
+            pre = await asyncio.to_thread(
+                _cfn_pre_dispatch, service, params.get("Action", ""), params, cfn_backend
+            )
         except Exception as e:  # noqa: BLE001
             logger.debug("cfn pre-dispatch failed: %s", e)
             pre = None
@@ -1045,7 +1048,11 @@ async def moto_handler(request: Request) -> Response:
     from werkzeug.exceptions import HTTPException as WerkzeugHTTPException
 
     try:
-        result = endpoint(werkzeug_request, full_url, werkzeug_request.headers)
+        # moto handlers can block (large describes, flaky mirrors); keep the
+        # event loop responsive for health checks and other services.
+        result = await asyncio.to_thread(
+            endpoint, werkzeug_request, full_url, dict(werkzeug_request.headers)
+        )
         if not result:
             return _error_response(
                 service,
