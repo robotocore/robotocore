@@ -6,6 +6,7 @@
 
 use crate::{Request, Response};
 
+mod cloudtrail;
 mod managedblockchain;
 mod resourcegroupstaggingapi;
 
@@ -16,6 +17,7 @@ mod resourcegroupstaggingapi;
 
 pub fn dispatch(req: &Request) -> Option<Response> {
     match req.service.as_str() {
+        "cloudtrail" => Some(cloudtrail::dispatch(req)),
         "managedblockchain" => Some(managedblockchain::dispatch(req)),
         "resourcegroupstaggingapi" => Some(resourcegroupstaggingapi::dispatch(req)),
         _ => None,

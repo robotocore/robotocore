@@ -1725,6 +1725,7 @@ dependencies = [
  "md5",
  "once_cell",
  "parking_lot",
+ "s3",
  "serde",
  "serde_json",
  "sha2",

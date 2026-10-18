@@ -16,3 +16,6 @@ sha2 = "0.10"
 hex = "0.4"
 parking_lot = "0.12"
 once_cell = "1.19"
+# Cross-service reads (CreateTrail's S3-bucket existence check mirrors moto's
+# `s3_backends[...].get_bucket` probe via the s3 crate's state bridge).
+s3 = { path = "../crates/s3" }
