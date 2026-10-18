@@ -351,14 +351,18 @@ fn test_get_queue_url() {
 fn test_list_queues() {
     let handler = DefaultSqsHandler::new();
 
-    // Create multiple queues
+    // Queues live in a process-global store shared with other services
+    // (S3 notifications), so assert membership rather than exact counts.
     let create_req1 = make_request("CreateQueue", json!({"QueueName": "queue-a"}));
-    handler.handle(create_req1);
+    let create_resp1 = handler.handle(create_req1);
+    let created: Value =
+        serde_json::from_str(&create_resp1.body).expect("Invalid JSON");
+    let expected_url = created["QueueUrl"].as_str().expect("Missing QueueUrl");
+    handler.handle(make_request(
+        "CreateQueue",
+        json!({"QueueName": "queue-b"}),
+    ));
 
-    let create_req2 = make_request("CreateQueue", json!({"QueueName": "queue-b"}));
-    handler.handle(create_req2);
-
-    // List queues
     let list_req = make_request("ListQueues", json!({}));
     let list_resp = handler.handle(list_req);
     assert_eq!(list_resp.status, 200);
@@ -367,7 +371,9 @@ fn test_list_queues() {
     let urls = list_data["QueueUrls"]
         .as_array()
         .expect("QueueUrls should be array");
-    assert_eq!(urls.len(), 2);
+    let url_strings: Vec<&str> = urls.iter().filter_map(|u| u.as_str()).collect();
+    assert!(url_strings.contains(&expected_url));
+    assert!(url_strings.len() >= 2);
 }
 
 #[test]

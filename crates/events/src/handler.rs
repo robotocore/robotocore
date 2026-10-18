@@ -1,5 +1,6 @@
 //! EventBridge operation handler.
 
+use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -8,18 +9,77 @@ use std::sync::Arc;
 use crate::models::{EventsState, Rule};
 use crate::protocol::{AwsRequest, AwsResponse};
 
-pub struct EventsHandler {
-    state: RwLock<HashMap<(u64, String), EventsState>>,
+/// Process-global EventBridge state registry, shared by every handler
+/// instance so cross-service publishers (S3) can reach the same rules.
+static GLOBAL_STATE: Lazy<RwLock<HashMap<(u64, String), EventsState>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
+
+fn global_state(account: u64, region: &str) -> EventsState {
+    let mut states = GLOBAL_STATE.write();
+    let key = (account, region.to_string());
+    states
+        .entry(key)
+        .or_default()
+        .clone()
 }
+
+/// Routing target ARN supported for delivery.
+const SQS_ARN_PREFIX: &str = "arn:aws:sqs:";
+
+/// Route a pre-built event through EventBridge rule matching and deliver it
+/// to matching rules' SQS targets. Called by S3 and other event producers.
+pub fn publish_event_to_bus(event: &Value, account: u64, region: &str) {
+    let state = {
+        let mut states = GLOBAL_STATE.write();
+        let key = (account, region.to_string());
+        states.entry(key).or_default().clone()
+    };
+    let rules = state.rules.read();
+    for rule in rules.values() {
+        if *rule.state.read() != "ENABLED" {
+            continue;
+        }
+        let pattern: Value = serde_json::from_str(&rule.event_pattern).unwrap_or(json!({}));
+        if match_pattern(&pattern, event) {
+            for target in rule.targets.read().iter() {
+                let arn = target
+                    .get("Arn")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                if arn.starts_with(SQS_ARN_PREFIX) {
+                    sqs::deliver_to_queue(&arn, &serde_json::to_string(event).unwrap_or_default());
+                }
+            }
+        }
+    }
+}
+
+/// Match an event against an EventBridge pattern.
+///
+/// Pattern fields: objects require every key present in the event and
+/// matching; arrays act as "any of" filters; other values compare exactly.
+fn match_pattern(pattern: &Value, event: &Value) -> bool {
+    match (pattern, event) {
+        (Value::Object(p), Value::Object(e)) => p.iter().all(|(k, pv)| {
+            e.get(k)
+                .map(|ev| match_pattern(pv, ev))
+                .unwrap_or(false)
+        }),
+        (Value::Array(p), _) => p.iter().any(|pv| match_pattern(pv, event)),
+        _ => pattern == event,
+    }
+}
+
+pub struct EventsHandler {}
 
 impl EventsHandler {
     pub fn new() -> Self {
-        Self { state: RwLock::new(HashMap::new()) }
+        Self {}
     }
 
     fn get_state(&self, account: u64, region: &str) -> EventsState {
-        let mut states = self.state.write();
-        states.entry((account, region.to_string())).or_insert_with(EventsState::new).clone()
+        global_state(account, region)
     }
 
     fn rule_value(r: &Rule) -> Value {
@@ -79,11 +139,7 @@ impl EventsHandler {
             "ListEventBuses" => self.list_event_buses(&req),
             "ActivateEventSource" => self.json_stub(&req, "{}"),
             "DeactivateEventSource" => self.json_stub(&req, "{}"),
-            "CreateConnection" => self.json_stub(&req, "ConnectionArn"),
-            "DeleteConnection" => self.json_stub(&req, "{}"),
-            "UpdateConnection" => self.json_stub(&req, "ConnectionArn"),
             "TestEventConnection" => self.json_stub(&req, "{}"),
-            "ListConnections" => self.json_stub_list(&req, "ConnectionList"),
             "CreateEndpoint" => self.json_stub(&req, "EndpointArn"),
             "DeleteEndpoint" => self.json_stub(&req, "{}"),
             "UpdateEndpoint" => self.json_stub(&req, "EndpointArn"),
@@ -105,9 +161,6 @@ impl EventsHandler {
     "TagResource" => self.tag_resource(&req),
     "UntagResource" => self.untag_resource(&req),
     "ListTagsForResource" => self.list_tags_for_resource(&req),
-    "DeleteRule" => self.json_stub(&req, "{}"),
-    "PutTargets" => self.json_stub(&req, "{}"),
-    "RemoveTargets" => self.json_stub(&req, "{}"),
 other => AwsResponse::error(400, "ValidationException",
                 &format!("The operation {} is not implemented", other)),
         }
@@ -221,12 +274,8 @@ other => AwsResponse::error(400, "ValidationException",
             .and_then(|v| v.as_array())
             .cloned()
             .unwrap_or_default();
-        let mut failed: Vec<Value> = Vec::new();
-        for _ in &entries {
-            // All events succeed
-        }
         AwsResponse::json(200, json!({
-            "FailedEntryCount": failed.len(),
+            "FailedEntryCount": 0,
             "Entries": entries.iter().map(|_| json!({
                 "EventId": uuid::Uuid::new_v4().to_string()
             })).collect::<Vec<_>>()

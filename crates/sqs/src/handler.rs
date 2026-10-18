@@ -5,6 +5,7 @@ use crate::models::{Queue, SqsMessage, SqsStore};
 use crate::protocol::{AwsRequest, AwsResponse, SqsHandler};
 use chrono::Utc;
 use md5;
+use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -13,26 +14,75 @@ use uuid::Uuid;
 
 type StoreMap = Arc<RwLock<HashMap<(u64, String), Arc<SqsStore>>>>;
 
+/// Process-global SQS store registry, shared by every handler instance.
+///
+/// Services such as S3 enqueue notification messages directly into queues
+/// created through the central SQS handler, so the registry must be global.
+static GLOBAL_STORES: Lazy<StoreMap> =
+    Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
+
+/// Get (or create) the SQS store for an account+region, shared process-wide.
+pub fn global_store(account: u64, region: &str) -> Arc<SqsStore> {
+    let mut stores = GLOBAL_STORES.write();
+    let key = (account, region.to_string());
+    stores
+        .entry(key)
+        .or_insert_with(|| Arc::new(SqsStore::new()))
+        .clone()
+}
+
+/// Deliver a raw message body into the queue identified by an SQS ARN.
+///
+/// Used by other services (S3 notifications, EventBridge targets).
+/// Returns false when the ARN is malformed or the queue does not exist.
+pub fn deliver_to_queue(queue_arn: &str, body: &str) -> bool {
+    let parts: Vec<&str> = queue_arn.split(':').collect();
+    if parts.len() < 6 {
+        return false;
+    }
+    let queue_region = parts[3].to_string();
+    let queue_account = parts[4].parse::<u64>().unwrap_or_default();
+    let queue_name = parts[5];
+    if queue_account == 0 {
+        return false;
+    }
+    let store = global_store(queue_account, &queue_region);
+    let queue = match store.get_queue(queue_name) {
+        Some(q) => q,
+        None => return false,
+    };
+    let message_id = Uuid::new_v4().to_string();
+    let message = SqsMessage {
+        message_id: message_id.clone(),
+        body: body.to_string(),
+        md5_of_body: format!("{:x}", md5::compute(body)),
+        receipt_handle: String::new(),
+        sent_timestamp: (Utc::now().timestamp_millis()) as u64,
+        visibility_until: None,
+        receive_count: 0,
+        first_receive_timestamp: None,
+        attributes: HashMap::new(),
+        message_attributes: HashMap::new(),
+    };
+    queue.write().send_message(message);
+    true
+}
+
 /// The actual SQS handler implementation
 pub struct DefaultSqsHandler {
-    // Store per (account, region)
-    stores: StoreMap,
+    // Stores are process-global (see `global_store`) so cross-service
+    // callers such as S3 notifications can reach the same queues.
+    #[allow(dead_code)]
+    marker: (),
 }
 
 impl DefaultSqsHandler {
     pub fn new() -> Self {
-        Self {
-            stores: Arc::new(RwLock::new(HashMap::new())),
-        }
+        Self { marker: () }
     }
 
     fn get_store(&self, account: u64, region: &str) -> Arc<SqsStore> {
-        let mut stores = self.stores.write();
-        let key = (account, region.to_string());
-        stores
-            .entry(key)
-            .or_insert_with(|| Arc::new(SqsStore::new()))
-            .clone()
+        global_store(account, region)
     }
 
     fn validate_queue_name(name: &str) -> Result<(), SqsError> {
@@ -277,11 +327,12 @@ impl DefaultSqsHandler {
             let id = entry.get("Id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
             let receipt_handle = entry.get("ReceiptHandle")
                 .and_then(|v| v.as_str()).unwrap_or_default().to_string();
-            let visibility = entry.get("VisibilityTimeout")
+            let visibility = entry
+                .get("VisibilityTimeout")
                 .and_then(|v| v.as_u64())
-                .unwrap_or(30) as u64;
+                .unwrap_or(30) as u32;
             let mut q = queue_arc.write();
-            if q.change_message_visibility(&receipt_handle, visibility as u32) {
+            if q.change_message_visibility(&receipt_handle, visibility) {
                 successful.push(json!({ "Id": id }));
             } else {
                 failed.push(json!({
@@ -833,32 +884,6 @@ impl DefaultSqsHandler {
             body,
         })
     }
-    fn json_stub_batch(&self, params: &Value) -> AwsResponse {
-        let entries: Vec<Value> = params.get("Entries")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default();
-        let successful: Vec<Value> = entries.iter()
-            .map(|e| {
-                let id = e.get("Id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                json!({ "Id": id })
-            })
-            .collect();
-        let body = json!({ "Successful": successful, "Failed": Vec::<Value>::new() }).to_string();
-        AwsResponse {
-            status: 200,
-            headers: vec![("Content-Type".to_string(), "application/x-amz-json-1.0".to_string())],
-            body,
-        }
-    }
-
-    fn json_success(&self) -> AwsResponse {
-        AwsResponse {
-            status: 200,
-            headers: vec![("Content-Type".to_string(), "application/x-amz-json-1.0".to_string())],
-            body: "{}".to_string(),
-        }
-    }
 
     fn handle_send_message_batch(
         &self,
@@ -962,10 +987,9 @@ impl DefaultSqsHandler {
             }
         };
         let store = self.get_store(account, region);
-        if let Some(q) = store.get_queue(queue_url) {
-            let mut queue = q.write();
+        if let Some(queue) = store.get_queue(queue_url) {
             for (k, v) in tags {
-                queue.tags.write().insert(k, v);
+                queue.write().tags.write().insert(k, v);
             }
         }
         let body = json!({}).to_string();
@@ -983,10 +1007,9 @@ impl DefaultSqsHandler {
             .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
             .unwrap_or_default();
         let store = self.get_store(account, region);
-        if let Some(q) = store.get_queue(queue_url) {
-            let mut queue = q.write();
+        if let Some(queue) = store.get_queue(queue_url) {
             for k in &tag_keys {
-                queue.tags.write().remove(k);
+                queue.write().tags.write().remove(k);
             }
         }
         let body = json!({}).to_string();

@@ -7,7 +7,7 @@ pub mod handler;
 pub mod models;
 pub mod protocol;
 
-pub use handler::DefaultSqsHandler;
+pub use handler::{deliver_to_queue, DefaultSqsHandler};
 pub use protocol::{AwsRequest, AwsResponse, SqsHandler};
 
 #[cfg(test)]
