@@ -21,6 +21,7 @@ pub mod athena;
 pub mod backup;
 pub mod batch;
 pub mod bedrock;
+pub mod bedrock_runtime;
 pub mod budgets;
 pub mod ce;
 pub mod cloudformation;
@@ -122,7 +123,11 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "athena" => Some(athena::dispatch(req)),
         "backup" => backup::dispatch(req),
         "batch" => batch::dispatch(req),
-        "bedrock" => bedrock::dispatch(req),
+        // bedrock-runtime traffic is signed for the `bedrock` credential
+        // scope (botocore signingName="bedrock"), so its requestUris answer
+        // here when the path is a runtime path — the tables are disjoint.
+        "bedrock" => bedrock_runtime::dispatch(req).or_else(|| bedrock::dispatch(req)),
+        "bedrock-runtime" => bedrock_runtime::dispatch(req),
         "budgets" => budgets::dispatch(req),
         "ce" => ce::dispatch(req),
         "cloudformation" => Some(self::cloudformation::dispatch(req)),
@@ -237,6 +242,7 @@ pub fn handles_service(service: &str) -> bool {
             | "backup"
             | "batch"
             | "bedrock"
+            | "bedrock-runtime"
             | "budgets"
             | "ce"
             | "cloudformation"
