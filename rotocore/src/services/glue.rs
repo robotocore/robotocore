@@ -12,7 +12,7 @@
 //! errors are `{"__type": code, "message": msg}` with HTTP 400. Operations
 //! rotocore does not serve answer 501 like the moto sidecar did.
 
-use crate::proto::{now_unix, parse_json_body};
+use crate::proto::{now_iso, now_unix, parse_json_body};
 use crate::store;
 use crate::{Request, Response};
 use once_cell::sync::Lazy;
@@ -146,6 +146,7 @@ struct SessionRec {
 #[derive(Default)]
 struct RegistryRec {
     name: String,
+    arn: String,
     description: Value,
     tags: Value,
     created: f64,
@@ -156,6 +157,8 @@ struct RegistryRec {
 #[derive(Clone, Default)]
 struct SchemaRec {
     registry_name: String,
+    registry_arn: String,
+    arn: String,
     schema_name: String,
     data_format: String,
     compatibility: String,
@@ -306,6 +309,9 @@ struct GlueState {
     mv_refresh_task_runs: BTreeMap<String, Value>,
     /// Resource ARN -> tag map (moto's TaggingService).
     tags: BTreeMap<String, BTreeMap<String, String>>,
+    /// The (account, region) scope this partition belongs to.
+    scope_region: String,
+    scope_account: u64,
 }
 
 fn state() -> store::Slot<GlueState> {
@@ -364,6 +370,11 @@ fn invalid_input(message: &str) -> Response {
     err(400, "InvalidInputException", message)
 }
 
+/// GSR InvalidInputException has the same code, no-op alias for clarity.
+fn gsr_invalid_input(message: &str) -> Response {
+    invalid_input(message)
+}
+
 /// Deny-by-default answer for operations rotocore does not serve.
 fn unimplemented(operation: &str) -> Response {
     crate::proto::json_error(
@@ -399,6 +410,10 @@ fn hex_n(n: usize) -> String {
 
 fn uuid4() -> String {
     uuid::Uuid::new_v4().to_string()
+}
+
+fn make_arn(region: &str, account: u64, kind: &str, name: &str) -> String {
+    format!("arn:aws:glue:{region}:{account}:{kind}/{name}")
 }
 
 fn str_field(v: &Value, key: &str) -> String {
@@ -482,6 +497,8 @@ pub fn dispatch(req: &Request) -> Option<Response> {
     let slot = state();
     let mut st = slot.write();
     let g = st.entry((req.account, req.region.clone())).or_default();
+    g.scope_region = req.region.clone();
+    g.scope_account = req.account;
     Some(handle(req, g, req.operation.as_str(), &p))
 }
 
@@ -610,6 +627,27 @@ fn handle(req: &Request, g: &mut GlueState, op: &str, p: &Value) -> Response {
         "PutWorkflowRunProperties" => try_resp!(put_workflow_run_properties(g, p)),
         "GetWorkflowRunProperties" => try_resp!(get_workflow_run_properties(g, p)),
         "ResumeWorkflowRun" => try_resp!(resume_workflow_run(g, p)),
+        // --- Schema registry ------------------------------------------------
+        "CreateRegistry" => try_resp!(create_registry(req, g, p)),
+        "DeleteRegistry" => try_resp!(delete_registry(g, p)),
+        "GetRegistry" => try_resp!(get_registry(g, p)),
+        "ListRegistries" => try_resp!(list_registries(g)),
+        "UpdateRegistry" => try_resp!(update_registry(g, p)),
+        "CreateSchema" => try_resp!(create_schema(g, p)),
+        "GetSchema" => try_resp!(get_schema(g, p)),
+        "DeleteSchema" => try_resp!(delete_schema(g, p)),
+        "UpdateSchema" => try_resp!(update_schema(g, p)),
+        "ListSchemas" => try_resp!(list_schemas(g, p)),
+        "ListSchemaVersions" => try_resp!(list_schema_versions(g, p)),
+        "RegisterSchemaVersion" => try_resp!(register_schema_version(g, p)),
+        "GetSchemaVersion" => try_resp!(get_schema_version(g, p)),
+        "GetSchemaByDefinition" => try_resp!(get_schema_by_definition(g, p)),
+        "CheckSchemaVersionValidity" => try_resp!(check_schema_version_validity(p)),
+        "DeleteSchemaVersions" => try_resp!(delete_schema_versions(p)),
+        "GetSchemaVersionsDiff" => try_resp!(get_schema_versions_diff(g, p)),
+        "PutSchemaVersionMetadata" => try_resp!(put_schema_version_metadata(g, p)),
+        "QuerySchemaVersionMetadata" => try_resp!(query_schema_version_metadata(g, p)),
+        "RemoveSchemaVersionMetadata" => try_resp!(remove_schema_version_metadata(g, p)),
         // --- Everything else: deny by default (moto 501s too) ----------------
         _ => unimplemented(op),
     }
@@ -3626,5 +3664,1144 @@ mod family2_tests {
             .status
                 >= 300
         );
+    }
+}
+// ---------------------------------------------------------------------------
+// Schema registry (moto's GSR family). ARNs are copied into the records so
+// serializers don't need the state; scope strings are read into locals
+// before mutable borrows.
+// ---------------------------------------------------------------------------
+
+const DEFAULT_REGISTRY: &str = "default-registry";
+
+/// moto's `validate_registry_id`: RegistryId absent → default-registry.
+fn registry_name_of(p: &Value) -> String {
+    let id = &p["RegistryId"];
+    if let Some(name) = id["RegistryName"].as_str() {
+        if !name.is_empty() {
+            return name.to_string();
+        }
+    }
+    if let Some(arn) = id["RegistryArn"].as_str() {
+        if !arn.is_empty() {
+            return arn
+                .rsplit('/')
+                .next()
+                .unwrap_or(DEFAULT_REGISTRY)
+                .to_string();
+        }
+    }
+    DEFAULT_REGISTRY.to_string()
+}
+
+fn make_schema_arn(region: &str, account: u64, registry: &str, schema: &str) -> String {
+    make_arn(region, account, "schema", &format!("{registry}/{schema}"))
+}
+
+fn find_registry_mut<'a>(
+    g: &'a mut GlueState,
+    name: &str,
+) -> Result<&'a mut RegistryRec, Response> {
+    g.registries
+        .get_mut(name)
+        .ok_or_else(|| not_found(&format!("Registry is not found. RegistryName: {name}")))
+}
+
+fn registry_dict(rec: &RegistryRec) -> Value {
+    json!({
+        "RegistryArn": rec.arn,
+        "RegistryName": rec.name,
+        "Description": rec.description,
+        "Tags": rec.tags.clone(),
+    })
+}
+
+fn create_registry(req: &Request, g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "RegistryName");
+    let arn = make_arn(&g.scope_region, g.scope_account, "registry", &name);
+    if g.registries.contains_key(&name) {
+        return Err(err(
+            400,
+            "AlreadyExistsException",
+            &format!("Registry already exists. RegistryName: {name}"),
+        ));
+    }
+    tag_resource(g, &arn, p.get("Tags"));
+    g.registries.insert(
+        name.clone(),
+        RegistryRec {
+            name: name.clone(),
+            arn,
+            description: p["Description"].clone(),
+            tags: p["Tags"].clone(),
+            created: now_unix(),
+            updated: now_unix(),
+            ..Default::default()
+        },
+    );
+    Ok(ok(&json!({
+        "RegistryArn": make_arn(&g.scope_region, g.scope_account, "registry", &name),
+        "RegistryName": name,
+        "Description": p["Description"],
+    })))
+}
+
+fn delete_registry(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = registry_name_of(p);
+    let dict = registry_dict(find_registry_mut(g, &name)?);
+    g.registries.remove(&name);
+    Ok(ok(&dict))
+}
+
+fn get_registry(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = registry_name_of(p);
+    Ok(ok(&registry_dict(find_registry_mut(g, &name)?)))
+}
+
+fn list_registries(g: &mut GlueState) -> Result<Response, Response> {
+    let list: Vec<Value> = g.registries.values().map(registry_dict).collect();
+    Ok(ok(&json!({ "Registries": list })))
+}
+
+fn update_registry(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = registry_name_of(p);
+    let rec = find_registry_mut(g, &name)?;
+    if let Some(desc) = p.get("Description") {
+        if !desc.is_null() {
+            rec.description = desc.clone();
+        }
+    }
+    rec.updated = now_unix();
+    Ok(ok(&json!({
+        "RegistryArn": rec.arn,
+        "RegistryName": rec.name,
+    })))
+}
+
+fn schema_dict(rec: &SchemaRec) -> Value {
+    json!({
+        "RegistryArn": rec.registry_arn,
+        "RegistryName": rec.registry_name,
+        "SchemaName": rec.schema_name,
+        "SchemaArn": rec.arn,
+        "DataFormat": rec.data_format,
+        "Compatibility": rec.compatibility,
+        "SchemaCheckpoint": 1,
+        "LatestSchemaVersion": rec.latest_schema_version,
+        "NextSchemaVersion": rec.next_schema_version,
+        "SchemaStatus": "AVAILABLE",
+        "SchemaVersionId": rec.first_version_id,
+        "SchemaVersionStatus": "AVAILABLE",
+        "Description": rec.description,
+    })
+}
+
+fn schema_version_list_dict(v: &SchemaVersionRec) -> Value {
+    json!({
+        "SchemaVersionId": v.id,
+        "VersionNumber": v.version_number,
+        "Status": "AVAILABLE",
+    })
+}
+
+fn schema_version_get_dict(v: &SchemaVersionRec, arn: &str, data_format: &str) -> Value {
+    json!({
+        "SchemaVersionId": v.id,
+        "SchemaDefinition": v.definition,
+        "SchemaArn": arn,
+        "VersionNumber": v.version_number,
+        "Status": "AVAILABLE",
+        "CreatedTime": now_iso(),
+        "DataFormat": data_format,
+    })
+}
+
+fn schema_not_found_msg(registry: &str, schema: &str) -> String {
+    format!("Schema is not found. RegistryName: {registry}, SchemaName: {schema}, SchemaArn: null")
+}
+
+/// moto's `validate_schema_id`: name pair or ARN; missing → SchemaNotFound.
+fn resolve_schema_id(g: &GlueState, p: &Value) -> Result<(String, String), Response> {
+    let id = &p["SchemaId"];
+    if let Some(arn) = id["SchemaArn"].as_str() {
+        if !arn.is_empty() {
+            let mut parts = arn.rsplit('/');
+            let schema_name = parts.next().unwrap_or_default().to_string();
+            let registry_name = parts.next().unwrap_or_default().to_string();
+            return if g
+                .registries
+                .get(&registry_name)
+                .map_or(false, |r| r.schemas.contains_key(&schema_name))
+            {
+                Ok((registry_name, schema_name))
+            } else {
+                Err(not_found(&format!(
+                    "Schema is not found. RegistryName: {registry_name}, SchemaName: {schema_name}, SchemaArn: {arn}"
+                )))
+            };
+        }
+    }
+    let registry_name = id["RegistryName"].as_str().unwrap_or_default();
+    let schema_name = id["SchemaName"].as_str().unwrap_or_default();
+    if !registry_name.is_empty() && !schema_name.is_empty() {
+        return if g
+            .registries
+            .get(registry_name)
+            .map_or(false, |r| r.schemas.contains_key(schema_name))
+        {
+            Ok((registry_name.to_string(), schema_name.to_string()))
+        } else {
+            Err(not_found(&schema_not_found_msg(registry_name, schema_name)))
+        };
+    }
+    Err(gsr_invalid_input(
+        "At least one of (registryName and schemaName) or schemaArn has to be provided.",
+    ))
+}
+
+fn is_uuid_shape(v: &str) -> bool {
+    let parts: Vec<&str> = v.split('-').collect();
+    parts.len() == 5
+        && parts[0].len() == 8
+        && parts[1].len() == 4
+        && parts[2].len() == 4
+        && parts[3].len() == 4
+        && parts[4].len() == 12
+        && v.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
+}
+
+fn valid_version_input(p: &Value, has_schema_id: bool) -> bool {
+    let has_latest = !p["SchemaVersionNumber"]["LatestVersion"].is_null();
+    let has_number = !p["SchemaVersionNumber"]["VersionNumber"].is_null();
+    has_schema_id && (has_latest || has_number)
+}
+
+fn create_schema(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let registry_name = registry_name_of(p);
+    let schema_name = str_field(p, "SchemaName");
+    let data_format = str_field(p, "DataFormat");
+    let compatibility = str_field(p, "Compatibility");
+    let definition_opt = p["SchemaDefinition"].as_str();
+    let definition = definition_opt.unwrap_or_default();
+    if !["AVRO", "JSON", "PROTOBUF"].contains(&data_format.as_str()) {
+        return Err(invalid_input("Data format is not valid."));
+    }
+    if ![
+        "NONE",
+        "DISABLED",
+        "BACKWARD",
+        "BACKWARD_ALL",
+        "FORWARD",
+        "FORWARD_ALL",
+        "FULL",
+        "FULL_ALL",
+    ]
+    .contains(&compatibility.as_str())
+    {
+        return Err(invalid_input("Compatibility is not valid."));
+    }
+    if (data_format == "AVRO" || data_format == "JSON")
+        && definition_opt
+            .map(|d| !d.is_empty() && serde_json::from_str::<Value>(d).is_err())
+            .unwrap_or(false)
+    {
+        return Err(gsr_invalid_input(&format!(
+            "Schema definition of {data_format} data format is invalid: Expecting property name enclosed in double quotes"
+        )));
+    }
+    let (region, account) = (g.scope_region.clone(), g.scope_account);
+    let reg_arn = make_arn(&region, account, "registry", &registry_name);
+    let schema_arn = make_arn(
+        &region,
+        account,
+        "schema",
+        &format!("{registry_name}/{schema_name}"),
+    );
+    if registry_name == DEFAULT_REGISTRY && !g.registries.contains_key(&registry_name) {
+        g.registries.insert(
+            registry_name.clone(),
+            RegistryRec {
+                name: registry_name.clone(),
+                arn: reg_arn.clone(),
+                created: now_unix(),
+                updated: now_unix(),
+                ..Default::default()
+            },
+        );
+    }
+    tag_resource(g, &schema_arn, p.get("Tags"));
+    let registry = g.registries.get_mut(&registry_name).ok_or_else(|| {
+        not_found(&format!(
+            "Registry is not found. RegistryName: {registry_name}"
+        ))
+    })?;
+    if registry.schemas.contains_key(&schema_name) {
+        return Err(err(
+            400,
+            "AlreadyExistsException",
+            &format!("Schema already exists. SchemaName: {schema_name}"),
+        ));
+    }
+    let version = SchemaVersionRec {
+        id: uuid4(),
+        definition: definition.to_string(),
+        version_number: 1,
+        created: now_unix(),
+        ..Default::default()
+    };
+    let first_version_id = version.id.clone();
+    let rec = SchemaRec {
+        registry_name: registry_name.clone(),
+        registry_arn: reg_arn,
+        arn: schema_arn,
+        schema_name: schema_name.clone(),
+        data_format,
+        compatibility,
+        description: p["Description"].clone(),
+        latest_schema_version: 1,
+        next_schema_version: 2,
+        first_version_id,
+        versions: vec![version],
+    };
+    let out = schema_dict(&rec);
+    registry.schemas.insert(schema_name, rec);
+    Ok(ok(&out))
+}
+
+fn get_schema(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let (registry_name, schema_name) = resolve_schema_id(g, p)?;
+    let registry = find_registry_mut(g, &registry_name)?;
+    let rec = registry
+        .schemas
+        .get(&schema_name)
+        .ok_or_else(|| not_found(&schema_not_found_msg(&registry_name, &schema_name)))?;
+    let out = schema_dict(rec);
+    Ok(ok(&out))
+}
+
+fn delete_schema(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let (registry_name, schema_name) = resolve_schema_id(g, p)?;
+    let registry = find_registry_mut(g, &registry_name)?;
+    let rec = registry
+        .schemas
+        .get(&schema_name)
+        .ok_or_else(|| not_found(&schema_not_found_msg(&registry_name, &schema_name)))?;
+    let out = json!({
+        "SchemaName": rec.schema_name,
+        "SchemaArn": rec.arn,
+        "Status": "DELETING",
+    });
+    registry.schemas.remove(&schema_name);
+    Ok(ok(&out))
+}
+
+fn update_schema(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let (registry_name, schema_name) = resolve_schema_id(g, p)?;
+    let registry = find_registry_mut(g, &registry_name)?;
+    let rec = registry
+        .schemas
+        .get_mut(&schema_name)
+        .ok_or_else(|| not_found(&schema_not_found_msg(&registry_name, &schema_name)))?;
+    if let Some(c) = p.get("Compatibility") {
+        if !c.is_null() {
+            rec.compatibility = c.as_str().unwrap_or_default().to_string();
+        }
+    }
+    if let Some(d) = p.get("Description") {
+        if !d.is_null() {
+            rec.description = d.clone();
+        }
+    }
+    let out = schema_dict(rec);
+    Ok(ok(&out))
+}
+
+fn list_schemas(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let mut list = Vec::new();
+    if p["RegistryId"].is_null() {
+        for registry in g.registries.values() {
+            list.extend(registry.schemas.values().map(schema_dict));
+        }
+    } else {
+        let name = registry_name_of(p);
+        let registry = find_registry_mut(g, &name)?;
+        list.extend(registry.schemas.values().map(schema_dict));
+    }
+    Ok(ok(&json!({ "Schemas": list })))
+}
+
+fn list_schema_versions(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let (registry_name, schema_name) = resolve_schema_id(g, p)?;
+    let registry = find_registry_mut(g, &registry_name)?;
+    let rec = registry
+        .schemas
+        .get(&schema_name)
+        .ok_or_else(|| not_found(&schema_not_found_msg(&registry_name, &schema_name)))?;
+    let list: Vec<Value> = rec.versions.iter().map(schema_version_list_dict).collect();
+    Ok(ok(&json!({ "Schemas": list })))
+}
+
+fn register_schema_version(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let (registry_name, schema_name) = resolve_schema_id(g, p)?;
+    let definition = p["SchemaDefinition"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    let registry = find_registry_mut(g, &registry_name)?;
+    let rec = registry
+        .schemas
+        .get_mut(&schema_name)
+        .ok_or_else(|| not_found(&schema_not_found_msg(&registry_name, &schema_name)))?;
+    if rec.compatibility == "DISABLED" {
+        return Err(gsr_invalid_input(&format!(
+            "Compatibility DISABLED does not allow versioning. SchemaId: SchemaId(schemaArn=null, schemaName={schema_name}, registryName={registry_name})"
+        )));
+    }
+    for v in rec.versions.iter() {
+        let same = if rec.data_format == "AVRO" || rec.data_format == "JSON" {
+            match (
+                serde_json::from_str::<Value>(&definition),
+                serde_json::from_str::<Value>(&v.definition),
+            ) {
+                (Ok(a), Ok(b)) => a == b,
+                _ => definition == v.definition,
+            }
+        } else {
+            definition == v.definition
+        };
+        if same {
+            return Ok(ok(&json!({
+                "SchemaVersionId": v.id,
+                "VersionNumber": v.version_number,
+                "Status": "AVAILABLE",
+            })));
+        }
+    }
+    let version_number = rec.next_schema_version;
+    rec.next_schema_version += 1;
+    rec.latest_schema_version = version_number;
+    let version = SchemaVersionRec {
+        id: uuid4(),
+        definition,
+        version_number,
+        created: now_unix(),
+        ..Default::default()
+    };
+    let out = json!({
+        "SchemaVersionId": version.id,
+        "VersionNumber": version.version_number,
+        "Status": "AVAILABLE",
+    });
+    rec.versions.push(version);
+    Ok(ok(&out))
+}
+
+/// Owned view of a resolved schema version so handlers don't hold borrows.
+struct ResolvedVersion {
+    registry_name: String,
+    schema_name: String,
+    schema_arn: String,
+    data_format: String,
+    index: usize,
+}
+
+fn resolve_schema_version(g: &mut GlueState, p: &Value) -> Result<ResolvedVersion, Response> {
+    resolve_schema_version_vn(g, "SchemaVersionNumber", p)
+}
+
+/// `number_member` varies per API (GetSchemaVersionsDiff uses
+/// First/SecondSchemaVersionNumber).
+fn resolve_schema_version_vn(
+    g: &mut GlueState,
+    number_member: &str,
+    p: &Value,
+) -> Result<ResolvedVersion, Response> {
+    let region = g.scope_region.clone();
+    let account = g.scope_account;
+    // Direct SchemaVersionId.
+    if let Some(vid) = p["SchemaVersionId"].as_str() {
+        if !vid.is_empty() {
+            if !is_uuid_shape(vid) {
+                return Err(gsr_invalid_input(
+                    "The parameter value contains one or more characters that are not valid. Parameter Name: SchemaVersionId",
+                ));
+            }
+            if !p["SchemaId"].is_null() || !p["SchemaVersionNumber"].is_null() {
+                return Err(gsr_invalid_input(
+                    "No other input parameters can be specified when fetching by SchemaVersionId.",
+                ));
+            }
+            for registry in g.registries.values() {
+                for rec in registry.schemas.values() {
+                    if let Some(idx) = rec.versions.iter().position(|v| v.id == vid) {
+                        return Ok(ResolvedVersion {
+                            registry_name: registry.name.clone(),
+                            schema_name: rec.schema_name.clone(),
+                            schema_arn: rec.arn.clone(),
+                            data_format: rec.data_format.clone(),
+                            index: idx,
+                        });
+                    }
+                }
+            }
+            return Err(not_found(&format!(
+                "Schema version is not found. SchemaVersionId: {vid}"
+            )));
+        }
+    }
+    let (registry_name, schema_name) = resolve_schema_id(g, p)?;
+    if p[number_member].is_null() && p["SchemaVersionNumber"].is_null() {
+        return Err(gsr_invalid_input(
+            "One of version number (or) latest version is required.",
+        ));
+    }
+    let reg = g.registries.get(&registry_name).ok_or_else(|| {
+        not_found(&format!(
+            "Registry is not found. RegistryName: {registry_name}"
+        ))
+    })?;
+    let rec = reg
+        .schemas
+        .get(&schema_name)
+        .ok_or_else(|| not_found(&schema_not_found_msg(&registry_name, &schema_name)))?;
+    let want_latest = p[number_member]["LatestVersion"].as_bool().unwrap_or(false);
+    let want_number = p[number_member]["VersionNumber"].as_u64();
+    let idx = if want_latest {
+        rec.versions.len().saturating_sub(1)
+    } else {
+        let n = want_number.unwrap_or(0);
+        match rec.versions.iter().position(|v| v.version_number == n) {
+            Some(i) => i,
+            None => {
+                return Err(not_found(&format!(
+                    "Schema version is not found. RegistryName: {registry_name}, SchemaName: {schema_name}, SchemaArn: null, VersionNumber: {n}, isLatestVersion: {want_latest}"
+                )))
+            }
+        }
+    };
+    Ok(ResolvedVersion {
+        schema_arn: make_schema_arn(&region, account, &registry_name, &schema_name),
+        registry_name,
+        schema_name,
+        data_format: rec.data_format.clone(),
+        index: idx,
+    })
+}
+
+fn schema_version_of<'a>(
+    g: &'a mut GlueState,
+    v: &ResolvedVersion,
+) -> Result<&'a SchemaVersionRec, Response> {
+    let registry = find_registry_mut(g, &v.registry_name)?;
+    let rec = registry
+        .schemas
+        .get(&v.schema_name)
+        .ok_or_else(|| not_found(&schema_not_found_msg(&v.registry_name, &v.schema_name)))?;
+    rec.versions
+        .get(v.index)
+        .ok_or_else(|| not_found("Schema version is not found."))
+}
+
+fn get_schema_version(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let v = resolve_schema_version(g, p)?;
+    let rec = schema_version_of(g, &v)?;
+    Ok(ok(&schema_version_get_dict(
+        rec,
+        &v.schema_arn,
+        &v.data_format,
+    )))
+}
+
+fn get_schema_by_definition(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let (registry_name, schema_name) = resolve_schema_id(g, p)?;
+    let region = g.scope_region.clone();
+    let account = g.scope_account;
+    let definition = p["SchemaDefinition"].as_str().unwrap_or_default();
+    let registry = find_registry_mut(g, &registry_name)?;
+    let rec = registry
+        .schemas
+        .get(&schema_name)
+        .ok_or_else(|| not_found(&schema_not_found_msg(&registry_name, &schema_name)))?;
+    for version in rec.versions.iter() {
+        if version.definition == definition {
+            return Ok(ok(&json!({
+                "SchemaVersionId": version.id,
+                "SchemaArn": make_schema_arn(&region, account, &registry_name, &schema_name),
+                "Status": "AVAILABLE",
+                "CreatedTime": now_iso(),
+                "DataFormat": rec.data_format,
+            })));
+        }
+    }
+    Err(not_found(&schema_not_found_msg(
+        &registry_name,
+        &schema_name,
+    )))
+}
+
+fn check_schema_version_validity(p: &Value) -> Result<Response, Response> {
+    let format = str_field(p, "DataFormat");
+    let mut valid = true;
+    let mut error = "";
+    if format == "JSON" && !definition_is_json_member(p, "SchemaDefinition") {
+        valid = false;
+        error = "Expecting property name enclosed in double quotes";
+    }
+    Ok(ok(&json!({ "Valid": valid, "Error": error })))
+}
+
+fn definition_is_json_member(p: &Value, member: &str) -> bool {
+    p[member]
+        .as_str()
+        .map(|s| serde_json::from_str::<Value>(s).is_ok())
+        .unwrap_or(true)
+}
+
+fn delete_schema_versions(p: &Value) -> Result<Response, Response> {
+    let versions = str_field(p, "Versions");
+    let mut list = Vec::new();
+    for v in versions.split(',') {
+        if let Ok(n) = v.trim().parse::<u64>() {
+            list.push(json!({"VersionNumber": n, "Status": "SUCCESS"}));
+        }
+    }
+    Ok(ok(&json!({ "SchemaVersionErrors": list })))
+}
+
+fn get_schema_versions_diff(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let first = resolve_schema_version_vn(g, "FirstSchemaVersionNumber", p)?;
+    let second = resolve_schema_version_vn(g, "SecondSchemaVersionNumber", p)?;
+    let (registry_name, schema_name) = resolve_schema_id(g, p)?;
+    let registry = find_registry_mut(g, &registry_name)?;
+    let rec = registry
+        .schemas
+        .get(&schema_name)
+        .ok_or_else(|| not_found(&schema_not_found_msg(&registry_name, &schema_name)))?;
+    let first_def = rec
+        .versions
+        .get(first.index)
+        .map(|v| v.definition.clone())
+        .unwrap_or_default();
+    let second_def = rec
+        .versions
+        .get(second.index)
+        .map(|v| v.definition.clone())
+        .unwrap_or_default();
+    Ok(ok(&json!({
+        "Diff": format!(
+            "--- version 1\n+++ version 2\n-{first_def}\n+{second_def}"
+        ),
+    })))
+}
+
+fn qualified_version_mut<'a>(
+    g: &'a mut GlueState,
+    registry: &str,
+    schema: &str,
+    index: usize,
+) -> Result<&'a mut SchemaVersionRec, Response> {
+    let registry_ref = find_registry_mut(g, registry)?;
+    let rec = registry_ref
+        .schemas
+        .get_mut(schema)
+        .ok_or_else(|| not_found(&schema_not_found_msg(registry, schema)))?;
+    rec.versions
+        .get_mut(index)
+        .ok_or_else(|| not_found("Schema version is not found."))
+}
+
+fn put_schema_version_metadata(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let v = resolve_schema_version(g, p)?;
+    let key = str_field(&p["MetadataKeyValue"], "MetadataKey");
+    let value = str_field(&p["MetadataKeyValue"], "MetadataValue");
+    let version = qualified_version_mut(g, &v.registry_name, &v.schema_name, v.index)?;
+    let entry = version.metadata.entry(key.clone()).or_default();
+    if !entry.contains(&value) {
+        entry.push(value.clone());
+    }
+    let version_number = version.version_number;
+    let id = version.id.clone();
+    Ok(ok(&json!({
+        "SchemaVersionId": id,
+        "LatestVersion": false,
+        "VersionNumber": version_number,
+        "MetadataKey": key,
+        "MetadataValue": value,
+    })))
+}
+
+fn locate_version_by_id<'a>(
+    g: &'a mut GlueState,
+    vid: &str,
+) -> Result<(String, String, usize, String), Response> {
+    for registry in g.registries.keys().cloned().collect::<Vec<_>>() {
+        let reg = g.registries.get(&registry).expect("key exists");
+        for (schema_name, rec) in reg.schemas.iter() {
+            if let Some(idx) = rec.versions.iter().position(|v| v.id == vid) {
+                return Ok((registry.clone(), schema_name.clone(), idx, rec.arn.clone()));
+            }
+        }
+    }
+    Err(not_found(&format!(
+        "Schema version is not found. SchemaVersionId: {vid}"
+    )))
+}
+
+fn query_schema_version_metadata(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let direct = p["SchemaVersionId"].as_str().unwrap_or_default();
+    let (registry_name, schema_name, index) = if !direct.is_empty() {
+        if !is_uuid_shape(direct) {
+            return Err(gsr_invalid_input(
+                "The parameter value contains one or more characters that are not valid. Parameter Name: SchemaVersionId",
+            ));
+        }
+        let (r, s, i, _) = locate_version_by_id(g, direct)?;
+        (r, s, i)
+    } else {
+        let v = resolve_schema_version(g, p)?;
+        (v.registry_name, v.schema_name, v.index)
+    };
+    let registry = find_registry_mut(g, &registry_name)?;
+    let rec = registry
+        .schemas
+        .get(&schema_name)
+        .ok_or_else(|| not_found(&schema_not_found_msg(&registry_name, &schema_name)))?;
+    let version = rec
+        .versions
+        .get(index)
+        .ok_or_else(|| not_found("Schema version is not found."))?;
+    let mut metadata = Map::new();
+    for (k, values) in version.metadata.iter() {
+        metadata.insert(k.clone(), json!(values));
+    }
+    Ok(ok(&json!({ "MetadataMap": {
+        "SchemaVersionId": version.id,
+        "MetadataKeyMap": metadata,
+    } })))
+}
+
+fn remove_schema_version_metadata(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    if p["MetadataKeyValue"].is_null() {
+        return Err(invalid_input("No metadata key/value provided."));
+    }
+    if p["SchemaVersionId"].is_null()
+        && p["SchemaId"]["RegistryName"].is_null()
+        && p["SchemaVersionNumber"].is_null()
+    {
+        return Err(gsr_invalid_input(
+            "At least one of (registryName and schemaName) or schemaArn has to be provided.",
+        ));
+    }
+    let direct = p["SchemaVersionId"].as_str().unwrap_or_default();
+    let (registry_name, schema_name, index) = if !direct.is_empty() {
+        if !is_uuid_shape(direct) {
+            return Err(gsr_invalid_input(
+                "The parameter value contains one or more characters that are not valid. Parameter Name: SchemaVersionId",
+            ));
+        }
+        let (r, s, i, _) = locate_version_by_id(g, direct)?;
+        (r, s, i)
+    } else {
+        let v = resolve_schema_version(g, p)?;
+        (v.registry_name, v.schema_name, v.index)
+    };
+    let key = str_field(&p["MetadataKeyValue"], "MetadataKey");
+    let value = str_field(&p["MetadataKeyValue"], "MetadataValue");
+    let version = qualified_version_mut(g, &registry_name, &schema_name, index)?;
+    if let Some(values) = version.metadata.get_mut(&key) {
+        if let Some(at) = values.iter().position(|v| v == &value) {
+            values.remove(at);
+        }
+    }
+    let version_number = version.version_number;
+    Ok(ok(&json!({
+        "LatestVersion": false,
+        "VersionNumber": version_number,
+        "MetadataKey": key,
+        "MetadataValue": value,
+    })))
+}
+
+#[cfg(test)]
+mod family3_tests {
+    use super::*;
+    use bytes::Bytes;
+
+    fn req(op: &str, body_val: Value) -> Request {
+        Request {
+            service: "glue".into(),
+            operation: op.into(),
+            method: "POST".into(),
+            path: "/".into(),
+            query_string: String::new(),
+            headers: std::collections::HashMap::new(),
+            body: Bytes::from(serde_json::to_vec(&body_val).unwrap_or_default()),
+            account: 123456789012,
+            region: "us-east-1".into(),
+        }
+    }
+
+    fn scope() -> u64 {
+        uuid::Uuid::new_v4().as_u128() as u64
+    }
+
+    fn d(acct: u64, op: &str, v: Value) -> Response {
+        let mut r = req(op, v);
+        r.account = acct;
+        dispatch(&r).unwrap()
+    }
+
+    fn body(resp: &Response) -> Value {
+        serde_json::from_slice(&resp.body).unwrap_or(Value::Null)
+    }
+
+    fn err_code(resp: &Response) -> String {
+        body(resp)["__type"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    }
+
+    fn create_registry(acct: u64, name: &str) -> Response {
+        d(
+            acct,
+            "CreateRegistry",
+            json!({"RegistryName": name, "Description": "test"}),
+        )
+    }
+
+    fn schema_body(registry: &str, schema: &str) -> Value {
+        json!({
+            "RegistryId": {"RegistryName": registry},
+            "SchemaName": schema,
+            "DataFormat": "AVRO",
+            "Compatibility": "NONE",
+            "SchemaDefinition": r#"{"type":"record","name":"T","fields":[]}"#
+        })
+    }
+
+    #[test]
+    fn registry_crud() {
+        let acct = scope();
+        let r = create_registry(acct, "reg1");
+        assert_eq!(r.status, 200);
+        let b = body(&r);
+        assert_eq!(b["RegistryName"], "reg1");
+        assert!(b["RegistryArn"].as_str().unwrap().contains("registry/reg1"));
+
+        let b = body(&d(
+            acct,
+            "GetRegistry",
+            json!({"RegistryId": {"RegistryName": "reg1"}}),
+        ));
+        assert_eq!(b["RegistryName"], "reg1");
+        assert_eq!(b["Description"], "test");
+
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "GetRegistry",
+                json!({"RegistryId": {"RegistryName": "nond"}})
+            )),
+            "EntityNotFoundException"
+        );
+
+        let b = body(&d(
+            acct,
+            "UpdateRegistry",
+            json!({"RegistryId": {"RegistryName": "reg1"}, "Description": "u"}),
+        ));
+        assert_eq!(b["RegistryName"], "reg1");
+        let b = body(&d(
+            acct,
+            "GetRegistry",
+            json!({"RegistryId": {"RegistryName": "reg1"}}),
+        ));
+        assert_eq!(b["Description"], "u");
+
+        let b = body(&d(acct, "ListRegistries", json!({})));
+        assert_eq!(b["Registries"].as_array().unwrap().len(), 1);
+
+        let b = body(&d(
+            acct,
+            "DeleteRegistry",
+            json!({"RegistryId": {"RegistryName": "reg1"}}),
+        ));
+        assert_eq!(b["RegistryName"], "reg1");
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "GetRegistry",
+                json!({"RegistryId": {"RegistryName": "reg1"}})
+            )),
+            "EntityNotFoundException"
+        );
+    }
+
+    #[test]
+    fn schema_lifecycle_and_versions() {
+        let acct = scope();
+        // Schema without RegistryId lands in default-registry.
+        let r = d(
+            acct,
+            "CreateSchema",
+            json!({
+                "SchemaName": "sc1", "DataFormat": "AVRO", "Compatibility": "NONE",
+                "SchemaDefinition": r#"{"type":"record","name":"T","fields":[]}"#
+            }),
+        );
+        assert_eq!(r.status, 200);
+        let b = body(&r);
+        assert_eq!(b["SchemaName"], "sc1");
+        assert!(b["SchemaArn"]
+            .as_str()
+            .unwrap()
+            .contains("schema/default-registry/sc1"));
+
+        // register a second version
+        let b = body(&d(
+            acct,
+            "RegisterSchemaVersion",
+            json!({
+                "SchemaId": {"SchemaName": "sc1", "RegistryName": "default-registry"},
+                "SchemaDefinition": r#"{"type":"record","name":"T","fields":[{"name":"id","type":"int"}]}"#
+            }),
+        ));
+        assert_eq!(b["VersionNumber"], 2);
+        assert_eq!(b["Status"], "AVAILABLE");
+        assert!(b["SchemaVersionId"].as_str().is_some());
+
+        // identical definition compresses to version 2
+        let b = body(&d(
+            acct,
+            "RegisterSchemaVersion",
+            json!({
+                "SchemaId": {"SchemaName": "sc1", "RegistryName": "default-registry"},
+                "SchemaDefinition": r#"{"type":"record","name":"T","fields":[{"name":"id","type":"int"}]}"#
+            }),
+        ));
+        assert_eq!(b["VersionNumber"], 2);
+
+        // latest version
+        let b = body(&d(
+            acct,
+            "GetSchemaVersion",
+            json!({
+                "SchemaId": {"SchemaName": "sc1", "RegistryName": "default-registry"},
+                "SchemaVersionNumber": {"LatestVersion": true}
+            }),
+        ));
+        assert_eq!(b["VersionNumber"], 2);
+        assert_eq!(b["DataFormat"], "AVRO");
+        assert!(b["SchemaDefinition"].as_str().is_some());
+
+        // explicit version 1
+        let b = body(&d(
+            acct,
+            "GetSchemaVersion",
+            json!({
+                "SchemaId": {"SchemaName": "sc1", "RegistryName": "default-registry"},
+                "SchemaVersionNumber": {"VersionNumber": 1}
+            }),
+        ));
+        assert_eq!(b["VersionNumber"], 1);
+
+        // by definition
+        let b = body(&d(
+            acct,
+            "GetSchemaByDefinition",
+            json!({
+                "SchemaId": {"SchemaName": "sc1", "RegistryName": "default-registry"},
+                "SchemaDefinition": r#"{"type":"record","name":"T","fields":[]}"#
+            }),
+        ));
+        assert!(b["SchemaVersionId"].as_str().is_some());
+        assert_eq!(b["DataFormat"], "AVRO");
+
+        // get_schema echoes compat; update compat
+        let b = body(&d(
+            acct,
+            "GetSchema",
+            json!({"SchemaId": {"SchemaName": "sc1", "RegistryName": "default-registry"}}),
+        ));
+        assert_eq!(b["Compatibility"], "NONE");
+        let b = body(&d(
+            acct,
+            "UpdateSchema",
+            json!({
+                "SchemaId": {"SchemaName": "sc1", "RegistryName": "default-registry"},
+                "Compatibility": "BACKWARD"
+            }),
+        ));
+        assert_eq!(b["SchemaName"], "sc1");
+        let b = body(&d(
+            acct,
+            "GetSchema",
+            json!({"SchemaId": {"SchemaName": "sc1", "RegistryName": "default-registry"}}),
+        ));
+        assert_eq!(b["Compatibility"], "BACKWARD");
+
+        // list schema versions
+        let b = body(&d(
+            acct,
+            "ListSchemaVersions",
+            json!({"SchemaId": {"SchemaName": "sc1", "RegistryName": "default-registry"}}),
+        ));
+        assert_eq!(b["Schemas"].as_array().unwrap().len(), 2);
+
+        // metadata
+        let b = body(&d(
+            acct,
+            "PutSchemaVersionMetadata",
+            json!({
+                "SchemaId": {"SchemaName": "sc1", "RegistryName": "default-registry"},
+                "SchemaVersionNumber": {"VersionNumber": 1},
+                "MetadataKeyValue": {"MetadataKey": "k", "MetadataValue": "v"}
+            }),
+        ));
+        assert_eq!(b["MetadataKey"], "k");
+        assert_eq!(b["MetadataValue"], "v");
+
+        // delete + not found
+        let b = body(&d(
+            acct,
+            "DeleteSchema",
+            json!({"SchemaId": {"SchemaName": "sc1", "RegistryName": "default-registry"}}),
+        ));
+        assert_eq!(b["Status"], "DELETING");
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "GetSchema",
+                json!({"SchemaId": {"SchemaName": "sc1", "RegistryName": "default-registry"}})
+            )),
+            "EntityNotFoundException"
+        );
+    }
+
+    #[test]
+    fn schema_validation_and_metadata_errors() {
+        let acct = scope();
+        assert_eq!(create_registry(acct, "reg2").status, 200);
+
+        // bad data format
+        let r = d(
+            acct,
+            "CreateSchema",
+            json!({"RegistryId": {"RegistryName": "reg2"}, "SchemaName": "s",
+                   "DataFormat": "X", "Compatibility": "NONE",
+                   "SchemaDefinition": "{}"}),
+        );
+        assert_eq!(err_code(&r), "InvalidInputException");
+
+        // bad compatibility
+        let r = d(
+            acct,
+            "CreateSchema",
+            json!({"RegistryId": {"RegistryName": "reg2"}, "SchemaName": "s",
+                   "DataFormat": "AVRO", "Compatibility": "BOGUS"}),
+        );
+        assert_eq!(err_code(&r), "InvalidInputException");
+
+        // invalid definition
+        let r = d(
+            acct,
+            "CreateSchema",
+            json!({"RegistryId": {"RegistryName": "reg2"}, "SchemaName": "s",
+                   "DataFormat": "AVRO", "Compatibility": "NONE",
+                   "SchemaDefinition": "not json"}),
+        );
+        assert_eq!(err_code(&r), "InvalidInputException");
+
+        // valid schema for validation paths
+        d(acct, "CreateSchema", schema_body("reg2", "s1"));
+
+        // get schema via fake ids
+        let r = d(
+            acct,
+            "GetSchema",
+            json!({"SchemaId": {"SchemaName": "z", "RegistryName": "reg2"}}),
+        );
+        assert_eq!(err_code(&r), "EntityNotFoundException");
+
+        // version with garbage id → InvalidInput
+        let r = d(
+            acct,
+            "GetSchemaVersion",
+            json!({"SchemaVersionId": "fake-uuid-0000-1234-abcd-ef0123456789"}),
+        );
+        assert_eq!(err_code(&r), "InvalidInputException");
+
+        // remove metadata with no ids → InvalidInput
+        let r = d(
+            acct,
+            "RemoveSchemaVersionMetadata",
+            json!({"MetadataKeyValue": {"MetadataKey": "k", "MetadataValue": "v"}}),
+        );
+        assert_eq!(err_code(&r), "InvalidInputException");
+
+        // check validity
+        let b = body(&d(
+            acct,
+            "CheckSchemaVersionValidity",
+            json!({"DataFormat": "AVRO", "SchemaDefinition": "{}"}),
+        ));
+        assert_eq!(b["Valid"], true);
+        let b = body(&d(
+            acct,
+            "CheckSchemaVersionValidity",
+            json!({"DataFormat": "JSON", "SchemaDefinition": "{nope}"}),
+        ));
+        assert_eq!(b["Valid"], false);
+
+        // delete schema versions
+        let b = body(&d(
+            acct,
+            "DeleteSchemaVersions",
+            json!({"SchemaId": {"RegistryName": "reg2", "SchemaName": "s1"}, "Versions": "1,2"}),
+        ));
+        assert_eq!(b["SchemaVersionErrors"].as_array().unwrap().len(), 2);
+
+        // diff (both versions exist after two registers)
+        d(
+            acct,
+            "RegisterSchemaVersion",
+            json!({
+                "SchemaId": {"SchemaName": "s1", "RegistryName": "reg2"},
+                "SchemaDefinition": r#"{"type":"record","name":"U"}"#
+            }),
+        );
+        let b = body(&d(
+            acct,
+            "GetSchemaVersionsDiff",
+            json!({
+                "SchemaId": {"RegistryName": "reg2", "SchemaName": "s1"},
+                "FirstSchemaVersionNumber": {"VersionNumber": 1},
+                "SecondSchemaVersionNumber": {"VersionNumber": 2},
+                "SchemaDiffType": "SYNTAX_DIFF"
+            }),
+        ));
+        assert!(b.get("Diff").is_some());
+    }
+
+    #[test]
+    fn default_registry_lifecycle() {
+        let acct = scope();
+        // GetRegistry on default-registry before any schema: moto auto-creates
+        // the default registry lazily inside create_schema only — direct get
+        // raises RegistryNotFound.
+        let r = d(acct, "GetRegistry", json!({"RegistryId": {}}));
+        assert_eq!(err_code(&r), "EntityNotFoundException");
+
+        // create schema without RegistryId → default-registry created.
+        d(
+            acct,
+            "CreateSchema",
+            json!({"SchemaName": "a", "DataFormat": "AVRO", "Compatibility": "NONE"}),
+        );
+        let r = d(acct, "GetRegistry", json!({"RegistryId": {}}));
+        assert_eq!(r.status, 200);
+        let b = body(&d(acct, "ListSchemas", json!({})));
+        assert_eq!(b["Schemas"].as_array().unwrap().len(), 1);
     }
 }
