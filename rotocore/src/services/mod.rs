@@ -31,6 +31,7 @@ pub mod comprehend;
 pub mod config;
 pub mod connect;
 pub mod databrew;
+pub mod datapipeline;
 pub mod datasync;
 pub mod dsql;
 pub mod ebs;
@@ -106,6 +107,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "config" => Some(config::dispatch(req)),
         "connect" => Some(connect::dispatch(req)),
         "databrew" => databrew::dispatch(req),
+        "datapipeline" => datapipeline::dispatch(req),
         "datasync" => datasync::dispatch(req),
         "dsql" => dsql::dispatch(req),
         "ebs" => ebs::dispatch(req),
@@ -196,6 +198,7 @@ pub fn handles_service(service: &str) -> bool {
             | "config"
             | "connect"
             | "databrew"
+            | "datapipeline"
             | "datasync"
             | "dsql"
             | "ebs"
