@@ -22,4 +22,22 @@ are parsed by `tooling/moto_port_progress.py`.
 
 ## Waves
 
-(none yet)
+## Wave 1 (2026-10-19) — signer, shield, datapipeline, ram
+
+- Ported: `signer` (26/26), `shield` (35/35), `datapipeline` (23/23), `ram` (41/41).
+  Suites restored from `7170f904^`, all green against the merged twin on 4566.
+- Superseded-arch note: an orphaned moto-proxy server from the abandoned
+  `.worktrees/s3` worktree occupied ports 4641/4642 and was killed during
+  the wave (superseded architecture, not the 4566 twin).
+- G2: no tests removed — probes show 0 `not_implemented` for all four.
+  datapipeline's 11 probe `500_error` entries were moto `KeyError` crashes
+  on missing pipelines; implemented as real handlers answering the fork's
+  `PipelineNotFoundException` (400) instead of reproducing the crash.
+- Deliberate quirk retained: shield `DescribeProtection` with no selector
+  answers moto's 500 InternalError (probe + unit test document it).
+- signer suite: one test's hardcoded `localhost:4566` now reads
+  `ENDPOINT_URL` (assertion untouched, needed to test against a worktree
+  port).
+- Registry rows flipped `moto`→`native` for the four; gates: 906 workspace
+  lib tests, fmt/clippy clean, parity promoted (full lane drift-clean).
+- Post-wave per gate script: REMAINING 54, G2 UNCERTAIN 8 (unchanged).

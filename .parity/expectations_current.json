@@ -1,6 +1,6 @@
 {
   "comment": "Golden baseline: per-suite compat-suite pass counts the Rust server must keep matching. Frozen from the Python ground-truth era; regenerate with: uv run python scripts/harness/parity.py --rust-only --update-expectations",
-  "generated": "2026-10-19T05:17:27",
+  "generated": "2026-10-19T07:18:02",
   "per_suite": {
     "cloudformation": {
       "pass": 150
