@@ -75,7 +75,14 @@ fn render_node(shape: &Value, pykey: &str, fills: &Fills, wire: &str) -> String 
 }
 
 fn wrap_items(inner: String, elem: &str) -> String {
-    // inner recorded as bare member list; wrap once in <item> if not wrapped
+    // content already produced as full `<item>` blocks (e.g. stored item_xml
+    // with embedded tagSets) must pass through untouched — re-splitting at
+    // every `</item>` would mangle nested list elements.
+    let _ = elem;
+    let trimmed = inner.trim();
+    if trimmed.starts_with("<item>") && trimmed.ends_with("</item>") {
+        return inner;
+    }
     let mut out = String::new();
     for chunk in inner.split("</item>") {
         let trimmed = chunk.trim();
@@ -89,7 +96,6 @@ fn wrap_items(inner: String, elem: &str) -> String {
             out.push_str(&format!("<item>{body}"));
         }
     }
-    let _ = elem;
     out
 }
 

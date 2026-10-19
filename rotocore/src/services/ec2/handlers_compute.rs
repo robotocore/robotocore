@@ -2832,8 +2832,20 @@ fn delete_placement_group(req: &Request, params: &P) -> Response {
 mod itt {
     use serde_json::Value;
 
+    /// roster is a {type: {...}} map — flatten to rows with InstanceType set.
     static TYPES: std::sync::LazyLock<Vec<Value>> = std::sync::LazyLock::new(|| {
-        serde_json::from_slice(include_bytes!("itt/instance-types.json")).unwrap_or_default()
+        let map: serde_json::Map<String, Value> = serde_json::from_slice(
+            include_bytes!("itt/instance-types.json"),
+        )
+        .unwrap_or_default();
+        map.into_iter()
+            .map(|(name, mut row)| {
+                if let Some(obj) = row.as_object_mut() {
+                    obj.insert("InstanceType".into(), Value::String(name));
+                }
+                row
+            })
+            .collect()
     });
 
     pub static OFFERINGS: std::sync::LazyLock<Vec<Value>> = std::sync::LazyLock::new(|| {

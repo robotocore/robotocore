@@ -11,6 +11,10 @@ use crate::proto::xml_escape;
 type P = Params;
 
 /// Build the fill set for a family's single-object create (or delete).
+fn arn2<'a>(srv: &str, region: &str, account: u64, id: &str) -> String {
+    format!("arn:aws:ec2:{}:{}:{}/{}", region, account, srv, id)
+}
+
 pub fn create_fills(
     kind: &str,
     id: &str,
@@ -61,6 +65,13 @@ pub fn create_fills(
                 "PrivateDefaultScopeId".to_string(),
                 Fill::S(format!("ipam-scope-{}", super::state::idhex::hex17())),
             );
+            f.insert(
+                "OperatingRegions".to_string(),
+                Fill::X(
+                    "<item><regionName>us-east-1</regionName></item>".to_string(),
+                ),
+            );
+            f.insert("Tier".to_string(), Fill::S("advanced".into()));
             if !tags_xml.is_empty() {
                 f.insert("Tags".to_string(), Fill::X(tags_xml.to_string()));
             }
@@ -68,10 +79,16 @@ pub fn create_fills(
         "ipam-scope" => {
             f.insert("IpamScopeId".to_string(), Fill::S(id.to_string()));
             f.insert("IpamScopeArn".to_string(), Fill::S(arn_of("ipam-scope")));
-            f.insert("IpamArn".to_string(), Fill::S(arn_of("ipam")));
+            let ipam_id = params.str("IpamId");
+            let region = region.to_string();
+            let account = account;
+            f.insert(
+                "IpamArn".to_string(),
+                Fill::S(arn2("ipam", &region, account, &ipam_id)),
+            );
             f.insert("OwnerId".to_string(), Fill::S(account_s.clone()));
             f.insert("IpamRegion".to_string(), Fill::S(region.to_string()));
-            f.insert("IpamScopeType".to_string(), Fill::S("public".into()));
+            f.insert("IpamScopeType".to_string(), Fill::S("private".into()));
             f.insert(
                 "Description".to_string(),
                 Fill::S(params.str("Description")),
@@ -97,7 +114,13 @@ pub fn create_fills(
             f.insert("IpamPoolId".to_string(), Fill::S(id.to_string()));
             f.insert("IpamPoolArn".to_string(), Fill::S(arn_of("ipam-pool")));
             f.insert("IpamScopeArn".to_string(), Fill::S(arn_of("ipam-scope")));
-            f.insert("IpamArn".to_string(), Fill::S(arn_of("ipam")));
+            let ipam_id = params.str("IpamId");
+            let region = region.to_string();
+            let account = account;
+            f.insert(
+                "IpamArn".to_string(),
+                Fill::S(arn2("ipam", &region, account, &ipam_id)),
+            );
             f.insert("OwnerId".to_string(), Fill::S(account_s.clone()));
             f.insert("IpamRegion".to_string(), Fill::S(region.to_string()));
             f.insert("Locale".to_string(), Fill::S(region.to_string()));

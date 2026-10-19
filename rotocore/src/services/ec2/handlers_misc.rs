@@ -427,13 +427,32 @@ fn find_family(op: &str) -> Option<&'static FamilySpec> {
 
 /// Ops beyond create/describe/delete that belong to list-root families:
 /// (family kind, op). These route to [`hostlist_route`] like family ops.
-static FAMILY_EXTRA_OPS: [(&str, &str); 6] = [
+pub static IPAM_OPS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+    [
+        "ProvisionIpamPoolCidr",
+        "DeprovisionIpamPoolCidr",
+        "AllocateIpamPoolCidr",
+        "ReleaseIpamPoolAllocation",
+        "GetIpamPoolCidrs",
+        "GetIpamPoolAllocations",
+        "GetIpamResourceCidrs",
+        "DescribeIpamScopesEmpty",
+        "ModifyIpam",
+        "ModifyIpamPool",
+        "ModifyIpamResourceDiscovery",
+    ]
+    .into_iter()
+    .collect()
+});
+
+static FAMILY_EXTRA_OPS: [(&str, &str); 7] = [
     ("fleet", "DeleteFleets"),
     ("fleet", "ModifyFleet"),
     ("fleet", "DescribeFleetInstances"),
     ("fleet", "DescribeFleetHistory"),
     ("spot-fleet-request", "ModifySpotFleetRequest"),
     ("spot-fleet-request", "DescribeSpotFleetInstances"),
+    ("host", "ModifyHosts"),
 ];
 
 pub fn route(req: &Request, params: &P) -> Response {
@@ -448,6 +467,9 @@ pub fn route(req: &Request, params: &P) -> Response {
     // 1) template-driven simple families (create/describe/delete)
     if find_family(op).is_some() {
         return simple_family_route(req, params);
+    }
+    if IPAM_OPS.contains(op) {
+        return ipam_route(req, &req.operation, params);
     }
     // 1b) the rest of the transit gateway family (route tables etc.)
     if TRANSIT_GW_OPS.contains(op) {
@@ -606,6 +628,63 @@ fn simple_create(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
             false,
             &tags_xml_v,
         );
+        let mut record = |state: &mut super::state::Ec2State,
+                          rid: &str,
+                          item_xml: String| {
+            let mut s = Simple {
+                id: rid.to_string(),
+                kind: fam.kind.to_string(),
+                item_xml,
+                tags: tags.clone(),
+                ..Default::default()
+            };
+            for (k, v) in fills.iter() {
+                if let super::shapes::Fill::S(v) = v {
+                    s.set(k, v.clone());
+                }
+            }
+            state
+                .simple
+                .entry(fam.kind.to_string())
+                .or_default()
+                .push(s);
+            if fam.kind == "ipam" {
+                // both default scopes are created with the IPAM; DescribeIpamScopes
+                // must list them with their wire types
+                for (scope_type, key) in [
+                    ("public", "PublicDefaultScopeId"),
+                    ("private", "PrivateDefaultScopeId"),
+                ] {
+                    if let Some(super::shapes::Fill::S(sid)) = fills.get(key) {
+                        let mut sc = Simple {
+                            id: sid.clone(),
+                            kind: "ipam-scope".to_string(),
+                            ..Default::default()
+                        };
+                        sc.set("IpamScopeId", sid.clone());
+                        sc.set("IpamScopeType", scope_type);
+                        sc.set("IpamId", id.clone());
+                        sc.set("IpamArn", format!("arn:aws:ec2:{}:{}:ipam/{}", req.region, req.account, id));
+                        sc.set("IsDefault", "true");
+                        sc.set("State", "create-complete");
+                        sc.set("PoolCount", "0");
+                        sc.item_xml = format!(
+                            "<ipamScopeId>{sid}</ipamScopeId><ipamScopeArn>arn:aws:ec2:{region}:{account}:ipam-scope/{sid}</ipamScopeArn><ipamArn>{arn}</ipamArn><ipamRegion>{region}</ipamRegion><ipamScopeType>{scope_type}</ipamScopeType><isDefault>true</isDefault><poolCount>0</poolCount><state>create-complete</state><tagSet/>",
+                            sid = xml_escape(sid),
+                            region = req.region,
+                            account = req.account,
+                            arn = xml_escape(&format!("arn:aws:ec2:{}:{}:ipam/{}", req.region, req.account, id)),
+                            scope_type = scope_type,
+                        );
+                        state
+                            .simple
+                            .entry("ipam-scope".to_string())
+                            .or_default()
+                            .push(sc);
+                    }
+                }
+            }
+        };
         if family_root_is_list(fam.create_op) {
             if let Some(xml) = super::shapes::render_list_response(
                 fam.create_op,
@@ -614,34 +693,14 @@ fn simple_create(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
                 "us-east-1",
             ) {
                 let inner = strip_op_root(&xml, fam.create_op);
-                state
-                    .simple
-                    .entry(fam.kind.to_string())
-                    .or_default()
-                    .push(Simple {
-                        id: id.clone(),
-                        kind: fam.kind.to_string(),
-                        item_xml: inner,
-                        tags,
-                        ..Default::default()
-                    });
+                record(state, &id, inner);
                 return Response::xml(200, xml.into_bytes());
             }
         }
         // single-object shape render for structure-out roots
         if let Some(xml) = super::shapes::render_response(fam.create_op, &fills, "us-east-1") {
             let inner = strip_op_root(&xml, fam.create_op);
-            state
-                .simple
-                .entry(fam.kind.to_string())
-                .or_default()
-                .push(Simple {
-                    id: id.clone(),
-                    kind: fam.kind.to_string(),
-                    item_xml: inner,
-                    tags,
-                    ..Default::default()
-                });
+            record(state, &id, inner);
             return Response::xml(200, xml.into_bytes());
         }
         // captured-template fallback
@@ -658,17 +717,7 @@ fn simple_create(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
                     .cloned()
                     .unwrap_or_else(|| id.clone());
                 let inner = strip_op_root(&body, fam.create_op);
-                state
-                    .simple
-                    .entry(fam.kind.to_string())
-                    .or_default()
-                    .push(Simple {
-                        id: id2.clone(),
-                        kind: fam.kind.to_string(),
-                        item_xml: inner,
-                        tags,
-                        ..Default::default()
-                    });
+                record(state, &id2, inner);
                 (status, body)
             }
             _ => {
@@ -677,22 +726,12 @@ fn simple_create(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
                 let id2 = next_placeholder_id(fam.id_prefix);
                 let item = synth_fields(fam, &id2, params, state);
                 let inner = single_root(fam.kind);
-                state
-                    .simple
-                    .entry(fam.kind.to_string())
-                    .or_default()
-                    .push(Simple {
-                        id: id2.clone(),
-                        kind: fam.kind.to_string(),
-                        item_xml: format!("<item>{}</item>", item.clone()),
-                        tags,
-                        ..Default::default()
-                    });
+                record(state, &id2, format!("<item>{}</item>", item.clone()));
                 (200, format!("<{}>{}</{}>", inner, item, inner))
             }
         };
         let (status, body) = rendered;
-        let _ = fam;
+        let _ = &id;
         Response::xml(status, body.into_bytes())
     })
 }
@@ -767,11 +806,7 @@ fn strip_op_root(xml: &str, op: &str) -> String {
 
 fn simple_describe(req: &Request, params: &P, fam: &'static FamilySpec) -> Response {
     with_state(req, move |state| {
-        let ids: Vec<String> = params
-            .list(fam.id_key)
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let ids = ids_of(params, fam.id_key);
         let items: Vec<String> = state
             .simple
             .get(fam.kind)
@@ -866,11 +901,7 @@ fn list_member_key(shape: &serde_json::Value) -> Option<String> {
 
 fn simple_delete(req: &Request, params: &P, fam: &'static FamilySpec) -> Response {
     with_state(req, move |state| {
-        let ids: Vec<String> = params
-            .list(fam.id_key)
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let ids = ids_of(params, fam.id_key);
         let mut removed = false;
         for id in &ids {
             if let Some(items) = state.simple.get_mut(fam.kind) {
@@ -878,6 +909,14 @@ fn simple_delete(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
                 items.retain(|s| s.id != *id);
                 if items.len() != before {
                     removed = true;
+                }
+            }
+        }
+        if fam.kind == "ipam" {
+            // remove the two default scopes stored at ipam creation
+            for id in &ids {
+                if let Some(items) = state.simple.get_mut("ipam-scope") {
+                    items.retain(|s| s.get("IpamId") != Some(id.as_str()));
                 }
             }
         }
@@ -1915,7 +1954,7 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                     &format!("<hostSet>{}</hostSet>", items),
                 )
             }
-            "ModifyHost" => {
+            "ModifyHost" | "ModifyHosts" => {
                 let ids: Vec<String> = params_of(req)
                     .list("HostId")
                     .iter()
@@ -1930,7 +1969,7 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                         }
                     }
                 }
-                ec2_xml("ModifyHostResponse", "<successful/>")
+                ec2_xml("ModifyHostsResponse", "<successful/>")
             }
             "ReleaseHosts" => {
                 let ids: Vec<String> = params_of(req)
@@ -2356,6 +2395,20 @@ fn launch_specifications_xml(count: usize) -> String {
     format!("<launchSpecifications>{items}</launchSpecifications>")
 }
 
+
+/// Ids from a wire key that botocore sends either flat (`Key=x`) or indexed
+/// (`Key.1=x`). `Params::list` only knows the indexed form.
+fn ids_of(params: &P, key: &str) -> Vec<String> {
+    let mut v: Vec<String> = params.list(key).iter().map(|s| s.to_string()).collect();
+    if v.is_empty() {
+        let v0 = params.str(key);
+        if !v0.is_empty() {
+            v.push(v0);
+        }
+    }
+    v
+}
+
 fn params_quantity(req: &Request, default_qty: i64) -> i64 {
     params_of(req)
         .get("Quantity")
@@ -2414,15 +2467,6 @@ pub static GAP_OPS_B: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
         "DescribeInstanceConnectEndpoints",
         "DescribeStaleSecurityGroups",
         "GetCoipPoolUsage",
-        "GetIpamPoolAllocations",
-        "GetIpamPoolCidrs",
-        "GetIpamResourceCidrs",
-        "ModifyIpamPool",
-        "ModifyHosts",
-        "ProvisionIpamPoolCidr",
-        "DeprovisionIpamPoolCidr",
-        "ReleaseIpamPoolAllocation",
-        "AllocateIpamPoolCidr",
         "GetEnabledIpamPolicy",
         "StartNetworkInsightsAnalysis",
         "GetNetworkInsightsAccessScopeContent",
@@ -2456,6 +2500,393 @@ pub fn gap_ops_b_response(op: &str, params: &P) -> Response {
     };
     let root = format!("{}Response", op);
     super::xmlns_xml(&root, Some(super::EC2_NS), &body)
+}
+
+
+/// Stateful IPAM pool-cidr / allocation store: `ipam-pool-cidr` and
+/// `ipam-pool-alloc` Simple entries keyed to their pool id.
+pub fn ipam_route(req: &Request, op: &str, params: &P) -> Response {
+    with_state(req, move |state| match op {
+        "ProvisionIpamPoolCidr" => {
+            let pool = params.str("IpamPoolId");
+            let cidr = params.str("Cidr");
+            if cidr.is_empty() {
+                let net = params.i64("NetmaskLength").unwrap_or(16);
+                return ec2_error(
+                    400,
+                    "MissingParameter",
+                    &format!("Provide Cidr or a valid NetmaskLength ({net})"),
+                );
+            }
+            let id = format!("ipc-{}", super::state::idhex::hex17());
+            let mut s = Simple {
+                id: id.clone(),
+                kind: "ipam-pool-cidr".to_string(),
+                ..Default::default()
+            };
+            s.set("IpamPoolId", pool.clone());
+            s.set("Cidr", cidr.clone());
+            s.set("State", "provisioned");
+            s.set(
+                "IpamPoolCidrId",
+                id.clone(),
+            );
+            let net = cidr.split('/').nth(1).and_then(|v| v.parse::<i64>().ok()).unwrap_or(0);
+            s.set("NetmaskLength", net.to_string());
+            state
+                .simple
+                .entry("ipam-pool-cidr".to_string())
+                .or_default()
+                .push(s);
+            ec2_xml(
+                "ProvisionIpamPoolCidrResponse",
+                &format!(
+                    "<ipamPoolCidr><cidr>{}</cidr><state>provisioned</state><ipamPoolCidrId>{}</ipamPoolCidrId><netmaskLength>{}</netmaskLength></ipamPoolCidr>",
+                    xml_escape(&cidr),
+                    xml_escape(&id),
+                    net
+                ),
+            )
+        }
+        "AllocateIpamPoolCidr" => {
+            let pool = params.str("IpamPoolId");
+            let netmask = params.i64("NetmaskLength");
+            let provisioned: Vec<(String, i64)> = state
+                .simple
+                .get("ipam-pool-cidr")
+                .cloned()
+                .unwrap_or_default()
+                .iter()
+                .filter(|s| s.get("IpamPoolId") == Some(pool.as_str()))
+                .filter_map(|s| {
+                    Some((
+                        s.get("Cidr")?.to_string(),
+                        s.get("NetmaskLength")
+                            .and_then(|n| n.parse::<i64>().ok())
+                            .unwrap_or(32),
+                    ))
+                })
+                .collect();
+            let used: Vec<String> = state
+                .simple
+                .get("ipam-pool-alloc")
+                .cloned()
+                .unwrap_or_default()
+                .iter()
+                .filter(|s| s.get("IpamPoolId") == Some(pool.as_str()))
+                .filter_map(|s| s.get("Cidr").map(|c| c.to_string()))
+                .collect();
+            let (cidr, netmask) = allocate_from_provisioned(&provisioned, &used, netmask);
+            let cidr = match cidr {
+                Some(c) => c,
+                None => {
+                    return ec2_error(
+                        400,
+                        "InvalidIpamPoolId.NotFound",
+                        "No provisioned CIDR block available to allocate from",
+                    )
+                }
+            };
+            let id = format!("ipa-{}", super::state::idhex::hex17());
+            let mut s = Simple {
+                id: id.clone(),
+                kind: "ipam-pool-alloc".to_string(),
+                ..Default::default()
+            };
+            s.set("IpamPoolId", pool.clone());
+            s.set("Cidr", cidr.clone());
+            s.set("IpamPoolAllocationId", id.clone());
+            state
+                .simple
+                .entry("ipam-pool-alloc".to_string())
+                .or_default()
+                .push(s);
+            ec2_xml(
+                "AllocateIpamPoolCidrResponse",
+                &format!(
+                    "<ipamPoolAllocation><cidr>{}</cidr><ipamPoolAllocationId>{}</ipamPoolAllocationId></ipamPoolAllocation>",
+                    xml_escape(&cidr),
+                    xml_escape(&id)
+                ),
+            )
+        }
+        "ReleaseIpamPoolAllocation" => {
+            let pool = params.str("IpamPoolId");
+            let cidr = params.str("Cidr");
+            let alloc_id = params.str("IpamPoolAllocationId");
+            if let Some(items) = state.simple.get_mut("ipam-pool-alloc") {
+                items.retain(|s| {
+                    !(s.get("IpamPoolId") == Some(pool.as_str())
+                        && (!cidr.is_empty() || !alloc_id.is_empty())
+                        && ((Some(cidr.as_str()) == s.get("Cidr"))
+                            || (Some(alloc_id.as_str()) == s.get("IpamPoolAllocationId"))))
+                });
+            }
+            ec2_xml("ReleaseIpamPoolAllocationResponse", "<success>true</success>")
+        }
+        "DeprovisionIpamPoolCidr" => {
+            let pool = params.str("IpamPoolId");
+            let cidr = params.str("Cidr");
+            let net = cidr.split('/').nth(1).and_then(|v| v.parse::<i64>().ok()).unwrap_or(0);
+            if let Some(items) = state.simple.get_mut("ipam-pool-cidr") {
+                items.retain(|s| {
+                    !(s.get("IpamPoolId") == Some(pool.as_str()) && !cidr.is_empty() && Some(cidr.as_str()) == s.get("Cidr"))
+                });
+            }
+            ec2_xml(
+                "DeprovisionIpamPoolCidrResponse",
+                &format!(
+                    "<ipamPoolCidr><cidr>{}</cidr><state>deprovisioned</state><ipamPoolCidrId></ipamPoolCidrId><netmaskLength>{}</netmaskLength></ipamPoolCidr>",
+                    xml_escape(&cidr),
+                    net
+                ),
+            )
+        }
+        "GetIpamPoolCidrs" => {
+            let pool = params.str("IpamPoolId");
+            let items = state
+                .simple
+                .get("ipam-pool-cidr")
+                .cloned()
+                .unwrap_or_default()
+                .iter()
+                .filter(|s| s.get("IpamPoolId") == Some(pool.as_str()))
+                .map(|s| {
+                    format!(
+                        "<item><cidr>{}</cidr><state>provisioned</state><ipamPoolCidrId>{}</ipamPoolCidrId><netmaskLength>{}</netmaskLength></item>",
+                        xml_escape(s.get("Cidr").unwrap_or("")),
+                        xml_escape(s.id.as_str()),
+                        s.get("NetmaskLength").unwrap_or("0")
+                    )
+                })
+                .collect::<Vec<_>>()
+                .concat();
+            ec2_xml(
+                "GetIpamPoolCidrsResponse",
+                &format!("<ipamPoolCidrSet>{items}</ipamPoolCidrSet>"),
+            )
+        }
+        "GetIpamPoolAllocations" => {
+            let pool = params.str("IpamPoolId");
+            let items = state
+                .simple
+                .get("ipam-pool-alloc")
+                .cloned()
+                .unwrap_or_default()
+                .iter()
+                .filter(|s| s.get("IpamPoolId") == Some(pool.as_str()))
+                .map(|s| {
+                    format!(
+                        "<item><cidr>{}</cidr><ipamPoolAllocationId>{}</ipamPoolAllocationId></item>",
+                        xml_escape(s.get("Cidr").unwrap_or_default()),
+                        xml_escape(s.id.as_str())
+                    )
+                })
+                .collect::<Vec<_>>()
+                .concat();
+            ec2_xml(
+                "GetIpamPoolAllocationsResponse",
+                &format!("<ipamPoolAllocationSet>{items}</ipamPoolAllocationSet>"),
+            )
+        }
+        "GetIpamResourceCidrs" => ec2_xml(
+            "GetIpamResourceCidrsResponse",
+            "<ipamResourceCidrSet/>",
+        ),
+        "ModifyIpam" => {
+            let id = params.str("IpamId");
+            let desc = params.str("Description");
+            let mut found = false;
+            {
+                let mut updated_desc = desc.clone();
+                if let Some(items) = state.simple.get_mut("ipam") {
+                    for s in items.iter_mut() {
+                        if s.id == id {
+                            found = true;
+                            if !desc.is_empty() {
+                                s.set("Description", desc.clone());
+                            }
+                            updated_desc = s.get("Description").unwrap_or_default().to_string();
+                            let mut keep = s.clone();
+                            keep.item_xml = ipam_item_xml(Some(keep.clone()), &updated_desc, req.account, &req.region);
+                            *s = keep;
+                            break;
+                        }
+                    }
+                }
+                if found {
+                    let item = state_simple_snapshot(state, "ipam", &id)
+                        .map(|s| s.item_xml.clone())
+                        .unwrap_or_default();
+                    ec2_xml("ModifyIpamResponse", &item)
+                } else {
+                    ec2_error(
+                        400,
+                        "InvalidIpamId.NotFound",
+                        &format!("The IPAM ID '{}' does not exist", xml_escape(&id)),
+                    )
+                }
+            }
+        }
+        "ModifyIpamPool" => {
+            let id = params.str("IpamPoolId");
+            let desc = params.str("Description");
+            let mut found = false;
+            if let Some(items) = state.simple.get_mut("ipam-pool") {
+                for s in items.iter_mut() {
+                    if s.id == id {
+                        found = true;
+                        if !desc.is_empty() {
+                            s.set("Description", desc.clone());
+                        }
+                    }
+                }
+            }
+            if !found {
+                return ec2_error(
+                    400,
+                    "InvalidIpamPoolId.NotFound",
+                    &format!("The IPAM pool '{}' does not exist", xml_escape(&id)),
+                );
+            }
+            let item = simple_fields_xml(state, "ipam-pool", &id, &["IpamPoolId", "OwnerId", "Description", "State"]);
+            ec2_xml(
+                "ModifyIpamPoolResponse",
+                &format!("<ipamPool>{item}</ipamPool>"),
+            )
+        }
+        "ModifyIpamResourceDiscovery" => {
+            ec2_xml("ModifyIpamResourceDiscoveryResponse", "<return>true</return>")
+        }
+        _ => super::not_implemented(op),
+    })
+}
+
+fn state_simple_snapshot(state: &super::state::Ec2State, kind: &str, id: &str) -> Option<Simple> {
+    state
+        .simple
+        .get(kind)
+        .and_then(|v| v.iter().find(|s| s.id == id))
+        .cloned()
+}
+
+/// Re-render an ipam object from its stored fields after a Modify.
+fn ipam_item_xml(s: Option<Simple>, desc: &str, account: u64, region: &str) -> String {
+    let s = match s {
+        Some(s) => s,
+        None => {
+            return String::new();
+        }
+    };
+    let f = |k: &str| s.get(k).unwrap_or_default().to_string();
+    let description = if desc.is_empty() { f("Description") } else { desc.to_string() };
+    format!(
+        "<ownerId>{}</ownerId><ipamId>{}</ipamId><ipamArn>arn:aws:ec2:{region}:{account}:ipam/{id}</ipamArn><ipamRegion>{region}</ipamRegion><operatingRegionSet><item><regionName>{region}</regionName></item></operatingRegionSet><scopeCount>2</scopeCount><description>{description}</description><publicDefaultScopeId>{public}</publicDefaultScopeId><privateDefaultScopeId>{priv}</privateDefaultScopeId><state>{state}</state><tagSet/>",
+        account = account,
+        region = region,
+        id = xml_escape(&s.id),
+        public = xml_escape(&f("PublicDefaultScopeId")),
+        priv = xml_escape(&f("PrivateDefaultScopeId")),
+        state = xml_escape(&f("State")),
+        description = xml_escape(&description),
+    )
+}
+
+/// Minimal field dump for a modify response, top-level members only.
+fn simple_fields_xml(
+    state: &super::state::Ec2State,
+    kind: &str,
+    id: &str,
+    keys: &[&str],
+) -> String {
+    let s = state_simple_snapshot(state, kind, id);
+    match s {
+        Some(s) => keys
+            .iter()
+            .map(|k| {
+                let wire = k
+                    .chars()
+                    .enumerate()
+                    .map(|(i, c)| {
+                        if i == 0 {
+                            c.to_ascii_lowercase()
+                        } else {
+                            c
+                        }
+                    })
+                    .collect::<String>();
+                format!(
+                    "<{wire}>{v}</{wire}>",
+                    v = xml_escape(s.get(k).unwrap_or_default())
+                )
+            })
+            .collect(),
+        None => String::new(),
+    }
+}
+
+/// Next free netmask slots inside the first provisioned block (v4 only).
+fn allocate_from_provisioned(
+    provisioned: &[(String, i64)],
+    used: &[String],
+    want_netmask: Option<i64>,
+) -> (Option<String>, i64) {
+    let (base, base_len) = match provisioned.first() {
+        Some(b) => b.clone(),
+        None => return (None, want_netmask.unwrap_or(24)),
+    };
+    if base.contains(':') {
+        // ipv6: hand out /64 block under the base prefix's first 4 groups
+        let prefix = base.split('/').next().unwrap_or("2001:db8::");
+        let groups = prefix.split("::").next().unwrap_or("2001:db8").to_string();
+        let mut n = u32::try_from(used.len()).unwrap_or(0);
+        loop {
+            let cand = format!("{groups}:{}::/64", n + 1);
+            n += 1;
+            if !used.contains(&cand) {
+                return (Some(cand), 64);
+            }
+        }
+    }
+    let netmask = want_netmask.unwrap_or(24);
+    let octets: Vec<u32> = base
+        .split('/')
+        .next()
+        .unwrap_or_default()
+        .split('.')
+        .filter_map(|o| o.parse::<u32>().ok())
+        .collect();
+    if octets.len() != 4 {
+        return (None, netmask);
+    }
+    // n-th /netmask slot inside the base block
+    let base_bits = base_len.max(0).min(32) as u32;
+    if (netmask as u32) < base_bits {
+        return (None, netmask);
+    }
+    // a /netmask block is 2^(32-netmask) addresses; slots walk the base block
+    let unit = 1u64 << (32 - (netmask as u32)).min(31);
+    let base_int =
+        ((octets[0] as u64) << 24) | ((octets[1] as u64) << 16) | ((octets[2] as u64) << 8) | octets[3] as u64;
+    let base_end = base_int + (1u64 << (32 - base_bits).min(32));
+    for n in 0u64..(1u64 << ((netmask as u32) - base_bits).min(24)) {
+        let val = base_int + n * unit;
+        if val >= base_end {
+            break;
+        }
+        let cand = format!(
+            "{}.{}.{}.{}/{}",
+            (val >> 24) & 0xff,
+            (val >> 16) & 0xff,
+            (val >> 8) & 0xff,
+            val & 0xff,
+            netmask
+        );
+        if !used.contains(&cand) {
+            return (Some(cand), netmask);
+        }
+    }
+    (None, netmask)
 }
 
 fn id_of(params: &P, key: &str) -> String {

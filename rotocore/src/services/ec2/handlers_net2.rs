@@ -1469,7 +1469,7 @@ fn modify_vpc_endpoint(req: &Request, params: &P) -> Response {
 fn describe_vpc_endpoint_services(req: &Request, params: &P) -> Response {
     ec2_xml(
         "DescribeVpcEndpointServicesResponse",
-        r#"<serviceDetailSet><item><serviceId>vpce-svc-0931094d2e6e2a2b6</serviceId><serviceName>com.amazonaws.us-east-1.s3</serviceName><serviceType><item><serviceType>Gateway</serviceType></item></serviceType><availabilityZones><item>us-east-1a</item><item>us-east-1b</item><item>us-east-1c</item><item>us-east-1d</item><item>us-east-1e</item><item>us-east-1f</item></availabilityZones><owner>amazon</owner><baseEndpointDnsNames><item>s3.us-east-1.amazonaws.com</item></baseEndpointDnsNames><vpcEndpointPolicySupported>true</vpcEndpointPolicySupported><acceptanceRequired>false</acceptanceRequired><managesVpcEndpoints>false</managesVpcEndpoints><privateDnsName/> </item></serviceDetailSet><vpcEndpointServiceSet/>"#,
+        r#"<serviceDetailSet><item><serviceId>vpce-svc-0931094d2e6e2a2b6</serviceId><serviceName>com.amazonaws.us-east-1.s3</serviceName><serviceType><item><serviceType>Gateway</serviceType></item></serviceType><availabilityZones><item>us-east-1a</item><item>us-east-1b</item><item>us-east-1c</item><item>us-east-1d</item><item>us-east-1e</item><item>us-east-1f</item></availabilityZones><owner>amazon</owner><baseEndpointDnsNames><item>s3.us-east-1.amazonaws.com</item></baseEndpointDnsNames><vpcEndpointPolicySupported>true</vpcEndpointPolicySupported><acceptanceRequired>false</acceptanceRequired><managesVpcEndpoints>false</managesVpcEndpoints><privateDnsName/> </item></serviceDetailSet><serviceNameSet><item>com.amazonaws.us-east-1.s3</item></serviceNameSet>"#,
     )
 }
 
