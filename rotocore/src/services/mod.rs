@@ -61,6 +61,7 @@ pub mod macie2;
 pub mod managedblockchain;
 pub mod mediapackage;
 pub mod mediastore;
+pub mod memorydb;
 pub mod mq;
 pub mod networkfirewall;
 pub mod networkmanager;
@@ -161,6 +162,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "managedblockchain" => Some(managedblockchain::dispatch(req)),
         "mediapackage" => mediapackage::dispatch(req),
         "mediastore" => mediastore::dispatch(req),
+        "memorydb" => memorydb::dispatch(req),
         "mq" => mq::dispatch(req),
         "networkfirewall" => networkfirewall::dispatch(req),
         "networkmanager" => networkmanager::dispatch(req),
@@ -272,6 +274,7 @@ pub fn handles_service(service: &str) -> bool {
             | "managedblockchain"
             | "mediapackage"
             | "mediastore"
+            | "memorydb"
             | "mq"
             | "networkfirewall"
             | "networkmanager"
