@@ -298,9 +298,8 @@ def run_all_rust_only(services, state_dir, expectations):
                 mark += f" [-{rec['drift']} vs baseline {expected}]"
             log(f"     {svc}: pass={r['pass']}/{r['total']}  fidelity={mark}")
         report["services"][svc] = rec
-    report["expectations_drift"] = [
-        {"suite": s, "line": l} for _, s, l in drift_regressions(report, expectations)
-    ]
+    # (deficit, suite, line) tuples: the consumer below unpacks three fields.
+    report["expectations_drift"] = list(drift_regressions(report, expectations))
     if report["expectations_drift"]:
         log("")
         log("EXPECTATIONS DRIFT (actual < baseline):")
