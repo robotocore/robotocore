@@ -56,6 +56,8 @@ struct Step {
     action_on_failure: Option<String>,
     hadoop_jar_step: Value,
     created_at: f64,
+    /// Monotonic tie-breaker (moto orders by distinct microsecond datetimes).
+    seq: u64,
     start_at: Option<f64>,
     end_at: Option<f64>,
     state: String,
@@ -75,6 +77,21 @@ struct InstanceGroup {
     ebs_configuration: Option<Value>,
     created_at: f64,
     ready_at: f64,
+}
+
+#[derive(Debug, Clone)]
+struct Fleet {
+    id: String,
+    name: String,
+    instance_fleet_type: String,
+    target_on_demand_capacity: i64,
+    target_spot_capacity: i64,
+    provisioned_on_demand_capacity: i64,
+    provisioned_spot_capacity: i64,
+    instance_type_configs: Vec<Value>,
+    launch_specifications: Value,
+    resize_specifications: Option<Value>,
+    cluster_id: String,
 }
 
 #[derive(Debug, Clone)]
@@ -129,6 +146,8 @@ struct SecurityConfiguration {
 struct EmrState {
     clusters: HashMap<String, Cluster>,
     instance_groups: HashMap<String, InstanceGroup>,
+    /// Instances fleets in insertion order (moto's dict listing semantics).
+    instance_fleets: Vec<Fleet>,
     security_configurations: HashMap<String, SecurityConfiguration>,
     /// Store mirroring moto's
     /// `{"block_public_access_configuration": …, "block_public_access_configuration_metadata": …}`.
@@ -297,6 +316,14 @@ fn ok(body: Value) -> Response {
 
 const ID_CHARS: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
+/// Monotonic counter standing in for moto's microsecond-distinct datetimes
+/// when ordering steps newest-first.
+fn next_seq() -> u64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: once_cell::sync::Lazy<AtomicU64> = once_cell::sync::Lazy::new(|| AtomicU64::new(0));
+    SEQ.fetch_add(1, Ordering::Relaxed)
+}
+
 fn random_id() -> String {
     let bytes = *uuid::Uuid::new_v4().as_bytes();
     (0..13)
@@ -310,6 +337,10 @@ fn random_cluster_id() -> String {
 
 fn random_instance_group_id() -> String {
     format!("i-{}", random_id())
+}
+
+fn random_instance_fleet_id() -> String {
+    format!("if-{}", random_id())
 }
 
 fn random_step_id() -> String {
@@ -651,7 +682,7 @@ fn list_instance_groups_json(state: &EmrState, cluster: &Cluster) -> Vec<Value> 
             status.insert("Timeline".into(), Value::Object(timeline));
             obj.insert("Status".into(), Value::Object(status));
             if let Some(policy) = &g.auto_scaling_policy {
-                obj.insert("AutoScalingPolicy".into(), policy.clone());
+                obj.insert("AutoScalingPolicy".into(), policy_snake_to_pascal(policy));
             }
             obj.insert("EbsBlockDevices".into(), json!([]));
             Value::Object(obj)
@@ -663,6 +694,146 @@ fn terminate_cluster(c: &mut Cluster) {
     c.state = Some("TERMINATING".into());
     c.end_at = Some(now_ts());
     c.state = Some("TERMINATED".into());
+}
+
+// ---
+// Family B: steps, instance groups, fleets, bootstrap actions, scaling policies
+// ---
+
+/// StepSummary element (DescribeStep / ListSteps members).
+fn step_summary_json(s: &Step) -> Value {
+    let config = step_config_json(s);
+    let mut status = Map::new();
+    status.insert("State".into(), json!(s.state));
+    // moto: StateChangeReason {"Message": getattr(..., None)} → unset dropped.
+    status.insert("StateChangeReason".into(), json!({}));
+    let mut timeline = Map::new();
+    timeline.insert("CreationDateTime".into(), json!(s.created_at));
+    put_opt_ts(&mut timeline, "EndDateTime", s.end_at);
+    put_opt_ts(&mut timeline, "StartDateTime", s.start_at);
+    status.insert("Timeline".into(), Value::Object(timeline));
+    let mut obj = Map::new();
+    put_opt_str(&mut obj, "Id", Some(&s.id));
+    put_opt_str(&mut obj, "Name", s.name.as_ref());
+    obj.insert("Config".into(), config);
+    put_opt_str(&mut obj, "ActionOnFailure", s.action_on_failure.as_ref());
+    obj.insert("Status".into(), Value::Object(status));
+    Value::Object(obj)
+}
+
+/// HadoopStepConfig members for a step (moto Step.config).
+fn step_config_json(s: &Step) -> Value {
+    let jar = as_str(pick(&s.hadoop_jar_step, "jar")).unwrap_or_default();
+    let args = as_vec(pick(&s.hadoop_jar_step, "args"));
+    // moto: {p["Key"]: p["Value"] for p in request properties}
+    let properties = as_vec(pick(&s.hadoop_jar_step, "properties"))
+        .iter()
+        .filter_map(|p| {
+            Some((
+                as_str(pick(p, "key"))?,
+                pick(p, "value").cloned().unwrap_or(Value::Null),
+            ))
+        })
+        .collect::<Vec<(String, Value)>>();
+    let mut props = Map::new();
+    for (k, v) in properties {
+        props.insert(k, v);
+    }
+    json!({"Jar": jar, "Properties": Value::Object(props), "Args": args})
+}
+
+/// Insert policy snake-xformed with moto's injected `status.state=ATTACHED`.
+fn attach_auto_scaling_policy(policy: Option<&Value>, cluster_id: &str) -> Option<Value> {
+    let stored = policy.map(pascal_to_snake_tree).filter(|p| !p.is_null())?;
+    let stored = match stored {
+        Value::Object(mut obj) => {
+            obj.insert("status".into(), json!({"state": "ATTACHED"}));
+            Value::Object(obj)
+        }
+        other => other,
+    };
+    // moto: swap the ${emr.clusterId} placeholder in alarm dimensions.
+    Some(swap_cluster_placeholder(stored, cluster_id))
+}
+
+fn swap_cluster_placeholder(mut v: Value, cluster_id: &str) -> Value {
+    let needle = "${emr.clusterId}".to_string();
+    match &mut v {
+        Value::Array(items) => {
+            for item in items {
+                let cloned = item.clone();
+                let swapped = swap_cluster_placeholder(cloned, cluster_id);
+                *item = swapped;
+            }
+        }
+        Value::Object(obj) => {
+            for (_k, val) in obj.iter_mut() {
+                let cloned = val.clone();
+                let swapped = swap_cluster_placeholder(cloned, cluster_id);
+                *val = swapped;
+            }
+        }
+        Value::String(s) => {
+            if *s == needle {
+                // dimension values carrying the placeholder become the id
+                return Value::String(cluster_id.to_string());
+            }
+        }
+        _ => {}
+    }
+    v
+}
+
+/// recursive camel→snake key transform (moto CamelToUnderscoresWalker).
+fn pascal_to_snake_tree(v: &Value) -> Value {
+    match v {
+        Value::Array(items) => Value::Array(items.iter().map(pascal_to_snake_tree).collect()),
+        Value::Object(map) => {
+            let mut out = Map::new();
+            for (k, val) in map {
+                out.insert(pascal_to_snake(k), pascal_to_snake_tree(val));
+            }
+            Value::Object(out)
+        }
+        other => other.clone(),
+    }
+}
+
+/// `SimpleScalingPolicyConfiguration` → `simple_scaling_policy_configuration`.
+fn pascal_to_snake(s: &str) -> String {
+    xform(s)
+}
+
+/// Render a stored (snake-keyed) Auto-Scaling policy as PascalCase members,
+/// the way moto's shape-driven serializer does.
+fn policy_snake_to_pascal(v: &Value) -> Value {
+    match v {
+        Value::Array(items) => Value::Array(items.iter().map(policy_snake_to_pascal).collect()),
+        Value::Object(map) => {
+            let mut out = Map::new();
+            for (k, val) in map {
+                out.insert(snake_to_pascal(k), policy_snake_to_pascal(val));
+            }
+            Value::Object(out)
+        }
+        other => other.clone(),
+    }
+}
+
+/// `simple_scaling_policy_configuration` → `SimpleScalingPolicyConfiguration`.
+fn snake_to_pascal(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for word in s.split('_') {
+        if word.is_empty() {
+            continue;
+        }
+        let mut cs = word.chars();
+        if let Some(first) = cs.next() {
+            out.extend(first.to_uppercase());
+            out.push_str(cs.as_str());
+        }
+    }
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -703,6 +874,20 @@ pub fn dispatch(req: &Request) -> Response {
         "RemoveTags" => remove_tags(st, &body),
         "ModifyCluster" => modify_cluster(st, &body),
         "DescribeJobFlows" => describe_job_flows(st, &body),
+        "AddJobFlowSteps" => add_job_flow_steps(st, &body),
+        "ListSteps" => list_steps(st, &body),
+        "DescribeStep" => describe_step(st, &body),
+        "CancelSteps" => cancel_steps(st, &body),
+        "AddInstanceGroups" => add_instance_groups(st, &body),
+        "ListInstanceGroups" => list_instance_groups(st, &body),
+        "ModifyInstanceGroups" => modify_instance_groups(st, &body),
+        "ListInstances" => list_instances(st, &body),
+        "ListBootstrapActions" => list_bootstrap_actions(st, &body),
+        "AddInstanceFleet" => add_instance_fleet(st, account, &region, &body),
+        "ModifyInstanceFleet" => modify_instance_fleet(st, &body),
+        "ListInstanceFleets" => list_instance_fleets(st, account, &region, &body),
+        "PutAutoScalingPolicy" => put_auto_scaling_policy(st, account, &region, &body),
+        "RemoveAutoScalingPolicy" => remove_auto_scaling_policy(st, &body),
         _ => Err(not_implemented(&op)),
     });
     match result {
@@ -825,6 +1010,7 @@ fn run_job_flow(state: &mut EmrState, account: u64, region: &str, body: &Value) 
             action_on_failure: as_str(pick(step, "action_on_failure")),
             hadoop_jar_step: pick(step, "hadoop_jar_step").cloned().unwrap_or(json!({})),
             created_at: now_ts(),
+            seq: next_seq(),
             start_at: None,
             end_at: None,
             state: state_name.into(),
@@ -1098,6 +1284,421 @@ fn modify_cluster(state: &mut EmrState, body: &Value) -> OpResult {
     let mut response = Map::new();
     put_opt_num(&mut response, "StepConcurrencyLevel", level);
     Ok(Value::Object(response))
+}
+
+// ---------------------------------------------------------------------------
+// Family B handlers
+// ---------------------------------------------------------------------------
+
+/// AddJobFlowSteps — mirrors moto add_steps semantics (first step RUNNING,
+/// later ones PENDING, cluster flips RUNNING).
+fn add_job_flow_steps(state: &mut EmrState, body: &Value) -> OpResult {
+    let id = as_str(param(body, "JobFlowId")).unwrap_or_default();
+    let cluster = state
+        .clusters
+        .get_mut(&id)
+        .ok_or_else(|| invalid_cluster(&id))?;
+    let mut ids = Vec::new();
+    for step in as_vec(param(body, "Steps")).iter() {
+        let state_name = if cluster.steps.is_empty() {
+            "RUNNING"
+        } else {
+            "PENDING"
+        };
+        let step = Step {
+            id: random_step_id(),
+            name: as_str(pick(step, "name")),
+            action_on_failure: as_str(pick(step, "action_on_failure")),
+            hadoop_jar_step: pick(step, "hadoop_jar_step").cloned().unwrap_or(json!({})),
+            created_at: now_ts(),
+            seq: next_seq(),
+            start_at: None,
+            end_at: None,
+            state: state_name.into(),
+        };
+        ids.push(step.id.clone());
+        cluster.steps.push(step);
+    }
+    cluster.state = Some("RUNNING".into());
+    Ok(json!({"StepIds": ids}))
+}
+
+/// ListSteps — steps sorted newest-first with optional id/state filters.
+fn list_steps(state: &mut EmrState, body: &Value) -> OpResult {
+    let id = as_str(param(body, "ClusterId")).unwrap_or_default();
+    let step_ids = str_list(param(body, "StepIds"));
+    let step_states = str_list(param(body, "StepStates"));
+    let mut steps: Vec<&Step> = state
+        .clusters
+        .get(&id)
+        .ok_or_else(|| invalid_cluster(&id))?
+        .steps
+        .iter()
+        .filter(|s| step_ids.is_empty() || step_ids.contains(&s.id))
+        .filter(|s| step_states.is_empty() || step_states.contains(&s.state))
+        .collect();
+    steps.sort_by(|a, b| b.seq.cmp(&a.seq));
+    let list = steps
+        .iter()
+        .map(|s| step_summary_json(s))
+        .collect::<Vec<_>>();
+    Ok(json!({"Steps": list}))
+}
+
+/// DescribeStep — unknown step inside a valid cluster yields `{}` (moto None).
+fn describe_step(state: &mut EmrState, body: &Value) -> OpResult {
+    let id = as_str(param(body, "ClusterId")).unwrap_or_default();
+    let step_id = as_str(param(body, "StepId")).unwrap_or_default();
+    let cluster = state
+        .clusters
+        .get(&id)
+        .ok_or_else(|| invalid_cluster(&id))?;
+    match cluster.steps.iter().find(|s| s.id == step_id) {
+        Some(s) => Ok(json!({"Step": step_summary_json(s)})),
+        None => Ok(json!({})),
+    }
+}
+
+/// CancelSteps — per-id status records like moto cancel_steps.
+fn cancel_steps(state: &mut EmrState, body: &Value) -> OpResult {
+    let id = as_str(param(body, "ClusterId")).unwrap_or_default();
+    let step_ids = str_list(param(body, "StepIds"));
+    let cluster = state
+        .clusters
+        .get_mut(&id)
+        .ok_or_else(|| invalid_cluster(&id))?;
+    let mut out = Vec::new();
+    for step_id in step_ids {
+        let step = cluster.steps.iter_mut().find(|s| s.id == step_id);
+        match step {
+            None => out.push(json!({
+                "StepId": step_id,
+                "Status": "FAILED",
+                "Reason": format!("Step {step_id} is not found."),
+            })),
+            Some(s) if matches!(s.state.as_str(), "COMPLETED" | "FAILED" | "CANCELLED") => {
+                out.push(json!({
+                    "StepId": step_id,
+                    "Status": "FAILED",
+                    "Reason": format!("Step {step_id} could not be cancelled."),
+                }));
+            }
+            Some(s) => {
+                s.state = "CANCELLED".into();
+                s.end_at = Some(now_ts());
+                out.push(json!({"StepId": step_id, "Status": "SUCCESS", "Reason": "NONE"}));
+            }
+        }
+    }
+    Ok(json!({"CancelStepsInfoList": out}))
+}
+
+/// AddInstanceGroups — response renders `{}`: moto's handler returns group
+/// objects under a key the (patched-spec) output shape does not declare, so
+/// the value picker drops everything.
+fn add_instance_groups(state: &mut EmrState, body: &Value) -> OpResult {
+    let job_flow_id = as_str(param(body, "JobFlowId")).unwrap_or_default();
+    if !state.clusters.contains_key(&job_flow_id) {
+        return Err(invalid_cluster(&job_flow_id));
+    }
+    for group in as_vec(param(body, "InstanceGroups")).iter() {
+        let role = match as_str(pick(group, "instance_role")) {
+            Some(r) if matches!(r.as_str(), "MASTER" | "CORE" | "TASK") => r,
+            _ => String::new(), // moto would treat kwargs loosely
+        };
+        let mut built = InstanceGroup {
+            id: random_instance_group_id(),
+            name: as_str(pick(group, "name")),
+            role: role.clone(),
+            instance_type: as_str(pick(group, "instance_type")),
+            num_instances: as_i64(pick(group, "instance_count")).unwrap_or(0),
+            market: as_str(pick(group, "market")).unwrap_or_else(|| "ON_DEMAND".into()),
+            bid_price: as_str(pick(group, "bid_price")),
+            auto_scaling_policy: None,
+            ebs_configuration: pick(group, "ebs_configuration").cloned(),
+            created_at: now_ts(),
+            ready_at: now_ts(),
+        };
+        if built.name.is_none() {
+            built.name = Some(match role.as_str() {
+                "MASTER" => "master".into(),
+                "CORE" => "slave".into(),
+                _ => "Task instance group".into(),
+            });
+        }
+        link_group(state, &job_flow_id, built);
+    }
+    Ok(json!({}))
+}
+
+/// moto Cluster.add_instance_group: MASTER/CORE bookkeeping + id append.
+fn link_group(state: &mut EmrState, cluster_id: &str, group: InstanceGroup) {
+    let role = group.role.clone();
+    let num_instances = group.num_instances;
+    let group_id = group.id.clone();
+    state.instance_groups.insert(group_id.clone(), group);
+    if let Some(c) = state.clusters.get_mut(cluster_id) {
+        if role == "MASTER" {
+            c.master_instance_group_id = Some(group_id.clone());
+            if num_instances > 1 {
+                // moto: HA cluster (exactly 3) pins keep-alive + protection
+                c.keep_job_flow_alive_when_no_steps = true;
+                c.termination_protected = num_instances == 3;
+            }
+        }
+        if role == "CORE" {
+            c.core_instance_group_id = Some(group_id.clone());
+        }
+        c.instance_group_ids.push(group_id);
+    }
+}
+
+/// ListInstanceGroups — groups sorted by id (moto list_instance_groups).
+fn list_instance_groups(state: &mut EmrState, body: &Value) -> OpResult {
+    let id = as_str(param(body, "ClusterId")).unwrap_or_default();
+    let cluster = state
+        .clusters
+        .get(&id)
+        .ok_or_else(|| invalid_cluster(&id))?;
+    Ok(json!({
+        "InstanceGroups": list_instance_groups_json(state, cluster),
+    }))
+}
+
+/// ModifyInstanceGroups — bare dict reads; missing group/count as moto.
+fn modify_instance_groups(state: &mut EmrState, body: &Value) -> OpResult {
+    for group in as_vec(param(body, "InstanceGroups")).iter() {
+        let group_id = as_str(pick(group, "instance_group_id"));
+        let count = as_i64(pick(group, "instance_count"));
+        let found = group_id
+            .as_ref()
+            .and_then(|gid| state.instance_groups.get_mut(gid));
+        match found {
+            None => {
+                return Err(key_error(
+                    group_id
+                        .as_deref()
+                        .or(Some("instance_count"))
+                        .unwrap_or("instance_count"),
+                ));
+            }
+            Some(g) => match count {
+                None => return Err(key_error("instance_count")),
+                Some(n) => g.num_instances = n,
+            },
+        }
+    }
+    Ok(json!({}))
+}
+
+/// ListInstances — no EC2-instance bookkeeping (moto only wires instances
+/// when Instances.InstanceGroups accompanies RunJobFlow; the suites don't).
+fn list_instances(state: &mut EmrState, body: &Value) -> OpResult {
+    let id = as_str(param(body, "ClusterId")).unwrap_or_default();
+    state
+        .clusters
+        .get(&id)
+        .ok_or_else(|| invalid_cluster(&id))?;
+    let _ = param(body, "InstanceGroupId");
+    let _ = param(body, "InstanceGroupTypes");
+    Ok(json!({"Instances": []}))
+}
+
+/// ListBootstrapActions — Command shape {Name, ScriptPath, Args}.
+fn list_bootstrap_actions(state: &mut EmrState, body: &Value) -> OpResult {
+    let id = as_str(param(body, "ClusterId")).unwrap_or_default();
+    let cluster = state
+        .clusters
+        .get(&id)
+        .ok_or_else(|| invalid_cluster(&id))?;
+    let actions = cluster
+        .bootstrap_actions
+        .iter()
+        .map(|a| {
+            json!({
+                "Name": a.name,
+                "ScriptPath": a.script_path,
+                "Args": a.args,
+            })
+        })
+        .collect::<Vec<_>>();
+    Ok(json!({"BootstrapActions": actions}))
+}
+
+/// AddInstanceFleet — stores the fleet, echoes cluster/id/arn.
+fn add_instance_fleet(state: &mut EmrState, account: u64, region: &str, body: &Value) -> OpResult {
+    let cluster_id = as_str(param(body, "ClusterId")).unwrap_or_default();
+    if !state.clusters.contains_key(&cluster_id) {
+        return Err(invalid_cluster(&cluster_id));
+    }
+    let fleet_req = param(body, "InstanceFleet").or_else(|| param(body, "instance_fleet"));
+    // InstanceFleetType default TASK; capacities default 0 (moto defaults).
+    let id_fleet = random_instance_fleet_id();
+    let fleet = Fleet {
+        id: id_fleet.clone(),
+        name: as_str(fleet_req.and_then(|f| pick(f, "name"))).unwrap_or_default(),
+        instance_fleet_type: as_str(fleet_req.and_then(|f| pick(f, "instance_fleet_type")))
+            .unwrap_or_else(|| "TASK".into()),
+        target_on_demand_capacity: as_i64(
+            fleet_req.and_then(|f| pick(f, "target_on_demand_capacity")),
+        )
+        .unwrap_or(0),
+        target_spot_capacity: as_i64(fleet_req.and_then(|f| pick(f, "target_spot_capacity")))
+            .unwrap_or(0),
+        provisioned_on_demand_capacity: as_i64(
+            fleet_req.and_then(|f| pick(f, "target_on_demand_capacity")),
+        )
+        .unwrap_or(0),
+        provisioned_spot_capacity: as_i64(fleet_req.and_then(|f| pick(f, "target_spot_capacity")))
+            .unwrap_or(0),
+        instance_type_configs: as_vec(fleet_req.and_then(|f| pick(f, "instance_type_configs"))),
+        launch_specifications: fleet_req
+            .and_then(|f| pick(f, "launch_specifications"))
+            .cloned()
+            .unwrap_or(json!({})),
+        resize_specifications: fleet_req
+            .and_then(|f| pick(f, "resize_specifications"))
+            .cloned(),
+        cluster_id: cluster_id.clone(),
+    };
+    let arn = cluster_arn(account, region, &cluster_id);
+    state.instance_fleets.push(fleet);
+    Ok(json!({
+        "ClusterId": cluster_id,
+        "InstanceFleetId": id_fleet,
+        "ClusterArn": arn,
+    }))
+}
+
+/// ModifyInstanceFleet — capacity updates; unknown fleet → ResourceNotFound.
+fn modify_instance_fleet(state: &mut EmrState, body: &Value) -> OpResult {
+    let cluster_id = as_str(param(body, "ClusterId")).unwrap_or_default();
+    if !state.clusters.contains_key(&cluster_id) {
+        return Err(invalid_cluster(&cluster_id));
+    }
+    let fleet_req = param(body, "InstanceFleet").or_else(|| param(body, "instance_fleet"));
+    let fleet_id = fleet_req
+        .and_then(|f| as_str(pick(f, "instance_fleet_id")))
+        .unwrap_or_default();
+    let fleet = state
+        .instance_fleets
+        .iter_mut()
+        .find(|f| f.id == fleet_id)
+        .ok_or_else(|| {
+            resource_not_found(&format!("Instance fleet '{}' is not found.", fleet_id))
+        })?;
+    if let Some(v) = fleet_req.and_then(|f| as_i64(pick(f, "target_on_demand_capacity"))) {
+        fleet.target_on_demand_capacity = v;
+        fleet.provisioned_on_demand_capacity = v;
+    }
+    if let Some(v) = fleet_req.and_then(|f| as_i64(pick(f, "target_spot_capacity"))) {
+        fleet.target_spot_capacity = v;
+        fleet.provisioned_spot_capacity = v;
+    }
+    if let Some(rs) = fleet_req
+        .and_then(|f| pick(f, "resize_specifications"))
+        .cloned()
+    {
+        fleet.resize_specifications = Some(rs);
+    }
+    Ok(json!({}))
+}
+
+/// ListInstanceFleets — insertion order, mirroring moto's dict walk.
+fn list_instance_fleets(
+    state: &mut EmrState,
+    account: u64,
+    region: &str,
+    body: &Value,
+) -> OpResult {
+    let cluster_id = as_str(param(body, "ClusterId")).unwrap_or_default();
+    if !state.clusters.contains_key(&cluster_id) {
+        return Err(invalid_cluster(&cluster_id));
+    }
+    let fleets = state
+        .instance_fleets
+        .iter()
+        .filter(|f| f.cluster_id == cluster_id)
+        .map(|f| fleet_json(f, account, region))
+        .collect::<Vec<_>>();
+    Ok(json!({"InstanceFleets": fleets}))
+}
+
+/// InstanceFleet element (moto responses.list_instance_fleets).
+fn fleet_json(f: &Fleet, _account: u64, _region: &str) -> Value {
+    json!({
+        "Id": f.id,
+        "Name": f.name,
+        "Status": {
+            "State": "RUNNING",
+            "StateChangeReason": {"Code": "USER_REQUEST", "Message": ""},
+            "Timeline": {"CreationDateTime": now_ts(), "ReadyDateTime": now_ts()},
+        },
+        "InstanceFleetType": f.instance_fleet_type,
+        "TargetOnDemandCapacity": f.target_on_demand_capacity,
+        "TargetSpotCapacity": f.target_spot_capacity,
+        "ProvisionedOnDemandCapacity": f.provisioned_on_demand_capacity,
+        "ProvisionedSpotCapacity": f.provisioned_spot_capacity,
+        "InstanceTypeSpecifications": f
+            .instance_type_configs
+            .iter()
+            .map(|c| {
+                let mut obj = Map::new();
+                if let Some(t) = as_str(pick(c, "instance_type")) {
+                    obj.insert("InstanceType".into(), json!(t));
+                }
+                if let Some(v) = as_i64(pick(c, "weighted_capacity")) {
+                    obj.insert("WeightedCapacity".into(), json!(v));
+                }
+                Value::Object(obj)
+            })
+            .collect::<Vec<_>>(),
+        "LaunchSpecifications": f.launch_specifications,
+    })
+}
+
+/// PutAutoScalingPolicy — attaches (snake-stored, status-injected) policy.
+fn put_auto_scaling_policy(
+    state: &mut EmrState,
+    account: u64,
+    region: &str,
+    body: &Value,
+) -> OpResult {
+    let cluster_id = as_str(param(body, "ClusterId")).unwrap_or_default();
+    let cluster = state
+        .clusters
+        .get(&cluster_id)
+        .ok_or_else(|| invalid_cluster(&cluster_id))?;
+    let cluster_arn_v = cluster.arn(account, region);
+    // moto: `assert instance_group is not None` → InternalError("") when absent.
+    let group_id = as_str(param(body, "InstanceGroupId")).unwrap_or_default();
+    let group = state.instance_groups.get_mut(&group_id).ok_or_else(|| {
+        Response::json_status(500, &json!({"__type": "InternalError", "message": ""}))
+    })?;
+    group.auto_scaling_policy =
+        attach_auto_scaling_policy(param(body, "AutoScalingPolicy"), &cluster_id.clone());
+    let policy = group
+        .auto_scaling_policy
+        .as_ref()
+        .map(policy_snake_to_pascal);
+    let gid = group.id.clone();
+    let mut response = Map::new();
+    response.insert("ClusterId".into(), json!(cluster_id));
+    response.insert("InstanceGroupId".into(), json!(gid));
+    if let Some(policy) = policy {
+        response.insert("AutoScalingPolicy".into(), policy);
+    }
+    response.insert("ClusterArn".into(), json!(cluster_arn_v));
+    Ok(Value::Object(response))
+}
+
+/// RemoveAutoScalingPolicy — moto routes through put(policy=None).
+fn remove_auto_scaling_policy(state: &mut EmrState, body: &Value) -> OpResult {
+    let group_id = as_str(param(body, "InstanceGroupId")).unwrap_or_default();
+    if let Some(group) = state.instance_groups.get_mut(&group_id) {
+        group.auto_scaling_policy = None;
+    }
+    Ok(json!({}))
 }
 
 #[cfg(test)]
@@ -1402,5 +2003,318 @@ mod tests {
             body_of(&resp)["Message"],
             "Only one AMI version and release label may be specified. Provided AMI: 3.0, release label: emr-6.10.0."
         );
+    }
+
+    #[test]
+    fn steps_add_describe_cancel() {
+        let id = cluster_fixture("steps");
+        let add = body_of(&run(
+            "AddJobFlowSteps",
+            json!({"JobFlowId": id, "Steps": [
+                {"Name": "step-one", "ActionOnFailure": "CONTINUE", "HadoopJarStep": {"Jar": "command-runner.jar", "Args": ["echo", "hello"]}},
+                {"Name": "step-two", "ActionOnFailure": "CONTINUE", "HadoopJarStep": {"Jar": "command-runner.jar", "Args": ["echo", "x"]}},
+            ]}),
+        ));
+        let ids = add["StepIds"].as_array().unwrap().clone();
+        assert_eq!(ids.len(), 2);
+
+        let listed = body_of(&run("ListSteps", json!({"ClusterId": id})));
+        let listed = listed["Steps"].as_array().unwrap().clone();
+        assert_eq!(listed.len(), 2);
+        assert_eq!(listed[0]["Name"], "step-two"); // newest first
+        assert_eq!(listed[0]["Status"]["State"], "PENDING");
+        assert_eq!(listed[1]["Status"]["State"], "RUNNING");
+        assert_eq!(listed[1]["Config"]["Jar"], "command-runner.jar");
+        assert_eq!(listed[1]["Config"]["Args"], json!(["echo", "hello"]));
+
+        let first = ids[0].as_str().unwrap();
+        let described = body_of(&run(
+            "DescribeStep",
+            json!({"ClusterId": id, "StepId": first}),
+        ));
+        assert_eq!(described["Step"]["Id"], first);
+        assert_eq!(described["Step"]["Name"], "step-one");
+
+        // custom jar + args preserved
+        let custom = body_of(&run(
+            "AddJobFlowSteps",
+            json!({"JobFlowId": id, "Steps": [{"Name": "custom-jar", "ActionOnFailure": "CONTINUE", "HadoopJarStep": {"Jar": "s3://b/j.jar", "Args": ["a1", "a2"]}}]}),
+        ));
+        let cid = custom["StepIds"][0].as_str().unwrap().to_string();
+        let described = body_of(&run(
+            "DescribeStep",
+            json!({"ClusterId": id, "StepId": cid}),
+        ));
+        assert_eq!(described["Step"]["Config"]["Jar"], "s3://b/j.jar");
+        assert_eq!(described["Step"]["Config"]["Args"], json!(["a1", "a2"]));
+
+        let cancelled = body_of(&run(
+            "CancelSteps",
+            json!({"ClusterId": id, "StepIds": [first, "s-FAKE12345678"]}),
+        ));
+        let list = cancelled["CancelStepsInfoList"].as_array().unwrap().clone();
+        assert_eq!(list[0]["StepId"], first);
+        assert_eq!(list[0]["Status"], "SUCCESS");
+        assert_eq!(list[1]["Status"], "FAILED");
+        assert_eq!(list[1]["Reason"], "Step s-FAKE12345678 is not found.");
+        // cancelled step cannot be cancelled again
+        let again = body_of(&run(
+            "CancelSteps",
+            json!({"ClusterId": id, "StepIds": [first]}),
+        ));
+        assert_eq!(again["CancelStepsInfoList"][0]["Status"], "FAILED");
+
+        // unknown step in a real cluster → {}
+        let missing = body_of(&run(
+            "DescribeStep",
+            json!({"ClusterId": id, "StepId": "s-MISSING"}),
+        ));
+        assert_eq!(missing, json!({}));
+
+        // unknown cluster → NoSuchCluster
+        let err = run(
+            "AddJobFlowSteps",
+            json!({"JobFlowId": "j-NOPE123", "Steps": []}),
+        );
+        assert_eq!(body_of(&err)["__type"], "InvalidRequestException");
+        run("TerminateJobFlows", json!({"JobFlowIds": [id]}));
+    }
+
+    #[test]
+    fn instance_groups_flow() {
+        let id = cluster_fixture("groups");
+        let before = body_of(&run("ListInstanceGroups", json!({"ClusterId": id})));
+        let groups = before["InstanceGroups"].as_array().unwrap().clone();
+        assert_eq!(groups.len(), 2); // master + slave auto-created
+        assert!(groups.iter().any(|g| g["InstanceGroupType"] == "MASTER"));
+        assert!(groups.iter().any(|g| g["InstanceGroupType"] == "CORE"));
+        assert!(groups.iter().all(|g| g["Status"]["State"] == "RUNNING"));
+
+        // add a TASK group
+        run(
+            "AddInstanceGroups",
+            json!({"JobFlowId": id, "InstanceGroups": [{"Name": "task-group", "InstanceRole": "TASK", "InstanceType": "m5.xlarge", "InstanceCount": 1}]}),
+        );
+        let after = body_of(&run("ListInstanceGroups", json!({"ClusterId": id})));
+        let names: Vec<&str> = after["InstanceGroups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|g| g["Name"].as_str())
+            .collect();
+        assert!(names.contains(&"task-group"));
+        assert!(groups
+            .iter()
+            .any(|g| g.get("Id").is_none_or(|v| v.is_null()) == false));
+
+        // fake cluster add → NoSuchCluster
+        let err = run(
+            "AddInstanceGroups",
+            json!({"JobFlowId": "j-NOPE123", "InstanceGroups": []}),
+        );
+        assert_eq!(body_of(&err)["ErrorCode"], "NoSuchCluster");
+
+        run("TerminateJobFlows", json!({"JobFlowIds": [id]}));
+    }
+
+    #[test]
+    fn modify_instance_groups_resize() {
+        let id = cluster_fixture("resize");
+        let before = body_of(&run("ListInstanceGroups", json!({"ClusterId": id})));
+        let groups = before["InstanceGroups"].as_array().unwrap().clone();
+        assert!(!groups.is_empty());
+        let gid = groups[0]["Id"].as_str().unwrap().to_string();
+
+        let resp = run(
+            "ModifyInstanceGroups",
+            json!({"InstanceGroups": [{"InstanceGroupId": gid, "InstanceCount": 2}]}),
+        );
+        assert_eq!(status_of(&resp), 200);
+        let after = body_of(&run("ListInstanceGroups", json!({"ClusterId": id})));
+        let target = after["InstanceGroups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|g| g["Id"] == gid)
+            .unwrap();
+        assert_eq!(target["RequestedInstanceCount"], 2);
+
+        // no args → 200 {}
+        let empty = run("ModifyInstanceGroups", json!({}));
+        assert_eq!(status_of(&empty), 200);
+        assert_eq!(body_of(&empty), json!({}));
+
+        // unknown group → moto KeyError
+        let bad = run(
+            "ModifyInstanceGroups",
+            json!({"InstanceGroups": [{"InstanceGroupId": "i-NOPE", "InstanceCount": 2}]}),
+        );
+        assert_eq!(status_of(&bad), 500);
+        assert_eq!(body_of(&bad)["__type"], "InternalError");
+
+        run("TerminateJobFlows", json!({"JobFlowIds": [id]}));
+    }
+
+    #[test]
+    fn bootstrap_actions_listing() {
+        let id = cluster_fixture("bootstrap");
+        let resp = run(
+            "RunJobFlow",
+            json!({
+                "Name": "bootstrap-cluster",
+                "ReleaseLabel": "emr-6.10.0",
+                "Instances": {"MasterInstanceType": "m5.xlarge", "InstanceCount": 1, "KeepJobFlowAliveWhenNoSteps": true},
+                "JobFlowRole": "EMR_EC2_DefaultRole",
+                "ServiceRole": "EMR_DefaultRole",
+                "BootstrapActions": [{"Name": "install-deps", "ScriptBootstrapAction": {"Path": "s3://b/b.sh", "Args": ["--v"]}}],
+            }),
+        );
+        let cid = body_of(&resp)["JobFlowId"].as_str().unwrap().to_string();
+        let listed = body_of(&run("ListBootstrapActions", json!({"ClusterId": cid})));
+        let actions = listed["BootstrapActions"].as_array().unwrap().clone();
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0]["Name"], "install-deps");
+        assert_eq!(actions[0]["ScriptPath"], "s3://b/b.sh");
+        assert_eq!(actions[0]["Args"], json!(["--v"]));
+        run("TerminateJobFlows", json!({"JobFlowIds": [cid]}));
+        run("TerminateJobFlows", json!({"JobFlowIds": [id]}));
+    }
+
+    #[test]
+    fn instance_fleets_flow() {
+        let created = run(
+            "RunJobFlow",
+            json!({
+                "Name": "fleet-cluster",
+                "ReleaseLabel": "emr-6.10.0",
+                "Instances": {
+                    "InstanceFleets": [{"Name": "master-fleet", "InstanceFleetType": "MASTER", "TargetOnDemandCapacity": 1, "InstanceTypeConfigs": [{"InstanceType": "m5.xlarge"}]}],
+                    "KeepJobFlowAliveWhenNoSteps": true,
+                },
+                "JobFlowRole": "EMR_EC2_DefaultRole",
+                "ServiceRole": "EMR_DefaultRole",
+            }),
+        );
+        let cid = body_of(&created)["JobFlowId"].as_str().unwrap().to_string();
+        // RunJobFlow ignores Instances.InstanceFleets (moto parity)
+        let empty = body_of(&run("ListInstanceFleets", json!({"ClusterId": cid})));
+        assert_eq!(empty["InstanceFleets"].as_array().unwrap().len(), 0);
+
+        let added = body_of(&run(
+            "AddInstanceFleet",
+            json!({"ClusterId": cid, "InstanceFleet": {"Name": "task-fleet", "InstanceFleetType": "TASK", "TargetOnDemandCapacity": 1, "InstanceTypeConfigs": [{"InstanceType": "m5.xlarge"}]}}),
+        ));
+        assert_eq!(added["ClusterId"], cid);
+        assert!(added["InstanceFleetId"]
+            .as_str()
+            .unwrap()
+            .starts_with("if-"));
+        let fid = added["InstanceFleetId"].as_str().unwrap().to_string();
+
+        let listed = body_of(&run("ListInstanceFleets", json!({"ClusterId": cid})));
+        let fleets = listed["InstanceFleets"].as_array().unwrap().clone();
+        assert_eq!(fleets.len(), 1);
+        assert_eq!(fleets[0]["Name"], "task-fleet");
+        assert_eq!(fleets[0]["InstanceFleetType"], "TASK");
+        assert_eq!(
+            fleets[0]["InstanceTypeSpecifications"][0]["InstanceType"],
+            "m5.xlarge"
+        );
+        assert_eq!(
+            fleets[0]["Status"]["StateChangeReason"]["Code"],
+            "USER_REQUEST"
+        );
+
+        let modified = run(
+            "ModifyInstanceFleet",
+            json!({"ClusterId": cid, "InstanceFleet": {"InstanceFleetId": fid, "TargetOnDemandCapacity": 2}}),
+        );
+        assert_eq!(status_of(&modified), 200);
+        let listed2 = body_of(&run("ListInstanceFleets", json!({"ClusterId": cid})));
+        assert_eq!(listed2["InstanceFleets"][0]["TargetOnDemandCapacity"], 2);
+        assert_eq!(
+            listed2["InstanceFleets"][0]["ProvisionedOnDemandCapacity"],
+            2
+        );
+
+        let unknown = run(
+            "ModifyInstanceFleet",
+            json!({"ClusterId": cid, "InstanceFleet": {"InstanceFleetId": "if-NOPEXXXYYY", "TargetOnDemandCapacity": 3}}),
+        );
+        assert_eq!(status_of(&unknown), 400);
+        assert_eq!(body_of(&unknown)["ErrorCode"], "ResourceNotFound");
+
+        run("TerminateJobFlows", json!({"JobFlowIds": [cid]}));
+    }
+
+    #[test]
+    fn auto_scaling_policy_roundtrip() {
+        let id = cluster_fixture("scaling");
+        let before = body_of(&run("ListInstanceGroups", json!({"ClusterId": id})));
+        let groups = before["InstanceGroups"].as_array().unwrap().clone();
+        let gid = groups[0]["Id"].as_str().unwrap().to_string();
+
+        let attached = body_of(&run(
+            "PutAutoScalingPolicy",
+            json!({"ClusterId": id, "InstanceGroupId": gid, "AutoScalingPolicy": {
+                "Constraints": {"MinCapacity": 1, "MaxCapacity": 5},
+                "Rules": [{"Name": "scale-out", "Action": {"SimpleScalingPolicyConfiguration": {"ScalingAdjustment": 1, "AdjustmentType": "CHANGE_IN_CAPACITY"}}}],
+            }}),
+        ));
+        let policy = &attached["AutoScalingPolicy"];
+        assert_eq!(policy["Status"]["State"], "ATTACHED");
+        assert_eq!(policy["Constraints"]["MinCapacity"], 1);
+        assert_eq!(
+            policy["Rules"][0]["Action"]["SimpleScalingPolicyConfiguration"]["ScalingAdjustment"],
+            1
+        );
+        assert_eq!(attached["ClusterId"], id);
+        assert_eq!(attached["InstanceGroupId"], gid);
+
+        let list_after = body_of(&run("ListInstanceGroups", json!({"ClusterId": id})));
+        let group = list_after["InstanceGroups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|g| g["Id"] == gid)
+            .unwrap();
+        assert_eq!(group["AutoScalingPolicy"]["Status"]["State"], "ATTACHED");
+
+        let removed = run(
+            "RemoveAutoScalingPolicy",
+            json!({"ClusterId": id, "InstanceGroupId": gid}),
+        );
+        assert_eq!(status_of(&removed), 200);
+        let listed = body_of(&run("ListInstanceGroups", json!({"ClusterId": id})));
+        let group2 = listed["InstanceGroups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|g| g["Id"] == gid)
+            .unwrap();
+        assert!(group2.get("AutoScalingPolicy").is_none());
+
+        // unknown group → moto assert → InternalError("")
+        let bad = run(
+            "PutAutoScalingPolicy",
+            json!({"ClusterId": id, "InstanceGroupId": "i-NOPE123", "AutoScalingPolicy": {}}),
+        );
+        assert_eq!(status_of(&bad), 500);
+        assert_eq!(body_of(&bad)["message"], "");
+
+        run("TerminateJobFlows", json!({"JobFlowIds": [id]}));
+    }
+
+    #[test]
+    fn snake_to_pascal_roundtrip() {
+        assert_eq!(
+            snake_to_pascal("simple_scaling_policy_configuration"),
+            "SimpleScalingPolicyConfiguration"
+        );
+        assert_eq!(
+            pascal_to_snake("SimpleScalingPolicyConfiguration"),
+            "simple_scaling_policy_configuration"
+        );
+        assert_eq!(xform("MasterInstanceType"), "master_instance_type");
     }
 }
