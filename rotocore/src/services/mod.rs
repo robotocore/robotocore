@@ -9,6 +9,7 @@ pub mod kafka;
 
 use crate::{Request, Response};
 
+pub mod account;
 pub mod acm;
 pub mod acmpca;
 pub mod amp;
@@ -112,6 +113,7 @@ pub mod xray;
 pub fn dispatch(req: &Request) -> Option<Response> {
     match req.service.as_str() {
         "acm" => Some(acm::dispatch(req)),
+        "account" => account::dispatch(req),
         "acmpca" => acmpca::dispatch(req),
         "amp" => Some(amp::dispatch(req)),
         "apigateway" => Some(apigateway::dispatch(req)),
@@ -226,6 +228,7 @@ pub fn handles_service(service: &str) -> bool {
     matches!(
         service,
         "acm"
+            | "account"
             | "acmpca"
             | "amp"
             | "apigateway"
@@ -348,7 +351,7 @@ mod tests {
         ] {
             assert!(handles_service(service), "{service} should be armed");
         }
-        for service in ["account", "cloudwatch", "athena-x-nothing", ""] {
+        for service in ["cloudwatch", "athena-x-nothing", ""] {
             assert!(!handles_service(service), "{service} should not be armed");
         }
     }
