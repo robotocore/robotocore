@@ -4508,7 +4508,6 @@ fn op_associate_routing_profile_queues(
         .or_default();
     entry.extend(configs);
     let count = entry.len();
-    drop(entry);
     if let Ok(rp) = routing_profile_at(st, instance_id, rp_id) {
         rp["NumberOfAssociatedQueues"] = json!(count);
     }
@@ -4556,7 +4555,6 @@ fn op_disassociate_routing_profile_queues(
         !remove_ids.iter().any(|id| id == qid)
     });
     let count = entry.len();
-    drop(entry);
     if let Ok(rp) = routing_profile_at(st, instance_id, rp_id) {
         rp["NumberOfAssociatedQueues"] = json!(count);
     }
