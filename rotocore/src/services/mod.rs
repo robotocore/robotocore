@@ -65,6 +65,7 @@ pub mod opensearch;
 pub mod opensearchserverless;
 pub mod organizations;
 pub mod osis;
+pub mod panorama;
 pub mod personalize;
 pub mod pipes;
 pub mod polly;
@@ -157,6 +158,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "opensearch" => Some(opensearch::dispatch(req)),
         "opensearchserverless" => Some(opensearchserverless::dispatch(req)),
         "organizations" => organizations::dispatch(req),
+        "panorama" => panorama::dispatch(req),
         "personalize" => personalize::dispatch(req),
         "pipes" => Some(pipes::dispatch(req)),
         "polly" => Some(polly::dispatch(req)),
@@ -260,6 +262,7 @@ pub fn handles_service(service: &str) -> bool {
             | "opensearchserverless"
             | "organizations"
             | "osis"
+            | "panorama"
             | "personalize"
             | "pipes"
             | "polly"
