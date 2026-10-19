@@ -75,6 +75,7 @@ pub mod kinesisvideo;
 pub mod lakeformation;
 pub mod macie2;
 pub mod managedblockchain;
+pub mod mediaconnect;
 pub mod mediapackage;
 pub mod mediastore;
 pub mod memorydb;
@@ -203,6 +204,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "lakeformation" => Some(lakeformation::dispatch(req)),
         "macie2" => Some(macie2::dispatch(req)),
         "managedblockchain" => Some(managedblockchain::dispatch(req)),
+        "mediaconnect" => mediaconnect::dispatch(req),
         "mediapackage" => mediapackage::dispatch(req),
         "mediastore" => mediastore::dispatch(req),
         "memorydb" => memorydb::dispatch(req),
@@ -345,6 +347,7 @@ pub fn handles_service(service: &str) -> bool {
             | "lakeformation"
             | "macie2"
             | "managedblockchain"
+            | "mediaconnect"
             | "mediapackage"
             | "mediastore"
             | "memorydb"
