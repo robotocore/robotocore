@@ -1442,6 +1442,283 @@ fn handle(
             param(params, "RoutingProfileId"),
             body,
         ),
+        // -- Phone numbers ----------------------------------------------------
+        "ClaimPhoneNumber" => op_claim_phone_number(st, body, &req.region, req.account),
+        "DescribePhoneNumber" => op_describe_phone_number(st, param(params, "PhoneNumberId")),
+        "UpdatePhoneNumber" => op_update_phone_number(st, param(params, "PhoneNumberId"), body),
+        "ReleasePhoneNumber" => op_release_phone_number(st, param(params, "PhoneNumberId")),
+        "ListPhoneNumbers" => op_list_phone_numbers(st, param(params, "InstanceId")),
+        "ListPhoneNumbersV2" => op_list_phone_numbers_v2(st),
+        "SearchAvailablePhoneNumbers" => op_search_available_phone_numbers(st, body),
+        // -- Prompts ------------------------------------------------------------
+        "CreatePrompt" => op_create_prompt(st, param(params, "InstanceId"), body),
+        "DescribePrompt" => {
+            op_describe_prompt(st, param(params, "InstanceId"), param(params, "PromptId"))
+        }
+        "UpdatePrompt" => op_update_prompt(
+            st,
+            param(params, "InstanceId"),
+            param(params, "PromptId"),
+            body,
+        ),
+        "DeletePrompt" => {
+            op_delete_prompt(st, param(params, "InstanceId"), param(params, "PromptId"))
+        }
+        "ListPrompts" => op_list_prompts(st, param(params, "InstanceId")),
+        // -- Views ---------------------------------------------------------------
+        "CreateView" => op_create_view(st, param(params, "InstanceId"), body),
+        "DescribeView" => {
+            op_describe_view(st, param(params, "InstanceId"), param(params, "ViewId"))
+        }
+        "UpdateViewContent" => op_update_view_content(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ViewId"),
+            body,
+        ),
+        "UpdateViewMetadata" => op_update_view_metadata(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ViewId"),
+            body,
+        ),
+        "DeleteView" => op_delete_view(st, param(params, "InstanceId"), param(params, "ViewId")),
+        "ListViews" => op_list_views(st, param(params, "InstanceId")),
+        // -- Vocabularies -----------------------------------------------------------
+        "CreateVocabulary" => op_create_vocabulary(st, param(params, "InstanceId"), body),
+        "DescribeVocabulary" => op_describe_vocabulary(
+            st,
+            param(params, "InstanceId"),
+            param(params, "VocabularyId"),
+        ),
+        "DeleteVocabulary" => op_delete_vocabulary(
+            st,
+            param(params, "InstanceId"),
+            param(params, "VocabularyId"),
+        ),
+        "SearchVocabularies" => op_search_vocabularies(st, param(params, "InstanceId"), body),
+        "ListDefaultVocabularies" => op_list_default_vocabularies(st, param(params, "InstanceId")),
+        // -- Rules -----------------------------------------------------------------
+        "CreateRule" => op_create_rule(st, param(params, "InstanceId"), body),
+        "DescribeRule" => {
+            op_describe_rule(st, param(params, "InstanceId"), param(params, "RuleId"))
+        }
+        "UpdateRule" => op_update_rule(
+            st,
+            param(params, "InstanceId"),
+            param(params, "RuleId"),
+            body,
+        ),
+        "DeleteRule" => op_delete_rule(st, param(params, "InstanceId"), param(params, "RuleId")),
+        "ListRules" => op_list_rules(st, param(params, "InstanceId")),
+        // -- Evaluation forms --------------------------------------------------------
+        "CreateEvaluationForm" => op_create_evaluation_form(st, param(params, "InstanceId"), body),
+        "DescribeEvaluationForm" => op_describe_evaluation_form(
+            st,
+            param(params, "InstanceId"),
+            param(params, "EvaluationFormId"),
+        ),
+        "UpdateEvaluationForm" => op_update_evaluation_form(
+            st,
+            param(params, "InstanceId"),
+            param(params, "EvaluationFormId"),
+            body,
+        ),
+        "ActivateEvaluationForm" => op_activate_evaluation_form(
+            st,
+            param(params, "InstanceId"),
+            param(params, "EvaluationFormId"),
+            true,
+        ),
+        "DeactivateEvaluationForm" => op_activate_evaluation_form(
+            st,
+            param(params, "InstanceId"),
+            param(params, "EvaluationFormId"),
+            false,
+        ),
+        "DeleteEvaluationForm" => op_delete_evaluation_form(
+            st,
+            param(params, "InstanceId"),
+            param(params, "EvaluationFormId"),
+        ),
+        "ListEvaluationForms" => op_list_evaluation_forms(st, param(params, "InstanceId")),
+        "ListEvaluationFormVersions" => op_list_evaluation_form_versions(
+            st,
+            param(params, "InstanceId"),
+            param(params, "EvaluationFormId"),
+        ),
+        // -- Predefined attributes -----------------------------------------------------
+        "CreatePredefinedAttribute" => {
+            op_create_predefined_attribute(st, param(params, "InstanceId"), body)
+        }
+        "DescribePredefinedAttribute" => {
+            op_describe_predefined_attribute(st, param(params, "InstanceId"), param(params, "Name"))
+        }
+        "UpdatePredefinedAttribute" => op_update_predefined_attribute(
+            st,
+            param(params, "InstanceId"),
+            param(params, "Name"),
+            body,
+        ),
+        "DeletePredefinedAttribute" => {
+            op_delete_predefined_attribute(st, param(params, "InstanceId"), param(params, "Name"))
+        }
+        "ListPredefinedAttributes" => {
+            op_list_predefined_attributes(st, param(params, "InstanceId"))
+        }
+        // -- Task templates ---------------------------------------------------------------
+        "CreateTaskTemplate" => op_create_task_template(st, param(params, "InstanceId"), body),
+        "GetTaskTemplate" => op_get_task_template(
+            st,
+            param(params, "InstanceId"),
+            param(params, "TaskTemplateId"),
+        ),
+        "UpdateTaskTemplate" => op_update_task_template(
+            st,
+            param(params, "InstanceId"),
+            param(params, "TaskTemplateId"),
+            body,
+        ),
+        "DeleteTaskTemplate" => op_delete_task_template(
+            st,
+            param(params, "InstanceId"),
+            param(params, "TaskTemplateId"),
+        ),
+        "ListTaskTemplates" => op_list_task_templates(st, param(params, "InstanceId")),
+        // -- Integration associations + use cases ------------------------------------------
+        "CreateIntegrationAssociation" => {
+            op_create_integration_association(st, param(params, "InstanceId"), body)
+        }
+        "DeleteIntegrationAssociation" => op_delete_integration_association(
+            st,
+            param(params, "InstanceId"),
+            param(params, "IntegrationAssociationId"),
+        ),
+        "ListIntegrationAssociations" => {
+            op_list_integration_associations(st, param(params, "InstanceId"))
+        }
+        "CreateUseCase" => op_create_use_case(
+            st,
+            param(params, "InstanceId"),
+            param(params, "IntegrationAssociationId"),
+            body,
+        ),
+        "DeleteUseCase" => {
+            op_delete_use_case(st, param(params, "InstanceId"), param(params, "UseCaseId"))
+        }
+        "ListUseCases" => op_list_use_cases(
+            st,
+            param(params, "InstanceId"),
+            param(params, "IntegrationAssociationId"),
+        ),
+        // -- Email addresses -------------------------------------------------------------
+        "CreateEmailAddress" => op_create_email_address(st, param(params, "InstanceId"), body),
+        "DescribeEmailAddress" => op_describe_email_address(
+            st,
+            param(params, "InstanceId"),
+            param(params, "EmailAddressId"),
+        ),
+        "DeleteEmailAddress" => op_delete_email_address(
+            st,
+            param(params, "InstanceId"),
+            param(params, "EmailAddressId"),
+        ),
+        // -- Notifications ---------------------------------------------------------------
+        "CreateNotification" => op_create_notification(st, param(params, "InstanceId"), body),
+        "DescribeNotification" => op_describe_notification(
+            st,
+            param(params, "InstanceId"),
+            param(params, "NotificationId"),
+        ),
+        "DeleteNotification" => op_delete_notification(
+            st,
+            param(params, "InstanceId"),
+            param(params, "NotificationId"),
+        ),
+        "ListNotifications" => op_list_notifications(st, param(params, "InstanceId")),
+        // -- Workspaces ---------------------------------------------------------------------
+        "CreateWorkspace" => op_create_workspace(st, param(params, "InstanceId"), body),
+        "DescribeWorkspace" => op_describe_workspace(
+            st,
+            param(params, "InstanceId"),
+            param(params, "WorkspaceId"),
+        ),
+        "DeleteWorkspace" => op_delete_workspace(
+            st,
+            param(params, "InstanceId"),
+            param(params, "WorkspaceId"),
+        ),
+        "ListWorkspaces" => op_list_workspaces(st, param(params, "InstanceId")),
+        // -- Test cases --------------------------------------------------------------------
+        "CreateTestCase" => op_create_test_case(st, param(params, "InstanceId"), body),
+        "DescribeTestCase" => {
+            op_describe_test_case(st, param(params, "InstanceId"), param(params, "TestCaseId"))
+        }
+        "UpdateTestCase" => op_update_test_case(
+            st,
+            param(params, "InstanceId"),
+            param(params, "TestCaseId"),
+            body,
+        ),
+        "DeleteTestCase" => {
+            op_delete_test_case(st, param(params, "InstanceId"), param(params, "TestCaseId"))
+        }
+        "ListTestCases" => op_list_test_cases(st, param(params, "InstanceId")),
+        // -- Data tables --------------------------------------------------------------------
+        "CreateDataTable" => op_create_data_table(st, param(params, "InstanceId"), body),
+        "DescribeDataTable" => op_describe_data_table(
+            st,
+            param(params, "InstanceId"),
+            param(params, "DataTableId"),
+        ),
+        "DeleteDataTable" => op_delete_data_table(
+            st,
+            param(params, "InstanceId"),
+            param(params, "DataTableId"),
+        ),
+        "ListDataTables" => op_list_data_tables(st, param(params, "InstanceId")),
+        "CreateDataTableAttribute" => op_create_data_table_attribute(
+            st,
+            param(params, "InstanceId"),
+            param(params, "DataTableId"),
+            body,
+        ),
+        "DescribeDataTableAttribute" => op_describe_data_table_attribute(
+            st,
+            param(params, "InstanceId"),
+            param(params, "DataTableId"),
+            param(params, "AttributeName"),
+        ),
+        "ListDataTableAttributes" => op_list_data_table_attributes(
+            st,
+            param(params, "InstanceId"),
+            param(params, "DataTableId"),
+        ),
+        "UpdateDataTableAttribute" => op_update_data_table_attribute(
+            st,
+            param(params, "InstanceId"),
+            param(params, "DataTableId"),
+            param(params, "AttributeName"),
+            body,
+        ),
+        "DeleteDataTableAttribute" => op_delete_data_table_attribute(
+            st,
+            param(params, "InstanceId"),
+            param(params, "DataTableId"),
+            param(params, "AttributeName"),
+        ),
+        // -- Traffic distribution groups ----------------------------------------------------
+        "CreateTrafficDistributionGroup" => {
+            op_create_traffic_distribution_group(st, body, &req.region, req.account)
+        }
+        "DescribeTrafficDistributionGroup" => {
+            op_describe_traffic_distribution_group(st, param(params, "TrafficDistributionGroupId"))
+        }
+        "DeleteTrafficDistributionGroup" => {
+            op_delete_traffic_distribution_group(st, param(params, "TrafficDistributionGroupId"))
+        }
+        "ListTrafficDistributionGroups" => op_list_traffic_distribution_groups(st, query),
+
         _ => op_not_implemented(op),
     }
 }
@@ -4586,6 +4863,2185 @@ fn op_update_routing_profile_queues(
     }
     ok(json!({}))
 }
+
+// ---------------------------------------------------------------------------
+// Phone numbers (moto global store; all instances visible)
+// ---------------------------------------------------------------------------
+
+fn rand_digits(n: usize) -> String {
+    let mut out = String::with_capacity(n);
+    let mut seed = uuid::Uuid::new_v4().as_u128();
+    while out.len() < n {
+        out.push_str(&(seed % 10).to_string());
+        seed >>= 4;
+        if seed == 0 {
+            seed = uuid::Uuid::new_v4().as_u128();
+        }
+    }
+    out[..n].to_string()
+}
+
+fn op_claim_phone_number(
+    st: &mut ConnectState,
+    body: &Map<String, Value>,
+    region: &str,
+    account: u64,
+) -> Response {
+    let _ = (region, account);
+    let phone_number = match body_str(body, "PhoneNumber") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let instance_id = opt_string(body, "InstanceId")
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| {
+            opt_string(body, "TargetArn")
+                .unwrap_or_default()
+                .rsplit('/')
+                .next()
+                .unwrap_or("")
+                .to_string()
+        });
+    let instance = match st.instances.get(&instance_id) {
+        Some(i) => i.clone(),
+        None => return notfound_instance(&instance_id),
+    };
+    let instance_arn = str_field(&instance, "Arn");
+    let duplicate_claim = st
+        .phone_numbers
+        .values()
+        .any(|pn| pn.get("PhoneNumber") == Some(&Value::String(phone_number.clone())));
+    if duplicate_claim {
+        return duplicate(format!("Phone number {phone_number} is already claimed"));
+    }
+    let country = opt_string(body, "PhoneNumberCountryCode").unwrap_or_else(|| "US".into());
+    let number_type = opt_string(body, "PhoneNumberType").unwrap_or_else(|| "DID".into());
+    let phone_number_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("{instance_arn}/phone-number/{phone_number_id}");
+    let mut stored = Map::new();
+    stored.insert("PhoneNumberId".into(), json!(phone_number_id.clone()));
+    stored.insert("PhoneNumberArn".into(), json!(arn.clone()));
+    stored.insert("PhoneNumber".into(), json!(phone_number));
+    stored.insert("PhoneNumberCountryCode".into(), json!(country));
+    stored.insert("PhoneNumberType".into(), json!(number_type));
+    stored.insert(
+        "PhoneNumberDescription".into(),
+        json!(opt_string(body, "PhoneNumberDescription").unwrap_or_default()),
+    );
+    stored.insert("TargetArn".into(), json!(instance_arn));
+    stored.insert("InstanceId".into(), json!(instance_id));
+    stored.insert(
+        "Tags".into(),
+        opt_val(body, "Tags").unwrap_or_else(|| json!({})),
+    );
+    stored.insert("PhoneNumberStatus".into(), json!({"Status": "CLAIMED"}));
+    st.phone_numbers
+        .insert(phone_number_id.clone(), Value::Object(stored));
+    tag_resource(st, &arn, opt_val(body, "Tags"));
+    ok(json!({"PhoneNumberId": phone_number_id, "PhoneNumberArn": arn}))
+}
+
+fn op_describe_phone_number(st: &mut ConnectState, phone_number_id: &str) -> Response {
+    match st.phone_numbers.get(phone_number_id) {
+        Some(pn) => ok(json!({"ClaimedPhoneNumberSummary": pn.clone()})),
+        None => not_found(format!("Phone number {phone_number_id} not found")),
+    }
+}
+
+fn op_update_phone_number(
+    st: &mut ConnectState,
+    phone_number_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let target_arn = opt_string(body, "TargetArn").filter(|v| !v.is_empty());
+    let referenced_instance = opt_string(body, "InstanceId").filter(|v| !v.is_empty());
+    let resolved_target = match (&target_arn, &referenced_instance) {
+        (Some(t), _) => Some(t.clone()),
+        (None, Some(instance_id)) => {
+            if !st.instances.contains_key(instance_id) {
+                return notfound_instance(instance_id);
+            }
+            Some(instance_arn_of(st, instance_id))
+        }
+        _ => None,
+    };
+    let pn = match st.phone_numbers.get_mut(phone_number_id) {
+        Some(pn) => pn,
+        None => return not_found(format!("Phone number {phone_number_id} not found")),
+    };
+    if let Some(target) = resolved_target {
+        pn["TargetArn"] = json!(target);
+        pn["InstanceId"] = json!(target.rsplit('/').next().unwrap_or(""));
+    }
+    ok(json!({
+        "PhoneNumberId": pn["PhoneNumberId"].clone(),
+        "PhoneNumberArn": pn["PhoneNumberArn"].clone(),
+    }))
+}
+
+fn instance_arn_of(st: &ConnectState, instance_id: &str) -> String {
+    st.instances
+        .get(instance_id)
+        .map(|i| str_field(i, "Arn"))
+        .unwrap_or_default()
+}
+
+fn op_release_phone_number(st: &mut ConnectState, phone_number_id: &str) -> Response {
+    match st.phone_numbers.remove(phone_number_id) {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Phone number {phone_number_id} not found")),
+    }
+}
+
+fn op_list_phone_numbers(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let rows: Vec<Value> = st
+        .phone_numbers
+        .values()
+        .filter(|pn| pn.get("InstanceId") == Some(&Value::String(instance_id.to_string())))
+        .map(|pn| {
+            json!({
+                "PhoneNumber": pn["PhoneNumber"],
+                "PhoneNumberType": pn["PhoneNumberType"],
+                "PhoneNumberCountryCode": pn["PhoneNumberCountryCode"],
+                "PhoneNumberId": pn["PhoneNumberId"],
+                "PhoneNumberArn": pn["PhoneNumberArn"],
+            })
+        })
+        .collect();
+    ok(json!({"PhoneNumberSummaryList": rows}))
+}
+
+fn op_list_phone_numbers_v2(st: &mut ConnectState) -> Response {
+    let rows: Vec<Value> = st
+        .phone_numbers
+        .values()
+        .map(|pn| {
+            json!({
+                "PhoneNumberId": pn["PhoneNumberId"],
+                "PhoneNumberArn": pn["PhoneNumberArn"],
+                "PhoneNumber": pn["PhoneNumber"],
+                "PhoneNumberCountryCode": pn["PhoneNumberCountryCode"],
+                "PhoneNumberType": pn["PhoneNumberType"],
+                "TargetArn": pn["TargetArn"],
+            })
+        })
+        .collect();
+    ok(json!({"ListPhoneNumbersSummaryList": rows}))
+}
+
+fn op_search_available_phone_numbers(st: &mut ConnectState, body: &Map<String, Value>) -> Response {
+    let _ = st;
+    let country = match body_str(body, "PhoneNumberCountryCode") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let number_type = match body_str(body, "PhoneNumberType") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    match body_str(body, "TargetArn") {
+        Ok(_) => {}
+        Err(resp) => return resp,
+    }
+    let prefix = opt_string(body, "PhoneNumberPrefix").unwrap_or_default();
+    let count = body
+        .get("MaxResults")
+        .and_then(Value::as_i64)
+        .unwrap_or(10)
+        .clamp(1, 25) as usize;
+    let rows: Vec<Value> = (0..count)
+        .map(|i| {
+            let number = if country == "US" && prefix.len() == 3 {
+                format!(
+                    "+1{prefix}{}",
+                    rand_digits(4 - (i as u128 % 7 == 0) as usize)
+                )
+                .chars()
+                .take(12)
+                .collect::<String>()
+            } else if country == "GB" {
+                format!("+4420{}{}", rand_digits(4), i)
+            } else {
+                format!("+1{}", rand_digits(10))
+            };
+            json!({
+                "PhoneNumber": number,
+                "PhoneNumberCountryCode": country,
+                "PhoneNumberType": number_type,
+            })
+        })
+        .collect();
+    ok(json!({"AvailableNumbersList": rows}))
+}
+
+// ---------------------------------------------------------------------------
+// Prompts
+// ---------------------------------------------------------------------------
+
+fn op_create_prompt(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance = match st.instances.get(instance_id) {
+        Some(i) => i.clone(),
+        None => return notfound_instance(instance_id),
+    };
+    let name = match body_str(body, "Name") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let s3_uri = match body_str(body, "S3Uri") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let prompt_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("{}/prompt/{prompt_id}", str_field(&instance, "Arn"));
+    let mut stored = Map::new();
+    stored.insert("PromptARN".into(), json!(arn.clone()));
+    stored.insert("PromptId".into(), json!(prompt_id.clone()));
+    stored.insert("Name".into(), json!(name));
+    // moto keeps the s3 URI on the model; to_dict never serializes it
+    stored.insert("__s3_uri".into(), json!(s3_uri));
+    stored.insert(
+        "Description".into(),
+        json!(opt_string(body, "Description").unwrap_or_default()),
+    );
+    stored.insert(
+        "Tags".into(),
+        opt_val(body, "Tags").unwrap_or_else(|| json!({})),
+    );
+    stored.insert("LastModifiedTime".into(), json!(now_iso()));
+    stored.insert("LastModifiedRegion".into(), json!(region_of(&instance)));
+    st.prompts
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(prompt_id.clone(), Value::Object(stored));
+    tag_resource(st, &arn, opt_val(body, "Tags"));
+    ok(json!({"PromptARN": arn, "PromptId": prompt_id}))
+}
+
+fn op_describe_prompt(st: &mut ConnectState, instance_id: &str, prompt_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st.prompts.get(instance_id).and_then(|m| m.get(prompt_id)) {
+        Some(p) => ok(json!({"Prompt": p.clone()})),
+        None => not_found(format!(
+            "Prompt {prompt_id} not found in instance {instance_id}"
+        )),
+    }
+}
+
+fn op_update_prompt(
+    st: &mut ConnectState,
+    instance_id: &str,
+    prompt_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let prompt = match st
+        .prompts
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(prompt_id))
+    {
+        Some(p) => p,
+        None => return not_found(format!("Prompt {prompt_id} not found")),
+    };
+    if let Some(name) = opt_val(body, "Name") {
+        prompt["Name"] = name;
+    }
+    if let Some(desc) = opt_val(body, "Description") {
+        prompt["Description"] = desc;
+    }
+    if let Some(uri) = opt_val(body, "S3Uri") {
+        prompt["__s3_uri"] = uri;
+    }
+    prompt["LastModifiedTime"] = json!(now_iso());
+    ok(json!({
+        "PromptARN": prompt["PromptARN"].clone(),
+        "PromptId": prompt["PromptId"].clone(),
+    }))
+}
+
+fn op_delete_prompt(st: &mut ConnectState, instance_id: &str, prompt_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .prompts
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(prompt_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Prompt {prompt_id} not found")),
+    }
+}
+
+fn op_list_prompts(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let empty = HashMap::new();
+    let prompts = st.prompts.get(instance_id).unwrap_or(&empty);
+    let rows: Vec<Value> = prompts
+        .values()
+        .map(|p| {
+            json!({
+                "Id": p["PromptId"],
+                "Arn": p["PromptARN"],
+                "Name": p["Name"],
+                "LastModifiedTime": p["LastModifiedTime"],
+                "LastModifiedRegion": p["LastModifiedRegion"],
+            })
+        })
+        .collect();
+    ok(json!({"PromptSummaryList": rows}))
+}
+
+// ---------------------------------------------------------------------------
+// Views
+// ---------------------------------------------------------------------------
+
+fn op_create_view(st: &mut ConnectState, instance_id: &str, body: &Map<String, Value>) -> Response {
+    let instance_arn = match instance_arn_or_404(st, instance_id) {
+        Some(a) => a,
+        None => return notfound_instance(instance_id),
+    };
+    let name = match body_str(body, "Name") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let status = match body_str(body, "Status") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let content = match opt_val(body, "Content") {
+        Some(v) => v,
+        None => return missing_body_param("Content"),
+    };
+    let view_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("{instance_arn}/view/{view_id}");
+    let mut stored = Map::new();
+    stored.insert("Id".into(), json!(view_id.clone()));
+    stored.insert("Arn".into(), json!(arn.clone()));
+    stored.insert("Name".into(), json!(name));
+    stored.insert("Status".into(), json!(status));
+    stored.insert("Type".into(), json!("CUSTOMER_MANAGED"));
+    stored.insert(
+        "Description".into(),
+        json!(opt_string(body, "Description").unwrap_or_default()),
+    );
+    stored.insert("Version".into(), json!(1));
+    stored.insert("Content".into(), content);
+    stored.insert(
+        "Tags".into(),
+        opt_val(body, "Tags").unwrap_or_else(|| json!({})),
+    );
+    st.views
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(view_id.clone(), Value::Object(stored.clone()));
+    tag_resource(st, &arn, opt_val(body, "Tags"));
+    // moto returns the create response whole-view
+    ok(json!({"View": stored}))
+}
+
+fn op_describe_view(st: &mut ConnectState, instance_id: &str, view_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st.views.get(instance_id).and_then(|m| m.get(view_id)) {
+        Some(v) => ok(json!({"View": v.clone()})),
+        None => not_found(format!(
+            "View {view_id} not found in instance {instance_id}"
+        )),
+    }
+}
+
+fn op_update_view_content(
+    st: &mut ConnectState,
+    instance_id: &str,
+    view_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let content = match opt_val(body, "Content") {
+        Some(v) => v,
+        None => return missing_body_param("Content"),
+    };
+    let view = match st
+        .views
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(view_id))
+    {
+        Some(v) => v,
+        None => return not_found(format!("View {view_id} not found")),
+    };
+    view["Content"] = content;
+    let version = view["Version"].as_i64().unwrap_or(0) + 1;
+    view["Version"] = json!(version);
+    if let Some(status) = opt_val(body, "Status").filter(|v| !v.is_null()) {
+        view["Status"] = status;
+    }
+    ok(json!({"View": view.clone()}))
+}
+
+fn op_update_view_metadata(
+    st: &mut ConnectState,
+    instance_id: &str,
+    view_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let view = match st
+        .views
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(view_id))
+    {
+        Some(v) => v,
+        None => return not_found(format!("View {view_id} not found")),
+    };
+    if let Some(name) = opt_val(body, "Name") {
+        view["Name"] = name;
+    }
+    if let Some(desc) = opt_val(body, "Description") {
+        view["Description"] = desc;
+    }
+    ok(json!({}))
+}
+
+fn op_delete_view(st: &mut ConnectState, instance_id: &str, view_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .views
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(view_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("View {view_id} not found")),
+    }
+}
+
+fn op_list_views(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let empty = HashMap::new();
+    let views = st.views.get(instance_id).unwrap_or(&empty);
+    let rows: Vec<Value> = views
+        .values()
+        .map(|v| {
+            json!({
+                "Id": v["Id"],
+                "Arn": v["Arn"],
+                "Name": v["Name"],
+                "Type": v["Type"],
+                "Status": v["Status"],
+                "Description": v["Description"],
+            })
+        })
+        .collect();
+    ok(json!({"ViewsSummaryList": rows}))
+}
+
+// ---------------------------------------------------------------------------
+// Vocabularies
+// ---------------------------------------------------------------------------
+
+fn op_create_vocabulary(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance = match st.instances.get(instance_id) {
+        Some(i) => i.clone(),
+        None => return notfound_instance(instance_id),
+    };
+    let name = match body_str(body, "VocabularyName") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let language_code = match body_str(body, "LanguageCode") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let content = match body_str(body, "Content") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let vocab_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("{}/vocabulary/{vocab_id}", str_field(&instance, "Arn"));
+    let mut stored = Map::new();
+    stored.insert("Name".into(), json!(name));
+    stored.insert("Id".into(), json!(vocab_id.clone()));
+    stored.insert("Arn".into(), json!(arn.clone()));
+    stored.insert("LanguageCode".into(), json!(language_code));
+    stored.insert("State".into(), json!("ACTIVE"));
+    stored.insert("LastModifiedTime".into(), json!(now_iso()));
+    stored.insert("Content".into(), json!(content));
+    stored.insert(
+        "Tags".into(),
+        opt_val(body, "Tags").unwrap_or_else(|| json!({})),
+    );
+    st.vocabularies
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(vocab_id.clone(), Value::Object(stored.clone()));
+    tag_resource(st, &arn, opt_val(body, "Tags"));
+    ok(json!({"VocabularyArn": arn, "VocabularyId": vocab_id, "State": "ACTIVE"}))
+}
+
+fn op_describe_vocabulary(st: &mut ConnectState, instance_id: &str, vocab_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .vocabularies
+        .get(instance_id)
+        .and_then(|m| m.get(vocab_id))
+    {
+        Some(v) => ok(json!({"Vocabulary": v.clone()})),
+        None => not_found(format!(
+            "Vocabulary {vocab_id} not found in instance {instance_id}"
+        )),
+    }
+}
+
+fn op_delete_vocabulary(st: &mut ConnectState, instance_id: &str, vocab_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .vocabularies
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(vocab_id))
+    {
+        Some(v) => ok(json!({
+            "VocabularyArn": v["Arn"].clone(),
+            "VocabularyId": v["Id"].clone(),
+            "State": "DELETE_IN_PROGRESS",
+        })),
+        None => not_found(format!("Vocabulary {vocab_id} not found")),
+    }
+}
+
+fn op_search_vocabularies(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let state = opt_string(body, "State");
+    let name_prefix = opt_string(body, "NameStartsWith");
+    let language_code = opt_string(body, "LanguageCode");
+    let empty = HashMap::new();
+    let vocabs = st.vocabularies.get(instance_id).unwrap_or(&empty);
+    let rows: Vec<Value> = vocabs
+        .values()
+        .filter(|v| match &state {
+            Some(s) => v.get("State") == Some(&Value::String(s.clone())),
+            None => true,
+        })
+        .filter(|v| match &name_prefix {
+            Some(p) => str_field(v, "Name").starts_with(p),
+            None => true,
+        })
+        .filter(|v| match &language_code {
+            Some(c) => v.get("LanguageCode") == Some(&Value::String(c.clone())),
+            None => true,
+        })
+        .cloned()
+        .collect();
+    ok(json!({"VocabularySummaryList": rows}))
+}
+
+fn op_list_default_vocabularies(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let empty = HashMap::new();
+    let vocabs = st.vocabularies.get(instance_id).unwrap_or(&empty);
+    let rows: Vec<Value> = vocabs
+        .values()
+        .map(|v| {
+            json!({
+                "InstanceId": instance_id,
+                "LanguageCode": v["LanguageCode"],
+                "VocabularyId": v["Id"],
+                "VocabularyName": v["Name"],
+            })
+        })
+        .collect();
+    ok(json!({"DefaultVocabularyList": rows}))
+}
+
+// ---------------------------------------------------------------------------
+// Rules
+// ---------------------------------------------------------------------------
+
+fn op_create_rule(st: &mut ConnectState, instance_id: &str, body: &Map<String, Value>) -> Response {
+    let instance_arn = match instance_arn_or_404(st, instance_id) {
+        Some(a) => a,
+        None => return notfound_instance(instance_id),
+    };
+    let name = match body_str(body, "Name") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let trigger = match opt_val(body, "TriggerEventSource") {
+        Some(v) => v,
+        None => return missing_body_param("TriggerEventSource"),
+    };
+    let function = match body_str(body, "Function") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let actions = match opt_val(body, "Actions") {
+        Some(v) => v,
+        None => return missing_body_param("Actions"),
+    };
+    let publish_status = match body_str(body, "PublishStatus") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let rule_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("{instance_arn}/rule/{rule_id}");
+    let stamp = now_iso();
+    let mut stored = Map::new();
+    stored.insert("RuleId".into(), json!(rule_id.clone()));
+    stored.insert("RuleArn".into(), json!(arn.clone()));
+    stored.insert("Name".into(), json!(name));
+    stored.insert("TriggerEventSource".into(), trigger);
+    stored.insert("Function".into(), json!(function));
+    stored.insert("Actions".into(), actions);
+    stored.insert("PublishStatus".into(), json!(publish_status));
+    stored.insert("Tags".into(), json!({}));
+    stored.insert("CreatedTime".into(), json!(stamp.clone()));
+    stored.insert("LastUpdatedTime".into(), json!(stamp));
+    st.rules
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(rule_id.clone(), Value::Object(stored));
+    ok(json!({"RuleArn": arn, "RuleId": rule_id}))
+}
+
+fn op_describe_rule(st: &mut ConnectState, instance_id: &str, rule_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st.rules.get(instance_id).and_then(|m| m.get(rule_id)) {
+        Some(r) => ok(json!({"Rule": r.clone()})),
+        None => not_found(format!(
+            "Rule {rule_id} not found in instance {instance_id}"
+        )),
+    }
+}
+
+fn op_update_rule(
+    st: &mut ConnectState,
+    instance_id: &str,
+    rule_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let name = match body_str(body, "Name") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let function = match body_str(body, "Function") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let actions = match opt_val(body, "Actions") {
+        Some(v) => v,
+        None => return missing_body_param("Actions"),
+    };
+    let publish_status = match body_str(body, "PublishStatus") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let rule = match st
+        .rules
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(rule_id))
+    {
+        Some(r) => r,
+        None => return not_found(format!("Rule {rule_id} not found")),
+    };
+    rule["Name"] = json!(name);
+    rule["Function"] = json!(function);
+    rule["Actions"] = actions;
+    rule["PublishStatus"] = json!(publish_status);
+    rule["LastUpdatedTime"] = json!(now_iso());
+    ok(json!({}))
+}
+
+fn op_delete_rule(st: &mut ConnectState, instance_id: &str, rule_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .rules
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(rule_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Rule {rule_id} not found")),
+    }
+}
+
+fn op_list_rules(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let empty = HashMap::new();
+    let rules = st.rules.get(instance_id).unwrap_or(&empty);
+    let rows: Vec<Value> = rules
+        .values()
+        .map(|r| {
+            let summaries: Vec<Value> = r
+                .get("Actions")
+                .and_then(Value::as_array)
+                .map(|actions| {
+                    actions
+                        .iter()
+                        .map(|x| {
+                            json!({"ActionType": x
+                                .get("ActionType")
+                                .cloned()
+                                .unwrap_or_else(|| json!("UNKNOWN"))})
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            json!({
+                "RuleId": r["RuleId"],
+                "RuleArn": r["RuleArn"],
+                "Name": r["Name"],
+                "PublishStatus": r["PublishStatus"],
+                "ActionSummaries": summaries,
+                "CreatedTime": r["CreatedTime"],
+                "LastUpdatedTime": r["LastUpdatedTime"],
+            })
+        })
+        .collect();
+    ok(json!({"RuleSummaryList": rows}))
+}
+
+// ---------------------------------------------------------------------------
+// Evaluation forms
+// ---------------------------------------------------------------------------
+
+fn op_create_evaluation_form(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance_arn = match instance_arn_or_404(st, instance_id) {
+        Some(a) => a,
+        None => return notfound_instance(instance_id),
+    };
+    let title = match body_str(body, "Title") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let form_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("{instance_arn}/evaluation-form/{form_id}");
+    let stamp = now_iso();
+    let mut stored = Map::new();
+    stored.insert("EvaluationFormId".into(), json!(form_id.clone()));
+    stored.insert("EvaluationFormArn".into(), json!(arn.clone()));
+    stored.insert("Title".into(), json!(title));
+    stored.insert(
+        "Description".into(),
+        json!(opt_string(body, "Description").unwrap_or_default()),
+    );
+    stored.insert("Status".into(), json!("DRAFT"));
+    stored.insert(
+        "Items".into(),
+        opt_val(body, "Items").unwrap_or_else(|| json!([])),
+    );
+    stored.insert("EvaluationFormVersion".into(), json!(1));
+    stored.insert("CreatedTime".into(), json!(stamp.clone()));
+    stored.insert("LastModifiedTime".into(), json!(stamp));
+    stored.insert("Tags".into(), json!({}));
+    if let Some(s) = opt_val(body, "ScoringStrategy") {
+        stored.insert("ScoringStrategy".into(), s);
+    }
+    st.evaluation_forms
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(form_id.clone(), Value::Object(stored.clone()));
+    ok(json!({"EvaluationFormId": form_id, "EvaluationFormArn": arn}))
+}
+
+fn op_describe_evaluation_form(
+    st: &mut ConnectState,
+    instance_id: &str,
+    form_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .evaluation_forms
+        .get(instance_id)
+        .and_then(|m| m.get(form_id))
+    {
+        Some(f) => ok(json!({"EvaluationForm": f.clone()})),
+        None => not_found(format!(
+            "Evaluation form {form_id} not found in instance {instance_id}"
+        )),
+    }
+}
+
+fn op_update_evaluation_form(
+    st: &mut ConnectState,
+    instance_id: &str,
+    form_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let title = match body_str(body, "Title") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let form = match st
+        .evaluation_forms
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(form_id))
+    {
+        Some(f) => f,
+        None => return not_found(format!("Evaluation form {form_id} not found")),
+    };
+    form["Title"] = json!(title);
+    form["Description"] = json!(opt_string(body, "Description").unwrap_or_default());
+    if let Some(items) = opt_val(body, "Items") {
+        form["Items"] = items;
+    }
+    if let Some(s) = opt_val(body, "ScoringStrategy") {
+        form["ScoringStrategy"] = s;
+    }
+    let version = form["EvaluationFormVersion"].as_i64().unwrap_or(0) + 1;
+    form["EvaluationFormVersion"] = json!(version);
+    form["LastModifiedTime"] = json!(now_iso());
+    ok(json!({
+        "EvaluationFormId": form["EvaluationFormId"].clone(),
+        "EvaluationFormArn": form["EvaluationFormArn"].clone(),
+        "EvaluationFormVersion": version,
+    }))
+}
+
+fn op_activate_evaluation_form(
+    st: &mut ConnectState,
+    instance_id: &str,
+    form_id: &str,
+    activate: bool,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let form = match st
+        .evaluation_forms
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(form_id))
+    {
+        Some(f) => f,
+        None => return not_found(format!("Evaluation form {form_id} not found")),
+    };
+    form["Status"] = json!(if activate { "ACTIVE" } else { "DRAFT" });
+    form["LastModifiedTime"] = json!(now_iso());
+    ok(json!({
+        "EvaluationFormId": form["EvaluationFormId"].clone(),
+        "EvaluationFormArn": form["EvaluationFormArn"].clone(),
+        "EvaluationFormVersion": form["EvaluationFormVersion"].clone(),
+    }))
+}
+
+fn op_delete_evaluation_form(st: &mut ConnectState, instance_id: &str, form_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .evaluation_forms
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(form_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Evaluation form {form_id} not found")),
+    }
+}
+
+fn op_list_evaluation_forms(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let empty = HashMap::new();
+    let forms = st.evaluation_forms.get(instance_id).unwrap_or(&empty);
+    let rows: Vec<Value> = forms
+        .values()
+        .map(|f| {
+            json!({
+                "EvaluationFormId": f["EvaluationFormId"],
+                "EvaluationFormArn": f["EvaluationFormArn"],
+                "Title": f["Title"],
+                "Status": f["Status"],
+                "CreatedTime": f["CreatedTime"],
+                "LastModifiedTime": f["LastModifiedTime"],
+                "LatestVersion": f["EvaluationFormVersion"],
+            })
+        })
+        .collect();
+    ok(json!({"EvaluationFormSummaryList": rows}))
+}
+
+fn op_list_evaluation_form_versions(
+    st: &mut ConnectState,
+    instance_id: &str,
+    form_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let rows: Vec<Value> = st
+        .evaluation_forms
+        .get(instance_id)
+        .and_then(|m| m.get(form_id))
+        .map(|f| {
+            vec![json!({
+                "EvaluationFormArn": f["EvaluationFormArn"],
+                "EvaluationFormId": f["EvaluationFormId"],
+                "EvaluationFormVersion": f["EvaluationFormVersion"],
+                "CreatedTime": f["CreatedTime"],
+                "LastModifiedTime": f["LastModifiedTime"],
+                "Status": f["Status"],
+            })]
+        })
+        .unwrap_or_default();
+    ok(json!({"EvaluationFormVersionSummaryList": rows}))
+}
+
+// ---------------------------------------------------------------------------
+// Predefined attributes
+// ---------------------------------------------------------------------------
+
+fn op_create_predefined_attribute(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance_arn = match instance_arn_or_404(st, instance_id) {
+        Some(a) => a,
+        None => return notfound_instance(instance_id),
+    };
+    let name = match body_str(body, "Name") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let values = opt_val(body, "Values").unwrap_or_else(|| json!({}));
+    let values_present = values.as_object().map(|m| !m.is_empty()).unwrap_or(true);
+    let mut stored = Map::new();
+    stored.insert("Name".into(), json!(name.clone()));
+    stored.insert("Values".into(), values);
+    stored.insert("LastModifiedTime".into(), json!(now_iso()));
+    stored.insert(
+        "LastModifiedRegion".into(),
+        json!(instance_arn.split(':').nth(3).unwrap_or("")),
+    );
+    stored.insert("__values_present".into(), json!(values_present));
+    st.predefined_attributes
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(name.clone(), Value::Object(stored));
+    ok(json!({}))
+}
+
+/// moto's `to_dict` skips `Values` only when it keys off a truthy values map.
+fn pa_to_dict(v: &Value) -> Value {
+    let mut out = Map::new();
+    for f in ["Name", "LastModifiedTime", "LastModifiedRegion"] {
+        out.insert(f.to_string(), v[f].clone());
+    }
+    let has_values = v
+        .get("Values")
+        .and_then(Value::as_object)
+        .map(|m| !m.is_empty())
+        .unwrap_or(false);
+    if has_values {
+        out.insert("Values".into(), v["Values"].clone());
+    }
+    let _ = v.get("__values_present").and_then(Value::as_bool);
+    Value::Object(out)
+}
+
+fn op_describe_predefined_attribute(
+    st: &mut ConnectState,
+    instance_id: &str,
+    name: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .predefined_attributes
+        .get(instance_id)
+        .and_then(|m| m.get(name))
+    {
+        Some(a) => ok(json!({"PredefinedAttribute": pa_to_dict(a)})),
+        None => not_found(format!("Predefined attribute {name} not found")),
+    }
+}
+
+fn op_update_predefined_attribute(
+    st: &mut ConnectState,
+    instance_id: &str,
+    name: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let values = match opt_val(body, "Values") {
+        Some(v) => v,
+        None => return missing_body_param("Values"),
+    };
+    let attr = match st
+        .predefined_attributes
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(name))
+    {
+        Some(a) => a,
+        None => return not_found(format!("Predefined attribute {name} not found")),
+    };
+    attr["Values"] = values;
+    attr["LastModifiedTime"] = json!(now_iso());
+    ok(json!({}))
+}
+
+fn op_delete_predefined_attribute(
+    st: &mut ConnectState,
+    instance_id: &str,
+    name: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .predefined_attributes
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(name))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Predefined attribute {name} not found")),
+    }
+}
+
+fn op_list_predefined_attributes(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let empty = HashMap::new();
+    let attrs = st.predefined_attributes.get(instance_id).unwrap_or(&empty);
+    let rows: Vec<Value> = attrs
+        .values()
+        .map(|a| {
+            json!({
+                "Name": a["Name"],
+                "LastModifiedTime": a["LastModifiedTime"],
+                "LastModifiedRegion": a["LastModifiedRegion"],
+            })
+        })
+        .collect();
+    ok(json!({"PredefinedAttributeSummaryList": rows}))
+}
+
+// ---------------------------------------------------------------------------
+// Task templates
+// ---------------------------------------------------------------------------
+
+fn task_template_to_dict(v: &Value) -> Value {
+    let mut out = Map::new();
+    for f in [
+        "Id",
+        "Arn",
+        "Name",
+        "Description",
+        "Fields",
+        "Defaults",
+        "Constraints",
+        "Status",
+        "Tags",
+        "CreatedTime",
+        "LastModifiedTime",
+        "InstanceId",
+    ] {
+        out.insert(f.to_string(), v[f].clone());
+    }
+    let has_cf = v
+        .get("ContactFlowId")
+        .and_then(Value::as_str)
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    if has_cf {
+        out.insert("ContactFlowId".into(), v["ContactFlowId"].clone());
+    }
+    Value::Object(out)
+}
+
+fn task_template_mut<'a>(
+    st: &'a mut ConnectState,
+    instance_id: &str,
+    template_id: &str,
+) -> Result<&'a mut Value, Response> {
+    if !st.instances.contains_key(instance_id) {
+        return Err(notfound_instance(instance_id));
+    }
+    match st
+        .task_templates
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(template_id))
+    {
+        Some(t) => Ok(t),
+        None => Err(not_found(format!("Task template {template_id} not found"))),
+    }
+}
+
+fn op_create_task_template(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance_arn = match instance_arn_or_404(st, instance_id) {
+        Some(a) => a,
+        None => return notfound_instance(instance_id),
+    };
+    let name = match body_str(body, "Name") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let template_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("{instance_arn}/task-template/{template_id}");
+    let stamp = now_iso();
+    let mut stored = Map::new();
+    stored.insert("Id".into(), json!(template_id.clone()));
+    stored.insert("Arn".into(), json!(arn.clone()));
+    stored.insert("Name".into(), json!(name));
+    stored.insert(
+        "Description".into(),
+        json!(opt_string(body, "Description").unwrap_or_default()),
+    );
+    stored.insert(
+        "Fields".into(),
+        opt_val(body, "Fields").unwrap_or_else(|| json!([])),
+    );
+    stored.insert(
+        "Defaults".into(),
+        opt_val(body, "Defaults").unwrap_or_else(|| json!({})),
+    );
+    stored.insert(
+        "Constraints".into(),
+        opt_val(body, "Constraints").unwrap_or_else(|| json!({})),
+    );
+    stored.insert(
+        "Status".into(),
+        json!(opt_string(body, "Status").unwrap_or_else(|| "ACTIVE".into())),
+    );
+    stored.insert(
+        "Tags".into(),
+        opt_val(body, "Tags").unwrap_or_else(|| json!({})),
+    );
+    stored.insert("CreatedTime".into(), json!(stamp.clone()));
+    stored.insert("LastModifiedTime".into(), json!(stamp));
+    stored.insert(
+        "InstanceId".into(),
+        json!(instance_arn.rsplit('/').next().unwrap_or("")),
+    );
+    if let Some(cf) =
+        opt_val(body, "ContactFlowId").filter(|v| !v.as_str().unwrap_or_default().is_empty())
+    {
+        stored.insert("ContactFlowId".into(), cf);
+    }
+    st.task_templates
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(template_id.clone(), Value::Object(stored));
+    ok(json!({"Id": template_id, "Arn": arn}))
+}
+
+fn op_get_task_template(st: &mut ConnectState, instance_id: &str, template_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .task_templates
+        .get(instance_id)
+        .and_then(|m| m.get(template_id))
+    {
+        Some(t) => ok(task_template_to_dict(t)),
+        None => not_found(format!("Task template {template_id} not found")),
+    }
+}
+
+fn op_update_task_template(
+    st: &mut ConnectState,
+    instance_id: &str,
+    template_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let template = match task_template_mut(st, instance_id, template_id) {
+        Ok(t) => t,
+        Err(resp) => return resp,
+    };
+    if let Some(name) = opt_val(body, "Name") {
+        template["Name"] = name;
+    }
+    if let Some(desc) = opt_val(body, "Description") {
+        template["Description"] = desc;
+    }
+    if let Some(fields) = opt_val(body, "Fields") {
+        template["Fields"] = fields;
+    }
+    if let Some(defaults) = opt_val(body, "Defaults") {
+        template["Defaults"] = defaults;
+    }
+    if let Some(constraints) = opt_val(body, "Constraints") {
+        template["Constraints"] = constraints;
+    }
+    if let Some(cf) = opt_val(body, "ContactFlowId") {
+        template["ContactFlowId"] = cf;
+    }
+    if let Some(status) = opt_val(body, "Status") {
+        template["Status"] = status;
+    }
+    template["LastModifiedTime"] = json!(now_iso());
+    ok(task_template_to_dict(template))
+}
+
+fn op_delete_task_template(
+    st: &mut ConnectState,
+    instance_id: &str,
+    template_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .task_templates
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(template_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Task template {template_id} not found")),
+    }
+}
+
+fn op_list_task_templates(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let empty = HashMap::new();
+    let templates = st.task_templates.get(instance_id).unwrap_or(&empty);
+    let rows: Vec<Value> = templates
+        .values()
+        .map(|t| {
+            json!({
+                "Id": t["Id"],
+                "Arn": t["Arn"],
+                "Name": t["Name"],
+                "Description": t["Description"],
+                "Status": t["Status"],
+                "CreatedTime": t["CreatedTime"],
+                "LastModifiedTime": t["LastModifiedTime"],
+            })
+        })
+        .collect();
+    ok(json!({"TaskTemplates": rows}))
+}
+
+// ---------------------------------------------------------------------------
+// Integration associations + use cases
+// ---------------------------------------------------------------------------
+
+fn op_create_integration_association(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance = match st.instances.get(instance_id) {
+        Some(i) => i.clone(),
+        None => return notfound_instance(instance_id),
+    };
+    let integration_type = match body_str(body, "IntegrationType") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let integration_arn = match body_str(body, "IntegrationArn") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let assoc_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!(
+        "{}/integration-association/{assoc_id}",
+        str_field(&instance, "Arn")
+    );
+    let mut stored = Map::new();
+    stored.insert("IntegrationAssociationId".into(), json!(assoc_id.clone()));
+    stored.insert("IntegrationAssociationArn".into(), json!(arn.clone()));
+    stored.insert(
+        "InstanceId".into(),
+        json!(str_field(&instance, "Arn").rsplit('/').next().unwrap_or("")),
+    );
+    stored.insert("IntegrationType".into(), json!(integration_type));
+    stored.insert("IntegrationArn".into(), json!(integration_arn));
+    stored.insert(
+        "SourceApplicationUrl".into(),
+        json!(opt_string(body, "SourceApplicationUrl").unwrap_or_default()),
+    );
+    stored.insert(
+        "SourceApplicationName".into(),
+        json!(opt_string(body, "SourceApplicationName").unwrap_or_default()),
+    );
+    stored.insert(
+        "SourceType".into(),
+        json!(opt_string(body, "SourceType").unwrap_or_default()),
+    );
+    st.integration_associations
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(assoc_id.clone(), Value::Object(stored));
+    tag_resource(st, &arn, opt_val(body, "Tags"));
+    ok(json!({"IntegrationAssociationId": assoc_id, "IntegrationAssociationArn": arn}))
+}
+
+fn op_delete_integration_association(
+    st: &mut ConnectState,
+    instance_id: &str,
+    assoc_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .integration_associations
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(assoc_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Integration association {assoc_id} not found")),
+    }
+}
+
+fn op_list_integration_associations(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let empty = HashMap::new();
+    let assocs = st
+        .integration_associations
+        .get(instance_id)
+        .unwrap_or(&empty);
+    // moto mirrors the to_dict entries in the summary list
+    let rows: Vec<Value> = assocs.values().cloned().collect();
+    ok(json!({"IntegrationAssociationSummaryList": rows}))
+}
+
+fn op_create_use_case(
+    st: &mut ConnectState,
+    instance_id: &str,
+    integration_association_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance = match st.instances.get(instance_id) {
+        Some(i) => i.clone(),
+        None => return notfound_instance(instance_id),
+    };
+    let use_case_type = match body_str(body, "UseCaseType") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let uc_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("{}/use-case/{uc_id}", str_field(&instance, "Arn"));
+    let mut stored = Map::new();
+    stored.insert("UseCaseId".into(), json!(uc_id.clone()));
+    stored.insert("UseCaseArn".into(), json!(arn.clone()));
+    stored.insert("UseCaseType".into(), json!(use_case_type));
+    stored.insert(
+        "__integration_association_id".into(),
+        json!(integration_association_id),
+    );
+    st.use_cases
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(uc_id.clone(), Value::Object(stored));
+    ok(json!({"UseCaseId": uc_id, "UseCaseArn": arn}))
+}
+
+fn op_delete_use_case(st: &mut ConnectState, instance_id: &str, use_case_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .use_cases
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(use_case_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Use case {use_case_id} not found")),
+    }
+}
+
+fn op_list_use_cases(
+    st: &mut ConnectState,
+    instance_id: &str,
+    integration_association_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let empty = HashMap::new();
+    let ucs = st.use_cases.get(instance_id).unwrap_or(&empty);
+    let rows: Vec<Value> = ucs
+        .values()
+        .filter(|uc| {
+            uc.get("__integration_association_id")
+                == Some(&Value::String(integration_association_id.to_string()))
+        })
+        .map(|uc| {
+            json!({
+                "UseCaseId": uc["UseCaseId"],
+                "UseCaseArn": uc["UseCaseArn"],
+                "UseCaseType": uc["UseCaseType"],
+            })
+        })
+        .collect();
+    ok(json!({"UseCaseSummaryList": rows}))
+}
+
+// ---------------------------------------------------------------------------
+// Email addresses
+// ---------------------------------------------------------------------------
+
+fn op_create_email_address(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance = match st.instances.get(instance_id) {
+        Some(i) => i.clone(),
+        None => return notfound_instance(instance_id),
+    };
+    let email_address = match body_str(body, "EmailAddress") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let email_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("{}/email-address/{email_id}", str_field(&instance, "Arn"));
+    let stamp = now_iso();
+    let mut stored = Map::new();
+    stored.insert("EmailAddressId".into(), json!(email_id.clone()));
+    stored.insert("EmailAddressArn".into(), json!(arn.clone()));
+    stored.insert("EmailAddress".into(), json!(email_address));
+    stored.insert(
+        "DisplayName".into(),
+        json!(opt_string(body, "DisplayName").unwrap_or_default()),
+    );
+    stored.insert(
+        "Description".into(),
+        json!(opt_string(body, "Description").unwrap_or_default()),
+    );
+    stored.insert(
+        "Tags".into(),
+        opt_val(body, "Tags").unwrap_or_else(|| json!({})),
+    );
+    stored.insert("CreateTimestamp".into(), json!(stamp.clone()));
+    stored.insert("ModifiedTimestamp".into(), json!(stamp));
+    st.email_addresses
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(email_id.clone(), Value::Object(stored));
+    tag_resource(st, &arn, opt_val(body, "Tags"));
+    ok(json!({"EmailAddressId": email_id, "EmailAddressArn": arn}))
+}
+
+fn op_describe_email_address(st: &mut ConnectState, instance_id: &str, email_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .email_addresses
+        .get(instance_id)
+        .and_then(|m| m.get(email_id))
+    {
+        // moto returns the bare to_dict for DescribeEmailAddress
+        Some(e) => ok(e.clone()),
+        None => not_found(format!("Email address {email_id} not found")),
+    }
+}
+
+fn op_delete_email_address(st: &mut ConnectState, instance_id: &str, email_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .email_addresses
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(email_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Email address {email_id} not found")),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+fn op_create_notification(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance = match st.instances.get(instance_id) {
+        Some(i) => i.clone(),
+        None => return notfound_instance(instance_id),
+    };
+    let recipients = match opt_val(body, "Recipients") {
+        Some(v) => v,
+        None => return missing_body_param("Recipients"),
+    };
+    let content = match opt_val(body, "Content") {
+        Some(v) => v,
+        None => return missing_body_param("Content"),
+    };
+    let notification_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!(
+        "{}/notification/{notification_id}",
+        str_field(&instance, "Arn")
+    );
+    let stamp = now_iso();
+    let mut stored = Map::new();
+    stored.insert("Id".into(), json!(notification_id.clone()));
+    stored.insert("Arn".into(), json!(arn.clone()));
+    stored.insert("Content".into(), content);
+    stored.insert("Recipients".into(), recipients);
+    stored.insert("CreatedAt".into(), json!(stamp.clone()));
+    stored.insert("LastModifiedTime".into(), json!(stamp.clone()));
+    stored.insert("LastModifiedRegion".into(), json!(region_of(&instance)));
+    stored.insert(
+        "Tags".into(),
+        opt_val(body, "Tags").unwrap_or_else(|| json!({})),
+    );
+    if let Some(priority) = opt_val(body, "Priority").filter(|v| !v.is_null()) {
+        stored.insert("Priority".into(), priority);
+    }
+    if let Some(expires) = opt_val(body, "ExpiresAt").filter(|v| !v.is_null()) {
+        stored.insert("ExpiresAt".into(), expires);
+    }
+    st.notifications
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(notification_id.clone(), Value::Object(stored));
+    ok(json!({"NotificationId": notification_id, "NotificationArn": arn}))
+}
+
+fn op_describe_notification(
+    st: &mut ConnectState,
+    instance_id: &str,
+    notification_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .notifications
+        .get(instance_id)
+        .and_then(|m| m.get(notification_id))
+    {
+        // moto returns the bare to_dict for DescribeNotification
+        Some(n) => ok(n.clone()),
+        None => not_found(format!("Notification {notification_id} not found")),
+    }
+}
+
+fn op_delete_notification(
+    st: &mut ConnectState,
+    instance_id: &str,
+    notification_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .notifications
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(notification_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Notification {notification_id} not found")),
+    }
+}
+
+fn op_list_notifications(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let empty = HashMap::new();
+    let rows: Vec<Value> = st
+        .notifications
+        .get(instance_id)
+        .unwrap_or(&empty)
+        .values()
+        .cloned()
+        .collect();
+    ok(json!({"NotificationSummaryList": rows}))
+}
+
+// ---------------------------------------------------------------------------
+// Workspaces
+// ---------------------------------------------------------------------------
+
+fn op_create_workspace(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance = match st.instances.get(instance_id) {
+        Some(i) => i.clone(),
+        None => return notfound_instance(instance_id),
+    };
+    let name = match body_str(body, "Name") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let workspace_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("{}/workspace/{workspace_id}", str_field(&instance, "Arn"));
+    let stamp = now_iso();
+    let mut stored = Map::new();
+    stored.insert("WorkspaceId".into(), json!(workspace_id.clone()));
+    stored.insert("WorkspaceArn".into(), json!(arn.clone()));
+    stored.insert("Name".into(), json!(name));
+    stored.insert(
+        "Description".into(),
+        json!(opt_string(body, "Description").unwrap_or_default()),
+    );
+    stored.insert(
+        "Tags".into(),
+        opt_val(body, "Tags").unwrap_or_else(|| json!({})),
+    );
+    stored.insert("CreateTimestamp".into(), json!(stamp.clone()));
+    stored.insert("ModifiedTimestamp".into(), json!(stamp));
+    st.workspaces
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(workspace_id.clone(), Value::Object(stored));
+    tag_resource(st, &arn, opt_val(body, "Tags"));
+    ok(json!({"WorkspaceId": workspace_id, "WorkspaceArn": arn}))
+}
+
+fn op_describe_workspace(st: &mut ConnectState, instance_id: &str, workspace_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .workspaces
+        .get(instance_id)
+        .and_then(|m| m.get(workspace_id))
+    {
+        Some(w) => ok(json!({"Workspace": w.clone()})),
+        None => not_found(format!("Workspace {workspace_id} not found")),
+    }
+}
+
+fn op_delete_workspace(st: &mut ConnectState, instance_id: &str, workspace_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .workspaces
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(workspace_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Workspace {workspace_id} not found")),
+    }
+}
+
+fn op_list_workspaces(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let empty = HashMap::new();
+    let rows: Vec<Value> = st
+        .workspaces
+        .get(instance_id)
+        .unwrap_or(&empty)
+        .values()
+        .cloned()
+        .collect();
+    ok(json!({"WorkspaceSummaryList": rows}))
+}
+
+// ---------------------------------------------------------------------------
+// Test cases
+// ---------------------------------------------------------------------------
+
+fn op_create_test_case(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance = match st.instances.get(instance_id) {
+        Some(i) => i.clone(),
+        None => return notfound_instance(instance_id),
+    };
+    let name = match body_str(body, "Name") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let case_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("{}/test-case/{case_id}", str_field(&instance, "Arn"));
+    let stamp = now_iso();
+    let mut stored = Map::new();
+    stored.insert("TestCaseId".into(), json!(case_id.clone()));
+    stored.insert("TestCaseArn".into(), json!(arn.clone()));
+    stored.insert("Name".into(), json!(name));
+    stored.insert(
+        "Status".into(),
+        json!(opt_string(body, "Status").unwrap_or_else(|| "DRAFT".into())),
+    );
+    stored.insert(
+        "Description".into(),
+        json!(opt_string(body, "Description").unwrap_or_default()),
+    );
+    stored.insert(
+        "Tags".into(),
+        opt_val(body, "Tags").unwrap_or_else(|| json!({})),
+    );
+    stored.insert("CreateTimestamp".into(), json!(stamp.clone()));
+    stored.insert("ModifiedTimestamp".into(), json!(stamp));
+    st.test_cases
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(case_id.clone(), Value::Object(stored));
+    ok(json!({"TestCaseId": case_id, "TestCaseArn": arn}))
+}
+
+fn op_describe_test_case(st: &mut ConnectState, instance_id: &str, case_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st.test_cases.get(instance_id).and_then(|m| m.get(case_id)) {
+        Some(c) => ok(json!({"TestCase": c.clone()})),
+        None => not_found(format!("Test case {case_id} not found")),
+    }
+}
+
+fn op_update_test_case(
+    st: &mut ConnectState,
+    instance_id: &str,
+    case_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let case = match st
+        .test_cases
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(case_id))
+    {
+        Some(c) => c,
+        None => return not_found(format!("Test case {case_id} not found")),
+    };
+    if let Some(name) = opt_val(body, "Name") {
+        case["Name"] = name;
+    }
+    if let Some(status) = opt_val(body, "Status") {
+        case["Status"] = status;
+    }
+    if let Some(desc) = opt_val(body, "Description") {
+        case["Description"] = desc;
+    }
+    if let Some(tags) = opt_val(body, "Tags") {
+        case["Tags"] = tags;
+    }
+    case["ModifiedTimestamp"] = json!(now_iso());
+    ok(json!({"TestCase": case.clone()}))
+}
+
+fn op_delete_test_case(st: &mut ConnectState, instance_id: &str, case_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .test_cases
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(case_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Test case {case_id} not found")),
+    }
+}
+
+fn op_list_test_cases(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let empty = HashMap::new();
+    let rows: Vec<Value> = st
+        .test_cases
+        .get(instance_id)
+        .unwrap_or(&empty)
+        .values()
+        .cloned()
+        .collect();
+    ok(json!({"TestCaseSummaryList": rows}))
+}
+
+// ---------------------------------------------------------------------------
+// Data tables + attributes
+// ---------------------------------------------------------------------------
+
+fn op_create_data_table(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance = match st.instances.get(instance_id) {
+        Some(i) => i.clone(),
+        None => return notfound_instance(instance_id),
+    };
+    let name = match body_str(body, "Name") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let table_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("{}/data-table/{table_id}", str_field(&instance, "Arn"));
+    let stamp = now_iso();
+    let mut stored = Map::new();
+    stored.insert("DataTableId".into(), json!(table_id.clone()));
+    stored.insert("DataTableArn".into(), json!(arn.clone()));
+    stored.insert("Name".into(), json!(name));
+    stored.insert(
+        "Schema".into(),
+        opt_val(body, "Schema").unwrap_or_else(|| json!({})),
+    );
+    stored.insert(
+        "Tags".into(),
+        opt_val(body, "Tags").unwrap_or_else(|| json!({})),
+    );
+    stored.insert("CreateTimestamp".into(), json!(stamp.clone()));
+    stored.insert("ModifiedTimestamp".into(), json!(stamp));
+    st.data_tables
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(table_id.clone(), Value::Object(stored));
+    tag_resource(st, &arn, opt_val(body, "Tags"));
+    ok(json!({
+        "Id": table_id,
+        "Arn": arn,
+        "LockVersion": {"DataTable": "1", "Attribute": "1", "PrimaryValues": "1", "Value": "1"},
+    }))
+}
+
+fn op_describe_data_table(st: &mut ConnectState, instance_id: &str, table_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .data_tables
+        .get(instance_id)
+        .and_then(|m| m.get(table_id))
+    {
+        Some(t) => ok(json!({"DataTable": t.clone()})),
+        None => not_found(format!("Data table {table_id} not found")),
+    }
+}
+
+fn op_delete_data_table(st: &mut ConnectState, instance_id: &str, table_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .data_tables
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(table_id))
+    {
+        Some(_) => {
+            st.data_table_attributes
+                .get_mut(instance_id)
+                .and_then(|m| m.remove(table_id));
+            ok(json!({}))
+        }
+        None => not_found(format!("Data table {table_id} not found")),
+    }
+}
+
+fn op_list_data_tables(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let empty = HashMap::new();
+    let rows: Vec<Value> = st
+        .data_tables
+        .get(instance_id)
+        .unwrap_or(&empty)
+        .values()
+        .cloned()
+        .collect();
+    ok(json!({"DataTableSummaryList": rows}))
+}
+
+fn op_create_data_table_attribute(
+    st: &mut ConnectState,
+    instance_id: &str,
+    table_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    if st
+        .data_tables
+        .get(instance_id)
+        .and_then(|m| m.get(table_id))
+        .is_none()
+    {
+        return not_found(format!("Data table {table_id} not found"));
+    }
+    let name = match body_str(body, "Name") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let value_type = match body_str(body, "ValueType") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let attribute_id = uuid::Uuid::new_v4().to_string();
+    let stamp = now_iso();
+    let mut stored = Map::new();
+    stored.insert("AttributeName".into(), json!(name.clone()));
+    stored.insert("DataType".into(), json!(value_type));
+    stored.insert(
+        "Required".into(),
+        json!(body
+            .get("Required")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)),
+    );
+    if let Some(dv) = opt_val(body, "DefaultValue").filter(|v| !v.is_null()) {
+        stored.insert("DefaultValue".into(), dv);
+    }
+    stored.insert("CreateTimestamp".into(), json!(stamp.clone()));
+    stored.insert("ModifiedTimestamp".into(), json!(stamp));
+    st.data_table_attributes
+        .entry(instance_id.to_string())
+        .or_default()
+        .entry(table_id.to_string())
+        .or_default()
+        .insert(name.clone(), Value::Object(stored));
+    ok(json!({"Name": name, "AttributeId": attribute_id, "LockVersion": {}}))
+}
+
+fn data_table_attr_to_dict(a: &Value) -> Value {
+    let mut out = Map::new();
+    for f in [
+        "AttributeName",
+        "DataType",
+        "Required",
+        "CreateTimestamp",
+        "ModifiedTimestamp",
+    ] {
+        out.insert(f.to_string(), a[f].clone());
+    }
+    if let Some(dv) = a.get("DefaultValue").filter(|v| !v.is_null()) {
+        out.insert("DefaultValue".into(), dv.clone());
+    }
+    Value::Object(out)
+}
+
+fn op_describe_data_table_attribute(
+    st: &mut ConnectState,
+    instance_id: &str,
+    table_id: &str,
+    attribute_name: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .data_table_attributes
+        .get(instance_id)
+        .and_then(|m| m.get(table_id))
+        .and_then(|a| a.get(attribute_name))
+    {
+        Some(a) => ok(json!({"DataTableAttribute": data_table_attr_to_dict(a)})),
+        None => not_found(format!("Data table attribute {attribute_name} not found")),
+    }
+}
+
+fn op_list_data_table_attributes(
+    st: &mut ConnectState,
+    instance_id: &str,
+    table_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let rows: Vec<Value> = st
+        .data_table_attributes
+        .get(instance_id)
+        .and_then(|m| m.get(table_id))
+        .map(|a| a.values().map(data_table_attr_to_dict).collect())
+        .unwrap_or_default();
+    ok(json!({"DataTableAttributeSummaryList": rows}))
+}
+
+fn op_update_data_table_attribute(
+    st: &mut ConnectState,
+    instance_id: &str,
+    table_id: &str,
+    attribute_name: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let attr = match st
+        .data_table_attributes
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(table_id))
+        .and_then(|a| a.get_mut(attribute_name))
+    {
+        Some(a) => a,
+        None => return not_found(format!("Data table attribute {attribute_name} not found")),
+    };
+    if let Some(dt) = opt_val(body, "DataType") {
+        attr["DataType"] = dt;
+    }
+    if let Some(dv) = opt_val(body, "DefaultValue") {
+        attr["DefaultValue"] = dv;
+    }
+    if let Some(required) = opt_val(body, "Required") {
+        attr["Required"] = required;
+    }
+    attr["ModifiedTimestamp"] = json!(now_iso());
+    ok(json!({"DataTableAttribute": data_table_attr_to_dict(attr)}))
+}
+
+fn op_delete_data_table_attribute(
+    st: &mut ConnectState,
+    instance_id: &str,
+    table_id: &str,
+    attribute_name: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .data_table_attributes
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(table_id))
+        .and_then(|a| a.remove(attribute_name))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Data table attribute {attribute_name} not found")),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Traffic distribution groups (global store)
+// ---------------------------------------------------------------------------
+
+fn op_create_traffic_distribution_group(
+    st: &mut ConnectState,
+    body: &Map<String, Value>,
+    region: &str,
+    account: u64,
+) -> Response {
+    let name = match body_str(body, "Name") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let instance_id = opt_string(body, "InstanceId").unwrap_or_default();
+    let tdg_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("arn:aws:connect:{region}:{account}:traffic-distribution-group/{tdg_id}");
+    let mut stored = Map::new();
+    stored.insert("Id".into(), json!(tdg_id.clone()));
+    stored.insert("Arn".into(), json!(arn.clone()));
+    stored.insert("Name".into(), json!(name));
+    stored.insert(
+        "Description".into(),
+        json!(opt_string(body, "Description").unwrap_or_default()),
+    );
+    stored.insert(
+        "InstanceArn".into(),
+        json!(format!(
+            "arn:aws:connect:{region}:{account}:instance/{instance_id}"
+        )),
+    );
+    stored.insert("Status".into(), json!("ACTIVE"));
+    stored.insert(
+        "Tags".into(),
+        opt_val(body, "Tags").unwrap_or_else(|| json!({})),
+    );
+    stored.insert("IsDefault".into(), json!(false));
+    st.traffic_distribution_groups
+        .insert(tdg_id.clone(), Value::Object(stored));
+    ok(json!({"Id": tdg_id, "Arn": arn}))
+}
+
+fn op_describe_traffic_distribution_group(st: &mut ConnectState, tdg_id: &str) -> Response {
+    match st.traffic_distribution_groups.get(tdg_id) {
+        Some(t) => ok(json!({"TrafficDistributionGroup": t.clone()})),
+        None => not_found(format!("Traffic distribution group {tdg_id} not found")),
+    }
+}
+
+fn op_delete_traffic_distribution_group(st: &mut ConnectState, tdg_id: &str) -> Response {
+    match st.traffic_distribution_groups.remove(tdg_id) {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Traffic distribution group {tdg_id} not found")),
+    }
+}
+
+fn op_list_traffic_distribution_groups(
+    st: &mut ConnectState,
+    query: &BTreeMap<String, Vec<String>>,
+) -> Response {
+    let instance_filter = q1(query, "instanceId");
+    let rows: Vec<Value> = st
+        .traffic_distribution_groups
+        .values()
+        .filter(|tdg| match instance_filter {
+            Some(instance_id) => {
+                let suffix = format!("instance/{instance_id}");
+                str_field(tdg, "InstanceArn").ends_with(&suffix)
+            }
+            None => true,
+        })
+        .cloned()
+        .collect();
+    ok(json!({"TrafficDistributionGroupSummaryList": rows}))
+}
 // ---------------------------------------------------------------------------
 // Unit tests
 // ---------------------------------------------------------------------------
@@ -5976,7 +8432,11 @@ mod tests {
         let list_body = body_of(&listed);
         let rows = list_body["QuickConnectSummaryList"].as_array().unwrap();
         assert_eq!(rows.len(), 2);
-        assert_eq!(rows[0]["QuickConnectType"], "PHONE_NUMBER");
+        let qc1_row = rows
+            .iter()
+            .find(|r| r["Name"] == "QC1")
+            .expect("QC1 in list");
+        assert_eq!(qc1_row["QuickConnectType"], "PHONE_NUMBER");
 
         // queue association
         let queue = request(
@@ -6189,6 +8649,998 @@ mod tests {
         let after = request(
             "GET",
             &format!("/routing-profiles/{id}/{rpid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&after), 404);
+    }
+
+    // -- Phone numbers ---------------------------------------------------------
+
+    #[test]
+    fn phone_number_claim_describe_release() {
+        let (id, arn) = make_instance(json!({}));
+        let claim = request(
+            "POST",
+            "/phone-number/claim",
+            json!({"PhoneNumber": "+15551234567", "InstanceId": id.clone()}),
+            "",
+        );
+        let created = body_of(&claim);
+        let pnid = created["PhoneNumberId"].as_str().unwrap().to_string();
+        assert!(created["PhoneNumberArn"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/phone-number/{pnid}")));
+
+        let desc = request("GET", &format!("/phone-number/{pnid}"), json!({}), "");
+        let described = body_of(&desc);
+        let pn = &described["ClaimedPhoneNumberSummary"];
+        assert_eq!(pn["PhoneNumber"], "+15551234567");
+        assert_eq!(pn["PhoneNumberCountryCode"], "US");
+        assert_eq!(pn["PhoneNumberType"], "DID");
+        assert_eq!(pn["TargetArn"], arn.as_str());
+        assert_eq!(pn["InstanceId"], id.as_str());
+        assert_eq!(pn["PhoneNumberStatus"]["Status"], "CLAIMED");
+
+        // duplicate claim fails
+        let dup = request(
+            "POST",
+            "/phone-number/claim",
+            json!({"PhoneNumber": "+15551234567", "InstanceId": id.clone()}),
+            "",
+        );
+        assert_eq!(dup.status, 409);
+
+        // unknown instance
+        let bad = request(
+            "POST",
+            "/phone-number/claim",
+            json!({"PhoneNumber": "+15559999", "InstanceId": "nope"}),
+            "",
+        );
+        assert_eq!(bad.status, 404);
+
+        // v2 list is global
+        let v2 = request("POST", "/phone-number/list", json!({}), "");
+        let v2_body = body_of(&v2);
+        let rows = v2_body["ListPhoneNumbersSummaryList"].as_array().unwrap();
+        assert!(rows.iter().any(|r| r["PhoneNumberId"] == pnid.as_str()));
+
+        // per-instance list
+        let listed = request(
+            "GET",
+            &format!("/phone-numbers-summary/{id}"),
+            json!({}),
+            "",
+        );
+        let listed_body = body_of(&listed);
+        assert_eq!(
+            listed_body["PhoneNumberSummaryList"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+
+        // release
+        let rel = request("DELETE", &format!("/phone-number/{pnid}"), json!({}), "");
+        assert_eq!(status_of(&rel), 200);
+        let after = request("GET", &format!("/phone-number/{pnid}"), json!({}), "");
+        assert_eq!(status_of(&after), 404);
+    }
+
+    #[test]
+    fn search_available_phone_numbers() {
+        let (id, _) = make_instance(json!({}));
+        let search = request(
+            "POST",
+            "/phone-number/search-available",
+            json!({"TargetArn": format!("arn:aws:connect:us-east-1:123456789012:instance/{id}"),
+                   "PhoneNumberCountryCode": "US", "PhoneNumberType": "DID"}),
+            "",
+        );
+        let out = body_of(&search);
+        let rows = out["AvailableNumbersList"].as_array().unwrap();
+        assert_eq!(rows.len(), 10);
+        assert!(rows[0]["PhoneNumber"].as_str().unwrap().starts_with("+1"));
+        assert_eq!(rows[0]["PhoneNumberCountryCode"], "US");
+
+        let search = request(
+            "POST",
+            "/phone-number/search-available",
+            json!({"TargetArn": "arn:aws:connect:us-east-1:123456789012:instance/x",
+                   "PhoneNumberCountryCode": "US", "PhoneNumberType": "DID", "MaxResults": 25}),
+            "",
+        );
+        assert_eq!(
+            body_of(&search)["AvailableNumbersList"]
+                .as_array()
+                .unwrap()
+                .len(),
+            25
+        );
+    }
+
+    // -- Prompts -----------------------------------------------------------------
+
+    #[test]
+    fn prompt_lifecycle() {
+        let (id, _) = make_instance(json!({}));
+        let create = request(
+            "PUT",
+            &format!("/prompts/{id}"),
+            json!({"Name": "P1", "S3Uri": "s3://bucket/p.wav"}),
+            "",
+        );
+        let created = body_of(&create);
+        let pid = created["PromptId"].as_str().unwrap().to_string();
+        assert!(created["PromptARN"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/prompt/{pid}")));
+
+        let desc = request("GET", &format!("/prompts/{id}/{pid}"), json!({}), "");
+        let described = body_of(&desc);
+        assert_eq!(described["Prompt"]["Name"], "P1");
+        // moto's Prompt.to_dict serializes PromptARN/PromptId fields
+        assert!(described["Prompt"].get("PromptARN").is_some());
+        assert!(described["Prompt"].get("S3Uri").is_none());
+
+        let upd = request(
+            "POST",
+            &format!("/prompts/{id}/{pid}"),
+            json!({"Name": "P2", "Description": "d"}),
+            "",
+        );
+        let upd_body = body_of(&upd);
+        assert_eq!(upd_body["PromptId"], pid.as_str());
+
+        let listed = request("GET", &format!("/prompts-summary/{id}"), json!({}), "");
+        let list_body = body_of(&listed);
+        assert_eq!(list_body["PromptSummaryList"][0]["Name"], "P2");
+
+        let del = request("DELETE", &format!("/prompts/{id}/{pid}"), json!({}), "");
+        assert_eq!(status_of(&del), 200);
+        let after = request("GET", &format!("/prompts/{id}/{pid}"), json!({}), "");
+        assert_eq!(status_of(&after), 404);
+    }
+
+    // -- Views --------------------------------------------------------------------
+
+    #[test]
+    fn view_lifecycle() {
+        let (id, _) = make_instance(json!({}));
+        let content = json!({"Title": "V", "Actions": [], "Type": {"Classifier": []}});
+        let create = request(
+            "PUT",
+            &format!("/views/{id}"),
+            json!({"Name": "V1", "Status": "SAVED", "Content": content}),
+            "",
+        );
+        let created = body_of(&create);
+        let view = &created["View"];
+        let vid = view["Id"].as_str().unwrap().to_string();
+        assert!(view["Arn"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/view/{vid}")));
+        assert_eq!(view["Version"], 1);
+        assert_eq!(view["Type"], "CUSTOMER_MANAGED");
+
+        let desc = request("GET", &format!("/views/{id}/{vid}"), json!({}), "");
+        let described = body_of(&desc);
+        assert_eq!(described["View"]["Name"], "V1");
+        assert_eq!(described["View"]["Content"]["Title"], "V");
+
+        let upd = request(
+            "POST",
+            &format!("/views/{id}/{vid}"),
+            json!({"Content": {"Title": "V2"}}),
+            "",
+        );
+        let upd_body = body_of(&upd);
+        assert_eq!(upd_body["View"]["Version"], 2);
+        assert_eq!(upd_body["View"]["Content"]["Title"], "V2");
+
+        let listed = request("GET", &format!("/views/{id}"), json!({}), "");
+        let list_body = body_of(&listed);
+        assert_eq!(list_body["ViewsSummaryList"][0]["Name"], "V1");
+
+        let del = request("DELETE", &format!("/views/{id}/{vid}"), json!({}), "");
+        assert_eq!(status_of(&del), 200);
+        let after = request("GET", &format!("/views/{id}/{vid}"), json!({}), "");
+        assert_eq!(status_of(&after), 404);
+    }
+
+    // -- Vocabularies ------------------------------------------------------------------
+
+    #[test]
+    fn vocabulary_lifecycle_and_search() {
+        let (id, _) = make_instance(json!({}));
+        let create = request(
+            "POST",
+            &format!("/vocabulary/{id}"),
+            json!({"VocabularyName": "vocab-1", "LanguageCode": "en-US", "Content": "a b c"}),
+            "",
+        );
+        let created = body_of(&create);
+        let vid = created["VocabularyId"].as_str().unwrap().to_string();
+        assert_eq!(created["State"], "ACTIVE");
+        assert!(created["VocabularyArn"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/vocabulary/{vid}")));
+
+        let desc = request("GET", &format!("/vocabulary/{id}/{vid}"), json!({}), "");
+        let described = body_of(&desc);
+        assert_eq!(described["Vocabulary"]["LanguageCode"], "en-US");
+        assert_eq!(described["Vocabulary"]["State"], "ACTIVE");
+
+        let search = request(
+            "POST",
+            &format!("/vocabulary-summary/{id}"),
+            json!({"State": "ACTIVE", "LanguageCode": "en-US", "NameStartsWith": "bad"}),
+            "",
+        );
+        let search_body = body_of(&search);
+        assert!(search_body["VocabularySummaryList"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+
+        let search2 = request(
+            "POST",
+            &format!("/vocabulary-summary/{id}"),
+            json!({"LanguageCode": "en-US"}),
+            "",
+        );
+        let search2_body = body_of(&search2);
+        assert_eq!(
+            search2_body["VocabularySummaryList"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+
+        let missing_desc = request("GET", "/vocabulary/no/voc", json!({}), "");
+        assert_eq!(missing_desc.status, 404);
+
+        let del = request(
+            "POST",
+            &format!("/vocabulary-remove/{id}/{vid}"),
+            json!({}),
+            "",
+        );
+        let del_body = body_of(&del);
+        assert_eq!(del_body["State"], "DELETE_IN_PROGRESS");
+
+        let after = request("GET", &format!("/vocabulary/{id}/{vid}"), json!({}), "");
+        assert_eq!(status_of(&after), 404);
+
+        // default vocabularies list after removal is empty
+        let dv = request(
+            "POST",
+            &format!("/default-vocabulary-summary/{id}"),
+            json!({}),
+            "",
+        );
+        let dv_body = body_of(&dv);
+        assert!(dv_body["DefaultVocabularyList"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+    }
+
+    // -- Rules ----------------------------------------------------------------------------
+
+    #[test]
+    fn rule_lifecycle() {
+        let (id, _) = make_instance(json!({}));
+        let create = request(
+            "POST",
+            &format!("/rules/{id}"),
+            json!({"Name": "R1", "TriggerEventSource": {"EventSourceName": "OnPostCallAnalysis"},
+                   "Function": "{}", "Actions": [{"ActionType": "ASSIST"}], "PublishStatus": "DRAFT"}),
+            "",
+        );
+        let created = body_of(&create);
+        let rid = created["RuleId"].as_str().unwrap().to_string();
+        assert!(created["RuleArn"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/rule/{rid}")));
+
+        let desc = request("GET", &format!("/rules/{id}/{rid}"), json!({}), "");
+        let described = body_of(&desc);
+        let rule = &described["Rule"];
+        assert_eq!(rule["Name"], "R1");
+        assert_eq!(rule["PublishStatus"], "DRAFT");
+        assert_eq!(
+            rule["TriggerEventSource"]["EventSourceName"],
+            "OnPostCallAnalysis"
+        );
+
+        let upd = request(
+            "PUT",
+            &format!("/rules/{id}/{rid}"),
+            json!({"Name": "R2", "Function": "{}", "Actions": [{"ActionType": "CREATE_TASK"}],
+                   "PublishStatus": "ACTIVE"}),
+            "",
+        );
+        assert_eq!(status_of(&upd), 200);
+
+        let listed = request("GET", &format!("/rules/{id}"), json!({}), "");
+        let list_body = body_of(&listed);
+        let rows = list_body["RuleSummaryList"].as_array().unwrap();
+        assert_eq!(rows[0]["Name"], "R2");
+        assert_eq!(rows[0]["PublishStatus"], "ACTIVE");
+        assert_eq!(rows[0]["ActionSummaries"][0]["ActionType"], "CREATE_TASK");
+
+        let del = request("DELETE", &format!("/rules/{id}/{rid}"), json!({}), "");
+        assert_eq!(status_of(&del), 200);
+        let after = request("GET", &format!("/rules/{id}/{rid}"), json!({}), "");
+        assert_eq!(status_of(&after), 404);
+    }
+
+    // -- Evaluation forms ---------------------------------------------------------------------
+
+    #[test]
+    fn evaluation_form_lifecycle() {
+        let (id, _) = make_instance(json!({}));
+        let create = request(
+            "PUT",
+            &format!("/evaluation-forms/{id}"),
+            json!({"Title": "EF", "Items": [{"Section": {"Title": "s", "RefId": "r", "Items": []}}]}),
+            "",
+        );
+        let created = body_of(&create);
+        let fid = created["EvaluationFormId"].as_str().unwrap().to_string();
+        assert!(created["EvaluationFormArn"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/evaluation-form/{fid}")));
+
+        let desc = request(
+            "GET",
+            &format!("/evaluation-forms/{id}/{fid}"),
+            json!({}),
+            "",
+        );
+        let described = body_of(&desc);
+        let form = &described["EvaluationForm"];
+        assert_eq!(form["Title"], "EF");
+        assert_eq!(form["Status"], "DRAFT");
+        assert!(form["Items"][0]["Section"].is_object());
+
+        let upd = request(
+            "PUT",
+            &format!("/evaluation-forms/{id}/{fid}"),
+            json!({"Title": "EF2"}),
+            "",
+        );
+        let upd_body = body_of(&upd);
+        assert_eq!(upd_body["EvaluationFormVersion"], 2);
+
+        let listed = request("GET", &format!("/evaluation-forms/{id}"), json!({}), "");
+        let list_body = body_of(&listed);
+        let rows = list_body["EvaluationFormSummaryList"].as_array().unwrap();
+        assert_eq!(rows[0]["Title"], "EF2");
+        assert_eq!(rows[0]["LatestVersion"], 2);
+
+        let versions = request(
+            "GET",
+            &format!("/evaluation-forms/{id}/{fid}/versions"),
+            json!({}),
+            "",
+        );
+        let versions_body = body_of(&versions);
+        assert_eq!(
+            versions_body["EvaluationFormVersionSummaryList"][0]["EvaluationFormVersion"],
+            2
+        );
+
+        let activate = request(
+            "POST",
+            &format!("/evaluation-forms/{id}/{fid}/activate"),
+            json!({"EvaluationFormVersion": 2}),
+            "",
+        );
+        let activate_body = body_of(&activate);
+        assert_eq!(activate_body["EvaluationFormVersion"], 2);
+
+        let desc = request(
+            "GET",
+            &format!("/evaluation-forms/{id}/{fid}"),
+            json!({}),
+            "",
+        );
+        let described = body_of(&desc);
+        assert_eq!(described["EvaluationForm"]["Status"], "ACTIVE");
+
+        let deactivate = request(
+            "POST",
+            &format!("/evaluation-forms/{id}/{fid}/deactivate"),
+            json!({"EvaluationFormVersion": 2}),
+            "",
+        );
+        assert_eq!(status_of(&deactivate), 200);
+
+        let del = request(
+            "DELETE",
+            &format!("/evaluation-forms/{id}/{fid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&del), 200);
+        let after = request(
+            "GET",
+            &format!("/evaluation-forms/{id}/{fid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&after), 404);
+    }
+
+    #[test]
+    fn predefined_attribute_lifecycle() {
+        let (id, _) = make_instance(json!({}));
+        let create = request(
+            "PUT",
+            &format!("/predefined-attributes/{id}"),
+            json!({"Name": "trade", "Values": {"Text": "x"}}),
+            "",
+        );
+        assert_eq!(status_of(&create), 200);
+
+        let desc = request(
+            "GET",
+            &format!("/predefined-attributes/{id}/trade"),
+            json!({}),
+            "",
+        );
+        let described = body_of(&desc);
+        let attr = &described["PredefinedAttribute"];
+        assert_eq!(attr["Name"], "trade");
+        assert_eq!(attr["Values"]["Text"], "x");
+
+        let listed = request(
+            "GET",
+            &format!("/predefined-attributes/{id}"),
+            json!({}),
+            "",
+        );
+        let list_body = body_of(&listed);
+        let rows = list_body["PredefinedAttributeSummaryList"]
+            .as_array()
+            .unwrap();
+        assert_eq!(rows[0]["Name"], "trade");
+        assert!(rows[0].get("Values").is_none());
+
+        let upd = request(
+            "POST",
+            &format!("/predefined-attributes/{id}/trade"),
+            json!({"Values": {"Text": "y"}}),
+            "",
+        );
+        assert_eq!(status_of(&upd), 200);
+
+        let del = request(
+            "DELETE",
+            &format!("/predefined-attributes/{id}/trade"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&del), 200);
+        let after = request(
+            "GET",
+            &format!("/predefined-attributes/{id}/trade"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&after), 404);
+    }
+
+    #[test]
+    fn task_template_lifecycle() {
+        let (id, _) = make_instance(json!({}));
+        let create = request(
+            "PUT",
+            &format!("/instance/{id}/task/template"),
+            json!({"Name": "T1", "Fields": [{"Type": "NAME"}], "ContactFlowId": "cf-1"}),
+            "",
+        );
+        let created = body_of(&create);
+        let tid = created["Id"].as_str().unwrap().to_string();
+        assert!(created["Arn"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/task-template/{tid}")));
+
+        let got = request(
+            "GET",
+            &format!("/instance/{id}/task/template/{tid}"),
+            json!({}),
+            "",
+        );
+        let got_body = body_of(&got);
+        // moto returns the bare template for GetTaskTemplate
+        assert_eq!(got_body["Name"], "T1");
+        assert_eq!(got_body["ContactFlowId"], "cf-1");
+        assert_eq!(got_body["Status"], "ACTIVE");
+        assert_eq!(got_body["Fields"][0]["Type"], "NAME");
+
+        let listed = request(
+            "GET",
+            &format!("/instance/{id}/task/template"),
+            json!({}),
+            "",
+        );
+        let list_body = body_of(&listed);
+        assert_eq!(list_body["TaskTemplates"].as_array().unwrap().len(), 1);
+
+        let upd = request(
+            "POST",
+            &format!("/instance/{id}/task/template/{tid}"),
+            json!({"Name": "T2", "Status": "INACTIVE"}),
+            "",
+        );
+        let upd_body = body_of(&upd);
+        assert_eq!(upd_body["Name"], "T2");
+        assert_eq!(upd_body["Status"], "INACTIVE");
+
+        let del = request(
+            "DELETE",
+            &format!("/instance/{id}/task/template/{tid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&del), 200);
+        let after = request(
+            "GET",
+            &format!("/instance/{id}/task/template/{tid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&after), 404);
+    }
+
+    #[test]
+    fn integration_association_and_use_case_lifecycle() {
+        let (id, _) = make_instance(json!({}));
+        let create = request(
+            "PUT",
+            &format!("/instance/{id}/integration-associations"),
+            json!({"IntegrationType": "WISDOM", "IntegrationArn": "arn:aws:wisdom:..."}),
+            "",
+        );
+        let created = body_of(&create);
+        let ia = created["IntegrationAssociationId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let listed = request(
+            "GET",
+            &format!("/instance/{id}/integration-associations"),
+            json!({}),
+            "",
+        );
+        let list_body = body_of(&listed);
+        let rows = list_body["IntegrationAssociationSummaryList"]
+            .as_array()
+            .unwrap();
+        assert_eq!(rows[0]["IntegrationType"], "WISDOM");
+        assert_eq!(rows[0]["IntegrationAssociationId"], ia.as_str());
+
+        let use_case = request(
+            "PUT",
+            &format!("/instance/{id}/integration-associations/{ia}/use-cases"),
+            json!({"UseCaseType": "RECOMMENDATIONS"}),
+            "",
+        );
+        let uc_body = body_of(&use_case);
+        let ucid = uc_body["UseCaseId"].as_str().unwrap().to_string();
+
+        let listed_uc = request(
+            "GET",
+            &format!("/instance/{id}/integration-associations/{ia}/use-cases"),
+            json!({}),
+            "",
+        );
+        let listed_uc_body = body_of(&listed_uc);
+        let uc_rows = listed_uc_body["UseCaseSummaryList"].as_array().unwrap();
+        assert_eq!(uc_rows.len(), 1);
+        assert_eq!(uc_rows[0]["UseCaseType"], "RECOMMENDATIONS");
+
+        // different integration association filters out
+        let listed_uc2 = request(
+            "GET",
+            &format!("/instance/{id}/integration-associations/other/use-cases"),
+            json!({}),
+            "",
+        );
+        assert_eq!(
+            body_of(&listed_uc2)["UseCaseSummaryList"]
+                .as_array()
+                .unwrap()
+                .len(),
+            0
+        );
+
+        let del_uc = request(
+            "DELETE",
+            &format!("/instance/{id}/integration-associations/{ia}/use-cases/{ucid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&del_uc), 200);
+
+        let del = request(
+            "DELETE",
+            &format!("/instance/{id}/integration-associations/{ia}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&del), 200);
+        let listed = request(
+            "GET",
+            &format!("/instance/{id}/integration-associations"),
+            json!({}),
+            "",
+        );
+        assert_eq!(
+            body_of(&listed)["IntegrationAssociationSummaryList"]
+                .as_array()
+                .unwrap()
+                .len(),
+            0
+        );
+    }
+
+    #[test]
+    fn email_address_lifecycle() {
+        let (id, _) = make_instance(json!({}));
+        let create = request(
+            "PUT",
+            &format!("/email-addresses/{id}"),
+            json!({"EmailAddress": "team@example.com", "DisplayName": "Team"}),
+            "",
+        );
+        let created = body_of(&create);
+        let eid = created["EmailAddressId"].as_str().unwrap().to_string();
+
+        let desc = request(
+            "GET",
+            &format!("/email-addresses/{id}/{eid}"),
+            json!({}),
+            "",
+        );
+        // moto returns the bare to_dict
+        let described = body_of(&desc);
+        assert_eq!(described["EmailAddressId"], eid.as_str());
+        assert_eq!(described["EmailAddress"], "team@example.com");
+        assert!(described.get("AliasConfigurations").is_none());
+        assert!(described.get("Tags").is_some());
+
+        let del = request(
+            "DELETE",
+            &format!("/email-addresses/{id}/{eid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&del), 200);
+        let after = request(
+            "GET",
+            &format!("/email-addresses/{id}/{eid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&after), 404);
+    }
+
+    #[test]
+    fn notification_lifecycle() {
+        let (id, _) = make_instance(json!({}));
+        let create = request(
+            "PUT",
+            &format!("/notifications/{id}"),
+            json!({"Recipients": ["u1"], "Content": {"Action": "x"}, "Priority": 3}),
+            "",
+        );
+        let created = body_of(&create);
+        let nid = created["NotificationId"].as_str().unwrap().to_string();
+        assert!(created["NotificationArn"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/notification/{nid}")));
+
+        let desc = request("GET", &format!("/notifications/{id}/{nid}"), json!({}), "");
+        let described = body_of(&desc);
+        // moto returns the bare to_dict
+        assert_eq!(described["Id"], nid.as_str());
+        assert_eq!(described["Priority"], 3);
+        assert!(described.get("Notification").is_none());
+
+        let listed = request("GET", &format!("/notifications/{id}"), json!({}), "");
+        let list_body = body_of(&listed);
+        assert_eq!(
+            list_body["NotificationSummaryList"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+
+        let del = request(
+            "DELETE",
+            &format!("/notifications/{id}/{nid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&del), 200);
+        let after = request("GET", &format!("/notifications/{id}/{nid}"), json!({}), "");
+        assert_eq!(status_of(&after), 404);
+    }
+
+    #[test]
+    fn workspace_lifecycle() {
+        let (id, _) = make_instance(json!({}));
+        let create = request(
+            "PUT",
+            &format!("/workspaces/{id}"),
+            json!({"Name": "W1", "Description": "d"}),
+            "",
+        );
+        let created = body_of(&create);
+        let wid = created["WorkspaceId"].as_str().unwrap().to_string();
+        assert!(created["WorkspaceArn"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/workspace/{wid}")));
+
+        let desc = request("GET", &format!("/workspaces/{id}/{wid}"), json!({}), "");
+        let described = body_of(&desc);
+        assert_eq!(described["Workspace"]["Name"], "W1");
+
+        let listed = request("GET", &format!("/workspaces/{id}"), json!({}), "");
+        let list_body = body_of(&listed);
+        assert_eq!(
+            list_body["WorkspaceSummaryList"].as_array().unwrap().len(),
+            1
+        );
+
+        let del = request("DELETE", &format!("/workspaces/{id}/{wid}"), json!({}), "");
+        assert_eq!(status_of(&del), 200);
+        let after = request("GET", &format!("/workspaces/{id}/{wid}"), json!({}), "");
+        assert_eq!(status_of(&after), 404);
+    }
+
+    #[test]
+    fn test_case_lifecycle() {
+        let (id, _) = make_instance(json!({}));
+        let create = request(
+            "PUT",
+            &format!("/test-cases/{id}"),
+            json!({"Name": "TC1"}),
+            "",
+        );
+        let created = body_of(&create);
+        let tcid = created["TestCaseId"].as_str().unwrap().to_string();
+        assert!(created["TestCaseArn"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/test-case/{tcid}")));
+
+        let desc = request("GET", &format!("/test-cases/{id}/{tcid}"), json!({}), "");
+        let described = body_of(&desc);
+        assert_eq!(described["TestCase"]["Name"], "TC1");
+        assert_eq!(described["TestCase"]["Status"], "DRAFT");
+
+        let upd = request(
+            "POST",
+            &format!("/test-cases/{id}/{tcid}"),
+            json!({"Name": "TC2", "Status": "ACTIVE"}),
+            "",
+        );
+        let upd_body = body_of(&upd);
+        assert_eq!(upd_body["TestCase"]["Name"], "TC2");
+
+        let listed = request("GET", &format!("/test-cases-summary/{id}"), json!({}), "");
+        let list_body = body_of(&listed);
+        assert_eq!(
+            list_body["TestCaseSummaryList"].as_array().unwrap().len(),
+            1
+        );
+
+        let del = request("DELETE", &format!("/test-cases/{id}/{tcid}"), json!({}), "");
+        assert_eq!(status_of(&del), 200);
+        let after = request("GET", &format!("/test-cases/{id}/{tcid}"), json!({}), "");
+        assert_eq!(status_of(&after), 404);
+    }
+
+    #[test]
+    fn data_table_lifecycle() {
+        let (id, _) = make_instance(json!({}));
+        let create = request(
+            "PUT",
+            &format!("/data-tables/{id}"),
+            json!({"Name": "DT1"}),
+            "",
+        );
+        let created = body_of(&create);
+        let tid = created["Id"].as_str().unwrap().to_string();
+        assert!(created["LockVersion"].is_object());
+        assert_eq!(created["LockVersion"]["DataTable"], "1");
+
+        let desc = request("GET", &format!("/data-tables/{id}/{tid}"), json!({}), "");
+        let described = body_of(&desc);
+        assert_eq!(described["DataTable"]["Name"], "DT1");
+        assert!(described["DataTable"].get("LockVersion").is_none());
+
+        // attribute lifecycle
+        let attr = request(
+            "PUT",
+            &format!("/data-tables/{id}/{tid}/attributes"),
+            json!({"Name": "priority", "ValueType": "TEXT", "Required": true}),
+            "",
+        );
+        let attr_body = body_of(&attr);
+        assert_eq!(attr_body["Name"], "priority");
+        assert!(attr_body["LockVersion"].is_object());
+
+        let attr_desc = request(
+            "GET",
+            &format!("/data-tables/{id}/{tid}/attributes/priority"),
+            json!({}),
+            "",
+        );
+        let attr_desc_body = body_of(&attr_desc);
+        assert_eq!(attr_desc_body["DataTableAttribute"]["DataType"], "TEXT");
+        assert_eq!(attr_desc_body["DataTableAttribute"]["Required"], true);
+
+        let attr_listed = request(
+            "POST",
+            &format!("/data-tables/{id}/{tid}/attributes"),
+            json!({}),
+            "",
+        );
+        let attr_listed_body = body_of(&attr_listed);
+        assert_eq!(
+            attr_listed_body["DataTableAttributeSummaryList"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+
+        let upd = request(
+            "POST",
+            &format!("/data-tables/{id}/{tid}/attributes/priority"),
+            json!({"DefaultValue": "p1"}),
+            "",
+        );
+        let upd_body = body_of(&upd);
+        assert_eq!(upd_body["DataTableAttribute"]["DefaultValue"], "p1");
+
+        let del_attr = request(
+            "DELETE",
+            &format!("/data-tables/{id}/{tid}/attributes/priority"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&del_attr), 200);
+        let gone = request(
+            "GET",
+            &format!("/data-tables/{id}/{tid}/attributes/priority"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&gone), 404);
+
+        // table delete cascades attributes
+        request(
+            "POST",
+            &format!("/data-tables/{id}/{tid}/attributes"),
+            json!({"Name": "priority", "ValueType": "TEXT"}),
+            "",
+        );
+        let del = request("DELETE", &format!("/data-tables/{id}/{tid}"), json!({}), "");
+        assert_eq!(status_of(&del), 200);
+        let after = request("GET", &format!("/data-tables/{id}/{tid}"), json!({}), "");
+        assert_eq!(status_of(&after), 404);
+
+        // recreate and confirm attributes were purged with the table
+        let create2 = request(
+            "PUT",
+            &format!("/data-tables/{id}"),
+            json!({"Name": "DT2"}),
+            "",
+        );
+        let tid2 = body_of(&create2)["Id"].as_str().unwrap().to_string();
+        let attr_listed2 = request(
+            "POST",
+            &format!("/data-tables/{id}/{tid2}/attributes"),
+            json!({}),
+            "",
+        );
+        assert!(body_of(&attr_listed2)["DataTableAttributeSummaryList"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn traffic_distribution_group_lifecycle() {
+        let (id, _) = make_instance(json!({}));
+        let create = request(
+            "PUT",
+            "/traffic-distribution-group",
+            json!({"Name": "TDG", "InstanceId": id.clone()}),
+            "",
+        );
+        let created = body_of(&create);
+        let tid = created["Id"].as_str().unwrap().to_string();
+        assert!(created["Arn"]
+            .as_str()
+            .unwrap()
+            .contains("traffic-distribution-group/"));
+
+        let desc = request(
+            "GET",
+            &format!("/traffic-distribution-group/{tid}"),
+            json!({}),
+            "",
+        );
+        let described = body_of(&desc);
+        let group = &described["TrafficDistributionGroup"];
+        assert_eq!(group["Id"], tid.as_str());
+        assert_eq!(group["IsDefault"], false);
+        assert_eq!(group["Status"], "ACTIVE");
+        assert!(group["InstanceArn"]
+            .as_str()
+            .unwrap()
+            .ends_with(&id.as_str()));
+
+        let listed = request(
+            "GET",
+            "/traffic-distribution-groups",
+            json!({}),
+            &format!("instanceId={id}"),
+        );
+        let list_body = body_of(&listed);
+        assert_eq!(
+            list_body["TrafficDistributionGroupSummaryList"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        let listed = request(
+            "GET",
+            "/traffic-distribution-groups",
+            json!({}),
+            "instanceId=other",
+        );
+        assert_eq!(
+            body_of(&listed)["TrafficDistributionGroupSummaryList"]
+                .as_array()
+                .unwrap()
+                .len(),
+            0
+        );
+
+        let del = request(
+            "DELETE",
+            &format!("/traffic-distribution-group/{tid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&del), 200);
+        let after = request(
+            "GET",
+            &format!("/traffic-distribution-group/{tid}"),
             json!({}),
             "",
         );
