@@ -67,29 +67,7 @@ pub fn route(req: &Request, params: &P) -> Response {
         "RejectVpcPeeringConnection" => reject_peering(req, params),
         "ModifyVpcPeeringConnectionOptions" => {
             let id = params.str("VpcPeeringConnectionId");
-            let mut opt = String::new();
-            for (side, key) in [
-                ("Requester", "requesterVpcInfo"),
-                ("Accepter", "accepterVpcInfo"),
-            ] {
-                for p in [
-                    "AllowDnsResolutionFromRemoteVpc",
-                    "AllowEgressFromLocalClassicLinkToRemoteVpc",
-                    "AllowEgressFromLocalVpcToRemoteClassicLink",
-                ] {
-                    if let Some(v) = params.get(&format!("{side}PeeringConnectionOptions.{p}")) {
-                        if !v.is_empty() {
-                            let first = p.chars().next().unwrap().to_lowercase().to_string();
-                            let rest: String = p.chars().skip(1).collect();
-                            opt.push_str(&format!(
-                                "<operation><allowDnsResolutionFromRemoteVpc>true</allowDnsResolutionFromRemoteVpc></operation>"
-                            ));
-                            let _ = (first, rest);
-                        }
-                    }
-                }
-            }
-            let _ = opt;
+            let _id = params.str("VpcPeeringConnectionId");
             ec2_xml(
                 "ModifyVpcPeeringConnectionOptionsResponse",
                 "<requesterPeeringConnectionOptions><allowDnsResolutionFromRemoteVpc>true</allowDnsResolutionFromRemoteVpc></requesterPeeringConnectionOptions><accepterPeeringConnectionOptions/>",
@@ -1066,13 +1044,11 @@ fn create_dhcp_options(req: &Request, params: &P) -> Response {
                 tags.push((k, v));
             }
         }
-        let mut d = super::state::DhcpOptions {
+        let d = super::state::DhcpOptions {
             id: id.clone(),
             configurations: configs,
             tags,
-            ..Default::default()
         };
-        let _ = &mut d;
         state.dhcp_options.push(d.clone());
         let cfg = dhcp_configurations_xml(&d);
         ec2_xml(
@@ -1662,7 +1638,7 @@ fn create_vpc_endpoint_service(req: &Request, params: &P) -> Response {
         ec2_xml(
             "CreateVpcEndpointServiceConfigurationResponse",
             &format!(
-                "<serviceConfiguration><serviceId>{id}</serviceId><serviceName>com.amazonaws.vpce.{region}.{account}.{id}</serviceName><serviceType><item><serviceType>Interface</serviceType></item></serviceType><acceptanceRequired>{acc}</acceptanceRequired><managesVpcEndpoints>false</managesVpcEndpoints><privateDnsNames/><baseEndpointDnsNames/><networkLoadBalancerArns>{nlbs}</networkLoadBalancerArns><gatewayLoadBalancerArns/><supportedIpAddressTypes/><state>Available</state>{}</serviceConfiguration>",
+                "<serviceConfiguration><serviceId>{id}</serviceId><serviceName>com.amazonaws.vpce.{region}.{account}.{id}</serviceName><serviceType><item><serviceType>Interface</serviceType></item></serviceType><acceptanceRequired>{acc}</acceptanceRequired><managesVpcEndpoints>false</managesVpcEndpoints><privateDnsNames/><baseEndpointDnsNames/><networkLoadBalancerArns>{nlbs}</networkLoadBalancerArns><gatewayLoadBalancerArns/><supportedIpAddressTypes/><state>Available</state></serviceConfiguration>",
                 id = crate::proto::xml_escape(&id),
                 region = "us-east-1",
                 account = req.account,

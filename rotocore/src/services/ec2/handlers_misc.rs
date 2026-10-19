@@ -810,7 +810,7 @@ fn simple_create(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
             false,
             &tags_xml_v,
         );
-        let mut record = |state: &mut super::state::Ec2State, rid: &str, item_xml: String| {
+        let record = |state: &mut super::state::Ec2State, rid: &str, item_xml: String| {
             let mut s = Simple {
                 id: rid.to_string(),
                 kind: fam.kind.to_string(),
@@ -884,7 +884,7 @@ fn simple_create(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
             if let Some(xml) = super::shapes::render_list_response(
                 fam.create_op,
                 list_pykey_of(fam.create_op).as_str(),
-                &[fills.clone()],
+                std::slice::from_ref(&fills),
                 "us-east-1",
             ) {
                 let inner = strip_op_root(&xml, fam.create_op);
@@ -2175,11 +2175,11 @@ fn tgw_rest_route(req: &Request, op: &str, params: &P) -> Response {
                                 "state" => vec![st.clone()],
                                 "type" => vec!["static".into()],
                                 other => {
-                                    (if other.contains("attachment") && *attach != ":" {
+                                    if other.contains("attachment") && *attach != ":" {
                                         vec![attach.clone()]
                                     } else {
                                         Vec::new()
-                                    })
+                                    }
                                 }
                             };
                             if !fvals.iter().any(|v| cands.contains(v)) {
@@ -2447,12 +2447,6 @@ fn connect_peer_fields(s: &Simple) -> String {
         inside = inside_item,
         tags = tags_xml(&s.tags)
     )
-}
-
-fn tgw_default_body(op: &str) -> String {
-    match op {
-        _ => String::from("<return>true</return>"),
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -3292,15 +3286,14 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                     if !ids.is_empty() && !ids.contains(&s.id) {
                         continue;
                     }
+                    let az = req.region.clone() + "a";
                     let _ = write!(
                         items,
-                        "<item><hostId>{}</hostId><autoPlacement>{}</autoPlacement>{}<ownerId>{}</ownerId><availabilityZone>{}</availabilityZone><hostProperties>{}<cores>0</cores><instanceType>{}</instanceType></hostProperties><allocationOwnerIds/><state>{}</state><hostArn>arn:aws:ec2:us-east-1:{}:host/{}</hostArn>{}</item>",
+                        "<item><hostId>{}</hostId><autoPlacement>{}</autoPlacement><ownerId>{}</ownerId><availabilityZone>{}</availabilityZone><hostProperties><cores>0</cores><instanceType>{}</instanceType></hostProperties><allocationOwnerIds/><state>{}</state><hostArn>arn:aws:ec2:us-east-1:{}:host/{}</hostArn>{}</item>",
                         xml_escape(&s.id),
                         s.get("AutoPlacement").unwrap_or("off"),
-                        "",
                         req.account,
-                        req.region.clone() + "a",
-                        "",
+                        az,
                         s.get("InstanceType").unwrap_or_default(),
                         s.get("State").unwrap_or("available"),
                         req.account,
@@ -4302,7 +4295,7 @@ pub fn ipam_route(req: &Request, op: &str, params: &P) -> Response {
             let desc = params.str("Description");
             let mut found = false;
             {
-                let mut updated_desc = desc.clone();
+                let updated_desc;
                 if let Some(items) = state.simple.get_mut("ipam") {
                     for s in items.iter_mut() {
                         if s.id == id {
@@ -4400,7 +4393,7 @@ fn ipam_item_xml(s: Option<Simple>, desc: &str, account: u64, region: &str) -> S
         desc.to_string()
     };
     format!(
-        "<ownerId>{}</ownerId><ipamId>{}</ipamId><ipamArn>arn:aws:ec2:{region}:{account}:ipam/{id}</ipamArn><ipamRegion>{region}</ipamRegion><operatingRegionSet><item><regionName>{region}</regionName></item></operatingRegionSet><scopeCount>2</scopeCount><description>{description}</description><publicDefaultScopeId>{public}</publicDefaultScopeId><privateDefaultScopeId>{priv}</privateDefaultScopeId><state>{state}</state><tagSet/>",
+        "<ownerId>{account}</ownerId><ipamId>{id}</ipamId><ipamArn>arn:aws:ec2:{region}:{account}:ipam/{id}</ipamArn><ipamRegion>{region}</ipamRegion><operatingRegionSet><item><regionName>{region}</regionName></item></operatingRegionSet><scopeCount>2</scopeCount><description>{description}</description><publicDefaultScopeId>{public}</publicDefaultScopeId><privateDefaultScopeId>{priv}</privateDefaultScopeId><state>{state}</state><tagSet/>",
         account = account,
         region = region,
         id = xml_escape(&s.id),
@@ -4473,7 +4466,7 @@ fn allocate_from_provisioned(
         return (None, netmask);
     }
     // n-th /netmask slot inside the base block
-    let base_bits = base_len.max(0).min(32) as u32;
+    let base_bits = base_len.clamp(0, 32) as u32;
     if (netmask as u32) < base_bits {
         return (None, netmask);
     }

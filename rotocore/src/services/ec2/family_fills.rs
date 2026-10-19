@@ -11,7 +11,7 @@ use crate::proto::xml_escape;
 type P = Params;
 
 /// Build the fill set for a family's single-object create (or delete).
-fn arn2<'a>(srv: &str, region: &str, account: u64, id: &str) -> String {
+fn arn2(srv: &str, region: &str, account: u64, id: &str) -> String {
     format!("arn:aws:ec2:{}:{}:{}/{}", region, account, srv, id)
 }
 
@@ -79,7 +79,6 @@ pub fn create_fills(
             f.insert("IpamScopeArn".to_string(), Fill::S(arn_of("ipam-scope")));
             let ipam_id = params.str("IpamId");
             let region = region.to_string();
-            let account = account;
             f.insert(
                 "IpamArn".to_string(),
                 Fill::S(arn2("ipam", &region, account, &ipam_id)),
@@ -114,7 +113,6 @@ pub fn create_fills(
             f.insert("IpamScopeArn".to_string(), Fill::S(arn_of("ipam-scope")));
             let ipam_id = params.str("IpamId");
             let region = region.to_string();
-            let account = account;
             f.insert(
                 "IpamArn".to_string(),
                 Fill::S(arn2("ipam", &region, account, &ipam_id)),
@@ -596,25 +594,9 @@ pub fn create_fills(
                 .max(1);
             let mut items = String::new();
             for _ in 0..count {
-                items.push_str(&format!("<item>{}{}</item>", id.clone(), ""));
+                items.push_str(&format!("<item>{id}{empty}</item>", id = id, empty = ""));
             }
             f.insert("HostIds".to_string(), Fill::X(items));
-        }
-        "coip-pool" => {
-            f.insert("PoolId".to_string(), Fill::S(id.to_string()));
-            f.insert("PoolArn".to_string(), Fill::S(arn_of("coip-pool")));
-            f.insert(
-                "LocalGatewayRouteTableId".to_string(),
-                Fill::S(params.str("LocalGatewayRouteTableId")),
-            );
-        }
-        "public-ipv4-pool" => {
-            f.insert("PoolId".to_string(), Fill::S(id.to_string()));
-        }
-        "instance-event-window" => {
-            f.insert("InstanceEventWindowId".to_string(), Fill::S(id.to_string()));
-            f.insert("Name".to_string(), Fill::S(params.str("Name")));
-            f.insert("State".to_string(), Fill::S("active".into()));
         }
         _ => {
             f.insert("Id".to_string(), Fill::S(id.to_string()));
