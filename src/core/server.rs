@@ -11,8 +11,8 @@ use axum::{
 };
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, OnceLock};
 use uuid::Uuid;
 
 use crate::core::account::parse_account_from_key;
@@ -1448,14 +1448,25 @@ pub const NATIVE_SERVICES: &[&str] = &[
     "stepfunctions",
 ];
 
+/// Service names present in the gateway's own registry.
+///
+/// `service_is_native` is consulted once per registry entry on every
+/// introspection request (~157 entries), and constructing a throwaway
+/// `ServiceRegistry` — seventeen default handlers plus the adapter map — for
+/// each probe dominated the health/services endpoints. The handler set is
+/// fixed at compile time, so derive the names from the real constructed
+/// table exactly once and reuse them; the introspection labels stay derived
+/// from real handler tables rather than a hardcoded list.
+fn gateway_native_service_names() -> &'static HashSet<String> {
+    static NAMES: OnceLock<HashSet<String>> = OnceLock::new();
+    NAMES.get_or_init(|| ServiceRegistry::new().handlers.keys().cloned().collect())
+}
+
 fn service_is_native(name: &str) -> bool {
     // The gateway's own handler table plus rotocore's armed backends. The
     // registry's static "type" column is stale for both directions, so
     // introspection derives availability from the real tables.
-    crate::core::server::ServiceRegistry::new()
-        .get(name)
-        .is_some()
-        || rotocore::handles_service(name)
+    gateway_native_service_names().contains(name) || rotocore::handles_service(name)
 }
 
 fn registry_service_statuses() -> serde_json::Map<String, serde_json::Value> {
