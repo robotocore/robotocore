@@ -1,0 +1,3 @@
+# The vm crate has its own Cargo target directory (routinely GBs after
+# local builds) — never ship it into the extension image build context.
+vm/target/

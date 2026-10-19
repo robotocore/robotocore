@@ -52,22 +52,27 @@ struct DockerOutput {
     stderr: String,
 }
 
-/// Run a docker CLI command and capture its output. A timeout or spawn
-/// failure behaves like a failing command with an explanatory stderr.
-async fn run_docker(args: &[String]) -> DockerOutput {
+enum DockerResult {
+    /// The docker CLI ran and produced exit status plus output.
+    Completed(DockerOutput),
+    /// The CLI could not run (not installed) or timed out — mirrors the
+    /// Python backend, where such failures surfaced as 500s instead of
+    /// being mistaken for "container not present".
+    Unavailable(String),
+}
+
+/// Run a docker CLI command and capture its output.
+async fn run_docker(args: &[String]) -> DockerResult {
     let result =
         tokio::time::timeout(DOCKER_TIMEOUT, Command::new("docker").args(args).output()).await;
     match result {
-        Ok(Ok(out)) => DockerOutput {
+        Ok(Ok(out)) => DockerResult::Completed(DockerOutput {
             ok: out.status.success(),
             stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
             stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
-        },
-        _ => DockerOutput {
-            ok: false,
-            stdout: String::new(),
-            stderr: "docker command timed out or failed to run".to_string(),
-        },
+        }),
+        Ok(Err(e)) => DockerResult::Unavailable(format!("docker is unavailable: {e}")),
+        Err(_) => DockerResult::Unavailable("docker command timed out".to_string()),
     }
 }
 
@@ -79,24 +84,41 @@ fn error_result(status: StatusCode, message: String) -> Response {
     (status, Json(json!({ "error": message.trim() }))).into_response()
 }
 
-/// Inspect the robotocore container, or None when it does not exist.
-async fn container_info(cfg: &ExtConfig) -> Option<Value> {
+/// Inspect the robotocore container.
+///
+/// `Err` when the docker CLI is unavailable (like Python's 500s),
+/// `Ok(None)` when the container does not exist, `Ok(Some(info))` when
+/// it exists.
+async fn container_info(cfg: &ExtConfig) -> Result<Option<Value>, String> {
     let args = vec![
         "inspect".to_string(),
         cfg.container.clone(),
         "--format".to_string(),
         "{{json .}}".to_string(),
     ];
-    let out = run_docker(&args).await;
-    if !out.ok {
-        return None;
+    match run_docker(&args).await {
+        DockerResult::Unavailable(e) => Err(e),
+        DockerResult::Completed(out) => {
+            if !out.ok {
+                // Nonzero rc means "no such container" — the container
+                // genuinely does not exist.
+                return Ok(None);
+            }
+            Ok(serde_json::from_str(out.stdout.trim()).ok().flatten())
+        }
     }
-    serde_json::from_str(out.stdout.trim()).ok()
 }
 
 async fn status(State(cfg): State<ExtConfig>) -> Response {
     match container_info(&cfg).await {
-        Some(info) => {
+        Err(e) => error_result(StatusCode::INTERNAL_SERVER_ERROR, e),
+        Ok(None) => json_result(json!({
+            "running": false,
+            "container_id": Value::Null,
+            "uptime": Value::Null,
+            "port": cfg.port,
+        })),
+        Ok(Some(info)) => {
             let running = info
                 .get("State")
                 .and_then(|s| s.get("Running"))
@@ -125,12 +147,6 @@ async fn status(State(cfg): State<ExtConfig>) -> Response {
                 "port": cfg.port,
             }))
         }
-        None => json_result(json!({
-            "running": false,
-            "container_id": Value::Null,
-            "uptime": Value::Null,
-            "port": cfg.port,
-        })),
     }
 }
 
@@ -176,21 +192,27 @@ async fn start(State(cfg): State<ExtConfig>, body: Bytes) -> Response {
     ];
     args.extend(env_flags);
     args.push(cfg.image.clone());
-    let result = run_docker(&args).await;
-
-    if !result.ok {
-        return error_result(StatusCode::INTERNAL_SERVER_ERROR, result.stderr);
+    match run_docker(&args).await {
+        DockerResult::Unavailable(e) => error_result(StatusCode::INTERNAL_SERVER_ERROR, e),
+        DockerResult::Completed(result) => {
+            if !result.ok {
+                return error_result(StatusCode::INTERNAL_SERVER_ERROR, result.stderr);
+            }
+            let container_id: String = result.stdout.trim().chars().take(12).collect();
+            json_result(json!({
+                "started": true,
+                "container_id": container_id,
+            }))
+        }
     }
-    let container_id: String = result.stdout.trim().chars().take(12).collect();
-    json_result(json!({
-        "started": true,
-        "container_id": container_id,
-    }))
 }
 
 async fn stop(State(cfg): State<ExtConfig>) -> Response {
     let stop_arg = cfg.container.clone();
-    let result = run_docker(&["stop".into(), stop_arg]).await;
+    let result = match run_docker(&["stop".into(), stop_arg]).await {
+        DockerResult::Unavailable(e) => return error_result(StatusCode::INTERNAL_SERVER_ERROR, e),
+        DockerResult::Completed(out) => out,
+    };
     if !result.ok {
         return error_result(StatusCode::INTERNAL_SERVER_ERROR, result.stderr);
     }
@@ -199,14 +221,19 @@ async fn stop(State(cfg): State<ExtConfig>) -> Response {
     json_result(json!({ "stopped": true }))
 }
 
-/// `?tail=N` passthrough of `docker logs`, defaults to 100.
+/// `?tail=N` passthrough of `docker logs`, defaults to 100. The value is
+/// percent-decoded like Python's `request.query_params.get`.
 fn tail_param(query: Option<&str>) -> String {
     query
         .unwrap_or("")
         .split('&')
         .find_map(|pair| {
             let (k, v) = pair.split_once('=')?;
-            (k == "tail").then(|| v.to_string())
+            (k == "tail").then(|| {
+                urlencoding::decode(v)
+                    .map(String::from)
+                    .unwrap_or_else(|_| v.to_string())
+            })
         })
         .unwrap_or_else(|| "100".to_string())
 }
@@ -219,13 +246,16 @@ async fn logs(State(cfg): State<ExtConfig>, RawQuery(query): RawQuery) -> Respon
         tail,
         cfg.container.clone(),
     ];
-    // Python combined stdout+stderr and ignored the exit code.
-    let out = run_docker(&args).await;
-    (
-        [(http::header::CONTENT_TYPE, "text/plain")],
-        out.stdout + &out.stderr,
-    )
-        .into_response()
+    // Python combined stdout+stderr and surfaced CLI failures as errors;
+    // a successful call just streams stdout+stderr as text.
+    match run_docker(&args).await {
+        DockerResult::Unavailable(e) => error_result(StatusCode::INTERNAL_SERVER_ERROR, e),
+        DockerResult::Completed(out) => (
+            [(http::header::CONTENT_TYPE, "text/plain")],
+            out.stdout + &out.stderr,
+        )
+            .into_response(),
+    }
 }
 
 /// GET/POST/PUT/DELETE /proxy/* — forward to the robotocore management
@@ -374,5 +404,7 @@ mod tests {
         assert_eq!(tail_param(Some("tail=200")), "200");
         assert_eq!(tail_param(Some("other=1&tail=5")), "5");
         assert_eq!(tail_param(Some("other=1")), "100");
+        // Percent-decoded like Python's query_params.
+        assert_eq!(tail_param(Some("tail=%31%30")), "10");
     }
 }

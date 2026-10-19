@@ -2093,9 +2093,19 @@ fn unsigned_non_sts_action(headers: &HeaderMap, uri: &Uri, body: &[u8]) -> Optio
     if let Some(action) = action_in(uri.query().unwrap_or("")) {
         return (!sts::is_known_sts_op(&action)).then_some(action);
     }
-    if let Some(action) = action_in(&String::from_utf8_lossy(body)) {
-        if !sts::is_known_sts_op(&action) {
-            return Some(action);
+    // Only form posts may name an Action in the body — rule 7 of
+    // route_to_service parks exactly these — so don't scan other body
+    // types for stray "Action=" substrings.
+    let form_body = headers
+        .get("Content-Type")
+        .and_then(|v| v.to_str().ok())
+        .map(|t| t.contains("x-www-form-urlencoded"))
+        .unwrap_or(false);
+    if form_body {
+        if let Some(action) = action_in(&String::from_utf8_lossy(body)) {
+            if !sts::is_known_sts_op(&action) {
+                return Some(action);
+            }
         }
     }
     None

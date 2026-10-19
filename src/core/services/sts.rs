@@ -485,4 +485,45 @@ mod tests {
         let resp = handle_get_access_key_info(&req).unwrap();
         assert_eq!(resp.status, StatusCode::OK);
     }
+
+    /// Drift guard: every entry in STS_KNOWN_OPS must be handled by
+    /// `handle_sts_request` — an op listed here but missing from the match
+    /// would resurrect the STS-shaped misparse the gateway veto was built
+    /// to fix (unsigned callers would get `Unknown STS operation` XML).
+    #[tokio::test]
+    async fn known_ops_never_hit_the_invalid_action_arm() {
+        for op in STS_KNOWN_OPS {
+            let req = ParsedRequest {
+                service: "sts".to_string(),
+                operation: op.to_string(),
+                params: HashMap::new(),
+                body: bytes::Bytes::new(),
+                region: "us-east-1".to_string(),
+                account: 123456789012,
+                method: "POST".to_string(),
+                path: "/".to_string(),
+                query_string: String::new(),
+                headers: HashMap::new(),
+            };
+            // Parameter errors (Err / 4xx) are fine: they prove the
+            // matched arm ran. The drift failure mode is the fallthrough
+            // `_` arm answering 404 "Unknown STS operation".
+            match handle_sts_request(&req).await {
+                Ok(resp) => {
+                    assert_ne!(
+                        resp.status,
+                        StatusCode::NOT_FOUND,
+                        "{op} is in STS_KNOWN_OPS but has no handler arm"
+                    )
+                }
+                Err(err) => {
+                    let msg = err.to_string();
+                    assert!(
+                        !msg.contains("Unknown STS operation"),
+                        "{op} reached the InvalidAction arm: {msg}"
+                    );
+                }
+            }
+        }
+    }
 }
