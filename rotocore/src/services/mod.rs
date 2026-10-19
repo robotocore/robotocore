@@ -45,7 +45,7 @@ pub mod databrew;
 pub mod datapipeline;
 pub mod datasync;
 pub mod dax;
-pub mod dms;
+pub mod directconnect;pub mod dms;
 pub mod dsql;
 pub mod ebs;
 pub mod ec2instanceconnect;
@@ -160,8 +160,8 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "databrew" => databrew::dispatch(req),
         "datapipeline" => datapipeline::dispatch(req),
         "datasync" => datasync::dispatch(req),
-        "dax" => dax::dispatch(req),
-        "dms" => dms::dispatch(req),
+"dax" => dax::dispatch(req),
+"directconnect" => directconnect::dispatch(req),        "dms" => dms::dispatch(req),
         "dsql" => dsql::dispatch(req),
         "ebs" => ebs::dispatch(req),
         "ec2" => Some(ec2::dispatch(req)),
@@ -226,7 +226,18 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "shield" => shield::dispatch(req),
         "signer" => signer::dispatch(req),
         "ssoadmin" => ssoadmin::dispatch(req),
-        "support" => Some(support::dispatch(req)),
+        // Direct Connect arrives labeled `support`: the gateway router maps
+        // directconnect's botocore targetPrefix `OvertureService` to
+        // `support` (a python-era row predating the rotocore backend). The
+        // two op surfaces are disjoint, so route directconnect operations
+        // through the directconnect backend from the `support` arm.
+        "support" => {
+            if directconnect::handles_operation(req.operation.as_str()) {
+                directconnect::dispatch(req)
+            } else {
+                Some(support::dispatch(req))
+            }
+        }
         "synthetics" => synthetics::dispatch(req),
         "textract" => textract::dispatch(req),
         "timestreaminfluxdb" => timestreaminfluxdb::dispatch(req),
@@ -285,8 +296,8 @@ pub fn handles_service(service: &str) -> bool {
             | "databrew"
             | "datapipeline"
             | "datasync"
-            | "dax"
-            | "dms"
+| "dax"
+| "directconnect"            | "dms"
             | "dsql"
             | "ebs"
             | "ec2"
