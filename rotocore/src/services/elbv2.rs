@@ -410,14 +410,16 @@ pub fn fetch_subnets(req: &Request, ids: &[String]) -> SubnetInfo {
 }
 
 /// Default-VPC subnets keyed by AZ (classic AZ-only creation path).
+/// The `default-for-az` filter is not applied by the sidecar; instead fetch
+/// every subnet and select the defaults from the `defaultForAz` element.
 pub fn fetch_default_subnets(req: &Request) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
-    let body = LoopbackBody::Form(
-        "Action=DescribeSubnets&Version=2016-11-15&Filter.1.Name=default-for-az&Filter.1.Values.member.1=true"
-            .to_string(),
-    );
+    let body = LoopbackBody::Form("Action=DescribeSubnets&Version=2016-11-15".to_string());
     if let Some((200, xml)) = loopback(req, "ec2", &body) {
         for chunk in xml.split("<item>") {
+            if !chunk.contains("<defaultForAz>true</defaultForAz>") {
+                continue;
+            }
             let Some(id) = grab_tag(chunk, "subnetId") else {
                 continue;
             };
