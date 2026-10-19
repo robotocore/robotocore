@@ -7,6 +7,7 @@
 //! Error semantics mirror moto: AppNotFound / ResiliencyPolicyNotFound /
 //! AppVersionNotFound, plus the create_resiliency_policy map-key validation.
 
+#[allow(dead_code)]
 use crate::store;
 use crate::{Request, Response};
 use once_cell::sync::Lazy;
@@ -28,6 +29,7 @@ struct RhState {
     account: String,
 }
 
+#[allow(dead_code)]
 struct App {
     arn: String,
     name: String,
@@ -70,6 +72,7 @@ fn now() -> f64 {
     crate::proto::now_unix()
 }
 
+#[allow(dead_code)]
 fn uuid_str() -> String {
     uuid::Uuid::new_v4().to_string()
 }
@@ -82,6 +85,7 @@ fn app_not_found(arn: &str) -> Response {
     )
 }
 
+#[allow(dead_code)]
 fn policy_not_found(arn: &str) -> Response {
     crate::proto::json_error(
         404,
@@ -169,6 +173,7 @@ impl Policy {
     }
 }
 
+#[allow(dead_code)]
 fn params_str<'a>(params: &'a Value, key: &str) -> Option<&'a Value> {
     params.get(key)
 }
@@ -779,7 +784,7 @@ impl RhState {
         let component = self
             .apps
             .get(&arn)
-            .and_then(|app| app.versions.get(0))
+            .and_then(|app| app.versions.first())
             .and_then(|draft| {
                 draft
                     .app_components
@@ -943,7 +948,7 @@ impl RhState {
         let resource = self
             .apps
             .get(&arn)
-            .and_then(|app| app.versions.get(0))
+            .and_then(|app| app.versions.first())
             .and_then(|draft| draft.resources.first().cloned())
             .unwrap_or(json!({}));
         Response::json_status(
@@ -1098,7 +1103,7 @@ impl RhState {
                 .unwrap();
             draft.additional_info = Some(info.clone());
         }
-        let draft = self.apps.get(&arn).unwrap().versions.get(0).unwrap();
+        let draft = self.apps.get(&arn).unwrap().versions.first().unwrap();
         let mut resp = json!({"appArn": arn, "appVersion": draft.app_version});
         if let Some(info) = &draft.additional_info {
             resp["additionalInfo"] = info.clone();
@@ -1175,9 +1180,9 @@ impl RhState {
                 "type": "AWS::ResilienceHub::AppCommonAppComponent",
             }));
         }
-        let draft = self.apps.get(&arn).unwrap().versions.get(0).unwrap();
-        let resp = draft.to_json();
-        return Response::json_status(
+        let draft = self.apps.get(&arn).unwrap().versions.first().unwrap();
+        let _resp = draft.to_json();
+        Response::json_status(
             200,
             &json!({
                 "appArn": arn,
@@ -1190,7 +1195,7 @@ impl RhState {
                 "extraAppVersionForEnv": Value::Null,
                 "status": draft_status(draft),
             }),
-        );
+        )
     }
 
     fn add_draft_resource_mappings(&mut self, params: &Value) -> Response {
@@ -1715,7 +1720,7 @@ mod tests {
             service: "resiliencehub".into(),
             operation: String::new(),
             method: method.into(),
-            path: path.into(),
+            path,
             query_string,
             headers: HashMap::new(),
             body: Bytes::from(serde_json::to_vec(&body).unwrap()),

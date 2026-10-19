@@ -1410,7 +1410,7 @@ impl GdState {
 impl GdState {
     fn get_master_or_admin(&self, id: &str, member_key: &str) -> Response {
         match self.detector(id) {
-            Err(resp) => return resp,
+            Err(resp) => resp,
             Ok(detector) => {
                 if let Some(admin) = &detector.administrator_id {
                     return Response::json_status(

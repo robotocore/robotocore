@@ -270,11 +270,7 @@ fn unimplemented(req: &Request) -> Response {
 }
 
 fn path_api_rest<'a>(path: &'a str, prefix: &str) -> Option<&'a str> {
-    if path.starts_with(prefix) {
-        Some(&path[prefix.len()..])
-    } else {
-        None
-    }
+    path.strip_prefix(prefix)
 }
 
 /// Everything after `/v1/clusters/`, split into (arn, suffix) with the same
@@ -321,7 +317,7 @@ fn param_i64(params: &Value, key: &str, default: i64) -> i64 {
     params.get(key).and_then(Value::as_i64).unwrap_or(default)
 }
 
-fn cluster_tag<'a>(st: &'a KafkaState, arn: &str) -> Value {
+fn cluster_tag(st: &KafkaState, arn: &str) -> Value {
     match st.tags.get(arn) {
         Some(tags) => Value::Object(tags.clone()),
         None => json!({}),
@@ -420,6 +416,7 @@ impl KafkaState {
         self.clusters.get(arn).ok_or_else(|| not_found_cluster(arn))
     }
 
+    #[allow(dead_code)]
     fn get_cluster_mut(&mut self, arn: &str) -> Result<&mut Cluster, Response> {
         self.clusters
             .get_mut(arn)
@@ -1456,7 +1453,7 @@ impl KafkaState {
                 "topicName": topic.topic_name,
                 "status": topic.status,
             });
-            return Response::json_status(200, &out);
+            Response::json_status(200, &out)
         }
     }
 
@@ -1515,22 +1512,17 @@ impl KafkaState {
     }
 
     fn list_topics(&self, arn: &str) -> Response {
-        let cluster = match self.get_cluster(arn) {
-            Err(resp) => return resp,
+        match self.get_cluster(arn) {
+            Err(resp) => resp,
             Ok(cluster) => {
                 let topics: Vec<Value> = cluster
                     .topics
                     .values()
                     .map(|t| json!({"topicArn": t.topic_arn, "topicName": t.topic_name, "status": t.status}))
                     .collect();
-                return Response::json_status(
-                    200,
-                    &json!({"topics": topics, "nextToken": Value::Null}),
-                );
+                Response::json_status(200, &json!({"topics": topics, "nextToken": Value::Null}))
             }
-        };
-        let _ = cluster;
-        Response::json_status(200, &json!({"topics": [], "nextToken": Value::Null}))
+        }
     }
 
     fn update_topic(&mut self, arn: &str, topic_name: &str, params: &Value) -> Response {
@@ -1617,6 +1609,7 @@ fn increment(version: &str) -> String {
 
 impl KafkaState {
     /// Route the sub-suffixes kafka binds under /v1/clusters/{arn}.
+    #[allow(dead_code)]
     fn cluster_route_all(&self) {}
 }
 
@@ -1654,10 +1647,10 @@ impl Default for Cluster {
 }
 
 /// Route cluster sub-paths against the state, mirroring moto's suffix walk.
-fn cluster_route<'a>(
+fn cluster_route(
     st: &mut KafkaState,
     method: &str,
-    rest: &'a str,
+    rest: &str,
     params: &Value,
     _query: &std::collections::BTreeMap<String, Vec<String>>,
 ) -> Response {
@@ -1801,12 +1794,7 @@ fn cluster_route<'a>(
     }
 }
 
-fn configuration_route<'a>(
-    st: &mut KafkaState,
-    method: &str,
-    rest: &'a str,
-    params: &Value,
-) -> Response {
+fn configuration_route(st: &mut KafkaState, method: &str, rest: &str, params: &Value) -> Response {
     let (arn, rest) = match rest.split_once("/revisions") {
         Some((arn, revs)) => (arn.to_string(), Some(revs.to_string())),
         None => (rest.to_string(), None),
@@ -2107,7 +2095,7 @@ mod tests {
     #[test]
     fn kafka_versions_and_compatible() {
         let versions = json_body(dispatch(&req("GET", "/v1/kafka-versions", json!({}))));
-        assert!(versions["kafkaVersions"].as_array().unwrap().len() > 0);
+        assert!(!versions["kafkaVersions"].as_array().unwrap().is_empty());
         let compat = json_body(dispatch(&req(
             "GET",
             "/v1/compatible-kafka-versions",

@@ -64,9 +64,9 @@ pub mod pipes;
 pub mod polly;
 pub mod rds;
 pub mod redshift;
-pub mod resiliencehub;
 pub mod redshiftdata;
 pub mod rekognition;
+pub mod resiliencehub;
 pub mod resource_groups;
 pub mod resourcegroupstaggingapi;
 pub mod route53resolver;
@@ -126,7 +126,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "iotdata" => iot_data::dispatch(req),
         "ivs" => ivs::dispatch(req),
         "kafka" => Some(kafka::dispatch(req)),
-        "ivs" => ivs::dispatch(req),
+
         "kinesisanalyticsv2" => Some(kinesisanalyticsv2::dispatch(req)),
         "lakeformation" => Some(lakeformation::dispatch(req)),
         "macie2" => Some(macie2::dispatch(req)),
@@ -159,7 +159,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "timestreamquery" => timestreamquery::dispatch(req),
         "timestreamwrite" => timestreamwrite::dispatch(req),
         "transcribe" => Some(transcribe::dispatch(req)),
-        "transcribe" => Some(transcribe::dispatch(req)),
+
         "xray" => Some(xray::dispatch(req)),
 
         _ => None,
