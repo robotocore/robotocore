@@ -1356,9 +1356,10 @@ pub static TRANSIT_GW_OPS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
 fn tgw_fields(t: &super::state::Tgw, default_rtb_id: &str) -> String {
     let _ = t.default_route_tables;
     format!(
-        "<transitGatewayId>{}</transitGatewayId>{}<amazonSideAsn>{}</amazonSideAsn><ownerId>{}</ownerId>{}<state>{}</state><creationTime>{}</creationTime><options><amazonSideAsn>{}</amazonSideAsn>{}<dnsSupport>{}</dnsSupport><vpnEcmpSupport>enable</vpnEcmpSupport>{}{}</options>",
+        "<transitGatewayId>{}</transitGatewayId><transitGatewayArn>{}</transitGatewayArn>{}<amazonSideAsn>{}</amazonSideAsn><ownerId>{}</ownerId>{}<state>{}</state><creationTime>{}</creationTime><options><amazonSideAsn>{}</amazonSideAsn>{}<dnsSupport>{}</dnsSupport><vpnEcmpSupport>enable</vpnEcmpSupport>{}{}</options>",
 
         xml_escape(&t.id),
+        xml_escape(&t.arn),
         if !t.description.is_empty() { format!("<description>{}</description>", xml_escape(&t.description)) } else { String::new() },
         xml_escape(if t.amazon_side_asn.is_empty() { "64512" } else { &t.amazon_side_asn }),
         t.owner_id,
