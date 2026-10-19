@@ -31,6 +31,7 @@ pub mod clouddirectory;
 pub mod cloudformation;
 pub mod cloudfront;
 pub mod cloudtrail;
+pub mod codebuild;
 pub mod codepipeline;
 pub mod cognito_identity;
 pub mod cognito_idp;
@@ -144,6 +145,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "clouddirectory" => clouddirectory::dispatch(req),
         "cloudfront" => Some(cloudfront::dispatch(req)),
         "cloudtrail" => Some(cloudtrail::dispatch(req)),
+        "codebuild" => codebuild::dispatch(req),
         "cognito-idp" => cognito_idp::dispatch(req),
         "cognitoidentity" => cognito_identity::dispatch(req),
         "comprehend" => Some(comprehend::dispatch(req)),
@@ -264,6 +266,7 @@ pub fn handles_service(service: &str) -> bool {
             | "clouddirectory"
             | "cloudfront"
             | "cloudtrail"
+            | "codebuild"
             | "codepipeline"
             | "cognito-idp"
             | "cognitoidentity"
