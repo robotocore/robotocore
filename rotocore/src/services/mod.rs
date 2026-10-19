@@ -23,6 +23,7 @@ pub mod datasync;
 mod ec2;
 pub mod eks;
 pub mod elasticache;
+pub mod emr;
 pub mod greengrass;
 pub mod identitystore;
 pub mod inspector2;
@@ -37,8 +38,8 @@ pub mod opensearchserverless;
 pub mod organizations;
 pub mod pipes;
 pub mod polly;
-pub mod resourcegroupstaggingapi;
 mod rds;
+pub mod resourcegroupstaggingapi;
 pub mod route53resolver;
 pub mod sagemaker;
 pub mod securityhub;
@@ -47,7 +48,7 @@ pub mod support;
 pub mod transcribe;
 
 // Pending ports (fall back to the moto sidecar): elbv2/elb, athena, glue,
-// emr, cloudfront, iot, connect, apigateway(v1/v2), redshift and the long
+// cloudfront, iot, connect, apigateway(v1/v2), redshift and the long
 // tail the ML-tail agent re-baselined through the sidecar.
 
 /// Ported service backends. An arm here routes that service to the native
@@ -71,6 +72,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "ec2" => Some(self::ec2::dispatch(req)),
         "eks" => eks::dispatch(req),
         "elasticache" => Some(elasticache::dispatch(req)),
+        "emr" => Some(emr::dispatch(req)),
         "es" => Some(opensearch::dispatch(req)),
         "greengrass" => Some(greengrass::dispatch(req)),
         "identitystore" => identitystore::dispatch(req),
