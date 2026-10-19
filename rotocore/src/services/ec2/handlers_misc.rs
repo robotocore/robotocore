@@ -982,11 +982,13 @@ pub static GAP_OPS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
         "CreateIpamExternalResourceVerificationToken",
         "CreateLocalGatewayRouteTableVifGroupAssociation",
         "CreateLocalGatewayRouteTableVpcAssociation",
+        "CreateLocalGatewayRouteTableVirtualInterfaceGroupAssociation",
         "CreateNetworkInterfacePermission",
         "CreateReservedInstancesListing",
         "CreateRestoreImageTask",
         "CreateTransitGatewayMulticastDomain",
         "CreateTransitGatewayPolicyTable",
+        "AttachClassicLinkVpc",
     ]
     .into_iter()
     .collect()
@@ -1000,6 +1002,21 @@ pub fn gap_ops_response(op: &str) -> Response {
         "CreateClientVpnRoute" => String::from("<status><code>creating</code></status>"),
         "CreateTransitGatewayMulticastDomain" => String::from("<transitGatewayMulticastDomain><transitGatewayMulticastDomainId>tgw-mcast-domain-0000000000000000</transitGatewayMulticastDomainId><state>available</state></transitGatewayMulticastDomain>"),
         "CreateTransitGatewayPolicyTable" => String::from("<transitGatewayPolicyTable><transitGatewayPolicyTableId>tgw-policy-table-0000000000000000</transitGatewayPolicyTableId><state>available</state></transitGatewayPolicyTable>"),
+        "AssociateTransitGatewayPolicyTable" => String::from("<association></association>"),
+        "AssociateClientVpnTargetNetwork" => String::from("<associationId></associationId><status></status>"),
+        "BundleInstance" => String::from("<bundleInstanceTask></bundleInstanceTask>"),
+        "CancelBundleTask" => String::from("<bundleInstanceTask></bundleInstanceTask>"),
+        "CancelReservedInstancesListing" => String::from("<reservedInstancesListingsSet></reservedInstancesListingsSet>"),
+        "CreateReservedInstancesListing" => String::from("<reservedInstancesListingsSet></reservedInstancesListingsSet>"),
+        "CopyFpgaImage" => String::from("<fpgaImageId></fpgaImageId>"),
+        "CreateFpgaImage" => String::from("<fpgaImageId></fpgaImageId><fpgaImageGlobalId></fpgaImageGlobalId>"),
+        "CreateInstanceExportTask" => String::from("<exportTask></exportTask>"),
+        "CreateIpamExternalResourceVerificationToken" => String::from("<ipamExternalResourceVerificationToken></ipamExternalResourceVerificationToken>"),
+        "CreateLocalGatewayRouteTableVpcAssociation" => String::from("<localGatewayRouteTableVpcAssociation></localGatewayRouteTableVpcAssociation>"),
+        "CreateLocalGatewayRouteTableVirtualInterfaceGroupAssociation" => String::from("<localGatewayRouteTableVirtualInterfaceGroupAssociation></localGatewayRouteTableVirtualInterfaceGroupAssociation>"),
+        "CreateNetworkInterfacePermission" => String::from("<interfacePermission></interfacePermission>"),
+        "CreateRestoreImageTask" => String::from("<imageId></imageId>"),
+        "AttachClassicLinkVpc" => String::from("<return>true</return>"),
         _ => String::from("<return>true</return>"),
     };
     let root = format!("{}Response", op);
@@ -1293,11 +1310,18 @@ fn tgw_route(req: &Request, op: &str, params: &P) -> Response {
                 let pos = match state.tgw_attachments.iter().position(|a| a.id == id) {
                     Some(i) => i,
                     None => {
+                        if op.starts_with("Accept") {
+                            // moto's gap stubs accept unknown attachments with 200
+                            return ec2_xml(
+                                "AcceptTransitGatewayVpcAttachmentResponse",
+                                "<transitGatewayVpcAttachment/>",
+                            );
+                        }
                         return ec2_error(
                             400,
                             "InvalidTransitGatewayAttachmentID.NotFound",
                             &format!("TransitGatewayAttachment {} not found", xml_escape(&id)),
-                        )
+                        );
                     }
                 };
                 state.tgw_attachments[pos].state = "available".into();
