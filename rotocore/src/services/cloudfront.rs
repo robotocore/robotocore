@@ -5297,6 +5297,13 @@ mod tests {
             .unwrap_or_default()
     }
 
+    fn count_occurrences(haystack: &[u8], needle: &[u8]) -> usize {
+        haystack
+            .windows(needle.len())
+            .filter(|w| *w == &needle[..])
+            .count()
+    }
+
     // ----- distributions CRUD -----
 
     #[test]
