@@ -5,6 +5,7 @@
 //! gateway falls back to the sidecar, so the wire contract stays intact.
 
 pub mod ec2;
+pub mod kafka;
 
 use crate::{Request, Response};
 
@@ -42,6 +43,7 @@ pub mod elbv2;
 pub mod emr;
 pub mod glue;
 pub mod greengrass;
+pub mod guardduty;
 pub mod identitystore;
 pub mod inspector2;
 pub mod iot;
@@ -56,6 +58,7 @@ pub mod networkfirewall;
 pub mod opensearch;
 pub mod opensearchserverless;
 pub mod organizations;
+pub mod osis;
 pub mod personalize;
 pub mod pipes;
 pub mod polly;
@@ -75,6 +78,7 @@ pub mod timestreaminfluxdb;
 pub mod timestreamquery;
 pub mod timestreamwrite;
 pub mod transcribe;
+pub mod xray;
 
 /// Ported service backends. An arm here routes that service to the native
 /// rotocore implementation the moment it reaches suite parity.
@@ -114,10 +118,13 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "es" => Some(opensearch::dispatch(req)),
         "glue" => glue::dispatch(req),
         "greengrass" => Some(greengrass::dispatch(req)),
+        "guardduty" => Some(guardduty::dispatch(req)),
         "identitystore" => identitystore::dispatch(req),
         "inspector2" => Some(inspector2::dispatch(req)),
         "iot" => iot::dispatch(req),
         "iotdata" => iot_data::dispatch(req),
+        "ivs" => ivs::dispatch(req),
+        "kafka" => Some(kafka::dispatch(req)),
         "ivs" => ivs::dispatch(req),
         "kinesisanalyticsv2" => Some(kinesisanalyticsv2::dispatch(req)),
         "lakeformation" => Some(lakeformation::dispatch(req)),
@@ -125,6 +132,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "managedblockchain" => Some(managedblockchain::dispatch(req)),
         "mediapackage" => mediapackage::dispatch(req),
         "networkfirewall" => networkfirewall::dispatch(req),
+        "osis" => osis::dispatch(req),
         "opensearch" => Some(opensearch::dispatch(req)),
         "opensearchserverless" => Some(opensearchserverless::dispatch(req)),
         "organizations" => organizations::dispatch(req),
@@ -149,6 +157,8 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "timestreamquery" => timestreamquery::dispatch(req),
         "timestreamwrite" => timestreamwrite::dispatch(req),
         "transcribe" => Some(transcribe::dispatch(req)),
+        "transcribe" => Some(transcribe::dispatch(req)),
+        "xray" => Some(xray::dispatch(req)),
 
         _ => None,
     }
