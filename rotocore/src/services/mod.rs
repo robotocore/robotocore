@@ -15,6 +15,7 @@ pub mod athena;
 pub mod backup;
 pub mod batch;
 pub mod cloudformation;
+pub mod cloudfront;
 pub mod cloudtrail;
 pub mod cognito_idp;
 pub mod comprehend;
@@ -71,6 +72,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "athena" => Some(athena::dispatch(req)),
         "batch" => batch::dispatch(req),
         "cloudformation" => Some(self::cloudformation::dispatch(req)),
+        "cloudfront" => Some(cloudfront::dispatch(req)),
         "cloudtrail" => Some(cloudtrail::dispatch(req)),
         "cognito-idp" => cognito_idp::dispatch(req),
         "comprehend" => Some(comprehend::dispatch(req)),

@@ -41,7 +41,7 @@ pub const SERVICE_REGISTRY: &[(&str, &str, &str, &str)] = &[
     ("ce", "moto", "json", "Cost Explorer"),
     ("clouddirectory", "moto", "rest-json", "Cloud Directory"),
     ("cloudformation", "native", "query", "CloudFormation engine"),
-    ("cloudfront", "moto", "rest-xml", "CloudFront CDN"),
+    ("cloudfront", "native", "rest-xml", "CloudFront engine"),
     ("cloudhsmv2", "moto", "json", "CloudHSM v2"),
     ("cloudtrail", "moto", "json", "CloudTrail Audit Logging"),
     (
