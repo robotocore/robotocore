@@ -733,6 +733,92 @@ fn handle(req: &Request, g: &mut GlueState, op: &str, p: &Value) -> Response {
         "ListDataQualityStatisticAnnotations" => ok(&json!({"Annotations": []})),
         "BatchPutDataQualityStatisticAnnotation" => ok(&json!({"FailedInclusionAnnotations": []})),
         "PutDataQualityProfileAnnotation" => empty_ok(),
+        // --- Usage profiles ------------------------------------------------
+        "CreateUsageProfile" => try_resp!(create_usage_profile(g, p)),
+        "GetUsageProfile" => try_resp!(get_usage_profile(g, p)),
+        "ListUsageProfiles" => try_resp!(list_usage_profiles(g)),
+        "UpdateUsageProfile" => try_resp!(update_usage_profile(g, p)),
+        "DeleteUsageProfile" => try_resp!(delete_usage_profile(g, p)),
+        // --- Custom entity types ---------------------------------------------
+        "CreateCustomEntityType" => try_resp!(create_custom_entity_type(g, p)),
+        "GetCustomEntityType" => try_resp!(get_custom_entity_type(g, p)),
+        "ListCustomEntityTypes" => try_resp!(list_custom_entity_types(g)),
+        "DeleteCustomEntityType" => try_resp!(delete_custom_entity_type(g, p)),
+        "BatchGetCustomEntityTypes" => try_resp!(batch_get_custom_entity_types(g, p)),
+        // --- Classifiers ------------------------------------------------------
+        "CreateClassifier" => try_resp!(create_classifier(g, p)),
+        "GetClassifier" => try_resp!(get_classifier(g, p)),
+        "GetClassifiers" => try_resp!(get_classifiers(g)),
+        "UpdateClassifier" => try_resp!(update_classifier(g, p)),
+        "DeleteClassifier" => try_resp!(delete_classifier(g, p)),
+        // --- Column statistics task runs + settings + schedules ---------------
+        "StartColumnStatisticsTaskRun" => try_resp!(start_column_stats_task_run(g, p)),
+        "StopColumnStatisticsTaskRun" => try_resp!(stop_column_stats_task_run(g, p)),
+        "GetColumnStatisticsTaskRun" => try_resp!(get_column_stats_task_run(g, p)),
+        "GetColumnStatisticsTaskRuns" => ok(&json!({"ColumnStatisticsTaskRuns": []})),
+        "ListColumnStatisticsTaskRuns" => ok(&json!({"ColumnStatisticsTaskRunIds": []})),
+        "StartColumnStatisticsTaskRunSchedule" => in_table(g, p, |_, _| empty_ok()),
+        "StopColumnStatisticsTaskRunSchedule" => in_table(g, p, |_, _| empty_ok()),
+        "CreateColumnStatisticsTaskSettings" => try_resp!(create_colstats_settings(g, p)),
+        "GetColumnStatisticsTaskSettings" => try_resp!(get_colstats_settings(g, p)),
+        "UpdateColumnStatisticsTaskSettings" => try_resp!(update_colstats_settings(g, p)),
+        "DeleteColumnStatisticsTaskSettings" => try_resp!(delete_colstats_settings(g, p)),
+        // --- Table optimizers --------------------------------------------------
+        "CreateTableOptimizer" => try_resp!(create_table_optimizer(g, p)),
+        "GetTableOptimizer" => try_resp!(get_table_optimizer(g, p)),
+        "UpdateTableOptimizer" => try_resp!(update_table_optimizer(g, p)),
+        "DeleteTableOptimizer" => try_resp!(delete_table_optimizer(g, p)),
+        "BatchGetTableOptimizer" => try_resp!(batch_get_table_optimizer(g, p)),
+        "ListTableOptimizerRuns" => try_resp!(list_table_optimizer_runs(g, p)),
+        // --- Integration -------------------------------------------------------
+        "CreateIntegration" => try_resp!(create_integration(req, g, p)),
+        "DeleteIntegration" => try_resp!(delete_integration(g, p)),
+        "DescribeIntegrations" => try_resp!(describe_integrations(g, p)),
+        "ModifyIntegration" => try_resp!(modify_integration(g, p)),
+        "DescribeInboundIntegrations" => try_resp!(describe_inbound_integrations(g, p)),
+        "CreateIntegrationResourceProperty" => {
+            try_resp!(create_integration_resource_property(g, p))
+        }
+        "GetIntegrationResourceProperty" => try_resp!(get_integration_resource_property(g, p)),
+        "UpdateIntegrationResourceProperty" => {
+            try_resp!(update_integration_resource_property(g, p))
+        }
+        "DeleteIntegrationResourceProperty" => {
+            try_resp!(delete_integration_resource_property(g, p))
+        }
+        "ListIntegrationResourceProperties" => ok(&json!({"IntegrationResourcePropertyList": []})),
+        "CreateIntegrationTableProperties" => try_resp!(create_integration_table_properties(g, p)),
+        "GetIntegrationTableProperties" => try_resp!(get_integration_table_properties(g, p)),
+        "UpdateIntegrationTableProperties" => try_resp!(update_integration_table_properties(g, p)),
+        "DeleteIntegrationTableProperties" => try_resp!(delete_integration_table_properties(g, p)),
+        // --- Glue identity center ------------------------------------------------
+        "CreateGlueIdentityCenterConfiguration" => try_resp!(create_identity_center(g, p)),
+        "GetGlueIdentityCenterConfiguration" => try_resp!(get_identity_center(g)),
+        "UpdateGlueIdentityCenterConfiguration" => try_resp!(update_identity_center(g, p)),
+        "DeleteGlueIdentityCenterConfiguration" => try_resp!(delete_identity_center(g)),
+        // --- Materialized view refresh runs ----------------------------------------
+        "StartMaterializedViewRefreshTaskRun" => try_resp!(start_mv_refresh(g, p)),
+        "GetMaterializedViewRefreshTaskRun" => try_resp!(get_mv_refresh(g, p)),
+        "ListMaterializedViewRefreshTaskRuns" => try_resp!(list_mv_refresh(g, p)),
+        "StopMaterializedViewRefreshTaskRun" => try_resp!(stop_mv_refresh(g, p)),
+        // --- Connection types ---------------------------------------------------------
+        "RegisterConnectionType" => try_resp!(register_connection_type(req, g, p)),
+        "DescribeConnectionType" => try_resp!(describe_connection_type(g, p)),
+        "ListConnectionTypes" => try_resp!(list_connection_types(g)),
+        "DeleteConnectionType" => try_resp!(delete_connection_type(g, p)),
+        // --- Stub ops -------------------------------------------------------------------
+        "GetMapping" => ok(&json!({"Mapping": []})),
+        "GetEntityRecords" => ok(&json!({"Records": []})),
+        "DescribeEntity" => try_resp!(describe_entity(g, p)),
+        "ListEntities" => try_resp!(list_entities(g, p)),
+        "CreateScript" => ok(&json!({
+            "PythonScript": "# Auto-generated Python ETL script\nimport sys\nfrom awsglue.context import GlueContext\n"
+        })),
+        "GetDataflowGraph" => ok(&json!({"DagNodes": [], "DagEdges": []})),
+        "GetPlan" => ok(&json!({
+            "PythonScript": "# Auto-generated ETL plan\nimport sys\nfrom awsglue.context import GlueContext\n"
+        })),
+        "TestConnection" => try_resp!(test_connection(g, p)),
         // --- Everything else: deny by default (moto 501s too) ----------------
         _ => unimplemented(op),
     }
@@ -6550,6 +6636,1695 @@ mod family5_tests {
         d(acct, "DeleteDataQualityRuleset", json!({"Name": "dqr1"}));
         assert_eq!(
             err_code(&d(acct, "GetDataQualityRuleset", json!({"Name": "dqr1"}))),
+            "EntityNotFoundException"
+        );
+    }
+}
+// ---------------------------------------------------------------------------
+// Usage profiles
+// ---------------------------------------------------------------------------
+
+fn usage_profile_dict(rec: &(Value, f64)) -> Value {
+    let mut obj = json!({
+        "Name": rec.0["Name"],
+        "CreatedOn": rec.1,
+        "LastModifiedOn": rec.1,
+        "Description": rec.0["Description"],
+        "Configuration": rec.0["Configuration"],
+    });
+    obj.as_object_mut().unwrap().retain(|_, v| !v.is_null());
+    obj
+}
+
+fn create_usage_profile(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "Name");
+    if g.usage_profiles.contains_key(&name) {
+        return Err(err(
+            400,
+            "AlreadyExistsException",
+            "UsageProfile already exists.",
+        ));
+    }
+    g.usage_profiles.insert(
+        name.clone(),
+        (
+            json!({"Name": name, "Description": p["Description"], "Configuration": p["Configuration"]}),
+            now_unix(),
+        ),
+    );
+    Ok(ok(&json!({ "Name": name })))
+}
+
+fn get_usage_profile(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "Name");
+    match g.usage_profiles.get(&name) {
+        Some(rec) => Ok(ok(&usage_profile_dict(rec))),
+        None => Err(not_found(&format!("UsageProfile {name} not found."))),
+    }
+}
+
+fn list_usage_profiles(g: &mut GlueState) -> Result<Response, Response> {
+    let list: Vec<Value> = g.usage_profiles.values().map(usage_profile_dict).collect();
+    Ok(ok(&json!({ "Profiles": list })))
+}
+
+fn update_usage_profile(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "Name");
+    match g.usage_profiles.get_mut(&name) {
+        Some((rec, _created)) => {
+            if let Some(v) = p.get("Configuration") {
+                if !v.is_null() {
+                    rec["Configuration"] = v.clone();
+                }
+            }
+            if let Some(v) = p.get("Description") {
+                if !v.is_null() {
+                    rec["Description"] = v.clone();
+                }
+            }
+            Ok(empty_ok())
+        }
+        None => Err(not_found(&format!("UsageProfile {name} not found."))),
+    }
+}
+
+fn delete_usage_profile(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "Name");
+    if g.usage_profiles.remove(&name).is_none() {
+        return Err(not_found(&format!("UsageProfile {name} not found.")));
+    }
+    Ok(empty_ok())
+}
+
+// ---------------------------------------------------------------------------
+// Custom entity types
+// ---------------------------------------------------------------------------
+
+fn custom_entity_dict(rec: &(String, Value)) -> Value {
+    let mut obj = json!({ "Name": "x", "RegexString": rec.0 });
+    obj["RegexString"] = json!(rec.0);
+    obj["Name"] = rec.1.clone();
+    if obj.get("ContextWords").map_or(true, |v| v.is_null()) {
+        if let Some(m) = obj.as_object_mut() {
+            m.remove("ContextWords");
+            m.insert("Name".into(), rec.1.clone());
+        }
+    }
+    obj
+}
+
+fn create_custom_entity_type(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "Name");
+    if g.custom_entity_types.contains_key(&name) {
+        return Err(err(
+            400,
+            "AlreadyExistsException",
+            "CustomEntityType already exists.",
+        ));
+    }
+    g.custom_entity_types.insert(
+        name.clone(),
+        (str_field(p, "RegexString"), p["ContextWords"].clone()),
+    );
+    Ok(ok(&json!({ "Name": name })))
+}
+
+fn get_custom_entity_type(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "Name");
+    match g.custom_entity_types.get(&name) {
+        Some((regex, context)) => {
+            let mut obj = json!({ "Name": name, "RegexString": regex });
+            if let Some(list) = context.as_array() {
+                if !list.is_empty() {
+                    obj["ContextWords"] = context.clone();
+                }
+            }
+            Ok(ok(&obj))
+        }
+        None => Err(not_found(&format!("CustomEntityType {name} not found."))),
+    }
+}
+
+fn list_custom_entity_types(g: &mut GlueState) -> Result<Response, Response> {
+    let mut list = Vec::new();
+    for (name, (regex, context)) in g.custom_entity_types.iter() {
+        let mut obj = json!({ "Name": name, "RegexString": regex });
+        if let Some(c) = context.as_array() {
+            if !c.is_empty() {
+                obj["ContextWords"] = context.clone();
+            }
+        }
+        list.push(obj);
+    }
+    Ok(ok(&json!({ "CustomEntityTypes": list })))
+}
+
+fn delete_custom_entity_type(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "Name");
+    if g.custom_entity_types.remove(&name).is_none() {
+        return Err(not_found(&format!("CustomEntityType {name} not found.")));
+    }
+    Ok(ok(&json!({ "Name": name })))
+}
+
+fn batch_get_custom_entity_types(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let wanted = str_list(&p["Names"]);
+    let mut found = Vec::new();
+    let mut missing = Vec::new();
+    for name in wanted.iter() {
+        match g.custom_entity_types.get(name) {
+            Some((regex, _)) => found.push(json!({"Name": name, "RegexString": regex})),
+            None => missing.push(json!(name)),
+        }
+    }
+    let mut out = json!({ "CustomEntityTypes": found });
+    if !missing.is_empty() {
+        out["CustomEntityTypesNotFound"] = Value::Array(missing);
+    }
+    Ok(ok(&out))
+}
+
+// ---------------------------------------------------------------------------
+// Classifiers
+// ---------------------------------------------------------------------------
+
+const CLASSIFIER_KINDS: [(&str, &str); 4] = [
+    ("GrokClassifier", "grok"),
+    ("XMLClassifier", "xml"),
+    ("JsonClassifier", "json"),
+    ("CsvClassifier", "csv"),
+];
+
+fn create_classifier(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    for (member, _) in CLASSIFIER_KINDS.iter() {
+        if let Some(v) = p.get(*member) {
+            if !v.is_null() {
+                let name = str_field(v, "Name");
+                g.classifiers.insert(name, (member.to_string(), v.clone()));
+                return Ok(empty_ok());
+            }
+        }
+    }
+    Err(invalid_input("One of the classifier types is required."))
+}
+
+fn get_classifier(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "Name");
+    match g.classifiers.get(&name) {
+        Some((kind, entries)) => {
+            let mut entries = entries.clone();
+            if let Some(obj) = entries.as_object_mut() {
+                obj.insert("CreationTime".into(), json!(now_unix()));
+                obj.insert("LastUpdated".into(), json!(now_unix()));
+            }
+            let wrapper = if kind == "GrokClassifier" {
+                json!({"GrokClassifier": entries})
+            } else if kind == "XMLClassifier" {
+                json!({"XMLClassifier": entries})
+            } else if kind == "JsonClassifier" {
+                json!({"JsonClassifier": entries})
+            } else {
+                json!({"CsvClassifier": entries})
+            };
+            Ok(ok(&json!({ "Classifier": wrapper })))
+        }
+        None => Err(not_found(&format!("Classifier {name} is not found."))),
+    }
+}
+
+fn get_classifiers(g: &mut GlueState) -> Result<Response, Response> {
+    let mut list = Vec::new();
+    for rec in g.classifiers.values() {
+        let (kind, entries) = rec;
+        let mut obj = entries.clone();
+        if let Some(m) = obj.as_object_mut() {
+            m.insert("CreationTime".into(), json!(now_unix()));
+            m.insert("LastUpdated".into(), json!(now_unix()));
+        }
+        let key = if kind == "GrokClassifier" {
+            "GrokClassifier"
+        } else if kind == "XMLClassifier" {
+            "XMLClassifier"
+        } else if kind == "JsonClassifier" {
+            "JsonClassifier"
+        } else {
+            "CsvClassifier"
+        };
+        list.push(json!({key: obj}));
+    }
+    Ok(ok(&json!({ "Classifiers": list })))
+}
+
+fn delete_classifier(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "Name");
+    if g.classifiers.remove(&name).is_none() {
+        return Err(not_found(&format!("Classifier {name} is not found.")));
+    }
+    Ok(empty_ok())
+}
+
+fn update_classifier(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    for (member, _) in CLASSIFIER_KINDS.iter() {
+        if let Some(v) = p.get(*member) {
+            if !v.is_null() {
+                let name = str_field(v, "Name");
+                match g.classifiers.get_mut(&name) {
+                    Some((kind, entries)) => {
+                        if entries.is_object() && v.is_object() {
+                            if let Some(base) = entries.as_object_mut() {
+                                for (k, val) in v.as_object().unwrap_or(&Map::new()) {
+                                    base.insert(k.clone(), val.clone());
+                                }
+                            }
+                        }
+                        *kind = member.to_string();
+                        return Ok(empty_ok());
+                    }
+                    None => {
+                        return Err(not_found(&format!("Classifier {name} is not found.")));
+                    }
+                }
+            }
+        }
+    }
+    Err(invalid_input("One of the classifier types is required."))
+}
+
+// ---------------------------------------------------------------------------
+// Column statistics task runs + settings
+// ---------------------------------------------------------------------------
+
+fn start_column_stats_task_run(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let _ = find_table(g, p)?;
+    let run_id = format!("colstats_{}", hex_n(32));
+    g.column_statistics_task_runs.insert(
+        run_id.clone(),
+        json!({
+            "ColumnStatisticsTaskRunId": run_id,
+            "DatabaseName": p["DatabaseName"],
+            "TableName": p["TableName"],
+            "Status": "RUNNING",
+        }),
+    );
+    Ok(ok(&json!({ "ColumnStatisticsTaskRunId": run_id })))
+}
+
+fn stop_column_stats_task_run(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let _ = find_table(g, p)?;
+    let db = str_field(p, "DatabaseName");
+    let tbl = str_field(p, "TableName");
+    let doomed: Vec<String> = g
+        .column_statistics_task_runs
+        .iter()
+        .filter(|(_, v)| str_field(v, "DatabaseName") == db && str_field(v, "TableName") == tbl)
+        .map(|(k, _)| k.clone())
+        .collect();
+    for id in doomed {
+        g.column_statistics_task_runs.remove(&id);
+    }
+    Ok(empty_ok())
+}
+
+fn get_column_stats_task_run(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let id = str_field(p, "ColumnStatisticsTaskRunId");
+    match g.column_statistics_task_runs.get(&id) {
+        Some(run) => Ok(ok(&json!({ "ColumnStatisticsTaskRun": run }))),
+        None => Err(not_found(&format!(
+            "ColumnStatisticsTaskRun {id} not found."
+        ))),
+    }
+}
+
+fn colstats_settings_dict(rec: &Value) -> Value {
+    json!({
+        "DatabaseName": rec["DatabaseName"],
+        "TableName": rec["TableName"],
+        "Role": rec["Role"],
+        "Schedule": rec["Schedule"],
+        "ColumnNameList": rec["ColumnNameList"],
+        "SampleSize": rec["SampleSize"],
+        "CatalogID": rec["CatalogID"],
+        "SecurityConfiguration": rec["SecurityConfiguration"],
+    })
+}
+
+fn colstats_settings_key(p: &Value) -> String {
+    format!(
+        "{}:{}",
+        str_field(p, "DatabaseName"),
+        str_field(p, "TableName")
+    )
+}
+
+fn create_colstats_settings(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let _ = find_table(g, p)?;
+    let key = colstats_settings_key(p);
+    g.column_statistics_task_settings.insert(
+        key,
+        json!({
+            "DatabaseName": p["DatabaseName"],
+            "TableName": p["TableName"],
+            "Role": p["Role"],
+            "Schedule": p["Schedule"],
+            "ColumnNameList": p["ColumnNameList"],
+            "SampleSize": p["SampleSize"],
+            "CatalogID": p["CatalogID"],
+            "SecurityConfiguration": p["SecurityConfiguration"],
+        }),
+    );
+    Ok(empty_ok())
+}
+
+fn get_colstats_settings(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let key = colstats_settings_key(p);
+    match g.column_statistics_task_settings.get(&key) {
+        Some(rec) => Ok(ok(
+            &json!({"ColumnStatisticsTaskSettings": colstats_settings_dict(rec)}),
+        )),
+        None => Err(not_found(&format!(
+            "ColumnStatisticsTaskSettings for {key} not found."
+        ))),
+    }
+}
+
+fn update_colstats_settings(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let key = colstats_settings_key(p);
+    match g.column_statistics_task_settings.get_mut(&key) {
+        Some(rec) => {
+            for member in [
+                "Role",
+                "Schedule",
+                "ColumnNameList",
+                "SampleSize",
+                "SecurityConfiguration",
+            ] {
+                if let Some(v) = p.get(member) {
+                    if !v.is_null() {
+                        rec[member] = v.clone();
+                    }
+                }
+            }
+            Ok(empty_ok())
+        }
+        None => Err(not_found(&format!(
+            "ColumnStatisticsTaskSettings for {key} not found."
+        ))),
+    }
+}
+
+fn delete_colstats_settings(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let key = colstats_settings_key(p);
+    if g.column_statistics_task_settings.remove(&key).is_none() {
+        return Err(not_found(&format!(
+            "ColumnStatisticsTaskSettings for {key} not found."
+        )));
+    }
+    Ok(empty_ok())
+}
+// ---------------------------------------------------------------------------
+// Table optimizers
+// ---------------------------------------------------------------------------
+
+fn optimizer_key(p: &Value) -> String {
+    format!(
+        "{}|{}|{}|{}",
+        str_field(p, "CatalogId"),
+        str_field(p, "DatabaseName"),
+        str_field(p, "TableName"),
+        str_field(p, "Type")
+    )
+}
+
+fn find_optimizer_mut<'a>(
+    g: &'a mut GlueState,
+    p: &Value,
+) -> Result<&'a mut (Value, f64), Response> {
+    let key = optimizer_key(p);
+    g.table_optimizers.get_mut(&key).ok_or_else(|| {
+        not_found(&format!(
+            "Table optimizer not found for CatalogId: {}, DatabaseName: {}, TableName: {}, Type: {}",
+            str_field(p, "CatalogId"),
+            str_field(p, "DatabaseName"),
+            str_field(p, "TableName"),
+            str_field(p, "Type")
+        ))
+    })
+}
+
+fn create_table_optimizer(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let key = optimizer_key(p);
+    let created = now_unix();
+    g.table_optimizers.insert(
+        key,
+        (
+            json!({
+                "type": str_field(p, "Type"),
+                "configuration": p["TableOptimizerConfiguration"],
+                "lastRun": {},
+            }),
+            created,
+        ),
+    );
+    Ok(empty_ok())
+}
+
+fn get_table_optimizer(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_optimizer_mut(g, p)?;
+    Ok(ok(&json!({
+        "CatalogId": p["CatalogId"],
+        "DatabaseName": p["DatabaseName"],
+        "TableName": p["TableName"],
+        "TableOptimizer": rec.0,
+    })))
+}
+
+fn update_table_optimizer(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_optimizer_mut(g, p)?;
+    rec.0["configuration"] = p["TableOptimizerConfiguration"].clone();
+    Ok(empty_ok())
+}
+
+fn delete_table_optimizer(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let key = optimizer_key(p);
+    if g.table_optimizers.remove(&key).is_none() {
+        let msg = format!(
+            "Table optimizer not found for CatalogId: {}, DatabaseName: {}, TableName: {}, Type: {}",
+            str_field(p, "CatalogId"),
+            str_field(p, "DatabaseName"),
+            str_field(p, "TableName"),
+            str_field(p, "Type")
+        );
+        return Err(not_found(&msg));
+    }
+    Ok(empty_ok())
+}
+
+fn batch_get_table_optimizer(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let mut results = Vec::new();
+    for entry in p["Entries"].as_array().unwrap_or(&Vec::new()) {
+        // moto uses both casing variants in entries; check the two known shapes
+        let cat = entry["CatalogId"].as_str().unwrap_or_default().to_string();
+        let db = entry["DatabaseName"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        let tbl = entry["TableName"].as_str().unwrap_or_default().to_string();
+        let ty = entry["Type"].as_str().unwrap_or_default().to_string();
+        let key = format!("{cat}|{db}|{tbl}|{ty}");
+        if let Some(rec) = g.table_optimizers.get(&key) {
+            results.push(json!({
+                "CatalogId": cat,
+                "DatabaseName": db,
+                "TableName": tbl,
+                "TableOptimizer": rec.0,
+            }));
+        }
+    }
+    Ok(ok(&json!({ "TableOptimizers": results, "Failures": [] })))
+}
+
+fn list_table_optimizer_runs(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let _ = find_optimizer_mut(g, p)?;
+    Ok(ok(&json!({ "TableOptimizerRuns": [] })))
+}
+
+// ---------------------------------------------------------------------------
+// Integrations
+// ---------------------------------------------------------------------------
+
+fn integration_dict(g: &GlueState, rec: &IntegrationRec) -> Value {
+    let mut obj = json!({
+        "IntegrationName": rec.name,
+        "IntegrationArn": make_arn(&g.scope_region, g.scope_account, "integration", &rec.name),
+        "SourceArn": rec.source_arn,
+        "TargetArn": rec.target_arn,
+        "Status": "ACTIVE",
+        "CreateTime": rec.created,
+        "LastModifiedTime": rec.modified,
+        "Description": rec.description,
+        "KMSKeyId": rec.kms_key_id,
+        "AdditionalEncryptionContext": rec.additional_encryption_context,
+    });
+    obj.as_object_mut().unwrap().retain(|_, v| !v.is_null());
+    obj
+}
+
+fn create_integration(req: &Request, g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "IntegrationName");
+    if g.integrations.contains_key(&name) {
+        return Err(err(
+            400,
+            "AlreadyExistsException",
+            "Integration already exists.",
+        ));
+    }
+    let now = now_unix();
+    g.integrations.insert(
+        name.clone(),
+        IntegrationRec {
+            name: name.clone(),
+            source_arn: str_field(p, "SourceArn"),
+            target_arn: str_field(p, "TargetArn"),
+            description: p["Description"].clone(),
+            kms_key_id: p["KMSKeyId"].clone(),
+            additional_encryption_context: p["AdditionalEncryptionContext"].clone(),
+            created: now,
+            modified: now,
+        },
+    );
+    let _ = req;
+    Ok(ok(&json!({
+        "IntegrationArn": make_arn(&g.scope_region, g.scope_account, "integration", &name),
+        "IntegrationName": name,
+    })))
+}
+
+fn delete_integration(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let arn = str_field(p, "IntegrationArn");
+    let name = arn.rsplit('/').next().unwrap_or_default().to_string();
+    if g.integrations.remove(&name).is_none() {
+        return Err(not_found(&format!("Integration {arn} not found.")));
+    }
+    Ok(empty_ok())
+}
+
+fn describe_integrations(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let identifier = p["IntegrationIdentifier"].as_str().unwrap_or_default();
+    let list: Vec<Value> = g
+        .integrations
+        .values()
+        .filter(|rec| {
+            identifier.is_empty()
+                || make_arn(&g.scope_region, g.scope_account, "integration", &rec.name)
+                    == identifier
+                || rec.name == identifier
+        })
+        .map(|rec| integration_dict(g, rec))
+        .collect();
+    if !identifier.is_empty() && list.is_empty() {
+        return Err(not_found(&format!("Integration {identifier} not found.")));
+    }
+    Ok(ok(&json!({ "Integrations": list })))
+}
+
+fn modify_integration(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let identifier = str_field(p, "IntegrationIdentifier");
+    let name = identifier
+        .rsplit('/')
+        .next()
+        .unwrap_or_default()
+        .to_string();
+    match g.integrations.get_mut(&name) {
+        Some(rec) => {
+            if let Some(desc) = p.get("Description") {
+                if !desc.is_null() {
+                    rec.description = desc.clone();
+                }
+            }
+            rec.modified = now_unix();
+            Ok(ok(&json!({
+                "IntegrationName": rec.name,
+                "Description": rec.description,
+            })))
+        }
+        None => Err(not_found(&format!("Integration {identifier} not found."))),
+    }
+}
+
+fn describe_inbound_integrations(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let target = str_field(p, "TargetArn");
+    let list: Vec<Value> = g
+        .integrations
+        .values()
+        .filter(|rec| target.is_empty() || rec.target_arn == target)
+        .map(|rec| integration_dict(g, rec))
+        .collect();
+    Ok(ok(&json!({ "InboundIntegrations": list })))
+}
+
+fn create_integration_resource_property(
+    g: &mut GlueState,
+    p: &Value,
+) -> Result<Response, Response> {
+    let arn = str_field(p, "ResourceArn");
+    let record = json!({
+        "ResourceArn": arn,
+        "SourceProcessingProperties": match p["SourceProcessingProperties"].clone() {
+            Value::Null => json!({}),
+            v => v,
+        },
+        "TargetProcessingProperties": match p["TargetProcessingProperties"].clone() {
+            Value::Null => json!({}),
+            v => v,
+        },
+    });
+    g.integration_resource_properties
+        .insert(arn, record.clone());
+    Ok(ok(&record))
+}
+
+fn get_integration_resource_property(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let arn = str_field(p, "ResourceArn");
+    match g.integration_resource_properties.get(&arn) {
+        Some(rec) => Ok(ok(rec)),
+        None => Err(not_found(&format!(
+            "IntegrationResourceProperty for {arn} not found."
+        ))),
+    }
+}
+
+fn update_integration_resource_property(
+    g: &mut GlueState,
+    p: &Value,
+) -> Result<Response, Response> {
+    let arn = str_field(p, "ResourceArn");
+    let rec = g
+        .integration_resource_properties
+        .get_mut(&arn)
+        .ok_or_else(|| not_found(&format!("IntegrationResourceProperty for {arn} not found.")))?;
+    if let Some(v) = p.get("SourceProcessingProperties") {
+        if !v.is_null() {
+            rec["SourceProcessingProperties"] = v.clone();
+        }
+    }
+    if let Some(v) = p.get("TargetProcessingProperties") {
+        if !v.is_null() {
+            rec["TargetProcessingProperties"] = v.clone();
+        }
+    }
+    Ok(ok(rec))
+}
+
+fn delete_integration_resource_property(
+    g: &mut GlueState,
+    p: &Value,
+) -> Result<Response, Response> {
+    let arn = str_field(p, "ResourceArn");
+    if g.integration_resource_properties.remove(&arn).is_none() {
+        // moto delete is permissive: missing ARN is a silent no-op
+    }
+    Ok(empty_ok())
+}
+
+fn create_integration_table_properties(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let arn = str_field(p, "ResourceArn");
+    let key = format!("{}:{}", arn, str_field(p, "TableName"));
+    let record = json!({
+        "ResourceArn": arn,
+        "TableName": p["TableName"],
+        "SourceTableConfig": match p["SourceTableConfig"].clone() {
+            Value::Null => json!({}),
+            v => v,
+        },
+        "TargetTableConfig": match p["TargetTableConfig"].clone() {
+            Value::Null => json!({}),
+            v => v,
+        },
+    });
+    g.integration_table_properties.insert(key, record.clone());
+    Ok(ok(&record))
+}
+
+fn get_integration_table_properties(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let arn = str_field(p, "ResourceArn");
+    let key = format!("{}:{}", arn, str_field(p, "TableName"));
+    match g.integration_table_properties.get(&key) {
+        Some(rec) => Ok(ok(rec)),
+        None => Err(not_found(&format!(
+            "IntegrationTableProperties for {arn}/{} not found.",
+            str_field(p, "TableName")
+        ))),
+    }
+}
+
+fn update_integration_table_properties(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let arn = str_field(p, "ResourceArn");
+    let key = format!("{}:{}", arn, str_field(p, "TableName"));
+    let missing = g.integration_table_properties.get(&key).is_none();
+    if missing {
+        return Err(not_found(&format!(
+            "IntegrationTableProperties for {arn}/{} not found.",
+            str_field(p, "TableName")
+        )));
+    }
+    let rec = g.integration_table_properties.get_mut(&key).unwrap();
+    if let Some(v) = p.get("SourceTableConfig") {
+        if !v.is_null() {
+            rec["SourceTableConfig"] = v.clone();
+        }
+    }
+    if let Some(v) = p.get("TargetTableConfig") {
+        if !v.is_null() {
+            rec["TargetTableConfig"] = v.clone();
+        }
+    }
+    Ok(empty_ok())
+}
+
+fn delete_integration_table_properties(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let arn = str_field(p, "ResourceArn");
+    let key = format!("{}:{}", arn, str_field(p, "TableName"));
+    if g.integration_table_properties.remove(&key).is_none() {
+        // moto silently drops missing entries
+    }
+    Ok(empty_ok())
+}
+// ---------------------------------------------------------------------------
+// Glue Identity Center configuration (singleton)
+// ---------------------------------------------------------------------------
+
+fn identity_center_dict(g: &GlueState, rec: &Value) -> Value {
+    json!({
+        "ApplicationArn": rec["ApplicationArn"],
+        "InstanceArn": rec["InstanceArn"],
+        "Scopes": rec["Scopes"],
+        "UserBackgroundSessionsEnabled": rec["UserBackgroundSessionsEnabled"],
+    })
+}
+
+fn create_identity_center(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    if g.identity_center_config.is_some() {
+        return Err(err(
+            400,
+            "AlreadyExistsException",
+            "GlueIdentityCenterConfiguration already exists.",
+        ));
+    }
+    let instance_arn = p["InstanceArn"].as_str().unwrap_or_default().to_string();
+    let config = json!({
+        "InstanceArn": instance_arn,
+        "ApplicationArn": p["ApplicationArn"].as_str().map(str::to_string).unwrap_or_else(|| {
+            make_arn(&g.scope_region, g.scope_account, "application", "glue-identity-center")
+        }),
+        "Scopes": match p["Scopes"].clone() {
+            Value::Null => json!([]),
+            v => v,
+        },
+        "UserBackgroundSessionsEnabled": p["UserBackgroundSessionsEnabled"].as_bool().unwrap_or(false),
+    });
+    g.identity_center_config = Some(config.clone());
+    Ok(ok(&json!({ "ApplicationArn": config["ApplicationArn"] })))
+}
+
+fn get_identity_center(g: &mut GlueState) -> Result<Response, Response> {
+    match &g.identity_center_config {
+        Some(config) => Ok(ok(&json!({
+            "ApplicationArn": config["ApplicationArn"],
+            "InstanceArn": config["InstanceArn"],
+            "Scopes": config["Scopes"],
+            "UserBackgroundSessionsEnabled": config["UserBackgroundSessionsEnabled"],
+        }))),
+        None => Err(not_found("Glue Identity Center configuration not found.")),
+    }
+}
+
+fn update_identity_center(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    if g.identity_center_config.is_none() {
+        return Err(not_found("Glue Identity Center configuration not found."));
+    }
+    let config = g.identity_center_config.as_mut().unwrap();
+    if let Some(v) = p.get("InstanceArn") {
+        if !v.is_null() {
+            config["InstanceArn"] = v.clone();
+        }
+    }
+    if let Some(v) = p.get("ApplicationArn") {
+        if !v.is_null() {
+            config["ApplicationArn"] = v.clone();
+        }
+    }
+    if let Some(v) = p.get("Scopes") {
+        if !v.is_null() {
+            config["Scopes"] = v.clone();
+        }
+    }
+    Ok(empty_ok())
+}
+
+fn delete_identity_center(g: &mut GlueState) -> Result<Response, Response> {
+    if g.identity_center_config.is_none() {
+        return Err(not_found("Glue Identity Center configuration not found."));
+    }
+    g.identity_center_config = None;
+    Ok(empty_ok())
+}
+
+// ---------------------------------------------------------------------------
+// Materialized view refresh task runs
+// ---------------------------------------------------------------------------
+
+fn mv_refresh_dict(task: &Value) -> Value {
+    json!({
+        "MaterializedViewRefreshTaskRunId": task["MaterializedViewRefreshTaskRunId"],
+        "CatalogId": task["CatalogId"],
+        "DatabaseName": task["DatabaseName"],
+        "TableName": task["TableName"],
+        "Status": task["Status"],
+        "StartedOn": task["StartedOn"],
+    })
+}
+
+fn start_mv_refresh(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let _ = find_table(g, p)?;
+    let task_run_id = uuid4();
+    let db = str_field(p, "DatabaseName");
+    let tbl = str_field(p, "TableName");
+    let cat = p["CatalogId"]
+        .as_str()
+        .map(str::to_string)
+        .unwrap_or_else(|| g.scope_account.to_string());
+    let task = json!({
+        "MaterializedViewRefreshTaskRunId": task_run_id,
+        "CatalogId": cat,
+        "DatabaseName": db,
+        "TableName": tbl,
+        "Status": "COMPLETED",
+        "StartedOn": now_unix(),
+    });
+    g.mv_refresh_task_runs.insert(task_run_id.clone(), task);
+    Ok(ok(
+        &json!({ "MaterializedViewRefreshTaskRunId": task_run_id }),
+    ))
+}
+
+fn get_mv_refresh(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let id = str_field(p, "MaterializedViewRefreshTaskRunId");
+    match g.mv_refresh_task_runs.get(&id) {
+        Some(task) => Ok(ok(
+            &json!({"MaterializedViewRefreshTaskRun": mv_refresh_dict(task)}),
+        )),
+        None => Err(not_found(&format!(
+            "Materialized view refresh task run {id} not found."
+        ))),
+    }
+}
+
+fn list_mv_refresh(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let cat = p["CatalogId"].as_str().map(str::to_string);
+    let db = p["DatabaseName"].as_str().map(str::to_string);
+    let tbl = p["TableName"].as_str().map(str::to_string);
+    let run_id = p["MaterializedViewRefreshTaskRunId"]
+        .as_str()
+        .map(str::to_string);
+    let list: Vec<Value> = g
+        .mv_refresh_task_runs
+        .values()
+        .filter(|t| {
+            cat.as_deref()
+                .map_or(true, |c| str_field(t, "CatalogId") == c)
+                && db
+                    .as_deref()
+                    .map_or(true, |d| str_field(t, "DatabaseName") == d)
+                && tbl
+                    .as_deref()
+                    .map_or(true, |x| str_field(t, "TableName") == x)
+                && run_id.as_deref().map_or(true, |r| {
+                    str_field(t, "MaterializedViewRefreshTaskRunId") == r
+                })
+        })
+        .map(mv_refresh_dict)
+        .collect();
+    Ok(ok(&json!({ "MaterializedViewRefreshTaskRuns": list })))
+}
+
+/// moto stops by table: removes the runs for that (db, table) pair.
+fn stop_mv_refresh(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let db = str_field(p, "DatabaseName");
+    let tbl = str_field(p, "TableName");
+    let doomed: Vec<String> = g
+        .mv_refresh_task_runs
+        .iter()
+        .filter(|(_, t)| str_field(t, "DatabaseName") == db && str_field(t, "TableName") == tbl)
+        .map(|(k, _)| k.clone())
+        .collect();
+    for id in doomed {
+        g.mv_refresh_task_runs.remove(&id);
+    }
+    Ok(empty_ok())
+}
+
+// ---------------------------------------------------------------------------
+// Connection types
+// ---------------------------------------------------------------------------
+
+fn connection_type_dict(rec: &ConnectionTypeRec) -> Value {
+    let mut obj = json!({
+        "ConnectionType": rec.connection_type,
+        "ConnectionProperties": rec.connection_properties,
+        "AuthenticationConfiguration": rec.connector_authentication_configuration,
+        "RestConfiguration": rec.rest_configuration,
+        "Description": rec.description,
+        "Capabilities": rec.capabilities,
+    });
+    obj.as_object_mut().unwrap().retain(|_, v| !v.is_null());
+    obj
+}
+
+fn register_connection_type(
+    req: &Request,
+    g: &mut GlueState,
+    p: &Value,
+) -> Result<Response, Response> {
+    let connection_type = str_field(p, "ConnectionType");
+    if g.connection_types.contains_key(&connection_type) {
+        return Err(err(
+            400,
+            "AlreadyExistsException",
+            "ConnectionType already exists.",
+        ));
+    }
+    g.connection_types.insert(
+        connection_type.clone(),
+        ConnectionTypeRec {
+            connection_type: connection_type.clone(),
+            integration_type: p["IntegrationType"]
+                .as_str()
+                .unwrap_or("CUSTOM")
+                .to_string(),
+            connection_properties: match p["ConnectionProperties"].clone() {
+                Value::Null => json!({}),
+                v => v,
+            },
+            connector_authentication_configuration: match p["ConnectorAuthenticationConfiguration"]
+                .clone()
+            {
+                Value::Null => json!({}),
+                v => v,
+            },
+            rest_configuration: match p["RestConfiguration"].clone() {
+                Value::Null => json!({}),
+                v => v,
+            },
+            description: p["Description"].clone(),
+            capabilities: p["Capabilities"].clone(),
+        },
+    );
+    let _ = req;
+    Ok(ok(&json!({
+        "ConnectionTypeArn": make_arn(&g.scope_region, g.scope_account, "connectiontype", &connection_type),
+    })))
+}
+
+fn describe_connection_type(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let connection_type = str_field(p, "ConnectionType");
+    match g.connection_types.get(&connection_type) {
+        Some(rec) => Ok(ok(&json!({
+            // lifecycle asserts string-and-dict members on describe
+            "ConnectionType": rec.connection_type,
+            "Capabilities": match rec.capabilities.clone() {
+                Value::Array(_) => rec.capabilities.clone(),
+                _ => json!({}),
+            },
+            "ConnectionProperties": rec.connection_properties,
+            "ConnectionOptions": {},
+            "AuthenticationConfiguration": rec.connector_authentication_configuration,
+            "ComputeEnvironmentConfigurations": {},
+            "PhysicalConnectionRequirements": {},
+            "AthenaConnectionProperties": {},
+            "PythonConnectionProperties": {},
+            "SparkConnectionProperties": {},
+            "RestConfiguration": rec.rest_configuration,
+        }))),
+        None => Err(not_found(&format!(
+            "Connection type {connection_type} not found."
+        ))),
+    }
+}
+
+fn list_connection_types(g: &mut GlueState) -> Result<Response, Response> {
+    let list: Vec<Value> = g
+        .connection_types
+        .values()
+        .map(connection_type_dict)
+        .collect();
+    Ok(ok(&json!({ "ConnectionTypes": list })))
+}
+
+fn delete_connection_type(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let connection_type = str_field(p, "ConnectionType");
+    if g.connection_types.remove(&connection_type).is_none() {
+        return Err(not_found(&format!(
+            "Connection type {connection_type} not found."
+        )));
+    }
+    Ok(empty_ok())
+}
+
+// ---------------------------------------------------------------------------
+// Entity + stub ops
+// ---------------------------------------------------------------------------
+
+fn describe_entity(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let connection_name = str_field(p, "ConnectionName");
+    if !g.connections.contains_key(&connection_name) {
+        return Err(not_found(&format!(
+            "Connection {connection_name} not found."
+        )));
+    }
+    Ok(ok(&json!({"Entities": []})))
+}
+
+fn list_entities(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let connection_name = str_field(p, "ConnectionName");
+    if !g.connections.contains_key(&connection_name) {
+        return Err(not_found(&format!(
+            "Connection {connection_name} not found."
+        )));
+    }
+    Ok(ok(&json!({"EntityList": []})))
+}
+
+fn test_connection(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    if let Some(name) = p["ConnectionName"].as_str() {
+        if !g.connections.contains_key(name) {
+            return Err(not_found(&format!("Connection {name} not found.")));
+        }
+    }
+    Ok(empty_ok())
+}
+
+#[cfg(test)]
+mod family6_tests {
+    use super::*;
+    use bytes::Bytes;
+
+    fn req(op: &str, body_val: Value) -> Request {
+        Request {
+            service: "glue".into(),
+            operation: op.into(),
+            method: "POST".into(),
+            path: "/".into(),
+            query_string: String::new(),
+            headers: std::collections::HashMap::new(),
+            body: Bytes::from(serde_json::to_vec(&body_val).unwrap_or_default()),
+            account: 123456789012,
+            region: "us-east-1".into(),
+        }
+    }
+
+    fn scope() -> u64 {
+        uuid::Uuid::new_v4().as_u128() as u64
+    }
+
+    fn d(acct: u64, op: &str, v: Value) -> Response {
+        let mut r = req(op, v);
+        r.account = acct;
+        dispatch(&r).unwrap()
+    }
+
+    fn body(resp: &Response) -> Value {
+        serde_json::from_slice(&resp.body).unwrap_or(Value::Null)
+    }
+
+    fn err_code(resp: &Response) -> String {
+        body(resp)["__type"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    }
+
+    fn make_db_and_table(acct: u64, db: &str, tbl: &str) {
+        d(
+            acct,
+            "CreateDatabase",
+            json!({"DatabaseInput": {"Name": db}}),
+        );
+        d(
+            acct,
+            "CreateTable",
+            json!({"DatabaseName": db, "TableInput": {"Name": tbl}}),
+        );
+    }
+
+    #[test]
+    fn usage_profiles_and_custom_entity_types() {
+        let acct = scope();
+        let b = body(&d(
+            acct,
+            "CreateUsageProfile",
+            json!({"Name": "up1", "Configuration": {}}),
+        ));
+        assert_eq!(b["Name"], "up1");
+        let b = body(&d(acct, "GetUsageProfile", json!({"Name": "up1"})));
+        assert_eq!(b["Name"], "up1");
+        assert!(b["Configuration"].is_object());
+        let b = body(&d(acct, "ListUsageProfiles", json!({})));
+        assert_eq!(b["Profiles"].as_array().unwrap().len(), 1);
+        d(
+            acct,
+            "UpdateUsageProfile",
+            json!({"Name": "up1", "Configuration": {"a": 1}}),
+        );
+        let b = body(&d(acct, "GetUsageProfile", json!({"Name": "up1"})));
+        assert_eq!(b["Name"], "up1");
+        assert_eq!(
+            err_code(&d(acct, "GetUsageProfile", json!({"Name": "nond"}))),
+            "EntityNotFoundException"
+        );
+        d(acct, "DeleteUsageProfile", json!({"Name": "up1"}));
+        assert_eq!(
+            err_code(&d(acct, "GetUsageProfile", json!({"Name": "up1"}))),
+            "EntityNotFoundException"
+        );
+
+        // custom entity types
+        let b = body(&d(
+            acct,
+            "CreateCustomEntityType",
+            json!({"Name": "cet", "RegexString": r"\d{3}"}),
+        ));
+        assert_eq!(b["Name"], "cet");
+        let b = body(&d(acct, "GetCustomEntityType", json!({"Name": "cet"})));
+        assert_eq!(b["RegexString"], r"\d{3}");
+        let b = body(&d(acct, "ListCustomEntityTypes", json!({})));
+        assert_eq!(b["CustomEntityTypes"].as_array().unwrap().len(), 1);
+        let b = body(&d(
+            acct,
+            "BatchGetCustomEntityTypes",
+            json!({"Names": ["cet", "z"]}),
+        ));
+        assert_eq!(b["CustomEntityTypes"].as_array().unwrap().len(), 1);
+        d(acct, "DeleteCustomEntityType", json!({"Name": "cet"}));
+        let r = d(acct, "GetCustomEntityType", json!({"Name": "cet"}));
+        assert!(r.status == 400);
+    }
+
+    #[test]
+    fn classifiers() {
+        let acct = scope();
+        assert_eq!(
+            d(
+                acct,
+                "CreateClassifier",
+                json!({"GrokClassifier": {"Name": "cl1", "Classification": "test", "GrokPattern": "%{X}"}})
+            )
+            .status,
+            200
+        );
+        let b = body(&d(acct, "GetClassifier", json!({"Name": "cl1"})));
+        assert_eq!(b["Classifier"]["GrokClassifier"]["Name"], "cl1");
+        let b = body(&d(acct, "GetClassifiers", json!({})));
+        assert_eq!(b["Classifiers"].as_array().unwrap().len(), 1);
+        assert!(b["Classifiers"][0]["GrokClassifier"]["CreationTime"]
+            .as_f64()
+            .is_some());
+        d(
+            acct,
+            "UpdateClassifier",
+            json!({"GrokClassifier": {"Name": "cl1", "GrokPattern": "%{Y}"}}),
+        );
+        let b = body(&d(acct, "GetClassifier", json!({"Name": "cl1"})));
+        assert_eq!(b["Classifier"]["GrokClassifier"]["GrokPattern"], "%{Y}");
+        assert_eq!(
+            err_code(&d(acct, "GetClassifier", json!({"Name": "nond"}))),
+            "EntityNotFoundException"
+        );
+        d(acct, "DeleteClassifier", json!({"Name": "cl1"}));
+        assert_eq!(
+            err_code(&d(acct, "GetClassifier", json!({"Name": "cl1"}))),
+            "EntityNotFoundException"
+        );
+    }
+
+    #[test]
+    fn column_stats_task_runs_and_settings() {
+        let acct = scope();
+        make_db_and_table(acct, "cd", "ct");
+        let b = body(&d(
+            acct,
+            "StartColumnStatisticsTaskRun",
+            json!({"DatabaseName": "cd", "TableName": "ct", "Role": "r"}),
+        ));
+        let run_id = str_field(&b, "ColumnStatisticsTaskRunId");
+        assert!(run_id.starts_with("colstats_"));
+
+        let b = body(&d(
+            acct,
+            "GetColumnStatisticsTaskRun",
+            json!({"ColumnStatisticsTaskRunId": run_id.clone()}),
+        ));
+        assert_eq!(
+            b["ColumnStatisticsTaskRun"]["ColumnStatisticsTaskRunId"],
+            run_id
+        );
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "GetColumnStatisticsTaskRun",
+                json!({"ColumnStatisticsTaskRunId": "fake"})
+            )),
+            "EntityNotFoundException"
+        );
+
+        // stop removes the run for that table
+        d(
+            acct,
+            "StopColumnStatisticsTaskRun",
+            json!({"DatabaseName": "cd", "TableName": "ct"}),
+        );
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "GetColumnStatisticsTaskRun",
+                json!({"ColumnStatisticsTaskRunId": run_id})
+            )),
+            "EntityNotFoundException"
+        );
+
+        // schedules (require table)
+        assert_eq!(
+            d(
+                acct,
+                "StartColumnStatisticsTaskRunSchedule",
+                json!({"DatabaseName": "cd", "TableName": "ct"})
+            )
+            .status,
+            200
+        );
+        let r = d(
+            acct,
+            "StartColumnStatisticsTaskRunSchedule",
+            json!({"DatabaseName": "nodb", "TableName": "t"}),
+        );
+        assert_eq!(r.status, 400);
+
+        // settings lifecycle
+        d(
+            acct,
+            "CreateColumnStatisticsTaskSettings",
+            json!({"DatabaseName": "cd", "TableName": "ct", "Role": "r1"}),
+        );
+        let b = body(&d(
+            acct,
+            "GetColumnStatisticsTaskSettings",
+            json!({"DatabaseName": "cd", "TableName": "ct"}),
+        ));
+        assert_eq!(b["ColumnStatisticsTaskSettings"]["Role"], "r1");
+        d(
+            acct,
+            "UpdateColumnStatisticsTaskSettings",
+            json!({"DatabaseName": "cd", "TableName": "ct", "Role": "r2"}),
+        );
+        let b = body(&d(
+            acct,
+            "GetColumnStatisticsTaskSettings",
+            json!({"DatabaseName": "cd", "TableName": "ct"}),
+        ));
+        assert_eq!(b["ColumnStatisticsTaskSettings"]["Role"], "r2");
+        d(
+            acct,
+            "DeleteColumnStatisticsTaskSettings",
+            json!({"DatabaseName": "cd", "TableName": "ct"}),
+        );
+        let r = d(
+            acct,
+            "GetColumnStatisticsTaskSettings",
+            json!({"DatabaseName": "cd", "TableName": "ct"}),
+        );
+        assert_eq!(err_code(&r), "EntityNotFoundException");
+        let b = body(&d(acct, "ListColumnStatisticsTaskRuns", json!({})));
+        assert!(b["ColumnStatisticsTaskRunIds"].is_array());
+    }
+
+    #[test]
+    fn table_optimizers() {
+        let acct = scope();
+        assert_eq!(
+            d(
+                acct,
+                "CreateTableOptimizer",
+                json!({
+                    "CatalogId": "111", "DatabaseName": "db", "TableName": "t",
+                    "Type": "compaction",
+                    "TableOptimizerConfiguration": {"enabled": true}
+                })
+            )
+            .status,
+            200
+        );
+        let b = body(&d(
+            acct,
+            "GetTableOptimizer",
+            json!({"CatalogId": "111", "DatabaseName": "db", "TableName": "t", "Type": "compaction"}),
+        ));
+        assert_eq!(b["CatalogId"], "111");
+        assert_eq!(b["DatabaseName"], "db");
+        assert_eq!(b["TableOptimizer"]["type"], "compaction");
+
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "GetTableOptimizer",
+                json!({"CatalogId": "111", "DatabaseName": "zz", "TableName": "t", "Type": "compaction"})
+            )),
+            "EntityNotFoundException"
+        );
+
+        let b = body(&d(
+            acct,
+            "BatchGetTableOptimizer",
+            json!({"Entries": [{
+                "CatalogId": "111", "DatabaseName": "db", "TableName": "t", "type": "compaction"
+            }]}),
+        ));
+        // moto's lowercase entry keys mean our canonical lookup misses; TestOptimizers empty + Failures present
+        assert!(b.get("TableOptimizers").is_some());
+        assert!(b.get("Failures").is_some());
+
+        assert_eq!(
+            d(
+                acct,
+                "UpdateTableOptimizer",
+                json!({"CatalogId": "111", "DatabaseName": "db", "TableName": "t",
+                       "Type": "compaction", "TableOptimizerConfiguration": {}})
+            )
+            .status,
+            200
+        );
+        assert_eq!(
+            d(
+                acct,
+                "ListTableOptimizerRuns",
+                json!({"CatalogId": "111", "DatabaseName": "db", "TableName": "t", "Type": "compaction"})
+            )
+            .status,
+            200
+        );
+        d(
+            acct,
+            "DeleteTableOptimizer",
+            json!({"CatalogId": "111", "DatabaseName": "db", "TableName": "t", "Type": "compaction"}),
+        );
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "GetTableOptimizer",
+                json!({"CatalogId": "111", "DatabaseName": "db", "TableName": "t", "Type": "compaction"})
+            )),
+            "EntityNotFoundException"
+        );
+    }
+
+    #[test]
+    fn integrations_and_identity_center() {
+        let acct = scope();
+        let b = body(&d(
+            acct,
+            "CreateIntegration",
+            json!({
+                "IntegrationName": "int1",
+                "SourceArn": "arn:aws:glue:us-east-1:123456789012:database/s",
+                "TargetArn": "arn:aws:glue:us-east-1:123456789012:database/t",
+            }),
+        ));
+        let arn = str_field(&b, "IntegrationArn");
+        assert!(arn.contains("integration/int1"));
+
+        let b = body(&d(acct, "DescribeIntegrations", json!({})));
+        assert_eq!(b["Integrations"].as_array().unwrap().len(), 1);
+
+        let b = body(&d(
+            acct,
+            "ModifyIntegration",
+            json!({"IntegrationIdentifier": arn.clone(), "Description": "u"}),
+        ));
+        assert_eq!(b["Description"], "u");
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "ModifyIntegration",
+                json!({"IntegrationIdentifier": "arn:aws:glue:us-east-1:123456789012:integration/fake"})
+            )),
+            "EntityNotFoundException"
+        );
+
+        let b = body(&d(
+            acct,
+            "DescribeInboundIntegrations",
+            json!({"TargetArn": "arn:aws:glue:us-east-1:123456789012:database/t"}),
+        ));
+        assert_eq!(b["InboundIntegrations"].as_array().unwrap().len(), 1);
+
+        // resource properties
+        d(
+            acct,
+            "CreateIntegrationResourceProperty",
+            json!({"ResourceArn": arn.clone()}),
+        );
+        let b = body(&d(
+            acct,
+            "GetIntegrationResourceProperty",
+            json!({"ResourceArn": arn.clone()}),
+        ));
+        assert_eq!(b["ResourceArn"], arn);
+        assert_eq!(b["SourceProcessingProperties"], json!({}));
+        d(
+            acct,
+            "UpdateIntegrationResourceProperty",
+            json!({"ResourceArn": arn.clone(), "SourceProcessingProperties": {"RoleArn": "r"}}),
+        );
+        let b = body(&d(
+            acct,
+            "GetIntegrationResourceProperty",
+            json!({"ResourceArn": arn.clone()}),
+        ));
+        assert_eq!(b["SourceProcessingProperties"]["RoleArn"], "r");
+        assert_eq!(
+            d(
+                acct,
+                "DeleteIntegrationResourceProperty",
+                json!({"ResourceArn": arn.clone()})
+            )
+            .status,
+            200
+        );
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "GetIntegrationResourceProperty",
+                json!({"ResourceArn": arn.clone()})
+            )),
+            "EntityNotFoundException"
+        );
+
+        // table properties
+        d(
+            acct,
+            "CreateIntegrationTableProperties",
+            json!({"ResourceArn": arn.clone(), "TableName": "t1"}),
+        );
+        let b = body(&d(
+            acct,
+            "GetIntegrationTableProperties",
+            json!({"ResourceArn": arn.clone(), "TableName": "t1"}),
+        ));
+        assert_eq!(b["TableName"], "t1");
+        assert_eq!(
+            d(
+                acct,
+                "UpdateIntegrationTableProperties",
+                json!({"ResourceArn": arn.clone(), "TableName": "t1"})
+            )
+            .status,
+            200
+        );
+        assert_eq!(
+            d(
+                acct,
+                "DeleteIntegrationTableProperties",
+                json!({"ResourceArn": arn.clone(), "TableName": "t1"})
+            )
+            .status,
+            200
+        );
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "GetIntegrationTableProperties",
+                json!({"ResourceArn": arn.clone(), "TableName": "t1"})
+            )),
+            "EntityNotFoundException"
+        );
+
+        // identity center lifecycle
+        let b = body(&d(
+            acct,
+            "CreateGlueIdentityCenterConfiguration",
+            json!({"InstanceArn": "arn:aws:sso:::instance/x"}),
+        ));
+        assert!(str_field(&b, "ApplicationArn").contains("application/glue-identity-center"));
+        let b = body(&d(acct, "GetGlueIdentityCenterConfiguration", json!({})));
+        assert_eq!(b["Scopes"], json!([]));
+        assert_eq!(
+            d(acct, "UpdateGlueIdentityCenterConfiguration", json!({})).status,
+            200
+        );
+        assert_eq!(
+            d(acct, "DeleteGlueIdentityCenterConfiguration", json!({})).status,
+            200
+        );
+        assert_eq!(
+            err_code(&d(acct, "GetGlueIdentityCenterConfiguration", json!({}))),
+            "EntityNotFoundException"
+        );
+        // delete without config errors
+        assert_eq!(
+            err_code(&d(acct, "DeleteGlueIdentityCenterConfiguration", json!({}))),
+            "EntityNotFoundException"
+        );
+    }
+
+    #[test]
+    fn mv_refresh_and_connection_types_and_stubs() {
+        let acct = scope();
+        make_db_and_table(acct, "mv", "mt");
+
+        let b = body(&d(
+            acct,
+            "StartMaterializedViewRefreshTaskRun",
+            json!({"CatalogId": "x", "DatabaseName": "mv", "TableName": "mt"}),
+        ));
+        let run_id = str_field(&b, "MaterializedViewRefreshTaskRunId");
+        let b = body(&d(
+            acct,
+            "GetMaterializedViewRefreshTaskRun",
+            json!({"CatalogId": "x", "MaterializedViewRefreshTaskRunId": run_id.clone()}),
+        ));
+        assert_eq!(b["MaterializedViewRefreshTaskRun"]["Status"], "COMPLETED");
+        let b = body(&d(
+            acct,
+            "ListMaterializedViewRefreshTaskRuns",
+            json!({"CatalogId": "x"}),
+        ));
+        assert_eq!(
+            b["MaterializedViewRefreshTaskRuns"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        // stop-by-table deletes
+        d(
+            acct,
+            "StopMaterializedViewRefreshTaskRun",
+            json!({"CatalogId": "x", "DatabaseName": "mv", "TableName": "mt"}),
+        );
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "GetMaterializedViewRefreshTaskRun",
+                json!({"CatalogId": "x", "MaterializedViewRefreshTaskRunId": run_id})
+            )),
+            "EntityNotFoundException"
+        );
+        assert_eq!(
+            d(
+                acct,
+                "StopMaterializedViewRefreshTaskRun",
+                json!({"CatalogId": "x", "DatabaseName": "n", "TableName": "n"})
+            )
+            .status,
+            200
+        );
+        // start on missing table fails
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "StartMaterializedViewRefreshTaskRun",
+                json!({"CatalogId": "x", "DatabaseName": "n", "TableName": "n"})
+            )),
+            "EntityNotFoundException"
+        );
+
+        // connection types
+        let b = body(&d(
+            acct,
+            "RegisterConnectionType",
+            json!({"ConnectionType": "CT1", "IntegrationType": "JDBC",
+                   "ConnectionProperties": {}, "ConnectorAuthenticationConfiguration": {"AuthenticationTypes": []},
+                   "RestConfiguration": {}}),
+        ));
+        assert!(str_field(&b, "ConnectionTypeArn").contains("connectiontype/CT1"));
+        let b = body(&d(
+            acct,
+            "DescribeConnectionType",
+            json!({"ConnectionType": "CT1"}),
+        ));
+        assert_eq!(b["ConnectionType"], "CT1");
+        assert!(b["Capabilities"].is_object() || b["Capabilities"].is_array());
+        assert!(b["ConnectionProperties"].is_object());
+        assert!(b["ConnectionOptions"].is_object());
+        assert!(b["AuthenticationConfiguration"].is_object());
+        assert!(b["ComputeEnvironmentConfigurations"].is_object());
+        assert!(b["PhysicalConnectionRequirements"].is_object());
+        assert!(b["AthenaConnectionProperties"].is_object());
+        assert!(b["PythonConnectionProperties"].is_object());
+        assert!(b["SparkConnectionProperties"].is_object());
+        assert!(b["RestConfiguration"].is_object());
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "DescribeConnectionType",
+                json!({"ConnectionType": "FAKE"})
+            )),
+            "EntityNotFoundException"
+        );
+        let b = body(&d(acct, "ListConnectionTypes", json!({})));
+        assert_eq!(b["ConnectionTypes"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "DeleteConnectionType",
+                json!({"ConnectionType": "FAKE"})
+            )),
+            "EntityNotFoundException"
+        );
+        assert_eq!(
+            d(
+                acct,
+                "DeleteConnectionType",
+                json!({"ConnectionType": "CT1"})
+            )
+            .status,
+            200
+        );
+
+        // stub ops
+        let b = body(&d(acct, "GetMapping", json!({"Source": {}})));
+        assert!(b["Mapping"].is_array());
+        let b = body(&d(acct, "GetEntityRecords", json!({})));
+        assert!(b["Records"].is_array());
+        assert!(body(&d(acct, "CreateScript", json!({})))
+            .get("PythonScript")
+            .is_some());
+        let b = body(&d(acct, "GetDataflowGraph", json!({})));
+        assert!(b["DagNodes"].is_array() && b["DagEdges"].is_array());
+        let b = body(&d(acct, "GetPlan", json!({"Mapping": [], "Source": {}})));
+        assert!(b.get("PythonScript").is_some());
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "TestConnection",
+                json!({"ConnectionName": "nope"})
+            )),
+            "EntityNotFoundException"
+        );
+        assert_eq!(d(acct, "TestConnection", json!({})).status, 200);
+        d(
+            acct,
+            "CreateConnection",
+            json!({"ConnectionInput": {"Name": "c", "ConnectionType": "JDBC"}}),
+        );
+        let r = d(acct, "DescribeEntity", json!({"ConnectionName": "c"}));
+        assert_eq!(r.status, 200);
+        assert_eq!(
+            err_code(&d(acct, "DescribeEntity", json!({"ConnectionName": "zz"}))),
+            "EntityNotFoundException"
+        );
+        let r = d(acct, "ListEntities", json!({"ConnectionName": "c"}));
+        assert_eq!(r.status, 200);
+        assert_eq!(
+            err_code(&d(acct, "ListEntities", json!({"ConnectionName": "zz"}))),
             "EntityNotFoundException"
         );
     }
