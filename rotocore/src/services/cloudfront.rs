@@ -5658,4 +5658,117 @@ mod tests {
         assert!(after.contains("<Key>team</Key>"));
     }
 
+    // ----- invalidation batches -----
+
+    fn invalidation_req_body(caller: &str, paths: &[&str]) -> String {
+        let mut items = String::new();
+        for path in paths {
+            items += &wrap("Path", path);
+        }
+        format!(
+            "<InvalidationBatch xmlns=\"{XMLNS}\"><Paths><Quantity>{}</Quantity><Items>{items}</Items></Paths><CallerReference>{caller}</CallerReference></InvalidationBatch>",
+            paths.len()
+        )
+    }
+
+    #[test]
+    fn invalidation_on_missing_distribution() {
+        let account = next_account();
+        let resp = dispatch(&make_req(
+            account,
+            "POST",
+            "/2020-05-31/distribution/ENONEXISTENT123/invalidation",
+            &invalidation_req_body("r1", &["/index.html"]),
+            &[],
+        ));
+        assert_eq!(resp.status, 404);
+        assert_eq!(text(&resp, &["Error", "Code"]), "NoSuchDistribution");
+    }
+
+    #[test]
+    fn invalidation_create_get_list() {
+        let account = next_account();
+        let create = dispatch(&make_req(
+            account,
+            "POST",
+            "/2020-05-31/distribution",
+            &dist_config_xml("inv-test", "ref-inv"),
+            &[],
+        ));
+        let id = dist_id(&create);
+
+        let batch = dispatch(&make_req(
+            account,
+            "POST",
+            &format!("/2020-05-31/distribution/{id}/invalidation"),
+            &invalidation_req_body("ref-1", &["/index.html", "/css/*", "/js/*"]),
+            &[],
+        ));
+        assert_eq!(batch.status, 200);
+        assert_eq!(text(&batch, &["Status"]), "COMPLETED");
+        // Paths echo in order.
+        let body = String::from_utf8_lossy(&batch.body);
+        assert!(body.contains("<Path>/index.html</Path>"));
+        assert!(body.contains("<Path>/css/*</Path>"));
+        assert!(body.contains("<Path>/js/*</Path>"));
+        assert_eq!(
+            text(&batch, &["InvalidationBatch", "Paths", "Quantity"]),
+            "3"
+        );
+
+        let inv_id = text(&batch, &["Id"]);
+        let get = dispatch(&make_req(
+            account,
+            "GET",
+            &format!("/2020-05-31/distribution/{id}/invalidation/{inv_id}"),
+            "",
+            &[],
+        ));
+        assert_eq!(get.status, 200);
+        assert_eq!(text(&get, &["Id"]), inv_id);
+        assert!(header(&batch, "Location").ends_with(&inv_id));
+
+        // Second batch then list: quantity >= 2.
+        dispatch(&make_req(
+            account,
+            "POST",
+            &format!("/2020-05-31/distribution/{id}/invalidation"),
+            &invalidation_req_body("ref-2", &["/b.html"]),
+            &[],
+        ));
+        let list = dispatch(&make_req(
+            account,
+            "GET",
+            &format!("/2020-05-31/distribution/{id}/invalidation"),
+            "",
+            &[],
+        ));
+        let tree = parse_xml(&list.body).expect("xml");
+        assert_eq!(tree.sub(&["Quantity"]).map(|e| e.as_str()), Some("2"));
+        let summaries = count_occurrences(&list.body, b"<InvalidationSummary>");
+        assert_eq!(summaries, 2);
+    }
+
+    #[test]
+    fn invalidation_unknown_id_is_not_found() {
+        let account = next_account();
+        let create = dispatch(&make_req(
+            account,
+            "POST",
+            "/2020-05-31/distribution",
+            &dist_config_xml("inv-404", "ref-inv404"),
+            &[],
+        ));
+        let id = dist_id(&create);
+        let get = dispatch(&make_req(
+            account,
+            "GET",
+            &format!("/2020-05-31/distribution/{id}/invalidation/INOEXIST"),
+            "",
+            &[],
+        ));
+        assert_eq!(get.status, 404);
+        assert_eq!(text(&get, &["Error", "Code"]), "NoSuchInvalidation");
+    }
+
 }
