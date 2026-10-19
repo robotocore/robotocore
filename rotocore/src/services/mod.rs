@@ -73,6 +73,7 @@ pub mod route53resolver;
 pub mod sagemaker;
 pub mod securityhub;
 pub mod sesv2;
+pub mod shield;
 pub mod signer;
 pub mod ssoadmin;
 pub mod support;
@@ -154,6 +155,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "sagemaker" => Some(sagemaker::dispatch(req)),
         "securityhub" => Some(securityhub::dispatch(req)),
         "sesv2" => Some(sesv2::dispatch(req)),
+        "shield" => shield::dispatch(req),
         "signer" => signer::dispatch(req),
         "ssoadmin" => ssoadmin::dispatch(req),
         "support" => Some(support::dispatch(req)),
@@ -243,6 +245,7 @@ pub fn handles_service(service: &str) -> bool {
             | "sagemaker"
             | "securityhub"
             | "sesv2"
+            | "shield"
             | "signer"
             | "ssoadmin"
             | "support"
