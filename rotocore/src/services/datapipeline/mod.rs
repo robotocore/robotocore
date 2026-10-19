@@ -441,7 +441,7 @@ mod tests {
         let id = create_pipeline(b, "dp-wire-svc");
 
         let listed = run(b, "ListPipelines", json!({}));
-        assert!(listed["pipelineIdList"].as_array().unwrap().len() > 0);
+        assert!(!listed["pipelineIdList"].as_array().unwrap().is_empty());
         assert!(listed["pipelineIdList"]
             .as_array()
             .unwrap()

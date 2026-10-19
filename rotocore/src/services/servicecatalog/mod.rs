@@ -498,6 +498,9 @@ struct State {
     budget_assoc: Vec<(String, String)>,
     /// (service_action_id, product_id, provisioning_artifact_id)
     action_artifact_assoc: Vec<(String, String, String)>,
+    /// GetAWSOrganizationsAccessStatus: ENABLED once
+    /// EnableAWSOrganizationsAccess ran (moto defaults to False).
+    aws_organizations_access_enabled: bool,
 }
 
 // ---- shared state helpers --------------------------------------------------
@@ -631,12 +634,8 @@ pub fn dispatch(req: &Request) -> Option<Response> {
     Some(handle(st, &params, req))
 }
 
-/// Route a servicecatalog request by botocore operation name.
-///
-/// Each arm mirrors the response construction in moto's responses.py —
-/// same result keys, same error messages, same status codes. The three
-/// OrganizationsAccess operations have no arm (they answer the generic
-/// `501 NotImplemented` exactly like the sidecar era).
+/// Answer an unrouted operation like moto's `call_action` fallthrough:
+/// HTTP 501, `NotImplemented` error code.
 fn not_implemented(operation: &str) -> Response {
     client_error(
         501,
@@ -2175,6 +2174,27 @@ fn handle(st: &mut State, p: &Value, req: &Request) -> Response {
         "ListStackInstancesForProvisionedProduct" => {
             ok_json(&json!({"StackInstances": [], "NextPageToken": Value::Null}))
         }
+
+        // ---- AWS Organizations Access ----
+        // moto: backend flag defaults to False; enable/disable return
+        // EmptyResult ({}); GetAWSOrganizationsAccessStatus has no error
+        // path — a tenant with no integration reads DISABLED.
+        "EnableAWSOrganizationsAccess" => {
+            st.aws_organizations_access_enabled = true;
+            ok_json(&json!({})) // EmptyResult renders {}
+        }
+        "DisableAWSOrganizationsAccess" => {
+            st.aws_organizations_access_enabled = false;
+            ok_json(&json!({})) // EmptyResult renders {}
+        }
+        "GetAWSOrganizationsAccessStatus" => ok_json(&json!({
+            "AccessStatus": if st.aws_organizations_access_enabled {
+                "ENABLED"
+            } else {
+                "DISABLED"
+            },
+        })),
+
         "NotifyProvisionProductEngineWorkflowResult" => ok_json(&json!({})),
         "NotifyTerminateProvisionedProductEngineWorkflowResult" => ok_json(&json!({})),
         "NotifyUpdateProvisionedProductEngineWorkflowResult" => ok_json(&json!({})),
@@ -3149,17 +3169,22 @@ mod tests {
     }
 
     #[test]
-    fn organizations_access_ops_answer_501() {
+    fn organizations_access_ops_track_state() {
         let account = 900_000_000_119;
-        for op in [
-            "EnableAWSOrganizationsAccess",
-            "DisableAWSOrganizationsAccess",
-            "GetAWSOrganizationsAccessStatus",
-        ] {
-            let resp = send(op, json!({}), account);
-            assert_eq!(resp.status, 501, "{op}");
-            assert_eq!(json_body(&resp)["__type"], json!("NotImplemented"));
-        }
+        // GetAWSOrganizationsAccessStatus on a tenant with no integration
+        // reads DISABLED (moto's default path, no error).
+        let status = json_body(&send("GetAWSOrganizationsAccessStatus", json!({}), account));
+        assert_eq!(status["AccessStatus"], json!("DISABLED"));
+
+        let resp = send("EnableAWSOrganizationsAccess", json!({}), account);
+        assert_eq!(resp.status, 200); // EmptyResult renders {}
+        let status = json_body(&send("GetAWSOrganizationsAccessStatus", json!({}), account));
+        assert_eq!(status["AccessStatus"], json!("ENABLED"));
+
+        let resp = send("DisableAWSOrganizationsAccess", json!({}), account);
+        assert_eq!(resp.status, 200);
+        let status = json_body(&send("GetAWSOrganizationsAccessStatus", json!({}), account));
+        assert_eq!(status["AccessStatus"], json!("DISABLED"));
     }
 
     #[test]

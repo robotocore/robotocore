@@ -1472,3 +1472,17 @@ class TestServiceCatalogProvisionProduct:
         assert "RecordDetail" in resp
         rd = resp["RecordDetail"]
         assert "RecordId" in rd
+
+
+class TestServiceCatalogOrgAccessOps:
+    def test_get_aws_organizations_access_status(self, servicecatalog):
+        resp = servicecatalog.get_aws_organizations_access_status()
+        assert "AccessStatus" in resp
+
+    def test_enable_aws_organizations_access(self, servicecatalog):
+        resp = servicecatalog.enable_aws_organizations_access()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disable_aws_organizations_access(self, servicecatalog):
+        resp = servicecatalog.disable_aws_organizations_access()
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
