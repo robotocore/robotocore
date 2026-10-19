@@ -1178,12 +1178,14 @@ fn new_distribution(account: u64, config: El) -> Result<Distribution, Response> 
     }
 
     let id = random_upper(13);
+    let arn = format!("arn:aws:cloudfront:{account}:distribution/{id}");
+    let domain_name = format!("{}.cloudfront.net", random_domain(13));
     Ok(Distribution {
         id,
-        arn: format!("arn:aws:cloudfront:{account}:distribution/{id}"),
+        arn,
         status: "InProgress".to_string(),
         last_modified_time: "2021-11-27T10:34:26.802Z".to_string(),
-        domain_name: format!("{}.cloudfront.net", random_domain(13)),
+        domain_name,
         etag: random_upper(13),
         caller_reference: config
             .text_of("CallerReference")
@@ -1655,15 +1657,15 @@ fn render_origin(origin: &El) -> String {
     out += &el("ConnectionAttempts", &origin.text_or("ConnectionAttempts", "3"));
     out += &el("ConnectionTimeout", &origin.text_or("ConnectionTimeout", "10"));
 
-    out += match origin.child("OriginShield") {
-        Some(shield) => wrap(
-            "OriginShield",
-            el("Enabled", &shield.text_or("Enabled", "false"))
+    out += &match origin.child("OriginShield") {
+        Some(shield) => {
+            let inner = el("Enabled", &shield.text_or("Enabled", "false"))
                 + &el(
                     "OriginShieldRegion",
                     &shield.text_or("OriginShieldRegion", ""),
-                ),
-        ),
+                );
+            wrap("OriginShield", &inner)
+        }
         None => wrap("OriginShield", "<Enabled>false</Enabled>"),
     };
 
@@ -2110,7 +2112,7 @@ fn h_create_oai(backend: &mut Backend, req: &Request) -> Response {
     let root = body_xml(req);
     let config = config_of(&root, "CloudFrontOriginAccessIdentityConfig");
     let mut canonical = [0u8; 64];
-    let bytes = uuid::Uuid::new_v4().as_bytes();
+    let bytes = uuid::Uuid::new_v4().as_bytes().to_vec();
     for (i, slot) in canonical.iter_mut().enumerate() {
         const CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
         *slot = CHARS[bytes[i % bytes.len()] as usize % CHARS.len()];
@@ -2241,8 +2243,7 @@ fn h_list_oais(backend: &mut Backend) -> Response {
     };
     let body = wrap(
         "CloudFrontOriginAccessIdentityList",
-        &"<Marker></Marker><MaxItems>100</MaxItems><IsTruncated>false</IsTruncated>"
-            .to_string()
+        "<Marker></Marker><MaxItems>100</MaxItems><IsTruncated>false</IsTruncated>".to_string()
             + &el("Quantity", &oais.len().to_string())
             + &items_block,
     );
@@ -2377,7 +2378,7 @@ fn h_list_public_keys(backend: &mut Backend) -> Response {
     };
     let body = wrap(
         "PublicKeyList",
-        &"<MaxItems>100</MaxItems>".to_string()
+        "<MaxItems>100</MaxItems>".to_string()
             + &el("Quantity", &keys.len().to_string())
             + &items_block,
     );
@@ -2516,7 +2517,7 @@ fn h_list_key_groups(backend: &mut Backend) -> Response {
     };
     let body = wrap(
         "KeyGroupList",
-        &"<MaxItems>100</MaxItems>".to_string()
+        "<MaxItems>100</MaxItems>".to_string()
             + &el("Quantity", &groups.len().to_string())
             + &items_block,
     );
@@ -2529,7 +2530,7 @@ fn h_list_oac(backend: &mut Backend) -> Response {
     for control in controls {
         items += &wrap(
             "OriginAccessControlSummary",
-            &el("Id", &control.id)
+            el("Id", &control.id)
                 + &el("Name", &control.name)
                 + &if control.description.is_empty() {
                     String::new()
@@ -2763,7 +2764,7 @@ fn h_list_functions(backend: &mut Backend) -> Response {
     };
     let body = wrap(
         "FunctionList",
-        &"<MaxItems>100</MaxItems>".to_string()
+        "<MaxItems>100</MaxItems>".to_string()
             + &el("Quantity", &functions.len().to_string())
             + &items_block,
     );
@@ -2894,7 +2895,7 @@ fn h_list_cache_policies(backend: &mut Backend) -> Response {
     };
     let body = wrap(
         "CachePolicyList",
-        &"<MaxItems>100</MaxItems>".to_string()
+        "<MaxItems>100</MaxItems>".to_string()
             + &el("Quantity", &policies.len().to_string())
             + &items_block,
     );
@@ -3018,9 +3019,8 @@ fn h_list_rhp(backend: &mut Backend) -> Response {
     };
     let body = wrap(
         "ResponseHeadersPolicyList",
-        &"<MaxItems>100</MaxItems>".to_string()
-            + &el("Quantity", &policies.len().to_string())
-            + &items_block,
+        "<MaxItems>100</MaxItems>".to_string() + &el("Quantity", &policies.len().to_string())
+             + &items_block,
     );
     resp(200, xml_decl(&body))
 }
@@ -3180,9 +3180,8 @@ fn h_list_orp(backend: &mut Backend) -> Response {
     };
     let body = wrap(
         "OriginRequestPolicyList",
-        &"<MaxItems>100</MaxItems>".to_string()
-            + &el("Quantity", &policies.len().to_string())
-            + &items_block,
+        "<MaxItems>100</MaxItems>".to_string() + &el("Quantity", &policies.len().to_string())
+             + &items_block,
     );
     resp(200, xml_decl(&body))
 }
@@ -3311,9 +3310,8 @@ fn h_list_fle(backend: &mut Backend) -> Response {
     };
     let body = wrap(
         "FieldLevelEncryptionList",
-        &"<MaxItems>100</MaxItems>".to_string()
-            + &el("Quantity", &configs.len().to_string())
-            + &items_block,
+        "<MaxItems>100</MaxItems>".to_string() + &el("Quantity", &configs.len().to_string())
+             + &items_block,
     );
     resp(200, xml_decl(&body))
 }
@@ -3450,9 +3448,8 @@ fn h_list_flep(backend: &mut Backend) -> Response {
     };
     let body = wrap(
         "FieldLevelEncryptionProfileList",
-        &"<MaxItems>100</MaxItems>".to_string()
-            + &el("Quantity", &profiles.len().to_string())
-            + &items_block,
+        "<MaxItems>100</MaxItems>".to_string() + &el("Quantity", &profiles.len().to_string())
+             + &items_block,
     );
     resp(200, xml_decl(&body))
 }
@@ -3491,7 +3488,7 @@ fn render_cdp(policy: &CdpPolicy) -> String {
             + &el("LastModifiedTime", &policy.last_modified_time)
             + &wrap(
                 "ContinuousDeploymentPolicyConfig",
-                &"<StagingDistributionDnsNames><Quantity>0</Quantity></StagingDistributionDnsNames>".to_string()
+                "<StagingDistributionDnsNames><Quantity>0</Quantity></StagingDistributionDnsNames>".to_string()
                     + &el("Enabled", &policy.enabled),
             ),
     )
@@ -3519,7 +3516,7 @@ fn h_get_cdp_config(backend: &mut Backend, id: &str) -> Response {
             vec![("ETag", policy.etag.clone())],
             xml_decl(&wrap(
                 "ContinuousDeploymentPolicyConfig",
-                &"<StagingDistributionDnsNames><Quantity>0</Quantity></StagingDistributionDnsNames>".to_string()
+                "<StagingDistributionDnsNames><Quantity>0</Quantity></StagingDistributionDnsNames>".to_string()
                     + &el("Enabled", &policy.enabled),
             )),
         ),
@@ -3583,7 +3580,7 @@ fn h_list_cdp(backend: &mut Backend) -> Response {
     };
     let body = wrap(
         "ContinuousDeploymentPolicyList",
-        &"<MaxItems>100</MaxItems>".to_string()
+        "<MaxItems>100</MaxItems>".to_string()
             + &el("Quantity", &policies.len().to_string())
             + &items_block,
     );
@@ -3835,7 +3832,7 @@ fn h_list_rlc(backend: &mut Backend) -> Response {
     };
     let body = wrap(
         "RealtimeLogConfigs",
-        &"<MaxItems>100</MaxItems><IsTruncated>false</IsTruncated>".to_string() + &items_block,
+        "<MaxItems>100</MaxItems><IsTruncated>false</IsTruncated>".to_string() + &items_block,
     );
     resp(200, xml_decl(&body))
 }
@@ -4069,7 +4066,7 @@ fn h_list_streaming(backend: &mut Backend) -> Response {
     };
     let body = wrap(
         "StreamingDistributionList",
-        &"<Marker></Marker><MaxItems>100</MaxItems><IsTruncated>false</IsTruncated>".to_string()
+        "<Marker></Marker><MaxItems>100</MaxItems><IsTruncated>false</IsTruncated>".to_string()
             + &el("Quantity", &backend.streaming_distributions.len().to_string())
             + &items_block,
     );
@@ -4167,7 +4164,7 @@ fn h_list_kvs(backend: &mut Backend) -> Response {
     };
     let body = wrap(
         "KeyValueStoreList",
-        &"<MaxItems>100</MaxItems>".to_string()
+        "<MaxItems>100</MaxItems>".to_string()
             + &el("Quantity", &stores.len().to_string())
             + &items_block,
     );
@@ -4318,7 +4315,7 @@ fn h_list_vpc_origins(backend: &mut Backend) -> Response {
     };
     let body = wrap(
         "VpcOriginList",
-        &"<Marker></Marker><MaxItems>100</MaxItems><IsTruncated>false</IsTruncated>".to_string()
+        "<Marker></Marker><MaxItems>100</MaxItems><IsTruncated>false</IsTruncated>".to_string()
             + &el("Quantity", &origins.len().to_string())
             + &items_block,
     );
@@ -4490,7 +4487,7 @@ fn h_list_anycast(backend: &mut Backend) -> Response {
     };
     let body = wrap(
         "AnycastIpLists",
-        &"<Marker></Marker><MaxItems>100</MaxItems><IsTruncated>false</IsTruncated>".to_string()
+        "<Marker></Marker><MaxItems>100</MaxItems><IsTruncated>false</IsTruncated>".to_string()
             + &el("Quantity", &lists.len().to_string())
             + &items_block,
     );
@@ -4845,7 +4842,7 @@ fn h_create_tenant_invalidation() -> Response {
             + &el("CreateTime", "2021-01-01T00:00:00.000Z")
             + &wrap(
                 "InvalidationBatch",
-                &"<Paths><Quantity>0</Quantity></Paths>".to_string()
+                "<Paths><Quantity>0</Quantity></Paths>".to_string()
                     + &el("CallerReference", "ref"),
             ),
     );
@@ -4864,7 +4861,7 @@ fn h_get_tenant_invalidation(inv_id: &str) -> Response {
             + &el("CreateTime", "2021-01-01T00:00:00.000Z")
             + &wrap(
                 "InvalidationBatch",
-                &"<Paths><Quantity>0</Quantity></Paths>".to_string()
+                "<Paths><Quantity>0</Quantity></Paths>".to_string()
                     + &el("CallerReference", "ref"),
             ),
     );
@@ -4930,9 +4927,8 @@ fn distribution_list(distributions: &[&Distribution]) -> Response {
     };
     let body = wrap(
         "DistributionList",
-        &"<Marker></Marker><MaxItems>100</MaxItems><IsTruncated>false</IsTruncated>".to_string()
-            + &el("Quantity", &distributions.len().to_string())
-            + &items_block,
+        "<Marker></Marker><MaxItems>100</MaxItems><IsTruncated>false</IsTruncated>".to_string() + &el("Quantity", &distributions.len().to_string())
+             + &items_block,
     );
     resp(200, xml_decl(&body))
 }
@@ -4953,7 +4949,7 @@ fn distribution_id_list(ids: &[String]) -> Response {
     };
     let body = wrap(
         "DistributionIdList",
-        &"<Marker></Marker><MaxItems>100</MaxItems><IsTruncated>false</IsTruncated>".to_string()
+        "<Marker></Marker><MaxItems>100</MaxItems><IsTruncated>false</IsTruncated>".to_string()
             + &el("Quantity", &ids.len().to_string())
             + &items_block,
     );
@@ -5038,7 +5034,7 @@ fn h_list_conflicting_aliases(
     };
     let body = wrap(
         "ConflictingAliasesList",
-        &"<MaxItems>100</MaxItems>".to_string()
+        "<MaxItems>100</MaxItems>".to_string()
             + &el("Quantity", &count.to_string())
             + &items_block,
     );
