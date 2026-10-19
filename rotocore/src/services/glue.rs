@@ -39,13 +39,11 @@ struct TableRec {
     updated: Option<f64>,
     /// Partition records keyed by their values joined with U+001F.
     partitions: BTreeMap<String, PartitionRec>,
-    partition_indexes: Vec<Value>,
     column_stats: BTreeMap<String, Value>,
 }
 
 #[derive(Clone, Default)]
 struct PartitionRec {
-    values: Vec<String>,
     input: Value,
     created: f64,
 }
@@ -121,6 +119,7 @@ struct WorkflowRec {
 }
 
 #[derive(Default)]
+#[allow(dead_code)] // moto-parity record; some members are stored, not read
 struct SessionRec {
     id: String,
     description: Value,
@@ -144,6 +143,7 @@ struct SessionRec {
 }
 
 #[derive(Default)]
+#[allow(dead_code)] // moto-parity record; some members are stored, not read
 struct RegistryRec {
     name: String,
     arn: String,
@@ -170,6 +170,7 @@ struct SchemaRec {
 }
 
 #[derive(Clone, Default)]
+#[allow(dead_code)] // moto-parity record; some members are stored, not read
 struct SchemaVersionRec {
     id: String,
     definition: String,
@@ -225,6 +226,7 @@ struct DevEndpointRec {
 }
 
 #[derive(Clone, Default)]
+#[allow(dead_code)] // moto-parity record; some members are stored, not read
 struct BlueprintRec {
     name: String,
     blueprint_location: String,
@@ -265,7 +267,6 @@ struct IntegrationRec {
 #[derive(Clone, Default)]
 struct ConnectionTypeRec {
     connection_type: String,
-    integration_type: String,
     connection_properties: Value,
     connector_authentication_configuration: Value,
     rest_configuration: Value,
@@ -531,9 +532,8 @@ fn handle(req: &Request, g: &mut GlueState, op: &str, p: &Value) -> Response {
         "BatchCreatePartition" => try_resp!(batch_create_partition(g, p)),
         "BatchDeletePartition" => try_resp!(batch_delete_partition(g, p)),
         "BatchUpdatePartition" => try_resp!(batch_update_partition(g, p)),
-        "GetPartitionIndexes" => in_table(g, p, |_, _| {
-            ok(&json!({"PartitionIndexDescriptorList": []}))
-        }),
+        // moto's handler never consults the database: always an empty list.
+        "GetPartitionIndexes" => ok(&json!({"PartitionIndexDescriptorList": []})),
         "CreatePartitionIndex" | "DeletePartitionIndex" => in_table(g, p, |_, _| empty_ok()),
         // --- UDFs ---------------------------------------------------------
         "CreateUserDefinedFunction" => try_resp!(create_user_defined_function(g, p)),
@@ -842,15 +842,6 @@ fn find_database_mut<'a>(g: &'a mut GlueState, db: &str) -> Result<&'a mut Datab
         .ok_or_else(|| not_found(&format!("Database {db} not found.")))
 }
 
-fn table_name_from(p: &Value) -> String {
-    if let Some(v) = p.get("TableName") {
-        if let Some(s) = v.as_str() {
-            return s.to_string();
-        }
-    }
-    str_field(&p["TableInput"], "Name")
-}
-
 struct TableRef<'a> {
     db: String,
     tbl: String,
@@ -1076,7 +1067,7 @@ fn get_tables(req: &Request, g: &mut GlueState, p: &Value) -> Response {
     let list: Vec<Value> = db_rec
         .tables
         .iter()
-        .filter(|(name, _)| expression.map_or(true, |e| wildcard_match(e, name)))
+        .filter(|(name, _)| expression.map(|e| wildcard_match(e, name)).unwrap_or(true))
         .map(|(name, rec)| table_version_dict(rec, &db, name, &account, None))
         .collect();
     ok(&json!({ "TableList": list }))
@@ -1250,7 +1241,6 @@ fn replace_partition(
     table.insert(
         new_key,
         PartitionRec {
-            values,
             input,
             created: now_unix(),
         },
@@ -1269,7 +1259,6 @@ fn create_partition(g: &mut GlueState, p: &Value) -> Response {
     t.rec.partitions.insert(
         key,
         PartitionRec {
-            values,
             input,
             created: now_unix(),
         },
@@ -1330,7 +1319,7 @@ fn batch_create_partition(g: &mut GlueState, p: &Value) -> Result<Response, Resp
     for input in p["PartitionInputList"].as_array().unwrap_or(&Vec::new()) {
         let values = partition_input_values(input);
         let key = partition_key(&values);
-        if t.rec.partitions.contains_key(&key) {
+        if let Some(_existing) = t.rec.partitions.get(&key) {
             let vals: Vec<Value> = values.iter().map(|v| json!(v)).collect();
             errors.push(json!({
                 "PartitionValues": vals,
@@ -1343,7 +1332,6 @@ fn batch_create_partition(g: &mut GlueState, p: &Value) -> Result<Response, Resp
             t.rec.partitions.insert(
                 key,
                 PartitionRec {
-                    values,
                     input: input.clone(),
                     created: now_unix(),
                 },
@@ -1430,7 +1418,6 @@ fn batch_update_partition(g: &mut GlueState, p: &Value) -> Result<Response, Resp
         t.rec.partitions.insert(
             new_key,
             PartitionRec {
-                values,
                 input,
                 created: now_unix(),
             },
@@ -1532,7 +1519,7 @@ fn search_tables(req: &Request, g: &mut GlueState, p: &Value) -> Response {
         .filter(|v| !v.is_empty());
     let mut list: Vec<Value> = Vec::new();
     for (db_name, db_rec) in g.databases.iter() {
-        if db_filter.as_ref().map_or(false, |f| f != db_name) {
+        if db_filter.as_ref().is_some_and(|f| f != db_name) {
             continue;
         }
         for (tbl_name, rec) in db_rec.tables.iter() {
@@ -2285,7 +2272,7 @@ fn crawler_as_dict(rec: &CrawlerRec) -> Value {
         "CrawlerSecurityConfiguration": rec.crawler_security_configuration,
     });
     let base = obj.as_object_mut().unwrap();
-    if rec.schedule.as_str().map_or(false, |s| !s.is_empty()) {
+    if rec.schedule.as_str().is_some_and(|s| !s.is_empty()) {
         base.insert(
             "Schedule".into(),
             json!({"ScheduleExpression": rec.schedule, "State": "SCHEDULED"}),
@@ -2313,13 +2300,6 @@ fn crawler_status(rec: &CrawlerRec) -> String {
         Some("STOPPING") => "STOPPING".to_string(),
         _ => "READY".to_string(),
     }
-}
-
-fn find_crawler_mut<'a>(g: &'a mut GlueState, p: &Value) -> Result<&'a mut CrawlerRec, Response> {
-    let name = str_field(p, "Name");
-    g.crawlers
-        .get_mut(&name)
-        .ok_or_else(|| not_found(&format!("Crawler {name} not found.")))
 }
 
 fn find_crawler<'a>(g: &'a mut GlueState, p: &Value) -> Result<&'a mut CrawlerRec, Response> {
@@ -2382,7 +2362,7 @@ fn delete_crawler(g: &mut GlueState, p: &Value) -> Response {
 
 fn start_crawler(g: &mut GlueState, p: &Value) -> Response {
     let rec = try_resp!(find_crawler(g, p));
-    if rec.crawls.last().map_or(false, |c| c.status == "RUNNING") {
+    if rec.crawls.last().is_some_and(|c| c.status == "RUNNING") {
         return err(
             400,
             "CrawlerRunningException",
@@ -2493,7 +2473,7 @@ fn batch_get_crawlers(g: &mut GlueState, p: &Value) -> Response {
 fn get_crawler_metrics(g: &mut GlueState, p: &Value) -> Response {
     let wanted = p["CrawlerNameList"]
         .as_array()
-        .map(|a| str_list(&p["CrawlerNameList"]));
+        .map(|_a| str_list(&p["CrawlerNameList"]));
     let mut list = Vec::new();
     for name in g.crawlers.keys() {
         if let Some(wanted) = &wanted {
@@ -2577,7 +2557,7 @@ fn job_as_dict(rec: &JobRec) -> Value {
         }
     }
     for opt in ["ExecutionProperty", "Command", "DefaultArguments"] {
-        if base.get(opt).map_or(true, |v| v.is_null()) {
+        if !base.get(opt).is_some_and(|v| !v.is_null()) {
             base.remove(opt);
         }
     }
@@ -2712,7 +2692,7 @@ fn create_job_run_from(rec: &JobRec, p: &Value) -> JobRunRec {
             .filter(|v| !v.is_null())
             .cloned()
             .or_else(|| option_from_job_field(&rec.job, "SecurityConfiguration")),
-        notification_property: option_from_job_field(&p, "NotificationProperty")
+        notification_property: option_from_job_field(p, "NotificationProperty")
             .or_else(|| option_from_job_field(&rec.job, "NotificationProperty")),
     }
 }
@@ -2946,7 +2926,7 @@ fn trigger_as_dict(rec: &TriggerRec) -> Value {
         "Name": rec.name,
         "Type": rec.trigger_type,
         "Actions": rec.actions.clone(),
-        "State": if rec.start_on_creation { "ACTIVATED" } else if rec.state_activated() { "ACTIVATED" } else { "CREATED" },
+        "State": if rec.state_activated() || rec.start_on_creation { "ACTIVATED" } else { "CREATED" },
     });
     let base = obj.as_object_mut().unwrap();
     if !rec.workflow_name.is_null() {
@@ -3000,7 +2980,7 @@ fn create_trigger(req: &Request, g: &mut GlueState, p: &Value) -> Response {
     }
     let actions: Vec<Value> = p["Actions"]
         .as_array()
-        .map(|a| a.iter().map(|v| action_as_dict(v)).collect())
+        .map(|a| a.iter().map(action_as_dict).collect())
         .unwrap_or_default();
     let rec = TriggerRec {
         name: name.clone(),
@@ -3035,22 +3015,6 @@ fn get_trigger(g: &mut GlueState, p: &Value) -> Response {
     ok(&json!({ "Trigger": trigger_as_dict(rec) }))
 }
 
-fn triggers_by_dependency(g: &GlueState, dependent_job: Option<&str>) -> Vec<String> {
-    match dependent_job {
-        Some(job) => g
-            .triggers
-            .iter()
-            .filter(|(_, t)| {
-                t.actions
-                    .iter()
-                    .any(|a| a["JobName"].as_str().map_or(false, |jn| jn == job))
-            })
-            .map(|(n, _)| n.clone())
-            .collect(),
-        None => g.triggers.keys().cloned().collect(),
-    }
-}
-
 fn get_triggers(g: &mut GlueState, p: &Value) -> Response {
     let dependent = p["DependentJobName"].as_str().map(str::to_string);
     let names = triggers_by_dependent(g, dependent.as_deref());
@@ -3069,7 +3033,7 @@ fn triggers_by_dependent(g: &GlueState, dependent: Option<&str>) -> Vec<String> 
             .filter(|(_, t)| {
                 t.actions
                     .iter()
-                    .any(|a| a["JobName"].as_str().map_or(false, |jn| jn == job))
+                    .any(|a| a["JobName"].as_str().is_some_and(|jn| jn == job))
             })
             .map(|(n, _)| n.clone())
             .collect(),
@@ -3887,7 +3851,7 @@ fn registry_dict(rec: &RegistryRec) -> Value {
     })
 }
 
-fn create_registry(req: &Request, g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+fn create_registry(_req: &Request, g: &mut GlueState, p: &Value) -> Result<Response, Response> {
     let name = str_field(p, "RegistryName");
     let arn = make_arn(&g.scope_region, g.scope_account, "registry", &name);
     if g.registries.contains_key(&name) {
@@ -4002,7 +3966,7 @@ fn resolve_schema_id(g: &GlueState, p: &Value) -> Result<(String, String), Respo
             return if g
                 .registries
                 .get(&registry_name)
-                .map_or(false, |r| r.schemas.contains_key(&schema_name))
+                .is_some_and(|r| r.schemas.contains_key(&schema_name))
             {
                 Ok((registry_name, schema_name))
             } else {
@@ -4018,7 +3982,7 @@ fn resolve_schema_id(g: &GlueState, p: &Value) -> Result<(String, String), Respo
         return if g
             .registries
             .get(registry_name)
-            .map_or(false, |r| r.schemas.contains_key(schema_name))
+            .is_some_and(|r| r.schemas.contains_key(schema_name))
         {
             Ok((registry_name.to_string(), schema_name.to_string()))
         } else {
@@ -4039,12 +4003,6 @@ fn is_uuid_shape(v: &str) -> bool {
         && parts[3].len() == 4
         && parts[4].len() == 12
         && v.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
-}
-
-fn valid_version_input(p: &Value, has_schema_id: bool) -> bool {
-    let has_latest = !p["SchemaVersionNumber"]["LatestVersion"].is_null();
-    let has_number = !p["SchemaVersionNumber"]["VersionNumber"].is_null();
-    has_schema_id && (has_latest || has_number)
 }
 
 fn create_schema(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
@@ -4501,8 +4459,8 @@ fn put_schema_version_metadata(g: &mut GlueState, p: &Value) -> Result<Response,
     })))
 }
 
-fn locate_version_by_id<'a>(
-    g: &'a mut GlueState,
+fn locate_version_by_id(
+    g: &mut GlueState,
     vid: &str,
 ) -> Result<(String, String, usize, String), Response> {
     for registry in g.registries.keys().cloned().collect::<Vec<_>>() {
@@ -5233,7 +5191,7 @@ fn create_session(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
 
 fn find_session_mut<'a>(g: &'a mut GlueState, p: &Value) -> Result<&'a mut SessionRec, Response> {
     // Statement ops address the session via `SessionId`; session ops via `Id`.
-    let id = if p.get("SessionId").map_or(false, Value::is_string) {
+    let id = if p.get("SessionId").is_some_and(Value::is_string) {
         str_field(p, "SessionId")
     } else {
         str_field(p, "Id")
@@ -5413,17 +5371,24 @@ fn delete_connection(g: &mut GlueState, p: &Value) -> Result<Response, Response>
 
 fn batch_delete_connection(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
     let mut succeeded = Vec::new();
-    let mut errors = Vec::new();
+    // moto returns a map keyed by connection name (ErrorByName).
+    let mut errors = Map::new();
     for name in str_list(&p["ConnectionNameList"]) {
         if g.connections.remove(&name).is_some() {
             succeeded.push(json!(name));
         } else {
-            errors.push(json!({
-                "ErrorDetail": {"ErrorCode": "EntityNotFoundException", "ErrorMessage": "Connection not found."}
-            }));
+            errors.insert(
+                name.clone(),
+                json!({
+                    "ErrorCode": "EntityNotFoundException",
+                    "ErrorMessage": format!("Connection {name} not found"),
+                }),
+            );
         }
     }
-    Ok(ok(&json!({ "Succeeded": succeeded, "Errors": errors })))
+    Ok(ok(
+        &json!({ "Succeeded": succeeded, "Errors": Value::Object(errors) }),
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -5765,7 +5730,7 @@ mod family4_tests {
             json!({"ConnectionNameList": ["c1", "zz"]}),
         ));
         assert_eq!(b["Succeeded"].as_array().unwrap().len(), 1);
-        assert_eq!(b["Errors"].as_array().unwrap().len(), 1);
+        assert_eq!(b["Errors"]["zz"]["ErrorCode"], "EntityNotFoundException");
 
         assert_eq!(
             err_code(&d(acct, "GetConnection", json!({"Name": "c1"}))),
@@ -5877,7 +5842,7 @@ fn find_ml_transform_mut<'a>(
         .ok_or_else(|| not_found(&format!("ML Task {id} not found.")))
 }
 
-fn create_ml_transform(req: &Request, g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+fn create_ml_transform(_req: &Request, g: &mut GlueState, p: &Value) -> Result<Response, Response> {
     let transform_id = format!("tfm_{}", hex_n(32));
     let name = str_field(p, "Name");
     let (region, account) = (g.scope_region.clone(), g.scope_account);
@@ -5977,16 +5942,9 @@ fn update_ml_transform(g: &mut GlueState, p: &Value) -> Result<Response, Respons
 }
 
 fn get_ml_task_run(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
-    let id = str_field(p, "TransformId");
     let _ = find_ml_transform_mut(g, p)?;
-    Err(not_found(&format!(
-        "MLTaskRun {} not found.",
-        str_field(p, "TaskRunId")
-    )))
-    .map_err(|resp| {
-        let _ = id;
-        resp
-    })
+    let task_run_id = str_field(p, "TaskRunId");
+    Err(not_found(&format!("MLTaskRun {task_run_id} not found.")))
 }
 
 fn get_ml_task_runs(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
@@ -6172,7 +6130,7 @@ fn dq_ruleset_dict(rec: &(Value, f64)) -> Value {
     obj
 }
 
-fn create_dq_ruleset(req: &Request, g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+fn create_dq_ruleset(_req: &Request, g: &mut GlueState, p: &Value) -> Result<Response, Response> {
     let name = str_field(p, "Name");
     let created = now_unix();
     g.data_quality_rulesets.insert(
@@ -6292,21 +6250,21 @@ fn get_dq_evaluation_run(g: &mut GlueState, p: &Value) -> Result<Response, Respo
     }
 }
 
-fn get_dq_result(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+fn get_dq_result(_g: &mut GlueState, p: &Value) -> Result<Response, Response> {
     let result_id = str_field(p, "ResultId");
     Err(not_found(&format!(
         "DataQualityResult {result_id} not found."
     )))
 }
 
-fn batch_get_dq_result(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+fn batch_get_dq_result(_g: &mut GlueState, p: &Value) -> Result<Response, Response> {
     Ok(ok(&json!({
         "Results": [],
         "ResultsNotFound": p["ResultIds"],
     })))
 }
 
-fn get_dq_model(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+fn get_dq_model(_g: &mut GlueState, p: &Value) -> Result<Response, Response> {
     let profile_id = str_field(p, "ProfileId");
     Err(not_found(&format!(
         "DataQualityModel for profile {profile_id} not found."
@@ -6719,19 +6677,6 @@ fn delete_usage_profile(g: &mut GlueState, p: &Value) -> Result<Response, Respon
 // ---------------------------------------------------------------------------
 // Custom entity types
 // ---------------------------------------------------------------------------
-
-fn custom_entity_dict(rec: &(String, Value)) -> Value {
-    let mut obj = json!({ "Name": "x", "RegexString": rec.0 });
-    obj["RegexString"] = json!(rec.0);
-    obj["Name"] = rec.1.clone();
-    if obj.get("ContextWords").map_or(true, |v| v.is_null()) {
-        if let Some(m) = obj.as_object_mut() {
-            m.remove("ContextWords");
-            m.insert("Name".into(), rec.1.clone());
-        }
-    }
-    obj
-}
 
 fn create_custom_entity_type(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
     let name = str_field(p, "Name");
@@ -7360,8 +7305,7 @@ fn get_integration_table_properties(g: &mut GlueState, p: &Value) -> Result<Resp
 fn update_integration_table_properties(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
     let arn = str_field(p, "ResourceArn");
     let key = format!("{}:{}", arn, str_field(p, "TableName"));
-    let missing = g.integration_table_properties.get(&key).is_none();
-    if missing {
+    if !g.integration_table_properties.contains_key(&key) {
         return Err(not_found(&format!(
             "IntegrationTableProperties for {arn}/{} not found.",
             str_field(p, "TableName")
@@ -7392,15 +7336,6 @@ fn delete_integration_table_properties(g: &mut GlueState, p: &Value) -> Result<R
 // ---------------------------------------------------------------------------
 // Glue Identity Center configuration (singleton)
 // ---------------------------------------------------------------------------
-
-fn identity_center_dict(g: &GlueState, rec: &Value) -> Value {
-    json!({
-        "ApplicationArn": rec["ApplicationArn"],
-        "InstanceArn": rec["InstanceArn"],
-        "Scopes": rec["Scopes"],
-        "UserBackgroundSessionsEnabled": rec["UserBackgroundSessionsEnabled"],
-    })
-}
 
 fn create_identity_center(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
     if g.identity_center_config.is_some() {
@@ -7531,16 +7466,20 @@ fn list_mv_refresh(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
         .values()
         .filter(|t| {
             cat.as_deref()
-                .map_or(true, |c| str_field(t, "CatalogId") == c)
+                .map(|c| str_field(t, "CatalogId") == c)
+                .unwrap_or(true)
                 && db
                     .as_deref()
-                    .map_or(true, |d| str_field(t, "DatabaseName") == d)
+                    .map(|d| str_field(t, "DatabaseName") == d)
+                    .unwrap_or(true)
                 && tbl
                     .as_deref()
-                    .map_or(true, |x| str_field(t, "TableName") == x)
-                && run_id.as_deref().map_or(true, |r| {
-                    str_field(t, "MaterializedViewRefreshTaskRunId") == r
-                })
+                    .map(|x| str_field(t, "TableName") == x)
+                    .unwrap_or(true)
+                && run_id
+                    .as_deref()
+                    .map(|r| str_field(t, "MaterializedViewRefreshTaskRunId") == r)
+                    .unwrap_or(true)
         })
         .map(mv_refresh_dict)
         .collect();
@@ -7597,10 +7536,6 @@ fn register_connection_type(
         connection_type.clone(),
         ConnectionTypeRec {
             connection_type: connection_type.clone(),
-            integration_type: p["IntegrationType"]
-                .as_str()
-                .unwrap_or("CUSTOM")
-                .to_string(),
             connection_properties: match p["ConnectionProperties"].clone() {
                 Value::Null => json!({}),
                 v => v,
