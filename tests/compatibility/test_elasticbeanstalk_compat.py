@@ -1,0 +1,776 @@
+"""Elastic Beanstalk compatibility tests."""
+
+import uuid
+
+import pytest
+
+from tests.compatibility.conftest import make_client
+
+
+@pytest.fixture
+def eb():
+    return make_client("elasticbeanstalk")
+
+
+def _unique(prefix: str) -> str:
+    return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
+
+class TestApplicationOperations:
+    def test_describe_applications_empty(self, eb):
+        resp = eb.describe_applications()
+        assert "Applications" in resp
+
+    def test_create_application(self, eb):
+        name = _unique("app")
+        resp = eb.create_application(ApplicationName=name)
+        assert resp["Application"]["ApplicationName"] == name
+        eb.delete_application(ApplicationName=name)
+
+    def test_describe_applications_filtered(self, eb):
+        name = _unique("desc-app")
+        eb.create_application(ApplicationName=name)
+        try:
+            resp = eb.describe_applications(ApplicationNames=[name])
+            apps = resp["Applications"]
+            assert len(apps) == 1
+            assert apps[0]["ApplicationName"] == name
+        finally:
+            eb.delete_application(ApplicationName=name)
+
+    def test_delete_application(self, eb):
+        name = _unique("del-app")
+        eb.create_application(ApplicationName=name)
+        eb.delete_application(ApplicationName=name)
+        resp = eb.describe_applications(ApplicationNames=[name])
+        assert len(resp["Applications"]) == 0
+
+    def test_create_application_has_arn(self, eb):
+        name = _unique("arn-app")
+        resp = eb.create_application(ApplicationName=name)
+        try:
+            assert "ApplicationArn" in resp["Application"]
+            assert name in resp["Application"]["ApplicationArn"]
+        finally:
+            eb.delete_application(ApplicationName=name)
+
+
+class TestApplicationVersionOperations:
+    def test_create_application_version(self, eb):
+        """CreateApplicationVersion creates a version."""
+        app_name = _unique("ver-app")
+        eb.create_application(ApplicationName=app_name)
+        try:
+            resp = eb.create_application_version(
+                ApplicationName=app_name,
+                VersionLabel="v1",
+                Description="initial version",
+            )
+            assert resp["ApplicationVersion"]["VersionLabel"] == "v1"
+            assert resp["ApplicationVersion"]["ApplicationName"] == app_name
+        finally:
+            eb.delete_application(ApplicationName=app_name)
+
+    def test_describe_application_versions_filtered(self, eb):
+        """DescribeApplicationVersions filters by application."""
+        app_name = _unique("dver-app")
+        eb.create_application(ApplicationName=app_name)
+        eb.create_application_version(
+            ApplicationName=app_name,
+            VersionLabel="v1",
+        )
+        try:
+            resp = eb.describe_application_versions(ApplicationName=app_name)
+            assert len(resp["ApplicationVersions"]) >= 1
+            assert resp["ApplicationVersions"][0]["VersionLabel"] == "v1"
+        finally:
+            eb.delete_application(ApplicationName=app_name)
+
+
+class TestSolutionStacks:
+    def test_list_available_solution_stacks(self, eb):
+        resp = eb.list_available_solution_stacks()
+        stacks = resp["SolutionStacks"]
+        assert isinstance(stacks, list)
+        assert len(stacks) > 0
+
+
+class TestEnvironmentOperations:
+    @pytest.fixture
+    def app(self, eb):
+        name = _unique("env-app")
+        eb.create_application(ApplicationName=name)
+        yield name
+        eb.delete_application(ApplicationName=name)
+
+    @pytest.fixture
+    def solution_stack(self, eb):
+        resp = eb.list_available_solution_stacks()
+        return resp["SolutionStacks"][0]
+
+    def test_describe_environments_empty(self, eb):
+        resp = eb.describe_environments()
+        assert "Environments" in resp
+
+    def test_create_environment(self, eb, app, solution_stack):
+        env_name = _unique("env")
+        resp = eb.create_environment(
+            ApplicationName=app,
+            EnvironmentName=env_name,
+            SolutionStackName=solution_stack,
+        )
+        assert resp["EnvironmentName"] == env_name
+        assert resp["ApplicationName"] == app
+        assert "EnvironmentId" in resp
+
+    def test_describe_environments_filtered(self, eb, app, solution_stack):
+        env_name = _unique("desc-env")
+        eb.create_environment(
+            ApplicationName=app,
+            EnvironmentName=env_name,
+            SolutionStackName=solution_stack,
+        )
+        resp = eb.describe_environments(EnvironmentNames=[env_name])
+        envs = resp["Environments"]
+        assert len(envs) == 1
+        assert envs[0]["EnvironmentName"] == env_name
+
+    def test_describe_environments_by_application(self, eb, app, solution_stack):
+        env_name = _unique("byapp-env")
+        eb.create_environment(
+            ApplicationName=app,
+            EnvironmentName=env_name,
+            SolutionStackName=solution_stack,
+        )
+        resp = eb.describe_environments(ApplicationName=app)
+        envs = resp["Environments"]
+        assert any(e["EnvironmentName"] == env_name for e in envs)
+
+    def test_environment_has_status(self, eb, app, solution_stack):
+        env_name = _unique("status-env")
+        resp = eb.create_environment(
+            ApplicationName=app,
+            EnvironmentName=env_name,
+            SolutionStackName=solution_stack,
+        )
+        assert "Status" in resp
+
+
+class TestTagsForResource:
+    @pytest.fixture
+    def env_arn(self, eb):
+        app_name = _unique("tag-app")
+        env_name = _unique("tag-env")
+        eb.create_application(ApplicationName=app_name)
+        stacks = eb.list_available_solution_stacks()["SolutionStacks"]
+        resp = eb.create_environment(
+            ApplicationName=app_name,
+            EnvironmentName=env_name,
+            SolutionStackName=stacks[0],
+        )
+        arn = resp["EnvironmentArn"]
+        yield arn
+        eb.delete_application(ApplicationName=app_name)
+
+    def test_list_tags_for_resource(self, eb, env_arn):
+        resp = eb.list_tags_for_resource(ResourceArn=env_arn)
+        assert "ResourceTags" in resp
+
+    def test_update_tags_for_resource(self, eb, env_arn):
+        eb.update_tags_for_resource(
+            ResourceArn=env_arn,
+            TagsToAdd=[{"Key": "env", "Value": "test"}],
+        )
+        resp = eb.list_tags_for_resource(ResourceArn=env_arn)
+        tags = {t["Key"]: t["Value"] for t in resp["ResourceTags"]}
+        assert tags["env"] == "test"
+
+
+class TestElasticBeanstalkAdditionalOps:
+    """Tests for additional ElasticBeanstalk operations."""
+
+    def test_describe_account_attributes(self, eb):
+        resp = eb.describe_account_attributes()
+        assert "ResourceQuotas" in resp
+
+    def test_describe_application_versions_empty(self, eb):
+        resp = eb.describe_application_versions()
+        assert "ApplicationVersions" in resp
+        assert isinstance(resp["ApplicationVersions"], list)
+
+    def test_describe_configuration_options(self, eb):
+        resp = eb.describe_configuration_options()
+        assert "Options" in resp
+        assert isinstance(resp["Options"], list)
+
+    def test_describe_configuration_settings(self, eb):
+        app_name = _unique("cfg-app")
+        eb.create_application(ApplicationName=app_name)
+        try:
+            resp = eb.describe_configuration_settings(ApplicationName=app_name)
+            assert "ConfigurationSettings" in resp
+        finally:
+            eb.delete_application(ApplicationName=app_name)
+
+    def test_describe_environment_health(self, eb):
+        resp = eb.describe_environment_health(
+            EnvironmentName="nonexistent-env",
+            AttributeNames=["All"],
+        )
+        assert "HealthStatus" in resp
+
+    def test_describe_environment_managed_action_history(self, eb):
+        resp = eb.describe_environment_managed_action_history()
+        assert "ManagedActionHistoryItems" in resp
+        assert isinstance(resp["ManagedActionHistoryItems"], list)
+
+    def test_describe_environment_managed_actions(self, eb):
+        resp = eb.describe_environment_managed_actions()
+        assert "ManagedActions" in resp
+        assert isinstance(resp["ManagedActions"], list)
+
+    def test_describe_environment_resources(self, eb):
+        resp = eb.describe_environment_resources(EnvironmentName="nonexistent-env")
+        assert "EnvironmentResources" in resp
+
+    def test_describe_events(self, eb):
+        resp = eb.describe_events()
+        assert "Events" in resp
+        assert isinstance(resp["Events"], list)
+
+    def test_describe_instances_health(self, eb):
+        resp = eb.describe_instances_health(EnvironmentName="nonexistent-env")
+        assert "InstanceHealthList" in resp
+        assert isinstance(resp["InstanceHealthList"], list)
+
+    def test_describe_platform_version(self, eb):
+        resp = eb.describe_platform_version(
+            PlatformArn="arn:aws:elasticbeanstalk:us-east-1::platform/test/1.0"
+        )
+        assert "PlatformDescription" in resp
+
+    def test_list_platform_branches(self, eb):
+        resp = eb.list_platform_branches()
+        assert "PlatformBranchSummaryList" in resp
+        assert isinstance(resp["PlatformBranchSummaryList"], list)
+
+    def test_list_platform_versions(self, eb):
+        resp = eb.list_platform_versions()
+        assert "PlatformSummaryList" in resp
+        assert isinstance(resp["PlatformSummaryList"], list)
+
+
+class TestApplicationVersionFiltering:
+    """Tests for application version filtering and multiple versions."""
+
+    @pytest.fixture
+    def app_with_versions(self, eb):
+        name = _unique("ver-app")
+        eb.create_application(ApplicationName=name)
+        eb.create_application_version(ApplicationName=name, VersionLabel="v1", Description="first")
+        eb.create_application_version(ApplicationName=name, VersionLabel="v2", Description="second")
+        yield name
+        eb.delete_application(ApplicationName=name)
+
+    def test_describe_application_versions_multiple(self, eb, app_with_versions):
+        """DescribeApplicationVersions returns multiple versions."""
+        resp = eb.describe_application_versions(ApplicationName=app_with_versions)
+        versions = resp["ApplicationVersions"]
+        assert len(versions) >= 2
+        labels = {v["VersionLabel"] for v in versions}
+        assert "v1" in labels
+        assert "v2" in labels
+
+    def test_describe_application_versions_by_label(self, eb, app_with_versions):
+        """DescribeApplicationVersions filters by VersionLabels."""
+        resp = eb.describe_application_versions(
+            ApplicationName=app_with_versions, VersionLabels=["v1"]
+        )
+        versions = resp["ApplicationVersions"]
+        assert len(versions) == 1
+        assert versions[0]["VersionLabel"] == "v1"
+
+    def test_application_version_has_application_name(self, eb, app_with_versions):
+        """ApplicationVersion includes ApplicationName."""
+        resp = eb.describe_application_versions(ApplicationName=app_with_versions)
+        for v in resp["ApplicationVersions"]:
+            assert v["ApplicationName"] == app_with_versions
+
+    def test_application_version_has_description(self, eb, app_with_versions):
+        """ApplicationVersion includes Description when provided."""
+        resp = eb.describe_application_versions(
+            ApplicationName=app_with_versions, VersionLabels=["v1"]
+        )
+        assert resp["ApplicationVersions"][0]["Description"] == "first"
+
+
+class TestEnvironmentDetails:
+    """Tests for environment creation details and filtering."""
+
+    @pytest.fixture
+    def solution_stack(self, eb):
+        resp = eb.list_available_solution_stacks()
+        return resp["SolutionStacks"][0]
+
+    @pytest.fixture
+    def app(self, eb):
+        name = _unique("envdet-app")
+        eb.create_application(ApplicationName=name)
+        yield name
+        eb.delete_application(ApplicationName=name)
+
+    def test_environment_has_arn(self, eb, app, solution_stack):
+        """CreateEnvironment returns EnvironmentArn."""
+        env_name = _unique("earn-env")
+        resp = eb.create_environment(
+            ApplicationName=app,
+            EnvironmentName=env_name,
+            SolutionStackName=solution_stack,
+        )
+        assert "EnvironmentArn" in resp
+        assert "environment" in resp["EnvironmentArn"]
+
+    def test_describe_environments_by_id(self, eb, app, solution_stack):
+        """DescribeEnvironments filters by EnvironmentIds."""
+        env_name = _unique("byid-env")
+        created = eb.create_environment(
+            ApplicationName=app,
+            EnvironmentName=env_name,
+            SolutionStackName=solution_stack,
+        )
+        env_id = created["EnvironmentId"]
+        resp = eb.describe_environments(EnvironmentIds=[env_id])
+        assert len(resp["Environments"]) == 1
+        assert resp["Environments"][0]["EnvironmentId"] == env_id
+
+    def test_create_environment_with_tags(self, eb, app, solution_stack):
+        """CreateEnvironment with Tags makes tags retrievable."""
+        env_name = _unique("tagging-env")
+        created = eb.create_environment(
+            ApplicationName=app,
+            EnvironmentName=env_name,
+            SolutionStackName=solution_stack,
+            Tags=[{"Key": "team", "Value": "backend"}],
+        )
+        arn = created["EnvironmentArn"]
+        tags_resp = eb.list_tags_for_resource(ResourceArn=arn)
+        tag_dict = {t["Key"]: t["Value"] for t in tags_resp["ResourceTags"]}
+        assert tag_dict["team"] == "backend"
+
+    def test_environment_has_solution_stack_name(self, eb, app, solution_stack):
+        """CreateEnvironment returns a SolutionStackName field."""
+        env_name = _unique("ss-env")
+        resp = eb.create_environment(
+            ApplicationName=app,
+            EnvironmentName=env_name,
+            SolutionStackName=solution_stack,
+        )
+        assert "SolutionStackName" in resp
+
+
+class TestTagsRoundTrip:
+    """Tests for tag add/remove round-trip."""
+
+    @pytest.fixture
+    def env_arn(self, eb):
+        app_name = _unique("tagrt-app")
+        env_name = _unique("tagrt-env")
+        eb.create_application(ApplicationName=app_name)
+        stacks = eb.list_available_solution_stacks()["SolutionStacks"]
+        resp = eb.create_environment(
+            ApplicationName=app_name,
+            EnvironmentName=env_name,
+            SolutionStackName=stacks[0],
+        )
+        arn = resp["EnvironmentArn"]
+        yield arn
+        eb.delete_application(ApplicationName=app_name)
+
+    def test_add_multiple_tags(self, eb, env_arn):
+        """UpdateTagsForResource can add multiple tags at once."""
+        eb.update_tags_for_resource(
+            ResourceArn=env_arn,
+            TagsToAdd=[
+                {"Key": "k1", "Value": "v1"},
+                {"Key": "k2", "Value": "v2"},
+            ],
+        )
+        resp = eb.list_tags_for_resource(ResourceArn=env_arn)
+        tag_dict = {t["Key"]: t["Value"] for t in resp["ResourceTags"]}
+        assert tag_dict["k1"] == "v1"
+        assert tag_dict["k2"] == "v2"
+
+    def test_remove_tags(self, eb, env_arn):
+        """UpdateTagsForResource can remove tags."""
+        eb.update_tags_for_resource(
+            ResourceArn=env_arn,
+            TagsToAdd=[{"Key": "removeme", "Value": "val"}],
+        )
+        eb.update_tags_for_resource(
+            ResourceArn=env_arn,
+            TagsToRemove=["removeme"],
+        )
+        resp = eb.list_tags_for_resource(ResourceArn=env_arn)
+        keys = [t["Key"] for t in resp["ResourceTags"]]
+        assert "removeme" not in keys
+
+
+class TestConfigurationTemplateOperations:
+    """Tests for configuration template CRUD operations."""
+
+    @pytest.fixture
+    def app(self, eb):
+        name = _unique("tpl-app")
+        eb.create_application(ApplicationName=name)
+        yield name
+        eb.delete_application(ApplicationName=name)
+
+    @pytest.fixture
+    def solution_stack(self, eb):
+        resp = eb.list_available_solution_stacks()
+        return resp["SolutionStacks"][0]
+
+    def test_create_configuration_template(self, eb, app, solution_stack):
+        """CreateConfigurationTemplate creates a template for an application."""
+        tpl_name = _unique("tpl")
+        resp = eb.create_configuration_template(
+            ApplicationName=app,
+            TemplateName=tpl_name,
+            SolutionStackName=solution_stack,
+        )
+        assert resp["ApplicationName"] == app
+        assert resp["TemplateName"] == tpl_name
+        assert "SolutionStackName" in resp
+
+    def test_update_configuration_template(self, eb, app, solution_stack):
+        """UpdateConfigurationTemplate updates description."""
+        tpl_name = _unique("upd-tpl")
+        eb.create_configuration_template(
+            ApplicationName=app,
+            TemplateName=tpl_name,
+            SolutionStackName=solution_stack,
+        )
+        resp = eb.update_configuration_template(
+            ApplicationName=app,
+            TemplateName=tpl_name,
+            Description="updated description",
+        )
+        assert resp["ApplicationName"] == app
+        assert resp["TemplateName"] == tpl_name
+
+    def test_delete_configuration_template(self, eb, app, solution_stack):
+        """DeleteConfigurationTemplate removes the template."""
+        tpl_name = _unique("del-tpl")
+        eb.create_configuration_template(
+            ApplicationName=app,
+            TemplateName=tpl_name,
+            SolutionStackName=solution_stack,
+        )
+        # Should not raise
+        eb.delete_configuration_template(
+            ApplicationName=app,
+            TemplateName=tpl_name,
+        )
+        # Verify it's gone by checking describe_configuration_settings
+        resp = eb.describe_configuration_settings(ApplicationName=app)
+        tpl_names = [s.get("TemplateName") for s in resp["ConfigurationSettings"]]
+        assert tpl_name not in tpl_names
+
+
+class TestEnvironmentUpdateOperations:
+    """Tests for environment update, rebuild, and abort operations."""
+
+    @pytest.fixture
+    def solution_stack(self, eb):
+        resp = eb.list_available_solution_stacks()
+        return resp["SolutionStacks"][0]
+
+    @pytest.fixture
+    def app_and_env(self, eb, solution_stack):
+        app_name = _unique("upd-app")
+        env_name = _unique("upd-env")
+        eb.create_application(ApplicationName=app_name)
+        resp = eb.create_environment(
+            ApplicationName=app_name,
+            EnvironmentName=env_name,
+            SolutionStackName=solution_stack,
+        )
+        env_id = resp["EnvironmentId"]
+        yield app_name, env_name, env_id
+        eb.delete_application(ApplicationName=app_name)
+
+    def test_update_environment(self, eb, app_and_env):
+        """UpdateEnvironment updates the environment description."""
+        app_name, env_name, env_id = app_and_env
+        resp = eb.update_environment(
+            EnvironmentName=env_name,
+            Description="updated env",
+        )
+        assert resp["EnvironmentName"] == env_name
+        assert "EnvironmentId" in resp
+
+    def test_terminate_environment(self, eb, solution_stack):
+        """TerminateEnvironment terminates an environment."""
+        app_name = _unique("term-app")
+        env_name = _unique("term-env")
+        eb.create_application(ApplicationName=app_name)
+        eb.create_environment(
+            ApplicationName=app_name,
+            EnvironmentName=env_name,
+            SolutionStackName=solution_stack,
+        )
+        try:
+            resp = eb.terminate_environment(EnvironmentName=env_name)
+            assert resp["EnvironmentName"] == env_name
+            assert resp["Status"] == "Terminated"
+        finally:
+            eb.delete_application(ApplicationName=app_name)
+
+    def test_abort_environment_update(self, eb, app_and_env):
+        """AbortEnvironmentUpdate can be called on an environment."""
+        _app_name, env_name, _env_id = app_and_env
+        # AbortEnvironmentUpdate returns None on success (no response body)
+        eb.abort_environment_update(EnvironmentName=env_name)
+        # Verify environment still exists after abort
+        resp = eb.describe_environments(EnvironmentNames=[env_name])
+        assert len(resp["Environments"]) == 1
+
+    def test_rebuild_environment(self, eb, app_and_env):
+        """RebuildEnvironment can be called on an environment."""
+        _app_name, env_name, _env_id = app_and_env
+        eb.rebuild_environment(EnvironmentName=env_name)
+        # Verify environment still exists after rebuild
+        resp = eb.describe_environments(EnvironmentNames=[env_name])
+        assert len(resp["Environments"]) == 1
+
+
+class TestEnvironmentInfoOperations:
+    """Tests for RequestEnvironmentInfo and RetrieveEnvironmentInfo."""
+
+    @pytest.fixture
+    def solution_stack(self, eb):
+        resp = eb.list_available_solution_stacks()
+        return resp["SolutionStacks"][0]
+
+    @pytest.fixture
+    def env_name(self, eb, solution_stack):
+        app_name = _unique("info-app")
+        env_name = _unique("info-env")
+        eb.create_application(ApplicationName=app_name)
+        eb.create_environment(
+            ApplicationName=app_name,
+            EnvironmentName=env_name,
+            SolutionStackName=solution_stack,
+        )
+        yield env_name
+        eb.delete_application(ApplicationName=app_name)
+
+    def test_request_environment_info(self, eb, env_name):
+        """RequestEnvironmentInfo can be called with tail info type."""
+        eb.request_environment_info(
+            EnvironmentName=env_name,
+            InfoType="tail",
+        )
+        # No exception means success; request_environment_info has no response body
+
+    def test_retrieve_environment_info(self, eb, env_name):
+        """RetrieveEnvironmentInfo returns info list."""
+        eb.request_environment_info(
+            EnvironmentName=env_name,
+            InfoType="tail",
+        )
+        resp = eb.retrieve_environment_info(
+            EnvironmentName=env_name,
+            InfoType="tail",
+        )
+        assert "EnvironmentInfo" in resp
+        assert isinstance(resp["EnvironmentInfo"], list)
+
+
+class TestPlatformVersionOperations:
+    """Tests for CreatePlatformVersion and DeletePlatformVersion."""
+
+    def test_create_platform_version(self, eb):
+        """CreatePlatformVersion creates a custom platform."""
+        pv_name = _unique("plat")
+        resp = eb.create_platform_version(
+            PlatformName=pv_name,
+            PlatformVersion="1.0.0",
+            PlatformDefinitionBundle={
+                "S3Bucket": "my-bucket",
+                "S3Key": "my-platform.zip",
+            },
+        )
+        assert "PlatformSummary" in resp
+        assert "PlatformArn" in resp["PlatformSummary"]
+
+    def test_delete_platform_version(self, eb):
+        """DeletePlatformVersion deletes a custom platform."""
+        pv_name = _unique("delplat")
+        created = eb.create_platform_version(
+            PlatformName=pv_name,
+            PlatformVersion="1.0.0",
+            PlatformDefinitionBundle={
+                "S3Bucket": "my-bucket",
+                "S3Key": "my-platform.zip",
+            },
+        )
+        platform_arn = created["PlatformSummary"]["PlatformArn"]
+        resp = eb.delete_platform_version(PlatformArn=platform_arn)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+class TestComposeEnvironments:
+    """Tests for ComposeEnvironments operation."""
+
+    def test_compose_environments(self, eb):
+        """ComposeEnvironments returns environment list."""
+        app_name = _unique("compose-app")
+        eb.create_application(ApplicationName=app_name)
+        try:
+            resp = eb.compose_environments(ApplicationName=app_name)
+            assert "Environments" in resp
+            assert isinstance(resp["Environments"], list)
+        finally:
+            eb.delete_application(ApplicationName=app_name)
+
+
+class TestApplyEnvironmentManagedAction:
+    """Tests for ApplyEnvironmentManagedAction operation."""
+
+    def test_apply_environment_managed_action(self, eb):
+        """ApplyEnvironmentManagedAction returns action status."""
+        resp = eb.apply_environment_managed_action(
+            EnvironmentName="nonexistent-env",
+            ActionId="fake-action-id",
+        )
+        assert "ActionId" in resp
+        assert "Status" in resp
+
+
+class TestElasticBeanstalkSwapCNAMEs:
+    """Tests for SwapEnvironmentCNAMEs operation."""
+
+    def test_swap_environment_cnames_not_found(self, eb):
+        """SwapEnvironmentCNAMEs with fake environments raises InvalidParameterValue."""
+        import pytest
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc_info:
+            eb.swap_environment_cnames(
+                SourceEnvironmentName="fake-env-1",
+                DestinationEnvironmentName="fake-env-2",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "InvalidParameterValue"
+
+
+class TestElasticBeanstalkNewOps:
+    """Tests for newly implemented ElasticBeanstalk operations."""
+
+    def test_check_dns_availability(self, eb):
+        """CheckDNSAvailability returns availability and FQCN."""
+        resp = eb.check_dns_availability(CNAMEPrefix="my-unique-prefix-xyz")
+        assert "Available" in resp
+        assert "FullyQualifiedCNAME" in resp
+
+    def test_create_storage_location(self, eb):
+        """CreateStorageLocation returns the S3 bucket name."""
+        resp = eb.create_storage_location()
+        assert "S3Bucket" in resp
+        assert "elasticbeanstalk" in resp["S3Bucket"]
+
+    def test_associate_environment_operations_role_nonexistent(self, eb):
+        """AssociateEnvironmentOperationsRole with nonexistent env succeeds silently."""
+        # AWS silently ignores nonexistent environments
+        resp = eb.associate_environment_operations_role(
+            EnvironmentName="nonexistent-env-xyz",
+            OperationsRole="arn:aws:iam::123456789012:role/fake-role",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_disassociate_environment_operations_role_nonexistent(self, eb):
+        """DisassociateEnvironmentOperationsRole with nonexistent env succeeds silently."""
+        resp = eb.disassociate_environment_operations_role(
+            EnvironmentName="nonexistent-env-xyz",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_restart_app_server_nonexistent(self, eb):
+        """RestartAppServer with nonexistent env succeeds silently."""
+        resp = eb.restart_app_server(EnvironmentName="nonexistent-env-xyz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_delete_environment_configuration_nonexistent(self, eb):
+        """DeleteEnvironmentConfiguration with nonexistent env succeeds silently."""
+        resp = eb.delete_environment_configuration(
+            ApplicationName="nonexistent-app-xyz",
+            EnvironmentName="nonexistent-env-xyz",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_update_application_nonexistent(self, eb):
+        """UpdateApplication with nonexistent app raises InvalidParameterValue."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            eb.update_application(ApplicationName="nonexistent-app-xyz")
+        assert exc.value.response["Error"]["Code"] == "InvalidParameterValue"
+
+    def test_validate_configuration_settings_nonexistent_app(self, eb):
+        """ValidateConfigurationSettings with nonexistent app raises InvalidParameterValue."""
+        from botocore.exceptions import ClientError
+
+        with pytest.raises(ClientError) as exc:
+            eb.validate_configuration_settings(
+                ApplicationName="nonexistent-app-xyz",
+                OptionSettings=[],
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidParameterValue"
+
+    def test_update_application_and_version(self, eb):
+        """UpdateApplication and UpdateApplicationVersion on real resources work."""
+        app_name = _unique("app")
+        eb.create_application(ApplicationName=app_name)
+        try:
+            eb.create_application_version(
+                ApplicationName=app_name,
+                VersionLabel="v1.0",
+                Description="Initial version",
+            )
+            # Update application description
+            upd = eb.update_application(
+                ApplicationName=app_name,
+                Description="Updated description",
+            )
+            assert "Application" in upd
+
+            # Update application version description
+            ver_upd = eb.update_application_version(
+                ApplicationName=app_name,
+                VersionLabel="v1.0",
+                Description="Updated version description",
+            )
+            assert "ApplicationVersion" in ver_upd
+
+            # Delete application version
+            eb.delete_application_version(
+                ApplicationName=app_name,
+                VersionLabel="v1.0",
+            )
+
+            # Update resource lifecycle config
+            res = eb.update_application_resource_lifecycle(
+                ApplicationName=app_name,
+                ResourceLifecycleConfig={
+                    "VersionLifecycleConfig": {
+                        "MaxCountRule": {
+                            "Enabled": False,
+                            "MaxCount": 5,
+                            "DeleteSourceFromS3": False,
+                        }
+                    }
+                },
+            )
+            assert "ApplicationName" in res
+        finally:
+            eb.delete_application(ApplicationName=app_name)

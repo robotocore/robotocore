@@ -42,6 +42,7 @@ pub mod ec2instanceconnect;
 pub mod efs;
 pub mod eks;
 pub mod elasticache;
+pub mod elasticbeanstalk;
 pub mod elb;
 pub mod elbv2;
 pub mod emr;
@@ -138,6 +139,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "ec2instanceconnect" => ec2instanceconnect::dispatch(req),
         "eks" => eks::dispatch(req),
         "elasticache" => Some(elasticache::dispatch(req)),
+        "elasticbeanstalk" => elasticbeanstalk::dispatch(req),
         "elb" => self::elb::dispatch(req),
         "elbv2" => self::elbv2::dispatch(req),
         "emr" => Some(emr::dispatch(req)),
@@ -249,6 +251,7 @@ pub fn handles_service(service: &str) -> bool {
             | "efs"
             | "eks"
             | "elasticache"
+            | "elasticbeanstalk"
             | "elb"
             | "elbv2"
             | "emr"
