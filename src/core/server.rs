@@ -1484,17 +1484,27 @@ pub const NATIVE_SERVICES: &[&str] = &[
     "stepfunctions",
 ];
 
+fn service_is_native(name: &str) -> bool {
+    // The gateway's own handler table plus rotocore's armed backends. The
+    // registry's static "type" column is stale for both directions, so
+    // introspection derives availability from the real tables.
+    crate::core::server::ServiceRegistry::new()
+        .get(name)
+        .is_some()
+        || rotocore::handles_service(name)
+}
+
 fn registry_service_statuses() -> serde_json::Map<String, serde_json::Value> {
-    // Full sorted registry, like the Python health endpoint: every service
-    // reports status/type/request-count. Native handlers answer in-process;
-    // moto-backed services go through the bridge sidecar when one is wired.
+    // Full sorted registry: every service reports status/type/request-count.
+    // "type" is truthful: "native" when a Rust backend answers in-process,
+    // "absent" when requests would get a 501 NotImplemented.
     let mut map = serde_json::Map::new();
-    for (name, stype, _protocol, _description) in crate::core::service_registry::SERVICE_REGISTRY {
+    for (name, _stype, _protocol, _description) in crate::core::service_registry::SERVICE_REGISTRY {
         map.insert(
             name.to_string(),
             json!({
                 "status": "running",
-                "type": stype,
+                "type": if service_is_native(name) { "native" } else { "absent" },
                 "requests": crate::core::introspection::request_count(name),
             }),
         );
@@ -1568,13 +1578,14 @@ pub async fn audit_handler(uri: Uri) -> impl IntoResponse {
 pub async fn services_handler() -> impl IntoResponse {
     let entries: Vec<serde_json::Value> = crate::core::service_registry::SERVICE_REGISTRY
         .iter()
-        .map(|(name, stype, protocol, description)| {
+        .map(|(name, _stype, protocol, description)| {
+            let native = service_is_native(name);
             json!({
                 "name": name,
-                "status": stype,
+                "status": if native { "native" } else { "absent" },
                 "protocol": protocol,
                 "description": description,
-                "enabled": true,
+                "enabled": native,
             })
         })
         .collect();

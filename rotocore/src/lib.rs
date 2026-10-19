@@ -71,3 +71,6 @@ impl Response {
 pub fn dispatch(req: &Request) -> Option<Response> {
     services::dispatch(req)
 }
+
+/// True when a native rotocore backend is armed for `service`.
+pub use services::handles_service;

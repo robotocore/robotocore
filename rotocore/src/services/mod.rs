@@ -165,3 +165,105 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         _ => None,
     }
 }
+
+/// True when a native rotocore backend is armed for `service`.
+///
+/// Mirrors the arms of `dispatch` — keep the two lists in sync. The
+/// gateway exposes this so introspection endpoints can report weights
+/// truthfully instead of carrying stale sidecar-era labels.
+pub fn handles_service(service: &str) -> bool {
+    matches!(
+        service,
+        "acm"
+            | "acmpca"
+            | "amp"
+            | "apigateway"
+            | "apigatewaymanagementapi"
+            | "apigatewayv2"
+            | "appmesh"
+            | "appsync"
+            | "athena"
+            | "backup"
+            | "batch"
+            | "budgets"
+            | "cloudformation"
+            | "cloudfront"
+            | "cloudtrail"
+            | "codepipeline"
+            | "cognito-idp"
+            | "cognitoidentity"
+            | "comprehend"
+            | "config"
+            | "connect"
+            | "databrew"
+            | "datasync"
+            | "dsql"
+            | "ebs"
+            | "ec2"
+            | "ec2instanceconnect"
+            | "efs"
+            | "eks"
+            | "elasticache"
+            | "elb"
+            | "elbv2"
+            | "emr"
+            | "es"
+            | "glue"
+            | "greengrass"
+            | "guardduty"
+            | "identitystore"
+            | "inspector2"
+            | "iot"
+            | "iotdata"
+            | "ivs"
+            | "kafka"
+            | "kinesisanalyticsv2"
+            | "lakeformation"
+            | "macie2"
+            | "managedblockchain"
+            | "mediapackage"
+            | "networkfirewall"
+            | "opensearch"
+            | "opensearchserverless"
+            | "organizations"
+            | "osis"
+            | "personalize"
+            | "pipes"
+            | "polly"
+            | "rds"
+            | "redshift"
+            | "redshiftdata"
+            | "rekognition"
+            | "resiliencehub"
+            | "resource-groups"
+            | "resourcegroupstaggingapi"
+            | "route53resolver"
+            | "sagemaker"
+            | "securityhub"
+            | "sesv2"
+            | "ssoadmin"
+            | "support"
+            | "timestreaminfluxdb"
+            | "timestreamquery"
+            | "timestreamwrite"
+            | "transcribe"
+            | "xray"
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn handles_service_matches_dispatch_arms() {
+        // Spot-check both directions: armed services report true, services
+        // with no backend report false.
+        for service in ["acm", "connect", "glue", "elasticache", "codepipeline", "xray"] {
+            assert!(handles_service(service), "{service} should be armed");
+        }
+        for service in ["glacier", "account", "cloudwatch", "athena-x-nothing", ""] {
+            assert!(!handles_service(service), "{service} should not be armed");
+        }
+    }
+}
