@@ -202,13 +202,12 @@ fn xml_error(status: u16, code: &str, message: &str) -> Response {
         inner += &el("Message", message);
         inner
     });
-    let envelope = wrap(
-        "ErrorResponse",
-        &format!("{body}<RequestId>{}</RequestId>", uuid::Uuid::new_v4()),
-    );
     resp(
         status,
-        format!("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<ErrorResponse xmlns=\"{XMLNS}\">{envelope}</ErrorResponse>\n"),
+        format!(
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<ErrorResponse xmlns=\"{XMLNS}\">{body}<RequestId>{}</RequestId></ErrorResponse>\n",
+            uuid::Uuid::new_v4()
+        ),
     )
 }
 
@@ -859,6 +858,7 @@ fn route(
         ("POST", ["origin-access-control"]) => h_create_oac(backend, req),
         ("GET", ["origin-access-control"]) => h_list_oac(backend),
         ("GET", ["origin-access-control", id]) => h_get_oac(backend, id),
+        ("GET", ["origin-access-control", _, "config"]) => h_get_oac_config(backend, seg2),
         ("PUT", ["origin-access-control", _, "config"]) => h_update_oac(backend, seg2, req),
         ("DELETE", ["origin-access-control", _]) => h_delete_oac(backend, last),
         // ------------------------------------------------ origin access identities
@@ -876,6 +876,7 @@ fn route(
         ("POST", ["public-key"]) => h_create_public_key(backend, req),
         ("GET", ["public-key"]) => h_list_public_keys(backend),
         ("GET", ["public-key", _]) => h_get_public_key(backend, last),
+        ("GET", ["public-key", _, "config"]) => h_get_public_key_config(backend, seg2),
         ("PUT", ["public-key", _, "config"]) => h_update_public_key(backend, seg2),
         ("DELETE", ["public-key", _]) => h_delete_public_key(backend, last),
         // ------------------------------------------------ key groups
@@ -1069,7 +1070,12 @@ fn config_and_tags<'a>(
     root: &'a El,
     config_member: &str,
 ) -> (&'a El, Vec<(String, String)>) {
-    if let Some(with_tags) = root.child("DistributionConfigWithTags") {
+    let with_tags_root = if root.name == "DistributionConfigWithTags" {
+        Some(root)
+    } else {
+        root.child("DistributionConfigWithTags")
+    };
+    if let Some(with_tags) = with_tags_root {
         let tags = with_tags
             .sub(&["Tags", "Items"])
             .map(|items| {
@@ -1091,7 +1097,12 @@ fn config_and_tags<'a>(
             .unwrap_or(root);
         return (config, tags);
     }
-    if let Some(with_tags) = root.child("StreamingDistributionConfigWithTags") {
+    let streaming_root = if root.name == "StreamingDistributionConfigWithTags" {
+        Some(root)
+    } else {
+        root.child("StreamingDistributionConfigWithTags")
+    };
+    if let Some(with_tags) = streaming_root {
         let tags = with_tags
             .sub(&["Tags", "Items"])
             .map(|items| {
@@ -1777,7 +1788,7 @@ fn render_behavior(behavior: &El, default_cache_behavior: bool) -> String {
     };
 
     out += "<LambdaFunctionAssociations><Quantity>0</Quantity></LambdaFunctionAssociations>";
-    out += "<FunctionAssociations><Quantity>0</Quantity></LambdaFunctionAssociations>";
+    out += "<FunctionAssociations><Quantity>0</Quantity></FunctionAssociations>";
 
     out += &el(
         "FieldLevelEncryptionId",
@@ -2782,7 +2793,7 @@ fn h_create_cache_policy(backend: &mut Backend, req: &Request) -> Response {
     let location = format!("https://cloudfront.amazonaws.com/2020-05-31/cache-policy/{}", policy.id);
     backend.cache_policies.push(policy);
     let policy = backend.cache_policies.last().expect("just inserted");
-    let body = wrap("CachePolicy", &render_cache_policy(policy));
+    let body = render_cache_policy(policy);
     resp_with(
         201,
         vec![("ETag", policy.etag.clone()), ("Location", location)],
@@ -2811,7 +2822,7 @@ fn h_get_cache_policy(backend: &mut Backend, id: &str) -> Response {
         Some(policy) => resp_with(
             200,
             vec![("ETag", policy.etag.clone())],
-            xml_decl(&wrap("CachePolicy", &render_cache_policy(policy))),
+            xml_decl(&render_cache_policy(policy)),
         ),
         None => xml_error(
             404,
@@ -2854,7 +2865,7 @@ fn h_update_cache_policy(backend: &mut Backend, id: &str, req: &Request) -> Resp
             resp_with(
                 200,
                 vec![("ETag", etag)],
-                xml_decl(&wrap("CachePolicy", &body)),
+                xml_decl(&body),
             )
         }
         None => xml_error(
@@ -2918,7 +2929,7 @@ fn h_create_rhp(backend: &mut Backend, req: &Request) -> Response {
     );
     backend.response_headers_policies.push(policy);
     let policy = backend.response_headers_policies.last().expect("just inserted");
-    let body = wrap("ResponseHeadersPolicy", &render_rhp(policy));
+    let body = render_rhp(policy);
     resp_with(
         201,
         vec![("ETag", policy.etag.clone()), ("Location", location)],
@@ -2943,7 +2954,7 @@ fn h_get_rhp(backend: &mut Backend, id: &str) -> Response {
         Some(policy) => resp_with(
             200,
             vec![("ETag", policy.etag.clone())],
-            xml_decl(&wrap("ResponseHeadersPolicy", &render_rhp(policy))),
+            xml_decl(&render_rhp(policy)),
         ),
         None => xml_error(
             404,
@@ -2979,7 +2990,7 @@ fn h_update_rhp(backend: &mut Backend, id: &str, req: &Request) -> Response {
             policy.update(config_el);
             let etag = policy.etag.clone();
             let body = render_rhp(policy);
-            resp_with(200, vec![("ETag", etag)], xml_decl(&wrap("ResponseHeadersPolicy", &body)))
+            resp_with(200, vec![("ETag", etag)], xml_decl(&body))
         }
         None => xml_error(
             404,
@@ -3056,7 +3067,7 @@ fn h_create_orp(backend: &mut Backend, req: &Request) -> Response {
     );
     backend.origin_request_policies.push(policy);
     let policy = backend.origin_request_policies.last().expect("just inserted");
-    let body = wrap("OriginRequestPolicy", &render_orp(policy));
+    let body = render_orp(policy);
     resp_with(
         201,
         vec![("ETag", policy.etag.clone()), ("Location", location)],
@@ -3088,7 +3099,7 @@ fn h_get_orp(backend: &mut Backend, id: &str) -> Response {
         Some(policy) => resp_with(
             200,
             vec![("ETag", policy.etag.clone())],
-            xml_decl(&wrap("OriginRequestPolicy", &render_orp(policy))),
+            xml_decl(&render_orp(policy)),
         ),
         None => xml_error(
             404,
@@ -3131,7 +3142,7 @@ fn h_update_orp(backend: &mut Backend, id: &str, req: &Request) -> Response {
             policy.update(config_el);
             let etag = policy.etag.clone();
             let body = render_orp(policy);
-            resp_with(200, vec![("ETag", etag)], xml_decl(&wrap("OriginRequestPolicy", &body)))
+            resp_with(200, vec![("ETag", etag)], xml_decl(&body))
         }
         None => xml_error(
             404,
@@ -3209,7 +3220,7 @@ fn h_create_fle(backend: &mut Backend, req: &Request) -> Response {
     );
     backend.fle_configs.push(fle);
     let fle = backend.fle_configs.last().expect("just inserted");
-    let body = wrap("FieldLevelEncryption", &render_fle(fle));
+    let body = render_fle(fle);
     resp_with(201, vec![("ETag", fle.etag.clone()), ("Location", location)], xml_decl(&body))
 }
 
@@ -3231,7 +3242,7 @@ fn h_get_fle(backend: &mut Backend, id: &str) -> Response {
         Some(fle) => resp_with(
             200,
             vec![("ETag", fle.etag.clone())],
-            xml_decl(&wrap("FieldLevelEncryption", &render_fle(fle))),
+            xml_decl(&render_fle(fle)),
         ),
         None => xml_error(
             404,
@@ -3268,7 +3279,7 @@ fn h_update_fle(backend: &mut Backend, id: &str, req: &Request) -> Response {
             fle.update(config_el);
             let etag = fle.etag.clone();
             let body = render_fle(fle);
-            resp_with(200, vec![("ETag", etag)], xml_decl(&wrap("FieldLevelEncryption", &body)))
+            resp_with(200, vec![("ETag", etag)], xml_decl(&body))
         }
         None => xml_error(
             404,
@@ -3336,7 +3347,7 @@ fn h_create_flep(backend: &mut Backend, req: &Request) -> Response {
     );
     backend.fle_profiles.push(profile);
     let profile = backend.fle_profiles.last().expect("just inserted");
-    let body = wrap("FieldLevelEncryptionProfile", &render_flep(profile));
+    let body = render_flep(profile);
     resp_with(
         201,
         vec![("ETag", profile.etag.clone()), ("Location", location)],
@@ -3363,7 +3374,7 @@ fn h_get_flep(backend: &mut Backend, id: &str) -> Response {
         Some(profile) => resp_with(
             200,
             vec![("ETag", profile.etag.clone())],
-            xml_decl(&wrap("FieldLevelEncryptionProfile", &render_flep(profile))),
+            xml_decl(&render_flep(profile)),
         ),
         None => xml_error(
             404,
@@ -3404,7 +3415,7 @@ fn h_update_flep(backend: &mut Backend, id: &str, req: &Request) -> Response {
             resp_with(
                 200,
                 vec![("ETag", etag)],
-                xml_decl(&wrap("FieldLevelEncryptionProfile", &body)),
+                xml_decl(&body),
             )
         }
         None => xml_error(
@@ -3473,7 +3484,7 @@ fn h_create_cdp(backend: &mut Backend, req: &Request) -> Response {
     );
     backend.cdp_policies.push(policy);
     let policy = backend.cdp_policies.last().expect("just inserted");
-    let body = wrap("ContinuousDeploymentPolicy", &render_cdp(policy));
+    let body = render_cdp(policy);
     resp_with(
         201,
         vec![("ETag", policy.etag.clone()), ("Location", location)],
@@ -3499,7 +3510,7 @@ fn h_get_cdp(backend: &mut Backend, id: &str) -> Response {
         Some(policy) => resp_with(
             200,
             vec![("ETag", policy.etag.clone())],
-            xml_decl(&wrap("ContinuousDeploymentPolicy", &render_cdp(policy))),
+            xml_decl(&render_cdp(policy)),
         ),
         None => xml_error(
             404,
@@ -3539,7 +3550,7 @@ fn h_update_cdp(backend: &mut Backend, id: &str, req: &Request) -> Response {
             resp_with(
                 200,
                 vec![("ETag", etag)],
-                xml_decl(&wrap("ContinuousDeploymentPolicy", &body)),
+                xml_decl(&body),
             )
         }
         None => xml_error(
