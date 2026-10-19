@@ -1215,12 +1215,13 @@ pub async fn catch_all_handler(
     let handler = match handler {
         Some(h) => h,
         None => {
-            // First try rotocore (the in-process moto replacement); the
-            // moto sidecar is only consulted for services rotocore has
-            // not ported yet. rotocore backends may block on sibling
-            // services (loopback mirror calls), so run the sync dispatch
-            // on the blocking thread pool — never on the async workers,
-            // which must stay free to accept/serve those loopback calls.
+            // Rotocore is the in-process moto replacement: services that
+            // are not in the gateway core dispatch here. unported ones
+            // fall through to the generic 501 NotImplemented below.
+            // rotocore backends may block on sibling services (loopback
+            // mirror calls), so run the sync dispatch on the blocking
+            // thread pool — never on the async workers, which must stay
+            // free to accept/serve those loopback calls.
             let rot_req = rotocore::Request {
                 service: service.clone(),
                 operation: parsed_req.operation.clone(),
@@ -2060,7 +2061,7 @@ fn unsigned_non_sts_action(headers: &HeaderMap, uri: &Uri, body: &[u8]) -> Optio
     let form_body = headers
         .get("Content-Type")
         .and_then(|v| v.to_str().ok())
-        .map(|t| t.contains("x-www-form-urlencoded"))
+        .map(|t| t.to_ascii_lowercase().contains("x-www-form-urlencoded"))
         .unwrap_or(false);
     if form_body {
         if let Some(action) = action_in(&String::from_utf8_lossy(body)) {

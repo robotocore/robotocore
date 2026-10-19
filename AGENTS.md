@@ -34,19 +34,15 @@ docker rm -f robotocore 2>/dev/null || true
 docker run -d -p 4566:4566 --name robotocore ghcr.io/robotocore/robotocore:latest
 ```
 
-Also available from GHCR:
-
-```bash
-docker run -d -p 4566:4566 --name robotocore ghcr.io/robotocore/robotocore:latest
-```
-
 ### Verify it's ready
 
 ```bash
 curl -s http://localhost:4566/_robotocore/health | python3 -m json.tool
 ```
 
-Expected output includes `"running": true` and a map of service names to `"available"`.
+Expected output: top-level `"status": "running"` plus a per-service map
+where `type` is `native` (a Rust backend answers in-process) or `absent`
+(requests answer `501 NotImplemented`).
 
 ### Confirm which account you're in (GetCallerIdentity)
 
@@ -183,9 +179,9 @@ for x in s: print(f\"{x['name']:32} {x['status']}\")
 "
 ```
 
-**Native providers** (a Rust backend answers in-process): athena, cloudfront, connect, ec2, elb, elbv2, emr, glue, iot, redshift, and more — currently 92 of the 157 registered services including every service listed in the gateway core (S3, SQS, SNS, DynamoDB, DynamoDB Streams, Lambda, IAM, KMS, SSM, Secrets Manager, Step Functions, STS, CloudWatch, CloudWatch Logs, EventBridge, Kinesis, Firehose, ECR, ECS, API Gateway v1/v2, AppSync, Batch, Cognito User Pools, Config, Route 53, Scheduler, SES v1/v2, Support, X-Ray…).
+**Native providers** (a Rust backend answers in-process): athena, cloudfront, connect, ec2, elb, elbv2, emr, glue, iot, redshift, and more — currently 92 of the 157 registered services including the gateway core's S3, SQS, SNS, DynamoDB, Lambda, IAM, KMS, SSM, Secrets Manager, Step Functions, STS, CloudWatch, CloudWatch Logs, EventBridge, Kinesis, Firehose, ECR, ECS, API Gateway v1/v2, AppSync, Batch, Cognito User Pools, Config, SES v2, Support, X-Ray.
 
-**Absent services** (requests answer `501 NotImplemented`, ~65 of 157): account, appconfig, application-autoscaling, autoscaling, bedrock family, cloudhsmv2, datasync family, dynamodbstreams-era gap services such as kafka-video, mq family, pinpoint, quicksight, wafv2, workspaces, and others — see the live endpoint for the authoritative list. Pruning the old moto sidecar turned previously "moto-backed" services into absent ones; they return `501 NotImplemented` until a rotocore backend lands.
+**Absent services** (requests answer `501 NotImplemented`, ~65 of 157): account, appconfig, application-autoscaling, autoscaling, bedrock family, cloudhsmv2, datasync family, dynamodbstreams, kinesis-video, mq family, pinpoint, quicksight, route53, scheduler, ses v1, wafv2, workspaces, and others — see the live endpoint for the authoritative list. Pruning the old moto sidecar turned previously "moto-backed" services into absent ones; they return `501 NotImplemented` until a rotocore backend lands.
 
 ---
 
@@ -352,15 +348,13 @@ for svc, status in sorted(h.get('services', {}).items()):
 
 | Endpoint | Returns |
 |---|---|
-| `GET /_robotocore/health` | Per-service status (`native`/`absent`), request counts, uptime, version |
+| `GET /_robotocore/health` | Overall status, per-service request counts, `type` = `native` or `absent`, uptime, version |
 | `GET /_robotocore/services` | Per-service protocol (json, rest-json, query) and description |
 | `GET /_robotocore/audit?limit=N` | Recent calls with operation, status code, account, region |
 | `GET /_robotocore/usage/errors` | Error totals grouped by status code, plus recent errors |
-| `GET /_robotocore/resources[/<service>]` | What currently exists in the twin |
 | `GET /_robotocore/config` | Version and runtime config |
-| `GET /_robotocore/diagnose` | Full diagnostic bundle; returns 403 unless `DEBUG=1` or `ROBOTOCORE_DIAG=1` |
 
-`native` in the health output means a Rust backend answers in-process (gateway core handler or a rotocore backend); `absent` means requests get `501 NotImplemented`. Both labels are derived from the real handler tables at request time, not from a static table.
+`type: native` in the health output means a Rust backend answers in-process (gateway core handler or a rotocore backend); `type: absent` means requests get `501 NotImplemented`. Both labels are derived from the real handler tables at request time, not from a static table.
 
 Only HTTP `501` with the `NotImplemented` error code means "genuinely absent" — the gateway never reports an unimplemented operation as `InternalError`.
 
@@ -395,13 +389,19 @@ print(m['RunInstances'], m['CreateImage'])
 
 Destructive operations are excluded from probe runs, so absence from the file is not a gap. `TerminateInstances`, `DeleteBucket`, `DeleteVpc` and others are in the script's skip list and work fine. See `docs/coverage.html` for the browsable per-service view.
 
-### 2. Re-probe live
+### 2. Check the live twin's own posture
+
+The introspection endpoints are derived from the real handler tables, so
+they cannot drift:
 
 ```bash
-uv run python -m scripts.probe_service --service ec2 --all --json
+curl -s http://localhost:4566/_robotocore/services | python3 -c "
+import json, sys
+for s in json.load(sys.stdin)['services']:
+    if s['name'] == 'ec2':
+        print(s['status'])  # native
+"
 ```
-
-Calls every operation with auto-filled parameters and classifies the result. Use when the checked-in file is older than the server you are running.
 
 ### 3. Read the audit log after running an opaque tool
 

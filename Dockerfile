@@ -19,7 +19,7 @@ COPY rotocore/ rotocore/
 COPY crates/ crates/
 COPY src/ src/
 
-RUN cargo build --release && strip target/release/robotocore-rust
+RUN cargo build --locked --release && strip target/release/robotocore-rust
 
 FROM gcr.io/distroless/cc AS runtime
 

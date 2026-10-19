@@ -65,11 +65,11 @@ robotocore/
 ├── crates/                    # per-service crates (sqs, s3, dynamodb, lambda, ...)
 ├── bindings/                  # language bindings: python/, typescript/, go/, rust/ + tools/
 ├── tests/
-│   ├── unit/                  # pytest units of the compat rig
+│   ├── apps/                  # application-level smoke flows
 │   ├── compatibility/         # contract suites (boto3, the fidelity gold standard)
-│   ├── e2e/, iac/, integration/
-│   └── ...
-├── scripts/                   # dev tooling (pytest rig): parity.py, probe_service.py, dev.py ...
+│   ├── iac/                   # terraform/cdk/pulumi wrapper tests
+│   └── parity/                # parity-harness support files
+├── scripts/                   # dev tooling (pytest rig): parity.py, dev.py, smoke_test.py ...
 ├── probes/                    # per-service probe results (operation -> status)
 ├── .parity/                   # golden parity baseline (expectations_current.json)
 └── tooling/                   # ground-truth capture tools
@@ -130,7 +130,7 @@ currently 92). `absent` = requests answer 501 NotImplemented.
 
 ## Adding a New Native Service (Checklist)
 
-1. Probe the surface: `uv run python scripts/probe_service.py --service <name>`
+1. Probe the surface: read the checked-in `probes/<name>.json` (operation -> status) and ask a running twin `/_robotocore/services` for its posture
 2. Write the module in `rotocore/src/services/<service>/`
 3. Add the dispatch arm + `handles_service` entry in `rotocore/src/services/mod.rs`
 4. Verify wire names against botocore's service-2.json
@@ -141,8 +141,7 @@ See `.claude/skills/implement-service.md` for the detailed rules.
 
 ## Infrastructure Features
 
-- **Resource Browser**: `GET /_robotocore/resources` for cross-service resource overview
-- **Audit Log**: `GET /_robotocore/audit` for recent API call history (ring buffer, configurable via `AUDIT_LOG_SIZE`)
+- **Audit Log**: `GET /_robotocore/audit` for recent API call history (in-memory ring)
 - **Usage errors**: `GET /_robotocore/usage/errors`
 - **State Snapshots**: `POST /_robotocore/state/save {"name":"my-snap"}` / `POST /_robotocore/state/load {"name":"my-snap"}`, plus export/import and selective per-service persistence
 
@@ -189,7 +188,7 @@ When behavior diverges from real AWS (or the compat suite disagrees):
 - Be specific: name the endpoint, env var, service
 
 ### Test expansion rules (IMPORTANT — learned from experience)
-- **Never write tests for unverified operations.** Probe first with `scripts/probe_service.py`; write tests only for operations that actually work.
+- **Never write tests for unverified operations.** Check `probes/<name>.json` first; write tests only for operations that actually work.
 - **No speculative xfails.** If an operation doesn't work, fix the server first, then write the test.
 - **Every test MUST contact the server.** A test that catches client-side `ParamValidationError` and passes is worthless.
 - **Every test MUST assert something.** At minimum assert on a response key.
@@ -200,5 +199,5 @@ When behavior diverges from real AWS (or the compat suite disagrees):
 
 - `docs/coverage.html` — browsable per-service coverage view
 - `probes/<service>.json` — checked-in probe results (operation -> status)
-- `.parity/expectations_current.json` — golden parity baseline (78 suites, promoted from the python-era lane)
+- `.parity/expectations_current.json` — golden parity baseline (89 suites, promoted from the rust lane)
 - `prompts/PROMPTLOG.md` — prompt-log format spec

@@ -15,17 +15,15 @@ suite itself. Everything else in the map holds 100%+.
 Fourth EC2 suite test, same artifact class (2026-10-19 lane):
 `TestEC2RejectVpcEndpointConnections.test_reject_vpc_endpoint_connections`
 also calls ELBv2 `CreateLoadBalancer` (via `make_client("elbv2")`) after
-creating its VPC/subnet on the native Rust server. The sidecar's moto backend
-does not see the Rust EC2 state, so moto rejects the subnet
-(`InvalidSubnetID.NotFound`). The three remaining floor tests are the
-documented `TestEC2VPCEndpointServiceConfig*` trio; the floor is 752/756 on
-the w3z EC2 lane (749 passing + 3 IPv6-CIDR skips) — or 753/756 if a
-rust->moto EC2 state mirror runs before elbv2 dispatch. One was prototyped
-(scripts/moto_sidecar.py + ROBOTOCORE_CALLBACK_URL in
-scripts/start_parity_servers.sh) and withheld from the lane for harness-edit
-review; it demonstrably fixed `TestEC2VPCEndpointServiceConfig
-.test_create_describe_delete_vpc_endpoint_service_config` and
-`test_modify_vpc_endpoint_service_configuration` in a probe run.
+creating its VPC/subnet on the native Rust server; the missing cross-server
+state equals this artifact.
+
+**Historical (python-era lane, pre 2026-10-19):** the original
+`TestEC2VPCEndpointServiceConfig*` trio measured 752/756 as a floor because
+the load balancer landed on the moto sidecar and could not see Rust EC2
+state. That sidecar no longer exists — on the current rust-only lane both
+sides talk to the same twin, so the artifact only applies when a suite
+mixes two endpoint URLs.
 
 ## Rekognition stub-era ops (recorded 2026-10-19)
 

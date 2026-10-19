@@ -494,7 +494,7 @@ cfn    = boto3.client("cloudformation", **SESSION)
 
 ### What works
 
-Every standard AWS API call works. Services are listed above. If an operation is supported by [Moto](https://github.com/getmoto/moto), it works in robotocore. Native providers (SQS, SNS, S3, Lambda, CloudFormation, IAM, and more) add behavioral fidelity on top.
+Every operation of the 92 native services works (the AWS API surface listed above). Services without a Rust backend yet answer `501 NotImplemented`. The native services add behavioral fidelity on top of wire correctness: Lambda execution, SQS visibility timeouts, SigV4 auth, IAM policy evaluation, CloudFormation resource orchestration.
 
 ### Health check
 
@@ -548,16 +548,16 @@ print(json.loads(result["Payload"].read()))  # {"status": "ok"}
 
 ## Architecture
 
-robotocore is a Starlette ASGI app. Requests arrive on port 4566 and are routed to either a native provider or Moto's backend. State is stored in-memory, isolated per account and region.
+robotocore is a Rust (axum) server. Requests arrive on port 4566 and are answered by the gateway core or by a ported `rotocore` backend. State is stored in-memory, isolated per account and region.
 
 ```
 ┌───────────────────────────────────────────────────┐
-│           Docker Container (port 4566)            │
+│           Rust Server (port 4566)                 │
 │                                                   │
 │  ┌─────────────────────────────────────────────┐  │
-│  │           Starlette Gateway                 │  │
+│  │           Gateway (src/core/)               │  │
 │  │                                             │  │
-│  │  AWS Request Router                         │  │
+│  │  AWS Request Router (src/router.rs)         │  │
 │  │  (service from Auth header, X-Amz-Target,   │  │
 │  │   URL path, Host header)                    │  │
 │  │  Account ID from Credential (12-digit key)  │  │
@@ -565,9 +565,9 @@ robotocore is a Starlette ASGI app. Requests arrive on port 4566 and are routed 
 │  │   ┌──────────┴──────────────┐               │  │
 │  │   │                         │               │  │
 │  │   ▼                         ▼               │  │
-│  │  Native Providers         Moto Bridge       │  │
-│  │  (46 services —           (~112 services —  │  │
-│  │   full fidelity)           Moto backends)   │  │
+│  │  Gateway core handlers    rotocore crate    │
+│  │  (src/core/services/,     (rotocore/src/,   │
+│  │   crates/*)                74 far services) │
 │  │                                             │  │
 │  │  In-Memory State (per-account, per-region)  │  │
 │  └─────────────────────────────────────────────┘  │
@@ -578,7 +578,7 @@ robotocore is a Starlette ASGI app. Requests arrive on port 4566 and are routed 
 1. AWS SDK sends a signed HTTP request to `localhost:4566`
 2. Router identifies the service from `Authorization` header, `X-Amz-Target`, URL path, or `Host` header
 3. Account ID is parsed from the `Credential` field of the `Authorization` header (the 12-digit access key ID)
-4. Native provider handles the request (if one exists) or Moto bridge forwards to Moto's backend
+4. A native backend handles the request, or — for services not ported yet — the gateway answers `501 NotImplemented`
 5. Response is serialized in the correct AWS wire format (query, JSON, REST-XML, etc.)
 
 ---
@@ -587,61 +587,56 @@ robotocore is a Starlette ASGI app. Requests arrive on port 4566 and are routed 
 
 ### Prerequisites
 
-- Python 3.12+
-- [uv](https://docs.astral.sh/uv/)
-- Docker
+- Rust toolchain (rustup, any recent stable)
+- [Docker](https://docs.docker.com/get-docker/)
+- [uv](https://docs.astral.sh/uv/) — only for the python test rig (pytest/boto3; the server itself is Rust)
 
 ### Setup
 
 ```bash
 git clone https://github.com/robotocore/robotocore
 cd robotocore
-git submodule update --init --recursive
-uv sync
+uv sync              # test-rig dependencies only
 ```
 
 ### Run locally
 
 ```bash
-uv run python -m robotocore.main
+cargo build --release -p robotocore-rust
+target/release/robotocore-rust --port 4566
 # Listening on http://localhost:4566
 ```
 
 ### Tests
 
 ```bash
-uv run pytest tests/unit/           # 7,736 unit tests
-uv run pytest tests/compatibility/  # 14,140 compatibility tests (requires running server)
-uv run pytest tests/integration/    # 44 integration tests (requires Docker)
+cargo test --workspace --lib         # Rust unit tests
+make compat-test                     # compatibility suites (auto-starts the server)
+make parity                          # fidelity vs the promoted baseline
 ```
 
 ### Useful scripts
 
 ```bash
-uv run python -m scripts.probe_service --service s3    # which ops work
-uv run python scripts/generate_parity_report.py        # parity vs botocore
-uv run python scripts/analyze_localstack.py            # gaps vs LocalStack
-uv run python scripts/smoke_test.py                    # 20-service smoke test
+make status                          # server health
+curl -s localhost:4566/_robotocore/services   # which services are native/absent
+curl -s 'localhost:4566/_robotocore/audit?limit=100' | grep not-implemented || true
+make docker-build                    # pure-Rust container
 ```
 
 ### Fidelity parity harness
 
 `scripts/harness/parity.py` measures how faithfully the Rust server holds up
-against the compat suites. One lane, two modes:
-
-**`--rust-only` — the endgame lane.** Runs every compat suite ONCE against the
-Rust server (no Python server — `PY_PORT` is unused here; `RUST_PORT` and
-`SIDECAR_PORT` come from the env):
+against the compatibility suites. Single rust-only lane:
 
 ```bash
-bash scripts/start_parity_servers.sh            # with RUST_ONLY=1: sidecar + rust server only
-uv run python scripts/harness/parity.py                        # auto: rust-only whenever no python ground truth is up
+make parity                                                    # full run vs baseline
 uv run python scripts/harness/parity.py --rust-only --services sqs,s3,ec2
 ```
 
 Pass counts land in `.parity/state.json` and are compared against the golden
 baseline `.parity/expectations_current.json` — per-suite pass counts frozen
-from the Python ground-truth era. Anything below baseline prints a line like
+at promotion time. Anything below baseline prints a line like
 `EXPECTATIONS DRIFT: suite ec2 expected 717, got 712`, is recorded in the
 state file, and fast-exits the run with code 2 so CI can gate on it
 (improvements and first-time suites are informational only). Truncated runs
@@ -653,13 +648,6 @@ Promote a clean full run to the new baseline (merge-safe by suite):
 ```bash
 uv run python scripts/harness/parity.py --rust-only --update-expectations
 ```
-
-**`--dual` — the transitional lane.** While the porting fleet still needs
-ground truth, run each suite against BOTH the Python server (:4566) and the
-Rust server (:4567) and diff — the classic py-vs-rust fidelity metric
-(`rust_pass / py_pass`, `gap` = fidelity loss). This is the automatic default
-whenever a Python ground-truth server is listening. Once the Python server is
-deleted, a bare `parity.py` invocation IS rust-only mode reading the baseline.
 
 Artifacts (`.parity/`): `state.json` (last run), `expectations_current.json`
 (golden baseline, tracked file), `xml/` (raw JUnit XML per suite/lane).

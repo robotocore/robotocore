@@ -1,8 +1,8 @@
 //! Service backends. Each module owns one AWS service and a `dispatch`.
 //!
-//! Only PORTED services appear here — a module replaces the moto sidecar
-//! for its service the moment it publishes real behavior. Until then the
-//! gateway falls back to the sidecar, so the wire contract stays intact.
+//! Only ported services appear here — a module takes over its service the
+//! moment it publishes real behavior. Requests for services without a
+//! backend answer the gateway's generic `501 NotImplemented`.
 
 pub mod ec2;
 pub mod kafka;
