@@ -24,8 +24,9 @@ use crate::{Request, Response};
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 
-// --- embedded release data (moto resources) — used by the release-label /
-//     supported-instance-types handlers (volume-family commits) --------------
+// --- embedded release data (moto resources; suites run us-east-1) ------------
+const RELEASE_LABELS_US_EAST_1: &str = include_str!("emr_data/release-labels-us-east-1.json");
+const INSTANCE_TYPES_EMR_6_10_0: &str = include_str!("emr_data/instance-types-emr-6.10.0.json");
 
 // ---------------------------------------------------------------------------
 // State
@@ -142,6 +143,56 @@ struct SecurityConfiguration {
     created_at: f64,
 }
 
+#[derive(Clone)]
+struct Studio {
+    id: String,
+    name: Option<String>,
+    auth_mode: Option<String>,
+    vpc_id: Option<String>,
+    subnet_ids: Vec<Value>,
+    service_role: Option<String>,
+    user_role: String,
+    workspace_security_group_id: Option<String>,
+    engine_security_group_id: Option<String>,
+    default_s3_location: String,
+    description: String,
+    created_at: f64,
+    tags: Vec<(String, String)>,
+}
+
+#[derive(Clone)]
+struct StudioSessionMapping {
+    studio_id: String,
+    identity_id: String,
+    identity_name: Option<String>,
+    identity_type: String,
+    session_policy_arn: Option<String>,
+    created_at: f64,
+    last_modified_at: f64,
+}
+
+#[derive(Clone)]
+struct PersistentAppUi {
+    id: String,
+    target_resource_arn: String,
+    created_at: f64,
+    last_modified_at: f64,
+}
+
+/// Notebook execution record (moto NotebookExecution model subset).
+#[derive(Clone)]
+struct NotebookExecution {
+    id: String,
+    editor_id: String,
+    execution_engine: Value,
+    service_role: String,
+    name: String,
+    params: String,
+    status: String,
+    start_at: f64,
+    end_at: Option<f64>,
+}
+
 #[derive(Default)]
 struct EmrState {
     clusters: HashMap<String, Cluster>,
@@ -152,6 +203,16 @@ struct EmrState {
     /// Store mirroring moto's
     /// `{"block_public_access_configuration": …, "block_public_access_configuration_metadata": …}`.
     block_public_access: Option<Value>,
+    studios: HashMap<String, Studio>,
+    /// Mapping key `{studio}:{identity_type}:{identity_id}` (moto's f-string
+    /// key; absent IdentityId shows up as the string "None").
+    studio_session_mappings: HashMap<String, StudioSessionMapping>,
+    /// Notebook executions {id: start_epoch}; only ever empty on the suites
+    /// (StartNotebookExecution is denied), but the accessors stay moto-faithful.
+    notebook_executions: HashMap<String, NotebookExecution>,
+    managed_scaling_policies: HashMap<String, Value>,
+    auto_termination_policies: HashMap<String, Value>,
+    persistent_app_uis: HashMap<String, PersistentAppUi>,
 }
 
 fn with_state<T>(account: u64, region: &str, f: impl FnOnce(&mut EmrState) -> T) -> T {
@@ -165,20 +226,29 @@ fn with_state<T>(account: u64, region: &str, f: impl FnOnce(&mut EmrState) -> T)
 // ---------------------------------------------------------------------------
 
 /// snake_case form of a Pascal/camel identifier (`MasterInstanceType` →
-/// `master_instance_type`).
+/// `master_instance_type`), matching botocore's `xform_name` (including
+/// multi-cap boundaries like `UIPresigned` → `ui_presigned`).
 fn xform(s: &str) -> String {
+    let bytes = s.as_bytes();
     let mut out = String::with_capacity(s.len() + 4);
-    for (i, c) in s.chars().enumerate() {
-        if c.is_ascii_uppercase() {
-            if i > 0 {
-                let prev = s.as_bytes()[i - 1];
-                if prev.is_ascii_lowercase() || prev.is_ascii_digit() {
-                    out.push('_');
-                }
+    for (i, &b) in bytes.iter().enumerate() {
+        let is_upper = b.is_ascii_uppercase();
+        if is_upper && i > 0 {
+            let prev = bytes[i - 1];
+            let next = bytes.get(i + 1).copied();
+            // rule 2: lower/digit run before an upper ("AppUIP…" → before U)
+            let rule2 = prev.is_ascii_lowercase() || prev.is_ascii_digit();
+            // rule 1: an upper starting a word that continues lowercase,
+            // e.g. the "P" in "UIPresigned".
+            let rule1 = next.map(|n| n.is_ascii_lowercase()).unwrap_or(false);
+            if rule2 || rule1 {
+                out.push('_');
             }
-            out.push(c.to_ascii_lowercase());
+        }
+        if is_upper {
+            out.push(b.to_ascii_lowercase() as char);
         } else {
-            out.push(c);
+            out.push(b as char);
         }
     }
     out
@@ -341,6 +411,10 @@ fn random_instance_group_id() -> String {
 
 fn random_instance_fleet_id() -> String {
     format!("if-{}", random_id())
+}
+
+fn random_studio_id() -> String {
+    format!("es-{}", random_id())
 }
 
 fn random_step_id() -> String {
@@ -684,10 +758,44 @@ fn list_instance_groups_json(state: &EmrState, cluster: &Cluster) -> Vec<Value> 
             if let Some(policy) = &g.auto_scaling_policy {
                 obj.insert("AutoScalingPolicy".into(), policy_snake_to_pascal(policy));
             }
-            obj.insert("EbsBlockDevices".into(), json!([]));
+            put_opt_str(&mut obj, "BidPrice", g.bid_price.as_ref());
+            obj.insert(
+                "EbsBlockDevices".into(),
+                json!(ebs_block_devices_json(&g.ebs_configuration)),
+            );
             Value::Object(obj)
         })
         .collect()
+}
+
+/// moto InstanceGroup.ebs_block_devices — expands ebs_block_device_configs.
+fn ebs_block_devices_json(ebs_configuration: &Option<Value>) -> Vec<Value> {
+    let Some(config) = ebs_configuration else {
+        return vec![];
+    };
+    as_vec(pick(config, "ebs_block_device_configs"))
+        .into_iter()
+        .flat_map(|entry| {
+            let volumes_per = as_i64(pick(&entry, "volumes_per_instance")).unwrap_or(0);
+            let spec = pick(&entry, "volume_specification");
+            (0..volumes_per_max(volumes_per))
+                .map(|i| {
+                    json!({
+                        "VolumeSpecification": {
+                            "VolumeType": spec.and_then(|s| pick(s, "volume_type")).cloned().unwrap_or(Value::Null),
+                            "Iops": spec.and_then(|s| pick(s, "iops")).cloned().unwrap_or(Value::Null),
+                            "SizeInGB": spec.and_then(|s| pick(s, "size_in_gb")).cloned().unwrap_or(Value::Null),
+                        },
+                        "Device": format!("/dev/sd{i}"),
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+fn volumes_per_max(v: i64) -> i64 {
+    v.clamp(0, 32)
 }
 
 fn terminate_cluster(c: &mut Cluster) {
@@ -773,11 +881,9 @@ fn swap_cluster_placeholder(mut v: Value, cluster_id: &str) -> Value {
                 *val = swapped;
             }
         }
-        Value::String(s) => {
-            if *s == needle {
-                // dimension values carrying the placeholder become the id
-                return Value::String(cluster_id.to_string());
-            }
+        Value::String(s) if *s == needle => {
+            // dimension values carrying the placeholder become the id
+            return Value::String(cluster_id.to_string());
         }
         _ => {}
     }
@@ -888,6 +994,38 @@ pub fn dispatch(req: &Request) -> Response {
         "ListInstanceFleets" => list_instance_fleets(st, account, &region, &body),
         "PutAutoScalingPolicy" => put_auto_scaling_policy(st, account, &region, &body),
         "RemoveAutoScalingPolicy" => remove_auto_scaling_policy(st, &body),
+        "CreateSecurityConfiguration" => create_security_configuration(st, &body),
+        "DescribeSecurityConfiguration" => describe_security_configuration(st, &body),
+        "DeleteSecurityConfiguration" => delete_security_configuration(st, &body),
+        "ListSecurityConfigurations" => list_security_configurations(st, &body),
+        "PutBlockPublicAccessConfiguration" => {
+            put_block_public_access_configuration(st, account, &body)
+        }
+        "GetBlockPublicAccessConfiguration" => get_block_public_access_configuration(st, &body),
+        "CreateStudio" => create_studio(st, &region, &body),
+        "DescribeStudio" => describe_studio(st, account, &region, &body),
+        "DeleteStudio" => delete_studio(st, &body),
+        "ListStudios" => list_studios(st, &region, &body),
+        "CreateStudioSessionMapping" => create_studio_session_mapping(st, &body),
+        "GetStudioSessionMapping" => get_studio_session_mapping(st, &body),
+        "UpdateStudioSessionMapping" => update_studio_session_mapping(st, &body),
+        "DeleteStudioSessionMapping" => delete_studio_session_mapping(st, &body),
+        "ListStudioSessionMappings" => Err(not_implemented(&op)),
+        "DescribeNotebookExecution" => describe_notebook_execution(st, &body),
+        "StopNotebookExecution" => stop_notebook_execution(st, &body),
+        "ListNotebookExecutions" => list_notebook_executions(st, &body),
+        "StartNotebookExecution" => Err(not_implemented(&op)),
+        "CreatePersistentAppUI" => create_persistent_app_ui(st, account, &region, &body),
+        "DescribePersistentAppUI" => describe_persistent_app_ui(st, account, &region, &body),
+        "DescribeReleaseLabel" => describe_release_label(st, &body),
+        "ListReleaseLabels" => list_release_labels(),
+        "ListSupportedInstanceTypes" => list_supported_instance_types(&body),
+        "PutManagedScalingPolicy" => put_managed_scaling_policy(st, &body),
+        "GetManagedScalingPolicy" => get_managed_scaling_policy(st, &body),
+        "RemoveManagedScalingPolicy" => remove_managed_scaling_policy(st, &body),
+        "PutAutoTerminationPolicy" => put_auto_termination_policy(st, &body),
+        "GetAutoTerminationPolicy" => get_auto_termination_policy(st, &body),
+        "RemoveAutoTerminationPolicy" => remove_auto_termination_policy(st, &body),
         _ => Err(not_implemented(&op)),
     });
     match result {
@@ -1337,7 +1475,7 @@ fn list_steps(state: &mut EmrState, body: &Value) -> OpResult {
         .filter(|s| step_ids.is_empty() || step_ids.contains(&s.id))
         .filter(|s| step_states.is_empty() || step_states.contains(&s.state))
         .collect();
-    steps.sort_by(|a, b| b.seq.cmp(&a.seq));
+    steps.sort_by_key(|a| std::cmp::Reverse(a.seq));
     let list = steps
         .iter()
         .map(|s| step_summary_json(s))
@@ -1698,6 +1836,563 @@ fn remove_auto_scaling_policy(state: &mut EmrState, body: &Value) -> OpResult {
     if let Some(group) = state.instance_groups.get_mut(&group_id) {
         group.auto_scaling_policy = None;
     }
+    Ok(json!({}))
+}
+
+// ---------------------------------------------------------------------------
+// Family C handlers
+// ---------------------------------------------------------------------------
+
+/// CreateSecurityConfiguration — duplicate name → generic InvalidRequest
+/// (moto's keyword-message form loses the text).
+fn create_security_configuration(state: &mut EmrState, body: &Value) -> OpResult {
+    let name = as_str(param(body, "Name")).unwrap_or_default();
+    if state.security_configurations.contains_key(&name) {
+        return Err(generic_invalid_request());
+    }
+    let created_at = now_ts();
+    state.security_configurations.insert(
+        name.clone(),
+        SecurityConfiguration {
+            name: name.clone(),
+            body: as_str(param(body, "SecurityConfiguration")).unwrap_or_default(),
+            created_at,
+        },
+    );
+    Ok(json!({"Name": name, "CreationDateTime": created_at}))
+}
+
+/// DescribeSecurityConfiguration — missing → ResourceNotFound.
+fn describe_security_configuration(state: &mut EmrState, body: &Value) -> OpResult {
+    let name = as_str(param(body, "Name")).unwrap_or_default();
+    match state.security_configurations.get(&name) {
+        Some(c) => Ok(json!({
+            "Name": c.name,
+            "SecurityConfiguration": c.body,
+            "CreationDateTime": c.created_at,
+        })),
+        None => Err(resource_not_found(&format!(
+            "Security configuration with name '{}' does not exist.",
+            name
+        ))),
+    }
+}
+
+fn delete_security_configuration(state: &mut EmrState, body: &Value) -> OpResult {
+    let name = as_str(param(body, "Name")).unwrap_or_default();
+    if state.security_configurations.remove(&name).is_none() {
+        return Err(resource_not_found(&format!(
+            "Security configuration with name '{}' does not exist.",
+            name
+        )));
+    }
+    Ok(json!({}))
+}
+
+fn list_security_configurations(state: &mut EmrState, _body: &Value) -> OpResult {
+    let list = state
+        .security_configurations
+        .values()
+        .map(|c| json!({"Name": c.name, "CreationDateTime": c.created_at}))
+        .collect::<Vec<_>>();
+    Ok(json!({"SecurityConfigurations": list}))
+}
+
+/// PutBlockPublicAccessConfiguration — moto stores the
+/// block_public_access_configuration(+metadata) snake split.
+fn put_block_public_access_configuration(
+    state: &mut EmrState,
+    account: u64,
+    body: &Value,
+) -> OpResult {
+    let config = param(body, "BlockPublicAccessConfiguration");
+    // moto: `x.get("BlockPublicSecurityGroupRules") or True` — falsy → True.
+    let rules = match config.and_then(|c| pick(c, "block_public_security_group_rules")) {
+        Some(Value::Bool(false)) | None => json!(true),
+        Some(other) if !other.is_null() => other.clone(),
+        _ => json!(true),
+    };
+    let ranges =
+        as_vec(config.and_then(|c| pick(c, "permitted_public_security_group_rule_ranges")))
+            .into_iter()
+            .map(|r| {
+                json!({
+                    "min_range": pick(&r, "min_range").cloned().unwrap_or(Value::Null),
+                    "max_range": pick(&r, "max_range").cloned().unwrap_or(Value::Null),
+                })
+            })
+            .collect::<Vec<_>>();
+    state.block_public_access = Some(json!({
+        "block_public_access_configuration": {
+            "block_public_security_group_rules": rules,
+            "permitted_public_security_group_rule_ranges": ranges,
+        },
+        "block_public_access_configuration_metadata": {
+            "creation_date_time": now_ts(),
+            "created_by_arn": format!("arn:aws:sts::{}:user/moto", account),
+        },
+    }));
+    Ok(json!({}))
+}
+
+/// GetBlockPublicAccessConfiguration — never errors; unset store yields
+/// empty members (the lifecycle suite pins this "no exception" behavior).
+fn get_block_public_access_configuration(state: &mut EmrState, _body: &Value) -> OpResult {
+    let stored = state.block_public_access.clone().unwrap_or(json!({}));
+    let mut rendered = Map::new();
+    let mut config = Map::new();
+    if let Some(rules) = param(
+        &stored,
+        "block_public_access_configuration.block_public_security_group_rules",
+    ) {
+        config.insert("BlockPublicSecurityGroupRules".into(), rules.clone());
+    }
+    if let Some(ranges) = param(
+        &stored,
+        "block_public_access_configuration.permitted_public_security_group_rule_ranges",
+    ) {
+        let list = as_vec(Some(ranges))
+            .iter()
+            .map(|r| {
+                let mut entry = Map::new();
+                put_option_value(&mut entry, "MinRange", pick(r, "min_range"));
+                put_option_value(&mut entry, "MaxRange", pick(r, "max_range"));
+                Value::Object(entry)
+            })
+            .collect::<Vec<_>>();
+        config.insert("PermittedPublicSecurityGroupRuleRanges".into(), json!(list));
+    }
+    let mut meta = Map::new();
+    if let Some(created) = as_f64(param(
+        &stored,
+        "block_public_access_configuration_metadata.creation_date_time",
+    )) {
+        meta.insert("CreationDateTime".into(), json!(created));
+    }
+    if let Some(arn) = as_str(param(
+        &stored,
+        "block_public_access_configuration_metadata.created_by_arn",
+    )) {
+        meta.insert("CreatedByArn".into(), json!(arn));
+    }
+    rendered.insert(
+        "BlockPublicAccessConfiguration".into(),
+        Value::Object(config),
+    );
+    rendered.insert(
+        "BlockPublicAccessConfigurationMetadata".into(),
+        Value::Object(meta),
+    );
+    Ok(Value::Object(rendered))
+}
+
+fn put_option_value(m: &mut Map<String, Value>, key: &str, v: Option<&Value>) {
+    if let Some(v) = v {
+        m.insert(key.to_string(), v.clone());
+    }
+}
+
+/// CreateStudio — {"StudioId", "Url"}.
+fn create_studio(state: &mut EmrState, region: &str, body: &Value) -> OpResult {
+    let id = random_studio_id();
+    let studio = Studio {
+        id: id.clone(),
+        name: as_str(param(body, "Name")),
+        auth_mode: as_str(param(body, "AuthMode")),
+        vpc_id: as_str(param(body, "VpcId")),
+        subnet_ids: as_vec(param(body, "SubnetIds")),
+        service_role: as_str(param(body, "ServiceRole")),
+        user_role: as_str(param(body, "UserRole")).unwrap_or_default(),
+        workspace_security_group_id: as_str(param(body, "WorkspaceSecurityGroupId")),
+        engine_security_group_id: as_str(param(body, "EngineSecurityGroupId")),
+        default_s3_location: as_str(param(body, "DefaultS3Location")).unwrap_or_default(),
+        description: as_str(param(body, "Description")).unwrap_or_default(),
+        created_at: now_ts(),
+        tags: as_vec(param(body, "Tags"))
+            .iter()
+            .filter_map(|t| Some((as_str(pick(t, "key"))?, as_str(pick(t, "value"))?)))
+            .collect(),
+    };
+    let url = format!("https://{}.emrstudio-prod.{}.amazonaws.com", id, region);
+    state.studios.insert(id.clone(), studio);
+    Ok(json!({"StudioId": id, "Url": url}))
+}
+
+/// DescribeStudio — {"Studio": …} or generic InvalidRequestException.
+fn describe_studio(state: &mut EmrState, account: u64, region: &str, body: &Value) -> OpResult {
+    let id = as_str(param(body, "StudioId")).unwrap_or_default();
+    let studio = state.studios.get(&id).ok_or_else(generic_invalid_request)?;
+    Ok(json!({"Studio": studio_json(studio, account, region)}))
+}
+
+fn studio_json(s: &Studio, account: u64, region: &str) -> Value {
+    let mut obj = Map::new();
+    obj.insert("StudioId".into(), json!(s.id));
+    obj.insert(
+        "StudioArn".into(),
+        json!(format!(
+            "arn:aws:elasticmapreduce:{region}:{account}:studio/{}",
+            s.id
+        )),
+    );
+    put_opt_str(&mut obj, "Name", s.name.as_ref());
+    obj.insert("Description".into(), json!(s.description));
+    put_opt_str(&mut obj, "AuthMode", s.auth_mode.as_ref());
+    put_opt_str(&mut obj, "VpcId", s.vpc_id.as_ref());
+    obj.insert("SubnetIds".into(), json!(s.subnet_ids));
+    put_opt_str(&mut obj, "ServiceRole", s.service_role.as_ref());
+    obj.insert("UserRole".into(), json!(s.user_role));
+    put_opt_str(
+        &mut obj,
+        "WorkspaceSecurityGroupId",
+        s.workspace_security_group_id.as_ref(),
+    );
+    put_opt_str(
+        &mut obj,
+        "EngineSecurityGroupId",
+        s.engine_security_group_id.as_ref(),
+    );
+    obj.insert(
+        "Url".into(),
+        json!(format!(
+            "https://{}.emrstudio-prod.{}.amazonaws.com",
+            s.id, region
+        )),
+    );
+    obj.insert("CreationTime".into(), json!(s.created_at));
+    obj.insert("DefaultS3Location".into(), json!(s.default_s3_location));
+    obj.insert(
+        "Tags".into(),
+        json!(s
+            .tags
+            .iter()
+            .map(|(k, v)| json!({"Key": k, "Value": v}))
+            .collect::<Vec<_>>()),
+    );
+    Value::Object(obj)
+}
+
+fn delete_studio(state: &mut EmrState, body: &Value) -> OpResult {
+    let id = as_str(param(body, "StudioId")).unwrap_or_default();
+    if state.studios.remove(&id).is_none() {
+        return Err(generic_invalid_request());
+    }
+    Ok(json!({}))
+}
+
+/// ListStudios — StudioSummary members (moto list_studios).
+fn list_studios(state: &mut EmrState, region: &str, _body: &Value) -> OpResult {
+    let studios = state
+        .studios
+        .values()
+        .map(|s| {
+            json!({
+                "StudioId": s.id,
+                "Name": s.name,
+                "Description": s.description,
+                "Url": format!("https://{}.emrstudio-prod.{}.amazonaws.com", s.id, region),
+                "AuthMode": s.auth_mode,
+                "CreationTime": s.created_at,
+            })
+        })
+        .collect::<Vec<_>>();
+    Ok(json!({"Studios": studios}))
+}
+
+/// CreateStudioSessionMapping — requires an existing studio; the stored
+/// identity_id defaults to "" (moto `self._get_param("IdentityId", "")`).
+fn create_studio_session_mapping(state: &mut EmrState, body: &Value) -> OpResult {
+    let studio_id = as_str(param(body, "StudioId")).unwrap_or_default();
+    if !state.studios.contains_key(&studio_id) {
+        return Err(generic_invalid_request());
+    }
+    let identity_id = as_str(param(body, "IdentityId")).unwrap_or_default();
+    let now = now_ts();
+    let mapping = StudioSessionMapping {
+        studio_id,
+        identity_id,
+        identity_name: as_str(param(body, "IdentityName")),
+        identity_type: as_str(param(body, "IdentityType")).unwrap_or_default(),
+        session_policy_arn: as_str(param(body, "SessionPolicyArn")),
+        created_at: now,
+        last_modified_at: now,
+    };
+    let key = mapping_key(&mapping);
+    state.studio_session_mappings.insert(key, mapping);
+    Ok(json!({}))
+}
+
+/// Store-side key `{studio}:{identity_type}:{identity_id}` (moto's f-string).
+fn mapping_key(m: &StudioSessionMapping) -> String {
+    format!("{}:{}:{}", m.studio_id, m.identity_type, m.identity_id)
+}
+
+/// Lookup key interpolates an absent IdentityId as "None" (moto f-string; the
+/// suites lean on that quirk).
+fn mapping_lookup_key(studio_id: &str, identity_type: &str, identity_id: Option<&str>) -> String {
+    format!(
+        "{}:{}:{}",
+        studio_id,
+        identity_type,
+        identity_id.unwrap_or("None")
+    )
+}
+
+fn get_studio_session_mapping(state: &mut EmrState, body: &Value) -> OpResult {
+    let key = mapping_lookup_key(
+        &as_str(param(body, "StudioId")).unwrap_or_default(),
+        &as_str(param(body, "IdentityType")).unwrap_or_default(),
+        as_str(param(body, "IdentityId")).as_deref(),
+    );
+    match state.studio_session_mappings.get(&key) {
+        Some(m) => Ok(json!({
+            "SessionMapping": {
+                "StudioId": m.studio_id,
+                "IdentityId": m.identity_id,
+                "IdentityName": m.identity_name,
+                "IdentityType": m.identity_type,
+                "SessionPolicyArn": m.session_policy_arn,
+                "CreationTime": m.created_at,
+                "LastModifiedTime": m.last_modified_at,
+            }
+        })),
+        None => Err(generic_invalid_request()),
+    }
+}
+
+fn update_studio_session_mapping(state: &mut EmrState, body: &Value) -> OpResult {
+    let key = mapping_lookup_key(
+        &as_str(param(body, "StudioId")).unwrap_or_default(),
+        &as_str(param(body, "IdentityType")).unwrap_or_default(),
+        as_str(param(body, "IdentityId")).as_deref(),
+    );
+    match state.studio_session_mappings.get_mut(&key) {
+        Some(m) => {
+            m.session_policy_arn = as_str(param(body, "SessionPolicyArn"));
+            m.last_modified_at = now_ts();
+            Ok(json!({}))
+        }
+        None => Err(generic_invalid_request()),
+    }
+}
+
+fn delete_studio_session_mapping(state: &mut EmrState, body: &Value) -> OpResult {
+    let key = mapping_lookup_key(
+        &as_str(param(body, "StudioId")).unwrap_or_default(),
+        &as_str(param(body, "IdentityType")).unwrap_or_default(),
+        as_str(param(body, "IdentityId")).as_deref(),
+    );
+    if state.studio_session_mappings.remove(&key).is_none() {
+        return Err(generic_invalid_request());
+    }
+    Ok(json!({}))
+}
+
+/// DescribeNotebookExecution — generic InvalidRequestException when missing.
+fn describe_notebook_execution(state: &mut EmrState, body: &Value) -> OpResult {
+    let id = as_str(param(body, "NotebookExecutionId")).unwrap_or_default();
+    match state.notebook_executions.get(&id) {
+        Some(e) => Ok(json!({
+            "NotebookExecution": {
+                "NotebookExecutionId": e.id,
+                "NotebookExecutionName": e.name,
+                "EditorId": e.editor_id,
+                "ExecutionEngine": e.execution_engine,
+                "ServiceRole": e.service_role,
+                "NotebookParams": e.params,
+                "Status": e.status,
+                "StartTime": e.start_at,
+                "EndTime": e.end_at,
+                "Tags": [],
+            }
+        })),
+        None => Err(generic_invalid_request()),
+    }
+}
+
+fn stop_notebook_execution(state: &mut EmrState, body: &Value) -> OpResult {
+    let id = as_str(param(body, "NotebookExecutionId")).unwrap_or_default();
+    match state.notebook_executions.get_mut(&id) {
+        Some(e) => {
+            e.status = "STOPPED".into();
+            e.end_at = Some(now_ts());
+            Ok(json!({}))
+        }
+        None => Err(generic_invalid_request()),
+    }
+}
+
+fn list_notebook_executions(state: &mut EmrState, body: &Value) -> OpResult {
+    let status_filter = as_str(param(body, "Status"));
+    let list = state
+        .notebook_executions
+        .values()
+        .filter(|e| status_filter.as_ref().is_none_or(|st| st == &e.status))
+        .map(|e| {
+            json!({
+                "NotebookExecutionId": e.id,
+                "NotebookExecutionName": e.name,
+                "EditorId": e.editor_id,
+                "Status": e.status,
+                "StartTime": e.start_at,
+                "EndTime": e.end_at,
+            })
+        })
+        .collect::<Vec<_>>();
+    Ok(json!({"NotebookExecutions": list}))
+}
+
+/// CreatePersistentAppUI — patched-spec output only surfaces the id member.
+fn create_persistent_app_ui(
+    state: &mut EmrState,
+    account: u64,
+    region: &str,
+    body: &Value,
+) -> OpResult {
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = now_ts();
+    state.persistent_app_uis.insert(
+        id.clone(),
+        PersistentAppUi {
+            target_resource_arn: as_str(param(body, "TargetResourceArn")).unwrap_or_default(),
+            id: id.clone(),
+            created_at: now,
+            last_modified_at: now,
+        },
+    );
+    let _ = (account, region);
+    Ok(json!({"PersistentAppUIId": id}))
+}
+
+fn describe_persistent_app_ui(
+    state: &mut EmrState,
+    account: u64,
+    region: &str,
+    body: &Value,
+) -> OpResult {
+    let id = as_str(param(body, "PersistentAppUIId")).unwrap_or_default();
+    let ui = state
+        .persistent_app_uis
+        .get(&id)
+        .ok_or_else(|| resource_not_found(&format!("PersistentAppUI {id} does not exist.")))?;
+    Ok(json!({
+        "PersistentAppUI": {
+            "PersistentAppUIId": ui.id,
+            "PersistentAppUIStatus": "ACTIVE",
+            "TargetResourceArn": ui.target_resource_arn,
+            "CreationTime": ui.created_at,
+            "LastModifiedTime": ui.last_modified_at,
+            "PersistentAppUIArn": format!("arn:aws:elasticmapreduce:{}:{}:persistent-app-ui/{}", region, account, ui.id),
+        }
+    }))
+}
+
+/// DescribeReleaseLabel — labels come from moto's us-east-1 resource list.
+fn describe_release_label(state: &mut EmrState, body: &Value) -> OpResult {
+    let label = as_str(param(body, "ReleaseLabel")).unwrap_or_default();
+    if !release_labels().contains(&label) {
+        return Err(generic_invalid_request());
+    }
+    let _ = state;
+    Ok(json!({
+        "ReleaseLabel": label,
+        "Applications": [],
+        "AvailableOSReleases": [],
+    }))
+}
+
+/// ListReleaseLabels — moto's static per-region list (us-east-1 set).
+fn list_release_labels() -> OpResult {
+    Ok(json!({"ReleaseLabels": release_labels()}))
+}
+
+fn release_labels() -> Vec<String> {
+    serde_json::from_str(RELEASE_LABELS_US_EAST_1).unwrap_or_default()
+}
+
+/// ListSupportedInstanceTypes — moto raises ValidationException for labels
+/// without an instance-types resource; emr-6.10.0 ships embedded.
+fn list_supported_instance_types(body: &Value) -> OpResult {
+    let label = as_str(param(body, "ReleaseLabel")).unwrap_or_default();
+    let list: Value = if label == "emr-6.10.0" {
+        serde_json::from_str(INSTANCE_TYPES_EMR_6_10_0).unwrap_or(json!([]))
+    } else {
+        return Err(validation(&format!(
+            "Release label {label} is not supported."
+        )));
+    };
+    Ok(json!({"SupportedInstanceTypes": list}))
+}
+
+// --- managed scaling / auto-termination policies ----------------------------
+
+fn put_managed_scaling_policy(state: &mut EmrState, body: &Value) -> OpResult {
+    let cluster_id = as_str(param(body, "ClusterId")).unwrap_or_default();
+    if !state.clusters.contains_key(&cluster_id) {
+        return Err(invalid_cluster(&cluster_id));
+    }
+    state.managed_scaling_policies.insert(
+        cluster_id,
+        param(body, "ManagedScalingPolicy")
+            .cloned()
+            .unwrap_or(json!({})),
+    );
+    Ok(json!({}))
+}
+
+fn get_managed_scaling_policy(state: &mut EmrState, body: &Value) -> OpResult {
+    let cluster_id = as_str(param(body, "ClusterId")).unwrap_or_default();
+    if !state.clusters.contains_key(&cluster_id) {
+        return Err(invalid_cluster(&cluster_id));
+    }
+    match state.managed_scaling_policies.get(&cluster_id) {
+        Some(p) if !p.is_null() => Ok(json!({"ManagedScalingPolicy": p})),
+        _ => Ok(json!({})),
+    }
+}
+
+fn remove_managed_scaling_policy(state: &mut EmrState, body: &Value) -> OpResult {
+    let cluster_id = as_str(param(body, "ClusterId")).unwrap_or_default();
+    if !state.clusters.contains_key(&cluster_id) {
+        return Err(invalid_cluster(&cluster_id));
+    }
+    state.managed_scaling_policies.remove(&cluster_id);
+    Ok(json!({}))
+}
+
+fn put_auto_termination_policy(state: &mut EmrState, body: &Value) -> OpResult {
+    let cluster_id = as_str(param(body, "ClusterId")).unwrap_or_default();
+    if !state.clusters.contains_key(&cluster_id) {
+        return Err(invalid_cluster(&cluster_id));
+    }
+    state.auto_termination_policies.insert(
+        cluster_id,
+        param(body, "AutoTerminationPolicy")
+            .cloned()
+            .unwrap_or(json!({})),
+    );
+    Ok(json!({}))
+}
+
+fn get_auto_termination_policy(state: &mut EmrState, body: &Value) -> OpResult {
+    let cluster_id = as_str(param(body, "ClusterId")).unwrap_or_default();
+    if !state.clusters.contains_key(&cluster_id) {
+        return Err(invalid_cluster(&cluster_id));
+    }
+    match state.auto_termination_policies.get(&cluster_id) {
+        Some(p) if !p.is_null() && p.as_object().map(|m| !m.is_empty()).unwrap_or(false) => {
+            Ok(json!({"AutoTerminationPolicy": p}))
+        }
+        _ => Ok(json!({})),
+    }
+}
+
+fn remove_auto_termination_policy(state: &mut EmrState, body: &Value) -> OpResult {
+    let cluster_id = as_str(param(body, "ClusterId")).unwrap_or_default();
+    if !state.clusters.contains_key(&cluster_id) {
+        return Err(invalid_cluster(&cluster_id));
+    }
+    state.auto_termination_policies.remove(&cluster_id);
     Ok(json!({}))
 }
 
@@ -2316,5 +3011,387 @@ mod tests {
             "simple_scaling_policy_configuration"
         );
         assert_eq!(xform("MasterInstanceType"), "master_instance_type");
+    }
+
+    #[test]
+    fn security_configuration_lifecycle() {
+        let created = body_of(&run(
+            "CreateSecurityConfiguration",
+            json!({"Name": "sc-test", "SecurityConfiguration": json!({"EncryptionConfiguration": {"EnableInTransitEncryption": false}}).to_string()}),
+        ));
+        assert_eq!(created["Name"], "sc-test");
+        assert_eq!(created["Name"], "sc-test");
+        assert!(created.get("CreationDateTime").is_some());
+
+        let described = body_of(&run(
+            "DescribeSecurityConfiguration",
+            json!({"Name": "sc-test"}),
+        ));
+        assert_eq!(described["Name"], "sc-test");
+        assert_eq!(
+            described["SecurityConfiguration"],
+            json!({"EncryptionConfiguration": {"EnableInTransitEncryption": false}}).to_string()
+        );
+
+        let listed = body_of(&run("ListSecurityConfigurations", json!({})));
+        assert!(listed["SecurityConfigurations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["Name"] == "sc-test"));
+
+        // duplicate → moto's keyword-message InvalidRequestException
+        let dup = run(
+            "CreateSecurityConfiguration",
+            json!({"Name": "sc-test", "SecurityConfiguration": "{}"}),
+        );
+        assert_eq!(status_of(&dup), 400);
+        assert_eq!(body_of(&dup)["__type"], "InvalidRequestException");
+        assert_eq!(
+            body_of(&dup)["Message"],
+            "An unspecified service error occurred"
+        );
+
+        let deleted = run("DeleteSecurityConfiguration", json!({"Name": "sc-test"}));
+        assert_eq!(status_of(&deleted), 200);
+
+        let missing = run("DescribeSecurityConfiguration", json!({"Name": "sc-test"}));
+        assert_eq!(status_of(&missing), 400);
+        assert_eq!(body_of(&missing)["ErrorCode"], "ResourceNotFound");
+
+        let missing_del = run("DeleteSecurityConfiguration", json!({"Name": "sc-test"}));
+        assert_eq!(status_of(&missing_del), 400);
+        assert_eq!(body_of(&missing_del)["ErrorCode"], "ResourceNotFound");
+    }
+
+    #[test]
+    fn block_public_access_roundtrip() {
+        let empty = body_of(&run("GetBlockPublicAccessConfiguration", json!({})));
+        // never errors — unset store renders empty members
+        assert_eq!(empty["BlockPublicAccessConfiguration"], json!({}));
+        assert_eq!(empty["BlockPublicAccessConfigurationMetadata"], json!({}));
+
+        run(
+            "PutBlockPublicAccessConfiguration",
+            json!({"BlockPublicAccessConfiguration": {"BlockPublicSecurityGroupRules": true, "PermittedPublicSecurityGroupRuleRanges": []}}),
+        );
+        let got = body_of(&run("GetBlockPublicAccessConfiguration", json!({})));
+        assert_eq!(
+            got["BlockPublicAccessConfiguration"]["BlockPublicSecurityGroupRules"],
+            true
+        );
+        assert_eq!(
+            got["BlockPublicAccessConfiguration"]["PermittedPublicSecurityGroupRuleRanges"],
+            json!([])
+        );
+        assert!(got["BlockPublicAccessConfigurationMetadata"]
+            .get("CreationDateTime")
+            .is_some());
+        assert_eq!(
+            got["BlockPublicAccessConfigurationMetadata"]["CreatedByArn"],
+            "arn:aws:sts::123456789012:user/moto"
+        );
+    }
+
+    #[test]
+    fn studio_crud() {
+        let created = body_of(&run(
+            "CreateStudio",
+            json!({
+                "Name": "studio-a",
+                "AuthMode": "IAM",
+                "VpcId": "vpc-1",
+                "SubnetIds": ["subnet-1"],
+                "ServiceRole": "role",
+                "WorkspaceSecurityGroupId": "sg-1",
+                "EngineSecurityGroupId": "sg-2",
+                "DefaultS3Location": "s3://b/st/",
+            }),
+        ));
+        let sid = created["StudioId"].as_str().unwrap().to_string();
+        assert!(sid.starts_with("es-"));
+        assert_eq!(
+            created["Url"],
+            format!("https://{sid}.emrstudio-prod.us-east-1.amazonaws.com")
+        );
+
+        let described = body_of(&run("DescribeStudio", json!({"StudioId": sid})))["Studio"].clone();
+        assert_eq!(described["StudioId"], sid);
+        assert_eq!(described["Name"], "studio-a");
+        assert_eq!(
+            described["StudioArn"],
+            format!("arn:aws:elasticmapreduce:us-east-1:123456789012:studio/{sid}")
+        );
+        assert_eq!(described["SubnetIds"], json!(["subnet-1"]));
+
+        let listed = body_of(&run("ListStudios", json!({})));
+        assert!(listed["Studios"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|s| s["StudioId"] == sid));
+
+        run("DeleteStudio", json!({"StudioId": sid}));
+        let missing = run("DescribeStudio", json!({"StudioId": sid}));
+        assert_eq!(status_of(&missing), 400);
+        assert_eq!(body_of(&missing)["__type"], "InvalidRequestException");
+        assert_eq!(
+            body_of(&missing)["Message"],
+            "An unspecified service error occurred"
+        );
+    }
+
+    #[test]
+    fn studio_session_mapping_key_quirk() {
+        let created = body_of(&run(
+            "CreateStudio",
+            json!({"Name": "studio-b", "AuthMode": "IAM", "VpcId": "vpc", "SubnetIds": ["sn"], "ServiceRole": "r", "WorkspaceSecurityGroupId": "sg", "EngineSecurityGroupId": "sg"}),
+        ));
+        let sid = created["StudioId"].as_str().unwrap().to_string();
+
+        // create with IdentityName (identity_id defaults to "")
+        run(
+            "CreateStudioSessionMapping",
+            json!({"StudioId": sid, "IdentityType": "USER", "IdentityName": "user@x.com", "SessionPolicyArn": "arn:p"}),
+        );
+
+        // lookup with absent IdentityId → moto f-string "None" → miss
+        let miss = run(
+            "GetStudioSessionMapping",
+            json!({"StudioId": sid, "IdentityType": "USER", "IdentityName": "nobody@x.com"}),
+        );
+        assert_eq!(status_of(&miss), 400);
+        assert_eq!(body_of(&miss)["__type"], "InvalidRequestException");
+
+        let upd = run(
+            "UpdateStudioSessionMapping",
+            json!({"StudioId": sid, "IdentityType": "USER", "IdentityName": "nobody@x.com", "SessionPolicyArn": "arn:x"}),
+        );
+        assert_eq!(status_of(&upd), 400);
+
+        // create with explicit IdentityId → lookup hits
+        run(
+            "CreateStudioSessionMapping",
+            json!({"StudioId": sid, "IdentityType": "USER", "IdentityId": "id-1", "SessionPolicyArn": "arn:p"}),
+        );
+        let found = body_of(&run(
+            "GetStudioSessionMapping",
+            json!({"StudioId": sid, "IdentityType": "USER", "IdentityId": "id-1"}),
+        ));
+        assert_eq!(found["SessionMapping"]["IdentityId"], "id-1");
+        assert_eq!(found["SessionMapping"]["SessionPolicyArn"], "arn:p");
+
+        let del = run(
+            "DeleteStudioSessionMapping",
+            json!({"StudioId": sid, "IdentityType": "USER", "IdentityId": "id-1"}),
+        );
+        assert_eq!(status_of(&del), 200);
+        let remiss = run(
+            "GetStudioSessionMapping",
+            json!({"StudioId": sid, "IdentityType": "USER", "IdentityId": "id-1"}),
+        );
+        assert_eq!(status_of(&remiss), 400);
+
+        // unknown studio → generic invalid
+        let bad = run(
+            "CreateStudioSessionMapping",
+            json!({"StudioId": "es-NOPE123", "IdentityType": "USER", "IdentityName": "x"}),
+        );
+        assert_eq!(body_of(&bad)["__type"], "InvalidRequestException");
+    }
+
+    #[test]
+    fn notebook_and_persistent_app_ui() {
+        // StartNotebookExecution is denied (moto parity)
+        let denied = run(
+            "StartNotebookExecution",
+            json!({"ExecutionEngine": {"Id": "j-1"}}),
+        );
+        assert_eq!(status_of(&denied), 501);
+        assert_eq!(
+            body_of(&denied)["message"],
+            "The start_notebook_execution action has not been implemented"
+        );
+
+        // describe/stop of a nonexistent execution → generic InvalidRequest
+        let miss_desc = run(
+            "DescribeNotebookExecution",
+            json!({"NotebookExecutionId": "ne-FAKE123"}),
+        );
+        assert_eq!(status_of(&miss_desc), 400);
+        assert_eq!(body_of(&miss_desc)["__type"], "InvalidRequestException");
+        let miss_stop = run(
+            "StopNotebookExecution",
+            json!({"NotebookExecutionId": "ne-FAKE123"}),
+        );
+        assert_eq!(status_of(&miss_stop), 400);
+
+        let listed = body_of(&run("ListNotebookExecutions", json!({})));
+        assert_eq!(
+            listed["NotebookExecutions"].as_array().unwrap(),
+            &json!([]).as_array().unwrap().to_vec()
+        );
+
+        let ui = body_of(&run(
+            "CreatePersistentAppUI",
+            json!({"TargetResourceArn": "arn:aws:emr:us-east-1:123456789012:cluster/j-1"}),
+        ));
+        let ui_id = ui["PersistentAppUIId"].as_str().unwrap().to_string();
+        assert!(!ui_id.is_empty());
+        assert!(ui.get("PersistentAppUI").is_none()); // patched-spec drops it
+
+        let described = body_of(&run(
+            "DescribePersistentAppUI",
+            json!({"PersistentAppUIId": ui_id}),
+        ));
+        assert_eq!(
+            described["PersistentAppUI"]["PersistentAppUIId"],
+            ui["PersistentAppUIId"]
+        );
+        assert_eq!(
+            described["PersistentAppUI"]["PersistentAppUIStatus"],
+            "ACTIVE"
+        );
+
+        let miss_ui = run(
+            "DescribePersistentAppUI",
+            json!({"PersistentAppUIId": "nope"}),
+        );
+        assert_eq!(status_of(&miss_ui), 400);
+        assert_eq!(body_of(&miss_ui)["ErrorCode"], "ResourceNotFound");
+        assert_eq!(
+            body_of(&miss_ui)["Message"],
+            "PersistentAppUI nope does not exist."
+        );
+    }
+
+    #[test]
+    fn release_labels_and_supported_instance_types() {
+        let labels = body_of(&run("ListReleaseLabels", json!({})));
+        let all = labels["ReleaseLabels"].as_array().unwrap().clone();
+        assert!(all.iter().any(|l| l == "emr-6.10.0"));
+
+        let described = body_of(&run(
+            "DescribeReleaseLabel",
+            json!({"ReleaseLabel": "emr-6.10.0"}),
+        ));
+        assert_eq!(described["ReleaseLabel"], "emr-6.10.0");
+        assert_eq!(described["Applications"], json!([]));
+        assert_eq!(described["AvailableOSReleases"], json!([]));
+
+        let miss = run(
+            "DescribeReleaseLabel",
+            json!({"ReleaseLabel": "emr-99.99.99"}),
+        );
+        assert_eq!(status_of(&miss), 400);
+        assert_eq!(body_of(&miss)["__type"], "InvalidRequestException");
+
+        let types = body_of(&run(
+            "ListSupportedInstanceTypes",
+            json!({"ReleaseLabel": "emr-6.10.0"}),
+        ));
+        let list = types["SupportedInstanceTypes"].as_array().unwrap();
+        assert!(!list.is_empty());
+        assert!(list.iter().all(|t| t.get("Type").is_some()));
+
+        let unsupported = run(
+            "ListSupportedInstanceTypes",
+            json!({"ReleaseLabel": "emr-99.99.99"}),
+        );
+        assert_eq!(status_of(&unsupported), 400);
+        assert_eq!(body_of(&unsupported)["__type"], "ValidationException");
+        assert_eq!(
+            body_of(&unsupported)["Message"],
+            "Release label emr-99.99.99 is not supported."
+        );
+    }
+
+    #[test]
+    fn scaling_and_termination_policies() {
+        let id = cluster_fixture("policies");
+
+        let put = run(
+            "PutManagedScalingPolicy",
+            json!({"ClusterId": id, "ManagedScalingPolicy": {"ComputeLimits": {"UnitType": "Instances", "MinimumCapacityUnits": 1, "MaximumCapacityUnits": 10}}}),
+        );
+        assert_eq!(status_of(&put), 200);
+        assert_eq!(body_of(&put), json!({}));
+
+        let got = body_of(&run("GetManagedScalingPolicy", json!({"ClusterId": id})));
+        assert_eq!(
+            got["ManagedScalingPolicy"]["ComputeLimits"]["UnitType"],
+            "Instances"
+        );
+        assert_eq!(
+            got["ManagedScalingPolicy"]["ComputeLimits"]["MaximumCapacityUnits"],
+            10
+        );
+
+        run("RemoveManagedScalingPolicy", json!({"ClusterId": id}));
+        let got_empty = body_of(&run("GetManagedScalingPolicy", json!({"ClusterId": id})));
+        assert_eq!(got_empty, json!({}));
+
+        run(
+            "PutAutoTerminationPolicy",
+            json!({"ClusterId": id, "AutoTerminationPolicy": {"IdleTimeout": 3600}}),
+        );
+        let got_term = body_of(&run("GetAutoTerminationPolicy", json!({"ClusterId": id})));
+        assert_eq!(got_term["AutoTerminationPolicy"]["IdleTimeout"], 3600);
+        run("RemoveAutoTerminationPolicy", json!({"ClusterId": id}));
+        let got_term2 = body_of(&run("GetAutoTerminationPolicy", json!({"ClusterId": id})));
+        assert_eq!(got_term2, json!({}));
+
+        // fake cluster on each policy op → NoSuchCluster (moto describe_cluster)
+        for op in [
+            "PutManagedScalingPolicy",
+            "GetManagedScalingPolicy",
+            "RemoveManagedScalingPolicy",
+            "PutAutoTerminationPolicy",
+            "GetAutoTerminationPolicy",
+            "RemoveAutoTerminationPolicy",
+        ] {
+            let err = run(op, json!({"ClusterId": "j-FAKE12345678"}));
+            assert_eq!(body_of(&err)["__type"], "InvalidRequestException", "{op}");
+            assert_eq!(body_of(&err)["ErrorCode"], "NoSuchCluster", "{op}");
+        }
+
+        run("TerminateJobFlows", json!({"JobFlowIds": [id]}));
+    }
+
+    #[test]
+    fn gap_ops_deny_501() {
+        for (op, snake) in [
+            ("ListStudioSessionMappings", "list_studio_session_mappings"),
+            (
+                "SetKeepJobFlowAliveWhenNoSteps",
+                "set_keep_job_flow_alive_when_no_steps",
+            ),
+            (
+                "SetUnhealthyNodeReplacement",
+                "set_unhealthy_node_replacement",
+            ),
+            (
+                "GetClusterSessionCredentials",
+                "get_cluster_session_credentials",
+            ),
+            (
+                "GetPersistentAppUIPresignedURL",
+                "get_persistent_app_ui_presigned_url",
+            ),
+            (
+                "GetOnClusterAppUIPresignedURL",
+                "get_on_cluster_app_ui_presigned_url",
+            ),
+            ("UpdateStudio", "update_studio"),
+        ] {
+            let resp = run(op, json!({}));
+            assert_eq!(status_of(&resp), 501, "{op}");
+            assert_eq!(body_of(&resp)["__type"], "NotImplemented", "{op}");
+            assert_eq!(
+                body_of(&resp)["message"],
+                format!("The {snake} action has not been implemented"),
+                "{op}"
+            );
+        }
     }
 }
