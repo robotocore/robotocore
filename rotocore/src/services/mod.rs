@@ -21,6 +21,7 @@ pub mod athena;
 pub mod backup;
 pub mod batch;
 pub mod budgets;
+pub mod ce;
 pub mod cloudformation;
 pub mod cloudfront;
 pub mod cloudtrail;
@@ -101,6 +102,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "backup" => backup::dispatch(req),
         "batch" => batch::dispatch(req),
         "budgets" => budgets::dispatch(req),
+        "ce" => ce::dispatch(req),
         "cloudformation" => Some(self::cloudformation::dispatch(req)),
         "cloudfront" => Some(cloudfront::dispatch(req)),
         "cloudtrail" => Some(cloudtrail::dispatch(req)),
@@ -194,6 +196,7 @@ pub fn handles_service(service: &str) -> bool {
             | "backup"
             | "batch"
             | "budgets"
+            | "ce"
             | "cloudformation"
             | "cloudfront"
             | "cloudtrail"
