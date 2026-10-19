@@ -86,8 +86,8 @@ pub mod timestreaminfluxdb;
 pub mod timestreamquery;
 pub mod timestreamwrite;
 pub mod transcribe;
-pub mod workspaces;
-pub mod xray;
+pub mod wafv2;
+pub mod workspaces;pub mod xray;
 
 /// Ported service backends. An arm here routes that service to the native
 /// rotocore implementation the moment it reaches suite parity.
@@ -174,8 +174,8 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "timestreamquery" => timestreamquery::dispatch(req),
         "timestreamwrite" => timestreamwrite::dispatch(req),
         "transcribe" => Some(transcribe::dispatch(req)),
-        "workspaces" => workspaces::dispatch(req),
-
+"wafv2" => wafv2::dispatch(req),
+"workspaces" => workspaces::dispatch(req),
         "xray" => Some(xray::dispatch(req)),
 
         _ => None,
@@ -270,8 +270,8 @@ pub fn handles_service(service: &str) -> bool {
             | "timestreamquery"
             | "timestreamwrite"
             | "transcribe"
-            | "workspaces"
-            | "xray"
+| "wafv2"
+| "workspaces"            | "xray"
     )
 }
 
