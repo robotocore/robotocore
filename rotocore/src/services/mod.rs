@@ -100,6 +100,7 @@ pub mod resourcegroupstaggingapi;
 pub mod route53;
 pub mod route53resolver;
 pub mod s3control;
+pub mod s3vectors;
 pub mod sagemaker;
 pub mod securityhub;
 pub mod servicecatalog;
@@ -227,6 +228,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "route53" => Some(route53::dispatch(req)),
         "route53resolver" => Some(route53resolver::dispatch(req)),
         "s3control" => s3control::dispatch(req),
+        "s3vectors" => s3vectors::dispatch(req),
         "sagemaker" => Some(sagemaker::dispatch(req)),
         "securityhub" => Some(securityhub::dispatch(req)),
         "servicecatalog" => servicecatalog::dispatch(req),
@@ -364,6 +366,7 @@ pub fn handles_service(service: &str) -> bool {
             | "route53"
             | "route53resolver"
             | "s3control"
+            | "s3vectors"
             | "sagemaker"
             | "securityhub"
             | "servicecatalog"
