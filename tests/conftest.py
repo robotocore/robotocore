@@ -7,6 +7,8 @@ fixtures here only hand out boto3 clients pointing at the running server.
 deleted in a later phase and the unit suites that used them go with it.)
 """
 
+import pytest
+
 
 @pytest.fixture
 def aws_client():
