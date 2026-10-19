@@ -20,6 +20,8 @@ pub mod comprehend;
 pub mod config;
 pub mod databrew;
 pub mod datasync;
+pub mod elb;
+pub mod elbv2;
 mod ec2;
 pub mod eks;
 pub mod elasticache;
@@ -71,6 +73,8 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "ec2" => Some(self::ec2::dispatch(req)),
         "eks" => eks::dispatch(req),
         "elasticache" => Some(elasticache::dispatch(req)),
+        "elb" => self::elb::dispatch(req),
+        "elbv2" => self::elbv2::dispatch(req),
         "es" => Some(opensearch::dispatch(req)),
         "greengrass" => Some(greengrass::dispatch(req)),
         "identitystore" => identitystore::dispatch(req),

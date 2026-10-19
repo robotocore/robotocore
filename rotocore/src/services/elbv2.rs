@@ -39,20 +39,20 @@ pub enum ElbVal {
 }
 
 impl ElbVal {
-    fn get(&self, key: &str) -> Option<&ElbVal> {
+    pub fn get(&self, key: &str) -> Option<&ElbVal> {
         match self {
             ElbVal::M(m) => m.get(key),
             _ => None,
         }
     }
-    fn string(&self) -> Option<&str> {
+    pub fn string(&self) -> Option<&str> {
         match self {
             ElbVal::S(s) if !s.is_empty() => Some(s),
             _ => None,
         }
     }
     /// Wrapped or flattened scalar list.
-    fn scalars(&self) -> Vec<String> {
+    pub fn scalars(&self) -> Vec<String> {
         match self {
             ElbVal::L(items) => items
                 .iter()
@@ -65,7 +65,7 @@ impl ElbVal {
         }
     }
     /// Wrapped or flattened list of structs.
-    fn map_list(&self) -> Vec<BTreeMap<String, ElbVal>> {
+    pub fn map_list(&self) -> Vec<BTreeMap<String, ElbVal>> {
         match self {
             ElbVal::L(items) => items
                 .iter()
@@ -77,7 +77,7 @@ impl ElbVal {
             _ => Vec::new(),
         }
     }
-    fn opt_bool(&self) -> Option<bool> {
+    pub fn opt_bool(&self) -> Option<bool> {
         match self {
             ElbVal::S(s) if !s.is_empty() => {
                 Some(matches!(s.to_ascii_lowercase().as_str(), "true" | "1"))
@@ -85,7 +85,7 @@ impl ElbVal {
             _ => None,
         }
     }
-    fn opt_i64(&self) -> Option<i64> {
+    pub fn opt_i64(&self) -> Option<i64> {
         match self {
             ElbVal::S(s) if !s.is_empty() => s.parse().ok(),
             _ => None,
@@ -94,7 +94,7 @@ impl ElbVal {
 }
 
 /// Parse urlencoded key/value pairs into a nested tree.
-fn parse_params(req: &Request) -> BTreeMap<String, ElbVal> {
+pub fn parse_params(req: &Request) -> BTreeMap<String, ElbVal> {
     let mut tree = ElbVal::M(BTreeMap::new());
     let mut pairs = decode_pairs(&req.body);
     pairs.extend(decode_pairs(req.query_string.as_bytes()));
@@ -221,23 +221,23 @@ fn tag_pair(m: &BTreeMap<String, ElbVal>) -> Option<(String, String)> {
     ))
 }
 
-fn p_string<'a>(p: &'a BTreeMap<String, ElbVal>, key: &str) -> Option<&'a str> {
+pub fn p_string<'a>(p: &'a BTreeMap<String, ElbVal>, key: &str) -> Option<&'a str> {
     p.get(key).and_then(|v| v.string())
 }
 
-fn p_list(p: &BTreeMap<String, ElbVal>, key: &str) -> Vec<String> {
+pub fn p_list(p: &BTreeMap<String, ElbVal>, key: &str) -> Vec<String> {
     p.get(key).map(|v| v.scalars()).unwrap_or_default()
 }
 
-fn p_struct_list(p: &BTreeMap<String, ElbVal>, key: &str) -> Vec<BTreeMap<String, ElbVal>> {
+pub fn p_struct_list(p: &BTreeMap<String, ElbVal>, key: &str) -> Vec<BTreeMap<String, ElbVal>> {
     p.get(key).map(|v| v.map_list()).unwrap_or_default()
 }
 
-fn p_i64(p: &BTreeMap<String, ElbVal>, key: &str) -> Option<i64> {
+pub fn p_i64(p: &BTreeMap<String, ElbVal>, key: &str) -> Option<i64> {
     p.get(key).and_then(|v| v.opt_i64())
 }
 
-fn p_bool(p: &BTreeMap<String, ElbVal>, key: &str) -> Option<bool> {
+pub fn p_bool(p: &BTreeMap<String, ElbVal>, key: &str) -> Option<bool> {
     p.get(key).and_then(|v| v.opt_bool())
 }
 
@@ -286,7 +286,7 @@ fn rand_decimal() -> String {
     }
 }
 
-fn elb_partition(region: &str) -> &'static str {
+pub fn elb_partition(region: &str) -> &'static str {
     if region.starts_with("cn-") {
         "aws-cn"
     } else if region.starts_with("us-gov") {
@@ -309,7 +309,7 @@ pub enum LoopbackBody {
     Json { target: String, payload: String },
 }
 
-fn loopback(req: &Request, service: &'static str, body: &LoopbackBody) -> Option<(u16, String)> {
+pub fn loopback(req: &Request, service: &'static str, body: &LoopbackBody) -> Option<(u16, String)> {
     use std::io::{Read, Write};
     use std::net::TcpStream;
 
@@ -382,7 +382,7 @@ fn form_encode(s: &str) -> String {
 /// (vpc_id, zone) per subnet id; found subnets only.
 pub type SubnetInfo = BTreeMap<String, (Option<String>, Option<String>)>;
 
-fn fetch_subnets(req: &Request, ids: &[String]) -> SubnetInfo {
+pub fn fetch_subnets(req: &Request, ids: &[String]) -> SubnetInfo {
     let mut out: SubnetInfo = BTreeMap::new();
     if ids.is_empty() {
         return out;
@@ -4232,7 +4232,7 @@ mod tests {
             ElbVal::L(vec![ElbVal::S("ELBSecurityPolicy-FAKE".to_string())]),
         );
         let empty = op_describe_ssl_policies(&p).unwrap();
-        assert_eq!(empty, "<SslPolicies></SslPolicies>");
+        assert_eq!(empty, "<SslPolicies/>");
     }
 
     #[test]
