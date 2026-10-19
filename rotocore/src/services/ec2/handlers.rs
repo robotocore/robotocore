@@ -513,16 +513,20 @@ pub fn wire_tags(params: &P) -> Tags {
     out
 }
 
-/// Tags from `TagSpecification.N.Tag.M.Key/Value` (RunInstances-style).
+/// Tags from `TagSpecification(s).N.Tag.M.Key/Value` (RunInstances-style).
 pub fn tag_spec_tags(params: &P) -> Tags {
     let mut out: Tags = Vec::new();
-    for i in params.container_indices("TagSpecification") {
-        let base = format!("TagSpecification.{}.Tag", i + 1);
-        for t in params.container_indices(&base) {
-            let k = params.sub(&base, t, "Key").unwrap_or("").to_string();
-            let v = params.sub(&base, t, "Value").unwrap_or("").to_string();
-            if !k.is_empty() {
-                out.push((k, v));
+    // botocore flattens TagSpecifications with either a singular or plural
+    // member name depending on the operation model — accept both wire forms.
+    for fam in ["TagSpecification", "TagSpecifications"] {
+        for i in params.container_indices(fam) {
+            let base = format!("{}.{}.Tag", fam, i + 1);
+            for t in params.container_indices(&base) {
+                let k = params.sub(&base, t, "Key").unwrap_or("").to_string();
+                let v = params.sub(&base, t, "Value").unwrap_or("").to_string();
+                if !k.is_empty() {
+                    out.push((k, v));
+                }
             }
         }
     }

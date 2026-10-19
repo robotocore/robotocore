@@ -2834,10 +2834,8 @@ mod itt {
 
     /// roster is a {type: {...}} map — flatten to rows with InstanceType set.
     static TYPES: std::sync::LazyLock<Vec<Value>> = std::sync::LazyLock::new(|| {
-        let map: serde_json::Map<String, Value> = serde_json::from_slice(
-            include_bytes!("itt/instance-types.json"),
-        )
-        .unwrap_or_default();
+        let map: serde_json::Map<String, Value> =
+            serde_json::from_slice(include_bytes!("itt/instance-types.json")).unwrap_or_default();
         map.into_iter()
             .map(|(name, mut row)| {
                 if let Some(obj) = row.as_object_mut() {

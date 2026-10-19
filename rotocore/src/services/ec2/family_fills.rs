@@ -67,9 +67,7 @@ pub fn create_fills(
             );
             f.insert(
                 "OperatingRegions".to_string(),
-                Fill::X(
-                    "<item><regionName>us-east-1</regionName></item>".to_string(),
-                ),
+                Fill::X("<item><regionName>us-east-1</regionName></item>".to_string()),
             );
             f.insert("Tier".to_string(), Fill::S("advanced".into()));
             if !tags_xml.is_empty() {
