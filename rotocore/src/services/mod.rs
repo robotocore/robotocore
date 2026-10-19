@@ -74,6 +74,7 @@ pub mod resourcegroupstaggingapi;
 pub mod route53resolver;
 pub mod sagemaker;
 pub mod securityhub;
+pub mod servicecatalog;
 pub mod sesv2;
 pub mod shield;
 pub mod signer;
@@ -158,6 +159,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "route53resolver" => Some(route53resolver::dispatch(req)),
         "sagemaker" => Some(sagemaker::dispatch(req)),
         "securityhub" => Some(securityhub::dispatch(req)),
+        "servicecatalog" => servicecatalog::dispatch(req),
         "sesv2" => Some(sesv2::dispatch(req)),
         "shield" => shield::dispatch(req),
         "signer" => signer::dispatch(req),
@@ -250,6 +252,7 @@ pub fn handles_service(service: &str) -> bool {
             | "route53resolver"
             | "sagemaker"
             | "securityhub"
+            | "servicecatalog"
             | "sesv2"
             | "shield"
             | "signer"
