@@ -1476,10 +1476,7 @@ fn render_dist_config(dist: &Distribution) -> String {
         el("Quantity", dist.aliases.len().to_string()) + &wrap("Items", &alias_items),
     );
 
-    out += &el(
-        "DefaultRootObject",
-        config.text_or("DefaultRootObject", ""),
-    );
+    out += &el("DefaultRootObject", config.text_or("DefaultRootObject", ""));
 
     // Origins
     let origins = config.els_at(&["Origins", "Items"], "Origin");
@@ -1550,10 +1547,7 @@ fn render_dist_config(dist: &Distribution) -> String {
         ),
     );
 
-    out += &el(
-        "PriceClass",
-        config.text_or("PriceClass", "PriceClass_All"),
-    );
+    out += &el("PriceClass", config.text_or("PriceClass", "PriceClass_All"));
 
     out += &el("Enabled", config.text_of("Enabled").unwrap_or("False"));
 
@@ -2695,8 +2689,7 @@ fn render_function_summary(func: &CloudFrontFunction) -> String {
                 el("Comment", func.function_config.text_or("Comment", ""))
                     + &el(
                         "Runtime",
-                        func
-                            .function_config
+                        func.function_config
                             .text_of("Runtime")
                             .unwrap_or("cloudfront-js-1.0"),
                     ),
@@ -4360,26 +4353,23 @@ fn h_create_vpc_origin(account: u64, backend: &mut Backend, req: &Request) -> Re
 fn vpc_config_values(vo: &VpcOrigin) -> String {
     el(
         "Name",
-        vo.endpoint_config
-            .text_of("Name")
-            .unwrap_or_default(),
-    ) + &el(
-        "Arn",
-        vo.endpoint_config
-            .text_of("Arn")
-            .unwrap_or_default(),
-    ) + &el(
-        "HTTPPort",
-        vo.endpoint_config.text_of("HTTPPort").unwrap_or("80"),
-    ) + &el(
-        "HTTPSPort",
-        vo.endpoint_config.text_of("HTTPSPort").unwrap_or("443"),
-    ) + &el(
-        "OriginProtocolPolicy",
-        vo.endpoint_config
-            .text_of("OriginProtocolPolicy")
-            .unwrap_or("https-only"),
-    ) + "<OriginSslProtocols><Quantity>0</Quantity><Items/></OriginSslProtocols>"
+        vo.endpoint_config.text_of("Name").unwrap_or_default(),
+    ) + &el("Arn", vo.endpoint_config.text_of("Arn").unwrap_or_default())
+        + &el(
+            "HTTPPort",
+            vo.endpoint_config.text_of("HTTPPort").unwrap_or("80"),
+        )
+        + &el(
+            "HTTPSPort",
+            vo.endpoint_config.text_of("HTTPSPort").unwrap_or("443"),
+        )
+        + &el(
+            "OriginProtocolPolicy",
+            vo.endpoint_config
+                .text_of("OriginProtocolPolicy")
+                .unwrap_or("https-only"),
+        )
+        + "<OriginSslProtocols><Quantity>0</Quantity><Items/></OriginSslProtocols>"
 }
 
 fn render_vpc_origin(vo: &VpcOrigin, account: u64) -> String {
