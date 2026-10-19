@@ -1,6 +1,6 @@
 {
   "comment": "Golden baseline: per-suite compat-suite pass counts the Rust server must keep matching. Frozen from the Python ground-truth era; regenerate with: uv run python scripts/harness/parity.py --rust-only --update-expectations",
-  "generated": "2026-10-19T04:13:15",
+  "generated": "2026-10-19T04:27:06",
   "per_suite": {
     "cloudformation": {
       "pass": 150
@@ -12,7 +12,7 @@
       "pass": 178
     },
     "ec2": {
-      "pass": 749
+      "pass": 750
     },
     "ecr": {
       "pass": 68
@@ -33,7 +33,7 @@
       "pass": 97
     },
     "kms": {
-      "pass": 80
+      "pass": 81
     },
     "lambda": {
       "pass": 140
@@ -66,7 +66,7 @@
       "pass": 49
     },
     "acm": {
-      "pass": 0
+      "pass": 45
     },
     "acmpca": {
       "pass": 12
@@ -96,7 +96,7 @@
       "pass": 61
     },
     "cloudfront": {
-      "pass": 0
+      "pass": 227
     },
     "cloudtrail": {
       "pass": 90
@@ -135,7 +135,7 @@
       "pass": 28
     },
     "elbv2": {
-      "pass": 64
+      "pass": 67
     },
     "emr": {
       "pass": 74
@@ -159,7 +159,7 @@
       "pass": 89
     },
     "iot": {
-      "pass": 0
+      "pass": 315
     },
     "iotdata": {
       "pass": 2
@@ -213,7 +213,7 @@
       "pass": 3
     },
     "resiliencehub": {
-      "pass": 0
+      "pass": 97
     },
     "resource_groups": {
       "pass": 20
@@ -250,6 +250,24 @@
     },
     "xray": {
       "pass": 43
+    },
+    "budgets": {
+      "pass": 29
+    },
+    "dsql": {
+      "pass": 17
+    },
+    "ebs": {
+      "pass": 1
+    },
+    "ec2instanceconnect": {
+      "pass": 1
+    },
+    "networkfirewall": {
+      "pass": 11
+    },
+    "ssoadmin": {
+      "pass": 7
     }
   }
 }
