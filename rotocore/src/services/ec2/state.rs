@@ -628,8 +628,10 @@ impl Ec2State {
         }];
         self.security_groups.push(sg);
         // 2 default subnets with the moto scheme
+        let mut default_subnet_ids: Vec<String> = Vec::new();
         for (i, cidr) in ["172.31.0.0/20", "172.31.16.0/20"].iter().enumerate() {
             let subnet_id = format!("subnet-{}", idhex::hex17());
+            default_subnet_ids.push(subnet_id.clone());
             let az = format!("{}a", region);
             self.subnets.push(Subnet {
                 id: subnet_id.clone(),
@@ -637,7 +639,7 @@ impl Ec2State {
                 cidr: cidr.to_string(),
                 az: az.clone(),
                 state: "available".into(),
-                map_public_ip: false,
+                map_public_ip: true,
                 availability_zone_id: "use1-az6".into(),
                 is_default: true,
                 ..Default::default()
@@ -647,7 +649,7 @@ impl Ec2State {
         // moto's default ACL — created by default vpc
         let acl_id = format!("acl-{}", idhex::hex17());
         self.network_acls.push(NetworkAcl {
-            id: acl_id,
+            id: acl_id.clone(),
             vpc_id: vpc_id.clone(),
             is_default: true,
             entries: vec![
@@ -672,6 +674,13 @@ impl Ec2State {
             ],
             ..Default::default()
         });
+        // default ACL associations follow the subnets (moto).
+        if let Some(acl) = self.network_acls.iter_mut().find(|a| a.id == acl_id) {
+            for sid in &default_subnet_ids {
+                acl.associations
+                    .push((format!("aclassoc-{}", idhex::hex17()), sid.clone()));
+            }
+        }
     }
 
     /// Assign a fresh id in moto's format.

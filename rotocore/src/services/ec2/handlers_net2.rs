@@ -50,7 +50,7 @@ pub fn route(req: &Request, params: &P) -> Response {
         "DescribeNetworkAcls" => describe_network_acls(req, params),
         "CreateNetworkAclEntry" => create_network_acl_entry(req, params),
         "DeleteNetworkAclEntry" => delete_network_acl_entry(req, params),
-        "ReplaceNetworkAclEntry" => create_network_acl_entry(req, params),
+        "ReplaceNetworkAclEntry" => replace_network_acl_entry(req, params),
         "ReplaceNetworkAclAssociation" => replace_network_acl_association(req, params),
 
         // DHCP options
@@ -603,6 +603,11 @@ fn assign_private_ips(req: &Request, params: &P) -> Response {
             state.enis[pos].secondary_private_ips.push(ip.clone());
         }
         let mut body = String::new();
+        body.push_str(&format!(
+            "<networkInterfaceId>{}</networkInterfaceId>",
+            xml_escape(&eni_id)
+        ));
+        body.push_str("<assignedPrivateIpAddressesSet>");
         for ip in &assigned {
             let _ = write!(
                 body,
@@ -610,6 +615,7 @@ fn assign_private_ips(req: &Request, params: &P) -> Response {
                 ip
             );
         }
+        body.push_str("</assignedPrivateIpAddressesSet>");
         ec2_xml("AssignPrivateIpAddressesResponse", &body)
     })
 }
@@ -872,6 +878,51 @@ fn create_network_acl_entry(req: &Request, params: &P) -> Response {
         };
         state.network_acls[pos].entries.push(entry);
         ok_xml("CreateNetworkAclEntryResponse")
+    })
+}
+
+fn replace_network_acl_entry(req: &Request, params: &P) -> Response {
+    let acl_id = params.str("NetworkAclId");
+    with_state(req, move |state| {
+        let pos = match state.network_acls.iter().position(|a| a.id == acl_id) {
+            Some(i) => i,
+            None => {
+                return ec2_error(
+                    400,
+                    "InvalidNetworkAclID.NotFound",
+                    &format!(
+                        "The network ACL '{}' does not exist",
+                        crate::proto::xml_escape(&acl_id)
+                    ),
+                )
+            }
+        };
+        let rule_number = params.i64("RuleNumber").unwrap_or(0);
+        let egress = params.bool("Egress").unwrap_or(false);
+        // replacing removes the entry with the same number/direction first
+        state.network_acls[pos]
+            .entries
+            .retain(|e| !(e.rule_number == rule_number && e.egress == egress));
+        let entry = NaclEntry {
+            rule_number,
+            protocol: params
+                .get("Protocol")
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "all".into()),
+            rule_action: params
+                .get("RuleAction")
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "allow".into()),
+            egress,
+            cidr: params
+                .get("CidrBlock")
+                .map(|s| s.to_string())
+                .unwrap_or_default(),
+            port_range: None,
+            icmp: None,
+        };
+        state.network_acls[pos].entries.push(entry);
+        ok_xml("ReplaceNetworkAclEntryResponse")
     })
 }
 
@@ -1346,7 +1397,7 @@ fn endpoint_item(e: &super::state::VpcEndpoint) -> String {
     format!(
         "<item><vpcEndpointId>{}</vpcEndpointId>{}<vpcId>{}</vpcId><serviceName>{}</serviceName>{}<state>{}</state>{}<policyDocument></policyDocument>{}<requesterManaged>false</requesterManaged>{}{}{}</item>",
         crate::proto::xml_escape(&e.id),
-        if e.endpoint_type.is_empty() { String::new() } else { format!("<vpcEndpointType>{}</vpcEndpointType>", crate::proto::xml_escape(&e.endpoint_type)) },
+        if true { format!("<vpcEndpointType>{}</vpcEndpointType>", crate::proto::xml_escape(&e.endpoint_type)) },
         crate::proto::xml_escape(&e.vpc_id),
         crate::proto::xml_escape(&e.service_name),
         if rts.is_empty() { String::new() } else { format!("<routeTableIds>{}</routeTableIds>", rts) },
@@ -1417,25 +1468,56 @@ fn create_vpc_endpoint(req: &Request, params: &P) -> Response {
             ..Default::default()
         };
         state.vpc_endpoints.push(e);
-        ec2_xml(
-            "CreateVpcEndpointResponse",
-            &format!(
-                "<vpcEndpoint><vpcEndpointId>{}</vpcEndpointId><vpcId>{}</vpcId><serviceName>{}</serviceName>{}<state>available</state><policyDocument></policyDocument>{}{}{}</vpcEndpoint>",
-                crate::proto::xml_escape(&id),
-                crate::proto::xml_escape(&vpc_id),
-                crate::proto::xml_escape(&service),
-                if !route_tables.is_empty() {
-                    format!("<routeTableIds>{}{}</routeTableIds>",
-                        route_tables.iter().map(|rt| format!("<item><routeTableId>{}</routeTableId></item>", crate::proto::xml_escape(rt))).collect::<String>(),
-                        "")
-                } else {
-                    String::new()
-                },
-                String::new(),
-                String::new(),
-                ""
-            ),
-        )
+        let type_el = if endpoint_type.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "<vpcEndpointType>{}</vpcEndpointType>",
+                crate::proto::xml_escape(&endpoint_type)
+            )
+        };
+        let create_resp_items = format!(
+            "<vpcEndpoint><vpcEndpointId>{}</vpcEndpointId>{}<vpcId>{}</vpcId><serviceName>{}</serviceName>{}<state>available</state><policyDocument></policyDocument>{}{}{}</vpcEndpoint>",
+            crate::proto::xml_escape(&id),
+            type_el,
+            crate::proto::xml_escape(&vpc_id),
+            crate::proto::xml_escape(&service),
+            if !route_tables.is_empty() {
+                format!(
+                    "<routeTableIds>{}</routeTableIds>",
+                    route_tables
+                        .iter()
+                        .map(|rt| format!(
+                            "<item><routeTableId>{}</routeTableId></item>",
+                            crate::proto::xml_escape(rt)
+                        ))
+                        .collect::<String>()
+                )
+            } else {
+                String::new()
+            },
+            if !subnets.is_empty() {
+                format!(
+                    "<subnetIds>{}</subnetIds>",
+                    subnets
+                        .iter()
+                        .map(|sn| format!(
+                            "<item><subnetId>{}</subnetId></item>",
+                            crate::proto::xml_escape(sn)
+                        ))
+                        .collect::<String>()
+                )
+            } else {
+                String::new()
+            },
+            if params.bool("PrivateDnsEnabled").unwrap_or(false) {
+                String::from("<dnsEntries/><privateDnsEnabled>true</privateDnsEnabled>")
+            } else {
+                String::new()
+            },
+            ""
+        );
+        ec2_xml("CreateVpcEndpointResponse", &create_resp_items)
     })
 }
 

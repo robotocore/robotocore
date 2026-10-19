@@ -1536,33 +1536,69 @@ fn modify_image_attribute(req: &Request, params: &P) -> Response {
                 )
             }
         };
-        let users: Vec<String> = params
+        let mut users: Vec<String> = params
             .list("UserId")
             .iter()
-            .chain(params.list("LaunchPermission.Add.LaunchPermission.UserId").iter())
             .map(|s| s.to_string())
             .collect();
-        let groups: Vec<String> = params
+        let mut groups: Vec<String> = params
             .list("UserGroup")
             .iter()
-            .chain(params.list("LaunchPermission.Add.LaunchPermission.Group").iter())
             .map(|s| s.to_string())
             .collect();
-        let rm_users: Vec<String> = params
-            .list("LaunchPermission.Remove.LaunchPermission.UserId")
-            .iter()
-            .chain(params.list("Remove.UserId").iter())
-            .map(|s| s.to_string())
-            .collect();
-        let rm_groups: Vec<String> = params
-            .list("LaunchPermission.Remove.LaunchPermission.Group")
+        let mut rm_users: Vec<String> = params
+            .list("Remove.UserId")
             .iter()
             .map(|s| s.to_string())
             .collect();
+        let mut rm_groups: Vec<String> = params
+            .list("Remove.Group")
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        // botocore flattens LaunchPermission.{Add,Remove}.{n}.{UserId,Group}
+        for i in params.container_indices("LaunchPermission.Add") {
+            if let Some(u) = params.sub("LaunchPermission.Add", i, "UserId") {
+                users.push(u.to_string());
+            }
+            if let Some(g) = params.sub("LaunchPermission.Add", i, "Group") {
+                groups.push(g.to_string());
+            }
+        }
+        for i in params.container_indices("LaunchPermission.Remove") {
+            if let Some(u) = params.sub("LaunchPermission.Remove", i, "UserId") {
+                rm_users.push(u.to_string());
+            }
+            if let Some(g) = params.sub("LaunchPermission.Remove", i, "Group") {
+                rm_groups.push(g.to_string());
+            }
+        }
+        for i in params.container_indices("Add") {
+            if let Some(u) = params.sub("Add", i, "UserId") {
+                users.push(u.to_string());
+            }
+            if let Some(g) = params.sub("Add", i, "Group") {
+                groups.push(g.to_string());
+            }
+        }
+        for i in params.container_indices("Remove") {
+            if let Some(u) = params.sub("Remove", i, "UserId") {
+                rm_users.push(u.to_string());
+            }
+            if let Some(g) = params.sub("Remove", i, "Group") {
+                rm_groups.push(g.to_string());
+            }
+        }
         let op = params
             .get("LaunchPermission.OperationType")
             .map(|s| s.to_string())
-            .unwrap_or_else(|| "add".into());
+            .unwrap_or_else(|| {
+                if !rm_users.is_empty() || !rm_groups.is_empty() {
+                    "remove".into()
+                } else {
+                    "add".into()
+                }
+            });
         if op == "add" {
             for u in &users {
                 state.images[pos]

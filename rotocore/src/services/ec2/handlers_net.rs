@@ -709,7 +709,59 @@ fn update_sg_rule_descriptions(req: &Request, params: &P, egress: bool) -> Respo
 }
 
 fn modify_security_group_rules(req: &Request, params: &P) -> Response {
-    ok_xml("ModifySecurityGroupRulesResponse")
+    // pairs of (rule id, rule update) read off the flat wire params
+    let mut updates: Vec<(String, Option<String>, Option<i64>, Option<i64>, Option<String>)> =
+        Vec::new();
+    for i in params.container_indices("SecurityGroupRule") {
+        let rid = params
+            .sub("SecurityGroupRule", i, "SecurityGroupRuleId")
+            .unwrap_or_default()
+            .to_string();
+        if rid.is_empty() {
+            continue;
+        }
+        let proto = params
+            .get(&format!("SecurityGroupRule.{}.SecurityGroupRule.IpProtocol", i + 1))
+            .map(|s| s.to_string());
+        let from = params.i64(&format!("SecurityGroupRule.{}.SecurityGroupRule.FromPort", i + 1));
+        let to = params.i64(&format!("SecurityGroupRule.{}.SecurityGroupRule.ToPort", i + 1));
+        let cidr = params
+            .get(&format!("SecurityGroupRule.{}.SecurityGroupRule.CidrIpv4", i + 1))
+            .map(|s| s.to_string());
+        updates.push((rid, proto, from, to, cidr));
+    }
+    with_state(req, move |state| {
+        for (rid, proto, from, to, cidr) in &updates {
+            'outer: for sg in state.security_groups.iter_mut() {
+                for (egress, perms) in [
+                    (false, sg.permissions.as_mut_slice()),
+                    (true, sg.egress.as_mut_slice()),
+                ] {
+                    for (idx, perm) in perms.iter_mut().enumerate() {
+                        if sg_rule_id(&sg.id, egress, idx) != *rid {
+                            continue;
+                        }
+                        if let Some(pr) = proto {
+                            perm.protocol = pr.clone();
+                        }
+                        if from.is_some() {
+                            perm.from_port = *from;
+                        }
+                        if to.is_some() {
+                            perm.to_port = *to;
+                        }
+                        if let Some(c) = cidr {
+                            // preserve the description, swap the cidr
+                            let desc = perm.ip_ranges.iter().map(|(_, d)| d.clone()).next();
+                            perm.ip_ranges = vec![(c.clone(), desc.unwrap_or_default())];
+                        }
+                        break 'outer;
+                    }
+                }
+            }
+        }
+        ok_xml("ModifySecurityGroupRulesResponse")
+    })
 }
 
 fn associate_sg_vpc(req: &Request, params: &P) -> Response {

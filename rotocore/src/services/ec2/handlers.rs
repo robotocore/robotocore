@@ -13,7 +13,7 @@
 
 #![allow(unused_variables)]
 
-use super::state::{idhex, Ec2State, Route, RouteTable, SecurityGroup, Subnet, Tags, Vpc};
+use super::state::{idhex, Ec2State, NaclEntry, NetworkAcl, Route, RouteTable, SecurityGroup, Simple, Subnet, Tags, Vpc};
 use super::{ec2_error, ec2_xml, tags_xml, with_state, Params};
 use crate::proto::xml_escape;
 use crate::{Request, Response};
@@ -111,6 +111,11 @@ pub fn route(req: &Request, params: &P) -> Response {
         "DisableVpcClassicLink" => set_classic_link(req, params, false),
         "DescribeVpcClassicLink" => describe_classic_link(req, params),
         "DescribeVpcClassicLinkDnsSupport" => describe_classic_link_dns(req, params),
+        "GetEbsEncryptionByDefault" => ebs_encryption_default(req, params, None),
+        "EnableEbsEncryptionByDefault" => ebs_encryption_default(req, params, Some(true)),
+        "DisableEbsEncryptionByDefault" => ebs_encryption_default(req, params, Some(false)),
+        "EnableVpcClassicLinkDnsSupport" => set_classic_link_dns(req, params, true),
+        "DisableVpcClassicLinkDnsSupport" => set_classic_link_dns(req, params, false),
         "DescribeVpcBlockPublicAccessOptions" => vpc_bpa_options(req, params),
         "DescribeVpcBlockPublicAccessExclusions" => vpc_bpa_exclusions(req, params),
         "DeleteVpcBlockPublicAccessExclusion" => not_found_bpa(req, params),
@@ -662,6 +667,22 @@ fn create_vpc(req: &Request, params: &P) -> Response {
             }],
             ..Default::default()
         });
+        // moto pairs a default network ACL with each new VPC.
+        let acl_id = state.next_id("acl");
+        state.network_acls.push(NetworkAcl {
+            id: acl_id.clone(),
+            vpc_id: vpc_id.clone(),
+            is_default: true,
+            entries: vec![NaclEntry {
+                rule_number: 100,
+                protocol: "-1".into(),
+                rule_action: "allow".into(),
+                egress: false,
+                cidr: "0.0.0.0/0".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        });
         let vpc = state.vpcs.last().unwrap().clone();
         ec2_xml(
             "CreateVpcResponse",
@@ -785,13 +806,16 @@ fn modify_vpc_attribute(req: &Request, params: &P) -> Response {
 
 fn create_default_vpc(req: &Request, params: &P) -> Response {
     with_state(req, move |state| {
-        if state.default_vpc_regions.contains(&req.region) {
+        if state.vpcs.iter().any(|v| v.is_default) {
             return ec2_error(
                 400,
                 "DefaultVpcAlreadyExists",
                 "A Default VPC already exists for this account in this region.",
             );
         }
+        // the visited flag is only a fast path for ensure_default_vpc; a
+        // cleaned-up default VPC must not block recreation
+        state.default_vpc_regions.remove(&req.region);
         state.ensure_default_vpc(&req.region, req.account);
         let vpc = state.vpcs.last().unwrap().clone();
         ec2_xml(
@@ -922,6 +946,69 @@ fn describe_classic_link(req: &Request, params: &P) -> Response {
         ec2_xml(
             "DescribeVpcClassicLinkResponse",
             &format!("<vpcSet>{}</vpcSet>", items.concat()),
+        )
+    })
+}
+
+/// Get/Enable/DisableEbsEncryptionByDefault share one bool per scope.
+fn ebs_encryption_default(req: &Request, params: &P, set: Option<bool>) -> Response {
+    let _ = params;
+    with_state(req, move |state| {
+        let enabled = {
+            let cur = state
+                .simple
+                .get("ebs-default")
+                .and_then(|items| items.first())
+                .and_then(|s| s.get("Enabled"))
+                .map(|v| v == "true")
+                .unwrap_or(false);
+            match set {
+                Some(v) => {
+                    if let Some(items) = state.simple.get_mut("ebs-default") {
+                        items.retain(|s| s.id != "global");
+                    }
+                    let mut s = Simple {
+                        id: "global".to_string(),
+                        kind: "ebs-default".to_string(),
+                        ..Default::default()
+                    };
+                    s.set("Enabled", if v { "true" } else { "false" });
+                    state
+                        .simple
+                        .entry("ebs-default".to_string())
+                        .or_default()
+                        .push(s);
+                    v
+                }
+                None => cur,
+            }
+        };
+        let root = match (set.is_none(), set) {
+            (true, _) => "GetEbsEncryptionByDefaultResponse",
+            (_, Some(true)) => "EnableEbsEncryptionByDefaultResponse",
+            _ => "DisableEbsEncryptionByDefaultResponse",
+        };
+        ec2_xml(
+            root,
+            &format!(
+                "<ebsEncryptionByDefault>{}</ebsEncryptionByDefault>",
+                if enabled { "true" } else { "false" }
+            ),
+        )
+    })
+}
+
+fn set_classic_link_dns(req: &Request, params: &P, enable: bool) -> Response {
+    let vpc_id = params.str("VpcId");
+    with_state(req, move |state| {
+        if require_vpc(state, &vpc_id).is_err() {
+            return require_vpc(state, &vpc_id).err().unwrap();
+        }
+        let pos = state.vpcs.iter().position(|v| v.id == vpc_id).unwrap_or(0);
+        state.vpcs[pos].classic_link_dns = enable;
+        ec2_xml(
+            if enable { "EnableVpcClassicLinkDnsSupportResponse" } else { "DisableVpcClassicLinkDnsSupportResponse" },
+            "<return>true</return>",
         )
     })
 }
@@ -1071,6 +1158,15 @@ fn create_subnet(req: &Request, params: &P) -> Response {
             .unwrap_or_default();
         state.subnets.push(subnet);
         replace_tags(state, std::slice::from_ref(&subnet_id), &mine);
+        // subnets associate with the vpc's default network ACL (moto).
+        if let Some(acl) = state
+            .network_acls
+            .iter_mut()
+            .find(|a| a.vpc_id == vpc_id && a.is_default)
+        {
+            acl.associations
+                .push((format!("aclassoc-{}", idhex::hex17()), subnet_id.clone()));
+        }
         let s = state
             .subnets
             .iter()
@@ -1145,6 +1241,9 @@ fn delete_subnet(req: &Request, params: &P) -> Response {
             Err(e) => return e,
         };
         state.subnets.remove(pos);
+        for a in state.network_acls.iter_mut() {
+            a.associations.retain(|(_, sub)| sub != &subnet_id);
+        }
         ok_xml("DeleteSubnetResponse")
     })
 }
@@ -1325,7 +1424,10 @@ fn get_subnet_cidr_reservations(req: &Request, params: &P) -> Response {
         }
         ec2_xml(
             "GetSubnetCidrReservationsResponse",
-            &format!("<subnetCidrReservations>{}</subnetCidrReservations>", body),
+            &format!(
+                "<subnetIpv4CidrReservationSet>{}</subnetIpv4CidrReservationSet><subnetIpv6CidrReservationSet/>",
+                body
+            ),
         )
     })
 }
