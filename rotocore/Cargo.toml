@@ -19,6 +19,8 @@ base64 = "0.22"
 parking_lot = "0.12"
 once_cell = "1.19"
 urlencoding = "2.1"
+# CloudFront rest-xml request parsing (shares the workspace's 0.31 pin).
+quick-xml = "0.31"
 # Sync HTTP loopback client for the resource mirror (CFN -> sibling services);
 # no TLS needed: the mirror only ever talks to the local host over http.
 ureq = { version = "2.10", default-features = false }
