@@ -837,7 +837,7 @@ impl FakeTargetGroup {
                 "false".to_string(),
             ));
         }
-        match protocol.as_deref() {
+        match protocol {
             Some("HTTP") | Some("HTTPS") => {
                 out.push(("stickiness.type".to_string(), "lb_cookie".to_string()))
             }
@@ -1980,11 +1980,9 @@ fn op_create_target_group(
     } else {
         None
     };
-    if hc_proto.as_deref() != Some("TCP") {
-        if hc_port_final.is_none() {
-            if let Some(port) = &port {
-                hc_port_final = Some(port.clone());
-            }
+    if hc_proto.as_deref() != Some("TCP") && hc_port_final.is_none() {
+        if let Some(port) = &port {
+            hc_port_final = Some(port.clone());
         }
     }
 
@@ -2408,7 +2406,7 @@ fn op_describe_target_health(
     );
     let mut items = String::new();
     for (id, port) in &queried {
-        let (state_name, reason, description) = health_for(&tg, id, &states);
+        let (state_name, reason, description) = health_for(tg, id, &states);
         let mut member = format!("<Target><Id>{}</Id>", esc(id));
         if !port.is_empty() {
             member.push_str(&thin_tag("Port", port));
@@ -3057,7 +3055,7 @@ fn op_modify_rule(state: &mut ElbV2State, p: &BTreeMap<String, ElbVal>) -> OpRes
     }
     validate_conditions(&conditions)?;
     validate_actions(state, &actions)?;
-    let _ = describe_rules_impl(state, None, &[rule_arn.clone()])?;
+    let _ = describe_rules_impl(state, None, std::slice::from_ref(&rule_arn))?;
     for lb in state.lbs.iter_mut() {
         for listener in lb.listeners.iter_mut() {
             if let Some(rule) = listener.rule_by_arn_mut(&rule_arn) {
@@ -3131,7 +3129,7 @@ fn op_set_rule_priorities(state: &mut ElbV2State, p: &BTreeMap<String, ElbVal>) 
             .and_then(|v| v.string())
             .unwrap_or("")
             .to_string();
-        let found = describe_rules_impl(state, None, &[arn.clone()])?;
+        let found = describe_rules_impl(state, None, std::slice::from_ref(&arn))?;
         let Some(rule) = found.first() else {
             return Err(ElbError::svc(
                 "RuleNotFound",

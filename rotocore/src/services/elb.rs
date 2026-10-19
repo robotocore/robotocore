@@ -16,12 +16,11 @@
 //! existence) go through the gateway loopback, like the ELBv2 port.
 
 use super::elbv2::{
-    create_default_security_group, elb_partition, fetch_default_subnets, fetch_subnets, iso_micro,
-    p_bool, p_i64, p_list, p_string, p_struct_list, parse_params, ElbError, ElbVal, LoopbackBody,
+    create_default_security_group, fetch_default_subnets, fetch_subnets, iso_micro, p_i64, p_list,
+    p_string, p_struct_list, parse_params, ElbError, ElbVal, LoopbackBody,
 };
 use crate::store;
 use crate::{Request, Response};
-use bytes::Bytes;
 use std::collections::BTreeMap;
 
 pub const XMLNS: &str = "http://elasticloadbalancing.amazonaws.com/doc/2012-06-01/";
@@ -471,10 +470,6 @@ fn policies_descriptions_xml(lb: &ElbClassicLb, filter: &[String]) -> OpResult {
 
 fn val_non_empty(v: &ElbVal) -> bool {
     !matches!(v, ElbVal::None) && !matches!(v, ElbVal::S(s) if s.is_empty())
-}
-
-fn val_map_list(v: &ElbVal) -> Vec<BTreeMap<String, ElbVal>> {
-    v.map_list()
 }
 
 fn sg_exists(req: &Request, id: &str) -> bool {
@@ -962,16 +957,14 @@ fn op_describe_instance_health(
     let mut items = String::new();
     for id in &ids {
         if !lb.instance_ids.contains(id) {
-            items.push_str(&format!(
-                "<member>{instance}</member>",
-                instance = format!(
-                    "{}{}{}{}",
-                    tag_esc("Description", "N/A"),
-                    tag_esc("InstanceId", id),
-                    tag_esc("State", "Unknown"),
-                    tag_esc("ReasonCode", "N/A"),
-                )
-            ));
+            let unknown_row = format!(
+                "{}{}{}{}",
+                tag_esc("Description", "N/A"),
+                tag_esc("InstanceId", id),
+                tag_esc("State", "Unknown"),
+                tag_esc("ReasonCode", "N/A"),
+            );
+            items.push_str(&format!("<member>{unknown_row}</member>"));
             continue;
         }
         match states.get(id) {
@@ -1095,7 +1088,7 @@ fn op_modify_load_balancer_attributes(
                 .unwrap_or(false);
         }
         if let Some(al) = attrs.get("AccessLog") {
-            let has = val_non_empty(&al);
+            let has = val_non_empty(al);
             if has {
                 lb.attributes.access_log_enabled = al
                     .get("Enabled")
@@ -1116,7 +1109,7 @@ fn op_modify_load_balancer_attributes(
             }
         }
         if let Some(dr) = attrs.get("ConnectionDraining") {
-            if val_non_empty(&dr) {
+            if val_non_empty(dr) {
                 lb.attributes.connection_draining_enabled = dr
                     .get("Enabled")
                     .and_then(|v| v.opt_bool())
@@ -1129,7 +1122,7 @@ fn op_modify_load_balancer_attributes(
             }
         }
         if let Some(st) = attrs.get("ConnectionSettings") {
-            if val_non_empty(&st) {
+            if val_non_empty(st) {
                 lb.attributes.idle_timeout = st
                     .get("IdleTimeout")
                     .and_then(|v| v.opt_i64())
@@ -1571,6 +1564,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bytes::Bytes;
 
     fn req_for(op: &str, body: &str) -> Request {
         let full = format!("Action={op}&Version=2012-06-01&{body}");

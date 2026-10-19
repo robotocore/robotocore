@@ -1,7 +1,10 @@
 // moto elbv2 `ssl_policies.py` — static table (verified against the
 // moto lane responses; cipher lists in table order).
 
-pub static SSL_POLICIES: [(&str, (&[&str], &[&str])); 17] = [
+/// (policy name, (ciphers, ssl protocols))
+type SslPolicyEntry = (&'static str, (&'static [&'static str], &'static [&'static str]));
+
+pub static SSL_POLICIES: [SslPolicyEntry; 17] = [
     (
         "ELBSecurityPolicy-TLS13-1-3-2021-06",
         (&[
