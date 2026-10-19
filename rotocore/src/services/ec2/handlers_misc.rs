@@ -637,8 +637,93 @@ fn list_pykey_of(op: &str) -> String {
         .unwrap_or_default()
 }
 
+/// Dedicated create/describe/delete for NetworkInsightsAccessScope: the
+/// captured template hardcodes one sample id, so the store id and the wire id
+/// drifted apart (delete then 404ed).
+fn nis_scope_route(req: &Request, params: &P) -> Response {
+    match req.operation.as_str() {
+        "CreateNetworkInsightsAccessScope" => {
+            with_state(req, move |state| {
+                let id = state.next_id("nis");
+                let mut s = Simple {
+                    id: id.clone(),
+                    kind: "network-insights-access-scope".to_string(),
+                    item_xml: format!(
+                        "<item><networkInsightsAccessScopeId>{id}</networkInsightsAccessScopeId><networkInsightsAccessScopeArn>arn:aws:ec2:{region}:{account}:network-insights-access-scope/{id}</networkInsightsAccessScopeArn><createdDate>{ts}</createdDate><tagSet/></item>",
+                        id = xml_escape(&id),
+                        region = req.region,
+                        account = req.account,
+                        ts = super::now_iso()
+                    ),
+                    tags: wire_tags(params),
+                    ..Default::default()
+                };
+                s.set("NetworkInsightsAccessScopeId", id.clone());
+                for (k, v) in super::handlers::tag_spec_tags(params) {
+                    if !s.tags.iter().any(|(ek, _)| ek == &k) {
+                        s.tags.push((k, v));
+                    }
+                }
+                state
+                    .simple
+                    .entry("network-insights-access-scope".to_string())
+                    .or_default()
+                    .push(s);
+                Response::xml(
+                    200,
+                    format!(
+                        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<{root} xmlns=\"{ns}\"><networkInsightsAccessScope><networkInsightsAccessScopeId>{id}</networkInsightsAccessScopeId><networkInsightsAccessScopeArn>arn:aws:ec2:{region}:{account}:network-insights-access-scope/{id}</networkInsightsAccessScopeArn><createdDate>{ts}</createdDate><tagSet/></networkInsightsAccessScope><networkInsightsAccessScopeContent><networkInsightsAccessScopeId>{id}</networkInsightsAccessScopeId></networkInsightsAccessScopeContent><requestId>{rid}</requestId></{root}>",
+                        root = req.operation,
+                        ns = super::EC2_NS,
+                        id = xml_escape(&id),
+                        region = req.region,
+                        account = req.account,
+                        ts = super::now_iso(),
+                        rid = uuid::Uuid::new_v4()
+                    )
+                    .into_bytes(),
+                )
+            })
+        }
+        "DescribeNetworkInsightsAccessScopes" => {
+            let ids = ids_of(params, "NetworkInsightsAccessScopeId");
+            with_state(req, move |state| {
+                let mut items = String::new();
+                if let Some(list) = state.simple.get("network-insights-access-scope") {
+                    for s in list {
+                        if !ids.is_empty() && !ids.contains(&s.id) {
+                            continue;
+                        }
+                        items.push_str(&s.item_xml);
+                    }
+                }
+                ec2_xml(
+                    "DescribeNetworkInsightsAccessScopesResponse",
+                    &format!(
+                        "<networkInsightsAccessScopeSet>{items}</networkInsightsAccessScopeSet>"
+                    ),
+                )
+            })
+        }
+        "DeleteNetworkInsightsAccessScope" => {
+            let id = params.str("NetworkInsightsAccessScopeId");
+            with_state(req, move |state| {
+                state.simple.entry("network-insights-access-scope".to_string()).or_default().retain(|s| s.id != id);
+                ec2_xml(
+                    "DeleteNetworkInsightsAccessScopeResponse",
+                    &format!("<networkInsightsAccessScopeId>{}</networkInsightsAccessScopeId>", xml_escape(&id)),
+                )
+            })
+        }
+        _ => super::not_implemented(&req.operation),
+    }
+}
+
 fn simple_family_route(req: &Request, params: &P) -> Response {
     let fam = find_family(&req.operation).unwrap();
+    if fam.kind == "network-insights-access-scope" {
+        return nis_scope_route(req, params);
+    }
     if matches!(
         fam.kind,
         "host" | "fleet" | "spot-fleet-request" | "spot-instance-request"
@@ -3461,6 +3546,10 @@ pub static GAP_OPS_B: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
         "GetCoipPoolUsage",
         "GetEnabledIpamPolicy",
         "StartNetworkInsightsAnalysis",
+        "DescribeNetworkInsightsAnalyses",
+        "StartNetworkInsightsAccessScopeAnalysis",
+        "DescribeNetworkInsightsAccessScopeAnalyses",
+        "GetNetworkInsightsAccessScopeAnalysisFindings",
         "GetNetworkInsightsAccessScopeContent",
     ]
     .into_iter()
@@ -3539,9 +3628,173 @@ pub fn gap_ops_b_response(req: &Request, op: &str, params: &P) -> Response {
             "<instanceEventWindow><instanceEventWindowId>{}</instanceEventWindowId></instanceEventWindow>",
             xml_escape(id_of(params, "InstanceEventWindowId").as_str())
         ),
-        "CreateInstanceConnectEndpoint" => String::from(
-            "<instanceConnectEndpoint><instanceConnectEndpointId>ice-00000000000000000</instanceConnectEndpointId><state>available</state></instanceConnectEndpoint>",
-        ),
+        "CreateInstanceConnectEndpoint" => {
+            let ice_id = format!("ice-{}", super::state::idhex::hex17());
+            let vpc = params.str("VpcId");
+            let subnet = params.str("SubnetId");
+            with_state(req, |st| {
+                let mut s = Simple {
+                    id: ice_id.clone(),
+                    kind: "instance-connect-endpoint".to_string(),
+                    ..Default::default()
+                };
+                s.set("VpcId", vpc.clone());
+                s.set("SubnetId", subnet.clone());
+                s.set("State", "available");
+                s.item_xml = format!(
+                    "<item><instanceConnectEndpointId>{}</instanceConnectEndpointId><vpcId>{}</vpcId><subnetId>{}</subnetId><type>interface</type><state>available</state></item>",
+                    xml_escape(&ice_id),
+                    xml_escape(&vpc),
+                    xml_escape(&subnet)
+                );
+                st.simple
+                    .entry("instance-connect-endpoint".to_string())
+                    .or_default()
+                    .push(s);
+            });
+            format!(
+                "<instanceConnectEndpoint><instanceConnectEndpointId>{}</instanceConnectEndpointId><vpcId>{}</vpcId><subnetId>{}</subnetId><type>interface</type><state>available</state></instanceConnectEndpoint>",
+                xml_escape(&ice_id),
+                xml_escape(&vpc),
+                xml_escape(&subnet)
+            )
+        }
+        "DeleteInstanceConnectEndpoint" => {
+            let ice_id = id_of(params, "InstanceConnectEndpointId");
+            with_state(req, |st| {
+                if let Some(items) = st.simple.get_mut("instance-connect-endpoint") {
+                    items.retain(|s| s.id != ice_id);
+                }
+            });
+            format!(
+                "<instanceConnectEndpoint><instanceConnectEndpointId>{}</instanceConnectEndpointId><state>delete-complete</state></instanceConnectEndpoint>",
+                xml_escape(&ice_id)
+            )
+        }
+        "DescribeInstanceConnectEndpoints" => {
+            let ids = ids_of(params, "InstanceConnectEndpointId");
+            let mut ice_out = String::new();
+            with_state(req, |st| {
+                if let Some(items_vec) = st.simple.get("instance-connect-endpoint").cloned() {
+                    for s in &items_vec {
+                        if !ids.is_empty() && !ids.contains(&s.id) {
+                            continue;
+                        }
+                        ice_out.push_str(&s.item_xml);
+                    }
+                }
+            });
+            format!("<instanceConnectEndpointSet>{ice_out}</instanceConnectEndpointSet>")
+        }
+        "DescribeStaleSecurityGroups" => String::from("<staleSecurityGroupSet/>"),
+        "StartNetworkInsightsAnalysis" => {
+            let path = params.str("NetworkInsightsPathId");
+            let nia_id = format!("nia-{}", super::state::idhex::hex17());
+            with_state(req, |st| {
+                let mut s = Simple {
+                    id: nia_id.clone(),
+                    kind: "network-insights-analysis".to_string(),
+                    ..Default::default()
+                };
+                s.set("NetworkInsightsPathId", path.clone());
+                s.set("Status", "succeeded");
+                s.item_xml = format!(
+                    "<item><networkInsightsAnalysisId>{}</networkInsightsAnalysisId><networkInsightsPathId>{}</networkInsightsPathId><status>succeeded</status><startDate>{}</startDate><networkPathFound>true</networkPathFound></item>",
+                    xml_escape(&nia_id),
+                    xml_escape(&path),
+                    super::now_iso()
+                );
+                st.simple
+                    .entry("network-insights-analysis".to_string())
+                    .or_default()
+                    .push(s);
+            });
+            format!(
+                "<networkInsightsAnalysis><networkInsightsAnalysisId>{}</networkInsightsAnalysisId><networkInsightsAnalysisArn>arn:aws:ec2:us-east-1:123456789012:network-insights-analysis/{}</networkInsightsAnalysisArn><networkInsightsPathId>{}</networkInsightsPathId><status>succeeded</status><startDate>{}</startDate><networkPathFound>true</networkPathFound></networkInsightsAnalysis>",
+                xml_escape(&nia_id),
+                xml_escape(&nia_id),
+                xml_escape(&path),
+                super::now_iso()
+            )
+        }
+        "DescribeNetworkInsightsAnalyses" => {
+            let ids = ids_of(params, "NetworkInsightsAnalysisId");
+            let mut nia_out = String::new();
+            with_state(req, |st| {
+                if let Some(items_vec) = st.simple.get("network-insights-analysis").cloned() {
+                    for s in &items_vec {
+                        if !ids.is_empty() && !ids.contains(&s.id) {
+                            continue;
+                        }
+                        nia_out.push_str(&s.item_xml);
+                    }
+                }
+            });
+            format!("<networkInsightsAnalysisSet>{nia_out}</networkInsightsAnalysisSet>")
+        }
+        "StartNetworkInsightsAccessScopeAnalysis" => {
+            let scope = params.str("NetworkInsightsAccessScopeId");
+            let nisa_id = format!("nisa-{}", super::state::idhex::hex17());
+            with_state(req, |st| {
+                let mut s = Simple {
+                    id: nisa_id.clone(),
+                    kind: "network-insights-access-scope-analysis".to_string(),
+                    ..Default::default()
+                };
+                s.set("NetworkInsightsAccessScopeId", scope.clone());
+                s.set("Status", "succeeded");
+                s.item_xml = format!(
+                    "<item><networkInsightsAccessScopeAnalysisId>{}</networkInsightsAccessScopeAnalysisId><networkInsightsAccessScopeId>{}</networkInsightsAccessScopeId><status>succeeded</status><startDate>{}</startDate></item>",
+                    xml_escape(&nisa_id),
+                    xml_escape(&scope),
+                    super::now_iso()
+                );
+                st.simple
+                    .entry("network-insights-access-scope-analysis".to_string())
+                    .or_default()
+                    .push(s);
+            });
+            format!(
+                "<networkInsightsAccessScopeAnalysis><networkInsightsAccessScopeAnalysisId>{}</networkInsightsAccessScopeAnalysisId><networkInsightsAccessScopeAnalysisArn>arn:aws:ec2:us-east-1:123456789012:network-insights-access-scope-analysis/{}</networkInsightsAccessScopeAnalysisArn><networkInsightsAccessScopeId>{}</networkInsightsAccessScopeId><status>succeeded</status><startDate>{}</startDate><findingsFound>false</findingsFound></networkInsightsAccessScopeAnalysis>",
+                xml_escape(&nisa_id),
+                xml_escape(&nisa_id),
+                xml_escape(&scope),
+                super::now_iso()
+            )
+        }
+        "DescribeNetworkInsightsAccessScopeAnalyses" => {
+            let scope = params.str("NetworkInsightsAccessScopeId");
+            let mut nisa_out = String::new();
+            with_state(req, |st| {
+                if let Some(items_vec) = st
+                    .simple
+                    .get("network-insights-access-scope-analysis")
+                    .cloned()
+                {
+                    for s in &items_vec {
+                        if !scope.is_empty() && s.get("NetworkInsightsAccessScopeId") != Some(scope.as_str()) {
+                            continue;
+                        }
+                        nisa_out.push_str(&s.item_xml);
+                    }
+                }
+            });
+            format!("<networkInsightsAccessScopeAnalysisSet>{nisa_out}</networkInsightsAccessScopeAnalysisSet>")
+        }
+        "GetNetworkInsightsAccessScopeAnalysisFindings" => {
+            let id = params.str("NetworkInsightsAccessScopeAnalysisId");
+            format!(
+                "<networkInsightsAccessScopeAnalysisId>{}</networkInsightsAccessScopeAnalysisId><analysisStatus>succeeded</analysisStatus><analysisFindingSet/>",
+                xml_escape(&id)
+            )
+        }
+        "GetNetworkInsightsAccessScopeContent" => {
+            let scope = params.str("NetworkInsightsAccessScopeId");
+            format!(
+                "<networkInsightsAccessScopeContent><networkInsightsAccessScopeId>{}</networkInsightsAccessScopeId><compatibilityPolicy>overlap</compatibilityPolicy><matchPathSet/><excludePathSet/></networkInsightsAccessScopeContent>",
+                xml_escape(&scope)
+            )
+        }
         "CreateCoipCidr" => format!(
             "<coipCidr><cidr>{c}</cidr><coipPoolId>{p}</coipPoolId></coipCidr>",
             c = "10.10.0.0/24",
