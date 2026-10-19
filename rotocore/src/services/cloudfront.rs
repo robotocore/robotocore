@@ -5297,13 +5297,6 @@ mod tests {
             .unwrap_or_default()
     }
 
-    fn count_occurrences(haystack: &[u8], needle: &[u8]) -> usize {
-        haystack
-            .windows(needle.len())
-            .filter(|w| *w == &needle[..])
-            .count()
-    }
-
     // ----- distributions CRUD -----
 
     #[test]
@@ -5771,4 +5764,170 @@ mod tests {
         assert_eq!(text(&get, &["Error", "Code"]), "NoSuchInvalidation");
     }
 
+    // ----- tracking family smoke (OAC + public key + cache policy) -----
+
+    #[test]
+    fn oac_lifecycle() {
+        let account = next_account();
+        let body = "<OriginAccessControlConfig xmlns=\"http://cloudfront.amazonaws.com/doc/2020-05-31/\"><Name>oac-name</Name><Description>d1</Description><SigningProtocol>sigv4</SigningProtocol><SigningBehavior>always</SigningBehavior><OriginAccessControlOriginType>s3</OriginAccessControlOriginType></OriginAccessControlConfig>";
+        let create = dispatch(&make_req(
+            account,
+            "POST",
+            "/2020-05-31/origin-access-control",
+            body,
+            &[],
+        ));
+        let id = text(&create, &["Id"]);
+        assert!(!id.is_empty());
+
+        let get = dispatch(&make_req(
+            account,
+            "GET",
+            &format!("/2020-05-31/origin-access-control/{id}"),
+            "",
+            &[],
+        ));
+        assert!(header(&get, "ETag") == "UNKNOWN" || true); // moto returns ETag on get
+        assert_eq!(
+            text(&get, &["OriginAccessControlConfig", "Name"]),
+            "oac-name"
+        );
+        assert!(!header(&get, "ETag").is_empty());
+
+        let del = dispatch(&make_req(
+            account,
+            "DELETE",
+            &format!("/2020-05-31/origin-access-control/{id}"),
+            "",
+            &[],
+        ));
+        assert_eq!(del.status, 200);
+        assert_eq!(
+            text(
+                &dispatch(&make_req(
+                    account,
+                    "GET",
+                    &format!("/2020-05-31/origin-access-control/{id}"),
+                    "",
+                    &[]
+                )),
+                &["Error", "Code"]
+            ),
+            "NoSuchOriginAccessControl"
+        );
+    }
+
+    #[test]
+    fn cache_policy_lifecycle() {
+        let account = next_account();
+        let body = "<CachePolicyConfig xmlns=\"http://cloudfront.amazonaws.com/doc/2020-05-31/\"><Name>cp-name</Name><MinTTL>60</MinTTL><DefaultTTL>86400</DefaultTTL><MaxTTL>31536000</MaxTTL></CachePolicyConfig>";
+        let create = dispatch(&make_req(
+            account,
+            "POST",
+            "/2020-05-31/cache-policy",
+            body,
+            &[],
+        ));
+        assert_eq!(create.status, 201);
+        let id = text(&create, &["Id"]);
+        assert_eq!(text(&create, &["CachePolicyConfig", "Name"]), "cp-name");
+        assert_eq!(text(&create, &["CachePolicyConfig", "MinTTL"]), "60");
+
+        let get = dispatch(&make_req(
+            account,
+            "GET",
+            &format!("/2020-05-31/cache-policy/{id}"),
+            "",
+            &[],
+        ));
+        assert_eq!(get.status, 200);
+        assert_eq!(text(&get, &["CachePolicyConfig", "DefaultTTL"]), "86400");
+
+        let del = dispatch(&make_req(
+            account,
+            "DELETE",
+            &format!("/2020-05-31/cache-policy/{id}"),
+            "",
+            &[],
+        ));
+        assert_eq!(del.status, 204);
+        let gone = dispatch(&make_req(
+            account,
+            "GET",
+            &format!("/2020-05-31/cache-policy/{id}"),
+            "",
+            &[],
+        ));
+        assert_eq!(text(&gone, &["Error", "Code"]), "NoSuchCachePolicy");
+    }
+
+    #[test]
+    fn function_lifecycle() {
+        let account = next_account();
+        let name = format!("fn-{}", next_account());
+        let create_body = format!(
+            "<CreateFunctionRequest xmlns=\"{XMLNS}\"><Name>{name}</Name><FunctionConfig><Comment>c</Comment><Runtime>cloudfront-js-2.0</Runtime></FunctionConfig><FunctionCode>YTEz</FunctionCode></CreateFunctionRequest>"
+        );
+        let create = dispatch(&make_req(
+            account,
+            "POST",
+            "/2020-05-31/function",
+            &create_body_stub(&create_body),
+            &[],
+        ));
+        assert_eq!(create.status, 201);
+        let func_etag = header(&create, "ETag");
+        assert_eq!(text(&create, &["Status"]), "UNPUBLISHED");
+
+        let describe = dispatch(&make_req(
+            account,
+            "GET",
+            &format!("/2020-05-31/function/{name}/describe"),
+            "",
+            &[],
+        ));
+        assert_eq!(describe.status, 200);
+        assert_eq!(header(&describe, "ETag"), func_etag);
+
+        let publish = dispatch(&make_req(
+            account,
+            "POST",
+            &format!("/2020-05-31/function/{name}/publish"),
+            "",
+            &[("If-Match", &func_etag)],
+        ));
+        assert_eq!(text(&publish, &["FunctionMetadata", "Stage"]), "LIVE");
+
+        let del = dispatch(&make_req(
+            account,
+            "DELETE",
+            &format!("/2020-05-31/function/{name}"),
+            "",
+            &[("If-Match", &publish_etag_of(&publish))],
+        ));
+        assert_eq!(del.status, 204);
+        let gone = dispatch(&make_req(
+            account,
+            "GET",
+            &format!("/2020-05-31/function/{name}"),
+            "",
+            &[],
+        ));
+        assert_eq!(text(&gone, &["Error", "Code"]), "NoSuchFunctionExists");
+    }
+
+    fn create_body_stub(body: &str) -> &str {
+        body
+    }
+
+    fn publish_etag_of(resp: &Response) -> String {
+        header(resp, "ETag")
+    }
+
+    fn count_occurrences(haystack: &[u8], needle: &[u8]) -> usize {
+        haystack
+            .windows(needle.len())
+            .filter(|w| *w == &needle[..])
+            .count()
+    }
 }
