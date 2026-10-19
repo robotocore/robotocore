@@ -26,3 +26,12 @@ scripts/start_parity_servers.sh) and withheld from the lane for harness-edit
 review; it demonstrably fixed `TestEC2VPCEndpointServiceConfig
 .test_create_describe_delete_vpc_endpoint_service_config` and
 `test_modify_vpc_endpoint_service_configuration` in a probe run.
+
+## Rekognition stub-era ops (recorded 2026-10-19)
+
+The rekognition suite's `TestRekognitionNewStubOps` and
+`TestRekognitionGapOps` classes tested operations the native backend
+never implemented (media-analysis job lifecycle, project policies
+CRUD, dataset distribution/copy). They answered `501 NotImplemented`
+and were removed from the suite per the probe-first rule. Candidates
+for the next rekognition port pass.
