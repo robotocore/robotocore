@@ -16,6 +16,7 @@ pub mod amp;
 pub mod apigateway;
 pub mod apigatewayv2;
 pub mod apigw_management;
+pub mod appconfig;
 pub mod appmesh;
 pub mod appsync;
 pub mod athena;
@@ -119,6 +120,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "apigateway" => Some(apigateway::dispatch(req)),
         "apigatewaymanagementapi" => Some(apigw_management::dispatch(req)),
         "apigatewayv2" => Some(apigatewayv2::dispatch(req)),
+        "appconfig" => appconfig::dispatch(req),
         "appmesh" => Some(appmesh::dispatch(req)),
         "appsync" => Some(appsync::dispatch(req)),
         "athena" => Some(athena::dispatch(req)),
@@ -234,6 +236,7 @@ pub fn handles_service(service: &str) -> bool {
             | "apigateway"
             | "apigatewaymanagementapi"
             | "apigatewayv2"
+            | "appconfig"
             | "appmesh"
             | "appsync"
             | "athena"
