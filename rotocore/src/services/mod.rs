@@ -4,6 +4,8 @@
 //! for its service the moment it publishes real behavior. Until then the
 //! gateway falls back to the sidecar, so the wire contract stays intact.
 
+pub mod ec2;
+
 use crate::{Request, Response};
 
 // Pending ports (stubs live in their modules but are not yet wired):
@@ -12,7 +14,8 @@ use crate::{Request, Response};
 // - cloudformation (stub)
 
 pub fn dispatch(req: &Request) -> Option<Response> {
-    let _ = req;
-    // No service fully ported yet.
-    None
+    match req.service.as_str() {
+        "ec2" => Some(self::ec2::dispatch(req)),
+        _ => None,
+    }
 }
