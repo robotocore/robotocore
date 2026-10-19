@@ -49,6 +49,7 @@ pub mod datasync;
 pub mod dax;
 pub mod directconnect;
 pub mod dms;
+pub mod ds;
 pub mod dsql;
 pub mod ebs;
 pub mod ec2instanceconnect;
@@ -172,6 +173,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "dax" => dax::dispatch(req),
         "directconnect" => directconnect::dispatch(req),
         "dms" => dms::dispatch(req),
+        "ds" => ds::dispatch(req),
         "dsql" => dsql::dispatch(req),
         "ebs" => ebs::dispatch(req),
         "ec2" => Some(ec2::dispatch(req)),
@@ -312,6 +314,7 @@ pub fn handles_service(service: &str) -> bool {
             | "dax"
             | "directconnect"
             | "dms"
+            | "ds"
             | "dsql"
             | "ebs"
             | "ec2"
