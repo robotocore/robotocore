@@ -26,6 +26,8 @@ pub mod elasticache;
 pub mod greengrass;
 pub mod identitystore;
 pub mod inspector2;
+pub mod iot;
+pub mod iot_data;
 pub mod ivs;
 pub mod kinesisanalyticsv2;
 pub mod lakeformation;
@@ -75,6 +77,8 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "greengrass" => Some(greengrass::dispatch(req)),
         "identitystore" => identitystore::dispatch(req),
         "inspector2" => Some(inspector2::dispatch(req)),
+        "iot" => iot::dispatch(req),
+        "iotdata" => iot_data::dispatch(req),
         "ivs" => ivs::dispatch(req),
         "kinesisanalyticsv2" => Some(kinesisanalyticsv2::dispatch(req)),
         "lakeformation" => Some(lakeformation::dispatch(req)),
