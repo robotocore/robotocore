@@ -234,7 +234,6 @@ pub static SIMPLE_FAMILIES: &[FamilySpec] = &[
         "vgw",
         "VpnGatewayId"
     ),
-
     fam!(
         "vpn-connection",
         "CreateVpnConnection",
@@ -458,9 +457,13 @@ pub fn route(req: &Request, params: &P) -> Response {
 }
 
 static MODIFY_OPS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
-    ["ModifyManagedPrefixList", "ModifyCapacityReservationFleet", "ModifyClientVpnEndpoint"]
-        .into_iter()
-        .collect()
+    [
+        "ModifyManagedPrefixList",
+        "ModifyCapacityReservationFleet",
+        "ModifyClientVpnEndpoint",
+    ]
+    .into_iter()
+    .collect()
 });
 
 fn modify_route(req: &Request, op: &str, params: &P) -> Response {
@@ -475,9 +478,7 @@ fn modify_route(req: &Request, op: &str, params: &P) -> Response {
                         if let Some(d) = params.get("Description.Value") {
                             s.set("Description", d.to_string());
                         }
-                        if let Some(d) =
-                            params.get("ClientConnectResponseOptions.Enabled")
-                        {
+                        if let Some(d) = params.get("ClientConnectResponseOptions.Enabled") {
                             s.set("ClientConnectOptions.Enabled", d.to_string());
                         }
                     }
@@ -487,13 +488,13 @@ fn modify_route(req: &Request, op: &str, params: &P) -> Response {
                 return ec2_error(
                     404,
                     "InvalidClientVpnEndpointId.NotFound",
-                    &format!("The Client VPN endpoint ID '{}' does not exist", crate::proto::xml_escape(&id)),
+                    &format!(
+                        "The Client VPN endpoint ID '{}' does not exist",
+                        crate::proto::xml_escape(&id)
+                    ),
                 );
             }
-            return ec2_xml(
-                "ModifyClientVpnEndpointResponse",
-                "<return>true</return>",
-            );
+            return ec2_xml("ModifyClientVpnEndpointResponse", "<return>true</return>");
         }
         if op == "ModifyManagedPrefixList" {
             let id = params.str("PrefixListId");
@@ -538,7 +539,10 @@ fn modify_route(req: &Request, op: &str, params: &P) -> Response {
                         changed = true;
                     }
                     if changed {
-                        let cur = s.get("Version").and_then(|v| v.parse::<u64>().ok()).unwrap_or(1);
+                        let cur = s
+                            .get("Version")
+                            .and_then(|v| v.parse::<u64>().ok())
+                            .unwrap_or(1);
                         new_version = Some((cur + 1).to_string());
                     }
                 }
@@ -558,9 +562,10 @@ fn modify_route(req: &Request, op: &str, params: &P) -> Response {
                     for s in items.iter_mut() {
                         if s.id == id {
                             s.set("Version", v.clone());
-                            s.item_xml = s
-                                .item_xml
-                                .replace("<version>1</version>", &format!("<version>{v}</version>"));
+                            s.item_xml = s.item_xml.replace(
+                                "<version>1</version>",
+                                &format!("<version>{v}</version>"),
+                            );
                         }
                     }
                 }
@@ -642,10 +647,9 @@ fn list_pykey_of(op: &str) -> String {
 /// drifted apart (delete then 404ed).
 fn nis_scope_route(req: &Request, params: &P) -> Response {
     match req.operation.as_str() {
-        "CreateNetworkInsightsAccessScope" => {
-            with_state(req, move |state| {
-                let id = state.next_id("nis");
-                let mut s = Simple {
+        "CreateNetworkInsightsAccessScope" => with_state(req, move |state| {
+            let id = state.next_id("nis");
+            let mut s = Simple {
                     id: id.clone(),
                     kind: "network-insights-access-scope".to_string(),
                     item_xml: format!(
@@ -658,18 +662,18 @@ fn nis_scope_route(req: &Request, params: &P) -> Response {
                     tags: wire_tags(params),
                     ..Default::default()
                 };
-                s.set("NetworkInsightsAccessScopeId", id.clone());
-                for (k, v) in super::handlers::tag_spec_tags(params) {
-                    if !s.tags.iter().any(|(ek, _)| ek == &k) {
-                        s.tags.push((k, v));
-                    }
+            s.set("NetworkInsightsAccessScopeId", id.clone());
+            for (k, v) in super::handlers::tag_spec_tags(params) {
+                if !s.tags.iter().any(|(ek, _)| ek == &k) {
+                    s.tags.push((k, v));
                 }
-                state
-                    .simple
-                    .entry("network-insights-access-scope".to_string())
-                    .or_default()
-                    .push(s);
-                Response::xml(
+            }
+            state
+                .simple
+                .entry("network-insights-access-scope".to_string())
+                .or_default()
+                .push(s);
+            Response::xml(
                     200,
                     format!(
                         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<{root} xmlns=\"{ns}\"><networkInsightsAccessScope><networkInsightsAccessScopeId>{id}</networkInsightsAccessScopeId><networkInsightsAccessScopeArn>arn:aws:ec2:{region}:{account}:network-insights-access-scope/{id}</networkInsightsAccessScopeArn><createdDate>{ts}</createdDate><tagSet/></networkInsightsAccessScope><networkInsightsAccessScopeContent><networkInsightsAccessScopeId>{id}</networkInsightsAccessScopeId></networkInsightsAccessScopeContent><requestId>{rid}</requestId></{root}>",
@@ -683,8 +687,7 @@ fn nis_scope_route(req: &Request, params: &P) -> Response {
                     )
                     .into_bytes(),
                 )
-            })
-        }
+        }),
         "DescribeNetworkInsightsAccessScopes" => {
             let ids = ids_of(params, "NetworkInsightsAccessScopeId");
             with_state(req, move |state| {
@@ -708,10 +711,17 @@ fn nis_scope_route(req: &Request, params: &P) -> Response {
         "DeleteNetworkInsightsAccessScope" => {
             let id = params.str("NetworkInsightsAccessScopeId");
             with_state(req, move |state| {
-                state.simple.entry("network-insights-access-scope".to_string()).or_default().retain(|s| s.id != id);
+                state
+                    .simple
+                    .entry("network-insights-access-scope".to_string())
+                    .or_default()
+                    .retain(|s| s.id != id);
                 ec2_xml(
                     "DeleteNetworkInsightsAccessScopeResponse",
-                    &format!("<networkInsightsAccessScopeId>{}</networkInsightsAccessScopeId>", xml_escape(&id)),
+                    &format!(
+                        "<networkInsightsAccessScopeId>{}</networkInsightsAccessScopeId>",
+                        xml_escape(&id)
+                    ),
                 )
             })
         }

@@ -74,7 +74,9 @@ pub fn route(req: &Request, params: &P) -> Response {
                     s.set("TrafficType", params.str("TrafficType"));
                     s.set(
                         "LogDestinationType",
-                        params.get("LogDestinationType").unwrap_or("cloud-watch-logs"),
+                        params
+                            .get("LogDestinationType")
+                            .unwrap_or("cloud-watch-logs"),
                     );
                     s.set("LogGroupName", params.str("LogGroupName"));
                     if !params.str("LogDestination").is_empty() {
@@ -133,10 +135,7 @@ pub fn route(req: &Request, params: &P) -> Response {
                     items.retain(|s| !ids.contains(&s.id));
                 }
             });
-            ec2_xml(
-                "DeleteFlowLogsResponse",
-                "<unsuccessful/>",
-            )
+            ec2_xml("DeleteFlowLogsResponse", "<unsuccessful/>")
         }
 
         "DisassociateAddress" => disassociate_address(req, params),

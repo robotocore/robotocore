@@ -68,10 +68,15 @@ pub fn route(req: &Request, params: &P) -> Response {
         "ModifyVpcPeeringConnectionOptions" => {
             let id = params.str("VpcPeeringConnectionId");
             let mut opt = String::new();
-            for (side, key) in [("Requester", "requesterVpcInfo"), ("Accepter", "accepterVpcInfo")] {
-                for p in ["AllowDnsResolutionFromRemoteVpc",
-                          "AllowEgressFromLocalClassicLinkToRemoteVpc",
-                          "AllowEgressFromLocalVpcToRemoteClassicLink"] {
+            for (side, key) in [
+                ("Requester", "requesterVpcInfo"),
+                ("Accepter", "accepterVpcInfo"),
+            ] {
+                for p in [
+                    "AllowDnsResolutionFromRemoteVpc",
+                    "AllowEgressFromLocalClassicLinkToRemoteVpc",
+                    "AllowEgressFromLocalVpcToRemoteClassicLink",
+                ] {
                     if let Some(v) = params.get(&format!("{side}PeeringConnectionOptions.{p}")) {
                         if !v.is_empty() {
                             let first = p.chars().next().unwrap().to_lowercase().to_string();
@@ -1306,7 +1311,10 @@ fn reject_peering(req: &Request, params: &P) -> Response {
 }
 
 fn peering_status(p: &super::state::VpcPeering) -> String {
-    format!("<code>{}</code><message></message>", crate::proto::xml_escape(&p.state))
+    format!(
+        "<code>{}</code><message></message>",
+        crate::proto::xml_escape(&p.state)
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -1615,8 +1623,10 @@ fn describe_vpc_endpoint_services_cfg(req: &Request, params: &P) -> Response {
             }
             let mut privs = String::new();
             for p in &s.permissions {
-                privs
-                    .push_str(&format!("<item><principal>{}</principal></item>", crate::proto::xml_escape(p)));
+                privs.push_str(&format!(
+                    "<item><principal>{}</principal></item>",
+                    crate::proto::xml_escape(p)
+                ));
             }
             items.push_str(&format!(
                 "<item><serviceId>{}</serviceId><serviceName>com.amazonaws.vpce.us-east-1.{}.{}</serviceName><serviceType><item><serviceType>Interface</serviceType></item></serviceType><availabilityZoneSet/><acceptanceRequired>{}</acceptanceRequired><managesVpcEndpoints>false</managesVpcEndpoints><privateDnsNames/><baseEndpointDnsNames/><ownerId>123456789012</ownerId><networkLoadBalancerArns>{nlbs}</networkLoadBalancerArns><gatewayLoadBalancerArns/><supportedIpAddressTypes/><privateIpv4DnsNames/>{}<state>Available</state><tagSet/></item>",

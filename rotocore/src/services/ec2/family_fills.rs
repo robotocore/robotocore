@@ -568,7 +568,10 @@ pub fn create_fills(
             );
             f.insert(
                 "DnsName".to_string(),
-                Fill::S(format!("*.cvpn-{}.prod.clientvpn.us-east-1.amazonaws.com", id)),
+                Fill::S(format!(
+                    "*.cvpn-{}.prod.clientvpn.us-east-1.amazonaws.com",
+                    id
+                )),
             );
             f.insert(
                 "ClientCidrBlock".to_string(),

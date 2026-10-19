@@ -1504,13 +1504,10 @@ fn describe_image_attribute(req: &Request, params: &P) -> Response {
             "launchPermission" | "launch-permission" => {
                 let mut lp = String::new();
                 for (kind, value) in image.launch_permissions.iter() {
-                    let _ = write!(lp, "<item><{kind}>{value}</{kind}></item>");
+                    let wire = if kind == "UserId" { "userId" } else { "group" };
+                    let _ = write!(lp, "<item><{wire}>{value}</{wire}></item>");
                 }
-                if lp.is_empty() {
-                    String::from("<launchPermissions/>")
-                } else {
-                    format!("<launchPermissions>{}</launchPermissions>", lp)
-                }
+                format!("<launchPermission>{}</launchPermission>", lp)
             }
             "description" | "descriptionKey" => format!(
                 "<description><value>{}</value></description>",
@@ -1542,10 +1539,23 @@ fn modify_image_attribute(req: &Request, params: &P) -> Response {
         let users: Vec<String> = params
             .list("UserId")
             .iter()
+            .chain(params.list("LaunchPermission.Add.LaunchPermission.UserId").iter())
             .map(|s| s.to_string())
             .collect();
         let groups: Vec<String> = params
             .list("UserGroup")
+            .iter()
+            .chain(params.list("LaunchPermission.Add.LaunchPermission.Group").iter())
+            .map(|s| s.to_string())
+            .collect();
+        let rm_users: Vec<String> = params
+            .list("LaunchPermission.Remove.LaunchPermission.UserId")
+            .iter()
+            .chain(params.list("Remove.UserId").iter())
+            .map(|s| s.to_string())
+            .collect();
+        let rm_groups: Vec<String> = params
+            .list("LaunchPermission.Remove.LaunchPermission.Group")
             .iter()
             .map(|s| s.to_string())
             .collect();
@@ -1565,6 +1575,14 @@ fn modify_image_attribute(req: &Request, params: &P) -> Response {
                     .push(("Group".into(), g.clone()));
             }
         } else {
+            let mut stored = state.images[pos].launch_permissions.clone();
+            for u in &rm_users {
+                stored.retain(|(k, v)| !(k == &"UserId".to_string() && v == u));
+            }
+            for grem in &rm_groups {
+                stored.retain(|(k, v)| !(k == &"Group".to_string() && v == grem));
+            }
+            state.images[pos].launch_permissions = stored;
             state.images[pos]
                 .launch_permissions
                 .retain(|(_k, v)| !users.contains(v));
@@ -1851,14 +1869,16 @@ fn modify_volume(req: &Request, params: &P) -> Response {
             if let Some(items) = state.simple.get_mut("volume-modification") {
                 items.retain(|s| s.id != id);
             }
-            state.simple.entry("volume-modification".to_string()).or_default().push(
-                super::state::Simple {
+            state
+                .simple
+                .entry("volume-modification".to_string())
+                .or_default()
+                .push(super::state::Simple {
                     id: id.clone(),
                     kind: "volume-modification".to_string(),
                     item_xml: item,
                     ..Default::default()
-                },
-            );
+                });
         }
         ec2_xml(
             "ModifyVolumeResponse",
