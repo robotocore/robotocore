@@ -64,6 +64,7 @@ pub mod pipes;
 pub mod polly;
 pub mod rds;
 pub mod redshift;
+pub mod resiliencehub;
 pub mod redshiftdata;
 pub mod rekognition;
 pub mod resource_groups;
@@ -142,6 +143,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "rds" => Some(rds::dispatch(req)),
         "redshift" => Some(redshift::dispatch(req)),
         "redshiftdata" => Some(redshiftdata::dispatch(req)),
+        "resiliencehub" => Some(resiliencehub::dispatch(req)),
         "codepipeline" => Some(codepipeline::dispatch(req)),
         "efs" => Some(efs::dispatch(req)),
         "rekognition" => Some(rekognition::dispatch(req)),

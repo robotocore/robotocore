@@ -474,11 +474,11 @@ struct Uid;
 impl Uid {
     #[allow(clippy::new_ret_no_self)]
     fn new() -> String {
-        let bytes = uuid::Uuid::new_v4();
+        const ALPHABET: &[u8] = b"0123456789ABCDEFGHIJKLMabcdefghijklm";
+        let bytes = uuid::Uuid::new_v4().as_bytes().to_vec();
         bytes
-            .as_bytes()
             .iter()
-            .map(|b| "0123456789ABCDEFGHIJKLMabcdefghijklm".as_bytes()[(*b % 37) as usize] as char)
+            .map(|b| ALPHABET[(*b % ALPHABET.len() as u8) as usize] as char)
             .collect()
     }
 

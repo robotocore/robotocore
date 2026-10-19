@@ -2038,6 +2038,13 @@ fn extract_service(method: &Method, uri: &Uri, headers: &HeaderMap) -> Result<St
         }
     }
 
+    // REST-path services (xray, cloudfront, bedrock family, arm paths) route by
+    // credential scope only when the SDK signs with the exact service name;
+    // scope "xray" lowercase etc. all handled by route_to_service. If we got
+    // here, the request is likely signed for a service whose wire name equals
+    // the first path segment. (Note: rotocore's dispatch is visited later with
+    // whatever name lands; returning "" signals "unknown" and the gateway
+    // returns a 501-style JSON error.)
     Err("Could not determine service".to_string())
 }
 

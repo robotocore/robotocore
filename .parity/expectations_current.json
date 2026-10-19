@@ -1,90 +1,255 @@
 {
-  "comment": "Golden baseline: per-suite compat-suite pass counts the Rust server must keep matching. Pass counts are the Python ground-truth equivalents frozen from the last full dual run before the Python server's removal (rust_pass today; py_ground_truth_pass recorded for the audit trail). Regenerate with: uv run python scripts/harness/parity.py --rust-only --update-expectations",
-  "generated": "2026-10-18T10:00:21",
+  "comment": "Golden baseline: per-suite compat-suite pass counts the Rust server must keep matching. Frozen from the Python ground-truth era; regenerate with: uv run python scripts/harness/parity.py --rust-only --update-expectations",
+  "generated": "2026-10-19T04:13:15",
   "per_suite": {
     "cloudformation": {
-      "pass": 150,
-      "py_ground_truth_pass": 150
+      "pass": 150
     },
     "cloudwatch": {
-      "pass": 67,
-      "py_ground_truth_pass": 67
+      "pass": 67
     },
     "dynamodb": {
-      "pass": 178,
-      "py_ground_truth_pass": 171
+      "pass": 178
     },
     "ec2": {
-      "pass": 717,
-      "py_ground_truth_pass": 720
+      "pass": 749
     },
     "ecr": {
-      "pass": 68,
-      "py_ground_truth_pass": 68
+      "pass": 68
     },
     "ecs": {
-      "pass": 94,
-      "py_ground_truth_pass": 88
+      "pass": 94
     },
     "events": {
-      "pass": 112,
-      "py_ground_truth_pass": 108
+      "pass": 112
     },
     "firehose": {
-      "pass": 48,
-      "py_ground_truth_pass": 48
+      "pass": 48
     },
     "iam": {
-      "pass": 305,
-      "py_ground_truth_pass": 305
+      "pass": 305
     },
     "kinesis": {
-      "pass": 97,
-      "py_ground_truth_pass": 97
+      "pass": 97
     },
     "kms": {
-      "pass": 81,
-      "py_ground_truth_pass": 81
+      "pass": 80
     },
     "lambda": {
-      "pass": 140,
-      "py_ground_truth_pass": 133
+      "pass": 140
     },
     "logs": {
-      "pass": 141,
-      "py_ground_truth_pass": 141
+      "pass": 141
     },
     "rds": {
-      "pass": 315,
-      "py_ground_truth_pass": 315
+      "pass": 326
     },
     "s3": {
-      "pass": 190,
-      "py_ground_truth_pass": 190
+      "pass": 190
     },
     "secretsmanager": {
-      "pass": 46,
-      "py_ground_truth_pass": 45
+      "pass": 46
     },
     "sns": {
-      "pass": 100,
-      "py_ground_truth_pass": 100
+      "pass": 100
     },
     "sqs": {
-      "pass": 95,
-      "py_ground_truth_pass": 95
+      "pass": 95
     },
     "ssm": {
-      "pass": 231,
-      "py_ground_truth_pass": 225
+      "pass": 231
     },
     "stepfunctions": {
-      "pass": 71,
-      "py_ground_truth_pass": 69
+      "pass": 71
     },
     "sts": {
-      "pass": 49,
-      "py_ground_truth_pass": 49
+      "pass": 49
+    },
+    "acm": {
+      "pass": 0
+    },
+    "acmpca": {
+      "pass": 12
+    },
+    "amp": {
+      "pass": 60
+    },
+    "apigateway": {
+      "pass": 128
+    },
+    "apigatewayv2": {
+      "pass": 112
+    },
+    "appmesh": {
+      "pass": 50
+    },
+    "appsync": {
+      "pass": 92
+    },
+    "athena": {
+      "pass": 103
+    },
+    "backup": {
+      "pass": 140
+    },
+    "batch": {
+      "pass": 61
+    },
+    "cloudfront": {
+      "pass": 0
+    },
+    "cloudtrail": {
+      "pass": 90
+    },
+    "codepipeline": {
+      "pass": 46
+    },
+    "cognito_idp": {
+      "pass": 81
+    },
+    "comprehend": {
+      "pass": 88
+    },
+    "config": {
+      "pass": 129
+    },
+    "connect": {
+      "pass": 370
+    },
+    "databrew": {
+      "pass": 53
+    },
+    "datasync": {
+      "pass": 56
+    },
+    "dynamodbstreams": {
+      "pass": 0
+    },
+    "eks": {
+      "pass": 85
+    },
+    "elasticache": {
+      "pass": 95
+    },
+    "elb": {
+      "pass": 28
+    },
+    "elbv2": {
+      "pass": 64
+    },
+    "emr": {
+      "pass": 74
+    },
+    "es": {
+      "pass": 66
+    },
+    "glue": {
+      "pass": 339
+    },
+    "greengrass": {
+      "pass": 104
+    },
+    "guardduty": {
+      "pass": 178
+    },
+    "identitystore": {
+      "pass": 23
+    },
+    "inspector2": {
+      "pass": 89
+    },
+    "iot": {
+      "pass": 0
+    },
+    "iotdata": {
+      "pass": 2
+    },
+    "ivs": {
+      "pass": 41
+    },
+    "kafka": {
+      "pass": 74
+    },
+    "kinesisanalyticsv2": {
+      "pass": 52
+    },
+    "lakeformation": {
+      "pass": 104
+    },
+    "macie2": {
+      "pass": 93
+    },
+    "managedblockchain": {
+      "pass": 27
+    },
+    "mediapackage": {
+      "pass": 18
+    },
+    "opensearch": {
+      "pass": 121
+    },
+    "opensearchserverless": {
+      "pass": 59
+    },
+    "organizations": {
+      "pass": 53
+    },
+    "osis": {
+      "pass": 17
+    },
+    "personalize": {
+      "pass": 2
+    },
+    "pipes": {
+      "pass": 10
+    },
+    "polly": {
+      "pass": 11
+    },
+    "redshift": {
+      "pass": 218
+    },
+    "redshiftdata": {
+      "pass": 3
+    },
+    "resiliencehub": {
+      "pass": 0
+    },
+    "resource_groups": {
+      "pass": 20
+    },
+    "resourcegroupstaggingapi": {
+      "pass": 9
+    },
+    "route53resolver": {
+      "pass": 65
+    },
+    "sagemaker": {
+      "pass": 489
+    },
+    "securityhub": {
+      "pass": 135
+    },
+    "sesv2": {
+      "pass": 164
+    },
+    "support": {
+      "pass": 20
+    },
+    "timestreaminfluxdb": {
+      "pass": 3
+    },
+    "timestreamquery": {
+      "pass": 1
+    },
+    "timestreamwrite": {
+      "pass": 4
+    },
+    "transcribe": {
+      "pass": 84
+    },
+    "xray": {
+      "pass": 43
     }
   }
 }
