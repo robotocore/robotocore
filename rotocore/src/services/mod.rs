@@ -117,6 +117,7 @@ pub mod timestreamwrite;
 pub mod transcribe;
 pub mod wafv2;
 pub mod workspaces;
+pub mod workspacesweb;
 pub mod xray;
 
 /// Ported service backends. An arm here routes that service to the native
@@ -255,6 +256,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "transcribe" => Some(transcribe::dispatch(req)),
         "wafv2" => wafv2::dispatch(req),
         "workspaces" => workspaces::dispatch(req),
+        "workspacesweb" => workspacesweb::dispatch(req),
         "xray" => Some(xray::dispatch(req)),
 
         _ => None,
@@ -381,6 +383,7 @@ pub fn handles_service(service: &str) -> bool {
             | "transcribe"
             | "wafv2"
             | "workspaces"
+            | "workspacesweb"
             | "xray"
     )
 }
