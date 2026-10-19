@@ -768,9 +768,9 @@ fn get_console_output(req: &Request, params: &P) -> Response {
         ec2_xml(
             "GetConsoleOutputResponse",
             &format!(
-                "<instancesSet>{}<instanceId>{}</instanceId></instancesSet><output>{}</output>",
-                "",
+                "<instanceId>{}</instanceId><timestamp>{}</timestamp><output>{}</output>",
                 xml_escape(&id),
+                super::now_iso(),
                 encoded
             ),
         )
@@ -785,7 +785,11 @@ fn get_password_data(req: &Request, params: &P) -> Response {
         }
         ec2_xml(
             "GetPasswordDataResponse",
-            &format!("<instanceId>{}</instanceId>", xml_escape(&id)),
+            &format!(
+                "<instanceId>{}</instanceId><timestamp>{}</timestamp><passwordData></passwordData>",
+                xml_escape(&id),
+                super::now_iso()
+            ),
         )
     })
 }

@@ -2426,6 +2426,17 @@ static LOCAL_GW_OPS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
         "ModifyCapacityReservation",
         "GetManagedPrefixListEntries",
         "ReplaceIamInstanceProfileAssociation",
+        "EnableFastLaunch",
+        "DisableFastLaunch",
+        "DescribeFastLaunchImages",
+        "ProvisionPublicIpv4PoolCidr",
+        "DeprovisionPublicIpv4PoolCidr",
+        "CreateFlowLogs",
+        "DeleteFlowLogs",
+        "DescribeFlowLogs",
+        "CreateSubnetCidrReservation",
+        "GetSubnetCidrReservations",
+        "DeleteSubnetCidrReservation",
     ]
     .into_iter()
     .collect()
@@ -2631,32 +2642,90 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
             )
         }
         "ProvisionPublicIpv4PoolCidr" => {
-            let cidr = params.str("Cidr");
             let pool = params.str("PoolId");
-            ec2_xml(
-                "ProvisionPublicIpv4PoolCidrResponse",
-                &format!(
-                    "<poolId>{}</poolId><poolAddressRange><cidr>{}</cidr><ipCount>256</ipCount><addressVersion>Ipv4</addressVersion></poolAddressRange>",
-                    xml_escape(&pool),
-                    xml_escape(&cidr)
-                ),
-            )
+            let len = params.i64("NetmaskLength").unwrap_or(24);
+            with_state(req, move |state| {
+                if !state
+                    .simple
+                    .get("public-ipv4-pool")
+                    .map(|items| items.iter().any(|s| s.id == pool))
+                    .unwrap_or(false)
+                {
+                    return ec2_error(
+                        400,
+                        "InvalidPublicIpv4PoolID.NotFound",
+                        &format!("The public IPv4 pool ID '{}' does not exist", xml_escape(&pool)),
+                    );
+                }
+                // pick the network address from a monotonically allocated base
+                let child = format!("10.{}.{}.0/{}", state.ids.seq % 200, len / 16, len % 32 + 16);
+                let mut s = Simple {
+                    id: format!("pac-{}", super::state::idhex::hex17()),
+                    kind: "public-ipv4-pool-cidr".to_string(),
+                    ..Default::default()
+                };
+                s.set("PoolId", pool.clone());
+                s.set("Cidr", child.clone());
+                state
+                    .simple
+                    .entry("public-ipv4-pool-cidr".to_string())
+                    .or_default()
+                    .push(s);
+                ec2_xml(
+                    "ProvisionPublicIpv4PoolCidrResponse",
+                    &format!(
+                        "<poolId>{}</poolId><poolAddressRange><cidr>{}</cidr><ipCount>256</ipCount><addressVersion>Ipv4</addressVersion></poolAddressRange>",
+                        xml_escape(&pool),
+                        xml_escape(&child)
+                    ),
+                )
+            })
         }
         "DeprovisionPublicIpv4PoolCidr" => {
             let cidr = params.str("Cidr");
             let pool = params.str("PoolId");
-            let media = format!(
-                "<poolId>{}</poolId><deprovisionedAddresses><item><cidr>{}</cidr><totalAddressCount>256</totalAddressCount><totalAvailableAddressCount>0</totalAvailableAddressCount></item></deprovisionedAddresses>",
-                xml_escape(&pool), xml_escape(&cidr)
-            );
-            if cidr.is_empty() {
-                return ec2_error(
-                    400,
-                    "InvalidPublicIpv4PoolCidr",
-                    "CIDR not found",
-                );
-            }
-            ec2_xml("DeprovisionPublicIpv4PoolCidrResponse", &media)
+            with_state(req, move |state| {
+                if !state
+                    .simple
+                    .get("public-ipv4-pool")
+                    .map(|items| items.iter().any(|s| s.id == pool))
+                    .unwrap_or(false)
+                {
+                    return ec2_error(
+                        400,
+                        "InvalidPublicIpv4PoolID.NotFound",
+                        &format!("The public IPv4 pool ID '{}' does not exist", xml_escape(&pool)),
+                    );
+                }
+                let mut found = false;
+                if let Some(items) = state.simple.get_mut("public-ipv4-pool-cidr") {
+                    items.retain(|s| {
+                        if s.get("PoolId") == Some(pool.as_str())
+                            && s.get("Cidr") == Some(cidr.as_str())
+                        {
+                            found = true;
+                            false
+                        } else {
+                            true
+                        }
+                    });
+                }
+                if !found {
+                    return ec2_error(
+                        400,
+                        "InvalidPublicIpv4PoolCidr",
+                        &format!("The CIDR '{}' cannot be deprovisioned from pool '{}'", xml_escape(&cidr), xml_escape(&pool)),
+                    );
+                }
+                ec2_xml(
+                    "DeprovisionPublicIpv4PoolCidrResponse",
+                    &format!(
+                        "<poolId>{}</poolId><deprovisionedAddresses><item><cidr>{}</cidr><totalAddressCount>256</totalAddressCount><totalAvailableAddressCount>0</totalAvailableAddressCount></item></deprovisionedAddresses>",
+                        xml_escape(&pool),
+                        xml_escape(&cidr)
+                    ),
+                )
+            })
         }
         "GetIpamResourceCidrs" => ec2_xml(
             "GetIpamResourceCidrsResponse",
@@ -2665,29 +2734,150 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
         "EnableFastLaunch" | "DisableFastLaunch" => {
             let image = params.str("ImageId");
             let owner = req.account;
+            let enabling = op.starts_with("Enable");
+            let state_name = if enabling { "enabled" } else { "disabling" };
+            let item = format!(
+                "<item><imageId>{}</imageId><resourceType>snapshot</resourceType><snapshotConfiguration><targetResourceCount>5</targetResourceCount></snapshotConfiguration><state>{}</state><stateTransitionReason>{}</stateTransitionReason><stateTransitionTime>{}</stateTransitionTime><ownerId>{}</ownerId><maxParallelLaunches>6</maxParallelLaunches></item>",
+                xml_escape(&image),
+                state_name,
+                if enabling { "Client.UserInitiated" } else { "Client.UserInitiated - Disabling" },
+                super::now_iso(),
+                owner
+            );
             with_state(req, |state| {
+                if let Some(items) = state.simple.get_mut("fast-launch") {
+                    items.retain(|s| s.id != image);
+                }
                 let mut s = Simple {
                     id: image.clone(),
                     kind: "fast-launch".to_string(),
+                    item_xml: item.clone(),
                     ..Default::default()
                 };
-                s.set("State", "enabled");
+                s.set("State", state_name);
                 state
                     .simple
                     .entry("fast-launch".to_string())
                     .or_default()
                     .push(s);
             });
-            let state_name = if op.starts_with("Enable") { "enabled" } else { "disabled" };
             ec2_xml(
                 &format!("{}Response", op),
                 &format!(
-                    "<imageId>{img}</imageId><resourceType>snapshot</resourceType><snapshotConfiguration><targetResourceCount>5</targetResourceCount></snapshotConfiguration><maxParallelLaunches>6</maxParallelLaunches><ownerId>{owner}</ownerId><state>{st}</state><stateTransitionReason>Client.UserInitiated</stateTransitionReason><stateTransitionTime>{ts}</stateTransitionTime>",
+                    "<imageId>{img}</imageId><resourceType>snapshot</resourceType><snapshotConfiguration><targetResourceCount>5</targetResourceCount></snapshotConfiguration><maxParallelLaunches>6</maxParallelLaunches><ownerId>{owner}</ownerId><state>{st}</state><stateTransitionReason>{reason}</stateTransitionReason><stateTransitionTime>{ts}</stateTransitionTime>",
                     img = xml_escape(&image),
                     st = state_name,
-                    ts = format!("{}/10.123456Z", super::now_iso()),
+                    reason = if enabling { "Client.UserInitiated" } else { "Client.UserInitiated - Disabling" },
+                    ts = super::now_iso(),
                     owner = owner
                 ),
+            )
+        }
+        "DescribeFastLaunchImages" => {
+            let mut items = String::new();
+            with_state(req, |state| {
+                if let Some(list) = state.simple.get("fast-launch") {
+                    for s in list {
+                        items.push_str(&s.item_xml);
+                    }
+                }
+            });
+            ec2_xml(
+                "DescribeFastLaunchImagesResponse",
+                &format!("<fastLaunchImageSet>{items}</fastLaunchImageSet>"),
+            )
+        }
+        "CreateFlowLogs" => {
+            let resources = params.list_detached("ResourceId");
+            let vtype = params.str("ResourceType");
+            let traffic = params.str("TrafficType");
+            let ldt = params.str("LogDestinationType");
+            let lg = params.str("LogGroupName");
+            let role = params.str("DeliverLogsPermissionArn");
+            let dest = params.str("LogDestination");
+            let mut ids_out = String::new();
+            with_state(req, |state| {
+                for res in &resources {
+                    let id = state.next_id("fl");
+                    let mut item = format!(
+                        "<item><flowLogId>{}</flowLogId><creationTime>{}</creationTime><deliverLogsStatus>succeeded</deliverLogsStatus><deliverLogsErrorMessage></deliverLogsErrorMessage><flowLogStatus>ACTIVE</flowLogStatus><resourceId>{}</resourceId><trafficType>{}</trafficType><logDestinationType>{}</logDestinationType>",
+                        xml_escape(&id),
+                        super::now_iso(),
+                        xml_escape(res),
+                        xml_escape(&traffic),
+                        xml_escape(&ldt)
+                    );
+                    if !dest.is_empty() {
+                        item.push_str(&format!(
+                            "<logDestination>{}</logDestination>",
+                            xml_escape(&dest)
+                        ));
+                    }
+                    if !lg.is_empty() {
+                        item.push_str(&format!(
+                            "<logGroupName>{}</logGroupName>",
+                            xml_escape(&lg)
+                        ));
+                    }
+                    item.push_str(&format!(
+                        "<deliverLogsPermissionArn>{}</deliverLogsPermissionArn><maxAggregationInterval>60</maxAggregationInterval>",
+                        xml_escape(&role)
+                    ));
+                    item.push_str("</item>");
+                    state.simple.entry("flow-log".to_string()).or_default().push(
+                        Simple {
+                            id: id.clone(),
+                            kind: "flow-log".to_string(),
+                            item_xml: item,
+                            tags: wire_tags(params),
+                            ..Default::default()
+                        },
+                    );
+                    ids_out.push_str(&format!("<item>{}</item>", xml_escape(&id)));
+                }
+            });
+            ec2_xml(
+                "CreateFlowLogsResponse",
+                &format!("<flowLogIdSet>{}</flowLogIdSet><unsuccessful/>", ids_out),
+            )
+        }
+        "DescribeFlowLogs" => {
+            let ids = ids_of(params, "FlowLogId");
+            let mut items = String::new();
+            with_state(req, |state| {
+                if let Some(list) = state.simple.get("flow-log") {
+                    for s in list {
+                        if !ids.is_empty() && !ids.contains(&s.id) {
+                            continue;
+                        }
+                        items.push_str(&s.item_xml);
+                    }
+                }
+            });
+            ec2_xml(
+                "DescribeFlowLogsResponse",
+                &format!("<flowLogSet>{items}</flowLogSet>"),
+            )
+        }
+        "DeleteFlowLogs" => {
+            let ids = params.list_detached("FlowLogId");
+            let mut unsucc = String::new();
+            with_state(req, |state| {
+                for id in &ids {
+                    let mut removed = false;
+                    if let Some(list) = state.simple.get_mut("flow-log") {
+                        let before = list.len();
+                        list.retain(|s| s.id != *id);
+                        removed = before != list.len();
+                    }
+                    if !removed {
+                        unsucc.push_str(&format!("<item><error><code>InvalidFlowLogId.NotFound</code><message>The flowLog with id {} does not exist</message></error><flowLogId>{}</flowLogId></item>", xml_escape(id), xml_escape(id)));
+                    }
+                }
+            });
+            ec2_xml(
+                "DeleteFlowLogsResponse",
+                &format!("<unsuccessful>{}</unsuccessful>", unsucc),
             )
         }
         "AttachVpnGateway" => {
@@ -3472,7 +3662,7 @@ fn launch_specifications_xml(count: usize) -> String {
 
 /// Ids from a wire key that botocore sends either flat (`Key=x`) or indexed
 /// (`Key.1=x`). `Params::list` only knows the indexed form.
-fn ids_of(params: &P, key: &str) -> Vec<String> {
+pub fn ids_of(params: &P, key: &str) -> Vec<String> {
     let mut v: Vec<String> = params.list(key).iter().map(|s| s.to_string()).collect();
     if v.is_empty() {
         let v0 = params.str(key);

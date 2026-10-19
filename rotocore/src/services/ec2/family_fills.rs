@@ -522,9 +522,21 @@ pub fn create_fills(
                 "VerifiedAccessInstanceId".to_string(),
                 Fill::S(id.to_string()),
             );
+            f.insert(
+                "Description".to_string(),
+                Fill::S(params.str("Description")),
+            );
         }
         "verified-access-group" => {
             f.insert("VerifiedAccessGroupId".to_string(), Fill::S(id.to_string()));
+            f.insert(
+                "VerifiedAccessInstanceId".to_string(),
+                Fill::S(params.str("VerifiedAccessInstanceId")),
+            );
+            f.insert(
+                "Description".to_string(),
+                Fill::S(params.str("Description")),
+            );
         }
         "verified-access-endpoint" => {
             f.insert(

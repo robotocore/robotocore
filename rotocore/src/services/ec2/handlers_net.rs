@@ -54,6 +54,91 @@ pub fn route(req: &Request, params: &P) -> Response {
         "DescribeAddresses" => describe_addresses(req, params),
         "ReleaseAddress" => release_address(req, params),
         "AssociateAddress" => associate_address(req, params),
+        // Flow logs: stateful create/describe/delete driven off Simple store.
+        "CreateFlowLogs" => {
+            let n = params.count("ResourceId");
+            let mut ids = String::new();
+            with_state(req, |state| {
+                for i in 0..n {
+                    let resource_id = params
+                        .get(&format!("ResourceId.{}", i + 1))
+                        .unwrap_or_default()
+                        .to_string();
+                    let id = state.next_id("fl");
+                    let mut s = super::state::Simple {
+                        id: id.clone(),
+                        kind: "flow-log".to_string(),
+                        ..Default::default()
+                    };
+                    s.set("ResourceId", resource_id);
+                    s.set("TrafficType", params.str("TrafficType"));
+                    s.set(
+                        "LogDestinationType",
+                        params.get("LogDestinationType").unwrap_or("cloud-watch-logs"),
+                    );
+                    s.set("LogGroupName", params.str("LogGroupName"));
+                    if !params.str("LogDestination").is_empty() {
+                        s.set("LogDestination", params.str("LogDestination"));
+                    }
+                    s.set("DeliverLogsStatus", "succeeded");
+                    state
+                        .simple
+                        .entry("flow-log".to_string())
+                        .or_default()
+                        .push(s);
+                    let _ = write!(ids, "<item>{}</item>", xml_escape(&id));
+                }
+            });
+            ec2_xml(
+                "CreateFlowLogsResponse",
+                &format!("<flowLogIdSet>{ids}</flowLogIdSet><unsuccessful/>"),
+            )
+        }
+        "DescribeFlowLogs" => {
+            let ids = super::handlers_misc::ids_of(params, "FlowLogId");
+            let mut items = String::new();
+            with_state(req, |state| {
+                if let Some(items_vec) = state.simple.get("flow-log").cloned() {
+                    for s in &items_vec {
+                        if !ids.is_empty() && !ids.contains(&s.id) {
+                            continue;
+                        }
+                        let rid = s.get("ResourceId").unwrap_or_default();
+                        let tt = s.get("TrafficType").unwrap_or("ALL");
+                        let lg = s.get("LogGroupName").unwrap_or_default();
+                        let ldt = s.get("LogDestinationType").unwrap_or("cloud-watch-logs");
+                        items.push_str(&format!(
+                            "<item><creationTime>{t}</creationTime><deliverLogsStatus>OK</deliverLogsStatus><flowLogId>{fid}</flowLogId><flowLogStatus>ACTIVE</flowLogStatus><groupId></groupId><logDestinationType>{ldt}</logDestinationType><logFormat>{fmt}</logFormat><logGroupName>{lg}</logGroupName><resourceId>{rid}</resourceId><trafficType>{tt}</trafficType><maxAggregationInterval>60</maxAggregationInterval>{tags}</item>",
+                            t = super::now_iso(),
+                            fid = xml_escape(&s.id),
+                            ldt = ldt,
+                            fmt = "${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${pkt-accepted} ${flow-status} ${log-status}",
+                            lg = xml_escape(lg),
+                            rid = xml_escape(rid),
+                            tt = xml_escape(tt),
+                            tags = tags_xml(&s.tags),
+                        ));
+                    }
+                }
+            });
+            ec2_xml(
+                "DescribeFlowLogsResponse",
+                &format!("<flowLogSet>{items}</flowLogSet>"),
+            )
+        }
+        "DeleteFlowLogs" => {
+            let ids = super::handlers_misc::ids_of(params, "FlowLogId");
+            with_state(req, |state| {
+                if let Some(items) = state.simple.get_mut("flow-log") {
+                    items.retain(|s| !ids.contains(&s.id));
+                }
+            });
+            ec2_xml(
+                "DeleteFlowLogsResponse",
+                "<unsuccessful/>",
+            )
+        }
+
         "DisassociateAddress" => disassociate_address(req, params),
 
         "CreateRouteTable" => create_route_table(req, params),
