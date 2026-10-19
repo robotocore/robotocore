@@ -58,7 +58,9 @@ pub fn dispatch(req: &Request) -> Option<Response> {
     match req.service.as_str() {
         "acm" => Some(acm::dispatch(req)),
         "amp" => Some(amp::dispatch(req)),
+        "apigateway" => Some(apigateway::dispatch(req)),
         "apigatewaymanagementapi" => Some(apigw_management::dispatch(req)),
+        "apigatewayv2" => Some(apigatewayv2::dispatch(req)),
         "appmesh" => Some(appmesh::dispatch(req)),
         "appsync" => Some(appsync::dispatch(req)),
         "backup" => backup::dispatch(req),

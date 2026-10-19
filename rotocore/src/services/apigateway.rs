@@ -249,9 +249,26 @@ struct State {
 
 static SLOT: Lazy<store::Slot<State>> = Lazy::new(|| store::slot::<State>("apigateway"));
 
+impl State {
+    /// moto's Account defaults; GetAccount must always return a body.
+    fn new() -> State {
+        State {
+            account: json!({
+                "cloudwatchRoleArn": Value::Null,
+                "throttleSettings": { "burstLimit": 5000, "rateLimit": 10000.0 },
+                "features": Value::Null,
+                "apiKeyVersion": "1",
+            }),
+            ..State::default()
+        }
+    }
+}
+
 fn with_state<T>(account: u64, region: &str, f: impl FnOnce(&mut State) -> T) -> T {
     let mut guard = SLOT.write();
-    let state = guard.entry((account, region.to_string())).or_default();
+    let state = guard
+        .entry((account, region.to_string()))
+        .or_insert_with(State::new);
     f(state)
 }
 

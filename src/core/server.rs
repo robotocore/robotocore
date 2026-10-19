@@ -803,7 +803,10 @@ impl NativeHandlers {
                 "Qualifier": "$LATEST",
                 "Payload": payload.to_string(),
             }),
-            body: bytes::Bytes::new(),
+            // The lambda runtime takes the event from the raw request body
+            // (boto's Invoke sends Payload as the body) — the empty body here
+            // is what made proxy events arrive as {}.
+            body: bytes::Bytes::from(payload.to_string()),
             method: "POST".to_string(),
             // The lambda handler re-derives the operation from method+path.
             path: format!("/2015-03-31/functions/{function_name}/invocations"),
@@ -1083,40 +1086,47 @@ pub async fn catch_all_handler(
     // Deployed-API execution: /restapis/{api}/{stage}/_user_request_/{path}/
     // (the ground truth serves these with its own executor, not moto routes).
     if let Some((api_id, stage, proxy_path)) = crate::core::apigw_exec::match_execute(uri.path()) {
-        if let Some(proxy) = &state.moto_proxy {
-            // The audit call below needs the account/region rows that are
-            // computed further down; derive them early here.
-            let account = extract_account_from_request(&headers, uri.query().unwrap_or(""));
-            let account_id = account.to_string();
-            let region_for_audit = extract_region_from_request(&headers)
-                .or_else(|| extract_region_from_query(uri.query().unwrap_or("")))
-                .unwrap_or_else(|| "us-east-1".to_string());
-            let result = crate::core::apigw_exec::execute(
-                proxy,
-                &state.registry.native,
-                &method,
-                crate::core::apigw_exec::ExecuteTarget {
-                    api_id: &api_id,
-                    stage: &stage,
-                    proxy_path: &proxy_path,
-                },
-                account,
-                "us-east-1",
-            )
-            .await;
-            audit_out(
-                Some("apigateway"),
-                None,
-                &req_method,
-                &req_path,
-                result.status().as_u16(),
-                req_start,
-                &account_id,
-                &region_for_audit,
-                None,
-            );
-            return result;
+        // The audit call below needs the account/region rows that are
+        // computed further down; derive them early here.
+        let account = extract_account_from_request(&headers, uri.query().unwrap_or(""));
+        let account_id = account.to_string();
+        let region_for_audit = extract_region_from_request(&headers)
+            .or_else(|| extract_region_from_query(uri.query().unwrap_or("")))
+            .unwrap_or_else(|| "us-east-1".to_string());
+        let mut exec_headers: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        for (key, value) in headers.iter() {
+            if let Ok(v) = value.to_str() {
+                exec_headers.insert(key.as_str().to_lowercase(), v.to_string());
+            }
         }
+        let result = crate::core::apigw_exec::execute(
+            &state.registry.native,
+            &method,
+            crate::core::apigw_exec::ExecuteTarget {
+                api_id: &api_id,
+                stage: &stage,
+                proxy_path: &proxy_path,
+            },
+            account,
+            region_for_audit.as_str(),
+            uri.query().unwrap_or(""),
+            &exec_headers,
+            &body_bytes,
+        )
+        .await;
+        audit_out(
+            Some("apigateway"),
+            None,
+            &req_method,
+            &req_path,
+            result.status().as_u16(),
+            req_start,
+            &account_id,
+            &region_for_audit,
+            None,
+        );
+        return result;
     }
 
     // Determine service from URI and headers
