@@ -309,7 +309,11 @@ pub enum LoopbackBody {
     Json { target: String, payload: String },
 }
 
-pub fn loopback(req: &Request, service: &'static str, body: &LoopbackBody) -> Option<(u16, String)> {
+pub fn loopback(
+    req: &Request,
+    service: &'static str,
+    body: &LoopbackBody,
+) -> Option<(u16, String)> {
     use std::io::{Read, Write};
     use std::net::TcpStream;
 
@@ -320,9 +324,11 @@ pub fn loopback(req: &Request, service: &'static str, body: &LoopbackBody) -> Op
         .unwrap_or_else(|| "127.0.0.1:4567".to_string());
     let (content_type, body_str, target) = match body {
         LoopbackBody::Form(b) => ("application/x-www-form-urlencoded", b.clone(), None),
-        LoopbackBody::Json { target, payload } => {
-            ("application/x-amz-json-1.1", payload.clone(), Some(target.clone()))
-        }
+        LoopbackBody::Json { target, payload } => (
+            "application/x-amz-json-1.1",
+            payload.clone(),
+            Some(target.clone()),
+        ),
     };
     let mut headers = format!(
         "POST / HTTP/1.1\r\nHost: {host}\r\nContent-Type: {ct}\r\n\
@@ -736,7 +742,10 @@ impl FakeLoadBalancer {
         vec![
             ("access_logs.s3.bucket".to_string(), String::new()),
             ("access_logs.s3.prefix".to_string(), String::new()),
-            ("deletion_protection.enabled".to_string(), "false".to_string()),
+            (
+                "deletion_protection.enabled".to_string(),
+                "false".to_string(),
+            ),
             (
                 "load_balancing.cross_zone.enabled".to_string(),
                 "false".to_string(),
@@ -823,7 +832,10 @@ impl FakeTargetGroup {
             ("waf.fail_open.enabled".to_string(), "false".to_string()),
         ];
         if target_type == "lambda" {
-            out.push(("lambda.multi_value_headers.enabled".to_string(), "false".to_string()));
+            out.push((
+                "lambda.multi_value_headers.enabled".to_string(),
+                "false".to_string(),
+            ));
         }
         match protocol.as_deref() {
             Some("HTTP") | Some("HTTPS") => {
@@ -926,10 +938,7 @@ pub fn lb_xml(lb: &FakeLoadBalancer) -> String {
     if let Some(vpc) = &lb.vpc_id {
         out.push_str(&thin_tag("VpcId", vpc));
     }
-    out.push_str(&format!(
-        "<State><Code>{}</Code></State>",
-        esc(&lb.state)
-    ));
+    out.push_str(&format!("<State><Code>{}</Code></State>", esc(&lb.state)));
     out.push_str(&thin_tag("Type", &lb.lb_type));
     let mut azs = String::new();
     for (subnet, zone) in &lb.subnets {
@@ -970,7 +979,11 @@ pub fn tg_xml(tg: &FakeTargetGroup, include_lb_arns: bool) -> String {
     }
     out.push_str(&thin_tag(
         "HealthCheckEnabled",
-        if tg.health_check_enabled { "true" } else { "false" },
+        if tg.health_check_enabled {
+            "true"
+        } else {
+            "false"
+        },
     ));
     out.push_str(&thin_tag(
         "HealthCheckIntervalSeconds",
@@ -980,7 +993,10 @@ pub fn tg_xml(tg: &FakeTargetGroup, include_lb_arns: bool) -> String {
         "HealthCheckTimeoutSeconds",
         &tg.health_check_timeout_seconds.to_string(),
     ));
-    out.push_str(&thin_tag("HealthyThresholdCount", &tg.healthy_threshold_count));
+    out.push_str(&thin_tag(
+        "HealthyThresholdCount",
+        &tg.healthy_threshold_count,
+    ));
     out.push_str(&thin_tag(
         "UnhealthyThresholdCount",
         &tg.unhealthy_threshold_count,
@@ -1022,7 +1038,10 @@ pub fn listener_xml(listener: &FakeListener) -> String {
     out.push_str(&thin_tag("Protocol", &listener.protocol));
     let mut certs = String::new();
     for c in &listener.certificates {
-        certs.push_str(&format!("<member><CertificateArn>{}</CertificateArn></member>", esc(c)));
+        certs.push_str(&format!(
+            "<member><CertificateArn>{}</CertificateArn></member>",
+            esc(c)
+        ));
     }
     out.push_str(&readonly_tag("Certificates", &certs));
     out.push_str(&thin_tag("SslPolicy", &listener.ssl_policy));
@@ -1171,7 +1190,12 @@ fn tag_resource(state: &mut ElbV2State, arn: &str, tags: &[(String, String)]) {
 }
 
 /// moto `add_tags` incl. the 10-tag quota check.
-fn add_tags(state: &mut ElbV2State, _req: &Request, arns: &[String], tags: &[(String, String)]) -> Result<(), ElbError> {
+fn add_tags(
+    state: &mut ElbV2State,
+    _req: &Request,
+    arns: &[String],
+    tags: &[(String, String)],
+) -> Result<(), ElbError> {
     for arn in arns {
         let existing = state.tags.get(arn);
         for (k, _) in tags {
@@ -1191,7 +1215,11 @@ fn add_tags(state: &mut ElbV2State, _req: &Request, arns: &[String], tags: &[(St
     Ok(())
 }
 
-fn remove_tags(state: &mut ElbV2State, arns: &[String], tag_keys: &[String]) -> Result<(), ElbError> {
+fn remove_tags(
+    state: &mut ElbV2State,
+    arns: &[String],
+    tag_keys: &[String],
+) -> Result<(), ElbError> {
     for arn in arns {
         get_resource_by_arn(state, arn)?;
         if let Some(entry) = state.tags.get_mut(arn) {
@@ -1326,17 +1354,18 @@ fn run_op(
             }
             Err(e) => Err(e),
         },
-        "DescribeTargetGroupAttributes" => op_describe_target_group_attributes(
-            state,
-            p_string(p, "TargetGroupArn"),
-        ),
+        "DescribeTargetGroupAttributes" => {
+            op_describe_target_group_attributes(state, p_string(p, "TargetGroupArn"))
+        }
         "ModifyTargetGroup" => op_modify_target_group(state, p),
         "ModifyTargetGroupAttributes" => op_modify_target_group_attributes(state, p),
         "RegisterTargets" => op_register_targets(req, state, p),
         "DeregisterTargets" => op_deregister_targets(state, p),
         "DescribeTargetHealth" => op_describe_target_health(req, state, p),
         "DeleteTargetGroup" => {
-            let arn = p_string(p, "TargetGroupArn").unwrap_or_default().to_string();
+            let arn = p_string(p, "TargetGroupArn")
+                .unwrap_or_default()
+                .to_string();
             if !state.tgs.iter().any(|t| t.arn == arn) {
                 Err(ElbError::svc(
                     "TargetGroupNotFound",
@@ -1361,23 +1390,20 @@ fn run_op(
         "ModifyListener" => op_modify_listener(req, state, p),
         "DeleteListener" => op_delete_listener(state, p_string(p, "ListenerArn")),
         "CreateRule" => op_create_rule(state, p),
-        "DescribeRules" => match describe_rules_impl(
-            state,
-            p_string(p, "ListenerArn"),
-            &p_list(p, "RuleArns"),
-        ) {
-            Ok(rules) => Ok(rules_xml(&rules)),
-            Err(e) => Err(e),
-        },
+        "DescribeRules" => {
+            match describe_rules_impl(state, p_string(p, "ListenerArn"), &p_list(p, "RuleArns")) {
+                Ok(rules) => Ok(rules_xml(&rules)),
+                Err(e) => Err(e),
+            }
+        }
         "ModifyRule" => op_modify_rule(state, p),
         "DeleteRule" => op_delete_rule(state, p_string(p, "RuleArn")),
         "SetRulePriorities" => op_set_rule_priorities(state, p),
         "AddTags" | "RemoveTags" => op_register_lb_tags(req, state, p),
         "DescribeTags" => op_describe_tags(state, &p_list(p, "ResourceArns")),
-        "DescribeLoadBalancerAttributes" => op_describe_load_balancer_attributes(
-            state,
-            p_string(p, "LoadBalancerArn"),
-        ),
+        "DescribeLoadBalancerAttributes" => {
+            op_describe_load_balancer_attributes(state, p_string(p, "LoadBalancerArn"))
+        }
         "ModifyLoadBalancerAttributes" => {
             let muts: Vec<(String, String)> = p_struct_list(p, "Attributes")
                 .iter()
@@ -1393,10 +1419,9 @@ fn run_op(
                 .collect();
             op_modify_load_balancer_attributes(state, p_string(p, "LoadBalancerArn"), &muts)
         }
-        "DescribeListenerAttributes" => op_describe_listener_attributes(
-            state,
-            p_string(p, "ListenerArn"),
-        ),
+        "DescribeListenerAttributes" => {
+            op_describe_listener_attributes(state, p_string(p, "ListenerArn"))
+        }
         "ModifyListenerAttributes" => {
             let muts: Vec<(String, String)> = p_struct_list(p, "Attributes")
                 .iter()
@@ -1445,15 +1470,11 @@ fn run_op(
         "DeleteTrustStore" => op_delete_trust_store(state, p_string(p, "TrustStoreArn")),
         "DescribeTrustStoreAssociations" => op_describe_trust_store_associations(state, p),
         "DescribeTrustStoreRevocations" => op_describe_trust_store_revocations(state, p),
-        "GetTrustStoreCaCertificatesBundle" => {
-            op_get_trust_store_ca_certificates_bundle(state, p)
-        }
+        "GetTrustStoreCaCertificatesBundle" => op_get_trust_store_ca_certificates_bundle(state, p),
         "GetTrustStoreRevocationContent" => op_get_trust_store_revocation_content(state, p),
         "AddTrustStoreRevocations" => op_add_trust_store_revocations(state, p),
         "RemoveTrustStoreRevocations" => op_remove_trust_store_revocations(state, p),
-        "DeleteSharedTrustStoreAssociation" => {
-            op_delete_shared_trust_store_association(state, p)
-        }
+        "DeleteSharedTrustStoreAssociation" => op_delete_shared_trust_store_association(state, p),
         other => Err(ElbError::not_implemented(other)),
     };
 
@@ -1462,10 +1483,7 @@ fn run_op(
 
 pub fn dispatch(req: &Request) -> Option<Response> {
     let body = std::str::from_utf8(&req.body).unwrap_or("");
-    let urlencoded = body.contains("Action=")
-        || req
-            .query_string
-            .contains("Action=");
+    let urlencoded = body.contains("Action=") || req.query_string.contains("Action=");
     if !urlencoded {
         // Not a query-protocol body: fall through to the sidecar.
         return None;
@@ -1571,7 +1589,10 @@ fn op_create_load_balancer(
     let tags_in = p_struct_list(p, "Tags");
 
     if subnet_ids.is_empty() {
-        return Err(ElbError::svc("SubnetNotFound", "The specified subnet does not exist."));
+        return Err(ElbError::svc(
+            "SubnetNotFound",
+            "The specified subnet does not exist.",
+        ));
     }
     if ip_address_type != "ipv4" && ip_address_type != "dualstack" {
         return Err(ElbError::rest(
@@ -1586,12 +1607,17 @@ fn op_create_load_balancer(
     for id in &subnet_ids {
         match infos.get(id) {
             Some((_, Some(zone))) => resolved.push((id.clone(), zone.clone())),
-            _ => return Err(ElbError::svc("SubnetNotFound", "The specified subnet does not exist.")),
+            _ => {
+                return Err(ElbError::svc(
+                    "SubnetNotFound",
+                    "The specified subnet does not exist.",
+                ))
+            }
         }
     }
-    let vpc_id = resolved.first().and_then(|(id, _)| {
-        infos.get(id).and_then(|(v, _)| v.clone())
-    });
+    let vpc_id = resolved
+        .first()
+        .and_then(|(id, _)| infos.get(id).and_then(|(v, _)| v.clone()));
     let (arn, dns) = mk_lb_arn(req.account, &req.region, &name);
     let lb = FakeLoadBalancer {
         name: name.clone(),
@@ -1662,10 +1688,7 @@ fn lb_describe_body(
             }
         }
     }
-    let names_now: Vec<String> = matched
-        .iter()
-        .map(|&i| state.lbs[i].name.clone())
-        .collect();
+    let names_now: Vec<String> = matched.iter().map(|&i| state.lbs[i].name.clone()).collect();
     let start = match marker {
         Some(m) => names_now
             .iter()
@@ -1769,7 +1792,6 @@ fn create_tg_name_validator(name: &str) -> Result<(), ElbError> {
     Ok(())
 }
 
-
 /// Duplicate-name validation factored out of `op_create_target_group` so the
 /// moto order (name checks run before the VPC lookup) is testable directly.
 fn op_create_target_group_name_check(state: &ElbV2State, p: &BTreeMap<String, ElbVal>) -> OpResult {
@@ -1830,11 +1852,12 @@ fn op_create_target_group(
             ));
         }
     }
-    let http_code = matcher
-        .as_ref()
-        .and_then(|pairs| {
-            pairs.iter().find(|(k, _)| k == "HttpCode").map(|(_, v)| v.clone())
-        });
+    let http_code = matcher.as_ref().and_then(|pairs| {
+        pairs
+            .iter()
+            .find(|(k, _)| k == "HttpCode")
+            .map(|(_, v)| v.clone())
+    });
     if let Some(code) = &http_code {
         if !http_code_ok(code) {
             return Err(ElbError::rest(
@@ -1846,21 +1869,33 @@ fn op_create_target_group(
 
     if matches!(target_type.as_str(), "instance" | "ip" | "alb") {
         if protocol.is_none() {
-            return Err(ElbError::svc("ValidationError", "A protocol must be specified"));
+            return Err(ElbError::svc(
+                "ValidationError",
+                "A protocol must be specified",
+            ));
         }
         if port.is_none() {
             return Err(ElbError::svc("ValidationError", "A port must be specified"));
         }
         if vpc_id.is_none() {
-            return Err(ElbError::svc("ValidationError", "A VPC ID must be specified"));
+            return Err(ElbError::svc(
+                "ValidationError",
+                "A VPC ID must be specified",
+            ));
         }
     }
     if target_type == "lambda" {
-        for (param, label) in [("Protocol", "Protocol"), ("Port", "Port"), ("VpcId", "VPC ID")] {
+        for (param, label) in [
+            ("Protocol", "Protocol"),
+            ("Port", "Port"),
+            ("VpcId", "VPC ID"),
+        ] {
             if p.get(param).and_then(|v| v.string()).is_some() {
                 return Err(ElbError::svc(
                     "ValidationError",
-                    format!("{label} cannot be specified for target groups with target type 'lambda'"),
+                    format!(
+                        "{label} cannot be specified for target groups with target type 'lambda'"
+                    ),
                 ));
             }
         }
@@ -1913,7 +1948,10 @@ fn op_create_target_group(
         }
     }
     if let Some(p) = protocol.as_deref() {
-        if matches!(p, "HTTP" | "HTTPS" | "TCP" | "TCP_UDP" | "UDP" | "TLS" | "GENEVE") {
+        if matches!(
+            p,
+            "HTTP" | "HTTPS" | "TCP" | "TCP_UDP" | "UDP" | "TLS" | "GENEVE"
+        ) {
             hc_proto = hc_proto.or_else(|| Some("TCP".to_string()));
             unhealthy = unhealthy.or(Some("2".to_string()));
             interval = interval.or(Some(30));
@@ -1950,8 +1988,7 @@ fn op_create_target_group(
         }
     }
 
-    let attributes =
-        FakeTargetGroup::default_attributes(protocol.as_deref(), &target_type);
+    let attributes = FakeTargetGroup::default_attributes(protocol.as_deref(), &target_type);
     let health_enabled_final = if target_type == "lambda" {
         false
     } else {
@@ -2086,10 +2123,15 @@ fn tg_query(
     Ok(xpose_sorted(state.tgs.clone()))
 }
 
-fn tg_by_arn<'a>(state: &'a mut ElbV2State, arn: &str) -> Result<&'a mut FakeTargetGroup, ElbError> {
-    state.tgs.iter_mut().find(|t| t.arn == arn).ok_or_else(|| {
-        ElbError::svc("TargetGroupNotFound", "One or more target groups not found")
-    })
+fn tg_by_arn<'a>(
+    state: &'a mut ElbV2State,
+    arn: &str,
+) -> Result<&'a mut FakeTargetGroup, ElbError> {
+    state
+        .tgs
+        .iter_mut()
+        .find(|t| t.arn == arn)
+        .ok_or_else(|| ElbError::svc("TargetGroupNotFound", "One or more target groups not found"))
 }
 
 fn tg_attrs_xml(pairs: &[(String, String)]) -> String {
@@ -2112,7 +2154,9 @@ fn op_describe_target_group_attributes(state: &mut ElbV2State, arn: Option<&str>
 }
 
 fn op_modify_target_group(state: &mut ElbV2State, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let arn = p_string(p, "TargetGroupArn").unwrap_or_default().to_string();
+    let arn = p_string(p, "TargetGroupArn")
+        .unwrap_or_default()
+        .to_string();
     let http_code = p_string(p, "Matcher.HttpCode")
         .map(|s| s.to_string())
         .or_else(|| {
@@ -2173,8 +2217,13 @@ fn update_ordered_pairs(pairs: &mut Vec<(String, String)>, updates: &[(String, S
     }
 }
 
-fn op_modify_target_group_attributes(state: &mut ElbV2State, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let arn = p_string(p, "TargetGroupArn").unwrap_or_default().to_string();
+fn op_modify_target_group_attributes(
+    state: &mut ElbV2State,
+    p: &BTreeMap<String, ElbVal>,
+) -> OpResult {
+    let arn = p_string(p, "TargetGroupArn")
+        .unwrap_or_default()
+        .to_string();
     let mut attrs: Vec<(String, String)> = Vec::new();
     for m in p_struct_list(p, "Attributes") {
         let k = m
@@ -2224,7 +2273,9 @@ fn op_register_targets(
     state: &mut ElbV2State,
     p: &BTreeMap<String, ElbVal>,
 ) -> OpResult {
-    let arn = p_string(p, "TargetGroupArn").unwrap_or_default().to_string();
+    let arn = p_string(p, "TargetGroupArn")
+        .unwrap_or_default()
+        .to_string();
     let targets = p_struct_list(p, "Targets");
     let tg = tg_by_arn(state, &arn)?;
     let ids: Vec<String> = targets
@@ -2261,7 +2312,9 @@ fn op_register_targets(
 }
 
 fn op_deregister_targets(state: &mut ElbV2State, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let arn = p_string(p, "TargetGroupArn").unwrap_or_default().to_string();
+    let arn = p_string(p, "TargetGroupArn")
+        .unwrap_or_default()
+        .to_string();
     let targets = p_struct_list(p, "Targets");
     let tg = tg_by_arn(state, &arn)?;
     for target in &targets {
@@ -2328,7 +2381,9 @@ fn op_describe_target_health(
     state: &mut ElbV2State,
     p: &BTreeMap<String, ElbVal>,
 ) -> OpResult {
-    let arn = p_string(p, "TargetGroupArn").unwrap_or_default().to_string();
+    let arn = p_string(p, "TargetGroupArn")
+        .unwrap_or_default()
+        .to_string();
     let targets_in = p_struct_list(p, "Targets");
     let tg = tg_by_arn(state, &arn)?;
 
@@ -2347,7 +2402,10 @@ fn op_describe_target_health(
             })
             .collect()
     };
-    let states = instance_states(req, &queried.iter().map(|(i, _)| i.clone()).collect::<Vec<_>>());
+    let states = instance_states(
+        req,
+        &queried.iter().map(|(i, _)| i.clone()).collect::<Vec<_>>(),
+    );
     let mut items = String::new();
     for (id, port) in &queried {
         let (state_name, reason, description) = health_for(&tg, id, &states);
@@ -2378,7 +2436,9 @@ fn op_create_listener(
     state: &mut ElbV2State,
     p: &BTreeMap<String, ElbVal>,
 ) -> OpResult {
-    let lb_arn = p_string(p, "LoadBalancerArn").unwrap_or_default().to_string();
+    let lb_arn = p_string(p, "LoadBalancerArn")
+        .unwrap_or_default()
+        .to_string();
     let protocol = p_string(p, "Protocol").unwrap_or_default().to_uppercase();
     let port = p_string(p, "Port").unwrap_or_default().to_string();
     let ssl_policy = p_string(p, "SslPolicy")
@@ -2409,7 +2469,10 @@ fn op_create_listener(
         };
         if lb.lb_type == "application" || lb.lb_type == "network" {
             if port.is_empty() {
-                return Err(ElbError::svc("ValidationError", "A listener port must be specified"));
+                return Err(ElbError::svc(
+                    "ValidationError",
+                    "A listener port must be specified",
+                ));
             }
             if protocol.is_empty() {
                 return Err(ElbError::svc(
@@ -2472,7 +2535,11 @@ fn op_create_listener(
         }
     }
 
-    let listener_arn = format!("{}/{}", lb_arn.replace(":loadbalancer/", ":listener/"), rand_hex(16));
+    let listener_arn = format!(
+        "{}/{}",
+        lb_arn.replace(":loadbalancer/", ":listener/"),
+        rand_hex(16)
+    );
     let listener = FakeListener {
         load_balancer_arn: lb_arn.clone(),
         arn: listener_arn.clone(),
@@ -2486,11 +2553,7 @@ fn op_create_listener(
         rules: Vec::new(),
     };
     let tg_arns = listener.forward_target_groups();
-    let state_lbi = state
-        .lbs
-        .iter()
-        .position(|l| l.arn == lb_arn)
-        .unwrap();
+    let state_lbi = state.lbs.iter().position(|l| l.arn == lb_arn).unwrap();
     state.lbs[state_lbi].listeners.push(listener);
     for tg_arn in &tg_arns {
         if let Some(tg) = state.tgs.iter_mut().find(|t| t.arn == *tg_arn) {
@@ -2568,7 +2631,10 @@ fn validate_actions(state: &ElbV2State, actions: &[ElbVal]) -> Result<(), ElbErr
                     ));
                 }
                 let is_valid = status_code.len() == 3
-                    && matches!(status_code.chars().next(), Some('2') | Some('4') | Some('5'))
+                    && matches!(
+                        status_code.chars().next(),
+                        Some('2') | Some('4') | Some('5')
+                    )
                     && status_code.chars().skip(1).all(|c| c.is_ascii_digit());
                 if !is_valid {
                     return Err(ElbError::svc(
@@ -2586,7 +2652,11 @@ fn validate_actions(state: &ElbV2State, actions: &[ElbVal]) -> Result<(), ElbErr
                 if !content_type.is_empty()
                     && !matches!(
                         content_type,
-                        "text/plain" | "text/css" | "text/html" | "application/javascript" | "application/json"
+                        "text/plain"
+                            | "text/css"
+                            | "text/html"
+                            | "application/javascript"
+                            | "application/json"
                     )
                 {
                     return Err(ElbError::svc(
@@ -2687,9 +2757,7 @@ fn validate_conditions(conditions: &[ElbVal]) -> Result<(), ElbError> {
                 }
             }
             "path-pattern" => {
-                if map.contains_key("Values")
-                    && map.contains_key("PathPatternConfig")
-                {
+                if map.contains_key("Values") && map.contains_key("PathPatternConfig") {
                     return Err(ElbError::svc(
                         "ValidationError",
                         "You cannot provide both Values and 'PathPatternConfig' for a condition of type 'path-pattern'",
@@ -2848,9 +2916,11 @@ fn op_create_rule(state: &mut ElbV2State, p: &BTreeMap<String, ElbVal>) -> OpRes
     validate_conditions(&conditions)?;
 
     // Resolve owning listener (mutably) or fail like moto's describe path.
-    let Some(pos) = state.lbs.iter().position(|l| {
-        l.listeners.iter().any(|l| l.arn == listener_arn)
-    }) else {
+    let Some(pos) = state
+        .lbs
+        .iter()
+        .position(|l| l.listeners.iter().any(|l| l.arn == listener_arn))
+    else {
         return Err(ElbError::svc(
             "ListenerNotFound",
             "The specified listener does not exist.",
@@ -2864,15 +2934,26 @@ fn op_create_rule(state: &mut ElbV2State, p: &BTreeMap<String, ElbVal>) -> OpRes
     let lb_arn = {
         let lb = &state.lbs[pos];
         let listener = lb.listeners.iter().find(|l| l.arn == listener_arn).unwrap();
-        if listener.rules.iter().any(|r| r.priority == priority && !r.is_default) {
-            return Err(ElbError::svc("PriorityInUse", "The specified priority is in use."));
+        if listener
+            .rules
+            .iter()
+            .any(|r| r.priority == priority && !r.is_default)
+        {
+            return Err(ElbError::svc(
+                "PriorityInUse",
+                "The specified priority is in use.",
+            ));
         }
         let _ = listener.rules.is_empty();
         lb.arn.clone()
     };
     {
         let lb = &mut state.lbs[pos];
-        let listener = lb.listeners.iter_mut().find(|l| l.arn == listener_arn).unwrap();
+        let listener = lb
+            .listeners
+            .iter_mut()
+            .find(|l| l.arn == listener_arn)
+            .unwrap();
         listener.rules.push(FakeRule {
             listener_arn: listener_arn.clone(),
             arn: rule_arn.clone(),
@@ -2882,10 +2963,7 @@ fn op_create_rule(state: &mut ElbV2State, p: &BTreeMap<String, ElbVal>) -> OpRes
             is_default: false,
         });
     }
-    let tg_arns: Vec<String> = actions
-        .iter()
-        .flat_map(forward_arns_from_action)
-        .collect();
+    let tg_arns: Vec<String> = actions.iter().flat_map(forward_arns_from_action).collect();
     for tg_arn in &tg_arns {
         if let Some(tg) = state.tgs.iter_mut().find(|t| t.arn == *tg_arn) {
             tg.load_balancer_arns.push(lb_arn.clone());
@@ -2901,7 +2979,10 @@ fn op_create_rule(state: &mut ElbV2State, p: &BTreeMap<String, ElbVal>) -> OpRes
     if !tags_in.is_empty() {
         tag_resource(state, rule.arn.as_str(), &tg_tags(&tags_in));
     }
-    Ok(format!("<Rules><member>{}</member></Rules>", rule_xml(&rule)))
+    Ok(format!(
+        "<Rules><member>{}</member></Rules>",
+        rule_xml(&rule)
+    ))
 }
 
 fn describe_rules_impl(
@@ -3067,7 +3148,10 @@ fn op_set_rule_priorities(state: &mut ElbV2State, p: &BTreeMap<String, ElbVal>) 
             })
         });
         if priority_in_use {
-            return Err(ElbError::svc("PriorityInUse", "The specified priority is in use."));
+            return Err(ElbError::svc(
+                "PriorityInUse",
+                "The specified priority is in use.",
+            ));
         }
     }
     let mut out_rules: Vec<FakeRule> = Vec::new();
@@ -3155,23 +3239,32 @@ fn op_modify_listener(
     let default_actions = p_struct_list(p, "DefaultActions");
 
     if let Some(policy) = &ssl_policy {
-        if !ssl_policies::SSL_POLICIES.iter().any(|&(n, _)| n == policy.as_str()) {
+        if !ssl_policies::SSL_POLICIES
+            .iter()
+            .any(|&(n, _)| n == policy.as_str())
+        {
             return Err(ElbError::rest(
                 "SSLPolicyNotFound",
                 format!("Policy {policy} not found"),
             ));
         }
     }
-    let Some(lbi) = state.lbs.iter().position(|lb| {
-        lb.listeners.iter().any(|l| l.arn == listener_arn)
-    }) else {
+    let Some(lbi) = state
+        .lbs
+        .iter()
+        .position(|lb| lb.listeners.iter().any(|l| l.arn == listener_arn))
+    else {
         return Err(ElbError::svc(
             "ListenerNotFound",
             "The specified listener does not exist.",
         ));
     };
     let lb = &mut state.lbs[lbi];
-    let li = lb.listeners.iter().position(|l| l.arn == listener_arn).unwrap();
+    let li = lb
+        .listeners
+        .iter()
+        .position(|l| l.arn == listener_arn)
+        .unwrap();
 
     if let Some(port) = &port {
         lb.listeners[li].port = port.clone();
@@ -3221,18 +3314,10 @@ fn op_modify_listener(
         lb.listeners[li].ssl_policy = policy;
     }
     if !default_actions.is_empty() {
-        let actions: Vec<ElbVal> = default_actions
-            .iter()
-            .cloned()
-            .map(ElbVal::M)
-            .collect();
+        let actions: Vec<ElbVal> = default_actions.iter().cloned().map(ElbVal::M).collect();
         lb.listeners[li].default_actions = actions;
         let default_actions_clone = lb.listeners[li].default_actions.clone();
-        if let Some(default_rule) = lb.listeners[li]
-            .rules
-            .iter_mut()
-            .find(|r| r.is_default)
-        {
+        if let Some(default_rule) = lb.listeners[li].rules.iter_mut().find(|r| r.is_default) {
             default_rule.actions = default_actions_clone;
         }
     }
@@ -3367,7 +3452,11 @@ fn op_modify_load_balancer_attributes(
 
 fn op_describe_listener_attributes(state: &mut ElbV2State, arn: Option<&str>) -> OpResult {
     let arn = arn.filter(|s| !s.is_empty()).unwrap_or_default();
-    let Some(lb) = state.lbs.iter().find(|l| l.listeners.iter().any(|l| l.arn == arn)) else {
+    let Some(lb) = state
+        .lbs
+        .iter()
+        .find(|l| l.listeners.iter().any(|l| l.arn == arn))
+    else {
         return Err(ElbError::svc(
             "ListenerNotFound",
             "The specified listener does not exist.",
@@ -3507,7 +3596,8 @@ fn op_set_subnets(
                 if collected.iter().any(|(_, z)| z == zone) {
                     return Err(ElbError::rest(
                         "InvalidConfigurationRequest",
-                        "More than 1 subnet cannot be specified for 1 availability zone".to_string(),
+                        "More than 1 subnet cannot be specified for 1 availability zone"
+                            .to_string(),
                     ));
                 }
                 collected.push((id.clone(), zone.clone()));
@@ -3622,7 +3712,10 @@ fn op_add_listener_certificates(state: &mut ElbV2State, p: &BTreeMap<String, Elb
     Ok(readonly_tag("Certificates", &items))
 }
 
-fn op_describe_listener_certificates(state: &mut ElbV2State, p: &BTreeMap<String, ElbVal>) -> OpResult {
+fn op_describe_listener_certificates(
+    state: &mut ElbV2State,
+    p: &BTreeMap<String, ElbVal>,
+) -> OpResult {
     let listener_arn = p_string(p, "ListenerArn").unwrap_or_default().to_string();
     let Some(lb) = state
         .lbs
@@ -3646,7 +3739,10 @@ fn op_describe_listener_certificates(state: &mut ElbV2State, p: &BTreeMap<String
     Ok(readonly_tag("Certificates", &items))
 }
 
-fn op_remove_listener_certificates(state: &mut ElbV2State, p: &BTreeMap<String, ElbVal>) -> OpResult {
+fn op_remove_listener_certificates(
+    state: &mut ElbV2State,
+    p: &BTreeMap<String, ElbVal>,
+) -> OpResult {
     let listener_arn = p_string(p, "ListenerArn").unwrap_or_default().to_string();
     let certificates = p_struct_list(p, "Certificates");
     let drop_arns: Vec<String> = certificates
@@ -3693,7 +3789,9 @@ fn op_describe_account_limits() -> String {
     ];
     let mut body = String::from("<Limits>");
     for (name, max) in limits {
-        body.push_str(&format!("<member><Name>{name}</Name><Max>{max}</Max></member>"));
+        body.push_str(&format!(
+            "<member><Name>{name}</Name><Max>{max}</Max></member>"
+        ));
     }
     body.push_str("</Limits>");
     body
@@ -3747,12 +3845,16 @@ fn trust_store_by_arn<'a>(
     state: &'a mut ElbV2State,
     arn: &str,
 ) -> Result<&'a mut FakeTrustStore, ElbError> {
-    state.trust_stores.iter_mut().find(|t| t.arn == arn).ok_or_else(|| {
-        ElbError::svc(
-            "TrustStoreNotFound",
-            "The specified trust store does not exist.",
-        )
-    })
+    state
+        .trust_stores
+        .iter_mut()
+        .find(|t| t.arn == arn)
+        .ok_or_else(|| {
+            ElbError::svc(
+                "TrustStoreNotFound",
+                "The specified trust store does not exist.",
+            )
+        })
 }
 
 fn op_create_trust_store(
@@ -3803,11 +3905,7 @@ fn op_create_trust_store(
     if !tags_in.is_empty() {
         tag_resource(state, arn.as_str(), &tg_tags(&tags_in));
     }
-    let found = state
-        .trust_stores
-        .iter()
-        .find(|t| t.name == name)
-        .unwrap();
+    let found = state.trust_stores.iter().find(|t| t.name == name).unwrap();
     Ok(trust_stores_xml(std::slice::from_ref(found)))
 }
 
@@ -3919,7 +4017,10 @@ fn op_get_trust_store_ca_certificates_bundle(
 ) -> OpResult {
     let arn = p_string(p, "TrustStoreArn").unwrap_or_default().to_string();
     let ts = trust_store_by_arn(state, &arn)?;
-    Ok(thin_tag("Location", &s3_location(&ts.s3_bucket, &ts.s3_key)))
+    Ok(thin_tag(
+        "Location",
+        &s3_location(&ts.s3_bucket, &ts.s3_key),
+    ))
 }
 
 fn op_get_trust_store_revocation_content(
@@ -3934,7 +4035,10 @@ fn op_get_trust_store_revocation_content(
     ))
 }
 
-fn op_add_trust_store_revocations(state: &mut ElbV2State, p: &BTreeMap<String, ElbVal>) -> OpResult {
+fn op_add_trust_store_revocations(
+    state: &mut ElbV2State,
+    p: &BTreeMap<String, ElbVal>,
+) -> OpResult {
     let arn = p_string(p, "TrustStoreArn").unwrap_or_default().to_string();
     let contents = p_struct_list(p, "RevocationContents");
     let ts = trust_store_by_arn(state, &arn)?;
@@ -4214,7 +4318,10 @@ mod tests {
             ip_address_type: Some("ipv4".into()),
             attributes: FakeTargetGroup::default_attributes(Some("TCP"), "instance"),
         });
-        let req2 = req_for("CreateTargetGroup", "Name=tg1&Protocol=TCP&Port=80&VpcId=vpc-1");
+        let req2 = req_for(
+            "CreateTargetGroup",
+            "Name=tg1&Protocol=TCP&Port=80&VpcId=vpc-1",
+        );
         let p2 = parse_params(&req2);
         // the moto pipeline checks the duplicate name before the VPC lookup
         let err = op_create_target_group_name_check(st, &p2).unwrap_err();
@@ -4240,12 +4347,17 @@ mod tests {
     #[test]
     fn rule_conditions_round_trip_through_xml() {
         let rule = FakeRule {
-            listener_arn: "arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/x/y".into(),
-            arn: "arn:aws:elasticloadbalancing:us-east-1:123456789012:listener-rule/app/x/y/z".into(),
+            listener_arn: "arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/x/y"
+                .into(),
+            arn: "arn:aws:elasticloadbalancing:us-east-1:123456789012:listener-rule/app/x/y/z"
+                .into(),
             conditions: vec![ElbVal::M(
                 [
                     ("Field".to_string(), ElbVal::S("path-pattern".into())),
-                    ("Values".to_string(), ElbVal::L(vec![ElbVal::S("/api/*".into())])),
+                    (
+                        "Values".to_string(),
+                        ElbVal::L(vec![ElbVal::S("/api/*".into())]),
+                    ),
                 ]
                 .into_iter()
                 .collect(),
@@ -4363,10 +4475,15 @@ mod tests {
 
     #[test]
     fn error_renderings_match_moto_templates() {
-        let resp = ElbError::svc("LoadBalancerNotFound", "The specified load balancer does not exist.")
-            .response(XMLNS);
+        let resp = ElbError::svc(
+            "LoadBalancerNotFound",
+            "The specified load balancer does not exist.",
+        )
+        .response(XMLNS);
         let body = String::from_utf8(resp.body).unwrap();
-        assert!(body.contains("<ErrorResponse xmlns=\"http://elasticloadbalancing.amazonaws.com/doc/2015-12-01/\">"));
+        assert!(body.contains(
+            "<ErrorResponse xmlns=\"http://elasticloadbalancing.amazonaws.com/doc/2015-12-01/\">"
+        ));
         assert!(body.contains("<Type>Sender</Type><Code>LoadBalancerNotFound</Code>"));
 
         let rest = ElbError::rest("InvalidSecurityGroup", "Security group sg-x does not exist")
@@ -4392,6 +4509,8 @@ mod tests {
         assert!(out.starts_with("<AddTagsResponse xmlns=\"http://elasticloadbalancing.amazonaws.com/doc/2015-12-01/\"><AddTagsResult/><ResponseMetadata><RequestId>"));
         assert!(out.ends_with("</RequestId></ResponseMetadata></AddTagsResponse>"));
         let out2 = result_xml("DescribeTags", "<TagDescriptions></TagDescriptions>");
-        assert!(out2.contains("<DescribeTagsResult><TagDescriptions></TagDescriptions></DescribeTagsResult>"));
+        assert!(out2.contains(
+            "<DescribeTagsResult><TagDescriptions></TagDescriptions></DescribeTagsResult>"
+        ));
     }
 }

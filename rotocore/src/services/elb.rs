@@ -17,8 +17,7 @@
 
 use super::elbv2::{
     create_default_security_group, elb_partition, fetch_default_subnets, fetch_subnets, iso_micro,
-    p_bool, p_i64,
-    p_list, p_string, p_struct_list, parse_params, ElbError, ElbVal, LoopbackBody,
+    p_bool, p_i64, p_list, p_string, p_struct_list, parse_params, ElbError, ElbVal, LoopbackBody,
 };
 use crate::store;
 use crate::{Request, Response};
@@ -120,7 +119,9 @@ impl ElbPolicy {
         match self {
             ElbPolicy::AppCookie { .. } => "AppCookieStickinessPolicy",
             ElbPolicy::LbCookie { .. } => "LbCookieStickinessPolicy",
-            ElbPolicy::Other { policy_type_name, .. } => policy_type_name,
+            ElbPolicy::Other {
+                policy_type_name, ..
+            } => policy_type_name,
         }
     }
 }
@@ -314,11 +315,22 @@ fn attributes_xml(lb: &ElbClassicLb) -> String {
     let a = &lb.attributes;
     let mut out = format!(
         "<CrossZoneLoadBalancing>{}</CrossZoneLoadBalancing>",
-        tag_esc("Enabled", if a.cross_zone_enabled { "true" } else { "false" })
+        tag_esc(
+            "Enabled",
+            if a.cross_zone_enabled {
+                "true"
+            } else {
+                "false"
+            }
+        )
     );
     let mut access = tag_esc(
         "Enabled",
-        if a.access_log_enabled { "true" } else { "false" },
+        if a.access_log_enabled {
+            "true"
+        } else {
+            "false"
+        },
     );
     if let Some(bucket) = &a.access_log_bucket {
         access.push_str(&tag_esc("S3BucketName", bucket));
@@ -332,7 +344,11 @@ fn attributes_xml(lb: &ElbClassicLb) -> String {
     out.push_str(&tag_raw("AccessLog", &access));
     let mut draining = tag_esc(
         "Enabled",
-        if a.connection_draining_enabled { "true" } else { "false" },
+        if a.connection_draining_enabled {
+            "true"
+        } else {
+            "false"
+        },
     );
     if let Some(timeout) = &a.connection_draining_timeout {
         draining.push_str(&tag_esc("Timeout", timeout));
@@ -545,7 +561,9 @@ fn op_create_load_balancer(
     state: &mut ElbState,
     p: &BTreeMap<String, ElbVal>,
 ) -> OpResult {
-    let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
+    let name = p_string(p, "LoadBalancerName")
+        .unwrap_or_default()
+        .to_string();
     let zones = p_list(p, "AvailabilityZones");
     let listeners_in = p_struct_list(p, "Listeners");
     let scheme = p_string(p, "Scheme").map(|s| s.to_string());
@@ -560,7 +578,10 @@ fn op_create_load_balancer(
         ));
     }
     if listeners_in.is_empty() {
-        return Err(ElbError::svc("ValidationError", "Listeners cannot be empty"));
+        return Err(ElbError::svc(
+            "ValidationError",
+            "Listeners cannot be empty",
+        ));
     }
 
     // moto resolves the first vpc id from subnets or default subnets per zone.
@@ -655,14 +676,10 @@ fn op_create_load_balancer(
         tags: Vec::new(),
     };
     let tags = tag_pairs(&tags_in);
-    let lb = ElbClassicLb {
-        tags,
-        ..lb
-    };
+    let lb = ElbClassicLb { tags, ..lb };
     state.lbs.push(lb);
     Ok(tag_esc("DNSName", &dns_name))
 }
-
 
 fn op_describe_load_balancers(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
     let names = p_list(p, "LoadBalancerNames");
@@ -698,19 +715,41 @@ fn op_describe_load_balancers(state: &mut ElbState, p: &BTreeMap<String, ElbVal>
 }
 
 fn op_delete_load_balancer(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
+    let name = p_string(p, "LoadBalancerName")
+        .unwrap_or_default()
+        .to_string();
     state.lbs.retain(|l| l.name != name);
     Ok(String::new())
 }
 
-fn op_create_load_balancer_listeners(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
+fn op_create_load_balancer_listeners(
+    state: &mut ElbState,
+    p: &BTreeMap<String, ElbVal>,
+) -> OpResult {
+    let name = p_string(p, "LoadBalancerName")
+        .unwrap_or_default()
+        .to_string();
     let listeners_in = p_struct_list(p, "Listeners");
     for m in &listeners_in {
-        let protocol = m.get("Protocol").and_then(|v| v.string()).unwrap_or_default().to_string();
-        let instance_port = m.get("InstancePort").and_then(|v| v.string()).unwrap_or_default().to_string();
-        let lb_port = m.get("LoadBalancerPort").and_then(|v| v.string()).unwrap_or_default().to_string();
-        let cert = m.get("SSLCertificateId").and_then(|v| v.string()).map(|s| s.to_string());
+        let protocol = m
+            .get("Protocol")
+            .and_then(|v| v.string())
+            .unwrap_or_default()
+            .to_string();
+        let instance_port = m
+            .get("InstancePort")
+            .and_then(|v| v.string())
+            .unwrap_or_default()
+            .to_string();
+        let lb_port = m
+            .get("LoadBalancerPort")
+            .and_then(|v| v.string())
+            .unwrap_or_default()
+            .to_string();
+        let cert = m
+            .get("SSLCertificateId")
+            .and_then(|v| v.string())
+            .map(|s| s.to_string());
         let Some(lb) = lb_by(state, &name) else {
             continue;
         };
@@ -721,7 +760,8 @@ fn op_create_load_balancer_listeners(state: &mut ElbState, p: &BTreeMap<String, 
             .map(|l| {
                 l.protocol.to_lowercase() != protocol.to_lowercase()
                     || l.instance_port != instance_port
-                    || l.ssl_certificate_id.clone().unwrap_or_default() != cert.clone().unwrap_or_default()
+                    || l.ssl_certificate_id.clone().unwrap_or_default()
+                        != cert.clone().unwrap_or_default()
             })
             .unwrap_or(false);
         if conflicting {
@@ -732,10 +772,7 @@ fn op_create_load_balancer_listeners(state: &mut ElbState, p: &BTreeMap<String, 
                 ),
             ));
         }
-        let already = lb
-            .listeners
-            .iter()
-            .any(|l| l.load_balancer_port == lb_port);
+        let already = lb.listeners.iter().any(|l| l.load_balancer_port == lb_port);
         let backend_port = instance_port.clone();
         if !already {
             lb.listeners.push(ElbClassicListener {
@@ -754,8 +791,13 @@ fn op_create_load_balancer_listeners(state: &mut ElbState, p: &BTreeMap<String, 
     Ok(String::new())
 }
 
-fn op_delete_load_balancer_listeners(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
+fn op_delete_load_balancer_listeners(
+    state: &mut ElbState,
+    p: &BTreeMap<String, ElbVal>,
+) -> OpResult {
+    let name = p_string(p, "LoadBalancerName")
+        .unwrap_or_default()
+        .to_string();
     let ports = p_list(p, "LoadBalancerPorts");
     let Some(lb) = lb_by(state, &name) else {
         return Ok(String::new());
@@ -774,7 +816,9 @@ fn op_delete_load_balancer_listeners(state: &mut ElbState, p: &BTreeMap<String, 
 }
 
 fn op_configure_health_check(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
+    let name = p_string(p, "LoadBalancerName")
+        .unwrap_or_default()
+        .to_string();
     let hc = p.get("HealthCheck").cloned().unwrap_or(ElbVal::None);
     let hc: BTreeMap<String, ElbVal> = match hc {
         ElbVal::M(m) => m,
@@ -797,8 +841,16 @@ fn op_configure_health_check(state: &mut ElbState, p: &BTreeMap<String, ElbVal>)
     }
     let check = ElbHealthCheck {
         target: target.clone(),
-        interval: hc.get("Interval").and_then(|v| v.string()).unwrap_or_default().to_string(),
-        timeout: hc.get("Timeout").and_then(|v| v.string()).unwrap_or_default().to_string(),
+        interval: hc
+            .get("Interval")
+            .and_then(|v| v.string())
+            .unwrap_or_default()
+            .to_string(),
+        timeout: hc
+            .get("Timeout")
+            .and_then(|v| v.string())
+            .unwrap_or_default()
+            .to_string(),
         unhealthy_threshold: hc
             .get("UnhealthyThreshold")
             .and_then(|v| v.string())
@@ -825,13 +877,21 @@ fn op_configure_health_check(state: &mut ElbState, p: &BTreeMap<String, ElbVal>)
 }
 
 fn op_register_instances(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
+    let name = p_string(p, "LoadBalancerName")
+        .unwrap_or_default()
+        .to_string();
     let ids: Vec<String> = p_struct_list(p, "Instances")
         .iter()
-        .filter_map(|m| m.get("InstanceId").and_then(|v| v.string()).map(|s| s.to_string()))
+        .filter_map(|m| {
+            m.get("InstanceId")
+                .and_then(|v| v.string())
+                .map(|s| s.to_string())
+        })
         .collect();
     let Some(lb) = lb_by(state, &name) else {
-        return Err(ElbError::internal("'NoneType' object has no attribute 'instance_ids'"));
+        return Err(ElbError::internal(
+            "'NoneType' object has no attribute 'instance_ids'",
+        ));
     };
     for id in ids {
         if !lb.instance_ids.contains(&id) {
@@ -844,20 +904,34 @@ fn op_register_instances(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> 
 }
 
 fn op_deregister_instances(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
+    let name = p_string(p, "LoadBalancerName")
+        .unwrap_or_default()
+        .to_string();
     let ids: Vec<String> = p_struct_list(p, "Instances")
         .iter()
-        .filter_map(|m| m.get("InstanceId").and_then(|v| v.string()).map(|s| s.to_string()))
+        .filter_map(|m| {
+            m.get("InstanceId")
+                .and_then(|v| v.string())
+                .map(|s| s.to_string())
+        })
         .collect();
     let Some(lb) = lb_by(state, &name) else {
-        return Err(ElbError::internal("'NoneType' object has no attribute 'instance_ids'"));
+        return Err(ElbError::internal(
+            "'NoneType' object has no attribute 'instance_ids'",
+        ));
     };
     lb.instance_ids.retain(|id| !ids.contains(id));
     Ok("<Instances/>".to_string())
 }
 
-fn op_describe_instance_health(req: &Request, state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
+fn op_describe_instance_health(
+    req: &Request,
+    state: &mut ElbState,
+    p: &BTreeMap<String, ElbVal>,
+) -> OpResult {
+    let name = p_string(p, "LoadBalancerName")
+        .unwrap_or_default()
+        .to_string();
     let Some(lb) = lb_by(state, &name) else {
         return Err(ElbError::svc(
             "LoadBalancerNotFound",
@@ -866,7 +940,11 @@ fn op_describe_instance_health(req: &Request, state: &mut ElbState, p: &BTreeMap
     };
     let provided: Vec<String> = p_struct_list(p, "Instances")
         .iter()
-        .filter_map(|m| m.get("InstanceId").and_then(|v| v.string()).map(|s| s.to_string()))
+        .filter_map(|m| {
+            m.get("InstanceId")
+                .and_then(|v| v.string())
+                .map(|s| s.to_string())
+        })
         .collect();
     let ids = if provided.is_empty() {
         lb.instance_ids.clone()
@@ -875,7 +953,11 @@ fn op_describe_instance_health(req: &Request, state: &mut ElbState, p: &BTreeMap
     };
     // moto only reports instances that exist in EC2 and are registered;
     // unregistered ids come back with State "Unknown".
-    let probe_ids = ids.iter().filter(|i| lb.instance_ids.contains(i)).cloned().collect::<Vec<_>>();
+    let probe_ids = ids
+        .iter()
+        .filter(|i| lb.instance_ids.contains(i))
+        .cloned()
+        .collect::<Vec<_>>();
     let states = instance_states(req, &probe_ids);
     let mut items = String::new();
     for id in &ids {
@@ -974,36 +1056,71 @@ fn op_remove_tags(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResul
     Ok(String::new())
 }
 
-fn op_describe_load_balancer_attributes(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
+fn op_describe_load_balancer_attributes(
+    state: &mut ElbState,
+    p: &BTreeMap<String, ElbVal>,
+) -> OpResult {
+    let name = p_string(p, "LoadBalancerName")
+        .unwrap_or_default()
+        .to_string();
     let Some(lb) = lb_by(state, &name) else {
-        return Err(ElbError::internal("'NoneType' object has no attribute 'attributes'"));
+        return Err(ElbError::internal(
+            "'NoneType' object has no attribute 'attributes'",
+        ));
     };
     Ok(attributes_xml(lb))
 }
 
-fn op_modify_load_balancer_attributes(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
+fn op_modify_load_balancer_attributes(
+    state: &mut ElbState,
+    p: &BTreeMap<String, ElbVal>,
+) -> OpResult {
+    let name = p_string(p, "LoadBalancerName")
+        .unwrap_or_default()
+        .to_string();
     let Some(lb) = lb_by(state, &name) else {
-        return Err(ElbError::internal("'NoneType' object has no attribute 'attributes'"));
+        return Err(ElbError::internal(
+            "'NoneType' object has no attribute 'attributes'",
+        ));
     };
-    let attrs = p.get("LoadBalancerAttributes").cloned().unwrap_or(ElbVal::None);
+    let attrs = p
+        .get("LoadBalancerAttributes")
+        .cloned()
+        .unwrap_or(ElbVal::None);
     if let ElbVal::M(_) = &attrs {
         if let Some(cz) = attrs.get("CrossZoneLoadBalancing") {
-            lb.attributes.cross_zone_enabled = cz.get("Enabled").and_then(|v| v.opt_bool()).unwrap_or(false);
+            lb.attributes.cross_zone_enabled = cz
+                .get("Enabled")
+                .and_then(|v| v.opt_bool())
+                .unwrap_or(false);
         }
         if let Some(al) = attrs.get("AccessLog") {
             let has = val_non_empty(&al);
             if has {
-                lb.attributes.access_log_enabled = al.get("Enabled").and_then(|v| v.opt_bool()).unwrap_or(false);
-                lb.attributes.access_log_bucket = al.get("S3BucketName").and_then(|v| v.string()).map(|s| s.to_string());
-                lb.attributes.access_log_emit_interval = al.get("EmitInterval").and_then(|v| v.string()).map(|s| s.to_string());
-                lb.attributes.access_log_prefix = al.get("S3BucketPrefix").and_then(|v| v.string()).map(|s| s.to_string());
+                lb.attributes.access_log_enabled = al
+                    .get("Enabled")
+                    .and_then(|v| v.opt_bool())
+                    .unwrap_or(false);
+                lb.attributes.access_log_bucket = al
+                    .get("S3BucketName")
+                    .and_then(|v| v.string())
+                    .map(|s| s.to_string());
+                lb.attributes.access_log_emit_interval = al
+                    .get("EmitInterval")
+                    .and_then(|v| v.string())
+                    .map(|s| s.to_string());
+                lb.attributes.access_log_prefix = al
+                    .get("S3BucketPrefix")
+                    .and_then(|v| v.string())
+                    .map(|s| s.to_string());
             }
         }
         if let Some(dr) = attrs.get("ConnectionDraining") {
             if val_non_empty(&dr) {
-                lb.attributes.connection_draining_enabled = dr.get("Enabled").and_then(|v| v.opt_bool()).unwrap_or(false);
+                lb.attributes.connection_draining_enabled = dr
+                    .get("Enabled")
+                    .and_then(|v| v.opt_bool())
+                    .unwrap_or(false);
                 lb.attributes.connection_draining_timeout = dr
                     .get("Timeout")
                     .and_then(|v| v.string())
@@ -1013,7 +1130,10 @@ fn op_modify_load_balancer_attributes(state: &mut ElbState, p: &BTreeMap<String,
         }
         if let Some(st) = attrs.get("ConnectionSettings") {
             if val_non_empty(&st) {
-                lb.attributes.idle_timeout = st.get("IdleTimeout").and_then(|v| v.opt_i64()).unwrap_or(60);
+                lb.attributes.idle_timeout = st
+                    .get("IdleTimeout")
+                    .and_then(|v| v.opt_i64())
+                    .unwrap_or(60);
             }
         }
         let additional: Vec<BTreeMap<String, ElbVal>> = attrs
@@ -1036,9 +1156,10 @@ fn op_modify_load_balancer_attributes(state: &mut ElbState, p: &BTreeMap<String,
         } else {
             // moto's quirk: every modify without AdditionalAttributes appends
             // the desync-mitigation default (duplicates accumulate).
-            lb.attributes
-                .additional_attributes
-                .push(("elb.http.desyncmitigationmode".to_string(), "defensive".to_string()));
+            lb.attributes.additional_attributes.push((
+                "elb.http.desyncmitigationmode".to_string(),
+                "defensive".to_string(),
+            ));
         }
     }
     Ok(format!(
@@ -1047,10 +1168,19 @@ fn op_modify_load_balancer_attributes(state: &mut ElbState, p: &BTreeMap<String,
         attributes_xml(lb)
     ))
 }
-fn op_set_load_balancer_listener_ssl_certificate(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
-    let lb_port = p_string(p, "LoadBalancerPort").unwrap_or_default().to_string();
-    let cert = p_string(p, "SSLCertificateId").unwrap_or_default().to_string();
+fn op_set_load_balancer_listener_ssl_certificate(
+    state: &mut ElbState,
+    p: &BTreeMap<String, ElbVal>,
+) -> OpResult {
+    let name = p_string(p, "LoadBalancerName")
+        .unwrap_or_default()
+        .to_string();
+    let lb_port = p_string(p, "LoadBalancerPort")
+        .unwrap_or_default()
+        .to_string();
+    let cert = p_string(p, "SSLCertificateId")
+        .unwrap_or_default()
+        .to_string();
     if let Some(lb) = lb_by(state, &name) {
         for listener in lb.listeners.iter_mut() {
             if listener.load_balancer_port == lb_port {
@@ -1062,20 +1192,32 @@ fn op_set_load_balancer_listener_ssl_certificate(state: &mut ElbState, p: &BTree
 }
 
 fn op_create_load_balancer_policy(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
+    let name = p_string(p, "LoadBalancerName")
+        .unwrap_or_default()
+        .to_string();
     let policy_name = p_string(p, "PolicyName").unwrap_or_default().to_string();
-    let policy_type = p_string(p, "PolicyTypeName").unwrap_or_default().to_string();
+    let policy_type = p_string(p, "PolicyTypeName")
+        .unwrap_or_default()
+        .to_string();
     let attrs: Vec<(String, String)> = p_struct_list(p, "PolicyAttributes")
         .iter()
         .map(|m| {
             (
-                m.get("AttributeName").and_then(|v| v.string()).unwrap_or_default().to_string(),
-                m.get("AttributeValue").and_then(|v| v.string()).unwrap_or_default().to_string(),
+                m.get("AttributeName")
+                    .and_then(|v| v.string())
+                    .unwrap_or_default()
+                    .to_string(),
+                m.get("AttributeValue")
+                    .and_then(|v| v.string())
+                    .unwrap_or_default()
+                    .to_string(),
             )
         })
         .collect();
     let Some(lb) = lb_by(state, &name) else {
-        return Err(ElbError::internal("'NoneType' object has no attribute 'policies'"));
+        return Err(ElbError::internal(
+            "'NoneType' object has no attribute 'policies'",
+        ));
     };
     if !lb.policies.iter().any(|p| p.name() == policy_name) {
         lb.policies.push(ElbPolicy::Other {
@@ -1087,8 +1229,13 @@ fn op_create_load_balancer_policy(state: &mut ElbState, p: &BTreeMap<String, Elb
     Ok(String::new())
 }
 
-fn op_create_app_cookie_stickiness_policy(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
+fn op_create_app_cookie_stickiness_policy(
+    state: &mut ElbState,
+    p: &BTreeMap<String, ElbVal>,
+) -> OpResult {
+    let name = p_string(p, "LoadBalancerName")
+        .unwrap_or_default()
+        .to_string();
     let policy_name = p_string(p, "PolicyName").unwrap_or_default().to_string();
     let cookie_name = p_string(p, "CookieName").unwrap_or_default().to_string();
     if let Some(lb) = lb_by(state, &name) {
@@ -1100,8 +1247,13 @@ fn op_create_app_cookie_stickiness_policy(state: &mut ElbState, p: &BTreeMap<Str
     Ok(String::new())
 }
 
-fn op_create_lb_cookie_stickiness_policy(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
+fn op_create_lb_cookie_stickiness_policy(
+    state: &mut ElbState,
+    p: &BTreeMap<String, ElbVal>,
+) -> OpResult {
+    let name = p_string(p, "LoadBalancerName")
+        .unwrap_or_default()
+        .to_string();
     let policy_name = p_string(p, "PolicyName").unwrap_or_default().to_string();
     let cookie_expiration_period = p_i64(p, "CookieExpirationPeriod");
     if let Some(lb) = lb_by(state, &name) {
@@ -1113,11 +1265,18 @@ fn op_create_lb_cookie_stickiness_policy(state: &mut ElbState, p: &BTreeMap<Stri
     Ok(String::new())
 }
 
-fn op_describe_load_balancer_policies(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
+fn op_describe_load_balancer_policies(
+    state: &mut ElbState,
+    p: &BTreeMap<String, ElbVal>,
+) -> OpResult {
+    let name = p_string(p, "LoadBalancerName")
+        .unwrap_or_default()
+        .to_string();
     let policy_names = p_list(p, "PolicyNames");
     let Some(lb) = lb_by(state, &name) else {
-        return Err(ElbError::internal("'NoneType' object has no attribute 'policies'"));
+        return Err(ElbError::internal(
+            "'NoneType' object has no attribute 'policies'",
+        ));
     };
     policies_descriptions_xml(lb, &policy_names)
 }
@@ -1127,7 +1286,9 @@ fn op_describe_load_balancer_policy_types(p: &BTreeMap<String, ElbVal>) -> Strin
 }
 
 fn op_delete_load_balancer_policy(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
+    let name = p_string(p, "LoadBalancerName")
+        .unwrap_or_default()
+        .to_string();
     let policy_name = p_string(p, "PolicyName").unwrap_or_default().to_string();
     if let Some(lb) = lb_by(state, &name) {
         lb.policies.retain(|p| p.name() != policy_name);
@@ -1135,9 +1296,16 @@ fn op_delete_load_balancer_policy(state: &mut ElbState, p: &BTreeMap<String, Elb
     Ok(String::new())
 }
 
-fn op_set_load_balancer_policies_of_listener(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
-    let lb_port = p_string(p, "LoadBalancerPort").unwrap_or_default().to_string();
+fn op_set_load_balancer_policies_of_listener(
+    state: &mut ElbState,
+    p: &BTreeMap<String, ElbVal>,
+) -> OpResult {
+    let name = p_string(p, "LoadBalancerName")
+        .unwrap_or_default()
+        .to_string();
+    let lb_port = p_string(p, "LoadBalancerPort")
+        .unwrap_or_default()
+        .to_string();
     let policy_names = p_list(p, "PolicyNames");
     if let Some(lb) = lb_by(state, &name) {
         for listener in lb.listeners.iter_mut() {
@@ -1149,8 +1317,13 @@ fn op_set_load_balancer_policies_of_listener(state: &mut ElbState, p: &BTreeMap<
     Ok(String::new())
 }
 
-fn op_set_load_balancer_policies_for_backend_server(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
+fn op_set_load_balancer_policies_for_backend_server(
+    state: &mut ElbState,
+    p: &BTreeMap<String, ElbVal>,
+) -> OpResult {
+    let name = p_string(p, "LoadBalancerName")
+        .unwrap_or_default()
+        .to_string();
     let instance_port = p_string(p, "InstancePort").unwrap_or_default().to_string();
     let policy_names = p_list(p, "PolicyNames");
     if let Some(lb) = lb_by(state, &name) {
@@ -1171,13 +1344,17 @@ fn op_describe_account_limits() -> String {
     ];
     let mut body = String::new();
     for (name, max) in limits {
-        body.push_str(&format!("<member><Name>{name}</Name><Max>{max}</Max></member>"));
+        body.push_str(&format!(
+            "<member><Name>{name}</Name><Max>{max}</Max></member>"
+        ));
     }
     tag_raw("Limits", &body)
 }
 
 fn op_enable_availability_zones(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
+    let name = p_string(p, "LoadBalancerName")
+        .unwrap_or_default()
+        .to_string();
     let zones = p_list(p, "AvailabilityZones");
     let Some(lb) = lb_by(state, &name) else {
         return Err(ElbError::svc(
@@ -1201,7 +1378,9 @@ fn op_enable_availability_zones(state: &mut ElbState, p: &BTreeMap<String, ElbVa
 }
 
 fn op_disable_availability_zones(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
+    let name = p_string(p, "LoadBalancerName")
+        .unwrap_or_default()
+        .to_string();
     let zones = p_list(p, "AvailabilityZones");
     let Some(lb) = lb_by(state, &name) else {
         return Err(ElbError::svc(
@@ -1225,8 +1404,14 @@ fn op_disable_availability_zones(state: &mut ElbState, p: &BTreeMap<String, ElbV
     Ok(tag_raw("AvailabilityZones", &items))
 }
 
-fn op_apply_security_groups(req: &Request, state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
+fn op_apply_security_groups(
+    req: &Request,
+    state: &mut ElbState,
+    p: &BTreeMap<String, ElbVal>,
+) -> OpResult {
+    let name = p_string(p, "LoadBalancerName")
+        .unwrap_or_default()
+        .to_string();
     let sgs = p_list(p, "SecurityGroups");
     for sg in &sgs {
         if !sg_exists(req, sg) {
@@ -1237,7 +1422,9 @@ fn op_apply_security_groups(req: &Request, state: &mut ElbState, p: &BTreeMap<St
         }
     }
     let Some(lb) = lb_by(state, &name) else {
-        return Err(ElbError::internal("'NoneType' object has no attribute 'security_groups'"));
+        return Err(ElbError::internal(
+            "'NoneType' object has no attribute 'security_groups'",
+        ));
     };
     lb.security_groups = sgs.clone();
     let mut items = String::new();
@@ -1247,11 +1434,18 @@ fn op_apply_security_groups(req: &Request, state: &mut ElbState, p: &BTreeMap<St
     Ok(tag_raw("SecurityGroups", &items))
 }
 
-fn op_attach_load_balancer_to_subnets(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
+fn op_attach_load_balancer_to_subnets(
+    state: &mut ElbState,
+    p: &BTreeMap<String, ElbVal>,
+) -> OpResult {
+    let name = p_string(p, "LoadBalancerName")
+        .unwrap_or_default()
+        .to_string();
     let subnets = p_list(p, "Subnets");
     let Some(lb) = lb_by(state, &name) else {
-        return Err(ElbError::internal("'NoneType' object has no attribute 'subnets'"));
+        return Err(ElbError::internal(
+            "'NoneType' object has no attribute 'subnets'",
+        ));
     };
     let mut set: Vec<String> = lb.subnets.clone();
     for s in &subnets {
@@ -1267,11 +1461,18 @@ fn op_attach_load_balancer_to_subnets(state: &mut ElbState, p: &BTreeMap<String,
     Ok(tag_raw("Subnets", &items))
 }
 
-fn op_detach_load_balancer_from_subnets(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
-    let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
+fn op_detach_load_balancer_from_subnets(
+    state: &mut ElbState,
+    p: &BTreeMap<String, ElbVal>,
+) -> OpResult {
+    let name = p_string(p, "LoadBalancerName")
+        .unwrap_or_default()
+        .to_string();
     let subnets = p_list(p, "Subnets");
     let Some(lb) = lb_by(state, &name) else {
-        return Err(ElbError::internal("'NoneType' object has no attribute 'subnets'"));
+        return Err(ElbError::internal(
+            "'NoneType' object has no attribute 'subnets'",
+        ));
     };
     let set: Vec<String> = lb
         .subnets
@@ -1292,12 +1493,7 @@ fn op_detach_load_balancer_from_subnets(state: &mut ElbState, p: &BTreeMap<Strin
 // ---------------------------------------------------------------------------
 
 #[allow(clippy::too_many_lines)]
-fn run_op(
-    req: &Request,
-    state: &mut ElbState,
-    op: &str,
-    p: &BTreeMap<String, ElbVal>,
-) -> OpResult {
+fn run_op(req: &Request, state: &mut ElbState, op: &str, p: &BTreeMap<String, ElbVal>) -> OpResult {
     match op {
         "CreateLoadBalancer" => op_create_load_balancer(req, state, p),
         "DescribeLoadBalancers" => op_describe_load_balancers(state, p),
@@ -1322,9 +1518,7 @@ fn run_op(
         "DescribeLoadBalancerPolicies" => op_describe_load_balancer_policies(state, p),
         "DescribeLoadBalancerPolicyTypes" => Ok(op_describe_load_balancer_policy_types(p)),
         "DeleteLoadBalancerPolicy" => op_delete_load_balancer_policy(state, p),
-        "SetLoadBalancerPoliciesOfListener" => {
-            op_set_load_balancer_policies_of_listener(state, p)
-        }
+        "SetLoadBalancerPoliciesOfListener" => op_set_load_balancer_policies_of_listener(state, p),
         "SetLoadBalancerPoliciesForBackendServer" => {
             op_set_load_balancer_policies_for_backend_server(state, p)
         }
@@ -1513,8 +1707,11 @@ mod tests {
         let mut lb = lb_with_policies();
         lb.name = "clb2".into();
         st.lbs.push(lb);
-        let err = add_tags_checked(st.lbs.last_mut().unwrap(), &[("k".into(), "a".into()), ("k".into(), "b".into())])
-            .unwrap_err();
+        let err = add_tags_checked(
+            st.lbs.last_mut().unwrap(),
+            &[("k".into(), "a".into()), ("k".into(), "b".into())],
+        )
+        .unwrap_err();
         assert!(matches!(&err, ElbError::Service(400, c, _) if c == "DuplicateTagKeys"));
         // moto interpolates the (key, count) tuple
         let msg = match &err {
@@ -1529,7 +1726,10 @@ mod tests {
         let slots = store::slot::<ElbState>("elb");
         let mut map = slots.write();
         let st = map.entry((123456789003, "us-east-1".into())).or_default();
-        let req = req_for("DescribeInstanceHealth", "LoadBalancerName=clb&Instances.member.1.InstanceId=i-ghost");
+        let req = req_for(
+            "DescribeInstanceHealth",
+            "LoadBalancerName=clb&Instances.member.1.InstanceId=i-ghost",
+        );
         let p = parse_params(&req);
         let mut lb = lb_with_policies();
         lb.instance_ids.push("i-ghost".into());
@@ -1559,7 +1759,8 @@ mod tests {
         let p = parse_params(&req);
         let body = op_modify_load_balancer_attributes(st, &p).unwrap();
         assert!(body.contains("<LoadBalancerName>clb</LoadBalancerName>"));
-        assert!(body.contains("<CrossZoneLoadBalancing><Enabled>true</Enabled></CrossZoneLoadBalancing>"));
+        assert!(body
+            .contains("<CrossZoneLoadBalancing><Enabled>true</Enabled></CrossZoneLoadBalancing>"));
         assert!(body.contains("<AdditionalAttributes><member><Key>elb.http.desyncmitigationmode</Key><Value>defensive</Value></member></AdditionalAttributes>"));
     }
 
