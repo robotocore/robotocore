@@ -685,6 +685,54 @@ fn handle(req: &Request, g: &mut GlueState, op: &str, p: &Value) -> Response {
         "GetResourcePolicies" => try_resp!(get_resource_policies(g)),
         "PutDataCatalogEncryptionSettings" => try_resp!(put_dces(g, p)),
         "GetDataCatalogEncryptionSettings" => try_resp!(get_dces(g, p)),
+        // --- ML transforms + task runs -----------------------------------------
+        "CreateMLTransform" => try_resp!(create_ml_transform(req, g, p)),
+        "GetMLTransform" => try_resp!(get_ml_transform(g, p)),
+        "GetMLTransforms" => try_resp!(get_ml_transforms(g)),
+        "ListMLTransforms" => try_resp!(list_ml_transforms(g)),
+        "DeleteMLTransform" => try_resp!(delete_ml_transform(g, p)),
+        "UpdateMLTransform" => try_resp!(update_ml_transform(g, p)),
+        "GetMLTaskRun" => try_resp!(get_ml_task_run(g, p)),
+        "GetMLTaskRuns" => try_resp!(get_ml_task_runs(g, p)),
+        "CancelMLTaskRun" => try_resp!(cancel_ml_task_run(g, p)),
+        "StartMLEvaluationTaskRun" => try_resp!(start_ml_eval_task_run(g, p)),
+        "StartMLLabelingSetGenerationTaskRun" => try_resp!(start_ml_eval_task_run(g, p)),
+        "StartExportLabelsTaskRun" => try_resp!(start_ml_eval_task_run(g, p)),
+        "StartImportLabelsTaskRun" => try_resp!(start_ml_eval_task_run(g, p)),
+        // --- Blueprints + runs --------------------------------------------------
+        "CreateBlueprint" => try_resp!(create_blueprint(g, p)),
+        "GetBlueprint" => try_resp!(get_blueprint(g, p)),
+        "ListBlueprints" => try_resp!(list_blueprints(g)),
+        "DeleteBlueprint" => try_resp!(delete_blueprint(g, p)),
+        "UpdateBlueprint" => try_resp!(update_blueprint(g, p)),
+        "BatchGetBlueprints" => try_resp!(batch_get_blueprints(g, p)),
+        "StartBlueprintRun" => try_resp!(start_blueprint_run(g, p)),
+        "GetBlueprintRun" => try_resp!(get_blueprint_run(g, p)),
+        "GetBlueprintRuns" => try_resp!(get_blueprint_runs(g, p)),
+        // --- Data quality rulesets + runs ---------------------------------------
+        "CreateDataQualityRuleset" => try_resp!(create_dq_ruleset(req, g, p)),
+        "GetDataQualityRuleset" => try_resp!(get_dq_ruleset(g, p)),
+        "ListDataQualityRulesets" => try_resp!(list_dq_rulesets(g)),
+        "DeleteDataQualityRuleset" => try_resp!(delete_dq_ruleset(g, p)),
+        "UpdateDataQualityRuleset" => try_resp!(update_dq_ruleset(g, p)),
+        "StartDataQualityRuleRecommendationRun" => try_resp!(start_dq_recommendation_run(g, p)),
+        "GetDataQualityRuleRecommendationRun" => try_resp!(get_dq_recommendation_run(g, p)),
+        "CancelDataQualityRuleRecommendationRun" => empty_ok(),
+        "StartDataQualityRulesetEvaluationRun" => try_resp!(start_dq_evaluation_run(g, p)),
+        "GetDataQualityRulesetEvaluationRun" => try_resp!(get_dq_evaluation_run(g, p)),
+        "CancelDataQualityRulesetEvaluationRun" => empty_ok(),
+        "GetDataQualityResult" => try_resp!(get_dq_result(g, p)),
+        "BatchGetDataQualityResult" => try_resp!(batch_get_dq_result(g, p)),
+        "ListDataQualityResults" => ok(&json!({"Results": []})),
+        "ListDataQualityRuleRecommendationRuns" => try_resp!(recommendations_list(g)),
+        "ListDataQualityRulesetEvaluationRuns" => try_resp!(evaluations_list(g)),
+        "GetDataQualityModel" | "GetDataQualityModelResult" => {
+            try_resp!(get_dq_model(g, p))
+        }
+        "ListDataQualityStatistics" => ok(&json!({"Statistics": []})),
+        "ListDataQualityStatisticAnnotations" => ok(&json!({"Annotations": []})),
+        "BatchPutDataQualityStatisticAnnotation" => ok(&json!({"FailedInclusionAnnotations": []})),
+        "PutDataQualityProfileAnnotation" => empty_ok(),
         // --- Everything else: deny by default (moto 501s too) ----------------
         _ => unimplemented(op),
     }
@@ -5692,5 +5740,817 @@ mod family4_tests {
         );
         let b = body(&d(acct, "GetDataCatalogEncryptionSettings", json!({})));
         assert!(b["DataCatalogEncryptionSettings"].is_object());
+    }
+}
+// ---------------------------------------------------------------------------
+// ML transforms + task runs
+// ---------------------------------------------------------------------------
+
+fn ml_transform_dict(rec: &MlTransformRec) -> Value {
+    let mut obj = json!({
+        "TransformId": rec.transform_id,
+        "Name": rec.name,
+        "InputRecordTables": rec.input_record_tables,
+        "Parameters": rec.parameters,
+        "Role": rec.role,
+        "Status": "NOT_READY",
+        "CreatedOn": rec.created,
+        "LastModifiedOn": rec.modified,
+        "EvaluationMetrics": {},
+        "Schema": [],
+        "TransformEncryption": {},
+    });
+    let base = obj.as_object_mut().unwrap();
+    if let Some(d) = rec.description.as_str() {
+        if !d.is_empty() {
+            base.insert("Description".into(), json!(d));
+        }
+    }
+    for (member, value) in [
+        ("GlueVersion", rec.glue_version.clone()),
+        ("MaxCapacity", rec.max_capacity.clone()),
+        ("WorkerType", rec.worker_type.clone()),
+        ("NumberOfWorkers", rec.number_of_workers.clone()),
+        ("Timeout", rec.timeout.clone()),
+        ("MaxRetries", rec.max_retries.clone()),
+    ] {
+        if !value.is_null() {
+            base.insert(member.to_string(), value);
+        }
+    }
+    obj
+}
+
+fn find_ml_transform_mut<'a>(
+    g: &'a mut GlueState,
+    p: &Value,
+) -> Result<&'a mut MlTransformRec, Response> {
+    let id = str_field(p, "TransformId");
+    g.ml_transforms
+        .get_mut(&id)
+        .ok_or_else(|| not_found(&format!("ML Task {id} not found.")))
+}
+
+fn create_ml_transform(req: &Request, g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let transform_id = format!("tfm_{}", hex_n(32));
+    let name = str_field(p, "Name");
+    let (region, account) = (g.scope_region.clone(), g.scope_account);
+    tag_resource(
+        g,
+        &make_arn(&region, account, "mlTransform", &transform_id),
+        p.get("Tags"),
+    );
+    g.ml_transforms.insert(
+        transform_id.clone(),
+        MlTransformRec {
+            transform_id: transform_id.clone(),
+            name,
+            input_record_tables: p["InputRecordTables"].clone(),
+            parameters: match p["Parameters"].clone() {
+                Value::Null => json!({}),
+                v => v,
+            },
+            role: p["Role"].clone(),
+            description: p["Description"].clone(),
+            glue_version: p["GlueVersion"].clone(),
+            max_capacity: p["MaxCapacity"].clone(),
+            worker_type: p["WorkerType"].clone(),
+            number_of_workers: p["NumberOfWorkers"].clone(),
+            timeout: p["Timeout"].clone(),
+            max_retries: p["MaxRetries"].clone(),
+            created: now_unix(),
+            modified: now_unix(),
+        },
+    );
+    Ok(ok(&json!({ "TransformId": transform_id })))
+}
+
+fn get_ml_transform(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_ml_transform_mut(g, p)?;
+    Ok(ok(&ml_transform_dict(rec)))
+}
+
+fn get_ml_transforms(g: &mut GlueState) -> Result<Response, Response> {
+    let list: Vec<Value> = g.ml_transforms.values().map(ml_transform_dict).collect();
+    Ok(ok(&json!({ "Transforms": list })))
+}
+
+fn list_ml_transforms(g: &mut GlueState) -> Result<Response, Response> {
+    let ids: Vec<Value> = g
+        .ml_transforms
+        .values()
+        .map(|t| json!(t.transform_id))
+        .collect();
+    Ok(ok(&json!({ "TransformIds": ids })))
+}
+
+fn delete_ml_transform(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let id = str_field(p, "TransformId");
+    if g.ml_transforms.remove(&id).is_none() {
+        return Err(not_found(&format!("ML Task {id} not found.")));
+    }
+    Ok(ok(&json!({ "TransformId": id })))
+}
+
+fn update_ml_transform(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let id = str_field(p, "TransformId");
+    let rec = find_ml_transform_mut(g, p)?;
+    if let Some(u) = p.as_object() {
+        for (member, field) in [
+            ("Name", 0usize),
+            ("Description", 1),
+            ("Parameters", 2),
+            ("Role", 3),
+            ("GlueVersion", 4),
+            ("MaxCapacity", 5),
+            ("WorkerType", 6),
+            ("NumberOfWorkers", 7),
+            ("Timeout", 8),
+            ("MaxRetries", 9),
+        ] {
+            if let Some(v) = u.get(member) {
+                if !v.is_null() {
+                    match field {
+                        0 => rec.name = str_field(v, ""),
+                        1 => rec.description = v.clone(),
+                        2 => rec.parameters = v.clone(),
+                        3 => rec.role = v.clone(),
+                        4 => rec.glue_version = v.clone(),
+                        5 => rec.max_capacity = v.clone(),
+                        6 => rec.worker_type = v.clone(),
+                        7 => rec.number_of_workers = v.clone(),
+                        8 => rec.timeout = v.clone(),
+                        _ => rec.max_retries = v.clone(),
+                    }
+                }
+            }
+        }
+    }
+    rec.modified = now_unix();
+    Ok(ok(&json!({ "TransformId": id })))
+}
+
+fn get_ml_task_run(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let id = str_field(p, "TransformId");
+    let _ = find_ml_transform_mut(g, p)?;
+    Err(not_found(&format!(
+        "MLTaskRun {} not found.",
+        str_field(p, "TaskRunId")
+    )))
+    .map_err(|resp| {
+        let _ = id;
+        resp
+    })
+}
+
+fn get_ml_task_runs(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let _ = find_ml_transform_mut(g, p)?;
+    Ok(ok(&json!({ "TaskRuns": [] })))
+}
+
+fn cancel_ml_task_run(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let _ = find_ml_transform_mut(g, p)?;
+    Err(not_found(&format!(
+        "MLTaskRun {} not found.",
+        str_field(p, "TaskRunId")
+    )))
+}
+
+/// The start_* ML task runs: validate the transform, return a TaskRunId.
+fn start_ml_eval_task_run(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let _ = find_ml_transform_mut(g, p)?;
+    Ok(ok(&json!({ "TaskRunId": format!("tr_{}", hex_n(16)) })))
+}
+
+// ---------------------------------------------------------------------------
+// Blueprints + runs
+// ---------------------------------------------------------------------------
+
+fn blueprint_dict(rec: &BlueprintRec) -> Value {
+    let mut obj = json!({
+        "Name": rec.name,
+        "BlueprintLocation": rec.blueprint_location,
+        "Status": "ACTIVE",
+        "CreatedOn": now_unix(),
+        "LastModifiedOn": now_unix(),
+    });
+    if let Some(d) = rec.description.as_str() {
+        if !d.is_empty() {
+            obj["Description"] = json!(d);
+        }
+    }
+    obj
+}
+
+fn find_blueprint_mut<'a>(
+    g: &'a mut GlueState,
+    p: &Value,
+) -> Result<&'a mut BlueprintRec, Response> {
+    let name = str_field(p, "Name");
+    g.blueprints
+        .get_mut(&name)
+        .ok_or_else(|| not_found(&format!("Blueprint {name} not found.")))
+}
+
+fn create_blueprint(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "Name");
+    if g.blueprints.contains_key(&name) {
+        return Err(already_exists("Blueprint already exists."));
+    }
+    g.blueprints.insert(
+        name.clone(),
+        BlueprintRec {
+            name: name.clone(),
+            blueprint_location: str_field(p, "BlueprintLocation"),
+            description: p["Description"].clone(),
+            created: now_unix(),
+        },
+    );
+    Ok(ok(&json!({ "Name": name })))
+}
+
+fn get_blueprint(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_blueprint_mut(g, p)?;
+    Ok(ok(&json!({ "Blueprint": blueprint_dict(rec) })))
+}
+
+fn list_blueprints(g: &mut GlueState) -> Result<Response, Response> {
+    let names: Vec<Value> = g.blueprints.keys().map(|k| json!(k)).collect();
+    Ok(ok(&json!({ "Blueprints": names })))
+}
+
+fn delete_blueprint(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "Name");
+    if g.blueprints.remove(&name).is_none() {
+        return Err(not_found(&format!("Blueprint {name} not found.")));
+    }
+    Ok(empty_ok())
+}
+
+fn update_blueprint(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = p["Name"].as_str().unwrap_or_default().to_string();
+    match g.blueprints.get_mut(&name) {
+        Some(rec) => {
+            if let Some(loc) = p["BlueprintLocation"].as_str() {
+                rec.blueprint_location = loc.to_string();
+            }
+            if let Some(d) = p.get("Description") {
+                if !d.is_null() {
+                    rec.description = d.clone();
+                }
+            }
+            Ok(ok(&json!({ "Name": name })))
+        }
+        None => Err(not_found(&format!("Blueprint {name} not found."))),
+    }
+}
+
+fn batch_get_blueprints(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let wanted = str_list(&p["Names"]);
+    let mut found = Vec::new();
+    let mut missing = Vec::new();
+    for name in wanted.iter() {
+        match g.blueprints.get(name) {
+            Some(rec) => found.push(blueprint_dict(rec)),
+            None => missing.push(json!(name)),
+        }
+    }
+    let mut out = json!({ "Blueprints": found });
+    if !missing.is_empty() {
+        out["MissingBlueprints"] = Value::Array(missing);
+    }
+    Ok(ok(&out))
+}
+
+fn start_blueprint_run(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "BlueprintName");
+    if !g.blueprints.contains_key(&name) {
+        return Err(not_found(&format!("Blueprint {name} not found.")));
+    }
+    let run_id = format!("bp_{}", hex_n(32));
+    g.blueprint_runs.insert(
+        run_id.clone(),
+        json!({
+            "BlueprintName": name,
+            "RunId": run_id,
+            "State": "RUNNING",
+            "StartedOn": now_iso(),
+            "RoleArn": p["RoleArn"],
+            "Parameters": p["Parameters"],
+        }),
+    );
+    Ok(ok(&json!({ "RunId": run_id })))
+}
+
+fn get_blueprint_run(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "BlueprintName");
+    if !g.blueprints.contains_key(&name) {
+        return Err(not_found(&format!("Blueprint {name} not found.")));
+    }
+    let run_id = str_field(p, "RunId");
+    g.blueprint_runs
+        .get(&run_id)
+        .cloned()
+        .map(|run| ok(&json!({ "BlueprintRun": run })))
+        .ok_or_else(|| not_found(&format!("BlueprintRun {run_id} not found.")))
+}
+
+fn get_blueprint_runs(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "BlueprintName");
+    if !g.blueprints.contains_key(&name) {
+        return Err(not_found(&format!("Blueprint {name} not found.")));
+    }
+    let list: Vec<Value> = g
+        .blueprint_runs
+        .values()
+        .filter(|r| str_field(r, "BlueprintName") == name)
+        .cloned()
+        .collect();
+    Ok(ok(&json!({ "BlueprintRuns": list })))
+}
+
+// ---------------------------------------------------------------------------
+// Data quality rulesets + runs + results
+// ---------------------------------------------------------------------------
+
+fn dq_ruleset_dict(rec: &(Value, f64)) -> Value {
+    let mut obj = json!({
+        "Name": rec.0["Name"],
+        "Ruleset": rec.0["Ruleset"],
+        "CreatedOn": rec.1,
+        "LastModifiedOn": rec.1,
+        "Description": rec.0["Description"],
+        "TargetTable": rec.0["TargetTable"],
+    });
+    obj.as_object_mut().unwrap().retain(|_, v| !v.is_null());
+    obj
+}
+
+fn create_dq_ruleset(req: &Request, g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "Name");
+    let created = now_unix();
+    g.data_quality_rulesets.insert(
+        name.clone(),
+        (
+            json!({
+                "Name": name,
+                "Ruleset": p["Ruleset"],
+                "Description": p["Description"],
+                "TargetTable": p["TargetTable"],
+            }),
+            created,
+        ),
+    );
+    Ok(ok(&json!({ "Name": name })))
+}
+
+fn get_dq_ruleset(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "Name");
+    match g.data_quality_rulesets.get(&name) {
+        Some(rec) => Ok(ok(&dq_ruleset_dict(rec))),
+        None => Err(not_found(&format!("Ruleset {name} not found."))),
+    }
+}
+
+fn list_dq_rulesets(g: &mut GlueState) -> Result<Response, Response> {
+    let list: Vec<Value> = g
+        .data_quality_rulesets
+        .values()
+        .map(dq_ruleset_dict)
+        .collect();
+    Ok(ok(&json!({ "Rulesets": list })))
+}
+
+fn delete_dq_ruleset(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "Name");
+    if g.data_quality_rulesets.remove(&name).is_none() {
+        return Err(not_found(&format!("Ruleset {name} not found.")));
+    }
+    Ok(empty_ok())
+}
+
+fn update_dq_ruleset(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "Name");
+    match g.data_quality_rulesets.get_mut(&name) {
+        Some((rec, _)) => {
+            if let Some(v) = p.get("Ruleset") {
+                if !v.is_null() {
+                    rec["Ruleset"] = v.clone();
+                }
+            }
+            if let Some(v) = p.get("Description") {
+                if !v.is_null() {
+                    rec["Description"] = v.clone();
+                }
+            }
+            Ok(ok(&json!({ "Name": name })))
+        }
+        None => Err(not_found(&format!("Ruleset {name} not found."))),
+    }
+}
+
+fn start_dq_recommendation_run(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let run_id = format!("dqrec_{}", hex_n(32));
+    g.dq_recommendation_runs.insert(
+        run_id.clone(),
+        json!({
+            "RunId": run_id,
+            "DataSource": p["DataSource"],
+            "Role": p["Role"],
+            "Status": "RUNNING",
+            "NumberOfWorkers": p["NumberOfWorkers"],
+            "Timeout": p["Timeout"],
+            "CreatedRulesetName": p["CreatedRulesetName"],
+        }),
+    );
+    Ok(ok(&json!({ "RunId": run_id })))
+}
+
+fn get_dq_recommendation_run(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let run_id = str_field(p, "RunId");
+    match g.dq_recommendation_runs.get(&run_id) {
+        Some(run) => Ok(ok(run)),
+        None => Err(not_found(&format!(
+            "DataQualityRuleRecommendationRun {run_id} not found."
+        ))),
+    }
+}
+
+fn start_dq_evaluation_run(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let run_id = format!("dqeval_{}", hex_n(32));
+    g.dq_evaluation_runs.insert(
+        run_id.clone(),
+        json!({
+            "RunId": run_id,
+            "DataSource": p["DataSource"],
+            "Role": p["Role"],
+            "RulesetNames": p["RulesetNames"],
+            "Status": "RUNNING",
+            "AdditionalRunOptions": {},
+            "ResultIds": [],
+            "AdditionalDataSources": p["AdditionalDataSources"],
+            "NumberOfWorkers": p["NumberOfWorkers"],
+            "Timeout": p["Timeout"],
+        }),
+    );
+    Ok(ok(&json!({ "RunId": run_id })))
+}
+
+fn get_dq_evaluation_run(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let run_id = str_field(p, "RunId");
+    match g.dq_evaluation_runs.get(&run_id) {
+        Some(run) => Ok(ok(run)),
+        None => Err(not_found(&format!(
+            "DataQualityRulesetEvaluationRun {run_id} not found."
+        ))),
+    }
+}
+
+fn get_dq_result(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let result_id = str_field(p, "ResultId");
+    Err(not_found(&format!(
+        "DataQualityResult {result_id} not found."
+    )))
+}
+
+fn batch_get_dq_result(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    Ok(ok(&json!({
+        "Results": [],
+        "ResultsNotFound": p["ResultIds"],
+    })))
+}
+
+fn get_dq_model(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let profile_id = str_field(p, "ProfileId");
+    Err(not_found(&format!(
+        "DataQualityModel for profile {profile_id} not found."
+    )))
+}
+
+fn recommendations_list(g: &mut GlueState) -> Result<Response, Response> {
+    Ok(ok(&json!({
+        "Runs": g.dq_recommendation_runs.values().cloned().collect::<Vec<_>>(),
+    })))
+}
+
+fn evaluations_list(g: &mut GlueState) -> Result<Response, Response> {
+    Ok(ok(&json!({
+        "Runs": g.dq_evaluation_runs.values().cloned().collect::<Vec<_>>(),
+    })))
+}
+
+#[cfg(test)]
+mod family5_tests {
+    use super::*;
+    use bytes::Bytes;
+
+    fn req(op: &str, body_val: Value) -> Request {
+        Request {
+            service: "glue".into(),
+            operation: op.into(),
+            method: "POST".into(),
+            path: "/".into(),
+            query_string: String::new(),
+            headers: std::collections::HashMap::new(),
+            body: Bytes::from(serde_json::to_vec(&body_val).unwrap_or_default()),
+            account: 123456789012,
+            region: "us-east-1".into(),
+        }
+    }
+
+    fn scope() -> u64 {
+        uuid::Uuid::new_v4().as_u128() as u64
+    }
+
+    fn d(acct: u64, op: &str, v: Value) -> Response {
+        let mut r = req(op, v);
+        r.account = acct;
+        dispatch(&r).unwrap()
+    }
+
+    fn body(resp: &Response) -> Value {
+        serde_json::from_slice(&resp.body).unwrap_or(Value::Null)
+    }
+
+    fn err_code(resp: &Response) -> String {
+        body(resp)["__type"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    }
+
+    #[test]
+    fn ml_transform_lifecycle() {
+        let acct = scope();
+        let b = body(&d(
+            acct,
+            "CreateMLTransform",
+            json!({
+                "Name": "ml1",
+                "InputRecordTables": [{"DatabaseName": "db", "TableName": "t"}],
+                "Parameters": {"TransformType": "FIND_MATCHES"},
+                "Role": "r"
+            }),
+        ));
+        let tid = str_field(&b, "TransformId");
+        assert!(tid.starts_with("tfm_"));
+
+        let b = body(&d(
+            acct,
+            "GetMLTransform",
+            json!({"TransformId": tid.clone()}),
+        ));
+        assert_eq!(b["TransformId"], tid);
+        assert_eq!(b["Name"], "ml1");
+        assert!(b["EvaluationMetrics"].is_object());
+        assert!(b["Schema"].is_array());
+        assert!(b["TransformEncryption"].is_object());
+
+        let b = body(&d(acct, "GetMLTransforms", json!({})));
+        assert_eq!(b["Transforms"].as_array().unwrap().len(), 1);
+        let b = body(&d(acct, "ListMLTransforms", json!({})));
+        assert_eq!(b["TransformIds"].as_array().unwrap()[0], tid);
+
+        let b = body(&d(
+            acct,
+            "UpdateMLTransform",
+            json!({"TransformId": tid.clone(), "Description": "upd"}),
+        ));
+        assert_eq!(b["TransformId"], tid);
+        let b = body(&d(
+            acct,
+            "GetMLTransform",
+            json!({"TransformId": tid.clone()}),
+        ));
+        assert_eq!(b["Description"], "upd");
+
+        // task-run family
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "GetMLTaskRun",
+                json!({"TransformId": tid.clone(), "TaskRunId": "tr_x"})
+            )),
+            "EntityNotFoundException"
+        );
+        let b = body(&d(
+            acct,
+            "GetMLTaskRuns",
+            json!({"TransformId": tid.clone()}),
+        ));
+        assert_eq!(b["TaskRuns"], json!([]));
+
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "CancelMLTaskRun",
+                json!({"TransformId": "bad", "TaskRunId": "x"})
+            )),
+            "EntityNotFoundException"
+        );
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "StartMLEvaluationTaskRun",
+                json!({"TransformId": "bad"})
+            )),
+            "EntityNotFoundException"
+        );
+
+        let b = body(&d(
+            acct,
+            "DeleteMLTransform",
+            json!({"TransformId": tid.clone()}),
+        ));
+        assert_eq!(b["TransformId"], tid);
+        assert_eq!(
+            err_code(&d(acct, "GetMLTransform", json!({"TransformId": tid}))),
+            "EntityNotFoundException"
+        );
+    }
+
+    #[test]
+    fn blueprint_lifecycle_and_runs() {
+        let acct = scope();
+        let b = body(&d(
+            acct,
+            "CreateBlueprint",
+            json!({"Name": "bp1", "BlueprintLocation": "s3://x"}),
+        ));
+        assert_eq!(b["Name"], "bp1");
+
+        let b = body(&d(acct, "GetBlueprint", json!({"Name": "bp1"})));
+        assert_eq!(b["Blueprint"]["Name"], "bp1");
+        assert_eq!(b["Blueprint"]["Status"], "ACTIVE");
+
+        let b = body(&d(acct, "ListBlueprints", json!({})));
+        assert_eq!(b["Blueprints"], json!(["bp1"]));
+
+        let b = body(&d(
+            acct,
+            "StartBlueprintRun",
+            json!({"BlueprintName": "bp1", "RoleArn": "r"}),
+        ));
+        let run_id = str_field(&b, "RunId");
+        assert!(run_id.starts_with("bp_"));
+
+        let b = body(&d(
+            acct,
+            "GetBlueprintRun",
+            json!({"BlueprintName": "bp1", "RunId": run_id.clone()}),
+        ));
+        assert_eq!(b["BlueprintRun"]["State"], "RUNNING");
+
+        let b = body(&d(
+            acct,
+            "GetBlueprintRuns",
+            json!({"BlueprintName": "bp1"}),
+        ));
+        assert_eq!(b["BlueprintRuns"].as_array().unwrap().len(), 1);
+
+        let b = body(&d(
+            acct,
+            "BatchGetBlueprints",
+            json!({"Names": ["bp1", "z"]}),
+        ));
+        assert_eq!(b["Blueprints"].as_array().unwrap().len(), 1);
+        assert_eq!(b["MissingBlueprints"].as_array().unwrap().len(), 1);
+
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "GetBlueprintRun",
+                json!({"BlueprintName": "nond", "RunId": run_id})
+            )),
+            "EntityNotFoundException"
+        );
+
+        let b = body(&d(
+            acct,
+            "UpdateBlueprint",
+            json!({"Name": "bp1", "BlueprintLocation": "s3://v2"}),
+        ));
+        assert_eq!(b["Name"], "bp1");
+
+        d(acct, "DeleteBlueprint", json!({"Name": "bp1"}));
+        assert_eq!(
+            err_code(&d(acct, "GetBlueprint", json!({"Name": "bp1"}))),
+            "EntityNotFoundException"
+        );
+    }
+
+    #[test]
+    fn dq_ruleset_and_runs() {
+        let acct = scope();
+        let b = body(&d(
+            acct,
+            "CreateDataQualityRuleset",
+            json!({"Name": "dqr1", "Ruleset": "Rules = []"}),
+        ));
+        assert_eq!(b["Name"], "dqr1");
+
+        let b = body(&d(acct, "GetDataQualityRuleset", json!({"Name": "dqr1"})));
+        assert_eq!(b["Ruleset"], "Rules = []");
+
+        let b = body(&d(acct, "ListDataQualityRulesets", json!({})));
+        assert_eq!(b["Rulesets"].as_array().unwrap().len(), 1);
+
+        let b = body(&d(
+            acct,
+            "UpdateDataQualityRuleset",
+            json!({"Name": "dqr1", "Ruleset": "Rules = [x]"}),
+        ));
+        assert_eq!(b["Name"], "dqr1");
+
+        // runs
+        let b = body(&d(
+            acct,
+            "StartDataQualityRuleRecommendationRun",
+            json!({"DataSource": {"GlueTable": {"DatabaseName": "d", "TableName": "t"}}, "Role": "r"}),
+        ));
+        let rec_run = str_field(&b, "RunId");
+        assert!(rec_run.starts_with("dqrec_"));
+
+        let b = body(&d(
+            acct,
+            "GetDataQualityRuleRecommendationRun",
+            json!({"RunId": rec_run.clone()}),
+        ));
+        assert_eq!(b["RunId"], rec_run);
+        assert!(b["DataSource"].is_object());
+
+        let b = body(&d(
+            acct,
+            "StartDataQualityRulesetEvaluationRun",
+            json!({"DataSource": {}, "Role": "r", "RulesetNames": ["r"]}),
+        ));
+        let eval_run = str_field(&b, "RunId");
+        let b = body(&d(
+            acct,
+            "GetDataQualityRulesetEvaluationRun",
+            json!({"RunId": eval_run}),
+        ));
+        assert_eq!(b["Status"], "RUNNING");
+        assert!(b["AdditionalRunOptions"].is_object());
+        assert!(b["ResultIds"].is_array());
+
+        // cancels are no-ops (200) even for fake ids
+        assert_eq!(
+            d(
+                acct,
+                "CancelDataQualityRuleRecommendationRun",
+                json!({"RunId": "fake"})
+            )
+            .status,
+            200
+        );
+        assert_eq!(
+            d(
+                acct,
+                "CancelDataQualityRulesetEvaluationRun",
+                json!({"RunId": "f"})
+            )
+            .status,
+            200
+        );
+
+        // lists
+        let b = body(&d(acct, "ListDataQualityRuleRecommendationRuns", json!({})));
+        assert_eq!(b["Runs"].as_array().unwrap().len(), 1);
+        let b = body(&d(acct, "ListDataQualityRulesetEvaluationRuns", json!({})));
+        assert_eq!(b["Runs"].as_array().unwrap().len(), 1);
+        let b = body(&d(acct, "ListDataQualityResults", json!({})));
+        assert_eq!(b["Results"], json!([]));
+
+        // batch get + model errors
+        let b = body(&d(
+            acct,
+            "BatchGetDataQualityResult",
+            json!({"ResultIds": ["x"]}),
+        ));
+        assert_eq!(b["ResultsNotFound"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            err_code(&d(acct, "GetDataQualityResult", json!({"ResultId": "x"}))),
+            "EntityNotFoundException"
+        );
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "GetDataQualityModel",
+                json!({"ProfileId": "p", "StatisticId": "s"})
+            )),
+            "EntityNotFoundException"
+        );
+
+        assert_eq!(
+            err_code(&d(acct, "GetDataQualityRuleset", json!({"Name": "zz"}))),
+            "EntityNotFoundException"
+        );
+
+        d(acct, "DeleteDataQualityRuleset", json!({"Name": "dqr1"}));
+        assert_eq!(
+            err_code(&d(acct, "GetDataQualityRuleset", json!({"Name": "dqr1"}))),
+            "EntityNotFoundException"
+        );
     }
 }
