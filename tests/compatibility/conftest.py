@@ -11,6 +11,9 @@ from botocore.config import Config
 
 logger = logging.getLogger(__name__)
 
+# `localhost` (not 127.0.0.1) on purpose: account-scoped control-plane
+# APIs (s3control and kin) prepend the AccountId as a DNS subdomain;
+# systemd-resolved maps *.localhost to loopback, an IP endpoint cannot.
 ENDPOINT_URL = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
 
 # Cached result of the runtimes probe — set only on a successful HTTP 200 response

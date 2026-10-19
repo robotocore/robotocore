@@ -1863,7 +1863,11 @@ mod tests {
         assert!(share.get("creationTime").is_some());
         assert!(share.get("lastUpdatedTime").is_some());
         assert!(share.get("owningAccountId").is_some());
-        assert_eq!(share.get("featureSet").and_then(Value::as_str), Some("STANDARD"), "moto emits featureSet");
+        assert_eq!(
+            share.get("featureSet").and_then(Value::as_str),
+            Some("STANDARD"),
+            "moto emits featureSet"
+        );
 
         // list (SELF)
         req = mk(

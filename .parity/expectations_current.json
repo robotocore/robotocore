@@ -1,6 +1,6 @@
 {
   "comment": "Golden baseline: per-suite compat-suite pass counts the Rust server must keep matching. Frozen from the Python ground-truth era; regenerate with: uv run python scripts/harness/parity.py --rust-only --update-expectations",
-  "generated": "2026-10-19T07:18:02",
+  "generated": "2026-10-19T10:09:30",
   "per_suite": {
     "cloudformation": {
       "pass": 150
@@ -268,6 +268,129 @@
     },
     "ssoadmin": {
       "pass": 7
+    },
+    "apigateway_lambda": {
+      "pass": 6
+    },
+    "apigatewaymanagementapi": {
+      "pass": 3
+    },
+    "bedrock": {
+      "pass": 132
+    },
+    "ce": {
+      "pass": 61
+    },
+    "cfn_e2e": {
+      "pass": 9
+    },
+    "cognitoidentity": {
+      "pass": 3
+    },
+    "concurrent_requests": {
+      "pass": 10
+    },
+    "cross_service": {
+      "pass": 22
+    },
+    "datapipeline": {
+      "pass": 23
+    },
+    "efs": {
+      "pass": 46
+    },
+    "error_format": {
+      "pass": 23
+    },
+    "glacier": {
+      "pass": 38
+    },
+    "iam_enforcement": {
+      "pass": 0
+    },
+    "lambda_custom_runtime": {
+      "pass": 0
+    },
+    "lambda_dlq_destinations": {
+      "pass": 1
+    },
+    "lambda_dotnet": {
+      "pass": 0
+    },
+    "lambda_esm_trigger": {
+      "pass": 0
+    },
+    "lambda_event_source": {
+      "pass": 3
+    },
+    "lambda_function_urls": {
+      "pass": 1
+    },
+    "lambda_integrations": {
+      "pass": 4
+    },
+    "lambda_java": {
+      "pass": 0
+    },
+    "lambda_nodejs": {
+      "pass": 1
+    },
+    "lambda_python_edge_cases": {
+      "pass": 32
+    },
+    "lambda_ruby": {
+      "pass": 0
+    },
+    "mediastore": {
+      "pass": 29
+    },
+    "mq": {
+      "pass": 27
+    },
+    "ram": {
+      "pass": 41
+    },
+    "rekognition": {
+      "pass": 116
+    },
+    "resource_groups_tagging": {
+      "pass": 17
+    },
+    "s3_ext": {
+      "pass": 96
+    },
+    "s3_notifications": {
+      "pass": 10
+    },
+    "servicecatalog": {
+      "pass": 104
+    },
+    "shield": {
+      "pass": 35
+    },
+    "signer": {
+      "pass": 26
+    },
+    "state_persistence": {
+      "pass": 5
+    },
+    "state_save_load": {
+      "pass": 5
+    },
+    "stepfunctions_async": {
+      "pass": 3
+    },
+    "textract": {
+      "pass": 44
+    },
+    "wafv2": {
+      "pass": 76
+    },
+    "workspaces": {
+      "pass": 97
+    },
+    "s3control": {
+      "pass": 162
     }
   }
 }

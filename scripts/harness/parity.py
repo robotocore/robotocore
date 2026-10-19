@@ -33,7 +33,11 @@ RUST_REPO = Path(os.environ.get("RUST_REPO", REPO))
 # When invoked via `uv run python`, sys.executable IS the project venv python.
 PYV = os.environ.get("ROBOTOCORE_PYTHON", sys.executable)
 RUST_PORT = os.environ.get("RUST_PORT", "4566")
-RUST_URL = f"http://127.0.0.1:{RUST_PORT}"
+# localhost (not 127.0.0.1): account-scoped control-plane APIs (s3control
+# and kin) send the AccountId as a DNS subdomain of the endpoint host;
+# an IP endpoint cannot take that subdomain and every request would
+# die in client-side name resolution. *.localhost resolves to loopback.
+RUST_URL = f"http://localhost:{RUST_PORT}"
 RUST_BIN = str(RUST_REPO / "target/release/robotocore-rust")
 COMPAT_DIR = REPO / "tests/compatibility"
 # Golden baseline: per-suite pass counts the Rust lane must keep matching.
