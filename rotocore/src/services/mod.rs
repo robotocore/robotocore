@@ -124,6 +124,7 @@ pub mod transcribe;
 pub mod transfer;
 pub mod vpclattice;pub mod wafv2;
 pub mod workspaces;
+pub mod workspacesweb;
 pub mod xray;
 
 /// Ported service backends. An arm here routes that service to the native
@@ -269,6 +270,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
 "transfer" => transfer::dispatch(req),
 "vpclattice" => vpclattice::dispatch(req),        "wafv2" => wafv2::dispatch(req),
         "workspaces" => workspaces::dispatch(req),
+        "workspacesweb" => workspacesweb::dispatch(req),
         "xray" => Some(xray::dispatch(req)),
 
         _ => None,
@@ -402,6 +404,7 @@ pub fn handles_service(service: &str) -> bool {
 | "transfer"
 | "vpclattice"            | "wafv2"
             | "workspaces"
+            | "workspacesweb"
             | "xray"
     )
 }
