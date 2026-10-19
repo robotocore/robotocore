@@ -44,6 +44,8 @@ pub mod organizations;
 pub mod pipes;
 pub mod polly;
 mod rds;
+pub mod redshift;
+pub mod redshiftdata;
 pub mod resourcegroupstaggingapi;
 pub mod route53resolver;
 pub mod sagemaker;
@@ -100,6 +102,8 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "organizations" => organizations::dispatch(req),
         "pipes" => Some(pipes::dispatch(req)),
         "polly" => Some(polly::dispatch(req)),
+        "redshift" => Some(redshift::dispatch(req)),
+        "redshiftdata" => Some(redshiftdata::dispatch(req)),
         "resourcegroupstaggingapi" => Some(resourcegroupstaggingapi::dispatch(req)),
         "rds" => Some(self::rds::dispatch(req)),
         "route53resolver" => Some(route53resolver::dispatch(req)),
