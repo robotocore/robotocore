@@ -45,12 +45,9 @@ async fn main() {
     let (registry, native_handlers) = ServiceRegistry::new_with_handlers();
     let snapshots = std::sync::Arc::new(SnapshotRegistry::new(&native_handlers));
 
-    // Optionally start Moto proxy
-    // rotocore serves every service natively; no moto plumbing.
-
-    // Build Axum app
-    // Build Axum app
-    let app = build_router(registry, snapshots, None);
+    // Build the Axum app — every serviced request is answered by the
+    // gateway core or rotocore; there is no legacy proxy plumbing.
+    let app = build_router(registry, snapshots);
 
     // Create listener
     let addr = format!("{}:{}", args.host, args.port);

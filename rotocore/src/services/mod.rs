@@ -259,7 +259,14 @@ mod tests {
     fn handles_service_matches_dispatch_arms() {
         // Spot-check both directions: armed services report true, services
         // with no backend report false.
-        for service in ["acm", "connect", "glue", "elasticache", "codepipeline", "xray"] {
+        for service in [
+            "acm",
+            "connect",
+            "glue",
+            "elasticache",
+            "codepipeline",
+            "xray",
+        ] {
             assert!(handles_service(service), "{service} should be armed");
         }
         for service in ["glacier", "account", "cloudwatch", "athena-x-nothing", ""] {

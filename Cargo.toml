@@ -52,7 +52,6 @@ hmac = "0.12"
 hex = "0.4"
 flate2 = "1.0"
 urlencoding = "2.1"
-reqwest = { version = "0.12", features = ["json"] }
 clap = { version = "4.0", features = ["derive"] }
 
 # Moto-equivalent engine (Rust)

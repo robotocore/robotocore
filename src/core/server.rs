@@ -1043,7 +1043,6 @@ impl Default for ServiceRegistry {
 /// Application state shared across requests.
 pub struct AppState {
     pub registry: ServiceRegistry,
-    pub moto_proxy: Option<crate::core::proxy::MotoProxy>,
     /// Central (service, snapshot surface) table for the state endpoints.
     pub snapshots: Arc<crate::core::state::SnapshotRegistry>,
     /// In-memory named snapshots (`/state/save` without `path`).
@@ -1261,42 +1260,6 @@ pub async fn catch_all_handler(
                     raw_bytes: Some(resp.body),
                 };
                 return response_from_parsed(parsed, &service, &parsed_req.operation);
-            }
-            // Fall back to Moto proxy for non-native services
-            if let Some(proxy) = &state.moto_proxy {
-                if !proxy.is_native(&service) {
-                    match proxy.forward(&parsed_req).await {
-                        Ok(resp) => {
-                            audit_out(
-                                Some(&service),
-                                opt_op(&operation),
-                                &req_method,
-                                &req_path,
-                                resp.status.as_u16(),
-                                req_start,
-                                &account_id,
-                                &region_for_audit,
-                                None,
-                            );
-                            return response_from_parsed(resp, &service, &parsed_req.operation);
-                        }
-                        Err(e) => {
-                            let msg = format!("Moto proxy failed: {}", e);
-                            audit_out(
-                                Some(&service),
-                                opt_op(&operation),
-                                &req_method,
-                                &req_path,
-                                503,
-                                req_start,
-                                &account_id,
-                                &region_for_audit,
-                                Some(msg.clone()),
-                            );
-                            return error_response(StatusCode::SERVICE_UNAVAILABLE, &msg);
-                        }
-                    }
-                }
             }
             let msg = format!("Service {} not implemented", service);
             audit_out(
@@ -1604,11 +1567,9 @@ pub async fn usage_errors_handler() -> impl IntoResponse {
 pub fn build_router(
     registry: ServiceRegistry,
     snapshots: Arc<crate::core::state::SnapshotRegistry>,
-    moto_proxy: Option<crate::core::proxy::MotoProxy>,
 ) -> Router {
     let state = Arc::new(AppState {
         registry,
-        moto_proxy,
         snapshots,
         named_snapshots: Arc::new(crate::core::state::NamedSnapshots::default()),
         versioned_snapshots: Arc::new(crate::core::state::VersionedSnapshots::default()),
