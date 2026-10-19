@@ -86,6 +86,7 @@ pub mod shield;
 pub mod signer;
 pub mod ssoadmin;
 pub mod support;
+pub mod synthetics;
 pub mod textract;
 pub mod timestreaminfluxdb;
 pub mod timestreamquery;
@@ -180,6 +181,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "signer" => signer::dispatch(req),
         "ssoadmin" => ssoadmin::dispatch(req),
         "support" => Some(support::dispatch(req)),
+        "synthetics" => synthetics::dispatch(req),
         "textract" => textract::dispatch(req),
         "timestreaminfluxdb" => timestreaminfluxdb::dispatch(req),
         "timestreamquery" => timestreamquery::dispatch(req),
@@ -281,6 +283,7 @@ pub fn handles_service(service: &str) -> bool {
             | "signer"
             | "ssoadmin"
             | "support"
+            | "synthetics"
             | "textract"
             | "timestreaminfluxdb"
             | "timestreamquery"
