@@ -629,24 +629,49 @@ impl Ec2State {
             ..Default::default()
         }];
         self.security_groups.push(sg);
-        // 2 default subnets with the moto scheme
+        // Default subnets, one per AZ, moto's zone table (us-east-1 list) —
+        // moto's create_default_vpc iterates describe_availability_zones().
+        // AZ ids follow moto's Zone rows; wire cidrs keep the /20 ladder.
+        let (az_id_prefix, n_zones): (&str, usize) = match region {
+            "us-east-1" => ("use1", 6),
+            "us-east-2" => ("use2", 3),
+            "us-west-2" => ("usw2", 4),
+            "eu-west-1" => ("euw1", 3),
+            "eu-central-1" => ("euc1", 3),
+            _ => (region, 2),
+        };
         let mut default_subnet_ids: Vec<String> = Vec::new();
-        for (i, cidr) in ["172.31.0.0/20", "172.31.16.0/20"].iter().enumerate() {
+        for i in 0..n_zones {
             let subnet_id = format!("subnet-{}", idhex::hex17());
             default_subnet_ids.push(subnet_id.clone());
-            let az = format!("{}a", region);
+            let cidr = format!("172.31.{}.0/20", i * 16);
+            let az = format!("{region}{}", (b'a' + i as u8) as char);
+            let az_id = if az_id_prefix == "use1" {
+                // moto's real-zone mapping for us-east-1 (a→az6, b→az1, c→az2,
+                // d→az4, e→az3, f→az5).
+                match i {
+                    0 => "use1-az6",
+                    1 => "use1-az1",
+                    2 => "use1-az2",
+                    3 => "use1-az4",
+                    4 => "use1-az3",
+                    _ => "use1-az5",
+                }
+                .to_string()
+            } else {
+                format!("{az_id_prefix}-az{}", i + 1)
+            };
             self.subnets.push(Subnet {
                 id: subnet_id.clone(),
                 vpc_id: vpc_id.clone(),
-                cidr: cidr.to_string(),
+                cidr,
                 az: az.clone(),
                 state: "available".into(),
                 map_public_ip: true,
-                availability_zone_id: "use1-az6".into(),
+                availability_zone_id: az_id,
                 is_default: true,
                 ..Default::default()
             });
-            let _ = i;
         }
         // moto's default ACL — created by default vpc
         let acl_id = format!("acl-{}", idhex::hex17());

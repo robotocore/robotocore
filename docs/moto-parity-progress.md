@@ -126,3 +126,38 @@ are parsed by `tooling/moto_port_progress.py`.
 - G4 lane count: 10160 passed / 157 failed / 17 errors (start row: 9254).
 - Gate after wave: old served surface 157, native 106, REMAINING 51
   (43 to port + 8 G2-uncertain).
+
+## Wave 4 (2026-10-19, on top of 377babe9; includes port/perf7) — twelve services
+
+- Ported: `account` (16/16; 3 double-absent tests removed), `appconfig`
+  (48/48), `autoscaling` (70/70; live EC2 loopback integration), 
+  `bedrock-runtime` (2/2, InvokeModel 1:1), `bedrockagent` (2/2; 11 of 70
+  fork-routed ops — the rest 501 exactly like moto), `clouddirectory`
+  (72/72), `codebuild` (80/80), `codecommit` (121/121; sha1 crate dep
+  added for moto's blob ids), `codedeploy` (41/41), `cloudhsmv2` (23/23),
+  `dax` (26/26), `directconnect` (10/10; 50 double-absent of 60).
+- **bedrock signing-scope finding**: bedrock-runtime and bedrock-agent
+  sign with scope `bedrock`, so the twin sees service `bedrock` for all
+  three. The `bedrock` arm chains
+  bedrockagent -> bedrock_runtime -> bedrock by disjoint URI families;
+  exact-name arms kept for literal clients.
+- directconnect: botocore maps `OvertureService` onto the legacy
+  `support` arm; the support arm now branches on operation (surfaces
+  disjoint) instead of a router edit.
+- Registry: 12 wave-4 rows flipped; `rdsdata`'s stale `native` label
+  corrected to `absent` (queued, not ported).
+- Wave-3 review minors folded: sesv2 CreateContact overwrites by email;
+  UpdateContact refreshes LastUpdatedTimestamp; ec2 default VPC seeds
+  one subnet per AZ with moto's Zone-id table (us-east-1 real mapping).
+- Perf (port/perf7) merged: `strip = "symbols"` — binary −20.9% (45.0 to
+  35.6 MiB), startup unchanged, round-trips verified. Commit `cd27fdd0`.
+- Infra: union-merge fused the budgets arm into a comment (budgets 0/29
+  for one promotion; unfused, 29/29); disk hit 100% under twelve
+  concurrent worktree targets — reclaimed to ~67G free.
+- Gates: 1245 workspace lib tests; 13 suites green vs main (643 in one
+  process). Promotion exit 0, 153 suites drift-gated.
+- G4 lane count (post-wave): 11793 passed / 150 failed / 17 errors
+  (start row: 9254 — +2539 net passes since the goal opened; the
+  remaining failures are the lambda-runtime backlog suites).
+- Gate after wave: 130 native of 157; REMAINING 27 = 19 to port + 8
+  G2-uncertain.

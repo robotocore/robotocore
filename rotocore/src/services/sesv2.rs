@@ -724,7 +724,16 @@ fn handler_4(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
                     if !cl["Contacts"].is_array() {
                         cl["Contacts"] = json!([]);
                     }
-                    cl["Contacts"].as_array_mut().unwrap().push(contact);
+                    let arr = cl["Contacts"].as_array_mut().unwrap();
+                    // moto keys contacts by email (Contacts[email] = contact):
+                    // recreate overwrites, it never appends duplicates.
+                    match arr
+                        .iter()
+                        .position(|x| x["EmailAddress"].as_str() == Some(&email))
+                    {
+                        Some(i) => arr[i] = contact,
+                        None => arr.push(contact),
+                    }
                 }
             });
             ok_json(json!({}))
@@ -760,6 +769,7 @@ fn handler_4(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
             let name = seg_after(&req.path, "contact-lists");
             let email = seg_after(&req.path, "contacts");
             let found = with_scope(&slot, req, |st| {
+                // moto refreshes LastUpdatedTimestamp on every update
                 st.contact_lists.get_mut(&name).and_then(|cl| {
                     cl["Contacts"].as_array_mut().and_then(|c| {
                         c.iter_mut()
@@ -771,6 +781,8 @@ fn handler_4(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
                                 if let Some(p) = body.get("TopicPreferences") {
                                     contact["TopicPreferences"] = p.clone();
                                 }
+                                // moto refreshes LastUpdatedTimestamp on every update.
+                                contact["LastUpdatedTimestamp"] = json!(crate::proto::now_iso());
                             })
                     })
                 })

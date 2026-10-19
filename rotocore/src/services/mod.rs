@@ -25,7 +25,8 @@ pub mod backup;
 pub mod batch;
 pub mod bedrock;
 pub mod bedrock_runtime;
-pub mod bedrockagent;pub mod budgets;
+pub mod bedrockagent;
+pub mod budgets;
 pub mod ce;
 pub mod clouddirectory;
 pub mod cloudformation;
@@ -33,9 +34,10 @@ pub mod cloudfront;
 pub mod cloudhsmv2;
 pub mod cloudtrail;
 pub mod codebuild;
-pub mod codecommit;pub mod codepipeline;
+pub mod codecommit;
 pub mod codedeploy;
-pub mod codepipeline;pub mod cognito_identity;
+pub mod codepipeline;
+pub mod cognito_identity;
 pub mod cognito_idp;
 pub mod comprehend;
 pub mod config;
@@ -45,7 +47,8 @@ pub mod databrew;
 pub mod datapipeline;
 pub mod datasync;
 pub mod dax;
-pub mod directconnect;pub mod dms;
+pub mod directconnect;
+pub mod dms;
 pub mod dsql;
 pub mod ebs;
 pub mod ec2instanceconnect;
@@ -134,24 +137,29 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "autoscaling" => autoscaling::dispatch(req),
         "backup" => backup::dispatch(req),
         "batch" => batch::dispatch(req),
-"bedrock" => bedrock_runtime::dispatch(req).or_else(|| bedrock::dispatch(req)),
-"bedrock" => bedrockagent::dispatch(req).or_else(|| bedrock::dispatch(req)),
-"bedrock-agent" => bedrockagent::dispatch(req),
-"bedrock-runtime" => bedrock_runtime::dispatch(req),
-// bedrock-agent shares the `bedrock` credential scope; its URI
-// bedrock-runtime traffic is signed for the `bedrock` credential
-// families route here first and fall through to `bedrock`.
-// here when the path is a runtime path — the tables are disjoint.
-// scope (botocore signingName="bedrock"), so its requestUris answer        "budgets" => budgets::dispatch(req),
+        // bedrock shares one signing scope with its runtime/agent siblings;
+        // route agent families, then runtime URIs, then the model-management
+        // dispatch — the three URI families are disjoint.
+        "bedrock" => bedrockagent::dispatch(req)
+            .or_else(|| bedrock_runtime::dispatch(req))
+            .or_else(|| bedrock::dispatch(req)),
+        "bedrock-agent" => bedrockagent::dispatch(req),
+        "bedrock-runtime" => bedrock_runtime::dispatch(req),
+        // bedrock-agent shares the `bedrock` credential scope; its URI
+        // bedrock-runtime traffic is signed for the `bedrock` credential
+        // families route here first and fall through to `bedrock`.
+        // here when the path is a runtime path — the tables are disjoint.
+        "budgets" => budgets::dispatch(req),
         "ce" => ce::dispatch(req),
         "cloudformation" => Some(self::cloudformation::dispatch(req)),
         "clouddirectory" => clouddirectory::dispatch(req),
         "cloudfront" => Some(cloudfront::dispatch(req)),
         "cloudtrail" => Some(cloudtrail::dispatch(req)),
-"cloudhsmv2" => cloudhsmv2::dispatch(req),
-"codebuild" => codebuild::dispatch(req),
-"codecommit" => codecommit::dispatch(req),        "cognito-idp" => cognito_idp::dispatch(req),
-"cognito-idp" => cognito_idp::dispatch(req),        "cognitoidentity" => cognito_identity::dispatch(req),
+        "cloudhsmv2" => cloudhsmv2::dispatch(req),
+        "codebuild" => codebuild::dispatch(req),
+        "codecommit" => codecommit::dispatch(req),
+        "cognito-idp" => cognito_idp::dispatch(req),
+        "cognitoidentity" => cognito_identity::dispatch(req),
         "comprehend" => Some(comprehend::dispatch(req)),
         "config" => Some(config::dispatch(req)),
         "codedeploy" => codedeploy::dispatch(req),
@@ -160,8 +168,9 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "databrew" => databrew::dispatch(req),
         "datapipeline" => datapipeline::dispatch(req),
         "datasync" => datasync::dispatch(req),
-"dax" => dax::dispatch(req),
-"directconnect" => directconnect::dispatch(req),        "dms" => dms::dispatch(req),
+        "dax" => dax::dispatch(req),
+        "directconnect" => directconnect::dispatch(req),
+        "dms" => dms::dispatch(req),
         "dsql" => dsql::dispatch(req),
         "ebs" => ebs::dispatch(req),
         "ec2" => Some(ec2::dispatch(req)),
@@ -275,18 +284,20 @@ pub fn handles_service(service: &str) -> bool {
             | "backup"
             | "batch"
             | "bedrock"
-| "bedrock-agent"
-| "bedrock-runtime"
-| "bedrockagent"            | "budgets"
+            | "bedrock-agent"
+            | "bedrock-runtime"
+            | "bedrockagent"
+            | "budgets"
             | "ce"
             | "cloudformation"
             | "clouddirectory"
             | "cloudfront"
             | "cloudtrail"
-| "cloudhsmv2"
-| "codebuild"
-| "codecommit"            | "codepipeline"
-| "codepipeline"            | "cognito-idp"
+            | "cloudhsmv2"
+            | "codebuild"
+            | "codecommit"
+            | "codepipeline"
+            | "cognito-idp"
             | "cognitoidentity"
             | "comprehend"
             | "config"
@@ -296,8 +307,9 @@ pub fn handles_service(service: &str) -> bool {
             | "databrew"
             | "datapipeline"
             | "datasync"
-| "dax"
-| "directconnect"            | "dms"
+            | "dax"
+            | "directconnect"
+            | "dms"
             | "dsql"
             | "ebs"
             | "ec2"
