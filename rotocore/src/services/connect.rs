@@ -1718,6 +1718,142 @@ fn handle(
             op_delete_traffic_distribution_group(st, param(params, "TrafficDistributionGroupId"))
         }
         "ListTrafficDistributionGroups" => op_list_traffic_distribution_groups(st, query),
+        "ListContactEvaluations" => op_list_evaluations(st, param(params, "InstanceId")),
+        // -- Search ops (moto ignores SearchCriteria, returns everything) --
+        "SearchUsers" => {
+            let instance_id = match body_str(body, "InstanceId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            op_search(st, &instance_id, "Users", |st2, iid| {
+                st2.users.get(iid).map(|m| m.values().cloned().collect())
+            })
+        }
+        "SearchAgentStatuses" => {
+            let instance_id = match body_str(body, "InstanceId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            op_search(st, &instance_id, "AgentStatuses", |st2, iid| {
+                st2.agent_statuses
+                    .get(iid)
+                    .map(|m| m.values().cloned().collect())
+            })
+        }
+        "SearchContactFlows" => {
+            let instance_id = match body_str(body, "InstanceId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            op_search(st, &instance_id, "ContactFlows", |st2, iid| {
+                st2.contact_flows
+                    .get(iid)
+                    .map(|m| m.values().cloned().collect())
+            })
+        }
+        "SearchContactFlowModules" => {
+            let instance_id = match body_str(body, "InstanceId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            op_search(st, &instance_id, "ContactFlowModules", |st2, iid| {
+                st2.contact_flow_modules
+                    .get(iid)
+                    .map(|m| m.values().cloned().collect())
+            })
+        }
+        "SearchQuickConnects" => {
+            let instance_id = match body_str(body, "InstanceId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            op_search(st, &instance_id, "QuickConnects", |st2, iid| {
+                st2.quick_connects
+                    .get(iid)
+                    .map(|m| m.values().cloned().collect())
+            })
+        }
+        "SearchPrompts" => {
+            let instance_id = match body_str(body, "InstanceId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            op_search(st, &instance_id, "Prompts", |st2, iid| {
+                st2.prompts.get(iid).map(|m| m.values().cloned().collect())
+            })
+        }
+        "SearchRoutingProfiles" => {
+            let instance_id = match body_str(body, "InstanceId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            op_search(st, &instance_id, "RoutingProfiles", |st2, iid| {
+                st2.routing_profiles
+                    .get(iid)
+                    .map(|m| m.values().cloned().collect())
+            })
+        }
+        "SearchSecurityProfiles" => {
+            let instance_id = match body_str(body, "InstanceId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            op_search(st, &instance_id, "SecurityProfiles", |st2, iid| {
+                st2.security_profiles
+                    .get(iid)
+                    .map(|m| m.values().cloned().collect())
+            })
+        }
+        "SearchHoursOfOperations" => {
+            let instance_id = match body_str(body, "InstanceId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            op_search(st, &instance_id, "HoursOfOperations", |st2, iid| {
+                st2.hours_of_operations
+                    .get(iid)
+                    .map(|m| m.values().cloned().collect())
+            })
+        }
+        "SearchUserHierarchyGroups" => {
+            let instance_id = match body_str(body, "InstanceId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            op_search(st, &instance_id, "UserHierarchyGroups", |st2, iid| {
+                st2.user_hierarchy_groups
+                    .get(iid)
+                    .map(|m| m.values().cloned().collect())
+            })
+        }
+        "SearchQueues" => {
+            let instance_id = match body_str(body, "InstanceId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            op_search(st, &instance_id, "Queues", |st2, iid| {
+                st2.queues.get(iid).map(|m| {
+                    m.values()
+                        .map(|q| {
+                            let mut q2 = q.clone();
+                            q2["QueueType"] = json!("STANDARD");
+                            q2
+                        })
+                        .collect()
+                })
+            })
+        }
+        "SearchPredefinedAttributes" => {
+            let instance_id = match body_str(body, "InstanceId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            op_search(st, &instance_id, "PredefinedAttributes", |st2, iid| {
+                st2.predefined_attributes
+                    .get(iid)
+                    .map(|m| m.values().map(pa_to_dict).collect())
+            })
+        }
 
         _ => op_not_implemented(op),
     }
@@ -5057,7 +5193,7 @@ fn op_search_available_phone_numbers(st: &mut ConnectState, body: &Map<String, V
             let number = if country == "US" && prefix.len() == 3 {
                 format!(
                     "+1{prefix}{}",
-                    rand_digits(4 - (i as u128 % 7 == 0) as usize)
+                    rand_digits(if (i as u128).is_multiple_of(7) { 3 } else { 4 })
                 )
                 .chars()
                 .take(12)
@@ -7041,6 +7177,33 @@ fn op_list_traffic_distribution_groups(
         .cloned()
         .collect();
     ok(json!({"TrafficDistributionGroupSummaryList": rows}))
+}
+
+// ---------------------------------------------------------------------------
+// Search ops + list-contact-evaluations
+// ---------------------------------------------------------------------------
+
+/// moto `search_X(instance_id)`: instance-guarded full dump with
+/// `ApproximateTotalCount`. (SearchCriteria is stored, never applied.)
+fn op_search(
+    st: &mut ConnectState,
+    instance_id: &str,
+    field: &str,
+    collect: impl FnOnce(&mut ConnectState, &str) -> Option<Vec<Value>>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let rows: Vec<Value> = collect(st, instance_id).unwrap_or_default();
+    ok(json!({ field: rows, "ApproximateTotalCount": rows.len() }))
+}
+
+/// moto `list_contact_evaluations` returns an empty summary list.
+fn op_list_evaluations(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    ok(json!({"EvaluationSummaryList": []}))
 }
 // ---------------------------------------------------------------------------
 // Unit tests
