@@ -600,7 +600,7 @@ pub fn create_fills(
             }
             f.insert("HostIds".to_string(), Fill::X(items));
         }
-                                "coip-pool" => {
+        "coip-pool" => {
             f.insert("PoolId".to_string(), Fill::S(id.to_string()));
             f.insert("PoolArn".to_string(), Fill::S(arn_of("coip-pool")));
             f.insert(

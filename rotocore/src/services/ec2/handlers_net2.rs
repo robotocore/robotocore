@@ -1642,6 +1642,11 @@ fn create_vpc_endpoint_service(req: &Request, params: &P) -> Response {
             .iter()
             .map(|s| s.to_string())
             .collect();
+        let nlbs_out: Vec<String> = params
+            .list("NetworkLoadBalancerArn")
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let id = state.next_id("vpce-svc");
         let tags = wire_tags(params);
         state
@@ -1657,9 +1662,18 @@ fn create_vpc_endpoint_service(req: &Request, params: &P) -> Response {
         ec2_xml(
             "CreateVpcEndpointServiceConfigurationResponse",
             &format!(
-                "<value><id>{}</id></vpcEndpointService>{}",
-                crate::proto::xml_escape(&id),
-                ""
+                "<serviceConfiguration><serviceId>{id}</serviceId><serviceName>com.amazonaws.vpce.{region}.{account}.{id}</serviceName><serviceType><item><serviceType>Interface</serviceType></item></serviceType><acceptanceRequired>{acc}</acceptanceRequired><managesVpcEndpoints>false</managesVpcEndpoints><privateDnsNames/><baseEndpointDnsNames/><networkLoadBalancerArns>{nlbs}</networkLoadBalancerArns><gatewayLoadBalancerArns/><supportedIpAddressTypes/><state>Available</state>{}</serviceConfiguration>",
+                id = crate::proto::xml_escape(&id),
+                region = "us-east-1",
+                account = req.account,
+                acc = if acceptance { "true" } else { "false" },
+                nlbs = nlbs_out
+                    .iter()
+                    .map(|arn| format!(
+                        "<item><networkLoadBalancerArn>{}</networkLoadBalancerArn></item>",
+                        crate::proto::xml_escape(arn)
+                    ))
+                    .collect::<String>()
             ),
         )
     })
