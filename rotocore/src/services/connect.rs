@@ -320,7 +320,7 @@ static OPS: Lazy<Vec<OpRow>> = Lazy::new(|| {
         "DELETE", "hours-of-operations/{InstanceId}/{HoursOfOperationId}", "DeleteHoursOfOperation", "H", false, ["InstanceId", "HoursOfOperationId"];
         "DELETE", "hours-of-operations/{InstanceId}/{HoursOfOperationId}/overrides/{HoursOfOperationOverrideId}", "DeleteHoursOfOperationOverride", "H", false, ["InstanceId", "HoursOfOperationId", "HoursOfOperationOverrideId"];
         "DELETE", "instance/{InstanceId}", "DeleteInstance", "H", false, ["InstanceId"];
-        "DELETE", "instance/{InstanceId}/integration-associations/{IntegrationAssociationId}", "DeleteIntegrationAssociation", "H", false, ["InstanceId", "IntegrationAssociationId"];
+        "DELETE", "instance/{InstanceId}/integration-associations/{IntegrationAssociationId}", "DeleteIntegrationAssociation", "R501", false, ["InstanceId", "IntegrationAssociationId"];
         "DELETE", "notifications/{InstanceId}/{NotificationId}", "DeleteNotification", "H", false, ["InstanceId", "NotificationId"];
         "DELETE", "predefined-attributes/{InstanceId}/{Name}", "DeletePredefinedAttribute", "H", false, ["InstanceId", "Name"];
         "DELETE", "prompts/{InstanceId}/{PromptId}", "DeletePrompt", "H", false, ["InstanceId", "PromptId"];
@@ -1589,11 +1589,6 @@ fn handle(
         "CreateIntegrationAssociation" => {
             op_create_integration_association(st, param(params, "InstanceId"), body)
         }
-        "DeleteIntegrationAssociation" => op_delete_integration_association(
-            st,
-            param(params, "InstanceId"),
-            param(params, "IntegrationAssociationId"),
-        ),
         "ListIntegrationAssociations" => {
             op_list_integration_associations(st, param(params, "InstanceId"))
         }
@@ -2128,7 +2123,7 @@ fn op_list_approved_origins(st: &mut ConnectState, instance_id: &str) -> Respons
     if !st.instances.contains_key(instance_id) {
         return notfound_instance(instance_id);
     }
-    ok(json!({"Origins": st.approved_origins.get(instance_id)}))
+    ok(json!({"Origins": st.approved_origins.get(instance_id).cloned().unwrap_or_default()}))
 }
 
 fn op_disassociate_approved_origin(
@@ -2173,7 +2168,9 @@ fn op_list_lambda_functions(st: &mut ConnectState, instance_id: &str) -> Respons
     if !st.instances.contains_key(instance_id) {
         return notfound_instance(instance_id);
     }
-    ok(json!({"LambdaFunctions": st.lambda_functions.get(instance_id)}))
+    ok(
+        json!({"LambdaFunctions": st.lambda_functions.get(instance_id).cloned().unwrap_or_default()}),
+    )
 }
 
 fn op_disassociate_lambda_function(
@@ -2236,7 +2233,7 @@ fn op_list_bots(st: &mut ConnectState, instance_id: &str) -> Response {
     if !st.instances.contains_key(instance_id) {
         return notfound_instance(instance_id);
     }
-    ok(json!({"LexBots": st.bots.get(instance_id)}))
+    ok(json!({"LexBots": st.bots.get(instance_id).cloned().unwrap_or_default()}))
 }
 
 fn op_associate_security_key(
@@ -2267,7 +2264,7 @@ fn op_list_security_keys(st: &mut ConnectState, instance_id: &str) -> Response {
     if !st.instances.contains_key(instance_id) {
         return notfound_instance(instance_id);
     }
-    ok(json!({"SecurityKeys": st.security_keys.get(instance_id)}))
+    ok(json!({"SecurityKeys": st.security_keys.get(instance_id).cloned().unwrap_or_default()}))
 }
 
 fn op_disassociate_security_key(
@@ -2316,7 +2313,9 @@ fn op_list_instance_storage_configs(st: &mut ConnectState, instance_id: &str) ->
     if !st.instances.contains_key(instance_id) {
         return notfound_instance(instance_id);
     }
-    ok(json!({"StorageConfigs": st.instance_storage_configs.get(instance_id)}))
+    ok(
+        json!({"StorageConfigs": st.instance_storage_configs.get(instance_id).cloned().unwrap_or_default()}),
+    )
 }
 
 fn op_disassociate_instance_storage_config(
@@ -6367,24 +6366,6 @@ fn op_create_integration_association(
     ok(json!({"IntegrationAssociationId": assoc_id, "IntegrationAssociationArn": arn}))
 }
 
-fn op_delete_integration_association(
-    st: &mut ConnectState,
-    instance_id: &str,
-    assoc_id: &str,
-) -> Response {
-    if !st.instances.contains_key(instance_id) {
-        return notfound_instance(instance_id);
-    }
-    match st
-        .integration_associations
-        .get_mut(instance_id)
-        .and_then(|m| m.remove(assoc_id))
-    {
-        Some(_) => ok(json!({})),
-        None => not_found(format!("Integration association {assoc_id} not found")),
-    }
-}
-
 fn op_list_integration_associations(st: &mut ConnectState, instance_id: &str) -> Response {
     if !st.instances.contains_key(instance_id) {
         return notfound_instance(instance_id);
@@ -9440,13 +9421,19 @@ mod tests {
         );
         assert_eq!(status_of(&del_uc), 200);
 
+        // moto's urls.py never routed the bare integration-association DELETE ->
+        // 501 Service-not-implemented (byte-parity with the sidecar)
         let del = request(
             "DELETE",
             &format!("/instance/{id}/integration-associations/{ia}"),
             json!({}),
             "",
         );
-        assert_eq!(status_of(&del), 200);
+        assert_eq!(del.status, 501);
+        assert!(
+            String::from_utf8_lossy(&del.body).contains("Service connect is not yet implemented")
+        );
+
         let listed = request(
             "GET",
             &format!("/instance/{id}/integration-associations"),
@@ -9458,7 +9445,7 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .len(),
-            0
+            1
         );
     }
 
