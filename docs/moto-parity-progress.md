@@ -161,3 +161,33 @@ are parsed by `tooling/moto_port_progress.py`.
   remaining failures are the lambda-runtime backlog suites).
 - Gate after wave: 130 native of 157; REMAINING 27 = 19 to port + 8
   G2-uncertain.
+
+## Wave 5 (2026-10-19, on top of ce16a0b4) — twelve services
+
+- Ported: `s3tables` (50/50), `ds` (124/124, 4 double-absent ops stay 501;
+  EC2 interop per moto: subnets/AZs validated, security-group + ENI per
+  subnet created in the native ec2 state, crashed fork ops implemented per
+  probe messages), `s3vectors` (22 of 26; tags triple + QueryVectors
+  unrouted in fork → removed with double evidence), `kinesisvideo`
+  (30 of 38; 8 edge/media-storage ops unrouted → removed),
+  `mediaconnect` (94/94), `transfer` (129/129), `swf` (40/40; three
+  suite-invisible simplifications documented: no 1s empty long-poll
+  sleep, timers tracked not fired, closeStatusFilter quirk verbatim),
+  `service-quotas` (4 of 26; moto implements exactly 2 ops — rest 501
+  verbatim; 22 removed), `sdb` (3 of 10; 7 removed — moto sdb surface is
+  5 ops), `vpclattice` (8/8), `workspacesweb` (13/13), `route53domains`
+  (36/36; moto's DurationInYears>=2 boundary quirk reproduced with a
+  strictly-later second clock read).
+- **sdb gateway fix (required)**: sdb is SigV2 — the signature rides the
+  form body, so no Authorization header existed and the gateway could not
+  name the service. src/core/server.rs gained a body_is_sdb() branch on
+  sdb's version marker (2009-04-15, unique botocore-wide) — wave-5 sdb
+  agent authored it; verify by running the sdb suite.
+- Merge collateral fixed: duplicate arms/mod-dedup after union merges
+  (sagemaker, cognito-idp arm, codepipeline/list dedupes); garbled bedrock
+  comment lines removed; wave-4 review minors folded (autoscaling loopback
+  now requires a Host header — no dead-port dials; directconnect suite
+  docstring corrected to "9 of 11 handlers").
+- Promotion: exit 0 with 135 suites drift-gated.
+- Gate after wave: 142 native of 157; REMAINING 15 = 7 to port + 8
+  G2-uncertain.

@@ -1,6 +1,6 @@
 {
   "comment": "Golden baseline: per-suite compat-suite pass counts the Rust server must keep matching. Frozen from the Python ground-truth era; regenerate with: uv run python scripts/harness/parity.py --rust-only --update-expectations",
-  "generated": "2026-10-19T19:30:54",
+  "generated": "2026-10-19T21:50:57",
   "per_suite": {
     "cloudformation": {
       "pass": 150
@@ -463,6 +463,42 @@
     },
     "directconnect": {
       "pass": 10
+    },
+    "ds": {
+      "pass": 124
+    },
+    "kinesisvideo": {
+      "pass": 30
+    },
+    "mediaconnect": {
+      "pass": 94
+    },
+    "route53domains": {
+      "pass": 36
+    },
+    "s3tables": {
+      "pass": 50
+    },
+    "s3vectors": {
+      "pass": 22
+    },
+    "sdb": {
+      "pass": 3
+    },
+    "service_quotas": {
+      "pass": 4
+    },
+    "swf": {
+      "pass": 40
+    },
+    "transfer": {
+      "pass": 129
+    },
+    "vpclattice": {
+      "pass": 8
+    },
+    "workspacesweb": {
+      "pass": 13
     }
   }
 }

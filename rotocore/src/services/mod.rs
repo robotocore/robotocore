@@ -105,9 +105,10 @@ pub mod route53domains;
 pub mod route53resolver;
 pub mod s3control;
 pub mod s3tables;
-pub mod s3vectors;pub mod sagemaker;
+pub mod s3vectors;
 pub mod sagemaker;
-pub mod sdb;pub mod securityhub;
+pub mod sdb;
+pub mod securityhub;
 pub mod servicecatalog;
 pub mod servicequotas;
 pub mod ses;
@@ -124,7 +125,8 @@ pub mod timestreamquery;
 pub mod timestreamwrite;
 pub mod transcribe;
 pub mod transfer;
-pub mod vpclattice;pub mod wafv2;
+pub mod vpclattice;
+pub mod wafv2;
 pub mod workspaces;
 pub mod workspacesweb;
 pub mod xray;
@@ -155,10 +157,6 @@ pub fn dispatch(req: &Request) -> Option<Response> {
             .or_else(|| bedrock::dispatch(req)),
         "bedrock-agent" => bedrockagent::dispatch(req),
         "bedrock-runtime" => bedrock_runtime::dispatch(req),
-        // bedrock-agent shares the `bedrock` credential scope; its URI
-        // bedrock-runtime traffic is signed for the `bedrock` credential
-        // families route here first and fall through to `bedrock`.
-        // here when the path is a runtime path — the tables are disjoint.
         "budgets" => budgets::dispatch(req),
         "ce" => ce::dispatch(req),
         "cloudformation" => Some(self::cloudformation::dispatch(req)),
@@ -241,10 +239,11 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "route53domains" => route53domains::dispatch(req),
         "route53resolver" => Some(route53resolver::dispatch(req)),
         "s3control" => s3control::dispatch(req),
-"s3tables" => s3tables::dispatch(req),
-"s3vectors" => s3vectors::dispatch(req),        "sagemaker" => Some(sagemaker::dispatch(req)),
-"sagemaker" => Some(sagemaker::dispatch(req)),
-"sdb" => sdb::dispatch(req),        "securityhub" => Some(securityhub::dispatch(req)),
+        "s3tables" => s3tables::dispatch(req),
+        "s3vectors" => s3vectors::dispatch(req),
+        "sagemaker" => Some(sagemaker::dispatch(req)),
+        "sdb" => sdb::dispatch(req),
+        "securityhub" => Some(securityhub::dispatch(req)),
         "servicecatalog" => servicecatalog::dispatch(req),
         "servicequotas" | "service-quotas" => servicequotas::dispatch(req),
         "ses" => ses::dispatch(req),
@@ -271,8 +270,9 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "timestreamquery" => timestreamquery::dispatch(req),
         "timestreamwrite" => timestreamwrite::dispatch(req),
         "transcribe" => Some(transcribe::dispatch(req)),
-"transfer" => transfer::dispatch(req),
-"vpclattice" => vpclattice::dispatch(req),        "wafv2" => wafv2::dispatch(req),
+        "transfer" => transfer::dispatch(req),
+        "vpclattice" => vpclattice::dispatch(req),
+        "wafv2" => wafv2::dispatch(req),
         "workspaces" => workspaces::dispatch(req),
         "workspacesweb" => workspacesweb::dispatch(req),
         "xray" => Some(xray::dispatch(req)),
@@ -388,10 +388,11 @@ pub fn handles_service(service: &str) -> bool {
             | "route53domains"
             | "route53resolver"
             | "s3control"
-| "s3tables"
-| "s3vectors"            | "sagemaker"
-| "sagemaker"
-| "sdb"            | "securityhub"
+            | "s3tables"
+            | "s3vectors"
+            | "sagemaker"
+            | "sdb"
+            | "securityhub"
             | "servicecatalog"
             | "service-quotas"
             | "servicequotas"
@@ -408,8 +409,9 @@ pub fn handles_service(service: &str) -> bool {
             | "timestreamquery"
             | "timestreamwrite"
             | "transcribe"
-| "transfer"
-| "vpclattice"            | "wafv2"
+            | "transfer"
+            | "vpclattice"
+            | "wafv2"
             | "workspaces"
             | "workspacesweb"
             | "xray"

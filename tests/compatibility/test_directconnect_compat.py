@@ -5,7 +5,7 @@ moto fork's surface. The fork's `moto/directconnect/responses.py` routes 11
 handlers — DescribeConnections, CreateConnection, DeleteConnection,
 UpdateConnection, AssociateMacSecKey, DisassociateMacSecKey, CreateLag,
 DescribeLags, TagResource, UntagResource, DescribeTags — and this suite
-covers exactly those (60 tests were restored; 50 were removed for
+covers 9 of the 11 fork handlers (CreateLag/DescribeLags are unit-covered in rotocore/service/directconnect) (60 tests were restored; 50 were removed for
 moto-fork-absent operations, see the TestDirectConnectGapOps docstring).
 
 The suite originally ran against an older vendored moto fork revision that

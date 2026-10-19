@@ -630,11 +630,14 @@ fn cross_call(req: &Request, service: &'static str, body: &LoopbackBody) -> Opti
     use std::io::{Read, Write};
     use std::net::TcpStream;
 
-    let host = req
-        .headers
-        .get("host")
-        .cloned()
-        .unwrap_or_else(|| "127.0.0.1:4567".to_string());
+    // No Host header means no addressable twin: skip the loopback call
+    // (and log) rather than dialing a hardcoded dead port — the ASG then
+    // records zero launched instances instead of wedging.
+    let host = req.headers.get("host").cloned();
+    let Some(host) = &host else {
+        eprintln!("asg loopback: request has no Host header; skipping cross-call to {service}");
+        return None;
+    };
     let (content_type, body_str, target) = match body {
         LoopbackBody::Form(b) => ("application/x-www-form-urlencoded", b.clone(), None),
         LoopbackBody::Json { target, payload } => (
@@ -657,7 +660,7 @@ fn cross_call(req: &Request, service: &'static str, body: &LoopbackBody) -> Opti
         headers.push_str(&format!("X-Amz-Target: {t}\r\n"));
     }
     let wire = format!("{headers}\r\n{body_str}");
-    let mut stream = TcpStream::connect(&host).ok()?;
+    let mut stream = TcpStream::connect(host.as_str()).ok()?;
     let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(3)));
     let _ = stream.write_all(wire.as_bytes());
     let mut buf = String::new();
