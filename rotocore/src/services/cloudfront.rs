@@ -14,7 +14,7 @@
 //! request bodies are the XML roots botocore emits for the `2020-05-31`
 //! operations (single-member payloads, or `<XxxRequest>` wrappers).
 
-use crate::proto::{query_map, query_first, xml_escape};
+use crate::proto::{query_map, xml_escape};
 use crate::store;
 use crate::{Request, Response};
 use quick_xml::events::Event;
@@ -66,18 +66,14 @@ impl El {
         self.text_of(name).unwrap_or(default).to_string()
     }
 
-    fn components<'a>(&'a self, name: &'a str) -> impl Iterator<Item = &'a El> + '_ {
+    fn components<'a>(&'a self, name: &'a str) -> impl Iterator<Item = &'a El> + 'a {
         self.children.iter().filter(move |c| c.name == name)
     }
 
     /// All child nodes named `name` at a nested path (`Items > CNAME`).
     fn els_at<'a>(&'a self, path: &[&str], name: &'a str) -> Vec<&'a El> {
         match self.sub(path) {
-            Some(node) => node
-                .children
-                .iter()
-                .filter(|c| c.name == name)
-                .collect(),
+            Some(node) => node.children.iter().filter(|c| c.name == name).collect(),
             None => Vec::new(),
         }
     }
@@ -153,7 +149,8 @@ fn parse_xml(body: &[u8]) -> Option<El> {
                     }
                 }
             }
-            Ok(Event::Eof) | Err(_) => break,
+            Ok(Event::Eof) => break,
+            Err(_) => break,
             _ => {}
         }
         buf.clear();
@@ -273,7 +270,6 @@ impl Distribution {
 #[derive(Clone)]
 struct Invalidation {
     id: String,
-    dist_id: String,
     status: String,
     create_time: String,
     paths: Vec<String>,
@@ -471,10 +467,16 @@ impl OriginRequestPolicy {
         if let Some(comment) = config.text_of("Comment") {
             self.comment = comment.to_string();
         }
-        if let Some(v) = config.child("HeadersConfig").and_then(|c| c.text_of("HeaderBehavior")) {
+        if let Some(v) = config
+            .child("HeadersConfig")
+            .and_then(|c| c.text_of("HeaderBehavior"))
+        {
             self.headers_behavior = v.to_string();
         }
-        if let Some(v) = config.child("CookiesConfig").and_then(|c| c.text_of("CookieBehavior")) {
+        if let Some(v) = config
+            .child("CookiesConfig")
+            .and_then(|c| c.text_of("CookieBehavior"))
+        {
             self.cookies_behavior = v.to_string();
         }
         if let Some(v) = config
@@ -850,7 +852,9 @@ fn route(
             h_list_distributions_by_realtime_log_config(backend, req)
         }
         ("POST", ["distributionsByConnectionFunction"]) => distribution_id_list(&[]),
+        ("GET", ["distributionsByConnectionFunction"]) => distribution_id_list(&[]),
         ("POST", ["distributionsByTrustStore"]) => distribution_id_list(&[]),
+        ("GET", ["distributionsByTrustStore"]) => distribution_id_list(&[]),
         ("GET", ["conflicting-alias"]) => {
             h_list_conflicting_aliases(backend, account, first(query, "DistributionId"), first(query, "Alias"))
         }
@@ -866,10 +870,10 @@ fn route(
         ("GET", ["origin-access-identity", "cloudfront"]) => h_list_oais(backend),
         ("GET", ["origin-access-identity", "cloudfront", _]) => h_get_oai(backend, last),
         ("GET", ["origin-access-identity", "cloudfront", _, "config"]) => {
-            h_get_oai_config(backend, seg2)
+            h_get_oai_config(backend, so(segs.len() - 2))
         }
         ("PUT", ["origin-access-identity", "cloudfront", _, "config"]) => {
-            h_update_oai(backend, seg2, req)
+            h_update_oai(backend, so(segs.len() - 2), req)
         }
         ("DELETE", ["origin-access-identity", "cloudfront", _]) => h_delete_oai(backend, last),
         // ------------------------------------------------ public keys
@@ -1024,6 +1028,8 @@ fn route(
         ("GET", ["distribution-tenant", _, "invalidation", _]) => {
             h_get_tenant_invalidation(so(segs.len() - 1))
         }
+        ("PUT", ["distribution-tenant", _, "associate-web-acl"])
+        | ("PUT", ["distribution-tenant", _, "disassociate-web-acl"]) => empty_resp(200),
         ("POST", ["distribution-tenants-by-customization"]) => h_list_tenants(backend),
         // ------------------------------------------------ domain + misc stubs
         ("POST", ["domain-conflicts"]) => resp(
@@ -1066,10 +1072,7 @@ fn config_of<'a>(root: &'a El, wrapper: &str) -> &'a El {
 
 /// Extract the create/update config element and, for the `WithTags` variants,
 /// the caller's tag list. Mirrors moto's `create_distribution` parsing.
-fn config_and_tags<'a>(
-    root: &'a El,
-    config_member: &str,
-) -> (&'a El, Vec<(String, String)>) {
+fn config_and_tags<'a>(root: &'a El, config_member: &str) -> (&'a El, Vec<(String, String)>) {
     let with_tags_root = if root.name == "DistributionConfigWithTags" {
         Some(root)
     } else {
@@ -1092,9 +1095,7 @@ fn config_and_tags<'a>(
                     .collect()
             })
             .unwrap_or_default();
-        let config = root
-            .sub(&["DistributionConfigWithTags", "DistributionConfig"])
-            .unwrap_or(root);
+        let config = root.child("DistributionConfig").unwrap_or(root);
         return (config, tags);
     }
     let streaming_root = if root.name == "StreamingDistributionConfigWithTags" {
@@ -1117,7 +1118,9 @@ fn config_and_tags<'a>(
                     .collect()
             })
             .unwrap_or_default();
-        let config = with_tags.child("StreamingDistributionConfig").unwrap_or(root);
+        let config = with_tags
+            .child("StreamingDistributionConfig")
+            .unwrap_or(root);
         return (config, tags);
     }
     let bare = if root.name == config_member {
@@ -1140,14 +1143,17 @@ fn render_tags(backend: &Backend, arn: &str) -> String {
             items += &wrap("Tag", el("Key", key) + &el("Value", value));
         }
     }
-    wrap("Tags", &wrap("Items", &items))
+    wrap("Tags", wrap("Items", &items))
 }
 
 // ---------------------------------------------------------------------------
 // Distributions
 // ---------------------------------------------------------------------------
 
-fn distribution_exists_with_ref<'a>(backend: &'a Backend, caller_reference: &str) -> Option<&'a Distribution> {
+fn distribution_exists_with_ref<'a>(
+    backend: &'a Backend,
+    caller_reference: &str,
+) -> Option<&'a Distribution> {
     backend
         .distributions
         .iter()
@@ -1165,7 +1171,12 @@ fn new_distribution(account: u64, config: El) -> Result<Distribution, Response> 
         .sub(&["DefaultCacheBehavior", "TargetOriginId"])
         .map(El::as_str)
         .unwrap_or("");
-    let origin_ids = config.texts_at(&["Origins", "Items"], "Id");
+    let origin_ids: Vec<String> = config
+        .els_at(&["Origins", "Items"], "Origin")
+        .iter()
+        .filter_map(|o| o.text_of("Id"))
+        .map(str::to_string)
+        .collect();
     if !origin_ids.is_empty() && !origin_ids.iter().any(|i| i == target) {
         return Err(xml_error(
             404,
@@ -1241,11 +1252,17 @@ fn h_create_distribution(account: u64, backend: &mut Backend, req: &Request) -> 
     };
     save_tags(backend, &dist.arn, tags);
     let etag = dist.etag.clone();
-    let location =
-        format!("https://cloudfront.amazonaws.com/2020-05-31/distribution/{}", dist.id);
+    let location = format!(
+        "https://cloudfront.amazonaws.com/2020-05-31/distribution/{}",
+        dist.id
+    );
     let body = render_dist_doc(&dist, "CreateDistributionResult");
     backend.distributions.push(dist);
-    resp_with(200, vec![("ETag", etag), ("Location", location)], xml_decl(&body))
+    resp_with(
+        200,
+        vec![("ETag", etag), ("Location", location)],
+        xml_decl(&body),
+    )
 }
 
 fn h_list_distributions(backend: &mut Backend) -> Response {
@@ -1254,7 +1271,7 @@ fn h_list_distributions(backend: &mut Backend) -> Response {
     }
     let mut items = String::new();
     for dist in &backend.distributions {
-        items += &wrap("DistributionSummary", &render_dist_entry(dist));
+        items += &wrap("DistributionSummary", render_dist_entry(dist));
     }
     let items_block = if backend.distributions.is_empty() {
         String::new()
@@ -1300,7 +1317,7 @@ fn h_get_distribution_config(backend: &mut Backend, id: &str) -> Response {
         Some(dist) => {
             dist.advance();
             let etag = dist.etag.clone();
-            let body = wrap("DistributionConfig", &render_dist_config(dist));
+            let body = wrap("DistributionConfig", render_dist_config(dist));
             resp_with(200, vec![("ETag", etag)], xml_decl(&body))
         }
         None => xml_error(
@@ -1407,7 +1424,7 @@ fn render_dist_doc(dist: &Distribution, wrapper: &str) -> String {
 fn render_dist_inner(dist: &Distribution) -> String {
     render_dist_meta(dist)
         + ACTIVETRUSTED_BLOCK
-        + &wrap("DistributionConfig", &render_dist_config(dist))
+        + &wrap("DistributionConfig", render_dist_config(dist))
         + "<AliasICPRecordals></AliasICPRecordals>"
 }
 
@@ -1456,27 +1473,30 @@ fn render_dist_config(dist: &Distribution) -> String {
     }
     out += &wrap(
         "Aliases",
-        el("Quantity", &dist.aliases.len().to_string()) + &wrap("Items", &alias_items),
+        el("Quantity", dist.aliases.len().to_string()) + &wrap("Items", &alias_items),
     );
 
-    out += &el("DefaultRootObject", &config.text_or("DefaultRootObject", ""));
+    out += &el(
+        "DefaultRootObject",
+        config.text_or("DefaultRootObject", ""),
+    );
 
     // Origins
     let origins = config.els_at(&["Origins", "Items"], "Origin");
     let mut origin_items = String::new();
     for origin in &origins {
-        origin_items += &wrap("Origin", &render_origin(origin));
+        origin_items += &wrap("Origin", render_origin(origin));
     }
     out += &wrap(
         "Origins",
-        el("Quantity", &origins.len().to_string()) + &wrap("Items", &origin_items),
+        el("Quantity", origins.len().to_string()) + &wrap("Items", &origin_items),
     );
 
     out += "<OriginGroups><Quantity>0</Quantity></OriginGroups>";
 
     // Default cache behavior
     if let Some(behavior) = config.child("DefaultCacheBehavior") {
-        out += &wrap("DefaultCacheBehavior", &render_behavior(behavior, true));
+        out += &wrap("DefaultCacheBehavior", render_behavior(behavior, true));
     }
 
     // Cache behaviors
@@ -1484,11 +1504,11 @@ fn render_dist_config(dist: &Distribution) -> String {
     let mut behavior_items = String::new();
     for (i, behavior) in behaviors.iter().enumerate() {
         let _ = i;
-        behavior_items += &wrap("CacheBehavior", &render_behavior(behavior, false));
+        behavior_items += &wrap("CacheBehavior", render_behavior(behavior, false));
     }
     out += &wrap(
         "CacheBehaviors",
-        el("Quantity", &behaviors.len().to_string())
+        el("Quantity", behaviors.len().to_string())
             + &if behaviors.is_empty() {
                 String::new()
             } else {
@@ -1499,17 +1519,19 @@ fn render_dist_config(dist: &Distribution) -> String {
     // Custom error responses (moto never parses them)
     out += "<CustomErrorResponses><Quantity>0</Quantity></CustomErrorResponses>";
 
-    out += &el("Comment", &config.text_or("Comment", ""));
+    out += &el("Comment", config.text_or("Comment", ""));
 
     // Logging
     let logging = config.child("Logging");
     out += &wrap(
         "Logging",
-        &format!(
+        format!(
             "{enabled}{cookies}{bucket}{prefix}",
             enabled = el(
                 "Enabled",
-                logging.and_then(|l| l.text_of("Enabled")).unwrap_or("False")
+                logging
+                    .and_then(|l| l.text_of("Enabled"))
+                    .unwrap_or("False")
             ),
             cookies = el(
                 "IncludeCookies",
@@ -1528,12 +1550,12 @@ fn render_dist_config(dist: &Distribution) -> String {
         ),
     );
 
-    out += &el("PriceClass", &config.text_or("PriceClass", "PriceClass_All"));
-
     out += &el(
-        "Enabled",
-        config.text_of("Enabled").unwrap_or("False"),
+        "PriceClass",
+        config.text_or("PriceClass", "PriceClass_All"),
     );
+
+    out += &el("Enabled", config.text_of("Enabled").unwrap_or("False"));
 
     // ViewerCertificate
     let cert = config.child("ViewerCertificate");
@@ -1543,7 +1565,7 @@ fn render_dist_config(dist: &Distribution) -> String {
     };
     out += &wrap(
         "ViewerCertificate",
-        &format!(
+        format!(
             "<CloudFrontDefaultCertificate>{default_cert}</CloudFrontDefaultCertificate>{iam}{acm}{ssl}{min}{cert_el}{source}",
             iam = el(
                 "IAMCertificateId",
@@ -1581,12 +1603,13 @@ fn render_dist_config(dist: &Distribution) -> String {
     }
     out += &wrap(
         "Restrictions",
-        &wrap(
+        wrap(
             "GeoRestriction",
             el(
                 "RestrictionType",
-                geo.and_then(|g| g.text_of("RestrictionType")).unwrap_or("none")
-            ) + &el("Quantity", &locations.len().to_string())
+                geo.and_then(|g| g.text_of("RestrictionType"))
+                    .unwrap_or("none"),
+            ) + &el("Quantity", locations.len().to_string())
                 + &if locations.is_empty() {
                     String::new()
                 } else {
@@ -1595,8 +1618,8 @@ fn render_dist_config(dist: &Distribution) -> String {
         ),
     );
 
-    out += &el("WebACLId", &config.text_or("WebACLId", ""));
-    out += &el("HttpVersion", &config.text_or("HttpVersion", "http2"));
+    out += &el("WebACLId", config.text_or("WebACLId", ""));
+    out += &el("HttpVersion", config.text_or("HttpVersion", "http2"));
     out += &el(
         "IsIPV6Enabled",
         lower_yes_no(config.text_of("IsIPV6Enabled").unwrap_or("true")),
@@ -1606,9 +1629,9 @@ fn render_dist_config(dist: &Distribution) -> String {
 }
 
 fn render_origin(origin: &El) -> String {
-    let mut out = el("Id", &origin.text_or("Id", ""));
-    out += &el("DomainName", &origin.text_or("DomainName", ""));
-    out += &el("OriginPath", &origin.text_or("OriginPath", ""));
+    let mut out = el("Id", origin.text_or("Id", ""));
+    out += &el("DomainName", origin.text_or("DomainName", ""));
+    out += &el("OriginPath", origin.text_or("OriginPath", ""));
 
     // Custom headers
     let headers = origin.els_at(&["CustomHeaders", "Items"], "OriginCustomHeader");
@@ -1616,21 +1639,21 @@ fn render_origin(origin: &El) -> String {
     for header in &headers {
         header_items += &wrap(
             "OriginCustomHeader",
-            el("HeaderName", &header.text_or("HeaderName", ""))
-                + &el("HeaderValue", &header.text_or("HeaderValue", "")),
+            el("HeaderName", header.text_or("HeaderName", ""))
+                + &el("HeaderValue", header.text_or("HeaderValue", "")),
         );
     }
     out += &wrap(
         "CustomHeaders",
-        el("Quantity", &headers.len().to_string()) + &wrap("Items", &header_items),
+        el("Quantity", headers.len().to_string()) + &wrap("Items", &header_items),
     );
 
     if origin.child("S3OriginConfig").is_some() {
         out += &wrap(
             "S3OriginConfig",
-            &el(
+            el(
                 "OriginAccessIdentity",
-                &origin
+                origin
                     .sub(&["S3OriginConfig", "OriginAccessIdentity"])
                     .map(El::as_str)
                     .unwrap_or(""),
@@ -1639,41 +1662,50 @@ fn render_origin(origin: &El) -> String {
     }
 
     if let Some(custom) = origin.child("CustomOriginConfig") {
-        let protocols: Vec<String> = custom.texts_at(&["OriginSslProtocols", "Items"], "SslProtocol");
+        let protocols: Vec<String> =
+            custom.texts_at(&["OriginSslProtocols", "Items"], "SslProtocol");
         let mut protocol_items = String::new();
         for protocol in &protocols {
             protocol_items += &wrap("SslProtocol", protocol);
         }
         out += &wrap(
             "CustomOriginConfig",
-            el("HTTPPort", &custom.text_or("HTTPPort", "None"))
-                + &el("HTTPSPort", &custom.text_or("HTTPSPort", "None"))
+            el("HTTPPort", custom.text_or("HTTPPort", "None"))
+                + &el("HTTPSPort", custom.text_or("HTTPSPort", "None"))
                 + &el(
                     "OriginProtocolPolicy",
-                    &custom.text_or("OriginProtocolPolicy", "None")
+                    custom.text_or("OriginProtocolPolicy", "None"),
                 )
                 + &wrap(
                     "OriginSslProtocols",
-                    el("Quantity", &protocols.len().to_string())
-                        + &wrap("Items", &protocol_items),
+                    el("Quantity", protocols.len().to_string()) + &wrap("Items", &protocol_items),
                 )
-                + &el("OriginReadTimeout", &custom.text_or("OriginReadTimeout", "30"))
+                + &el(
+                    "OriginReadTimeout",
+                    custom.text_or("OriginReadTimeout", "30"),
+                )
                 + &el(
                     "OriginKeepaliveTimeout",
-                    &custom.text_or("OriginKeepaliveTimeout", "5"),
+                    custom.text_or("OriginKeepaliveTimeout", "5"),
                 ),
         );
     }
 
-    out += &el("ConnectionAttempts", &origin.text_or("ConnectionAttempts", "3"));
-    out += &el("ConnectionTimeout", &origin.text_or("ConnectionTimeout", "10"));
+    out += &el(
+        "ConnectionAttempts",
+        origin.text_or("ConnectionAttempts", "3"),
+    );
+    out += &el(
+        "ConnectionTimeout",
+        origin.text_or("ConnectionTimeout", "10"),
+    );
 
     out += &match origin.child("OriginShield") {
         Some(shield) => {
-            let inner = el("Enabled", &shield.text_or("Enabled", "false"))
+            let inner = el("Enabled", shield.text_or("Enabled", "false"))
                 + &el(
                     "OriginShieldRegion",
-                    &shield.text_or("OriginShieldRegion", ""),
+                    shield.text_or("OriginShieldRegion", ""),
                 );
             wrap("OriginShield", &inner)
         }
@@ -1683,16 +1715,12 @@ fn render_origin(origin: &El) -> String {
     out
 }
 
-fn is_true(text: Option<&str>) -> bool {
-    matches!(text, Some(t) if t.eq_ignore_ascii_case("true"))
-}
-
 fn render_behavior(behavior: &El, default_cache_behavior: bool) -> String {
     let mut out = String::new();
     if !default_cache_behavior {
-        out += &el("PathPattern", &behavior.text_or("PathPattern", ""));
+        out += &el("PathPattern", behavior.text_or("PathPattern", ""));
     }
-    out += &el("TargetOriginId", &behavior.text_or("TargetOriginId", ""));
+    out += &el("TargetOriginId", behavior.text_or("TargetOriginId", ""));
 
     // Trusted signers
     let signers = behavior.els_at(&["TrustedSigners", "Items"], "AwsAccountNumber");
@@ -1702,10 +1730,8 @@ fn render_behavior(behavior: &El, default_cache_behavior: bool) -> String {
     }
     out += &wrap(
         "TrustedSigners",
-        el(
-            "Enabled",
-            if signers.is_empty() { "false" } else { "true" },
-        ) + &el("Quantity", &signers.len().to_string())
+        el("Enabled", if signers.is_empty() { "false" } else { "true" })
+            + &el("Quantity", signers.len().to_string())
             + &wrap("Items", &signer_items),
     );
 
@@ -1718,13 +1744,13 @@ fn render_behavior(behavior: &El, default_cache_behavior: bool) -> String {
     out += &wrap(
         "TrustedKeyGroups",
         el("Enabled", if groups.is_empty() { "false" } else { "true" })
-            + &el("Quantity", &groups.len().to_string())
+            + &el("Quantity", groups.len().to_string())
             + &wrap("Items", &group_items),
     );
 
     out += &el(
         "ViewerProtocolPolicy",
-        &behavior.text_or("ViewerProtocolPolicy", ""),
+        behavior.text_or("ViewerProtocolPolicy", ""),
     );
 
     // Allowed methods (defaults differ for the default cache behavior)
@@ -1741,12 +1767,18 @@ fn render_behavior(behavior: &El, default_cache_behavior: bool) -> String {
     };
     let cached = behavior.texts_at(&["AllowedMethods", "CachedMethods", "Items"], "Method");
     let cached = if cached.is_empty() {
-        default_cached.iter().map(|s| s.to_string()).collect::<Vec<_>>()
+        default_cached
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>()
     } else {
         cached
     };
     let methods = if methods.is_empty() {
-        default_methods.iter().map(|s| s.to_string()).collect::<Vec<_>>()
+        default_methods
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>()
     } else {
         methods
     };
@@ -1760,11 +1792,11 @@ fn render_behavior(behavior: &El, default_cache_behavior: bool) -> String {
     }
     out += &wrap(
         "AllowedMethods",
-        el("Quantity", &methods.len().to_string())
+        el("Quantity", methods.len().to_string())
             + &wrap("Items", &method_items)
             + &wrap(
                 "CachedMethods",
-                el("Quantity", &cached.len().to_string()) + &wrap("Items", &cached_items),
+                el("Quantity", cached.len().to_string()) + &wrap("Items", &cached_items),
             ),
     );
 
@@ -1776,15 +1808,9 @@ fn render_behavior(behavior: &El, default_cache_behavior: bool) -> String {
         .map(|t| t.eq_ignore_ascii_case("true"))
         .unwrap_or(true);
     out += &if default_cache_behavior {
-        el(
-            "Compress",
-            if compress_on { "true" } else { "false" },
-        )
+        el("Compress", if compress_on { "true" } else { "false" })
     } else {
-        el(
-            "Compress",
-            if compress_on { "True" } else { "False" },
-        )
+        el("Compress", if compress_on { "True" } else { "False" })
     };
 
     out += "<LambdaFunctionAssociations><Quantity>0</Quantity></LambdaFunctionAssociations>";
@@ -1792,39 +1818,39 @@ fn render_behavior(behavior: &El, default_cache_behavior: bool) -> String {
 
     out += &el(
         "FieldLevelEncryptionId",
-        &behavior.text_or("FieldLevelEncryptionId", ""),
+        behavior.text_or("FieldLevelEncryptionId", ""),
     );
     out += &el(
         "RealtimeLogConfigArn",
-        &behavior.text_or("RealtimeLogConfigArn", ""),
+        behavior.text_or("RealtimeLogConfigArn", ""),
     );
     if default_cache_behavior {
-        out += &el("CachePolicyId", &policy_id_text(behavior, "CachePolicyId"));
+        out += &el("CachePolicyId", policy_id_text(behavior, "CachePolicyId"));
         out += &el(
             "OriginRequestPolicyId",
-            &policy_id_text(behavior, "OriginRequestPolicyId"),
+            policy_id_text(behavior, "OriginRequestPolicyId"),
         );
         out += &el(
             "ResponseHeadersPolicyId",
-            &policy_id_text(behavior, "ResponseHeadersPolicyId"),
+            policy_id_text(behavior, "ResponseHeadersPolicyId"),
         );
     } else {
-        out += &el("CachePolicyId", &behavior.text_or("CachePolicyId", ""));
+        out += &el("CachePolicyId", behavior.text_or("CachePolicyId", ""));
         out += &el(
             "OriginRequestPolicyId",
-            &behavior.text_or("OriginRequestPolicyId", ""),
+            behavior.text_or("OriginRequestPolicyId", ""),
         );
         out += &el(
             "ResponseHeadersPolicyId",
-            &behavior.text_or("ResponseHeadersPolicyId", ""),
+            behavior.text_or("ResponseHeadersPolicyId", ""),
         );
     }
 
     out += &render_forwarded_values(behavior);
 
-    out += &el("MinTTL", &behavior.text_or("MinTTL", "0"));
-    out += &el("DefaultTTL", &behavior.text_or("DefaultTTL", "0"));
-    out += &el("MaxTTL", &behavior.text_or("MaxTTL", "0"));
+    out += &el("MinTTL", behavior.text_or("MinTTL", "0"));
+    out += &el("DefaultTTL", behavior.text_or("DefaultTTL", "0"));
+    out += &el("MaxTTL", behavior.text_or("MaxTTL", "0"));
 
     out
 }
@@ -1850,17 +1876,15 @@ fn render_forwarded_values(behavior: &El) -> String {
         "Cookies",
         el(
             "Forward",
-            cookies
-                .and_then(|c| c.text_of("Forward"))
-                .unwrap_or("none"),
+            cookies.and_then(|c| c.text_of("Forward")).unwrap_or("none"),
         ) + &wrap(
             "WhitelistedNames",
-            el("Quantity", &whitelisted.len().to_string())
-                + &wrap("Items", &white_items),
+            el("Quantity", whitelisted.len().to_string()) + &wrap("Items", &white_items),
         ),
     );
     forwarded_out += "<Headers><Quantity>0</Quantity><Items></Items></Headers>";
-    forwarded_out += "<QueryStringCacheKeys><Quantity>0</Quantity><Items></Items></QueryStringCacheKeys>";
+    forwarded_out +=
+        "<QueryStringCacheKeys><Quantity>0</Quantity><Items></Items></QueryStringCacheKeys>";
     wrap("ForwardedValues", &forwarded_out)
 }
 
@@ -1882,15 +1906,14 @@ fn h_create_invalidation(backend: &mut Backend, dist_id: &str, req: &Request) ->
     let caller_ref = batch.text_of("CallerReference").unwrap_or("").to_string();
     let invalidation = Invalidation {
         id: random_upper(13),
-        dist_id: dist_id.to_string(),
         status: "COMPLETED".to_string(),
         create_time: now_millis_iso(),
         paths,
         caller_ref,
     };
-    let mut location = format!("https://cloudfront.amazonaws.com/2020-05-31/distribution/{dist_id}");
-    location
-        .push_str(&format!("/invalidation/{}", invalidation.id));
+    let mut location =
+        format!("https://cloudfront.amazonaws.com/2020-05-31/distribution/{dist_id}");
+    location.push_str(&format!("/invalidation/{}", invalidation.id));
     backend
         .invalidations
         .entry(dist_id.to_string())
@@ -1920,8 +1943,7 @@ fn render_invalidation(inv: &Invalidation) -> String {
                 el("CallerReference", &inv.caller_ref)
                     + &wrap(
                         "Paths",
-                        el("Quantity", &inv.paths.len().to_string())
-                            + &wrap("Items", &paths),
+                        el("Quantity", inv.paths.len().to_string()) + &wrap("Items", &paths),
                     ),
             ),
     )
@@ -1931,7 +1953,7 @@ fn h_list_invalidations(backend: &mut Backend, dist_id: &str) -> Response {
     let invalidations: Vec<Invalidation> = backend
         .invalidations
         .get(dist_id)
-        .map(|list| list.iter().map(|i| i.clone()).collect())
+        .map(|list| list.to_vec())
         .unwrap_or_default();
     let mut items = String::new();
     for inv in &invalidations {
@@ -1950,7 +1972,7 @@ fn h_list_invalidations(backend: &mut Backend, dist_id: &str) -> Response {
         wrap("IsTruncated", "false")
             + &items_block
             + "<Marker></Marker><MaxItems>100</MaxItems>"
-            + &el("Quantity", &invalidations.len().to_string()),
+            + &el("Quantity", invalidations.len().to_string()),
     );
     resp(200, xml_decl(&body))
 }
@@ -1984,7 +2006,11 @@ fn h_get_invalidation(backend: &mut Backend, dist_id: &str, inv_id: &str) -> Res
 // Tags
 // ---------------------------------------------------------------------------
 
-fn handle_tagging(req: &Request, backend: &mut Backend, query: &BTreeMap<String, Vec<String>>) -> Response {
+fn handle_tagging(
+    req: &Request,
+    backend: &mut Backend,
+    query: &BTreeMap<String, Vec<String>>,
+) -> Response {
     let resource = first(query, "Resource").unwrap_or("");
     match (req.method.as_str(), first(query, "Operation")) {
         ("POST", Some("Tag")) => {
@@ -2030,8 +2056,14 @@ fn h_create_oac(backend: &mut Backend, req: &Request) -> Response {
     let control = OriginAccessControl {
         id: random_upper(13),
         name: config.text_of("Name").unwrap_or_default().to_string(),
-        description: config.text_of("Description").unwrap_or_default().to_string(),
-        signing_protocol: config.text_of("SigningProtocol").unwrap_or_default().to_string(),
+        description: config
+            .text_of("Description")
+            .unwrap_or_default()
+            .to_string(),
+        signing_protocol: config
+            .text_of("SigningProtocol")
+            .unwrap_or_default()
+            .to_string(),
         signing_behaviour: config
             .text_of("SigningBehavior")
             .unwrap_or_default()
@@ -2043,8 +2075,14 @@ fn h_create_oac(backend: &mut Backend, req: &Request) -> Response {
         etag: random_upper(13),
     };
     backend.origin_access_controls.push(control);
-    let control = backend.origin_access_controls.last().expect("just inserted");
-    resp(200, xml_decl(&wrap("OriginAccessControl", &render_oac(control))))
+    let control = backend
+        .origin_access_controls
+        .last()
+        .expect("just inserted");
+    resp(
+        200,
+        xml_decl(&wrap("OriginAccessControl", render_oac(control))),
+    )
 }
 
 fn oac_config_no_id(control: &OriginAccessControl) -> String {
@@ -2059,8 +2097,7 @@ fn oac_config_no_id(control: &OriginAccessControl) -> String {
 }
 
 fn render_oac(control: &OriginAccessControl) -> String {
-    el("Id", &control.id)
-        + &wrap("OriginAccessControlConfig", &oac_config_no_id(control))
+    el("Id", &control.id) + &wrap("OriginAccessControlConfig", oac_config_no_id(control))
 }
 
 fn h_get_oac(backend: &mut Backend, id: &str) -> Response {
@@ -2068,7 +2105,7 @@ fn h_get_oac(backend: &mut Backend, id: &str) -> Response {
         Some(control) => resp_with(
             200,
             vec![("ETag", control.etag.clone())],
-            xml_decl(&wrap("OriginAccessControl", &render_oac(control))),
+            xml_decl(&wrap("OriginAccessControl", render_oac(control))),
         ),
         None => xml_error(
             404,
@@ -2081,7 +2118,11 @@ fn h_get_oac(backend: &mut Backend, id: &str) -> Response {
 fn h_update_oac(backend: &mut Backend, id: &str, req: &Request) -> Response {
     let root = body_xml(req);
     let config_el = config_of(&root, "OriginAccessControlConfig");
-    match backend.origin_access_controls.iter_mut().find(|c| c.id == id) {
+    match backend
+        .origin_access_controls
+        .iter_mut()
+        .find(|c| c.id == id)
+    {
         Some(control) => {
             control.update(config_el);
             let etag = control.etag.clone();
@@ -2101,7 +2142,11 @@ fn h_update_oac(backend: &mut Backend, id: &str, req: &Request) -> Response {
 }
 
 fn h_delete_oac(backend: &mut Backend, id: &str) -> Response {
-    match backend.origin_access_controls.iter().position(|c| c.id == id) {
+    match backend
+        .origin_access_controls
+        .iter()
+        .position(|c| c.id == id)
+    {
         Some(pos) => {
             backend.origin_access_controls.remove(pos);
             resp(200, "{}")
@@ -2113,7 +2158,6 @@ fn h_delete_oac(backend: &mut Backend, id: &str) -> Response {
         ),
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // Origin access identities (legacy OAI)
@@ -2131,14 +2175,22 @@ fn h_create_oai(backend: &mut Backend, req: &Request) -> Response {
     let oai = OriginAccessIdentity {
         id: random_upper(13),
         s3_canonical_user_id: String::from_utf8_lossy(&canonical).into_owned(),
-        caller_reference: config.text_of("CallerReference").unwrap_or_default().to_string(),
+        caller_reference: config
+            .text_of("CallerReference")
+            .unwrap_or_default()
+            .to_string(),
         comment: config.text_of("Comment").unwrap_or_default().to_string(),
         etag: random_upper(13),
     };
-    let location =
-        format!("https://cloudfront.amazonaws.com/2020-05-31/origin-access-identity/cloudfront/{}", oai.id);
+    let location = format!(
+        "https://cloudfront.amazonaws.com/2020-05-31/origin-access-identity/cloudfront/{}",
+        oai.id
+    );
     backend.origin_access_identities.push(oai);
-    let oai = backend.origin_access_identities.last().expect("just inserted");
+    let oai = backend
+        .origin_access_identities
+        .last()
+        .expect("just inserted");
     let body = render_oai(oai);
     resp_with(
         201,
@@ -2154,8 +2206,7 @@ fn render_oai(oai: &OriginAccessIdentity) -> String {
             + &el("S3CanonicalUserId", &oai.s3_canonical_user_id)
             + &wrap(
                 "CloudFrontOriginAccessIdentityConfig",
-                el("CallerReference", &oai.caller_reference)
-                    + &el("Comment", &oai.comment),
+                el("CallerReference", &oai.caller_reference) + &el("Comment", &oai.comment),
             ),
     )
 }
@@ -2223,7 +2274,11 @@ fn h_update_oai(backend: &mut Backend, id: &str, req: &Request) -> Response {
 }
 
 fn h_delete_oai(backend: &mut Backend, id: &str) -> Response {
-    match backend.origin_access_identities.iter().position(|o| o.id == id) {
+    match backend
+        .origin_access_identities
+        .iter()
+        .position(|o| o.id == id)
+    {
         Some(pos) => {
             backend.origin_access_identities.remove(pos);
             empty_resp(204)
@@ -2255,7 +2310,7 @@ fn h_list_oais(backend: &mut Backend) -> Response {
     let body = wrap(
         "CloudFrontOriginAccessIdentityList",
         "<Marker></Marker><MaxItems>100</MaxItems><IsTruncated>false</IsTruncated>".to_string()
-            + &el("Quantity", &oais.len().to_string())
+            + &el("Quantity", oais.len().to_string())
             + &items_block,
     );
     resp(200, xml_decl(&body))
@@ -2275,13 +2330,19 @@ fn h_create_public_key(backend: &mut Backend, req: &Request) -> Response {
     }
     let key = PublicKey {
         id: random_upper(14),
-        caller_ref: config.text_of("CallerReference").unwrap_or_default().to_string(),
+        caller_ref: config
+            .text_of("CallerReference")
+            .unwrap_or_default()
+            .to_string(),
         name: config.text_of("Name").unwrap_or_default().to_string(),
         encoded_key,
         created: now_millis_iso(),
         etag: random_upper(14),
     };
-    let location = format!("https://cloudfront.amazonaws.com/2020-05-31/public-key/{}", key.id);
+    let location = format!(
+        "https://cloudfront.amazonaws.com/2020-05-31/public-key/{}",
+        key.id
+    );
     backend.public_keys.push(key);
     let key = backend.public_keys.last().expect("just inserted");
     let body = render_public_key(key);
@@ -2390,7 +2451,7 @@ fn h_list_public_keys(backend: &mut Backend) -> Response {
     let body = wrap(
         "PublicKeyList",
         "<MaxItems>100</MaxItems>".to_string()
-            + &el("Quantity", &keys.len().to_string())
+            + &el("Quantity", keys.len().to_string())
             + &items_block,
     );
     resp(200, xml_decl(&body))
@@ -2412,7 +2473,10 @@ fn h_create_key_group(backend: &mut Backend, req: &Request) -> Response {
             .unwrap_or_default(),
         etag: random_upper(14),
     };
-    let location = format!("https://cloudfront.amazonaws.com/2020-05-31/key-group/{}", group.id);
+    let location = format!(
+        "https://cloudfront.amazonaws.com/2020-05-31/key-group/{}",
+        group.id
+    );
     backend.key_groups.push(group);
     let group = backend.key_groups.last().expect("just inserted");
     let body = render_key_group(group);
@@ -2519,7 +2583,7 @@ fn h_list_key_groups(backend: &mut Backend) -> Response {
     let groups = &backend.key_groups;
     let mut items = String::new();
     for group in groups {
-        items += &wrap("KeyGroupSummary", &render_key_group(group));
+        items += &wrap("KeyGroupSummary", render_key_group(group));
     }
     let items_block = if groups.is_empty() {
         String::new()
@@ -2529,7 +2593,7 @@ fn h_list_key_groups(backend: &mut Backend) -> Response {
     let body = wrap(
         "KeyGroupList",
         "<MaxItems>100</MaxItems>".to_string()
-            + &el("Quantity", &groups.len().to_string())
+            + &el("Quantity", groups.len().to_string())
             + &items_block,
     );
     resp(200, xml_decl(&body))
@@ -2558,10 +2622,7 @@ fn h_list_oac(backend: &mut Backend) -> Response {
     } else {
         wrap("Items", &items)
     };
-    let body = wrap(
-        "OriginAccessControlList",
-        &wrap("Items", &items).as_str(),
-    );
+    let body = wrap("OriginAccessControlList", wrap("Items", &items).as_str());
     let _ = items_block;
     resp(200, xml_decl(&body))
 }
@@ -2573,7 +2634,7 @@ fn h_get_oac_config(backend: &mut Backend, id: &str) -> Response {
             vec![("ETag", control.etag.clone())],
             xml_decl(&wrap(
                 "OriginAccessControlConfig",
-                &oac_config_no_id(control),
+                oac_config_no_id(control),
             )),
         ),
         None => xml_error(
@@ -2601,7 +2662,10 @@ fn h_create_function(account: u64, backend: &mut Backend, req: &Request) -> Resp
     }
     let func = CloudFrontFunction {
         name: name.clone(),
-        function_code: request.text_of("FunctionCode").unwrap_or_default().to_string(),
+        function_code: request
+            .text_of("FunctionCode")
+            .unwrap_or_default()
+            .to_string(),
         function_config: request.child("FunctionConfig").cloned().unwrap_or_default(),
         status: "UNPUBLISHED".to_string(),
         stage: "DEVELOPMENT".to_string(),
@@ -2628,10 +2692,10 @@ fn render_function_summary(func: &CloudFrontFunction) -> String {
             + &el("Status", &func.status)
             + &wrap(
                 "FunctionConfig",
-                el("Comment", &func.function_config.text_or("Comment", ""))
+                el("Comment", func.function_config.text_or("Comment", ""))
                     + &el(
                         "Runtime",
-                        &func
+                        func
                             .function_config
                             .text_of("Runtime")
                             .unwrap_or("cloudfront-js-1.0"),
@@ -2647,7 +2711,10 @@ fn render_function_summary(func: &CloudFrontFunction) -> String {
     )
 }
 
-fn function_by_name_mut<'a>(backend: &'a mut Backend, name: &str) -> Option<&'a mut CloudFrontFunction> {
+fn function_by_name_mut<'a>(
+    backend: &'a mut Backend,
+    name: &str,
+) -> Option<&'a mut CloudFrontFunction> {
     let pos = backend.functions.iter().position(|f| f.name == name)?;
     Some(&mut backend.functions[pos])
 }
@@ -2694,7 +2761,7 @@ fn h_update_function(account: u64, backend: &mut Backend, req: &Request, name: &
     match function_by_name_mut(backend, name) {
         Some(func) => {
             func.update(
-                &request.text_of("FunctionCode").unwrap_or_default(),
+                request.text_of("FunctionCode").unwrap_or_default(),
                 request.child("FunctionConfig").cloned().unwrap_or_default(),
             );
             let etag = func.etag.clone();
@@ -2776,7 +2843,7 @@ fn h_list_functions(backend: &mut Backend) -> Response {
     let body = wrap(
         "FunctionList",
         "<MaxItems>100</MaxItems>".to_string()
-            + &el("Quantity", &functions.len().to_string())
+            + &el("Quantity", functions.len().to_string())
             + &items_block,
     );
     resp(200, xml_decl(&body))
@@ -2790,7 +2857,10 @@ fn h_create_cache_policy(backend: &mut Backend, req: &Request) -> Response {
     let root = body_xml(req);
     let config_el = config_of(&root, "CachePolicyConfig");
     let policy = CachePolicy::new(random_upper(14), config_el);
-    let location = format!("https://cloudfront.amazonaws.com/2020-05-31/cache-policy/{}", policy.id);
+    let location = format!(
+        "https://cloudfront.amazonaws.com/2020-05-31/cache-policy/{}",
+        policy.id
+    );
     backend.cache_policies.push(policy);
     let policy = backend.cache_policies.last().expect("just inserted");
     let body = render_cache_policy(policy);
@@ -2862,11 +2932,7 @@ fn h_update_cache_policy(backend: &mut Backend, id: &str, req: &Request) -> Resp
             policy.update(config_el);
             let etag = policy.etag.clone();
             let body = render_cache_policy(policy);
-            resp_with(
-                200,
-                vec![("ETag", etag)],
-                xml_decl(&body),
-            )
+            resp_with(200, vec![("ETag", etag)], xml_decl(&body))
         }
         None => xml_error(
             404,
@@ -2896,7 +2962,7 @@ fn h_list_cache_policies(backend: &mut Backend) -> Response {
     for policy in policies {
         items += &wrap(
             "CachePolicySummary",
-            wrap("Type", "custom") + &wrap("CachePolicy", &render_cache_policy(policy)),
+            wrap("Type", "custom") + &wrap("CachePolicy", render_cache_policy(policy)),
         );
     }
     let items_block = if policies.is_empty() {
@@ -2907,7 +2973,7 @@ fn h_list_cache_policies(backend: &mut Backend) -> Response {
     let body = wrap(
         "CachePolicyList",
         "<MaxItems>100</MaxItems>".to_string()
-            + &el("Quantity", &policies.len().to_string())
+            + &el("Quantity", policies.len().to_string())
             + &items_block,
     );
     resp(200, xml_decl(&body))
@@ -2928,7 +2994,10 @@ fn h_create_rhp(backend: &mut Backend, req: &Request) -> Response {
         policy.id
     );
     backend.response_headers_policies.push(policy);
-    let policy = backend.response_headers_policies.last().expect("just inserted");
+    let policy = backend
+        .response_headers_policies
+        .last()
+        .expect("just inserted");
     let body = render_rhp(policy);
     resp_with(
         201,
@@ -2950,7 +3019,11 @@ fn render_rhp(policy: &ResponseHeadersPolicy) -> String {
 }
 
 fn h_get_rhp(backend: &mut Backend, id: &str) -> Response {
-    match backend.response_headers_policies.iter().find(|p| p.id == id) {
+    match backend
+        .response_headers_policies
+        .iter()
+        .find(|p| p.id == id)
+    {
         Some(policy) => resp_with(
             200,
             vec![("ETag", policy.etag.clone())],
@@ -2965,7 +3038,11 @@ fn h_get_rhp(backend: &mut Backend, id: &str) -> Response {
 }
 
 fn h_get_rhp_config(backend: &mut Backend, id: &str) -> Response {
-    match backend.response_headers_policies.iter().find(|p| p.id == id) {
+    match backend
+        .response_headers_policies
+        .iter()
+        .find(|p| p.id == id)
+    {
         Some(policy) => resp_with(
             200,
             vec![("ETag", policy.etag.clone())],
@@ -2985,7 +3062,11 @@ fn h_get_rhp_config(backend: &mut Backend, id: &str) -> Response {
 fn h_update_rhp(backend: &mut Backend, id: &str, req: &Request) -> Response {
     let root = body_xml(req);
     let config_el = config_of(&root, "ResponseHeadersPolicyConfig");
-    match backend.response_headers_policies.iter_mut().find(|p| p.id == id) {
+    match backend
+        .response_headers_policies
+        .iter_mut()
+        .find(|p| p.id == id)
+    {
         Some(policy) => {
             policy.update(config_el);
             let etag = policy.etag.clone();
@@ -3001,7 +3082,11 @@ fn h_update_rhp(backend: &mut Backend, id: &str, req: &Request) -> Response {
 }
 
 fn h_delete_rhp(backend: &mut Backend, id: &str) -> Response {
-    match backend.response_headers_policies.iter().position(|p| p.id == id) {
+    match backend
+        .response_headers_policies
+        .iter()
+        .position(|p| p.id == id)
+    {
         Some(pos) => {
             backend.response_headers_policies.remove(pos);
             empty_resp(204)
@@ -3020,7 +3105,7 @@ fn h_list_rhp(backend: &mut Backend) -> Response {
     for policy in policies {
         items += &wrap(
             "ResponseHeadersPolicySummary",
-            wrap("Type", "custom") + &wrap("ResponseHeadersPolicy", &render_rhp(policy)),
+            wrap("Type", "custom") + &wrap("ResponseHeadersPolicy", render_rhp(policy)),
         );
     }
     let items_block = if policies.is_empty() {
@@ -3030,8 +3115,9 @@ fn h_list_rhp(backend: &mut Backend) -> Response {
     };
     let body = wrap(
         "ResponseHeadersPolicyList",
-        "<MaxItems>100</MaxItems>".to_string() + &el("Quantity", &policies.len().to_string())
-             + &items_block,
+        "<MaxItems>100</MaxItems>".to_string()
+            + &el("Quantity", policies.len().to_string())
+            + &items_block,
     );
     resp(200, xml_decl(&body))
 }
@@ -3066,7 +3152,10 @@ fn h_create_orp(backend: &mut Backend, req: &Request) -> Response {
         policy.id
     );
     backend.origin_request_policies.push(policy);
-    let policy = backend.origin_request_policies.last().expect("just inserted");
+    let policy = backend
+        .origin_request_policies
+        .last()
+        .expect("just inserted");
     let body = render_orp(policy);
     resp_with(
         201,
@@ -3084,11 +3173,17 @@ fn render_orp(policy: &OriginRequestPolicy) -> String {
                 "OriginRequestPolicyConfig",
                 el("Name", &policy.name)
                     + &el("Comment", &policy.comment)
-                    + &wrap("HeadersConfig", &el("HeaderBehavior", &policy.headers_behavior))
-                    + &wrap("CookiesConfig", &el("CookieBehavior", &policy.cookies_behavior))
+                    + &wrap(
+                        "HeadersConfig",
+                        el("HeaderBehavior", &policy.headers_behavior),
+                    )
+                    + &wrap(
+                        "CookiesConfig",
+                        el("CookieBehavior", &policy.cookies_behavior),
+                    )
                     + &wrap(
                         "QueryStringsConfig",
-                        &el("QueryStringBehavior", &policy.query_strings_behavior),
+                        el("QueryStringBehavior", &policy.query_strings_behavior),
                     ),
             ),
     )
@@ -3118,11 +3213,17 @@ fn h_get_orp_config(backend: &mut Backend, id: &str) -> Response {
                 "OriginRequestPolicyConfig",
                 el("Name", &policy.name)
                     + &el("Comment", &policy.comment)
-                    + &wrap("HeadersConfig", &el("HeaderBehavior", &policy.headers_behavior))
-                    + &wrap("CookiesConfig", &el("CookieBehavior", &policy.cookies_behavior))
+                    + &wrap(
+                        "HeadersConfig",
+                        el("HeaderBehavior", &policy.headers_behavior),
+                    )
+                    + &wrap(
+                        "CookiesConfig",
+                        el("CookieBehavior", &policy.cookies_behavior),
+                    )
                     + &wrap(
                         "QueryStringsConfig",
-                        &el("QueryStringBehavior", &policy.query_strings_behavior),
+                        el("QueryStringBehavior", &policy.query_strings_behavior),
                     ),
             )),
         ),
@@ -3137,7 +3238,11 @@ fn h_get_orp_config(backend: &mut Backend, id: &str) -> Response {
 fn h_update_orp(backend: &mut Backend, id: &str, req: &Request) -> Response {
     let root = body_xml(req);
     let config_el = config_of(&root, "OriginRequestPolicyConfig");
-    match backend.origin_request_policies.iter_mut().find(|p| p.id == id) {
+    match backend
+        .origin_request_policies
+        .iter_mut()
+        .find(|p| p.id == id)
+    {
         Some(policy) => {
             policy.update(config_el);
             let etag = policy.etag.clone();
@@ -3153,7 +3258,11 @@ fn h_update_orp(backend: &mut Backend, id: &str, req: &Request) -> Response {
 }
 
 fn h_delete_orp(backend: &mut Backend, id: &str) -> Response {
-    match backend.origin_request_policies.iter().position(|p| p.id == id) {
+    match backend
+        .origin_request_policies
+        .iter()
+        .position(|p| p.id == id)
+    {
         Some(pos) => {
             backend.origin_request_policies.remove(pos);
             empty_resp(204)
@@ -3191,8 +3300,9 @@ fn h_list_orp(backend: &mut Backend) -> Response {
     };
     let body = wrap(
         "OriginRequestPolicyList",
-        "<MaxItems>100</MaxItems>".to_string() + &el("Quantity", &policies.len().to_string())
-             + &items_block,
+        "<MaxItems>100</MaxItems>".to_string()
+            + &el("Quantity", policies.len().to_string())
+            + &items_block,
     );
     resp(200, xml_decl(&body))
 }
@@ -3221,7 +3331,11 @@ fn h_create_fle(backend: &mut Backend, req: &Request) -> Response {
     backend.fle_configs.push(fle);
     let fle = backend.fle_configs.last().expect("just inserted");
     let body = render_fle(fle);
-    resp_with(201, vec![("ETag", fle.etag.clone()), ("Location", location)], xml_decl(&body))
+    resp_with(
+        201,
+        vec![("ETag", fle.etag.clone()), ("Location", location)],
+        xml_decl(&body),
+    )
 }
 
 fn render_fle(fle: &FleConfig) -> String {
@@ -3231,8 +3345,7 @@ fn render_fle(fle: &FleConfig) -> String {
             + &el("LastModifiedTime", &fle.last_modified_time)
             + &wrap(
                 "FieldLevelEncryptionConfig",
-                el("CallerReference", &fle.caller_reference)
-                    + &el("Comment", &fle.comment),
+                el("CallerReference", &fle.caller_reference) + &el("Comment", &fle.comment),
             ),
     )
 }
@@ -3259,8 +3372,7 @@ fn h_get_fle_config(backend: &mut Backend, id: &str) -> Response {
             vec![("ETag", fle.etag.clone())],
             xml_decl(&wrap(
                 "FieldLevelEncryptionConfig",
-                el("CallerReference", &fle.caller_reference)
-                    + &el("Comment", &fle.comment),
+                el("CallerReference", &fle.caller_reference) + &el("Comment", &fle.comment),
             )),
         ),
         None => xml_error(
@@ -3321,8 +3433,9 @@ fn h_list_fle(backend: &mut Backend) -> Response {
     };
     let body = wrap(
         "FieldLevelEncryptionList",
-        "<MaxItems>100</MaxItems>".to_string() + &el("Quantity", &configs.len().to_string())
-             + &items_block,
+        "<MaxItems>100</MaxItems>".to_string()
+            + &el("Quantity", configs.len().to_string())
+            + &items_block,
     );
     resp(200, xml_decl(&body))
 }
@@ -3412,11 +3525,7 @@ fn h_update_flep(backend: &mut Backend, id: &str, req: &Request) -> Response {
             profile.update(config_el);
             let etag = profile.etag.clone();
             let body = render_flep(profile);
-            resp_with(
-                200,
-                vec![("ETag", etag)],
-                xml_decl(&body),
-            )
+            resp_with(200, vec![("ETag", etag)], xml_decl(&body))
         }
         None => xml_error(
             404,
@@ -3459,8 +3568,9 @@ fn h_list_flep(backend: &mut Backend) -> Response {
     };
     let body = wrap(
         "FieldLevelEncryptionProfileList",
-        "<MaxItems>100</MaxItems>".to_string() + &el("Quantity", &profiles.len().to_string())
-             + &items_block,
+        "<MaxItems>100</MaxItems>".to_string()
+            + &el("Quantity", profiles.len().to_string())
+            + &items_block,
     );
     resp(200, xml_decl(&body))
 }
@@ -3499,7 +3609,8 @@ fn render_cdp(policy: &CdpPolicy) -> String {
             + &el("LastModifiedTime", &policy.last_modified_time)
             + &wrap(
                 "ContinuousDeploymentPolicyConfig",
-                "<StagingDistributionDnsNames><Quantity>0</Quantity></StagingDistributionDnsNames>".to_string()
+                "<StagingDistributionDnsNames><Quantity>0</Quantity></StagingDistributionDnsNames>"
+                    .to_string()
                     + &el("Enabled", &policy.enabled),
             ),
     )
@@ -3527,7 +3638,8 @@ fn h_get_cdp_config(backend: &mut Backend, id: &str) -> Response {
             vec![("ETag", policy.etag.clone())],
             xml_decl(&wrap(
                 "ContinuousDeploymentPolicyConfig",
-                "<StagingDistributionDnsNames><Quantity>0</Quantity></StagingDistributionDnsNames>".to_string()
+                "<StagingDistributionDnsNames><Quantity>0</Quantity></StagingDistributionDnsNames>"
+                    .to_string()
                     + &el("Enabled", &policy.enabled),
             )),
         ),
@@ -3547,11 +3659,7 @@ fn h_update_cdp(backend: &mut Backend, id: &str, req: &Request) -> Response {
             policy.update(config_el);
             let etag = policy.etag.clone();
             let body = render_cdp(policy);
-            resp_with(
-                200,
-                vec![("ETag", etag)],
-                xml_decl(&body),
-            )
+            resp_with(200, vec![("ETag", etag)], xml_decl(&body))
         }
         None => xml_error(
             404,
@@ -3581,7 +3689,7 @@ fn h_list_cdp(backend: &mut Backend) -> Response {
     for policy in policies {
         items += &wrap(
             "ContinuousDeploymentPolicySummary",
-            &wrap("ContinuousDeploymentPolicy", &render_cdp(policy)),
+            wrap("ContinuousDeploymentPolicy", render_cdp(policy)),
         );
     }
     let items_block = if policies.is_empty() {
@@ -3592,7 +3700,7 @@ fn h_list_cdp(backend: &mut Backend) -> Response {
     let body = wrap(
         "ContinuousDeploymentPolicyList",
         "<MaxItems>100</MaxItems>".to_string()
-            + &el("Quantity", &policies.len().to_string())
+            + &el("Quantity", policies.len().to_string())
             + &items_block,
     );
     resp(200, xml_decl(&body))
@@ -3602,7 +3710,11 @@ fn h_list_cdp(backend: &mut Backend) -> Response {
 // Monitoring subscriptions
 // ---------------------------------------------------------------------------
 
-fn h_create_monitoring_subscription(backend: &mut Backend, dist_id: &str, req: &Request) -> Response {
+fn h_create_monitoring_subscription(
+    backend: &mut Backend,
+    dist_id: &str,
+    req: &Request,
+) -> Response {
     if tokenized_distribution(backend, dist_id).is_none() {
         return xml_error(
             404,
@@ -3612,16 +3724,18 @@ fn h_create_monitoring_subscription(backend: &mut Backend, dist_id: &str, req: &
     }
     let root = body_xml(req);
     let status = root
-        .sub(&["MonitoringSubscription", "RealtimeMetricsSubscriptionConfig"])
+        .sub(&["RealtimeMetricsSubscriptionConfig"])
         .and_then(|cfg| cfg.text_of("RealtimeMetricsSubscriptionStatus"))
         .unwrap_or("Disabled")
         .to_string();
-    backend.monitoring.insert(dist_id.to_string(), status.clone());
+    backend
+        .monitoring
+        .insert(dist_id.to_string(), status.clone());
     let body = wrap(
         "MonitoringSubscription",
-        &wrap(
+        wrap(
             "RealtimeMetricsSubscriptionConfig",
-            &el("RealtimeMetricsSubscriptionStatus", &status),
+            el("RealtimeMetricsSubscriptionStatus", &status),
         ),
     );
     resp(200, xml_decl(&body))
@@ -3632,9 +3746,9 @@ fn h_get_monitoring_subscription(backend: &mut Backend, dist_id: &str) -> Respon
         Some(status) => {
             let body = wrap(
                 "MonitoringSubscription",
-                &wrap(
+                wrap(
                     "RealtimeMetricsSubscriptionConfig",
-                    &el("RealtimeMetricsSubscriptionStatus", status),
+                    el("RealtimeMetricsSubscriptionStatus", status),
                 ),
             );
             resp(200, xml_decl(&body))
@@ -3740,20 +3854,32 @@ fn render_rlc_inner(config: &RealtimeLogConfig) -> String {
         "RealtimeLogConfig",
         el("ARN", &config.arn)
             + &el("Name", &config.name)
-            + &el("SamplingRate", &config.sampling_rate.to_string())
+            + &el("SamplingRate", config.sampling_rate.to_string())
             + &wrap("EndPoints", &endpoints)
             + &wrap("Fields", &field_items),
     )
 }
 
-fn find_rlc<'a>(backend: &'a mut Backend, name: Option<&str>, arn: Option<&str>) -> Option<&'a mut RealtimeLogConfig> {
+fn find_rlc<'a>(
+    backend: &'a mut Backend,
+    name: Option<&str>,
+    arn: Option<&str>,
+) -> Option<&'a mut RealtimeLogConfig> {
     if let Some(name) = name {
-        if let Some(pos) = backend.realtime_log_configs.iter().position(|c| c.name == name) {
+        if let Some(pos) = backend
+            .realtime_log_configs
+            .iter()
+            .position(|c| c.name == name)
+        {
             return Some(&mut backend.realtime_log_configs[pos]);
         }
     }
     if let Some(arn) = arn {
-        if let Some(pos) = backend.realtime_log_configs.iter().position(|c| c.arn == arn) {
+        if let Some(pos) = backend
+            .realtime_log_configs
+            .iter()
+            .position(|c| c.arn == arn)
+        {
             return Some(&mut backend.realtime_log_configs[pos]);
         }
     }
@@ -3777,7 +3903,9 @@ fn h_get_rlc(_account: u64, backend: &mut Backend, req: &Request) -> Response {
 
 fn h_update_rlc(_account: u64, backend: &mut Backend, req: &Request) -> Response {
     let body = parse_realtime_body(req);
-    let sampling_rate = body.text_of("SamplingRate").and_then(|s| s.parse::<i64>().ok());
+    let sampling_rate = body
+        .text_of("SamplingRate")
+        .and_then(|s| s.parse::<i64>().ok());
     let end_points = if body.child("EndPoints").is_some() {
         Some(parse_rlc_endpoints(&body))
     } else {
@@ -3792,7 +3920,10 @@ fn h_update_rlc(_account: u64, backend: &mut Backend, req: &Request) -> Response
         Some(config) => {
             config.update(sampling_rate, end_points, fields);
             let inner = render_rlc_inner(config);
-            resp(200, xml_decl(&wrap("UpdateRealtimeLogConfigResult", &inner)))
+            resp(
+                200,
+                xml_decl(&wrap("UpdateRealtimeLogConfigResult", &inner)),
+            )
         }
         None => xml_error(
             404,
@@ -3808,8 +3939,7 @@ fn h_delete_rlc(backend: &mut Backend, req: &Request) -> Response {
         let name = body.text_of("Name");
         let arn = body.text_of("ARN");
         backend.realtime_log_configs.iter().position(|c| {
-            name.map(|n| c.name == n).unwrap_or(false)
-                || arn.map(|a| c.arn == a).unwrap_or(false)
+            name.map(|n| c.name == n).unwrap_or(false) || arn.map(|a| c.arn == a).unwrap_or(false)
         })
     };
     match pos {
@@ -3833,7 +3963,7 @@ fn h_list_rlc(backend: &mut Backend) -> Response {
             "member",
             el("ARN", &config.arn)
                 + &el("Name", &config.name)
-                + &el("SamplingRate", &config.sampling_rate.to_string()),
+                + &el("SamplingRate", config.sampling_rate.to_string()),
         );
     }
     let items_block = if configs.is_empty() {
@@ -3868,11 +3998,13 @@ fn h_create_streaming(account: u64, backend: &mut Backend, req: &Request) -> Res
     if !tags.is_empty() {
         save_tags(backend, &dist.arn, tags);
     }
-    let location = format!(
-        "https://cloudfront.amazonaws.com/2020-05-31/streaming-distribution/{id}"
-    );
+    let location =
+        format!("https://cloudfront.amazonaws.com/2020-05-31/streaming-distribution/{id}");
     backend.streaming_distributions.push(dist);
-    let dist = backend.streaming_distributions.last().expect("just inserted");
+    let dist = backend
+        .streaming_distributions
+        .last()
+        .expect("just inserted");
     let body = render_streaming_doc(dist);
     resp_with(
         201,
@@ -3899,35 +4031,39 @@ fn streaming_config_inner(dist: &StreamingDistribution) -> String {
     }
     let logging = config.child("Logging");
     el(
-            "CallerReference",
-            config
-                .text_of("CallerReference")
-                .unwrap_or(&uuid::Uuid::new_v4().to_string()),
-        ) + &wrap(
-            "S3Origin",
-            el(
-                "DomainName",
-                s3_origin.and_then(|s| s.text_of("DomainName")).unwrap_or(""),
-            ) + &el(
-                "OriginAccessIdentity",
-                s3_origin.and_then(|s| s.text_of("OriginAccessIdentity")).unwrap_or(""),
-            ),
-        )
-        + &wrap(
-            "Aliases",
-            el("Quantity", &aliases.len().to_string())
-                + &if aliases.is_empty() {
-                    String::new()
-                } else {
-                    wrap("Items", &alias_items)
-                },
-        )
-        + &el("Comment", &config.text_or("Comment", ""))
+        "CallerReference",
+        config
+            .text_of("CallerReference")
+            .unwrap_or(&uuid::Uuid::new_v4().to_string()),
+    ) + &wrap(
+        "S3Origin",
+        el(
+            "DomainName",
+            s3_origin
+                .and_then(|s| s.text_of("DomainName"))
+                .unwrap_or(""),
+        ) + &el(
+            "OriginAccessIdentity",
+            s3_origin
+                .and_then(|s| s.text_of("OriginAccessIdentity"))
+                .unwrap_or(""),
+        ),
+    ) + &wrap(
+        "Aliases",
+        el("Quantity", aliases.len().to_string())
+            + &if aliases.is_empty() {
+                String::new()
+            } else {
+                wrap("Items", &alias_items)
+            },
+    ) + &el("Comment", config.text_or("Comment", ""))
         + &wrap(
             "Logging",
             el(
                 "Enabled",
-                logging.and_then(|l| l.text_of("Enabled")).unwrap_or("False"),
+                logging
+                    .and_then(|l| l.text_of("Enabled"))
+                    .unwrap_or("False"),
             ) + &el(
                 "Bucket",
                 logging.and_then(|l| l.text_of("Bucket")).unwrap_or(""),
@@ -3949,7 +4085,7 @@ fn streaming_config_inner(dist: &StreamingDistribution) -> String {
                 } else {
                     "false"
                 },
-            ) + &el("Quantity", &signers.len().to_string())
+            ) + &el("Quantity", signers.len().to_string())
                 + &if signers.is_empty() {
                     String::new()
                 } else {
@@ -3960,7 +4096,7 @@ fn streaming_config_inner(dist: &StreamingDistribution) -> String {
             "PriceClass",
             config.text_of("PriceClass").unwrap_or("PriceClass_All"),
         )
-        + &el("Enabled", &config.text_or("Enabled", "false"))
+        + &el("Enabled", config.text_or("Enabled", "false"))
 }
 
 fn render_streaming_doc(dist: &StreamingDistribution) -> String {
@@ -3972,7 +4108,7 @@ fn render_streaming_doc(dist: &StreamingDistribution) -> String {
             + &el("LastModifiedTime", &dist.last_modified_time)
             + &el("DomainName", &dist.domain_name)
             + "<ActiveTrustedSigners><Enabled>false</Enabled><Quantity>0</Quantity></ActiveTrustedSigners>"
-            + &wrap("StreamingDistributionConfig", &streaming_config_inner(dist)),
+            + &wrap("StreamingDistributionConfig", streaming_config_inner(dist)),
     )
 }
 
@@ -4007,7 +4143,7 @@ fn h_get_streaming_config(backend: &mut Backend, id: &str) -> Response {
                 vec![("ETag", etag)],
                 xml_decl(&wrap(
                     "StreamingDistributionConfig",
-                    &streaming_config_inner(&dist),
+                    streaming_config_inner(&dist),
                 )),
             )
         }
@@ -4022,7 +4158,11 @@ fn h_get_streaming_config(backend: &mut Backend, id: &str) -> Response {
 fn h_update_streaming(backend: &mut Backend, id: &str, req: &Request) -> Response {
     let root = body_xml(req);
     let config_el = config_of(&root, "StreamingDistributionConfig");
-    let pos = match backend.streaming_distributions.iter().position(|d| d.id == id) {
+    let pos = match backend
+        .streaming_distributions
+        .iter()
+        .position(|d| d.id == id)
+    {
         Some(pos) => pos,
         None => {
             return xml_error(
@@ -4041,7 +4181,11 @@ fn h_update_streaming(backend: &mut Backend, id: &str, req: &Request) -> Respons
 }
 
 fn h_delete_streaming(backend: &mut Backend, id: &str) -> Response {
-    match backend.streaming_distributions.iter().position(|d| d.id == id) {
+    match backend
+        .streaming_distributions
+        .iter()
+        .position(|d| d.id == id)
+    {
         Some(pos) => {
             backend.streaming_distributions.remove(pos);
             empty_resp(204)
@@ -4078,7 +4222,10 @@ fn h_list_streaming(backend: &mut Backend) -> Response {
     let body = wrap(
         "StreamingDistributionList",
         "<Marker></Marker><MaxItems>100</MaxItems><IsTruncated>false</IsTruncated>".to_string()
-            + &el("Quantity", &backend.streaming_distributions.len().to_string())
+            + &el(
+                "Quantity",
+                backend.streaming_distributions.len().to_string(),
+            )
             + &items_block,
     );
     resp(200, xml_decl(&body))
@@ -4144,7 +4291,7 @@ fn h_update_kvs(backend: &mut Backend, name: &str, req: &Request) -> Response {
     let request = config_of(&root, "UpdateKeyValueStoreRequest");
     match backend.key_value_stores.iter_mut().find(|k| k.name == name) {
         Some(kvs) => {
-            kvs.update(&request.text_of("Comment").unwrap_or_default());
+            kvs.update(request.text_of("Comment").unwrap_or_default());
             let etag = kvs.etag.clone();
             let body = render_kvs(kvs);
             resp_with(200, vec![("ETag", etag)], xml_decl(&body))
@@ -4176,7 +4323,7 @@ fn h_list_kvs(backend: &mut Backend) -> Response {
     let body = wrap(
         "KeyValueStoreList",
         "<MaxItems>100</MaxItems>".to_string()
-            + &el("Quantity", &stores.len().to_string())
+            + &el("Quantity", stores.len().to_string())
             + &items_block,
     );
     resp(200, xml_decl(&body))
@@ -4207,35 +4354,29 @@ fn h_create_vpc_origin(account: u64, backend: &mut Backend, req: &Request) -> Re
     backend.vpc_origins.push(vo);
     let vo = backend.vpc_origins.last().expect("just inserted");
     let body = render_vpc_origin(vo, account);
-    resp_with(
-        202,
-        vec![("ETag", vo.etag.clone())],
-        xml_decl(&body),
-    )
+    resp_with(202, vec![("ETag", vo.etag.clone())], xml_decl(&body))
 }
 
 fn vpc_config_values(vo: &VpcOrigin) -> String {
     el(
         "Name",
-        &vo.endpoint_config
+        vo.endpoint_config
             .text_of("Name")
-            .unwrap_or_default()
-            .to_string(),
+            .unwrap_or_default(),
     ) + &el(
         "Arn",
-        &vo.endpoint_config
+        vo.endpoint_config
             .text_of("Arn")
-            .unwrap_or_default()
-            .to_string(),
+            .unwrap_or_default(),
     ) + &el(
         "HTTPPort",
-        &vo.endpoint_config.text_of("HTTPPort").unwrap_or("80"),
+        vo.endpoint_config.text_of("HTTPPort").unwrap_or("80"),
     ) + &el(
         "HTTPSPort",
-        &vo.endpoint_config.text_of("HTTPSPort").unwrap_or("443"),
+        vo.endpoint_config.text_of("HTTPSPort").unwrap_or("443"),
     ) + &el(
         "OriginProtocolPolicy",
-        &vo.endpoint_config
+        vo.endpoint_config
             .text_of("OriginProtocolPolicy")
             .unwrap_or("https-only"),
     ) + "<OriginSslProtocols><Quantity>0</Quantity><Items/></OriginSslProtocols>"
@@ -4247,11 +4388,11 @@ fn render_vpc_origin(vo: &VpcOrigin, account: u64) -> String {
         "VpcOrigin",
         el("Id", &vo.id)
             + &el("Arn", &vo.arn)
-            + &el("AccountId", &vo.account_id.to_string())
+            + &el("AccountId", vo.account_id.to_string())
             + &el("Status", &vo.status)
             + &el("CreatedTime", &vo.created_time)
             + &el("LastModifiedTime", &vo.last_modified_time)
-            + &wrap("VpcOriginEndpointConfig", &vpc_config_values(vo)),
+            + &wrap("VpcOriginEndpointConfig", vpc_config_values(vo)),
     )
 }
 
@@ -4278,7 +4419,12 @@ fn h_update_vpc_origin(backend: &mut Backend, id: &str, req: &Request) -> Respon
     let request = config_of(&root, "UpdateVpcOriginRequest");
     match backend.vpc_origins.iter_mut().find(|v| v.id == id) {
         Some(vo) => {
-            vo.update(request.child("VpcOriginEndpointConfig").cloned().unwrap_or_default());
+            vo.update(
+                request
+                    .child("VpcOriginEndpointConfig")
+                    .cloned()
+                    .unwrap_or_default(),
+            );
             let etag = vo.etag.clone();
             let account = vo.account_id;
             let body = render_vpc_origin(vo, account);
@@ -4306,16 +4452,16 @@ fn h_list_vpc_origins(backend: &mut Backend) -> Response {
             el("Id", &vo.id)
                 + &el(
                     "Name",
-                    &vo.endpoint_config.text_of("Name").unwrap_or_default(),
+                    vo.endpoint_config.text_of("Name").unwrap_or_default(),
                 )
                 + &el("Status", &vo.status)
                 + &el("CreatedTime", &vo.created_time)
                 + &el("LastModifiedTime", &vo.last_modified_time)
                 + &el("Arn", &vo.arn)
-                + &el("AccountId", &vo.account_id.to_string())
+                + &el("AccountId", vo.account_id.to_string())
                 + &el(
                     "OriginEndpointArn",
-                    &vo.endpoint_config.text_of("Arn").unwrap_or_default(),
+                    vo.endpoint_config.text_of("Arn").unwrap_or_default(),
                 ),
         );
     }
@@ -4327,7 +4473,7 @@ fn h_list_vpc_origins(backend: &mut Backend) -> Response {
     let body = wrap(
         "VpcOriginList",
         "<Marker></Marker><MaxItems>100</MaxItems><IsTruncated>false</IsTruncated>".to_string()
-            + &el("Quantity", &origins.len().to_string())
+            + &el("Quantity", origins.len().to_string())
             + &items_block,
     );
     resp(200, xml_decl(&body))
@@ -4363,7 +4509,10 @@ fn render_trust_store(ts: &TrustStore) -> String {
             + &el("Arn", &ts.arn)
             + &el("Name", &ts.name)
             + &el("Status", &ts.status)
-            + &el("NumberOfCaCertificates", &ts.number_of_ca_certificates.to_string())
+            + &el(
+                "NumberOfCaCertificates",
+                ts.number_of_ca_certificates.to_string(),
+            )
             + &el("LastModifiedTime", &ts.last_modified_time),
     )
 }
@@ -4452,7 +4601,7 @@ fn render_anycast(aip: &AnycastIpList) -> String {
             + &el("Status", &aip.status)
             + &el("Arn", &aip.arn)
             + "<AnycastIps/>"
-            + &el("IpCount", &aip.ip_count.to_string())
+            + &el("IpCount", aip.ip_count.to_string())
             + &el("LastModifiedTime", &aip.last_modified_time),
     )
 }
@@ -4487,7 +4636,7 @@ fn h_list_anycast(backend: &mut Backend) -> Response {
                 + &el("Name", &aip.name)
                 + &el("Status", &aip.status)
                 + &el("Arn", &aip.arn)
-                + &el("IpCount", &aip.ip_count.to_string())
+                + &el("IpCount", aip.ip_count.to_string())
                 + &el("LastModifiedTime", &aip.last_modified_time),
         );
     }
@@ -4499,7 +4648,7 @@ fn h_list_anycast(backend: &mut Backend) -> Response {
     let body = wrap(
         "AnycastIpLists",
         "<Marker></Marker><MaxItems>100</MaxItems><IsTruncated>false</IsTruncated>".to_string()
-            + &el("Quantity", &lists.len().to_string())
+            + &el("Quantity", lists.len().to_string())
             + &items_block,
     );
     resp(200, xml_decl(&body))
@@ -4513,10 +4662,7 @@ fn h_get_resource_policy() -> Response {
     resp_with(
         200,
         vec![("ETag", random_upper(14))],
-        xml_decl(&wrap(
-            "GetResourcePolicyResult",
-            "",
-        )),
+        xml_decl(&wrap("GetResourcePolicyResult", "")),
     )
 }
 
@@ -4640,7 +4786,9 @@ fn h_create_connection_function(account: u64, backend: &mut Backend, req: &Reque
     let cf = ConnectionFunction {
         id: id.clone(),
         name: name.clone(),
-        connection_function_arn: format!("arn:aws:cloudfront::{account}:connection-function/{name}"),
+        connection_function_arn: format!(
+            "arn:aws:cloudfront::{account}:connection-function/{name}"
+        ),
         status: "UNASSOCIATED".to_string(),
         stage: "DEVELOPMENT".to_string(),
         created_time: now_millis_iso(),
@@ -4648,8 +4796,15 @@ fn h_create_connection_function(account: u64, backend: &mut Backend, req: &Reque
         etag: random_upper(14),
     };
     backend.connection_functions.push(cf);
-    let cf = backend.connection_functions.iter().find(|f| f.name == name).expect("just inserted");
-    let body = wrap("ConnectionFunctionSummary", &render_connection_function_fields(cf));
+    let cf = backend
+        .connection_functions
+        .iter()
+        .find(|f| f.name == name)
+        .expect("just inserted");
+    let body = wrap(
+        "ConnectionFunctionSummary",
+        render_connection_function_fields(cf),
+    );
     resp_with(201, vec![("ETag", cf.etag.clone())], xml_decl(&body))
 }
 
@@ -4682,11 +4837,18 @@ fn h_get_connection_function(backend: &mut Backend, name: &str) -> Response {
 }
 
 fn h_update_connection_function(backend: &mut Backend, name: &str) -> Response {
-    match backend.connection_functions.iter_mut().find(|f| f.name == name) {
+    match backend
+        .connection_functions
+        .iter_mut()
+        .find(|f| f.name == name)
+    {
         Some(cf) => {
             cf.etag = random_upper(14);
             let etag = cf.etag.clone();
-            let body = wrap("ConnectionFunctionSummary", &render_connection_function_fields(cf));
+            let body = wrap(
+                "ConnectionFunctionSummary",
+                render_connection_function_fields(cf),
+            );
             resp_with(200, vec![("ETag", etag)], xml_decl(&body))
         }
         None => xml_error(
@@ -4698,12 +4860,19 @@ fn h_update_connection_function(backend: &mut Backend, name: &str) -> Response {
 }
 
 fn h_publish_connection_function(backend: &mut Backend, name: &str) -> Response {
-    match backend.connection_functions.iter_mut().find(|f| f.name == name) {
+    match backend
+        .connection_functions
+        .iter_mut()
+        .find(|f| f.name == name)
+    {
         Some(cf) => {
             cf.stage = "LIVE".to_string();
             cf.etag = random_upper(14);
             let etag = cf.etag.clone();
-            let body = wrap("ConnectionFunctionSummary", &render_connection_function_fields(cf));
+            let body = wrap(
+                "ConnectionFunctionSummary",
+                render_connection_function_fields(cf),
+            );
             resp_with(200, vec![("ETag", etag)], xml_decl(&body))
         }
         None => xml_error(
@@ -4724,10 +4893,8 @@ fn h_test_connection_function() -> Response {
         200,
         format!(
             "<?xml version=\"1.0\"?>\n<TestResult xmlns=\"{XMLNS}\">{inner}</TestResult>",
-            inner = wrap(
-                "FunctionOutput",
-                "{\"response\":{\"statusCode\":200}}"
-            ) + &el("ComputeUtilization", "12")
+            inner = wrap("FunctionOutput", "{\"response\":{\"statusCode\":200}}")
+                + &el("ComputeUtilization", "12")
         ),
     )
 }
@@ -4736,7 +4903,10 @@ fn h_list_connection_functions(backend: &mut Backend) -> Response {
     let funcs = &backend.connection_functions;
     let mut items = String::new();
     for cf in funcs {
-        items += &wrap("ConnectionFunctionSummary", &render_connection_function_fields(cf));
+        items += &wrap(
+            "ConnectionFunctionSummary",
+            render_connection_function_fields(cf),
+        );
     }
     let body = wrap("ConnectionFunctions", &items);
     resp(200, xml_decl(&body))
@@ -4846,17 +5016,13 @@ fn h_list_tenants(backend: &mut Backend) -> Response {
 }
 
 fn h_create_tenant_invalidation() -> Response {
-    let body = wrap(
-        "Invalidation",
-        el("Id", &random_upper(13))
-            + &el("Status", "COMPLETED")
-            + &el("CreateTime", "2021-01-01T00:00:00.000Z")
-            + &wrap(
-                "InvalidationBatch",
-                "<Paths><Quantity>0</Quantity></Paths>".to_string()
-                    + &el("CallerReference", "ref"),
-            ),
-    );
+    let body = el("Id", random_upper(13))
+        + &el("Status", "COMPLETED")
+        + &el("CreateTime", "2021-01-01T00:00:00.000Z")
+        + &wrap(
+            "InvalidationBatch",
+            "<Paths><Quantity>0</Quantity></Paths>".to_string() + &el("CallerReference", "ref"),
+        );
     resp_with(
         201,
         vec![],
@@ -4865,17 +5031,13 @@ fn h_create_tenant_invalidation() -> Response {
 }
 
 fn h_get_tenant_invalidation(inv_id: &str) -> Response {
-    let body = wrap(
-        "Invalidation",
-        el("Id", inv_id)
-            + &el("Status", "COMPLETED")
-            + &el("CreateTime", "2021-01-01T00:00:00.000Z")
-            + &wrap(
-                "InvalidationBatch",
-                "<Paths><Quantity>0</Quantity></Paths>".to_string()
-                    + &el("CallerReference", "ref"),
-            ),
-    );
+    let body = el("Id", inv_id)
+        + &el("Status", "COMPLETED")
+        + &el("CreateTime", "2021-01-01T00:00:00.000Z")
+        + &wrap(
+            "InvalidationBatch",
+            "<Paths><Quantity>0</Quantity></Paths>".to_string() + &el("CallerReference", "ref"),
+        );
     resp(
         200,
         format!("<?xml version=\"1.0\"?>\n<Invalidation xmlns=\"{XMLNS}\">{body}</Invalidation>"),
@@ -4929,7 +5091,7 @@ fn h_list_distributions_by_web_acl_id(backend: &mut Backend, web_acl_id: &str) -
 fn distribution_list(distributions: &[&Distribution]) -> Response {
     let mut items = String::new();
     for dist in distributions {
-        items += &wrap("DistributionSummary", &render_dist_entry(dist));
+        items += &wrap("DistributionSummary", render_dist_entry(dist));
     }
     let items_block = if distributions.is_empty() {
         String::new()
@@ -4938,8 +5100,9 @@ fn distribution_list(distributions: &[&Distribution]) -> Response {
     };
     let body = wrap(
         "DistributionList",
-        "<Marker></Marker><MaxItems>100</MaxItems><IsTruncated>false</IsTruncated>".to_string() + &el("Quantity", &distributions.len().to_string())
-             + &items_block,
+        "<Marker></Marker><MaxItems>100</MaxItems><IsTruncated>false</IsTruncated>".to_string()
+            + &el("Quantity", distributions.len().to_string())
+            + &items_block,
     );
     resp(200, xml_decl(&body))
 }
@@ -4961,7 +5124,7 @@ fn distribution_id_list(ids: &[String]) -> Response {
     let body = wrap(
         "DistributionIdList",
         "<Marker></Marker><MaxItems>100</MaxItems><IsTruncated>false</IsTruncated>".to_string()
-            + &el("Quantity", &ids.len().to_string())
+            + &el("Quantity", ids.len().to_string())
             + &items_block,
     );
     resp(200, xml_decl(&body))
@@ -4980,7 +5143,10 @@ fn h_list_distributions_by_key_group(backend: &mut Backend, key_group_id: &str) 
             ids.push(dist.id.clone());
             continue;
         }
-        for behavior in dist.config.els_at(&["CacheBehaviors", "Items"], "CacheBehavior") {
+        for behavior in dist
+            .config
+            .els_at(&["CacheBehaviors", "Items"], "CacheBehavior")
+        {
             if behavior
                 .texts_at(&["TrustedKeyGroups", "Items"], "KeyGroup")
                 .iter()
@@ -4996,7 +5162,10 @@ fn h_list_distributions_by_key_group(backend: &mut Backend, key_group_id: &str) 
 
 fn h_list_distributions_by_realtime_log_config(backend: &mut Backend, req: &Request) -> Response {
     let body = parse_realtime_body(req);
-    let arn = body.text_of("RealtimeLogConfigArn").unwrap_or("").to_string();
+    let arn = body
+        .text_of("RealtimeLogConfigArn")
+        .unwrap_or("")
+        .to_string();
     for dist in &mut backend.distributions {
         dist.advance();
     }
@@ -5032,7 +5201,7 @@ fn h_list_conflicting_aliases(
                     "ConflictingAlias",
                     el("Alias", candidate)
                         + &el("DistributionId", &dist.id)
-                        + &el("AccountId", &account.to_string()),
+                        + &el("AccountId", account.to_string()),
                 );
             }
         }
@@ -5045,13 +5214,18 @@ fn h_list_conflicting_aliases(
     };
     let body = wrap(
         "ConflictingAliasesList",
-        "<MaxItems>100</MaxItems>".to_string()
-            + &el("Quantity", &count.to_string())
-            + &items_block,
+        "<MaxItems>100</MaxItems>".to_string() + &el("Quantity", count.to_string()) + &items_block,
     );
     resp(200, xml_decl(&body))
 }
 
 fn empty_resp_status(status: u16) -> Response {
     empty_resp(status)
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
 }
