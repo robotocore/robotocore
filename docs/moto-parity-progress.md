@@ -20,6 +20,64 @@ are parsed by `tooling/moto_port_progress.py`.
   skipped` — the failures are the documented port backlog
   (`tooling/parity-known-artifacts.md`).
 
+## Wave 1 (2026-10-19) — signer, shield, datapipeline, ram
+
+- Ported: `signer` (26/26), `shield` (35/35), `datapipeline` (23/23), `ram` (41/41).
+  Suites restored from `7170f904^`, all green against the merged twin on 4566.
+- Superseded-arch note: an orphaned moto-proxy server from the abandoned
+  `.worktrees/s3` worktree occupied ports 4641/4642 and was killed during
+  the wave (superseded architecture, not the 4566 twin).
+- G2: no tests removed — probes show 0 `not_implemented` for all four.
+  datapipeline's 11 probe `500_error` entries were moto `KeyError` crashes
+  on missing pipelines; implemented as real handlers answering the fork's
+  `PipelineNotFoundException` (400) instead of reproducing the crash.
+- Deliberate quirk retained: shield `DescribeProtection` with no selector
+  answers moto's 500 InternalError (probe + unit test document it).
+- signer suite: one test's hardcoded `localhost:4566` now reads
+  `ENDPOINT_URL` (assertion untouched, needed to test against a worktree
+  port).
+- Registry rows flipped `moto`→`native` for the four; gates: 906 workspace
+  lib tests, fmt/clippy clean, parity promoted (full lane drift-clean).
+- Post-wave per gate script: REMAINING 54, G2 UNCERTAIN 8 (unchanged).
+
+## Wave 3 (2026-10-19, on top of d40bc788) — twelve services
+
+- Ported: `dms` (178/178), `quicksight` (242/242), `pinpoint` (136/136),
+  `networkmanager` (112/112), `route53` (110/110 — one of the four
+  python-native regressions closed), `ses` (92 of 113; 21 assertions for
+  ops absent from the moto fork v1 surface removed with double evidence),
+  `synthetics` (37/37, second regression closed), `elasticbeanstalk`
+  (61/61), `memorydb` (36/36 with 15 moto-absent stub tests removed),
+  `fsx` (48/48 of 63; 15 moto-absent removed), `panorama` (46/46),
+  `connectcampaigns` (17/17; 8 moto-absent removed).
+- **Regression note**: `route53`, `ses`, `synthetics` were python-era
+  native providers that the first rust port had dropped; all three are
+  native again here (rdsdata remains in the queue).
+- Probe-staleness applied: dms/pinpoint/networkmanager/route53/ses/synth
+  etics/elasticbeanstalk/panorama/quicksight implemented ops beyond their
+  stale probes per fork source; agent-tracked test removals carry
+  double evidence (probe row + absent handler in fork urls.py+responses).
+- Cross-service fidelity fixes folded at merge (documented): NM agent
+  added `transitGatewayArn` to the EC2 tgw_fields rendering (moto
+  ClassPrefixAlias behavior; ec2 suite spot-checked green); ses agent's
+  sesv2 `CreateContact` stores ContactListName + timestamps; memorydb
+  seeds its default subnet group from the EC2 crate state — the first
+  moto-style cross-crate dependency reuse.
+- Infra: parity harness now always starts its twin with the repo venv
+  python (`ROBOTOCORE_PY`), fixing deterministic lambda->service
+  integration tests (they passed/vanished depending on which shell
+  restarted the twin; root cause of the lambda_integrations 11->4
+  drift). Promotion: exit 0 with 142 suites drift-gated,
+  `lambda_integrations` preserved at its historical 11.
+- Gates: 1136 workspace lib tests, fmt/clippy `--all-targets` clean,
+  12 suites green vs the main twin (1115 passed in one process),
+  promotion exit 0.
+- Standing perf agents (4th-6th): disk held >=30G free through the wave;
+  proposals (not applied): release strip=symbols and thin-LTO — parent
+  may A/B with build-time trade-off.
+- Gate after wave: 118 native of 157; REMAINING 39 = 31 to port + 8
+  G2-uncertain.
+
 ## Wave 2 (2026-10-19, through SHA 04b99c03 + reconciliation/perf pieces) — ten services
 
 - Ported: `ce` (61/61), `glacier` (38/38, re-armed an inert wave-3 leftover
@@ -68,23 +126,3 @@ are parsed by `tooling/moto_port_progress.py`.
 - G4 lane count: 10160 passed / 157 failed / 17 errors (start row: 9254).
 - Gate after wave: old served surface 157, native 106, REMAINING 51
   (43 to port + 8 G2-uncertain).
-
-## Wave 1 (2026-10-19) — signer, shield, datapipeline, ram
-
-- Ported: `signer` (26/26), `shield` (35/35), `datapipeline` (23/23), `ram` (41/41).
-  Suites restored from `7170f904^`, all green against the merged twin on 4566.
-- Superseded-arch note: an orphaned moto-proxy server from the abandoned
-  `.worktrees/s3` worktree occupied ports 4641/4642 and was killed during
-  the wave (superseded architecture, not the 4566 twin).
-- G2: no tests removed — probes show 0 `not_implemented` for all four.
-  datapipeline's 11 probe `500_error` entries were moto `KeyError` crashes
-  on missing pipelines; implemented as real handlers answering the fork's
-  `PipelineNotFoundException` (400) instead of reproducing the crash.
-- Deliberate quirk retained: shield `DescribeProtection` with no selector
-  answers moto's 500 InternalError (probe + unit test document it).
-- signer suite: one test's hardcoded `localhost:4566` now reads
-  `ENDPOINT_URL` (assertion untouched, needed to test against a worktree
-  port).
-- Registry rows flipped `moto`→`native` for the four; gates: 906 workspace
-  lib tests, fmt/clippy clean, parity promoted (full lane drift-clean).
-- Post-wave per gate script: REMAINING 54, G2 UNCERTAIN 8 (unchanged).

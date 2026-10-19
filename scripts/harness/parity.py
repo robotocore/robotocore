@@ -101,9 +101,16 @@ def ensure_rust_server():
     if old_pid:
         sh(f"kill -0 {old_pid} 2>/dev/null && kill {old_pid} 2>/dev/null; true", timeout=10)
         time.sleep(1)
+    env = dict(os.environ)
+    # The twin's python-lambda runtime shells out to a python interpreter;
+    # ROBOTOCORE_PY must point at an interpreter with the driver deps (boto3)
+    # or every lambda->service integration test fails with ModuleNotFound.
+    venv_py = RUST_REPO / ".venv" / "bin" / "python3"
+    if "ROBOTOCORE_PY" not in env and venv_py.exists():
+        env["ROBOTOCORE_PY"] = str(venv_py)
     proc = subprocess.Popen([RUST_BIN, "--host", "127.0.0.1", "--port", RUST_PORT],
                             stdout=open(f"/tmp/{os.environ.get('LOG_PREFIX', 'parity')}_rust.log", "w"),
-                            stderr=subprocess.STDOUT, start_new_session=True)
+                            stderr=subprocess.STDOUT, start_new_session=True, env=env)
     with open(pid_file, "w") as f:
         f.write(str(proc.pid))
     for _ in range(20):
