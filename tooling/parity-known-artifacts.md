@@ -33,3 +33,26 @@ never implemented (media-analysis job lifecycle, project policies
 CRUD, dataset distribution/copy). They answered `501 NotImplemented`
 and were removed from the suite per the probe-first rule. Candidates
 for the next rekognition port pass.
+
+## Deferred admin feature: chaos engineering (recorded 2026-10-19)
+
+The `POST /_robotocore/chaos/rules` fault-injection API was a python-era
+admin feature and never got a rust gateway port — requests answer 404.
+Its suite (`tests/compatibility/chaos/`) was deleted with the other
+unported-surface tests. Porting it is a small, well-scoped feature:
+rules CRUD + interception hooks in the catch-all handler.
+
+## Full pytest lane beyond the parity gate (recorded 2026-10-19)
+
+`make parity` is the promoted, drift-gated lane (89 suites; measured
+100%). Running the whole `pytest tests/compatibility` beyond the gate
+still exercises surfaces the promotion does not cover; the failures
+there are the port backlog, not drift:
+
+- datasync/osis gap ops (update-task-execution, resource policy,
+  pipeline endpoints, location updates) — trimmed with this change;
+  pass counts still equal the frozen baseline (56 + 17).
+- lambda non-python runtimes (nodejs/custom-runtime), lambda
+  dlq/esm/function-urls/integrations, cross_service recipes,
+  iam_enforcement + closures, error_format, emr/organizations/
+  mediapackage/polly/sagemaker/ec2/s3/cfn_edge leftovers — open work.
