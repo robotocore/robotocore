@@ -2434,40 +2434,96 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
             )
         }
         "CreateLocalGatewayRoute" => {
-            let id = params.str("LocalGatewayRouteTableId");
+            let rtb = params.str("LocalGatewayRouteTableId");
             let cidr = params
                 .get("DestinationCidrBlock")
-                .or_else(|| params.get("DestinationCidrBlock"))
-                .unwrap_or("10.0.0.0/8");
-            ec2_xml(
-                "CreateLocalGatewayRouteResponse",
-                &format!(
-                    "<route><destinationCidrBlock>{}</destinationCidrBlock>{}<state>active</state><type>static</type></route>",
-                    xml_escape(cidr),
-                    if let Some(lga) = params.get("LocalGatewayVirtualInterfaceGroupId") {
-                        format!("<localGatewayVirtualInterfaceGroupId>{}</localGatewayVirtualInterfaceGroupId>", xml_escape(lga))
-                    } else {
-                        String::new()
-                    }
-                ),
-            )
+                .or_else(|| params.get("DestinationIpv6CidrBlock"))
+                .unwrap_or_default()
+                .to_string();
+            let vifg = params.str("LocalGatewayVirtualInterfaceGroupId");
+            with_state(req, move |state| {
+                let route_id = state.next_id("lgw-route");
+                let mut s = Simple {
+                    id: route_id,
+                    kind: "lgw-route".to_string(),
+                    ..Default::default()
+                };
+                s.set("LocalGatewayRouteTableId", rtb.clone());
+                s.set("DestinationCidrBlock", cidr.clone());
+                s.set("LocalGatewayVirtualInterfaceGroupId", vifg.clone());
+                s.set("Type", "static");
+                s.set("State", "active");
+                state.simple.entry("lgw-route".to_string()).or_default().push(s);
+                ec2_xml(
+                    "CreateLocalGatewayRouteResponse",
+                    &format!(
+                        "<route><destinationCidrBlock>{}</destinationCidrBlock>{}<state>active</state><type>static</type></route>",
+                        xml_escape(&cidr),
+                        if vifg.is_empty() {
+                            String::new()
+                        } else {
+                            format!("<localGatewayVirtualInterfaceGroupId>{}</localGatewayVirtualInterfaceGroupId>", xml_escape(&vifg))
+                        }
+                    ),
+                )
+            })
         }
         "DeleteLocalGatewayRoute" => {
+            let rtb = params.str("LocalGatewayRouteTableId");
             let cidr = params.str("DestinationCidrBlock");
-            ec2_xml(
-                "DeleteLocalGatewayRouteResponse",
-                &format!("<route><destinationCidrBlock>{}</destinationCidrBlock><state>deleted</state><type>static</type></route>", xml_escape(&cidr)),
-            )
+            with_state(req, move |state| {
+                if let Some(routes) = state.simple.get_mut("lgw-route") {
+                    routes.retain(|s| {
+                        !(s.get("LocalGatewayRouteTableId") == Some(rtb.as_str())
+                            && s.get("DestinationCidrBlock") == Some(cidr.as_str()))
+                    });
+                }
+                ec2_xml(
+                    "DeleteLocalGatewayRouteResponse",
+                    &format!("<route><destinationCidrBlock>{}</destinationCidrBlock><state>deleted</state><type>static</type></route>", xml_escape(&cidr)),
+                )
+            })
         }
         "SearchLocalGatewayRoutes" => {
-            let rt = params.str("LocalGatewayRouteTableId");
-            ec2_xml(
-                "SearchLocalGatewayRoutesResponse",
-                &format!(
-                    "<routes/><searchInformation><state>validated</state>{}<filterExceeded>false</filterExceeded></searchInformation>",
-                    ""
-                ),
-            )
+            let rtb = params.str("LocalGatewayRouteTableId");
+            let fs = super::handlers::filters(params);
+            with_state(req, move |state| {
+                let mut items = String::new();
+                if let Some(routes) = state.simple.get("lgw-route") {
+                    for s in routes {
+                        if s.get("LocalGatewayRouteTableId") != Some(rtb.as_str()) {
+                            continue;
+                        }
+                        let stype = s.get("Type").unwrap_or("static").to_string();
+                        let ok = fs.iter().all(|(name, values)| match name.as_str() {
+                            "type" => values.iter().any(|v| v == &stype),
+                            "state" => values.iter().any(|v| s.get("State") == Some(v.as_str())),
+                            "route-table-id" => values.iter().any(|v| v == &rtb),
+                            _ => true,
+                        });
+                        if !ok {
+                            continue;
+                        }
+                        let _ = write!(
+                            items,
+                            "<item><destinationCidrBlock>{}</destinationCidrBlock>{}<type>{}</type><state>{}</state><localGatewayRouteTableId>{}</localGatewayRouteTableId></item>",
+                            xml_escape(s.get("DestinationCidrBlock").unwrap_or_default()),
+                            if s.get("LocalGatewayVirtualInterfaceGroupId").unwrap_or_default().is_empty() {
+                                String::new()
+                            } else {
+                                format!("<localGatewayVirtualInterfaceGroupId>{}</localGatewayVirtualInterfaceGroupId>", xml_escape(s.get("LocalGatewayVirtualInterfaceGroupId").unwrap_or_default()))
+                            },
+                            xml_escape(stype.as_str()),
+                            xml_escape(s.get("State").unwrap_or("active")),
+                            xml_escape(&rtb),
+                        );
+                    }
+                }
+                ec2_xml(
+                    "SearchLocalGatewayRoutesResponse",
+                    &format!("<routeSet>{items}</routeSet><searchInformation><state>validated</state><filterExceeded>false</filterExceeded></searchInformation>"),
+                )
+            })
         }
         "DescribeLocalGatewayRouteTableVirtualInterfaceGroups" | "DescribeLocalGatewayVirtualInterfaceGroups" | "DescribeLocalGatewayVirtualInterfaces" | "DescribeLocalGatewayRouteTableVpcAssociations" | "DescribeLocalGatewayRouteTableVirtualInterfaceGroupAssociations" => {
             let set = match op {
