@@ -62,6 +62,7 @@ pub mod osis;
 pub mod personalize;
 pub mod pipes;
 pub mod polly;
+pub mod ram;
 pub mod rds;
 pub mod redshift;
 pub mod redshiftdata;
@@ -140,6 +141,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "personalize" => personalize::dispatch(req),
         "pipes" => Some(pipes::dispatch(req)),
         "polly" => Some(polly::dispatch(req)),
+        "ram" => ram::dispatch(req),
         "rds" => Some(rds::dispatch(req)),
         "redshift" => Some(redshift::dispatch(req)),
         "redshiftdata" => Some(redshiftdata::dispatch(req)),
@@ -230,6 +232,7 @@ pub fn handles_service(service: &str) -> bool {
             | "personalize"
             | "pipes"
             | "polly"
+            | "ram"
             | "rds"
             | "redshift"
             | "redshiftdata"

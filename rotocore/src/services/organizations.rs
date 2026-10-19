@@ -129,6 +129,25 @@ fn state() -> store::Slot<OrgState> {
     SLOT.clone()
 }
 
+/// Cross-service read (moto consults `organizations_backends` from ram):
+/// the org id and every root/OU arn for this account, if an organization
+/// exists. Used by the ram backend for org principal validation and
+/// EnableSharingWithAwsOrganization.
+pub fn org_snapshot(account: u64, region: &str) -> Option<(String, Vec<String>)> {
+    let st = state();
+    let s = st.read();
+    let entry = s.get(&(account, region.to_string()))?;
+    let org = entry.org.as_ref()?;
+    let mut ous = Vec::new();
+    if let Some(root) = &entry.root {
+        ous.push(root.arn.clone());
+    }
+    for ou in &entry.ous {
+        ous.push(ou.arn.clone());
+    }
+    Some((org.id.clone(), ous))
+}
+
 fn now_f() -> f64 {
     (chrono::Utc::now().timestamp_millis()) as f64 / 1000.0
 }
