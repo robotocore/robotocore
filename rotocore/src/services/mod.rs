@@ -20,6 +20,7 @@ pub mod cloudtrail;
 pub mod cognito_idp;
 pub mod comprehend;
 pub mod config;
+pub mod connect;
 pub mod databrew;
 pub mod datasync;
 mod ec2;
@@ -80,6 +81,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "cloudtrail" => Some(cloudtrail::dispatch(req)),
         "cognito-idp" => cognito_idp::dispatch(req),
         "comprehend" => Some(comprehend::dispatch(req)),
+        "connect" => Some(connect::dispatch(req)),
         "config" => Some(config::dispatch(req)),
         "databrew" => databrew::dispatch(req),
         "datasync" => datasync::dispatch(req),
