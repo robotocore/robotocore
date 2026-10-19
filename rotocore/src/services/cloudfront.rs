@@ -5450,4 +5450,109 @@ mod tests {
         assert_eq!(text(&resp, &["Error", "Code"]), "NoSuchDistribution");
     }
 
+    // ----- origins + behaviors -----
+
+    #[test]
+    fn origins_echo_and_target_validation() {
+        let account = next_account();
+        // Two origins: both ids echo.
+        let cfg = dist_config_xml("multi-origin", "ref-origins").replace(
+            "<Origins><Quantity>1</Quantity><Items><Origin><Id>o1</Id><DomainName>example.com</DomainName><CustomOriginConfig><HTTPPort>80</HTTPPort><HTTPSPort>443</HTTPSPort><OriginProtocolPolicy>http-only</OriginProtocolPolicy></CustomOriginConfig></Origin></Items></Origins>",
+            "<Origins><Quantity>2</Quantity><Items><Origin><Id>o1</Id><DomainName>example.com</DomainName><CustomOriginConfig><HTTPPort>80</HTTPPort><HTTPSPort>443</HTTPSPort><OriginProtocolPolicy>http-only</OriginProtocolPolicy></CustomOriginConfig></Origin><Origin><Id>o2</Id><DomainName>api.example.com</DomainName><CustomOriginConfig><HTTPPort>80</HTTPPort><HTTPSPort>443</HTTPSPort><OriginProtocolPolicy>http-only</OriginProtocolPolicy></CustomOriginConfig></Origin></Items></Origins>",
+        );
+        let create = dispatch(&make_req(
+            account,
+            "POST",
+            "/2020-05-31/distribution",
+            &cfg,
+            &[],
+        ));
+        assert_eq!(create.status, 200);
+        assert_eq!(
+            text(&create, &["DistributionConfig", "Origins", "Quantity"]),
+            "2",
+            "origins echoed"
+        );
+        let origin_ids = count_occurrences(&create.body, b"<Id>");
+        assert!(origin_ids >= 3, "o1 and o2 ids echoed: {origin_ids}");
+
+        // Default cache behavior defaults (allowed methods HEAD/GET, cached GET/HEAD).
+        assert_eq!(
+            text(
+                &create,
+                &[
+                    "DistributionConfig",
+                    "DefaultCacheBehavior",
+                    "AllowedMethods",
+                    "Quantity"
+                ]
+            ),
+            "2"
+        );
+        let body = String::from_utf8_lossy(&create.body);
+        assert!(body.contains("<Method>HEAD</Method><Method>GET</Method>"));
+        assert!(body.contains(
+            "<CachedMethods><Quantity>2</Quantity><Items><Method>GET</Method><Method>HEAD</Method>"
+        ));
+
+        // A target origin that does not exist fails with NoSuchOrigin.
+        let bad = dist_config_xml("bad-target", "ref-target-bad").replace(
+            "<TargetOriginId>o1</TargetOriginId>",
+            "<TargetOriginId>ghost</TargetOriginId>",
+        );
+        let resp = dispatch(&make_req(
+            account,
+            "POST",
+            "/2020-05-31/distribution",
+            &bad,
+            &[],
+        ));
+        assert_eq!(resp.status, 404);
+        assert_eq!(text(&resp, &["Error", "Code"]), "NoSuchOrigin");
+    }
+
+    #[test]
+    fn s3_origin_domain_validation() {
+        let account = next_account();
+        let bad = dist_config_xml("s3-domain", "ref-s3-domain").replace(
+            "<Origin><Id>o1</Id><DomainName>example.com</DomainName><CustomOriginConfig><HTTPPort>80</HTTPPort><HTTPSPort>443</HTTPSPort><OriginProtocolPolicy>http-only</OriginProtocolPolicy></CustomOriginConfig></Origin>",
+            "<Origin><Id>o1</Id><DomainName>not-a-bucket</DomainName><S3OriginConfig><OriginAccessIdentity>oai</OriginAccessIdentity></S3OriginConfig></Origin>",
+        );
+        let resp = dispatch(&make_req(
+            account,
+            "POST",
+            "/2020-05-31/distribution",
+            &bad,
+            &[],
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(text(&resp, &["Error", "Code"]), "InvalidArgument");
+    }
+
+    #[test]
+    fn additional_cache_behavior_echoes() {
+        let account = next_account();
+        let cfg = dist_config_xml("with-behavior", "ref-behavior")
+            .replace("</DefaultCacheBehavior>", "</DefaultCacheBehavior><CacheBehaviors><Quantity>1</Quantity><Items><CacheBehavior><PathPattern>/img/*</PathPattern><TargetOriginId>o1</TargetOriginId><ViewerProtocolPolicy>https-only</ViewerProtocolPolicy><ForwardedValues><QueryString>false</QueryString><Cookies><Forward>none</Forward></Cookies></ForwardedValues></CacheBehavior></Items></CacheBehaviors>");
+        let create = dispatch(&make_req(
+            account,
+            "POST",
+            "/2020-05-31/distribution",
+            &cfg,
+            &[],
+        ));
+        assert_eq!(create.status, 200);
+        let tree = parse_xml(&create.body).expect("xml");
+        let behavior = tree
+            .sub(&[
+                "DistributionConfig",
+                "CacheBehaviors",
+                "Items",
+                "CacheBehavior",
+            ])
+            .expect("behavior item");
+        assert_eq!(behavior.text_of("PathPattern"), Some("/img/*"));
+        assert_eq!(behavior.text_of("ViewerProtocolPolicy"), Some("https-only"));
+    }
+
 }
