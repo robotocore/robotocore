@@ -50,7 +50,7 @@ pub fn route(req: &Request, params: &P) -> Response {
         "DescribeNetworkAcls" => describe_network_acls(req, params),
         "CreateNetworkAclEntry" => create_network_acl_entry(req, params),
         "DeleteNetworkAclEntry" => delete_network_acl_entry(req, params),
-        "ReplaceNetworkAclEntry" => create_network_acl_entry(req, params),
+        "ReplaceNetworkAclEntry" => replace_network_acl_entry(req, params),
         "ReplaceNetworkAclAssociation" => replace_network_acl_association(req, params),
 
         // DHCP options
@@ -65,7 +65,14 @@ pub fn route(req: &Request, params: &P) -> Response {
         "DescribeVpcPeeringConnections" => describe_peerings(req, params),
         "AcceptVpcPeeringConnection" => accept_peering(req, params),
         "RejectVpcPeeringConnection" => reject_peering(req, params),
-        "ModifyVpcPeeringConnectionOptions" => describe_peerings(req, params),
+        "ModifyVpcPeeringConnectionOptions" => {
+            let id = params.str("VpcPeeringConnectionId");
+            let _id = params.str("VpcPeeringConnectionId");
+            ec2_xml(
+                "ModifyVpcPeeringConnectionOptionsResponse",
+                "<requesterPeeringConnectionOptions><allowDnsResolutionFromRemoteVpc>true</allowDnsResolutionFromRemoteVpc></requesterPeeringConnectionOptions><accepterPeeringConnectionOptions/>",
+            )
+        }
 
         // VPC endpoints
         "CreateVpcEndpoint" => create_vpc_endpoint(req, params),
@@ -442,9 +449,26 @@ fn describe_eni_attribute(req: &Request, params: &P) -> Response {
         let _ = &attr;
         let _ = write!(
             body,
-            "<description>{}</description>",
+            "<description><value>{}</value></description>",
             crate::proto::xml_escape(&e.description)
         );
+        match &e.attached {
+            Some(att) => body.push_str(&format!(
+                "<attachment><attachmentId>{}</attachmentId><attachmentTime>1970-01-01T00:00:00.000Z</attachmentTime><deleteOnTermination>false</deleteOnTermination><deviceIndex>{}</deviceIndex><status>attached</status>{}</attachment>",
+                crate::proto::xml_escape(&att.attachment_id),
+                att.device_index,
+                format!("<instanceOwnerId>123456789012</instanceOwnerId><instanceId>{}</instanceId>", crate::proto::xml_escape(&att.instance_id))
+            )),
+            None => {
+                body.push_str("<attachment/>");
+            }
+        }
+        let _ = write!(
+            body,
+            "<sourceDestCheck><value>{}</value></sourceDestCheck>",
+            e.source_dest_check
+        );
+        body.push_str("<groupSet/>");
         ec2_xml("DescribeNetworkInterfaceAttributeResponse", &body)
     })
 }
@@ -557,6 +581,11 @@ fn assign_private_ips(req: &Request, params: &P) -> Response {
             state.enis[pos].secondary_private_ips.push(ip.clone());
         }
         let mut body = String::new();
+        body.push_str(&format!(
+            "<networkInterfaceId>{}</networkInterfaceId>",
+            xml_escape(&eni_id)
+        ));
+        body.push_str("<assignedPrivateIpAddressesSet>");
         for ip in &assigned {
             let _ = write!(
                 body,
@@ -564,6 +593,7 @@ fn assign_private_ips(req: &Request, params: &P) -> Response {
                 ip
             );
         }
+        body.push_str("</assignedPrivateIpAddressesSet>");
         ec2_xml("AssignPrivateIpAddressesResponse", &body)
     })
 }
@@ -829,6 +859,51 @@ fn create_network_acl_entry(req: &Request, params: &P) -> Response {
     })
 }
 
+fn replace_network_acl_entry(req: &Request, params: &P) -> Response {
+    let acl_id = params.str("NetworkAclId");
+    with_state(req, move |state| {
+        let pos = match state.network_acls.iter().position(|a| a.id == acl_id) {
+            Some(i) => i,
+            None => {
+                return ec2_error(
+                    400,
+                    "InvalidNetworkAclID.NotFound",
+                    &format!(
+                        "The network ACL '{}' does not exist",
+                        crate::proto::xml_escape(&acl_id)
+                    ),
+                )
+            }
+        };
+        let rule_number = params.i64("RuleNumber").unwrap_or(0);
+        let egress = params.bool("Egress").unwrap_or(false);
+        // replacing removes the entry with the same number/direction first
+        state.network_acls[pos]
+            .entries
+            .retain(|e| !(e.rule_number == rule_number && e.egress == egress));
+        let entry = NaclEntry {
+            rule_number,
+            protocol: params
+                .get("Protocol")
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "all".into()),
+            rule_action: params
+                .get("RuleAction")
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "allow".into()),
+            egress,
+            cidr: params
+                .get("CidrBlock")
+                .map(|s| s.to_string())
+                .unwrap_or_default(),
+            port_range: None,
+            icmp: None,
+        };
+        state.network_acls[pos].entries.push(entry);
+        ok_xml("ReplaceNetworkAclEntryResponse")
+    })
+}
+
 fn delete_network_acl_entry(req: &Request, params: &P) -> Response {
     let acl_id = params.str("NetworkAclId");
     with_state(req, move |state| {
@@ -913,11 +988,15 @@ fn dhc_item(d: &super::state::DhcpOptions) -> String {
     for (key, values) in &d.configurations {
         let mut vals = String::new();
         for v in values {
-            let _ = write!(vals, "<value>{}</value>", crate::proto::xml_escape(v));
+            let _ = write!(
+                vals,
+                "<item><value>{}</value></item>",
+                crate::proto::xml_escape(v)
+            );
         }
         let _ = write!(
             configs,
-            "<item><key>{}</key><values>{}</values></item>",
+            "<item><key>{}</key><valueSet>{}</valueSet></item>",
             crate::proto::xml_escape(key),
             vals
         );
@@ -928,7 +1007,7 @@ fn dhc_item(d: &super::state::DhcpOptions) -> String {
         if configs.is_empty() {
             String::new()
         } else {
-            format!("<dhcpConfiguration>{}</dhcpConfiguration>", configs)
+            format!("<dhcpConfigurationSet>{}</dhcpConfigurationSet>", configs)
         },
         tags_xml(&d.tags)
     )
@@ -938,45 +1017,70 @@ fn create_dhcp_options(req: &Request, params: &P) -> Response {
     with_state(req, move |state| {
         let id = state.next_id("dopt");
         let mut configs: Vec<(String, Vec<String>)> = Vec::new();
-        for i in params.container_indices("".trim()) {
-            let _ = i;
+        for i in params.container_indices("DhcpConfiguration") {
+            let base = format!("DhcpConfiguration.{}", i + 1);
+            let key = params
+                .get(&format!("{base}.Key"))
+                .unwrap_or_default()
+                .to_string();
+            if key.is_empty() {
+                continue;
+            }
+            let mut vals: Vec<String> = params
+                .list(&format!("{base}.Value"))
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+            if vals.is_empty() {
+                if let Some(v) = params.get(&format!("DhcpConfiguration.{key}")) {
+                    vals = v.split(',').map(str::to_string).collect();
+                }
+            }
+            configs.push((key, vals));
         }
-        let keys: &[&str] = &[
-            "domain-name-servers",
-            "domain-name",
-            "ntp-servers",
-            "netbios-name-servers",
-        ];
-        let wire_keys: &[&str] = &[
-            "DomainNameServers",
-            "DomainName",
-            "NtpServers",
-            "NetbiosNameServers",
-        ];
-        for (i, wk) in wire_keys.iter().enumerate() {
-            let vals: Vec<String> = params.list(wk).iter().map(|s| s.to_string()).collect();
-            if !vals.is_empty() {
-                configs.push((keys[i].to_string(), vals));
+        let mut tags = wire_tags(params);
+        for (k, v) in super::handlers::tag_spec_tags(params) {
+            if !tags.iter().any(|(ek, _)| ek == &k) {
+                tags.push((k, v));
             }
         }
-        let tags = wire_tags(params);
-        let mut d = super::state::DhcpOptions {
+        let d = super::state::DhcpOptions {
             id: id.clone(),
             configurations: configs,
-            ..Default::default()
+            tags,
         };
-        if !tags.is_empty() {
-            d.tags = tags;
-        }
-        state.dhcp_options.push(d);
+        state.dhcp_options.push(d.clone());
+        let cfg = dhcp_configurations_xml(&d);
         ec2_xml(
             "CreateDhcpOptionsResponse",
             &format!(
-                "<dhcpOptions><dhcpOptionsId>{}</dhcpOptionsId><dhcpConfiguration></dhcpConfiguration></dhcpOptions>",
-                crate::proto::xml_escape(&id)
+                "<dhcpOptions><dhcpOptionsId>{}</dhcpOptionsId>{}{}</dhcpOptions>",
+                crate::proto::xml_escape(&id),
+                cfg,
+                ""
             ),
         )
     })
+}
+
+/// `<dhcpConfigurationSet>` fragment; each key carries its valueSet.
+fn dhcp_configurations_xml(d: &super::state::DhcpOptions) -> String {
+    let mut items = String::new();
+    for (key, vals) in &d.configurations {
+        let mut vs = String::new();
+        for v in vals {
+            vs.push_str(&format!(
+                "<item><value>{}</value></item>",
+                crate::proto::xml_escape(v)
+            ));
+        }
+        items.push_str(&format!(
+            "<item><key>{k}</key><valueSet>{v}</valueSet></item>",
+            k = crate::proto::xml_escape(key),
+            v = vs
+        ));
+    }
+    format!("<dhcpConfigurationSet>{items}</dhcpConfigurationSet>")
 }
 
 fn delete_dhcp_options(req: &Request, params: &P) -> Response {
@@ -1059,12 +1163,13 @@ fn require_vpc_id(state: &super::state::Ec2State, vpc_id: &str) -> Result<(), Re
 
 fn peering_item(p: &super::state::VpcPeering) -> String {
     format!(
-        "<item><requesterVpcInfo><ownerId>123456789012</ownerId><vpcId>{}</vpcId><region>us-east-1</region></requesterVpcInfo><accepterVpcInfo>{}<ownerId>123456789012</ownerId><vpcId>{}</vpcId><region>us-east-1</region></accepterVpcInfo>{}<sourceVpcInfo>{}<ownerId></ownerId><vpcId></vpcId></sourceVpcInfo><expiration>2026-10-25T00:00:00.000Z</expiration><vpcPeeringConnectionId>{}</vpcPeeringConnectionId>{}{}</item>",
+        "<item><requesterVpcInfo><ownerId>123456789012</ownerId><vpcId>{}</vpcId><region>us-east-1</region></requesterVpcInfo><accepterVpcInfo>{}<ownerId>123456789012</ownerId><vpcId>{}</vpcId><region>us-east-1</region></accepterVpcInfo>{}<sourceVpcInfo>{}<ownerId></ownerId><vpcId></vpcId></sourceVpcInfo><status>{}<message></message></status><expiration>2026-10-25T00:00:00.000Z</expiration><vpcPeeringConnectionId>{}</vpcPeeringConnectionId>{}{}</item>",
         crate::proto::xml_escape(&p.requester_vpc_id),
         if p.accepter_dns { "" } else { "" },
         crate::proto::xml_escape(&p.accepter_vpc_id),
         tags_xml(&p.tags),
         "",
+        peering_status(p),
         crate::proto::xml_escape(&p.id),
         if p.status_message.is_some() {
             format!("<statusMessage>{}</statusMessage>", crate::proto::xml_escape(p.status_message.clone().unwrap_or_default().as_str()))
@@ -1101,8 +1206,8 @@ fn create_peering(req: &Request, params: &P) -> Response {
         let tags = wire_tags(params);
         let mut p = super::state::VpcPeering {
             id: id.clone(),
-            requester_vpc_id: requester,
-            accepter_vpc_id: accepter,
+            requester_vpc_id: requester.clone(),
+            accepter_vpc_id: accepter.clone(),
             state: "pending-acceptance".into(),
             state_code: 713,
             status_message: Some("Pending Acceptance by ".to_string()),
@@ -1115,14 +1220,12 @@ fn create_peering(req: &Request, params: &P) -> Response {
         ec2_xml(
             "CreateVpcPeeringConnectionResponse",
             &format!(
-                "<vpcPeeringConnection><requesterVpcInfo><ownerId>{}</ownerId><vpcId>{}</vpcId><region>{}</region></requesterVpcInfo><accepterVpcInfo><ownerId>{}</ownerId><vpcId>{}</vpcId><region>{}</region></accepterVpcInfo><status><code>pending-acceptance</code></status><sourceVpcInfo><ownerId></ownerId><vpcId></vpcId></sourceVpcInfo><expiration>3000-01-01T00:00:00.000Z</expiration><vpcPeeringConnectionId>{}</vpcPeeringConnectionId></vpcPeeringConnection>",
-                req.account,
-                "",
-                req.region,
-                req.account,
-                "",
-                req.region,
-                crate::proto::xml_escape(&id)
+                "<vpcPeeringConnection><requesterVpcInfo><ownerId>{acc}</ownerId><vpcId>{rq}</vpcId><region>{rg}</region></requesterVpcInfo><accepterVpcInfo><ownerId>{acc}</ownerId><vpcId>{ac}</vpcId><region>{rg}</region></accepterVpcInfo><status><code>pending-acceptance</code></status><sourceVpcInfo><ownerId></ownerId><vpcId></vpcId></sourceVpcInfo><expiration>3000-01-01T00:00:00.000Z</expiration><vpcPeeringConnectionId>{id}</vpcPeeringConnectionId></vpcPeeringConnection>",
+                acc = req.account,
+                rq = crate::proto::xml_escape(&requester),
+                ac = crate::proto::xml_escape(&accepter),
+                rg = req.region,
+                id = crate::proto::xml_escape(&id)
             ),
         )
     })
@@ -1229,13 +1332,16 @@ fn reject_peering(req: &Request, params: &P) -> Response {
         }
         ec2_xml(
             "RejectVpcPeeringConnectionResponse",
-            &format!(
-                "<vpcPeeringConnection><vpcPeeringConnectionId>{}</vpcPeeringConnectionId><status><code>rejected</code></status>{}</vpcPeeringConnection>",
-                crate::proto::xml_escape(&id),
-                ""
-            ),
+            "<return>true</return>",
         )
     })
+}
+
+fn peering_status(p: &super::state::VpcPeering) -> String {
+    format!(
+        "<code>{}</code><message></message>",
+        crate::proto::xml_escape(&p.state)
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -1267,7 +1373,7 @@ fn endpoint_item(e: &super::state::VpcEndpoint) -> String {
     format!(
         "<item><vpcEndpointId>{}</vpcEndpointId>{}<vpcId>{}</vpcId><serviceName>{}</serviceName>{}<state>{}</state>{}<policyDocument></policyDocument>{}<requesterManaged>false</requesterManaged>{}{}{}</item>",
         crate::proto::xml_escape(&e.id),
-        if e.endpoint_type.is_empty() { String::new() } else { format!("<vpcEndpointType>{}</vpcEndpointType>", crate::proto::xml_escape(&e.endpoint_type)) },
+        format!("<vpcEndpointType>{}</vpcEndpointType>", crate::proto::xml_escape(&e.endpoint_type)),
         crate::proto::xml_escape(&e.vpc_id),
         crate::proto::xml_escape(&e.service_name),
         if rts.is_empty() { String::new() } else { format!("<routeTableIds>{}</routeTableIds>", rts) },
@@ -1338,25 +1444,56 @@ fn create_vpc_endpoint(req: &Request, params: &P) -> Response {
             ..Default::default()
         };
         state.vpc_endpoints.push(e);
-        ec2_xml(
-            "CreateVpcEndpointResponse",
-            &format!(
-                "<vpcEndpoint><vpcEndpointId>{}</vpcEndpointId><vpcId>{}</vpcId><serviceName>{}</serviceName>{}<state>available</state><policyDocument></policyDocument>{}{}{}</vpcEndpoint>",
-                crate::proto::xml_escape(&id),
-                crate::proto::xml_escape(&vpc_id),
-                crate::proto::xml_escape(&service),
-                if !route_tables.is_empty() {
-                    format!("<routeTableIds>{}{}</routeTableIds>",
-                        route_tables.iter().map(|rt| format!("<item><routeTableId>{}</routeTableId></item>", crate::proto::xml_escape(rt))).collect::<String>(),
-                        "")
-                } else {
-                    String::new()
-                },
-                String::new(),
-                String::new(),
-                ""
-            ),
-        )
+        let type_el = if endpoint_type.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "<vpcEndpointType>{}</vpcEndpointType>",
+                crate::proto::xml_escape(&endpoint_type)
+            )
+        };
+        let create_resp_items = format!(
+            "<vpcEndpoint><vpcEndpointId>{}</vpcEndpointId>{}<vpcId>{}</vpcId><serviceName>{}</serviceName>{}<state>available</state><policyDocument></policyDocument>{}{}{}</vpcEndpoint>",
+            crate::proto::xml_escape(&id),
+            type_el,
+            crate::proto::xml_escape(&vpc_id),
+            crate::proto::xml_escape(&service),
+            if !route_tables.is_empty() {
+                format!(
+                    "<routeTableIds>{}</routeTableIds>",
+                    route_tables
+                        .iter()
+                        .map(|rt| format!(
+                            "<item><routeTableId>{}</routeTableId></item>",
+                            crate::proto::xml_escape(rt)
+                        ))
+                        .collect::<String>()
+                )
+            } else {
+                String::new()
+            },
+            if !subnets.is_empty() {
+                format!(
+                    "<subnetIds>{}</subnetIds>",
+                    subnets
+                        .iter()
+                        .map(|sn| format!(
+                            "<item><subnetId>{}</subnetId></item>",
+                            crate::proto::xml_escape(sn)
+                        ))
+                        .collect::<String>()
+                )
+            } else {
+                String::new()
+            },
+            if params.bool("PrivateDnsEnabled").unwrap_or(false) {
+                String::from("<dnsEntries/><privateDnsEnabled>true</privateDnsEnabled>")
+            } else {
+                String::new()
+            },
+            ""
+        );
+        ec2_xml("CreateVpcEndpointResponse", &create_resp_items)
     })
 }
 
@@ -1469,7 +1606,7 @@ fn modify_vpc_endpoint(req: &Request, params: &P) -> Response {
 fn describe_vpc_endpoint_services(req: &Request, params: &P) -> Response {
     ec2_xml(
         "DescribeVpcEndpointServicesResponse",
-        r#"<serviceDetailSet><item><serviceId>vpce-svc-0931094d2e6e2a2b6</serviceId><serviceName>com.amazonaws.us-east-1.s3</serviceName><serviceType><item><serviceType>Gateway</serviceType></item></serviceType><availabilityZones><item>us-east-1a</item><item>us-east-1b</item><item>us-east-1c</item><item>us-east-1d</item><item>us-east-1e</item><item>us-east-1f</item></availabilityZones><owner>amazon</owner><baseEndpointDnsNames><item>s3.us-east-1.amazonaws.com</item></baseEndpointDnsNames><vpcEndpointPolicySupported>true</vpcEndpointPolicySupported><acceptanceRequired>false</acceptanceRequired><managesVpcEndpoints>false</managesVpcEndpoints><privateDnsName/> </item></serviceDetailSet><vpcEndpointServiceSet/>"#,
+        r#"<serviceDetailSet><item><serviceId>vpce-svc-0931094d2e6e2a2b6</serviceId><serviceName>com.amazonaws.us-east-1.s3</serviceName><serviceType><item><serviceType>Gateway</serviceType></item></serviceType><availabilityZones><item>us-east-1a</item><item>us-east-1b</item><item>us-east-1c</item><item>us-east-1d</item><item>us-east-1e</item><item>us-east-1f</item></availabilityZones><owner>amazon</owner><baseEndpointDnsNames><item>s3.us-east-1.amazonaws.com</item></baseEndpointDnsNames><vpcEndpointPolicySupported>true</vpcEndpointPolicySupported><acceptanceRequired>false</acceptanceRequired><managesVpcEndpoints>false</managesVpcEndpoints><privateDnsName/> </item></serviceDetailSet><serviceNameSet><item>com.amazonaws.us-east-1.s3</item></serviceNameSet>"#,
     )
 }
 
@@ -1477,6 +1614,11 @@ fn create_vpc_endpoint_service(req: &Request, params: &P) -> Response {
     let acceptance = params.bool("AcceptanceRequired").unwrap_or(false);
     with_state(req, move |state| {
         let nlbs: Vec<String> = params
+            .list("NetworkLoadBalancerArn")
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let nlbs_out: Vec<String> = params
             .list("NetworkLoadBalancerArn")
             .iter()
             .map(|s| s.to_string())
@@ -1496,9 +1638,18 @@ fn create_vpc_endpoint_service(req: &Request, params: &P) -> Response {
         ec2_xml(
             "CreateVpcEndpointServiceConfigurationResponse",
             &format!(
-                "<value><id>{}</id></vpcEndpointService>{}",
-                crate::proto::xml_escape(&id),
-                ""
+                "<serviceConfiguration><serviceId>{id}</serviceId><serviceName>com.amazonaws.vpce.{region}.{account}.{id}</serviceName><serviceType><item><serviceType>Interface</serviceType></item></serviceType><acceptanceRequired>{acc}</acceptanceRequired><managesVpcEndpoints>false</managesVpcEndpoints><privateDnsNames/><baseEndpointDnsNames/><networkLoadBalancerArns>{nlbs}</networkLoadBalancerArns><gatewayLoadBalancerArns/><supportedIpAddressTypes/><state>Available</state></serviceConfiguration>",
+                id = crate::proto::xml_escape(&id),
+                region = "us-east-1",
+                account = req.account,
+                acc = if acceptance { "true" } else { "false" },
+                nlbs = nlbs_out
+                    .iter()
+                    .map(|arn| format!(
+                        "<item><networkLoadBalancerArn>{}</networkLoadBalancerArn></item>",
+                        crate::proto::xml_escape(arn)
+                    ))
+                    .collect::<String>()
             ),
         )
     })
@@ -1524,8 +1675,46 @@ fn delete_vpc_endpoint_service(req: &Request, params: &P) -> Response {
 }
 
 fn describe_vpc_endpoint_services_cfg(req: &Request, params: &P) -> Response {
-    ec2_xml(
-        "DescribeVpcEndpointServiceConfigurationsResponse",
-        "<serviceConfigurations/>",
-    )
+    let ids: Vec<String> = params
+        .list("ServiceId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    with_state(req, move |state| {
+        let mut items = String::new();
+        for s in &state.vpc_endpoint_services {
+            if !ids.is_empty() && !ids.contains(&s.id) {
+                continue;
+            }
+            let mut nlbs = String::new();
+            for arn in &s.nlb_arns {
+                nlbs.push_str(&format!(
+                    "<item><networkLoadBalancerArn>{}</networkLoadBalancerArn></item>",
+                    crate::proto::xml_escape(arn)
+                ));
+            }
+            let mut privs = String::new();
+            for p in &s.permissions {
+                privs.push_str(&format!(
+                    "<item><principal>{}</principal></item>",
+                    crate::proto::xml_escape(p)
+                ));
+            }
+            items.push_str(&format!(
+                "<item><serviceId>{}</serviceId><serviceName>com.amazonaws.vpce.us-east-1.{}.{}</serviceName><serviceType><item><serviceType>Interface</serviceType></item></serviceType><availabilityZoneSet/><acceptanceRequired>{}</acceptanceRequired><managesVpcEndpoints>false</managesVpcEndpoints><privateDnsNames/><baseEndpointDnsNames/><ownerId>123456789012</ownerId><networkLoadBalancerArns>{nlbs}</networkLoadBalancerArns><gatewayLoadBalancerArns/><supportedIpAddressTypes/><privateIpv4DnsNames/>{}<state>Available</state><tagSet/></item>",
+                crate::proto::xml_escape(&s.id),
+                req.account,
+                crate::proto::xml_escape(&s.id),
+                if s.acceptance_required { "true" } else { "false" },
+                privs
+            ));
+        }
+        ec2_xml(
+            "DescribeVpcEndpointServiceConfigurationsResponse",
+            &format!(
+                "<serviceConfigurationSet>{}</serviceConfigurationSet>",
+                items
+            ),
+        )
+    })
 }

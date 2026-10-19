@@ -4,6 +4,8 @@
 //! for its service the moment it publishes real behavior. Until then the
 //! gateway falls back to the sidecar, so the wire contract stays intact.
 
+pub mod ec2;
+
 use crate::{Request, Response};
 
 pub mod acm;
@@ -57,7 +59,6 @@ pub mod pipes;
 pub mod polly;
 pub mod redshift;
 pub mod redshiftdata;
-pub mod ec2;
 pub mod rds;
 pub mod codepipeline;
 pub mod efs;
@@ -148,6 +149,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "timestreamquery" => timestreamquery::dispatch(req),
         "timestreamwrite" => timestreamwrite::dispatch(req),
         "transcribe" => Some(transcribe::dispatch(req)),
+
         _ => None,
     }
 }

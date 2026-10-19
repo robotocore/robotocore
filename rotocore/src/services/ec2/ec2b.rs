@@ -30,6 +30,9 @@ pub fn volume_fields(v: &Volume) -> String {
         "<createTime>{}</createTime>",
         xml_escape(&v.create_time)
     );
+    if v.encrypted {
+        out.push_str("<encrypted>true</encrypted>");
+    }
     if let Some(i) = v.iops {
         let _ = write!(out, "<iops>{}</iops>", i);
     }
@@ -109,8 +112,11 @@ pub fn snapshot_fields(s: &Snapshot) -> String {
 /// The `<launchTemplate>` inner label (id + name).
 pub fn template_label(lt: &LaunchTemplate) -> String {
     format!(
-        "<launchTemplateId>{}</launchTemplateId><launchTemplateName>{}</launchTemplateName>",
+        "<launchTemplateId>{}</launchTemplateId><latestVersionNumber>{}</latestVersionNumber><launchTemplateName>{}</launchTemplateName><defaultVersionNumber>{}</defaultVersionNumber><createdBy>arn:aws:sts::123456789012:root</createdBy><createTime>{}</createTime>",
         xml_escape(&lt.id),
-        xml_escape(&lt.name)
+        lt.latest_version,
+        xml_escape(&lt.name),
+        lt.default_version,
+        xml_escape(&lt.created)
     )
 }

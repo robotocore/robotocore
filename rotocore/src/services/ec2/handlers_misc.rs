@@ -307,48 +307,12 @@ pub static SIMPLE_FAMILIES: &[FamilySpec] = &[
         "CarrierGatewayId"
     ),
     fam!(
-        "tgw",
-        "CreateTransitGateway",
-        "DescribeTransitGateways",
-        "DeleteTransitGateway",
-        "transitGatewaySet",
-        "tgw",
-        "TransitGatewayId"
-    ),
-    fam!(
-        "tgw-peering",
-        "CreateTransitGatewayPeeringAttachment",
-        "DescribeTransitGatewayPeeringAttachments",
-        "DeleteTransitGatewayPeeringAttachment",
-        "transitGatewayPeeringAttachmentSet",
-        "tgw-attach",
-        "TransitGatewayAttachmentId"
-    ),
-    fam!(
-        "tgw-connect",
-        "CreateTransitGatewayConnect",
-        "DescribeTransitGatewayConnects",
-        "DeleteTransitGatewayConnect",
-        "transitGatewayConnectSet",
-        "tgw-attach",
-        "TransitGatewayAttachmentId"
-    ),
-    fam!(
-        "tgw-connect-peer",
-        "CreateTransitGatewayConnectPeer",
-        "DescribeTransitGatewayConnectPeers",
-        "DeleteTransitGatewayConnectPeer",
-        "transitGatewayConnectPeerSet",
-        "tgw-connect-peer",
-        "TransitGatewayConnectPeerId"
-    ),
-    fam!(
         "coip-pool",
         "CreateCoipPool",
         "DescribeCoipPools",
         "DeleteCoipPool",
         "coipPoolSet",
-        "coip-pool",
+        "ipv4pool-coip",
         "PoolId"
     ),
     fam!(
@@ -357,7 +321,7 @@ pub static SIMPLE_FAMILIES: &[FamilySpec] = &[
         "DescribePublicIpv4Pools",
         "DeletePublicIpv4Pool",
         "publicIpv4PoolSet",
-        "ipv4pool",
+        "ipv4pool-ec2",
         "PoolId"
     ),
     fam!(
@@ -414,7 +378,46 @@ fn find_family(op: &str) -> Option<&'static FamilySpec> {
     SIMPLE_FAMILIES
         .iter()
         .find(|f| op == f.create_op || op == f.describe_op || op == f.delete_op)
+        .or_else(|| {
+            FAMILY_EXTRA_OPS.iter().find_map(|(kind, extra_op)| {
+                if op == *extra_op {
+                    SIMPLE_FAMILIES.iter().find(|f| f.kind == *kind)
+                } else {
+                    None
+                }
+            })
+        })
 }
+
+/// Ops beyond create/describe/delete that belong to list-root families:
+/// (family kind, op). These route to [`hostlist_route`] like family ops.
+pub static IPAM_OPS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+    [
+        "ProvisionIpamPoolCidr",
+        "DeprovisionIpamPoolCidr",
+        "AllocateIpamPoolCidr",
+        "ReleaseIpamPoolAllocation",
+        "GetIpamPoolCidrs",
+        "GetIpamPoolAllocations",
+        "GetIpamResourceCidrs",
+        "DescribeIpamScopesEmpty",
+        "ModifyIpam",
+        "ModifyIpamPool",
+        "ModifyIpamResourceDiscovery",
+    ]
+    .into_iter()
+    .collect()
+});
+
+static FAMILY_EXTRA_OPS: [(&str, &str); 7] = [
+    ("fleet", "DeleteFleets"),
+    ("fleet", "ModifyFleet"),
+    ("fleet", "DescribeFleetInstances"),
+    ("fleet", "DescribeFleetHistory"),
+    ("spot-fleet-request", "ModifySpotFleetRequest"),
+    ("spot-fleet-request", "DescribeSpotFleetInstances"),
+    ("host", "ModifyHosts"),
+];
 
 pub fn route(req: &Request, params: &P) -> Response {
     let op: &str = &req.operation;
@@ -429,13 +432,16 @@ pub fn route(req: &Request, params: &P) -> Response {
     if find_family(op).is_some() {
         return simple_family_route(req, params);
     }
+    if IPAM_OPS.contains(op) {
+        return ipam_route(req, &req.operation, params);
+    }
     // 1b) the rest of the transit gateway family (route tables etc.)
     if TRANSIT_GW_OPS.contains(op) {
         return tgw_route(req, op, params);
     }
     // 0b) family-carryover gap ops
     if GAP_OPS_B.contains(op) {
-        return gap_ops_b_response(op, params);
+        return gap_ops_b_response(req, op, params);
     }
     // 1c) modify-style ops on simple families
     if MODIFY_OPS.contains(op) {
@@ -451,13 +457,45 @@ pub fn route(req: &Request, params: &P) -> Response {
 }
 
 static MODIFY_OPS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
-    ["ModifyManagedPrefixList", "ModifyCapacityReservationFleet"]
-        .into_iter()
-        .collect()
+    [
+        "ModifyManagedPrefixList",
+        "ModifyCapacityReservationFleet",
+        "ModifyClientVpnEndpoint",
+    ]
+    .into_iter()
+    .collect()
 });
 
 fn modify_route(req: &Request, op: &str, params: &P) -> Response {
     with_state(req, move |state| {
+        if op == "ModifyClientVpnEndpoint" {
+            let id = params.str("ClientVpnEndpointId");
+            let mut found = false;
+            if let Some(items) = state.simple.get_mut("client-vpn-endpoint") {
+                for s in items.iter_mut() {
+                    if s.id == id {
+                        found = true;
+                        if let Some(d) = params.get("Description.Value") {
+                            s.set("Description", d.to_string());
+                        }
+                        if let Some(d) = params.get("ClientConnectResponseOptions.Enabled") {
+                            s.set("ClientConnectOptions.Enabled", d.to_string());
+                        }
+                    }
+                }
+            }
+            if !found {
+                return ec2_error(
+                    404,
+                    "InvalidClientVpnEndpointId.NotFound",
+                    &format!(
+                        "The Client VPN endpoint ID '{}' does not exist",
+                        crate::proto::xml_escape(&id)
+                    ),
+                );
+            }
+            return ec2_xml("ModifyClientVpnEndpointResponse", "<return>true</return>");
+        }
         if op == "ModifyManagedPrefixList" {
             let id = params.str("PrefixListId");
             if !state
@@ -475,10 +513,40 @@ fn modify_route(req: &Request, op: &str, params: &P) -> Response {
                     ),
                 );
             }
-            let fam = SIMPLE_FAMILIES
-                .iter()
-                .find(|f| f.kind == "managed-prefix-list")
-                .unwrap();
+            // Apply AddEntries / RemoveEntries to the stored record and bump
+            // the version — moto semantics (modify_managed_prefix_list).
+            let mut new_version: Option<String> = None;
+            if let Some(items) = state.simple.get_mut("managed-prefix-list") {
+                for s in items.iter_mut() {
+                    if s.id != id {
+                        continue;
+                    }
+                    let mut changed = false;
+                    let removed = params.container_indices("RemoveEntry");
+                    for i in removed {
+                        if let Some(cidr) = params.sub("RemoveEntry", i, "Cidr") {
+                            s.fields.remove(&format!("entry:{cidr}"));
+                            changed = true;
+                        }
+                    }
+                    for i in params.container_indices("AddEntry") {
+                        let cidr = params.sub("AddEntry", i, "Cidr").unwrap_or_default();
+                        if cidr.is_empty() {
+                            continue;
+                        }
+                        let desc = params.sub("AddEntry", i, "Description").unwrap_or("");
+                        s.set(&format!("entry:{cidr}"), desc.to_string());
+                        changed = true;
+                    }
+                    if changed {
+                        let cur = s
+                            .get("Version")
+                            .and_then(|v| v.parse::<u64>().ok())
+                            .unwrap_or(1);
+                        new_version = Some((cur + 1).to_string());
+                    }
+                }
+            }
             let tags_xml_v = super::tags_xml(&Vec::new());
             let fills = super::family_fills::create_fills(
                 "managed-prefix-list",
@@ -489,6 +557,30 @@ fn modify_route(req: &Request, op: &str, params: &P) -> Response {
                 false,
                 &tags_xml_v,
             );
+            if let Some(v) = &new_version {
+                if let Some(items) = state.simple.get_mut("managed-prefix-list") {
+                    for s in items.iter_mut() {
+                        if s.id == id {
+                            s.set("Version", v.clone());
+                            s.item_xml = s.item_xml.replace(
+                                "<version>1</version>",
+                                &format!("<version>{v}</version>"),
+                            );
+                        }
+                    }
+                }
+                let mut fills = fills;
+                fills.insert("Version".to_string(), super::shapes::Fill::S(v.clone()));
+                if let Some(xml) =
+                    super::shapes::render_response("ModifyManagedPrefixList", &fills, "us-east-1")
+                {
+                    return Response::xml(200, xml.into_bytes());
+                }
+                return ec2_xml(
+                    "ModifyManagedPrefixListResponse",
+                    &format!("<prefixList><prefixListId>{}</prefixListId><version>{}</version><state>modify-in-progress</state></prefixList>", crate::proto::xml_escape(&id), v),
+                );
+            }
             if let Some(xml) =
                 super::shapes::render_response("ModifyManagedPrefixList", &fills, "us-east-1")
             {
@@ -550,8 +642,140 @@ fn list_pykey_of(op: &str) -> String {
         .unwrap_or_default()
 }
 
+/// Dedicated create/describe/delete for NetworkInsightsAccessScope: the
+/// captured template hardcodes one sample id, so the store id and the wire id
+/// drifted apart (delete then 404ed).
+fn nis_scope_route(req: &Request, params: &P) -> Response {
+    match req.operation.as_str() {
+        "CreateNetworkInsightsAccessScope" => with_state(req, move |state| {
+            let id = state.next_id("nis");
+            let mut s = Simple {
+                    id: id.clone(),
+                    kind: "network-insights-access-scope".to_string(),
+                    item_xml: format!(
+                        "<item><networkInsightsAccessScopeId>{id}</networkInsightsAccessScopeId><networkInsightsAccessScopeArn>arn:aws:ec2:{region}:{account}:network-insights-access-scope/{id}</networkInsightsAccessScopeArn><createdDate>{ts}</createdDate><tagSet/></item>",
+                        id = xml_escape(&id),
+                        region = req.region,
+                        account = req.account,
+                        ts = super::now_iso()
+                    ),
+                    tags: wire_tags(params),
+                    ..Default::default()
+                };
+            s.set("NetworkInsightsAccessScopeId", id.clone());
+            for (k, v) in super::handlers::tag_spec_tags(params) {
+                if !s.tags.iter().any(|(ek, _)| ek == &k) {
+                    s.tags.push((k, v));
+                }
+            }
+            state
+                .simple
+                .entry("network-insights-access-scope".to_string())
+                .or_default()
+                .push(s);
+            Response::xml(
+                    200,
+                    format!(
+                        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<{root} xmlns=\"{ns}\"><networkInsightsAccessScope><networkInsightsAccessScopeId>{id}</networkInsightsAccessScopeId><networkInsightsAccessScopeArn>arn:aws:ec2:{region}:{account}:network-insights-access-scope/{id}</networkInsightsAccessScopeArn><createdDate>{ts}</createdDate><tagSet/></networkInsightsAccessScope><networkInsightsAccessScopeContent><networkInsightsAccessScopeId>{id}</networkInsightsAccessScopeId></networkInsightsAccessScopeContent><requestId>{rid}</requestId></{root}>",
+                        root = req.operation,
+                        ns = super::EC2_NS,
+                        id = xml_escape(&id),
+                        region = req.region,
+                        account = req.account,
+                        ts = super::now_iso(),
+                        rid = uuid::Uuid::new_v4()
+                    )
+                    .into_bytes(),
+                )
+        }),
+        "DescribeNetworkInsightsAccessScopes" => {
+            let ids = ids_of(params, "NetworkInsightsAccessScopeId");
+            with_state(req, move |state| {
+                let mut items = String::new();
+                if let Some(list) = state.simple.get("network-insights-access-scope") {
+                    for s in list {
+                        if !ids.is_empty() && !ids.contains(&s.id) {
+                            continue;
+                        }
+                        items.push_str(&s.item_xml);
+                    }
+                }
+                ec2_xml(
+                    "DescribeNetworkInsightsAccessScopesResponse",
+                    &format!(
+                        "<networkInsightsAccessScopeSet>{items}</networkInsightsAccessScopeSet>"
+                    ),
+                )
+            })
+        }
+        "DeleteNetworkInsightsAccessScope" => {
+            let id = params.str("NetworkInsightsAccessScopeId");
+            with_state(req, move |state| {
+                state
+                    .simple
+                    .entry("network-insights-access-scope".to_string())
+                    .or_default()
+                    .retain(|s| s.id != id);
+                ec2_xml(
+                    "DeleteNetworkInsightsAccessScopeResponse",
+                    &format!(
+                        "<networkInsightsAccessScopeId>{}</networkInsightsAccessScopeId>",
+                        xml_escape(&id)
+                    ),
+                )
+            })
+        }
+        _ => super::not_implemented(&req.operation),
+    }
+}
+
 fn simple_family_route(req: &Request, params: &P) -> Response {
     let fam = find_family(&req.operation).unwrap();
+    if fam.kind == "network-insights-access-scope" {
+        return nis_scope_route(req, params);
+    }
+    if req.operation == "CreateVpnConnection" {
+        // moto validates both referenced gateways before creating
+        let cgw = params.str("CustomerGatewayId");
+        let vgw = params.str("VpnGatewayId");
+        if let Some(err) = with_state(req, move |state| {
+            // only gateway ids actually provided are validated (a Transit
+            // Gateway connection omits VpnGatewayId)
+            if !cgw.is_empty()
+                && !state
+                    .simple
+                    .get("customer-gateway")
+                    .map(|items| items.iter().any(|s| s.id == cgw))
+                    .unwrap_or(false)
+            {
+                return Some(ec2_error(
+                    400,
+                    "InvalidCustomerGatewayID.NotFound",
+                    &format!(
+                        "The customerGateway ID '{}' does not exist",
+                        xml_escape(&cgw)
+                    ),
+                ));
+            }
+            if !vgw.is_empty()
+                && !state
+                    .simple
+                    .get("vpn-gateway")
+                    .map(|items| items.iter().any(|s| s.id == vgw))
+                    .unwrap_or(false)
+            {
+                return Some(ec2_error(
+                    400,
+                    "InvalidVpnGatewayID.NotFound",
+                    &format!("The vpnGateway ID '{}' does not exist", xml_escape(&vgw)),
+                ));
+            }
+            None
+        }) {
+            return err;
+        }
+        return simple_create(req, params, fam);
+    }
     if matches!(
         fam.kind,
         "host" | "fleet" | "spot-fleet-request" | "spot-instance-request"
@@ -586,6 +810,76 @@ fn simple_create(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
             false,
             &tags_xml_v,
         );
+        let record = |state: &mut super::state::Ec2State, rid: &str, item_xml: String| {
+            let mut s = Simple {
+                id: rid.to_string(),
+                kind: fam.kind.to_string(),
+                item_xml,
+                tags: tags.clone(),
+                ..Default::default()
+            };
+            for (k, v) in fills.iter() {
+                if let super::shapes::Fill::S(v) = v {
+                    s.set(k, v.clone());
+                }
+            }
+            if fam.kind == "managed-prefix-list" {
+                // store the create-time entries keyed by cidr so Modify and
+                // GetManagedPrefixListEntries can read/update them
+                for i in params.container_indices("Entry") {
+                    let cidr = params.sub("Entry", i, "Cidr").unwrap_or_default();
+                    if cidr.is_empty() {
+                        continue;
+                    }
+                    let desc = params.sub("Entry", i, "Description").unwrap_or("");
+                    s.set(&format!("entry:{cidr}"), desc.to_string());
+                }
+            }
+            state
+                .simple
+                .entry(fam.kind.to_string())
+                .or_default()
+                .push(s);
+            if fam.kind == "ipam" {
+                // both default scopes are created with the IPAM; DescribeIpamScopes
+                // must list them with their wire types
+                for (scope_type, key) in [
+                    ("public", "PublicDefaultScopeId"),
+                    ("private", "PrivateDefaultScopeId"),
+                ] {
+                    if let Some(super::shapes::Fill::S(sid)) = fills.get(key) {
+                        let mut sc = Simple {
+                            id: sid.clone(),
+                            kind: "ipam-scope".to_string(),
+                            ..Default::default()
+                        };
+                        sc.set("IpamScopeId", sid.clone());
+                        sc.set("IpamScopeType", scope_type);
+                        sc.set("IpamId", id.clone());
+                        sc.set(
+                            "IpamArn",
+                            format!("arn:aws:ec2:{}:{}:ipam/{}", req.region, req.account, id),
+                        );
+                        sc.set("IsDefault", "true");
+                        sc.set("State", "create-complete");
+                        sc.set("PoolCount", "0");
+                        sc.item_xml = format!(
+                            "<ipamScopeId>{sid}</ipamScopeId><ipamScopeArn>arn:aws:ec2:{region}:{account}:ipam-scope/{sid}</ipamScopeArn><ipamArn>{arn}</ipamArn><ipamRegion>{region}</ipamRegion><ipamScopeType>{scope_type}</ipamScopeType><isDefault>true</isDefault><poolCount>0</poolCount><state>create-complete</state><tagSet/>",
+                            sid = xml_escape(sid),
+                            region = req.region,
+                            account = req.account,
+                            arn = xml_escape(&format!("arn:aws:ec2:{}:{}:ipam/{}", req.region, req.account, id)),
+                            scope_type = scope_type,
+                        );
+                        state
+                            .simple
+                            .entry("ipam-scope".to_string())
+                            .or_default()
+                            .push(sc);
+                    }
+                }
+            }
+        };
         if family_root_is_list(fam.create_op) {
             if let Some(xml) = super::shapes::render_list_response(
                 fam.create_op,
@@ -594,34 +888,14 @@ fn simple_create(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
                 "us-east-1",
             ) {
                 let inner = strip_op_root(&xml, fam.create_op);
-                state
-                    .simple
-                    .entry(fam.kind.to_string())
-                    .or_default()
-                    .push(Simple {
-                        id: id.clone(),
-                        kind: fam.kind.to_string(),
-                        item_xml: inner,
-                        tags,
-                        ..Default::default()
-                    });
+                record(state, &id, inner);
                 return Response::xml(200, xml.into_bytes());
             }
         }
         // single-object shape render for structure-out roots
         if let Some(xml) = super::shapes::render_response(fam.create_op, &fills, "us-east-1") {
             let inner = strip_op_root(&xml, fam.create_op);
-            state
-                .simple
-                .entry(fam.kind.to_string())
-                .or_default()
-                .push(Simple {
-                    id: id.clone(),
-                    kind: fam.kind.to_string(),
-                    item_xml: inner,
-                    tags,
-                    ..Default::default()
-                });
+            record(state, &id, inner);
             return Response::xml(200, xml.into_bytes());
         }
         // captured-template fallback
@@ -638,17 +912,7 @@ fn simple_create(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
                     .cloned()
                     .unwrap_or_else(|| id.clone());
                 let inner = strip_op_root(&body, fam.create_op);
-                state
-                    .simple
-                    .entry(fam.kind.to_string())
-                    .or_default()
-                    .push(Simple {
-                        id: id2.clone(),
-                        kind: fam.kind.to_string(),
-                        item_xml: inner,
-                        tags,
-                        ..Default::default()
-                    });
+                record(state, &id2, inner);
                 (status, body)
             }
             _ => {
@@ -657,22 +921,12 @@ fn simple_create(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
                 let id2 = next_placeholder_id(fam.id_prefix);
                 let item = synth_fields(fam, &id2, params, state);
                 let inner = single_root(fam.kind);
-                state
-                    .simple
-                    .entry(fam.kind.to_string())
-                    .or_default()
-                    .push(Simple {
-                        id: id2.clone(),
-                        kind: fam.kind.to_string(),
-                        item_xml: format!("<item>{}</item>", item.clone()),
-                        tags,
-                        ..Default::default()
-                    });
+                record(state, &id2, format!("<item>{}</item>", item.clone()));
                 (200, format!("<{}>{}</{}>", inner, item, inner))
             }
         };
         let (status, body) = rendered;
-        let _ = fam;
+        let _ = &id;
         Response::xml(status, body.into_bytes())
     })
 }
@@ -746,12 +1000,11 @@ fn strip_op_root(xml: &str, op: &str) -> String {
 }
 
 fn simple_describe(req: &Request, params: &P, fam: &'static FamilySpec) -> Response {
+    if fam.kind == "client-vpn-endpoint" {
+        return client_vpn_describe(req, params);
+    }
     with_state(req, move |state| {
-        let ids: Vec<String> = params
-            .list(fam.id_key)
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let ids = ids_of(params, fam.id_key);
         let items: Vec<String> = state
             .simple
             .get(fam.kind)
@@ -832,6 +1085,49 @@ fn simple_describe(req: &Request, params: &P, fam: &'static FamilySpec) -> Respo
 }
 
 /// The python key of the first list member in an op's output shape.
+/// Render client VPN endpoints from the Simple store; the template-splice
+/// path does not know this family's flat item shape.
+fn client_vpn_describe(req: &Request, params: &P) -> Response {
+    with_state(req, move |state| {
+        let ids = ids_of(params, "ClientVpnEndpointId");
+        let mut items = String::new();
+        if let Some(items_vec) = state.simple.get("client-vpn-endpoint").cloned() {
+            for s in &items_vec {
+                if !ids.is_empty() && !ids.contains(&s.id) {
+                    continue;
+                }
+                let code = s.get("Status.Code").unwrap_or("pending-associate");
+                let cidr = s.get("ClientCidrBlock").unwrap_or_default();
+                let cert = s.get("ServerCertificateArn").unwrap_or_default();
+                let desc = s.get("Description").unwrap_or_default();
+                items.push_str(&format!(
+                    "<item>\
+{desc_el}\
+<clientCidrBlock>{cidr}</clientCidrBlock>\
+<status><code>{code}</code><message></message></status>\
+<dnsName>*.cvpn-{id}.prod.clientvpn.us-east-1.amazonaws.com</dnsName>\
+<serverCertificateArn>{cert}</serverCertificateArn>\
+<clientVpnEndpointId>{id}</clientVpnEndpointId>\
+</item>",
+                    desc_el = if desc.is_empty() {
+                        String::new()
+                    } else {
+                        format!("<description>{}</description>", xml_escape(desc))
+                    },
+                    cidr = xml_escape(cidr),
+                    code = code,
+                    id = xml_escape(&s.id),
+                    cert = xml_escape(cert),
+                ));
+            }
+        }
+        ec2_xml(
+            "DescribeClientVpnEndpointsResponse",
+            &format!("<clientVpnEndpoint>{items}</clientVpnEndpoint>"),
+        )
+    })
+}
+
 fn list_member_key(shape: &serde_json::Value) -> Option<String> {
     let members = shape.get("m")?.as_object()?;
     for (_wire, member) in members {
@@ -846,11 +1142,7 @@ fn list_member_key(shape: &serde_json::Value) -> Option<String> {
 
 fn simple_delete(req: &Request, params: &P, fam: &'static FamilySpec) -> Response {
     with_state(req, move |state| {
-        let ids: Vec<String> = params
-            .list(fam.id_key)
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let ids = ids_of(params, fam.id_key);
         let mut removed = false;
         for id in &ids {
             if let Some(items) = state.simple.get_mut(fam.kind) {
@@ -858,6 +1150,14 @@ fn simple_delete(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
                 items.retain(|s| s.id != *id);
                 if items.len() != before {
                     removed = true;
+                }
+            }
+        }
+        if fam.kind == "ipam" {
+            // remove the two default scopes stored at ipam creation
+            for id in &ids {
+                if let Some(items) = state.simple.get_mut("ipam-scope") {
+                    items.retain(|s| s.get("IpamId") != Some(id.as_str()));
                 }
             }
         }
@@ -958,11 +1258,13 @@ pub static GAP_OPS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
         "CreateIpamExternalResourceVerificationToken",
         "CreateLocalGatewayRouteTableVifGroupAssociation",
         "CreateLocalGatewayRouteTableVpcAssociation",
+        "CreateLocalGatewayRouteTableVirtualInterfaceGroupAssociation",
         "CreateNetworkInterfacePermission",
         "CreateReservedInstancesListing",
         "CreateRestoreImageTask",
         "CreateTransitGatewayMulticastDomain",
         "CreateTransitGatewayPolicyTable",
+        "AttachClassicLinkVpc",
     ]
     .into_iter()
     .collect()
@@ -976,6 +1278,21 @@ pub fn gap_ops_response(op: &str) -> Response {
         "CreateClientVpnRoute" => String::from("<status><code>creating</code></status>"),
         "CreateTransitGatewayMulticastDomain" => String::from("<transitGatewayMulticastDomain><transitGatewayMulticastDomainId>tgw-mcast-domain-0000000000000000</transitGatewayMulticastDomainId><state>available</state></transitGatewayMulticastDomain>"),
         "CreateTransitGatewayPolicyTable" => String::from("<transitGatewayPolicyTable><transitGatewayPolicyTableId>tgw-policy-table-0000000000000000</transitGatewayPolicyTableId><state>available</state></transitGatewayPolicyTable>"),
+        "AssociateTransitGatewayPolicyTable" => String::from("<association></association>"),
+        "AssociateClientVpnTargetNetwork" => String::from("<associationId></associationId><status></status>"),
+        "BundleInstance" => String::from("<bundleInstanceTask></bundleInstanceTask>"),
+        "CancelBundleTask" => String::from("<bundleInstanceTask></bundleInstanceTask>"),
+        "CancelReservedInstancesListing" => String::from("<reservedInstancesListingsSet></reservedInstancesListingsSet>"),
+        "CreateReservedInstancesListing" => String::from("<reservedInstancesListingsSet></reservedInstancesListingsSet>"),
+        "CopyFpgaImage" => String::from("<fpgaImageId></fpgaImageId>"),
+        "CreateFpgaImage" => String::from("<fpgaImageId></fpgaImageId><fpgaImageGlobalId></fpgaImageGlobalId>"),
+        "CreateInstanceExportTask" => String::from("<exportTask></exportTask>"),
+        "CreateIpamExternalResourceVerificationToken" => String::from("<ipamExternalResourceVerificationToken></ipamExternalResourceVerificationToken>"),
+        "CreateLocalGatewayRouteTableVpcAssociation" => String::from("<localGatewayRouteTableVpcAssociation></localGatewayRouteTableVpcAssociation>"),
+        "CreateLocalGatewayRouteTableVirtualInterfaceGroupAssociation" => String::from("<localGatewayRouteTableVirtualInterfaceGroupAssociation></localGatewayRouteTableVirtualInterfaceGroupAssociation>"),
+        "CreateNetworkInterfacePermission" => String::from("<interfacePermission></interfacePermission>"),
+        "CreateRestoreImageTask" => String::from("<imageId></imageId>"),
+        "AttachClassicLinkVpc" => String::from("<return>true</return>"),
         _ => String::from("<return>true</return>"),
     };
     let root = format!("{}Response", op);
@@ -1030,25 +1347,37 @@ pub static TRANSIT_GW_OPS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
         "DeregisterTransitGatewayMulticastGroupMembers",
         "DeregisterTransitGatewayMulticastGroupSources",
         "RejectTransitGatewayMulticastDomain",
+        "RejectTransitGatewayMulticastDomainAssociations",
     ]
     .into_iter()
     .collect()
 });
 
-fn tgw_fields(t: &super::state::Tgw) -> String {
+fn tgw_fields(t: &super::state::Tgw, default_rtb_id: &str) -> String {
+    let _ = t.default_route_tables;
     format!(
-        "<transitGatewayId>{}</transitGatewayId>{}<amazonSideAsn>{}</amazonSideAsn><ownerId>{}</ownerId>{}<state>{}</state><creationTime>{}</creationTime><options><amazonSideAsn>{}</amazonSideAsn>{}<dnsSupport>enable</dnsSupport><vpnEcmpSupport>enable</vpnEcmpSupport></options>{}",
+        "<transitGatewayId>{}</transitGatewayId>{}<amazonSideAsn>{}</amazonSideAsn><ownerId>{}</ownerId>{}<state>{}</state><creationTime>{}</creationTime><options><amazonSideAsn>{}</amazonSideAsn>{}<dnsSupport>{}</dnsSupport><vpnEcmpSupport>enable</vpnEcmpSupport>{}{}</options>",
 
         xml_escape(&t.id),
         if !t.description.is_empty() { format!("<description>{}</description>", xml_escape(&t.description)) } else { String::new() },
-        xml_escape(&t.amazon_side_asn),
+        xml_escape(if t.amazon_side_asn.is_empty() { "64512" } else { &t.amazon_side_asn }),
         t.owner_id,
         tags_xml(&t.tags),
         xml_escape(&t.state),
         "1970-01-01T00:00:00.000Z",
-        xml_escape(&t.amazon_side_asn),
+        xml_escape(if t.amazon_side_asn.is_empty() { "64512" } else { &t.amazon_side_asn }),
         if t.auto_accept {
             String::from("<autoAcceptSharedAttachments>enable</autoAcceptSharedAttachments>")
+        } else {
+            String::new()
+        },
+        if t.dns_support { "enable" } else { "disable" },
+        if !default_rtb_id.is_empty() {
+            format!(
+                "<defaultRouteTableAssociation>enable</defaultRouteTableAssociation><defaultRouteTablePropagation>enable</defaultRouteTablePropagation><associationDefaultRouteTableId>{aid}</associationDefaultRouteTableId><propagationDefaultRouteTableId>{pid}</propagationDefaultRouteTableId>",
+                aid = xml_escape(default_rtb_id),
+                pid = xml_escape(default_rtb_id)
+            )
         } else {
             String::new()
         },
@@ -1056,8 +1385,17 @@ fn tgw_fields(t: &super::state::Tgw) -> String {
     )
 }
 
-fn tgw_item(t: &super::state::Tgw) -> String {
-    format!("<item>{}</item>", tgw_fields(t))
+fn tgw_item(t: &super::state::Tgw, default_rtb_id: &str) -> String {
+    format!("<item>{}</item>", tgw_fields(t, default_rtb_id))
+}
+
+/// The default route table created alongside a transit gateway.
+fn default_rtb_of(state: &super::state::Ec2State, tgw_id: &str) -> Option<String> {
+    state
+        .tgw_route_tables
+        .iter()
+        .find(|rt| rt.tgw_id == tgw_id && rt.is_default)
+        .map(|rt| rt.id.clone())
 }
 
 fn tgw_route(req: &Request, op: &str, params: &P) -> Response {
@@ -1066,8 +1404,21 @@ fn tgw_route(req: &Request, op: &str, params: &P) -> Response {
             let description = params.str("Description");
             with_state(req, move |state| {
                 let id = state.next_id("tgw");
-                let asn = params.get("AmazonSideAsn").unwrap_or("64512").to_string();
-                let tags = wire_tags(params);
+                let asn = params
+                    .get("Options.AmazonSideAsn")
+                    .unwrap_or("64512")
+                    .to_string();
+                let auto_accept =
+                    params.get("Options.AutoAcceptSharedAttachments") == Some("enable");
+                let dns_support = params.get("Options.DnsSupport") != Some("disable");
+                let multicast = params.get("Options.MulticastSupport") == Some("enable");
+                let vpn_ecmp = params.get("Options.VpnEcmpSupport") != Some("disable");
+                let mut tags = wire_tags(params);
+                for (k, v2) in super::handlers::tag_spec_tags(params) {
+                    if !tags.iter().any(|(ek, _)| ek == &k) {
+                        tags.push((k, v2));
+                    }
+                }
                 let arn = format!(
                     "arn:aws:ec2:{}:{}:transit-gateway/{}",
                     req.region, req.account, id
@@ -1082,14 +1433,15 @@ fn tgw_route(req: &Request, op: &str, params: &P) -> Response {
                     tags,
                     ..Default::default()
                 };
-                t.default_route_tables = true;
-                t.auto_accept = false;
-                t.dns_support = true;
+                t.default_route_tables =
+                    params.get("Options.DefaultRouteTableAssociation") != Some("disable");
+                t.auto_accept = auto_accept;
+                t.dns_support = dns_support;
                 state.transit_gateways.push(t.clone());
                 // tgw default route tables
                 let rt_id = state.next_id("tgw-rtb");
                 state.tgw_route_tables.push(super::state::TgwRouteTable {
-                    id: rt_id,
+                    id: rt_id.clone(),
                     tgw_id: id.clone(),
                     state: "available".into(),
                     default_association: true,
@@ -1097,11 +1449,13 @@ fn tgw_route(req: &Request, op: &str, params: &P) -> Response {
                     is_default: true,
                     ..Default::default()
                 });
+                let _ = multicast;
+                let _ = vpn_ecmp;
                 ec2_xml(
                     "CreateTransitGatewayResponse",
                     &format!(
                         "<transitGateway>{}{}</transitGateway>",
-                        tgw_fields(&t),
+                        tgw_fields(&t, &rt_id),
                         String::new()
                     ),
                 )
@@ -1109,8 +1463,9 @@ fn tgw_route(req: &Request, op: &str, params: &P) -> Response {
         }
         "DescribeTransitGateways" => {
             let ids: Vec<String> = params
-                .list("TransitGatewayId")
+                .list("TransitGatewayIds")
                 .iter()
+                .chain(params.list("TransitGatewayId").iter())
                 .map(|s| s.to_string())
                 .collect();
             let fs = super::handlers::filters(params);
@@ -1128,11 +1483,14 @@ fn tgw_route(req: &Request, op: &str, params: &P) -> Response {
                     }) {
                         continue;
                     }
-                    items.push_str(&tgw_item(t));
+                    items.push_str(&tgw_item(
+                        t,
+                        &default_rtb_of(state, &t.id).unwrap_or_default(),
+                    ));
                 }
                 ec2_xml(
                     "DescribeTransitGatewaysResponse",
-                    &format!("<transitGateways>{}</transitGateways>", items),
+                    &format!("<transitGatewaySet>{}</transitGatewaySet>", items),
                 )
             })
         }
@@ -1183,6 +1541,7 @@ fn tgw_route(req: &Request, op: &str, params: &P) -> Response {
                 let subnet_ids: Vec<String> = params
                     .list("SubnetId")
                     .iter()
+                    .chain(params.list("SubnetIds").iter())
                     .map(|s| s.to_string())
                     .collect();
                 let id = state.next_id("tgw-attach");
@@ -1227,17 +1586,32 @@ fn tgw_route(req: &Request, op: &str, params: &P) -> Response {
                 let pos = match state.tgw_attachments.iter().position(|a| a.id == id) {
                     Some(i) => i,
                     None => {
+                        if op.starts_with("Accept") {
+                            // moto's gap stubs accept unknown attachments with 200
+                            return ec2_xml(
+                                "AcceptTransitGatewayVpcAttachmentResponse",
+                                "<transitGatewayVpcAttachment/>",
+                            );
+                        }
                         return ec2_error(
                             400,
                             "InvalidTransitGatewayAttachmentID.NotFound",
                             &format!("TransitGatewayAttachment {} not found", xml_escape(&id)),
-                        )
+                        );
                     }
                 };
                 state.tgw_attachments[pos].state = "available".into();
                 for i in 0..params.count("SubnetId") {
                     let sid = params.list("SubnetId")[i].to_string();
                     state.tgw_attachments[pos].subnet_ids.push(sid);
+                }
+                for i in 0..params.count("AddSubnetIds") {
+                    let sid = params.list("AddSubnetIds")[i].to_string();
+                    state.tgw_attachments[pos].subnet_ids.push(sid);
+                }
+                for i in 0..params.count("RemoveSubnetIds") {
+                    let sid = params.list("RemoveSubnetIds")[i].to_string();
+                    state.tgw_attachments[pos].subnet_ids.retain(|x| x != &sid);
                 }
                 let a = state.tgw_attachments[pos].clone();
                 ec2_xml(
@@ -1267,11 +1641,44 @@ fn tgw_route(req: &Request, op: &str, params: &P) -> Response {
             with_state(req, move |state| {
                 let pos = state.tgw_attachments.iter().position(|a| a.id == attach_id);
                 if let Some(pos) = pos {
+                    let a = state.tgw_attachments[pos].clone();
                     state.tgw_attachments.remove(pos);
+                    if attach_id.contains("peer") {
+                        return ec2_xml(
+                            "DeleteTransitGatewayConnectPeerResponse",
+                            &format!("<transitGatewayConnectPeer><transitGatewayConnectPeerId>{}</transitGatewayConnectPeerId><state>deleted</state>{}</transitGatewayConnectPeer>", xml_escape(&attach_id), ""),
+                        );
+                    }
+                    if attach_id.starts_with("tgw-conn") {
+                        return ec2_xml(
+                            "DeleteTransitGatewayConnectResponse",
+                            &format!("<transitGatewayConnect><transitGatewayAttachmentId>{}</transitGatewayAttachmentId><state>deleted</state>{}</transitGatewayConnect>", xml_escape(&attach_id), ""),
+                        );
+                    }
+                    if a.resource_type == "peering" {
+                        return ec2_xml(
+                            "DeleteTransitGatewayPeeringAttachmentResponse",
+                            &format!("<transitGatewayPeeringAttachment><transitGatewayAttachmentId>{}</transitGatewayAttachmentId><state>deleted</state>{}</transitGatewayPeeringAttachment>", xml_escape(&attach_id), ""),
+                        );
+                    }
                     return ec2_xml(
                         "DeleteTransitGatewayVpcAttachmentResponse",
-                        &format!("<transitGatewayVpcAttachment>{}<state>deleting</state></transitGatewayVpcAttachment>", ""),
+                        &format!("<transitGatewayVpcAttachment>{}<state>deleted</state></transitGatewayVpcAttachment>", ""),
                     );
+                }
+                // connect peers live in the Simple store, not tgw_attachments
+                if let Some(items) = state.simple.get_mut("tgw-connect-peer") {
+                    if items.iter().any(|s| s.id == attach_id) {
+                        items.retain(|s| s.id != attach_id);
+                        return ec2_xml(
+                            "DeleteTransitGatewayConnectPeerResponse",
+                            &format!(
+                                "<transitGatewayConnectPeer><transitGatewayConnectPeerId>{}</transitGatewayConnectPeerId><state>deleting</state>{}</transitGatewayConnectPeer>",
+                                xml_escape(&attach_id),
+                                ""
+                            ),
+                        );
+                    }
                 }
                 ec2_error(
                     400,
@@ -1285,8 +1692,9 @@ fn tgw_route(req: &Request, op: &str, params: &P) -> Response {
         }
         "DescribeTransitGatewayVpcAttachments" => {
             let ids: Vec<String> = params
-                .list("TransitGatewayAttachmentId")
+                .list("TransitGatewayAttachmentIds")
                 .iter()
+                .chain(params.list("TransitGatewayAttachmentId").iter())
                 .map(|s| s.to_string())
                 .collect();
             with_state(req, move |state| {
@@ -1327,14 +1735,10 @@ fn tgw_attachment_item(a: &super::state::TgwAttachment) -> String {
 fn tgw_attachment_fields(a: &super::state::TgwAttachment) -> String {
     let mut subnets = String::new();
     for s in &a.subnet_ids {
-        subnets.push_str(&format!(
-            "<item>{}<subnetId>{}</subnetId></item>",
-            "",
-            xml_escape(s)
-        ));
+        subnets.push_str(&format!("<item>{}</item>", xml_escape(s)));
     }
     format!(
-        "<transitGatewayAttachmentId>{}</transitGatewayAttachmentId><transitGatewayId>{}</transitGatewayId><transitGatewayOwnerId>{}</transitGatewayOwnerId><resourceType>{}</resourceType><resourceId>{}</resourceId><resourceOwnerId>{}</resourceOwnerId><state>{}</state>{}{}{}</item>",
+        "<transitGatewayAttachmentId>{}</transitGatewayAttachmentId><transitGatewayId>{}</transitGatewayId><transitGatewayOwnerId>{}</transitGatewayOwnerId><resourceType>{}</resourceType><resourceId>{}</resourceId><resourceOwnerId>{}</resourceOwnerId><state>{}</state>{}{}{}",
         xml_escape(&a.id),
         xml_escape(&a.tgw_id),
         xml_escape(&a.tgw_owner_id),
@@ -1355,7 +1759,12 @@ fn simple_tgw_others(req: &Request, op: &str, params: &P) -> Response {
             let tgw_id = params.str("TransitGatewayId");
             with_state(req, move |state| {
                 let id = state.next_id("tgw-rtb");
-                let tags = wire_tags(params);
+                let mut tags = wire_tags(params);
+                for (k, v2) in super::handlers::tag_spec_tags(params) {
+                    if !tags.iter().any(|(ek, _)| ek == &k) {
+                        tags.push((k, v2));
+                    }
+                }
                 let tgw = state
                     .transit_gateways
                     .iter()
@@ -1383,8 +1792,9 @@ fn simple_tgw_others(req: &Request, op: &str, params: &P) -> Response {
         }
         "DescribeTransitGatewayRouteTables" => {
             let ids: Vec<String> = params
-                .list("TransitGatewayRouteTableId")
+                .list("TransitGatewayRouteTableIds")
                 .iter()
+                .chain(params.list("TransitGatewayRouteTableId").iter())
                 .map(|s| s.to_string())
                 .collect();
             with_state(req, move |state| {
@@ -1431,32 +1841,612 @@ fn simple_tgw_others(req: &Request, op: &str, params: &P) -> Response {
                 )
             })
         }
-        _ => {
-            // Associate/Disassociate/Enable/Disable/Get/Search/Create/Delete route,
-            // prefix list references, peering — respond moto-compatible shapes.
-            let _ = params;
-            super::xmlns_xml(
-                &format!("{}Response", op),
-                Some(super::EC2_NS),
-                &tgw_default_body(op),
-            )
-        }
+        _ => tgw_rest_route(req, op, params),
     }
 }
 
-fn tgw_default_body(op: &str) -> String {
-    match op {
-        "AssociateTransitGatewayRouteTable" | "EnableTransitGatewayRouteTablePropagation" => String::from(
-            "<associationId>tgw-attach-0000000000</associationId><state>associating</state>",
-        ),
-        "CreateTransitGatewayPeeringAttachment" => String::from(
-            "<transitGatewayPeeringAttachment><transitGatewayPeeringAttachmentId>tgw-peering-0000000000000000</transitGatewayPeeringAttachmentId><state>pendingAcceptance</state></transitGatewayPeeringAttachment>",
-        ),
-        "SearchTransitGatewayRoutes" => String::from(
-            "<routes/><searchInformation><state>validated</state></searchInformation>",
-        ),
-        _ => String::from("<return>true</return>"),
-    }
+/// Typed store-backed handlers for the transit gateway family ops that
+/// return structured objects: peering/connect/connect-peer attachments,
+/// route table entries, associations and prefix list references.
+fn tgw_rest_route(req: &Request, op: &str, params: &P) -> Response {
+    with_state(req, move |state| {
+        match op {
+            "CreateTransitGatewayPeeringAttachment" => {
+                let id = state.next_id("tgw-attach");
+                let mut atags = wire_tags(params);
+                for (k, v2) in super::handlers::tag_spec_tags(params) {
+                    if !atags.iter().any(|(ek, _)| ek == &k) {
+                        atags.push((k, v2));
+                    }
+                }
+                let a = super::state::TgwAttachment {
+                    id: id.clone(),
+                    tgw_id: params.str("TransitGatewayId"),
+                    tgw_owner_id: req.account.to_string(),
+                    resource_type: "peering".into(),
+                    resource_id: params.str("PeerTransitGatewayId"),
+                    resource_owner_id: req.account.to_string(),
+                    state: "pendingAcceptance".into(),
+                    requester_arn: format!(
+                        "arn:aws:ec2:{}:{}:transit-gateway/{}",
+                        req.region,
+                        req.account,
+                        params.str("TransitGatewayId")
+                    ),
+                    requester_owner_id: req.account.to_string(),
+                    requester_region: req.region.clone(),
+                    accepter_arn: format!(
+                        "arn:aws:ec2:{}:{}:transit-gateway/{}",
+                        req.region,
+                        req.account,
+                        params.str("PeerTransitGatewayId")
+                    ),
+                    accepter_owner_id: req.account.to_string(),
+                    accepter_region: req.region.clone(),
+                    tags: atags,
+                    ..Default::default()
+                };
+                state.tgw_attachments.push(a.clone());
+                ec2_xml(
+                    "CreateTransitGatewayPeeringAttachmentResponse",
+                    &format!(
+                        "<transitGatewayPeeringAttachment>{}{}</transitGatewayPeeringAttachment>",
+                        peering_fields(&a),
+                        String::new()
+                    ),
+                )
+            }
+            "AcceptTransitGatewayPeeringAttachment" | "RejectTransitGatewayPeeringAttachment" => {
+                let id = params.str("TransitGatewayAttachmentId");
+                let pos = state.tgw_attachments.iter().position(|a| a.id == id);
+                let pos = match pos {
+                    Some(p) => p,
+                    None => {
+                        return ec2_error(
+                            400,
+                            "InvalidTransitGatewayAttachmentID.NotFound",
+                            &format!("TransitGatewayAttachment {} not found", xml_escape(&id)),
+                        )
+                    }
+                };
+                state.tgw_attachments[pos].state = if op.starts_with("Accept") {
+                    "available".into()
+                } else {
+                    "rejecting".into()
+                };
+                let a = state.tgw_attachments[pos].clone();
+                ec2_xml(
+                    "AcceptTransitGatewayPeeringAttachmentResponse",
+                    &format!(
+                        "<transitGatewayPeeringAttachment>{}{}</transitGatewayPeeringAttachment>",
+                        peering_fields(&a),
+                        String::new()
+                    ),
+                )
+            }
+            "DeleteTransitGatewayPeeringAttachment" => {
+                let id = params.str("TransitGatewayAttachmentId");
+                let pos = state.tgw_attachments.iter().position(|a| a.id == id);
+                match pos {
+                    Some(mut_pos) => {
+                        state.tgw_attachments[mut_pos].state = "deleted".into();
+                        let a = state.tgw_attachments[mut_pos].clone();
+                        state.tgw_attachments.remove(mut_pos);
+                        ec2_xml(
+                            "DeleteTransitGatewayPeeringAttachmentResponse",
+                            &format!(
+                                "<transitGatewayPeeringAttachment>{}{}</transitGatewayPeeringAttachment>",
+                                peering_fields(&a),
+                                ""
+                            ),
+                        )
+                    }
+                    None => ec2_error(
+                        400,
+                        "InvalidTransitGatewayAttachmentID.NotFound",
+                        &format!("TransitGatewayAttachment {} not found", xml_escape(&id)),
+                    ),
+                }
+            }
+            "DescribeTransitGatewayPeeringAttachments" => {
+                let ids: Vec<String> = params
+                    .list("TransitGatewayAttachmentIds")
+                    .iter()
+                    .chain(params.list("TransitGatewayAttachmentId").iter())
+                    .map(|s| s.to_string())
+                    .collect();
+                let fs = super::handlers::filters(params);
+                let mut items = String::new();
+                for a in &state.tgw_attachments {
+                    if a.resource_type != "peering" {
+                        continue;
+                    }
+                    if !ids.is_empty() && !ids.contains(&a.id) {
+                        continue;
+                    }
+                    if !super::handlers::filter_passes(&fs, |f| match f {
+                        "transit-gateway-attachment-id" => vec![a.id.clone()],
+                        "state" => vec![a.state.clone()],
+                        other => tag_candidates(&a.tags, other),
+                    }) {
+                        continue;
+                    }
+                    items.push_str(&format!(
+                        "<item>{}{}</item>",
+                        peering_fields(a),
+                        String::new()
+                    ));
+                }
+                ec2_xml(
+                    "DescribeTransitGatewayPeeringAttachmentsResponse",
+                    &format!(
+                        "<transitGatewayPeeringAttachments>{items}</transitGatewayPeeringAttachments>"
+                    ),
+                )
+            }
+            "CreateTransitGatewayConnect" => {
+                let id = state.next_id("tgw-attach");
+                let mut ctags = wire_tags(params);
+                for (k, v2) in super::handlers::tag_spec_tags(params) {
+                    if !ctags.iter().any(|(ek, _)| ek == &k) {
+                        ctags.push((k, v2));
+                    }
+                }
+                let mut a = super::state::TgwAttachment {
+                    id: id.clone(),
+                    tgw_id: params.str("TransitGatewayId"),
+                    tgw_owner_id: req.account.to_string(),
+                    resource_type: "connect".into(),
+                    resource_id: params.str("TransportAttachmentId"),
+                    resource_owner_id: req.account.to_string(),
+                    state: "available".into(),
+                    tags: ctags,
+                    ..Default::default()
+                };
+                a.options.insert("Protocol".to_string(), "gre".to_string());
+                state.tgw_attachments.push(a.clone());
+                let a = state.tgw_attachments.last().unwrap().clone();
+                ec2_xml(
+                    "CreateTransitGatewayConnectResponse",
+                    &format!(
+                        "<transitGatewayConnect>{}{}</transitGatewayConnect>",
+                        connect_fields(&a),
+                        String::new()
+                    ),
+                )
+            }
+            "DescribeTransitGatewayConnects" => {
+                let mut items = String::new();
+                for a in &state.tgw_attachments {
+                    if a.resource_type != "connect" {
+                        continue;
+                    }
+                    items.push_str(&format!(
+                        "<item>{}{}</item>",
+                        connect_fields(a),
+                        String::new()
+                    ));
+                }
+                ec2_xml(
+                    "DescribeTransitGatewayConnectsResponse",
+                    &format!("<transitGatewayConnectSet>{items}</transitGatewayConnectSet>"),
+                )
+            }
+            "CreateTransitGatewayConnectPeer" => {
+                let id = state.next_id("tgw-connect-peer");
+                let mut s = Simple {
+                    id: id.clone(),
+                    kind: "tgw-connect-peer".to_string(),
+                    ..Default::default()
+                };
+                s.set("AttachmentId", params.str("TransitGatewayAttachmentId"));
+                s.set("PeerAddress", params.str("PeerAddress"));
+                s.set("TransitGatewayAddress", params.str("TransitGatewayAddress"));
+                let inside = params
+                    .list("InsideCidrBlocks")
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",");
+                s.set("InsideCidrBlocks", inside);
+                s.set("State", "available");
+                s.tags = wire_tags(params);
+                state
+                    .simple
+                    .entry("tgw-connect-peer".to_string())
+                    .or_default()
+                    .push(s.clone());
+                ec2_xml(
+                    "CreateTransitGatewayConnectPeerResponse",
+                    &format!(
+                        "<transitGatewayConnectPeer>{}{}</transitGatewayConnectPeer>",
+                        connect_peer_fields(&s),
+                        String::new()
+                    ),
+                )
+            }
+            "DescribeTransitGatewayConnectPeers" => {
+                let ids: Vec<String> = params
+                    .list("TransitGatewayConnectPeerIds")
+                    .iter()
+                    .chain(params.list("TransitGatewayConnectPeerId").iter())
+                    .map(|s| s.to_string())
+                    .collect();
+                let mut items = String::new();
+                if let Some(items_vec) = state.simple.get("tgw-connect-peer").cloned() {
+                    for s in &items_vec {
+                        if !ids.is_empty() && !ids.contains(&s.id) {
+                            continue;
+                        }
+                        items.push_str(&format!(
+                            "<item>{}{}</item>",
+                            connect_peer_fields(s),
+                            String::new()
+                        ));
+                    }
+                }
+                ec2_xml(
+                    "DescribeTransitGatewayConnectPeersResponse",
+                    &format!(
+                        "<transitGatewayConnectPeerSet>{items}</transitGatewayConnectPeerSet>"
+                    ),
+                )
+            }
+            "CreateTransitGatewayRoute" => {
+                let rtb = params.str("TransitGatewayRouteTableId");
+                let dest = params.str("DestinationCidrBlock");
+                let blackhole = params.get("Blackhole") == Some("true");
+                let pl = params.str("PrefixListId");
+                if let Some(pos) = state.tgw_route_tables.iter().position(|rt| rt.id == rtb) {
+                    state.tgw_route_tables[pos].routes.push((
+                        if dest.is_empty() {
+                            pl.clone()
+                        } else {
+                            dest.clone()
+                        },
+                        if blackhole {
+                            "blackhole".into()
+                        } else {
+                            ":".into()
+                        },
+                        if blackhole {
+                            "blackhole".into()
+                        } else {
+                            "active".into()
+                        },
+                    ));
+                }
+                let dest_wire = if dest.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        "<destinationCidrBlock>{}</destinationCidrBlock>",
+                        xml_escape(&dest)
+                    )
+                };
+                let type_wire = if !pl.is_empty() {
+                    String::from("<prefixListId>")
+                        + &xml_escape(&pl)
+                        + "</prefixListId><type>static</type>"
+                } else {
+                    String::from("<type>static</type>")
+                };
+                ec2_xml(
+                    "CreateTransitGatewayRouteResponse",
+                    &format!(
+                        "<route>{}{}<state>{}</state>{}</route>",
+                        dest_wire,
+                        type_wire,
+                        if blackhole { "blackhole" } else { "active" },
+                        String::new()
+                    ),
+                )
+            }
+            "DeleteTransitGatewayRoute" => {
+                let rtb = params.str("TransitGatewayRouteTableId");
+                let dest = params.str("DestinationCidrBlock");
+                if let Some(pos) = state.tgw_route_tables.iter().position(|rt| rt.id == rtb) {
+                    state.tgw_route_tables[pos]
+                        .routes
+                        .retain(|(c, _, _)| c != &dest);
+                }
+                let dest_wire = if dest.contains('/') {
+                    format!(
+                        "<destinationCidrBlock>{}</destinationCidrBlock>",
+                        xml_escape(&dest)
+                    )
+                } else {
+                    format!("<prefixListId>{}</prefixListId>", xml_escape(&dest))
+                };
+                ec2_xml(
+                    "DeleteTransitGatewayRouteResponse",
+                    &format!("<route>{}<state>deleted</state>{}</route>", dest_wire, ""),
+                )
+            }
+            "SearchTransitGatewayRoutes" => {
+                let rtb = params.str("TransitGatewayRouteTableId");
+                let fs = super::handlers::filters(params);
+                let mut items = String::new();
+                if let Some(rt) = state.tgw_route_tables.iter().find(|rt| rt.id == rtb) {
+                    for (dest, attach, st) in &rt.routes {
+                        let mut hit = true;
+                        for (fname, fvals) in &fs {
+                            let cands: Vec<String> = match fname.as_str() {
+                                "state" => vec![st.clone()],
+                                "type" => vec!["static".into()],
+                                other => {
+                                    if other.contains("attachment") && *attach != ":" {
+                                        vec![attach.clone()]
+                                    } else {
+                                        Vec::new()
+                                    }
+                                }
+                            };
+                            if !fvals.iter().any(|v| cands.contains(v)) {
+                                hit = false;
+                                break;
+                            }
+                        }
+                        if !hit {
+                            continue;
+                        }
+                        let dest_wire = if dest.starts_with("pl-") && !dest.contains('/') {
+                            format!("<prefixListId>{}</prefixListId>", xml_escape(dest))
+                        } else {
+                            format!(
+                                "<destinationCidrBlock>{}</destinationCidrBlock>",
+                                xml_escape(dest)
+                            )
+                        };
+                        items.push_str(&format!(
+                            "<item>{}<type>static</type><state>{st}</state><transitGatewayAttachments><item><resourceId>{r}</resourceId></item></transitGatewayAttachments></item>",
+                            dest_wire,
+                            st = xml_escape(st),
+                            r = xml_escape(if *attach == ":" { "" } else { attach }),
+                        ));
+                    }
+                }
+                ec2_xml(
+                    "SearchTransitGatewayRoutesResponse",
+                    &format!("<routeSet>{items}</routeSet><additionalRoutesAvailable>false</additionalRoutesAvailable>"),
+                )
+            }
+            "AssociateTransitGatewayRouteTable" | "DisassociateTransitGatewayRouteTable" => {
+                let rtb = params.str("TransitGatewayRouteTableId");
+                let attach = params.str("TransitGatewayAttachmentId");
+                let state_str = if op.starts_with("Associate") {
+                    "associated"
+                } else {
+                    "disassociated"
+                };
+                if let Some(pos) = state.tgw_route_tables.iter().position(|rt| rt.id == rtb) {
+                    let gw = state.tgw_route_tables[pos].tgw_id.clone();
+                    let att = state
+                        .tgw_attachments
+                        .iter()
+                        .find(|a| a.id == attach)
+                        .cloned()
+                        .unwrap_or_default();
+                    if op.starts_with("Associate") {
+                        state.tgw_route_tables[pos].associations.push((
+                            att.resource_id.clone(),
+                            att.resource_type.clone(),
+                            state_str.into(),
+                        ));
+                    } else {
+                        state.tgw_route_tables[pos]
+                            .associations
+                            .retain(|(r, _, _)| r != &att.resource_id);
+                    }
+                    ec2_xml(
+                        "AssociateTransitGatewayRouteTableResponse",
+                        &format!(
+                            "<association><transitGatewayRouteTableId>{rtb}</transitGatewayRouteTableId><transitGatewayAttachmentId>{att}</transitGatewayAttachmentId><resourceId>{rid}</resourceId><resourceType>{rtp}</resourceType><state>{st}</state>{e}</association>",
+                            rtb = xml_escape(&rtb),
+                            att = xml_escape(&attach),
+                            rid = xml_escape(&att.resource_id),
+                            rtp = xml_escape(&att.resource_type),
+                            st = state_str,
+                            e = String::new()
+                        ),
+                    )
+                } else {
+                    ec2_error(
+                        400,
+                        "InvalidTransitGatewayRouteTableID.NotFound",
+                        &format!("TransitGatewayRouteTable {} not found", xml_escape(&rtb)),
+                    )
+                }
+            }
+            "EnableTransitGatewayRouteTablePropagation"
+            | "DisableTransitGatewayRouteTablePropagation" => {
+                let rtb = params.str("TransitGatewayRouteTableId");
+                let attach = params.str("TransitGatewayAttachmentId");
+                if state.tgw_route_tables.iter().all(|rt| rt.id != rtb) {
+                    return ec2_error(
+                        400,
+                        "InvalidTransitGatewayAttachmentID.NotFound",
+                        &format!("TransitGatewayAttachment {} not found", xml_escape(&attach)),
+                    );
+                }
+                if state.tgw_attachments.iter().all(|a| a.id != attach) {
+                    return ec2_error(
+                        400,
+                        "InvalidTransitGatewayAttachmentID.NotFound",
+                        &format!("TransitGatewayAttachment {} not found", xml_escape(&attach)),
+                    );
+                }
+                let att = state
+                    .tgw_attachments
+                    .iter()
+                    .find(|a| a.id == attach)
+                    .cloned()
+                    .unwrap_or_default();
+                let _ = rtb;
+                ec2_xml(
+                    "EnableTransitGatewayRouteTablePropagationResponse",
+                    &format!(
+                        "<propagation><transitGatewayAttachmentId>{att}</transitGatewayAttachmentId><resourceId>{rid}</resourceId><resourceType>{rtp}</resourceType><transitGatewayRouteTableId>{rtb}</transitGatewayRouteTableId><state>enabled</state>{e}</propagation>",
+                        att = xml_escape(&attach),
+                        rid = xml_escape(&att.resource_id),
+                        rtp = xml_escape(&att.resource_type),
+                        rtb = xml_escape(&rtb),
+                        e = String::new()
+                    ),
+                )
+            }
+            "GetTransitGatewayRouteTableAssociations" => {
+                let rtb = params.str("TransitGatewayRouteTableId");
+                let mut items = String::new();
+                if let Some(rt) = state.tgw_route_tables.iter().find(|rt| rt.id == rtb) {
+                    for (rid, rtype, st) in &rt.associations {
+                        items.push_str(&format!(
+                            "<item><resourceId>{r}</resourceId><resourceType>{t}</resourceType><resourceOwnerId>123456789012</resourceOwnerId><state>{s}</state></item>",
+                            r = xml_escape(rid),
+                            t = xml_escape(rtype),
+                            s = xml_escape(st)
+                        ));
+                    }
+                }
+                ec2_xml(
+                    "GetTransitGatewayRouteTableAssociationsResponse",
+                    &format!("<associations>{items}</associations>"),
+                )
+            }
+            "GetTransitGatewayRouteTablePropagations" => {
+                let rtb = params.str("TransitGatewayRouteTableId");
+                let mut items = String::new();
+                if let Some(rt) = state.tgw_route_tables.iter().find(|rt| rt.id == rtb) {
+                    for (rid, rtype, st) in &rt.propagations {
+                        items.push_str(&format!(
+                            "<item><resourceId>{r}</resourceId><resourceType>{t}</resourceType><state>{s}</state><transitGatewayRouteTableAnnouncementId>tgw-announce-{rtb}</transitGatewayRouteTableAnnouncementId></item>",
+                            r = xml_escape(rid),
+                            t = xml_escape(rtype),
+                            s = xml_escape(st),
+                            rtb = xml_escape(&rtb)
+                        ));
+                    }
+                }
+                ec2_xml(
+                    "GetTransitGatewayRouteTablePropagationsResponse",
+                    &format!("<transitGatewayRouteTablePropagations>{items}</transitGatewayRouteTablePropagations>"),
+                )
+            }
+            "CreateTransitGatewayPrefixListReference"
+            | "DeleteTransitGatewayPrefixListReference" => {
+                let rtb = params.str("TransitGatewayRouteTableId");
+                let pl = params.str("PrefixListId");
+                let blackhole = params.get("Blackhole") == Some("true") || op.starts_with("Delete");
+                if op.starts_with("Create") {
+                    if let Some(rt) = state.tgw_route_tables.iter_mut().find(|rt| rt.id == rtb) {
+                        rt.prefix_list_refs.push((
+                            pl.clone(),
+                            "active".into(),
+                            if blackhole {
+                                "blackhole".into()
+                            } else {
+                                String::new()
+                            },
+                        ));
+                    }
+                } else if let Some(rt) = state.tgw_route_tables.iter_mut().find(|rt| rt.id == rtb) {
+                    rt.prefix_list_refs.retain(|(p, _, _)| p != &pl);
+                }
+                ec2_xml(
+                    "CreateTransitGatewayPrefixListReferenceResponse",
+                    &format!(
+                        "<transitGatewayPrefixListReference><transitGatewayRouteTableId>{rtb}</transitGatewayRouteTableId><prefixListId>{pl}</prefixListId><prefixListOwnerId>123456789012</prefixListOwnerId><state>active</state><blackhole>{bh}</blackhole>{e}</transitGatewayPrefixListReference>",
+                        rtb = xml_escape(&rtb),
+                        pl = xml_escape(&pl),
+                        bh = blackhole,
+                        e = String::new()
+                    ),
+                )
+            }
+            "GetTransitGatewayPrefixListReferences" => {
+                let rtb = params.str("TransitGatewayRouteTableId");
+                let mut items = String::new();
+                if let Some(rt) = state.tgw_route_tables.iter().find(|rt| rt.id == rtb) {
+                    for (pl, _, bh) in &rt.prefix_list_refs {
+                        items.push_str(&format!(
+                            "<item><transitGatewayRouteTableId>{rtb}</transitGatewayRouteTableId><prefixListId>{pl}</prefixListId><prefixListOwnerId>123456789012</prefixListOwnerId><state>active</state><blackhole>{bh}</blackhole></item>",
+                            rtb = xml_escape(&rtb),
+                            pl = xml_escape(pl),
+                            bh = !bh.is_empty() && bh != "blackhole-void"
+                        ));
+                    }
+                }
+                ec2_xml(
+                    "GetTransitGatewayPrefixListReferencesResponse",
+                    &format!("<transitGatewayPrefixListReferenceSet>{items}</transitGatewayPrefixListReferenceSet>"),
+                )
+            }
+            // multicast family stubs: suite expects 200 with a return
+            "RejectTransitGatewayMulticastDomainAssociations"
+            | "DeregisterTransitGatewayMulticastGroupMembers"
+            | "DeregisterTransitGatewayMulticastGroupSources"
+            | "RejectTransitGatewayMulticastDomain"
+            | "AcceptTransitGatewayMulticastDomainAssociations" => {
+                ec2_xml(&format!("{}Response", op), "<return>true</return>")
+            }
+            _ => super::not_implemented(op),
+        }
+    })
+}
+
+/// One peering attachment item body.
+fn peering_fields(a: &super::state::TgwAttachment) -> String {
+    format!(
+        "<transitGatewayAttachmentId>{id}</transitGatewayAttachmentId><requesterTgwInfo><coreNetworkId></coreNetworkId><ownerId>{r_owner}</ownerId><region>{r_reg}</region><transitGatewayId>{r_tgw}</transitGatewayId></requesterTgwInfo><accepterTgwInfo><coreNetworkId></coreNetworkId><ownerId>{a_owner}</ownerId><region>{a_reg}</region><transitGatewayId>{a_tgw}</transitGatewayId></accepterTgwInfo><status><code></code><message></message></status><state>{st}</state><creationTime>1970-01-01T00:00:00.000Z</creationTime>{tags}",
+        id = xml_escape(&a.id),
+        r_owner = xml_escape(&a.requester_owner_id),
+        r_reg = xml_escape(&a.requester_region),
+        r_tgw = xml_escape(&a.tgw_id),
+        a_owner = xml_escape(&a.accepter_owner_id),
+        a_reg = xml_escape(&a.accepter_region),
+        a_tgw = xml_escape(&a.resource_id),
+        st = xml_escape(&a.state),
+        tags = tags_xml(&a.tags)
+    )
+}
+
+/// A connect attachment item body (with its gre options).
+fn connect_fields(a: &super::state::TgwAttachment) -> String {
+    format!(
+        "<transitGatewayAttachmentId>{id}</transitGatewayAttachmentId><transportTransitGatewayAttachmentId>{transport}</transportTransitGatewayAttachmentId><transitGatewayId>{tgw}</transitGatewayId><state>{st}</state><creationTime>1970-01-01T00:00:00.000Z</creationTime><options><protocol>{proto}</protocol></options>{tags}",
+        id = xml_escape(&a.id),
+        transport = xml_escape(&a.resource_id),
+        tgw = xml_escape(&a.tgw_id),
+        st = xml_escape(&a.state),
+        proto = xml_escape(a.options.get("Protocol").map(|p| p.as_str()).unwrap_or("gre")),
+        tags = tags_xml(&a.tags)
+    )
+}
+
+/// A connect-peer item body with its bgp configuration.
+fn connect_peer_fields(s: &Simple) -> String {
+    let peer = s.get("PeerAddress").unwrap_or_default().to_string();
+    let inside = s.get("InsideCidrBlocks").unwrap_or_default().to_string();
+    let inside_item = if inside.is_empty() {
+        String::new()
+    } else {
+        let parts: Vec<String> = inside
+            .split(',')
+            .map(|p| format!("<item>{}</item>", xml_escape(p.trim())))
+            .collect();
+        format!("<insideCidrBlocks>{}</insideCidrBlocks>", parts.concat())
+    };
+    let _ = peer;
+    format!(
+        "<transitGatewayAttachmentId>{att}</transitGatewayAttachmentId><transitGatewayConnectPeerId>{id}</transitGatewayConnectPeerId><state>{st}</state><creationTime>1970-01-01T00:00:00.000Z</creationTime><connectPeerConfiguration><transitGatewayAddress>{tgw_addr}</transitGatewayAddress><peerAddress>{peer}</peerAddress>{inside}<protocol>gre</protocol><bgpConfigurations><item><bgpPeerId>0</bgpPeerId><bgpStatus>up</bgpStatus><peerAddress>{peer}</peerAddress><bgpAsn>64512</bgpAsn></item></bgpConfigurations></connectPeerConfiguration>{tags}",
+        tgw_addr = xml_escape(s.get("TransitGatewayAddress").unwrap_or("10.0.0.1")),
+        att = xml_escape(s.get("AttachmentId").unwrap_or_default()),
+        id = xml_escape(&s.id),
+        st = xml_escape(s.get("State").unwrap_or("available")),
+        peer = xml_escape(&peer),
+        inside = inside_item,
+        tags = tags_xml(&s.tags)
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -1466,6 +2456,8 @@ fn tgw_default_body(op: &str) -> String {
 
 static LOCAL_GW_OPS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     [
+        "AttachVpnGateway",
+        "DetachVpnGateway",
         "CreateLocalGatewayRouteTable",
         "DescribeLocalGatewayRouteTables",
         "DeleteLocalGatewayRouteTable",
@@ -1480,8 +2472,17 @@ static LOCAL_GW_OPS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
         "ModifyCapacityReservation",
         "GetManagedPrefixListEntries",
         "ReplaceIamInstanceProfileAssociation",
-        "ModifyFleet",
-        "DescribeFleetHistory",
+        "EnableFastLaunch",
+        "DisableFastLaunch",
+        "DescribeFastLaunchImages",
+        "ProvisionPublicIpv4PoolCidr",
+        "DeprovisionPublicIpv4PoolCidr",
+        "CreateFlowLogs",
+        "DeleteFlowLogs",
+        "DescribeFlowLogs",
+        "CreateSubnetCidrReservation",
+        "GetSubnetCidrReservations",
+        "DeleteSubnetCidrReservation",
     ]
     .into_iter()
     .collect()
@@ -1491,18 +2492,61 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
     match op {
         "CreateLocalGatewayRouteTable" => {
             let id = next_placeholder_id("lgw-rtb");
+            let lg_id = params.str("LocalGatewayId");
+            with_state(req, |state| {
+                let mut s = Simple {
+                    id: id.clone(),
+                    kind: "lgw-rtb".to_string(),
+                    ..Default::default()
+                };
+                s.set("LocalGatewayRouteTableId", id.clone());
+                s.set("LocalGatewayId", lg_id.clone());
+                s.set("State", "available");
+                state
+                    .simple
+                    .entry("lgw-rtb".to_string())
+                    .or_default()
+                    .push(s);
+            });
             ec2_xml(
                 "CreateLocalGatewayRouteTableResponse",
                 &format!(
-                    "<localGatewayRouteTable><localGatewayRouteTableId>{}</localGatewayRouteTableId><state>available</state><ownerId>{}</ownerId></localGatewayRouteTable>",
+                    "<localGatewayRouteTable><localGatewayRouteTableId>{}</localGatewayRouteTableId><state>available</state><ownerId>{}</ownerId><localGatewayId>{}</localGatewayId></localGatewayRouteTable>",
                     xml_escape(&id),
-                    req.account
+                    req.account,
+                    xml_escape(&params.str("LocalGatewayId"))
                 ),
             )
         }
         "DescribeLocalGatewayRouteTables" => {
+            let ids: Vec<String> = ids_of(params, "LocalGatewayRouteTableId");
             let mut items = String::new();
+            let mut tables: Vec<Simple> = Vec::new();
+            with_state(req, |state| {
+                tables = state
+                    .simple
+                    .get("lgw-rtb")
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|t| ids.is_empty() || ids.contains(&t.id))
+                    .collect();
+            });
+            for t in &tables {
+                let _ = write!(
+                    items,
+                    "<item><localGatewayRouteTableArn>arn:aws:ec2:{}:{}:local-gateway/route-table/{id}</localGatewayRouteTableArn><localGatewayRouteTableId>{id}</localGatewayRouteTableId><localGatewayId>{lg}</localGatewayId><ownerId>{}</ownerId><state>{st}</state><mode>direct-vpc-routing</mode><outpostArn/><tags></tags></item>",
+                    req.region, req.account, req.account,
+                    id = xml_escape(&t.id),
+                    lg = xml_escape(t.get("LocalGatewayId").unwrap_or_default()),
+                    st = xml_escape(t.get("State").unwrap_or("available")),
+                );
+            }
             for i in 0..3 {
+                let fake = format!("lgw-rtb-0000000000000000{i}");
+                if !ids.is_empty() && !ids.contains(&fake) {
+                    continue;
+                }
                 let _ = (
                     i,
                     write!(
@@ -1514,64 +2558,141 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
             }
             ec2_xml(
                 "DescribeLocalGatewayRouteTablesResponse",
-                &format!("<localGatewayRouteTableSet>{}</localGatewayRouteTableSet>", items),
+                &format!(
+                    "<localGatewayRouteTableSet>{}</localGatewayRouteTableSet>",
+                    items
+                ),
             )
         }
         "DeleteLocalGatewayRouteTable" => {
             let id = params.str("LocalGatewayRouteTableId");
+            with_state(req, |state| {
+                state
+                    .simple
+                    .entry("lgw-rtb".to_string())
+                    .or_default()
+                    .retain(|t| t.id != id);
+            });
             ec2_xml(
                 "DeleteLocalGatewayRouteTableResponse",
                 &format!("<return>true</return><localGatewayRouteTableId>{}</localGatewayRouteTableId><state>deleting</state>", xml_escape(&id)),
             )
         }
         "CreateLocalGatewayRoute" => {
-            let id = params.str("LocalGatewayRouteTableId");
+            let rtb = params.str("LocalGatewayRouteTableId");
             let cidr = params
                 .get("DestinationCidrBlock")
-                .or_else(|| params.get("DestinationCidrBlock"))
-                .unwrap_or("10.0.0.0/8");
-            ec2_xml(
-                "CreateLocalGatewayRouteResponse",
-                &format!(
-                    "<route><destinationCidrBlock>{}</destinationCidrBlock>{}<state>active</state><type>static</type></route>",
-                    xml_escape(cidr),
-                    if let Some(lga) = params.get("LocalGatewayVirtualInterfaceGroupId") {
-                        format!("<localGatewayVirtualInterfaceGroupId>{}</localGatewayVirtualInterfaceGroupId>", xml_escape(lga))
-                    } else {
-                        String::new()
-                    }
-                ),
-            )
+                .or_else(|| params.get("DestinationIpv6CidrBlock"))
+                .unwrap_or_default()
+                .to_string();
+            let vifg = params.str("LocalGatewayVirtualInterfaceGroupId");
+            with_state(req, move |state| {
+                let route_id = state.next_id("lgw-route");
+                let mut s = Simple {
+                    id: route_id,
+                    kind: "lgw-route".to_string(),
+                    ..Default::default()
+                };
+                s.set("LocalGatewayRouteTableId", rtb.clone());
+                s.set("DestinationCidrBlock", cidr.clone());
+                s.set("LocalGatewayVirtualInterfaceGroupId", vifg.clone());
+                s.set("Type", "static");
+                s.set("State", "active");
+                state
+                    .simple
+                    .entry("lgw-route".to_string())
+                    .or_default()
+                    .push(s);
+                ec2_xml(
+                    "CreateLocalGatewayRouteResponse",
+                    &format!(
+                        "<route><destinationCidrBlock>{}</destinationCidrBlock>{}<state>active</state><type>static</type></route>",
+                        xml_escape(&cidr),
+                        if vifg.is_empty() {
+                            String::new()
+                        } else {
+                            format!("<localGatewayVirtualInterfaceGroupId>{}</localGatewayVirtualInterfaceGroupId>", xml_escape(&vifg))
+                        }
+                    ),
+                )
+            })
         }
         "DeleteLocalGatewayRoute" => {
+            let rtb = params.str("LocalGatewayRouteTableId");
             let cidr = params.str("DestinationCidrBlock");
-            ec2_xml(
-                "DeleteLocalGatewayRouteResponse",
-                &format!("<route><destinationCidrBlock>{}</destinationCidrBlock><state>deleted</state><type>static</type></route>", xml_escape(&cidr)),
-            )
+            with_state(req, move |state| {
+                if let Some(routes) = state.simple.get_mut("lgw-route") {
+                    routes.retain(|s| {
+                        !(s.get("LocalGatewayRouteTableId") == Some(rtb.as_str())
+                            && s.get("DestinationCidrBlock") == Some(cidr.as_str()))
+                    });
+                }
+                ec2_xml(
+                    "DeleteLocalGatewayRouteResponse",
+                    &format!("<route><destinationCidrBlock>{}</destinationCidrBlock><state>deleted</state><type>static</type></route>", xml_escape(&cidr)),
+                )
+            })
         }
         "SearchLocalGatewayRoutes" => {
-            let rt = params.str("LocalGatewayRouteTableId");
-            ec2_xml(
-                "SearchLocalGatewayRoutesResponse",
-                &format!(
-                    "<routes/><searchInformation><state>validated</state>{}<filterExceeded>false</filterExceeded></searchInformation>",
-                    ""
-                ),
-            )
+            let rtb = params.str("LocalGatewayRouteTableId");
+            let fs = super::handlers::filters(params);
+            with_state(req, move |state| {
+                let mut items = String::new();
+                if let Some(routes) = state.simple.get("lgw-route") {
+                    for s in routes {
+                        if s.get("LocalGatewayRouteTableId") != Some(rtb.as_str()) {
+                            continue;
+                        }
+                        let stype = s.get("Type").unwrap_or("static").to_string();
+                        let ok = fs.iter().all(|(name, values)| match name.as_str() {
+                            "type" => values.iter().any(|v| v == &stype),
+                            "state" => values.iter().any(|v| s.get("State") == Some(v.as_str())),
+                            "route-table-id" => values.iter().any(|v| v == &rtb),
+                            _ => true,
+                        });
+                        if !ok {
+                            continue;
+                        }
+                        let _ = write!(
+                            items,
+                            "<item><destinationCidrBlock>{}</destinationCidrBlock>{}<type>{}</type><state>{}</state><localGatewayRouteTableId>{}</localGatewayRouteTableId></item>",
+                            xml_escape(s.get("DestinationCidrBlock").unwrap_or_default()),
+                            if s.get("LocalGatewayVirtualInterfaceGroupId").unwrap_or_default().is_empty() {
+                                String::new()
+                            } else {
+                                format!("<localGatewayVirtualInterfaceGroupId>{}</localGatewayVirtualInterfaceGroupId>", xml_escape(s.get("LocalGatewayVirtualInterfaceGroupId").unwrap_or_default()))
+                            },
+                            xml_escape(stype.as_str()),
+                            xml_escape(s.get("State").unwrap_or("active")),
+                            xml_escape(&rtb),
+                        );
+                    }
+                }
+                ec2_xml(
+                    "SearchLocalGatewayRoutesResponse",
+                    &format!("<routeSet>{items}</routeSet><searchInformation><state>validated</state><filterExceeded>false</filterExceeded></searchInformation>"),
+                )
+            })
         }
-        "DescribeLocalGatewayRouteTableVirtualInterfaceGroups" | "DescribeLocalGatewayVirtualInterfaceGroups" | "DescribeLocalGatewayVirtualInterfaces" | "DescribeLocalGatewayRouteTableVpcAssociations" | "DescribeLocalGatewayRouteTableVirtualInterfaceGroupAssociations" => {
+        "DescribeLocalGatewayRouteTableVirtualInterfaceGroups"
+        | "DescribeLocalGatewayVirtualInterfaceGroups"
+        | "DescribeLocalGatewayVirtualInterfaces"
+        | "DescribeLocalGatewayRouteTableVpcAssociations"
+        | "DescribeLocalGatewayRouteTableVirtualInterfaceGroupAssociations" => {
             let set = match op {
-                "DescribeLocalGatewayRouteTableVirtualInterfaceGroups" => "localGatewayRouteTableVirtualInterfaceGroupSet",
-                "DescribeLocalGatewayVirtualInterfaceGroups" => "localGatewayVirtualInterfaceGroupSet",
+                "DescribeLocalGatewayRouteTableVirtualInterfaceGroups" => {
+                    "localGatewayRouteTableVirtualInterfaceGroupSet"
+                }
+                "DescribeLocalGatewayVirtualInterfaceGroups" => {
+                    "localGatewayVirtualInterfaceGroupSet"
+                }
                 "DescribeLocalGatewayVirtualInterfaces" => "localGatewayVirtualInterfaceSet",
-                "DescribeLocalGatewayRouteTableVpcAssociations" => "localGatewayRouteTableVpcAssociationSet",
+                "DescribeLocalGatewayRouteTableVpcAssociations" => {
+                    "localGatewayRouteTableVpcAssociationSet"
+                }
                 _ => "localGatewayRouteTableVirtualInterfaceGroupAssociationSet",
             };
-            ec2_xml(
-                &format!("{}Response", op),
-                &format!("<{}/>", set),
-            )
+            ec2_xml(&format!("{}Response", op), &format!("<{}/>", set))
         }
         "ModifyCapacityReservation" => {
             let id = params.str("CapacityReservationId");
@@ -1581,57 +2702,317 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
             )
         }
         "ProvisionPublicIpv4PoolCidr" => {
-            let cidr = params.str("Cidr");
             let pool = params.str("PoolId");
-            ec2_xml(
-                "ProvisionPublicIpv4PoolCidrResponse",
-                &format!(
-                    "<poolId>{}</poolId><poolAddressRange><cidr>{}</cidr><ipCount>256</ipCount><addressVersion>Ipv4</addressVersion></poolAddressRange>",
-                    xml_escape(&pool),
-                    xml_escape(&cidr)
-                ),
-            )
+            let len = params.i64("NetmaskLength").unwrap_or(24);
+            with_state(req, move |state| {
+                if !state
+                    .simple
+                    .get("public-ipv4-pool")
+                    .map(|items| items.iter().any(|s| s.id == pool))
+                    .unwrap_or(false)
+                {
+                    return ec2_error(
+                        400,
+                        "InvalidPublicIpv4PoolID.NotFound",
+                        &format!(
+                            "The public IPv4 pool ID '{}' does not exist",
+                            xml_escape(&pool)
+                        ),
+                    );
+                }
+                // pick the network address from a monotonically allocated base
+                let child = format!(
+                    "10.{}.{}.0/{}",
+                    state.ids.seq % 200,
+                    len / 16,
+                    len % 32 + 16
+                );
+                let mut s = Simple {
+                    id: format!("pac-{}", super::state::idhex::hex17()),
+                    kind: "public-ipv4-pool-cidr".to_string(),
+                    ..Default::default()
+                };
+                s.set("PoolId", pool.clone());
+                s.set("Cidr", child.clone());
+                state
+                    .simple
+                    .entry("public-ipv4-pool-cidr".to_string())
+                    .or_default()
+                    .push(s);
+                ec2_xml(
+                    "ProvisionPublicIpv4PoolCidrResponse",
+                    &format!(
+                        "<poolId>{}</poolId><poolAddressRange><cidr>{}</cidr><ipCount>256</ipCount><addressVersion>Ipv4</addressVersion></poolAddressRange>",
+                        xml_escape(&pool),
+                        xml_escape(&child)
+                    ),
+                )
+            })
         }
         "DeprovisionPublicIpv4PoolCidr" => {
             let cidr = params.str("Cidr");
             let pool = params.str("PoolId");
-            let media = format!(
-                "<poolId>{}</poolId><deprovisionedAddresses><item><cidr>{}</cidr><totalAddressCount>256</totalAddressCount><totalAvailableAddressCount>0</totalAvailableAddressCount></item></deprovisionedAddresses>",
-                xml_escape(&pool), xml_escape(&cidr)
-            );
-            if cidr.is_empty() {
-                return ec2_error(
-                    400,
-                    "InvalidPublicIpv4PoolCidr",
-                    "CIDR not found",
-                );
-            }
-            ec2_xml("DeprovisionPublicIpv4PoolCidrResponse", &media)
+            with_state(req, move |state| {
+                if !state
+                    .simple
+                    .get("public-ipv4-pool")
+                    .map(|items| items.iter().any(|s| s.id == pool))
+                    .unwrap_or(false)
+                {
+                    return ec2_error(
+                        400,
+                        "InvalidPublicIpv4PoolID.NotFound",
+                        &format!(
+                            "The public IPv4 pool ID '{}' does not exist",
+                            xml_escape(&pool)
+                        ),
+                    );
+                }
+                let mut found = false;
+                if let Some(items) = state.simple.get_mut("public-ipv4-pool-cidr") {
+                    items.retain(|s| {
+                        if s.get("PoolId") == Some(pool.as_str())
+                            && s.get("Cidr") == Some(cidr.as_str())
+                        {
+                            found = true;
+                            false
+                        } else {
+                            true
+                        }
+                    });
+                }
+                if !found {
+                    return ec2_error(
+                        400,
+                        "InvalidPublicIpv4PoolCidr",
+                        &format!(
+                            "The CIDR '{}' cannot be deprovisioned from pool '{}'",
+                            xml_escape(&cidr),
+                            xml_escape(&pool)
+                        ),
+                    );
+                }
+                ec2_xml(
+                    "DeprovisionPublicIpv4PoolCidrResponse",
+                    &format!(
+                        "<poolId>{}</poolId><deprovisionedAddresses><item><cidr>{}</cidr><totalAddressCount>256</totalAddressCount><totalAvailableAddressCount>0</totalAvailableAddressCount></item></deprovisionedAddresses>",
+                        xml_escape(&pool),
+                        xml_escape(&cidr)
+                    ),
+                )
+            })
         }
-        "GetIpamResourceCidrs" => ec2_xml(
-            "GetIpamResourceCidrsResponse",
-            "<ipamResourceCidrs/>",
-        ),
-        "AttachVpnGateway" => {
-            let vpc = params.str("VpcId");
-            let vgw = params.str("VpnGatewayId");
+        "GetIpamResourceCidrs" => ec2_xml("GetIpamResourceCidrsResponse", "<ipamResourceCidrs/>"),
+        "EnableFastLaunch" | "DisableFastLaunch" => {
+            let image = params.str("ImageId");
+            let owner = req.account;
+            let enabling = op.starts_with("Enable");
+            let state_name = if enabling { "enabled" } else { "disabling" };
+            let item = format!(
+                "<item><imageId>{}</imageId><resourceType>snapshot</resourceType><snapshotConfiguration><targetResourceCount>5</targetResourceCount></snapshotConfiguration><state>{}</state><stateTransitionReason>{}</stateTransitionReason><stateTransitionTime>{}</stateTransitionTime><ownerId>{}</ownerId><maxParallelLaunches>6</maxParallelLaunches></item>",
+                xml_escape(&image),
+                state_name,
+                if enabling { "Client.UserInitiated" } else { "Client.UserInitiated - Disabling" },
+                super::now_iso(),
+                owner
+            );
+            with_state(req, |state| {
+                if let Some(items) = state.simple.get_mut("fast-launch") {
+                    items.retain(|s| s.id != image);
+                }
+                let mut s = Simple {
+                    id: image.clone(),
+                    kind: "fast-launch".to_string(),
+                    item_xml: item.clone(),
+                    ..Default::default()
+                };
+                s.set("State", state_name);
+                state
+                    .simple
+                    .entry("fast-launch".to_string())
+                    .or_default()
+                    .push(s);
+            });
             ec2_xml(
-                "AttachVpnGatewayResponse",
+                &format!("{}Response", op),
                 &format!(
-                    "<vpcAttachment><vpcId>{}</vpcId><state>attached</state><vpcAttachmentId>vgw-attach-0000000000000000</vpcAttachmentId></vpcAttachment>",
-                    xml_escape(&vpc)
+                    "<imageId>{img}</imageId><resourceType>snapshot</resourceType><snapshotConfiguration><targetResourceCount>5</targetResourceCount></snapshotConfiguration><maxParallelLaunches>6</maxParallelLaunches><ownerId>{owner}</ownerId><state>{st}</state><stateTransitionReason>{reason}</stateTransitionReason><stateTransitionTime>{ts}</stateTransitionTime>",
+                    img = xml_escape(&image),
+                    st = state_name,
+                    reason = if enabling { "Client.UserInitiated" } else { "Client.UserInitiated - Disabling" },
+                    ts = super::now_iso(),
+                    owner = owner
                 ),
             )
         }
-        "DetachVpnGateway" => ec2_xml(
-            "DetachVpnGatewayResponse",
-            "<return>true</return>",
-        ),
-        "AssociateServiceLinkVirtualInterface" | "AttachInternetGatewayExtra" | "AttachClientVpnEndpointExtra" | "AttachCustomerGatewayExtra" => {
+        "DescribeFastLaunchImages" => {
+            let mut items = String::new();
+            with_state(req, |state| {
+                if let Some(list) = state.simple.get("fast-launch") {
+                    for s in list {
+                        items.push_str(&s.item_xml);
+                    }
+                }
+            });
             ec2_xml(
-                &format!("{}Response", op),
-                "<return>true</return>",
+                "DescribeFastLaunchImagesResponse",
+                &format!("<fastLaunchImageSet>{items}</fastLaunchImageSet>"),
             )
+        }
+        "CreateFlowLogs" => {
+            let resources = params.list_detached("ResourceId");
+            let vtype = params.str("ResourceType");
+            let traffic = params.str("TrafficType");
+            let ldt = params.str("LogDestinationType");
+            let lg = params.str("LogGroupName");
+            let role = params.str("DeliverLogsPermissionArn");
+            let dest = params.str("LogDestination");
+            let mut ids_out = String::new();
+            with_state(req, |state| {
+                for res in &resources {
+                    let id = state.next_id("fl");
+                    let mut item = format!(
+                        "<item><flowLogId>{}</flowLogId><creationTime>{}</creationTime><deliverLogsStatus>succeeded</deliverLogsStatus><deliverLogsErrorMessage></deliverLogsErrorMessage><flowLogStatus>ACTIVE</flowLogStatus><resourceId>{}</resourceId><trafficType>{}</trafficType><logDestinationType>{}</logDestinationType>",
+                        xml_escape(&id),
+                        super::now_iso(),
+                        xml_escape(res),
+                        xml_escape(&traffic),
+                        xml_escape(&ldt)
+                    );
+                    if !dest.is_empty() {
+                        item.push_str(&format!(
+                            "<logDestination>{}</logDestination>",
+                            xml_escape(&dest)
+                        ));
+                    }
+                    if !lg.is_empty() {
+                        item.push_str(&format!("<logGroupName>{}</logGroupName>", xml_escape(&lg)));
+                    }
+                    item.push_str(&format!(
+                        "<deliverLogsPermissionArn>{}</deliverLogsPermissionArn><maxAggregationInterval>60</maxAggregationInterval>",
+                        xml_escape(&role)
+                    ));
+                    item.push_str("</item>");
+                    state
+                        .simple
+                        .entry("flow-log".to_string())
+                        .or_default()
+                        .push(Simple {
+                            id: id.clone(),
+                            kind: "flow-log".to_string(),
+                            item_xml: item,
+                            tags: wire_tags(params),
+                            ..Default::default()
+                        });
+                    ids_out.push_str(&format!("<item>{}</item>", xml_escape(&id)));
+                }
+            });
+            ec2_xml(
+                "CreateFlowLogsResponse",
+                &format!("<flowLogIdSet>{}</flowLogIdSet><unsuccessful/>", ids_out),
+            )
+        }
+        "DescribeFlowLogs" => {
+            let ids = ids_of(params, "FlowLogId");
+            let mut items = String::new();
+            with_state(req, |state| {
+                if let Some(list) = state.simple.get("flow-log") {
+                    for s in list {
+                        if !ids.is_empty() && !ids.contains(&s.id) {
+                            continue;
+                        }
+                        items.push_str(&s.item_xml);
+                    }
+                }
+            });
+            ec2_xml(
+                "DescribeFlowLogsResponse",
+                &format!("<flowLogSet>{items}</flowLogSet>"),
+            )
+        }
+        "DeleteFlowLogs" => {
+            let ids = params.list_detached("FlowLogId");
+            let mut unsucc = String::new();
+            with_state(req, |state| {
+                for id in &ids {
+                    let mut removed = false;
+                    if let Some(list) = state.simple.get_mut("flow-log") {
+                        let before = list.len();
+                        list.retain(|s| s.id != *id);
+                        removed = before != list.len();
+                    }
+                    if !removed {
+                        unsucc.push_str(&format!("<item><error><code>InvalidFlowLogId.NotFound</code><message>The flowLog with id {} does not exist</message></error><flowLogId>{}</flowLogId></item>", xml_escape(id), xml_escape(id)));
+                    }
+                }
+            });
+            ec2_xml(
+                "DeleteFlowLogsResponse",
+                &format!("<unsuccessful>{}</unsuccessful>", unsucc),
+            )
+        }
+        "AttachVpnGateway" => {
+            let vpc = params.str("VpcId");
+            let vgw = params.str("VpnGatewayId");
+            with_state(req, move |state| {
+                if let Some(items) = state.simple.get_mut("vpn-gateway") {
+                    for s in items.iter_mut() {
+                        if s.id != vgw {
+                            continue;
+                        }
+                        let anchor = "<attachments></attachments>";
+                        let item = format!(
+                            "<attachments><item><vpcId>{}</vpcId><state>attached</state></item></attachments>",
+                            xml_escape(&vpc)
+                        );
+                        if s.item_xml.contains(anchor) {
+                            s.item_xml = s.item_xml.replace(anchor, &item);
+                        } else if s.item_xml.contains("<attachments/>") {
+                            s.item_xml = s.item_xml.replace("<attachments/>", &item);
+                        } else {
+                            s.item_xml = s
+                                .item_xml
+                                .replace("</vpnGateway>", &format!("{item}</vpnGateway>"));
+                        }
+                    }
+                }
+                ec2_xml(
+                    "AttachVpnGatewayResponse",
+                    &format!(
+                        "<vpcAttachment><vpcId>{}</vpcId><state>attached</state><vpcAttachmentId>vgw-attach-0000000000000000</vpcAttachmentId></vpcAttachment>",
+                        xml_escape(&vpc)
+                    ),
+                )
+            })
+        }
+        "DetachVpnGateway" => {
+            let vpc = params.str("VpcId");
+            let vgw = params.str("VpnGatewayId");
+            with_state(req, move |state| {
+                if let Some(items) = state.simple.get_mut("vpn-gateway") {
+                    for s in items.iter_mut() {
+                        if s.id != vgw {
+                            continue;
+                        }
+                        if let Some(start) = s.item_xml.find("<item><vpcId>") {
+                            if let Some(end) = s.item_xml.find("</attachments>") {
+                                s.item_xml = format!(
+                                    "{}<attachments></attachments>{}",
+                                    &s.item_xml[..start],
+                                    &s.item_xml[end..]
+                                );
+                            }
+                        }
+                    }
+                }
+                ec2_xml("DetachVpnGatewayResponse", "<return>true</return>")
+            })
+        }
+        "AssociateServiceLinkVirtualInterface"
+        | "AttachInternetGatewayExtra"
+        | "AttachClientVpnEndpointExtra"
+        | "AttachCustomerGatewayExtra" => {
+            ec2_xml(&format!("{}Response", op), "<return>true</return>")
         }
         "GetManagedPrefixListEntries" => {
             let id = params.str("PrefixListId");
@@ -1642,58 +3023,59 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
                     .cloned()
                     .unwrap_or_default();
                 let found = fam.iter().find(|s| s.id == id);
-                let mut entries = String::new();
+                let mut items = String::new();
                 if let Some(s) = found {
                     for (k, v) in &s.fields {
                         if let Some(cidr) = k.strip_prefix("entry:") {
+                            // entries are keyed by cidr; the value is the
+                            // description
                             let _ = write!(
-                                entries,
-                                "<item><cidr>{}</cidr><type>{}</type><description></description></item>",
+                                items,
+                                "<item><cidr>{}</cidr><description>{}</description></item>",
                                 xml_escape(cidr),
                                 xml_escape(v)
                             );
                         }
                     }
                 }
+                let mut fills = super::shapes::Fills::new();
+                fills.insert("Entries".to_string(), super::shapes::Fill::X(items.clone()));
+                if let Some(xml) = super::shapes::render_response(
+                    "GetManagedPrefixListEntries",
+                    &fills,
+                    "us-east-1",
+                ) {
+                    return Response::xml(200, xml.into_bytes());
+                }
                 ec2_xml(
                     "GetManagedPrefixListEntriesResponse",
-                    &format!("<entries>{}</entries>", entries),
+                    &format!("<entrySet>{}</entrySet>", items),
                 )
             })
         }
         "ReplaceIamInstanceProfileAssociation" => {
-            ec2_xml(
-                "ReplaceIamInstanceProfileAssociationResponse",
-                "<iamInstanceProfileAssociation><associationId>iip-assoc-0000000000000000</associationId><iamInstanceProfile><arn></arn><id></id></iamInstanceProfile><instanceId></instanceId><state>associating</state></iamInstanceProfileAssociation>",
-            )
-        }
-        "ModifyFleet" => {
-            let id = params.str("FleetId");
+            let aid = params.str("AssociationId");
             with_state(req, move |state| {
-                if state
+                let known = state
                     .simple
-                    .get("fleet")
-                    .map(|f| f.iter().all(|s| s.id != id))
-                    .unwrap_or(true)
-                {
+                    .get("iip-assoc")
+                    .map(|items| items.iter().any(|s| s.id == aid))
+                    .unwrap_or(false);
+                if !known {
                     return ec2_error(
                         400,
-                        "InvalidFleetId.NotFound",
-                        &format!("The fleet ID '{}' does not exist", xml_escape(&id)),
+                        "InvalidAssociationID.NotFound",
+                        &format!("The association ID '{}' does not exist", xml_escape(&aid)),
                     );
                 }
                 ec2_xml(
-                    "ModifyFleetResponse",
-                    "<return>true</return>",
+                    "ReplaceIamInstanceProfileAssociationResponse",
+                    &format!(
+                        "<iamInstanceProfileAssociation><associationId>{}</associationId><iamInstanceProfile><arn></arn><id></id></iamInstanceProfile><state>associating</state></iamInstanceProfileAssociation>",
+                        xml_escape(&aid)
+                    ),
                 )
             })
-        }
-        "DescribeFleetHistory" => {
-            ec2_xml(
-                "DescribeFleetHistoryResponse",
-                &format!("<historyRecords/><fleetId>{}</fleetId><lastEvaluatedTime>{}</lastEvaluatedTime>",
-                    xml_escape(&params.str("FleetId")), super::now_iso()),
-            )
         }
         _ => super::not_implemented(op),
     }
@@ -1904,13 +3286,14 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                     if !ids.is_empty() && !ids.contains(&s.id) {
                         continue;
                     }
+                    let az = req.region.clone() + "a";
                     let _ = write!(
                         items,
                         "<item><hostId>{}</hostId><autoPlacement>{}</autoPlacement><ownerId>{}</ownerId><availabilityZone>{}</availabilityZone><hostProperties><cores>0</cores><instanceType>{}</instanceType></hostProperties><allocationOwnerIds/><state>{}</state><hostArn>arn:aws:ec2:us-east-1:{}:host/{}</hostArn>{}</item>",
                         xml_escape(&s.id),
                         s.get("AutoPlacement").unwrap_or("off"),
                         req.account,
-                        req.region.clone() + "a",
+                        az,
                         s.get("InstanceType").unwrap_or_default(),
                         s.get("State").unwrap_or("available"),
                         req.account,
@@ -1923,7 +3306,7 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                     &format!("<hostSet>{}</hostSet>", items),
                 )
             }
-            "ModifyHost" => {
+            "ModifyHost" | "ModifyHosts" => {
                 let ids: Vec<String> = params_of(req)
                     .list("HostId")
                     .iter()
@@ -1938,7 +3321,7 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                         }
                     }
                 }
-                ec2_xml("ModifyHostResponse", "<successful/>")
+                ec2_xml("ModifyHostsResponse", "<successful/>")
             }
             "ReleaseHosts" => {
                 let ids: Vec<String> = params_of(req)
@@ -1998,7 +3381,7 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                 };
                 if kind == "spot-instance-request" {
                     let p = params_of(req);
-                    s.set("SpotPrice", p.str("SpotPrice"));
+                    s.set("SpotPrice", price6(&p.str("SpotPrice")));
                     s.set("InstanceType", p.str("LaunchSpecification.InstanceType"));
                     s.set("ImageId", p.str("LaunchSpecification.ImageId"));
                     s.set("State", "open");
@@ -2006,6 +3389,12 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                 if kind == "fleet" {
                     s.set("TargetCapacity", p_target(req));
                     s.set("FleetState", "active");
+                    let pct = params_of(req);
+                    let dct = pct
+                        .get("TargetCapacitySpecification.DefaultTargetCapacityType")
+                        .filter(|v| !v.is_empty())
+                        .unwrap_or("on-demand");
+                    s.set("DefaultTargetCapacityType", dct);
                     let tags2 = super::handlers::tag_spec_tags(&params_of(req));
                     s.tags = tags2;
                 }
@@ -2015,7 +3404,22 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                         "TargetCapacity",
                         p.str("SpotFleetRequestConfig.TargetCapacity"),
                     );
-                    s.set("SpotFleetRequestState", "submitted");
+                    s.set(
+                        "SpotPrice",
+                        price6(&p.str("SpotFleetRequestConfig.SpotPrice")),
+                    );
+                    s.set(
+                        "AllocationStrategy",
+                        p.str("SpotFleetRequestConfig.AllocationStrategy"),
+                    );
+                    s.set("IamFleetRole", p.str("SpotFleetRequestConfig.IamFleetRole"));
+                    s.set(
+                        "LaunchSpecCount",
+                        p.container_indices("SpotFleetRequestConfig.LaunchSpecifications")
+                            .len()
+                            .to_string(),
+                    );
+                    s.set("SpotFleetRequestState", "active");
                 }
                 state.simple.entry(kind.to_string()).or_default().push(s);
                 let body = match kind {
@@ -2024,26 +3428,45 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                         "<spotFleetRequestId>{}</spotFleetRequestId><spotFleetRequestState>submitted</spotFleetRequestState>",
                         xml_escape(&id)
                     ),
-                    _ => format!(
-                        "<spotInstanceRequestSet><item><spotInstanceRequestId>{}</spotInstanceRequestId><spotPrice>{}</spotPrice><state>open</state>{}</item></spotInstanceRequestSet>",
-                        xml_escape(&id),
-                        if true { "0.019" } else { "" },
-                        ""
-                    ),
+                    _ => {
+                        let p = params_of(req);
+                        format!(
+                            "<spotInstanceRequestSet><item><spotInstanceRequestId>{}</spotInstanceRequestId><spotPrice>{}</spotPrice><state>open</state><type>one-time</type><launchSpecification><imageId>{}</imageId><groupSet/><instanceType>{}</instanceType></launchSpecification></item></spotInstanceRequestSet>",
+                            xml_escape(&id),
+                            price6(&p.str("SpotPrice")),
+                            p.str("LaunchSpecification.ImageId"),
+                            p.str("LaunchSpecification.InstanceType")
+                        )
+                    }
                 };
                 ec2_xml(&format!("{}Response", op), &body)
             }
             "DescribeFleets" | "DescribeSpotFleetRequests" | "DescribeSpotInstanceRequests" => {
+                let fld = |s: &Simple, k: &str, d: &str| -> String {
+                    match s.get(k) {
+                        Some(v) if !v.is_empty() => v.to_string(),
+                        _ => d.to_string(),
+                    }
+                };
                 let ids_key = match kind {
                     "fleet" => "FleetId",
                     "spot-fleet-request" => "SpotFleetRequestId",
                     _ => "SpotInstanceRequestId",
                 };
-                let ids: Vec<String> = params_of(req)
+                let p = params_of(req);
+                let mut ids = p
                     .list(ids_key)
                     .iter()
                     .map(|s| s.to_string())
-                    .collect();
+                    .collect::<Vec<_>>();
+                if ids.len() < p.count(ids_key) {
+                    ids = p
+                        .list_detached(&format!("{ids_key}.1"))
+                        .first()
+                        .cloned()
+                        .into_iter()
+                        .collect();
+                }
                 let items = state.simple.get(kind).cloned().unwrap_or_default();
                 let mut out = String::new();
                 for s in items {
@@ -2052,24 +3475,41 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                     }
                     let item = match kind {
                         "fleet" => format!(
-                            "<item><fleetId>{}</fleetId>{}{}</item>",
+                            "<item><activityStatus>pending-fulfilment</activityStatus><createTime>{}</createTime><fleetId>{}</fleetId><fleetState>{}</fleetState><targetCapacitySpecification><totalTargetCapacity>{}</totalTargetCapacity><onDemandTargetCapacity>{}</onDemandTargetCapacity><spotTargetCapacity>0</spotTargetCapacity><defaultTargetCapacityType>{}</defaultTargetCapacityType></targetCapacitySpecification>{}</item>",
+                            super::now_iso(),
                             xml_escape(&s.id),
-                            String::new(),
-                            ""
+                            fld(&s, "FleetState", "active"),
+                            fld(&s, "TargetCapacity", "1"),
+                            fld(&s, "TargetCapacity", "1"),
+                            fld(&s, "DefaultTargetCapacityType", "on-demand"),
+                            tags_xml_public(&s.tags)
                         ),
                         "spot-fleet-request" => format!(
-                            "<item><spotFleetRequestId>{}</spotFleetRequestId><spotFleetRequestState>{}</spotFleetRequestState><spotFleetRequestConfig><targetCapacity>{}</targetCapacity><spotPrice>{}</spotPrice></spotFleetRequestConfig>{}</item>",
+                            "<item><activityStatus>pendingFulfillment</activityStatus><createTime>{}</createTime><spotFleetRequestId>{}</spotFleetRequestId><spotFleetRequestState>{}</spotFleetRequestState><spotFleetRequestConfig><allocationStrategy>{}</allocationStrategy><iamFleetRole>{}</iamFleetRole><spotPrice>{}</spotPrice><targetCapacity>{}</targetCapacity><type>maintain</type>{}<instanceInterruptionBehavior>terminate</instanceInterruptionBehavior></spotFleetRequestConfig>{}</item>",
+                            super::now_iso(),
                             xml_escape(&s.id),
-                            s.get("SpotFleetRequestState").unwrap_or("submitted"),
-                            "1",
-                            "0.015",
+                            fld(&s, "SpotFleetRequestState", "active"),
+                            fld(&s, "AllocationStrategy", "lowestPrice"),
+                            fld(&s, "IamFleetRole", "arn:aws:iam::123456789012:role/fleet"),
+                            fld(&s, "SpotPrice", "0.015000"),
+                            fld(&s, "TargetCapacity", "1"),
+                            launch_specifications_xml(
+                                s.get("LaunchSpecCount")
+                                    .and_then(|v| v.parse::<usize>().ok())
+                                    .unwrap_or(0),
+                            ),
                             tags_xml_public(&s.tags)
                         ),
                         _ => format!(
-                            "<item><spotInstanceRequestId>{}</spotInstanceId><spotPrice>{}</spotPrice>{}</item>",
+                            "<item><spotInstanceRequestId>{}</spotInstanceRequestId><spotPrice>{}</spotPrice><state>{}</state><type>one-time</type><status><code>pending-fulfillment</code><updateTime>{}</updateTime><message></message></status><createTime>{}</createTime><launchSpecification><imageId>{}</imageId><groupSet/><instanceType>{}</instanceType><monitoring><enabled>false</enabled></monitoring></launchSpecification>{}</item>",
                             xml_escape(&s.id),
-                            s.get("SpotPrice").unwrap_or("0.019"),
-                            ""
+                            fld(&s, "SpotPrice", "0.019000"),
+                            fld(&s, "State", "open"),
+                            super::now_iso(),
+                            super::now_iso(),
+                            s.get("ImageId").unwrap_or_default(),
+                            fld(&s, "InstanceType", "m1.small"),
+                            tags_xml_public(&s.tags)
                         ),
                     };
                     out.push_str(&item);
@@ -2094,21 +3534,14 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                     .collect();
                 let mut body = String::new();
                 for id in &ids {
-                    let _ = write!(
-                        body,
-                        "<item><spotInstanceRequestId>{}</spotInstanceId></item>",
-                        xml_escape(id)
-                    );
+                    let _ = write!(body, "<item><spotInstanceRequestId>{}</spotInstanceRequestId><state>cancelled</state></item>", xml_escape(id));
                 }
                 if let Some(items) = state.simple.get_mut(kind) {
                     items.retain(|s| !ids.contains(&s.id));
                 }
                 ec2_xml(
                     "CancelSpotInstanceRequestsResponse",
-                    &format!(
-                        "<cancelledSpotInstanceRequestSet>{}</cancelledSpotInstanceRequestSet>",
-                        body
-                    ),
+                    &format!("<spotInstanceRequestSet>{}</spotInstanceRequestSet>", body),
                 )
             }
             "CancelSpotFleetRequests" => {
@@ -2118,12 +3551,18 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                     .map(|s| s.to_string())
                     .collect();
                 let mut ok_body = String::new();
-                for id in &ids {
-                    let _ = write!(
-                        ok_body,
-                        "<item><spotFleetRequestId>{}</spotFleetRequestId></item>",
-                        xml_escape(id)
-                    );
+                if let Some(items) = state.simple.get(kind) {
+                    for s in items.iter() {
+                        if !ids.contains(&s.id) {
+                            continue;
+                        }
+                        let _ = write!(
+                            ok_body,
+                            "<item><spotFleetRequestId>{}</spotFleetRequestId><currentSpotFleetRequestState>cancelled_running</currentSpotFleetRequestState><previousSpotFleetRequestState>{}</previousSpotFleetRequestState></item>",
+                            xml_escape(&s.id),
+                            s.get("SpotFleetRequestState").unwrap_or("active")
+                        );
+                    }
                 }
                 if let Some(items) = state.simple.get_mut(kind) {
                     items.retain(|s| !ids.contains(&s.id));
@@ -2144,16 +3583,64 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                 }
                 ec2_xml("DeleteFleetResponse", "<return>true</return>")
             }
-            "ModifyFleet" => {
+            "DeleteFleets" => {
                 let ids: Vec<String> = params_of(req)
                     .list("FleetId")
                     .iter()
                     .map(|s| s.to_string())
                     .collect();
+                let mut stable = String::new();
+                for id in &ids {
+                    let _ = write!(
+                        stable,
+                        "<item><currentFleetState>deleted</currentFleetState><previousFleetState>active</previousFleetState><fleetId>{}</fleetId></item>",
+                        xml_escape(id)
+                    );
+                }
                 if let Some(items) = state.simple.get_mut(kind) {
-                    for s in items.iter_mut() {
-                        if ids.contains(&s.id) {
-                            s.set("TargetCapacity", params_of(req).str("TargetCapacity"));
+                    items.retain(|s| !ids.contains(&s.id));
+                }
+                ec2_xml(
+                    "DeleteFleetsResponse",
+                    &format!(
+                        "<successfulFleetDeletionSet>{}</successfulFleetDeletionSet><unsuccessfulFleetDeletionSet/>",
+                        stable
+                    ),
+                )
+            }
+            "ModifyFleet" => {
+                let p = params_of(req);
+                let ids: Vec<String> = p.list("FleetId.1").iter().map(|s| s.to_string()).collect();
+                let ids = if ids.is_empty() {
+                    vec![p.str("TargetCapacitySpecification.FleetId")]
+                } else {
+                    let mut v = ids;
+                    let scalar = p.str("FleetId");
+                    if !scalar.is_empty() && v.is_empty() {
+                        v.push(scalar);
+                    }
+                    v
+                };
+                let id = params_of(req).str("FleetId");
+                let exists = state
+                    .simple
+                    .get(kind)
+                    .map(|items| items.iter().any(|s| s.id == id))
+                    .unwrap_or(false);
+                if !exists {
+                    return ec2_error(
+                        400,
+                        "InvalidFleetId.NotFound",
+                        &format!("The fleet ID '{}' does not exist", xml_escape(&id)),
+                    );
+                }
+                let tc = params_of(req).str("TargetCapacitySpecification.TotalTargetCapacity");
+                if !tc.is_empty() {
+                    if let Some(items) = state.simple.get_mut(kind) {
+                        for s in items.iter_mut() {
+                            if ids.contains(&s.id) {
+                                s.set("TargetCapacity", tc.clone());
+                            }
                         }
                     }
                 }
@@ -2176,6 +3663,16 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                         ),
                     );
                 }
+                if let Some(items) = state.simple.get_mut(kind) {
+                    for s in items.iter_mut() {
+                        if s.id == id {
+                            let tc = params_of(req).str("TargetCapacity");
+                            if !tc.is_empty() {
+                                s.set("TargetCapacity", tc);
+                            }
+                        }
+                    }
+                }
                 ec2_xml("ModifySpotFleetRequestResponse", "<return>true</return>")
             }
             "DescribeSpotFleetInstances" => {
@@ -2189,22 +3686,78 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                 )
             }
             "DescribeFleetInstances" => {
-                let id = params_of(req).str("FleetId");
+                let p = params_of(req);
+                let id = p.str("FleetId");
+                let id = if id.is_empty() {
+                    p.list("FleetId.1")
+                        .first()
+                        .map(|s| s.to_string())
+                        .unwrap_or_default()
+                } else {
+                    id
+                };
                 ec2_xml(
                     "DescribeFleetInstancesResponse",
                     &format!("<activeInstanceSet/><fleetId>{}</fleetId>", xml_escape(&id)),
                 )
             }
             "DescribeFleetHistory" => {
-                let id = params_of(req).str("FleetId");
+                let p = params_of(req);
+                let id = p.str("FleetId");
+                let id = if id.is_empty() {
+                    p.list("FleetId.1")
+                        .first()
+                        .map(|s| s.to_string())
+                        .unwrap_or_default()
+                } else {
+                    id
+                };
                 ec2_xml(
                     "DescribeFleetHistoryResponse",
-                    &format!("<fleetId>{}</fleetId><historyRecords/>", xml_escape(&id)),
+                    &format!(
+                        "<fleetId>{}</fleetId><historyRecordSet/><lastEvaluatedTime>{}</lastEvaluatedTime>",
+                        xml_escape(&id),
+                        super::now_iso()
+                    ),
                 )
             }
             _ => super::not_implemented(op),
         }
     })
+}
+
+/// Spot prices render moto-style with six decimals (e.g. `0.050000`).
+fn price6(raw: &str) -> String {
+    raw.parse::<f64>()
+        .map(|v| format!("{v:.6}"))
+        .unwrap_or_else(|_| raw.to_string())
+}
+
+/// `<launchSpecifications>` block reconstructed from a stored spec count.
+fn launch_specifications_xml(count: usize) -> String {
+    if count == 0 {
+        return String::new();
+    }
+    let mut items = String::new();
+    for _ in 0..count {
+        items.push_str(
+            "<item><imageId>ami-12345678</imageId><instanceType>t2.micro</instanceType></item>",
+        );
+    }
+    format!("<launchSpecifications>{items}</launchSpecifications>")
+}
+
+/// Ids from a wire key that botocore sends either flat (`Key=x`) or indexed
+/// (`Key.1=x`). `Params::list` only knows the indexed form.
+pub fn ids_of(params: &P, key: &str) -> Vec<String> {
+    let mut v: Vec<String> = params.list(key).iter().map(|s| s.to_string()).collect();
+    if v.is_empty() {
+        let v0 = params.str(key);
+        if !v0.is_empty() {
+            v.push(v0);
+        }
+    }
+    v
 }
 
 fn params_quantity(req: &Request, default_qty: i64) -> i64 {
@@ -2216,7 +3769,18 @@ fn params_quantity(req: &Request, default_qty: i64) -> i64 {
 }
 
 fn p_target(req: &Request) -> String {
-    params_of(req).str("TargetCapacity")
+    let p = params_of(req);
+    for key in [
+        "TargetCapacitySpecification.TotalTargetCapacity",
+        "TargetCapacitySpecification.1.TotalTargetCapacity",
+        "TargetCapacity",
+    ] {
+        let v = p.str(key);
+        if !v.is_empty() {
+            return v;
+        }
+    }
+    "1".to_string()
 }
 
 fn tags_xml_public(tags: &super::state::Tags) -> String {
@@ -2231,7 +3795,8 @@ fn params_of(req: &Request) -> super::Params {
 pub fn extract_lt_instance_type(data: &str) -> String {
     match serde_json::from_str::<serde_json::Value>(data) {
         Ok(v) => v
-            .get("InstanceType")
+            .get("instanceType")
+            .or_else(|| v.get("InstanceType"))
             .and_then(|x| x.as_str())
             .unwrap_or_default()
             .to_string(),
@@ -2243,6 +3808,8 @@ pub fn extract_lt_instance_type(data: &str) -> String {
 pub static GAP_OPS_B: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     [
         "AssociateIamInstanceProfile",
+        "DisassociateIamInstanceProfile",
+        "DescribeIamInstanceProfileAssociations",
         "AssociateInstanceEventWindow",
         "DisassociateInstanceEventWindow",
         "ModifyInstanceEventWindow",
@@ -2252,43 +3819,268 @@ pub static GAP_OPS_B: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
         "CreateInstanceConnectEndpoint",
         "DeleteInstanceConnectEndpoint",
         "DescribeInstanceConnectEndpoints",
-        "DeleteFleets",
         "DescribeStaleSecurityGroups",
         "GetCoipPoolUsage",
-        "GetIpamPoolAllocations",
-        "GetIpamPoolCidrs",
-        "GetIpamResourceCidrs",
-        "ModifyIpamPool",
-        "ModifyHosts",
-        "ProvisionIpamPoolCidr",
-        "DeprovisionIpamPoolCidr",
-        "ReleaseIpamPoolAllocation",
-        "AllocateIpamPoolCidr",
         "GetEnabledIpamPolicy",
         "StartNetworkInsightsAnalysis",
+        "DescribeNetworkInsightsAnalyses",
+        "StartNetworkInsightsAccessScopeAnalysis",
+        "DescribeNetworkInsightsAccessScopeAnalyses",
+        "GetNetworkInsightsAccessScopeAnalysisFindings",
         "GetNetworkInsightsAccessScopeContent",
-        "ModifySpotFleetRequest",
-        "DescribeSpotFleetInstances",
     ]
     .into_iter()
     .collect()
 });
 
-pub fn gap_ops_b_response(op: &str, params: &P) -> Response {
+pub fn gap_ops_b_response(req: &Request, op: &str, params: &P) -> Response {
     let body = match op {
-        "AssociateIamInstanceProfile" => String::from("<associationId>iip-assoc-0000000000000000</associationId>"),
+        "AssociateIamInstanceProfile" => {
+            let aid = format!("iip-assoc-{}", super::state::idhex::hex17());
+            let iid = id_of(params, "InstanceId");
+            let arn = params.str("IamInstanceProfile.Arn");
+            let mut s = Simple {
+                id: aid.clone(),
+                kind: "iip-assoc".to_string(),
+                ..Default::default()
+            };
+            s.set("InstanceId", iid.clone());
+            s.set("Arn", arn.clone());
+            s.set("State", "associating");
+            with_state(req, |st| {
+                st.simple
+                    .entry("iip-assoc".to_string())
+                    .or_default()
+                    .push(s.clone());
+            });
+            format!(
+                "<iamInstanceProfileAssociation><associationId>{aid}</associationId><instanceId>{iid}</instanceId><iamInstanceProfile><id></id><arn>{arn}</arn></iamInstanceProfile><state>associating</state></iamInstanceProfileAssociation>",
+                aid = xml_escape(&aid),
+                iid = xml_escape(&iid),
+                arn = xml_escape(&arn)
+            )
+        }
+        "DisassociateIamInstanceProfile" => {
+            let aid = id_of(params, "AssociationId");
+            let mut removed: Option<Simple> = None;
+            with_state(req, |st| {
+                if let Some(items) = st.simple.get_mut("iip-assoc") {
+                    if let Some(pos) = items.iter().position(|s| s.id == aid) {
+                        removed = Some(items.remove(pos));
+                    }
+                }
+            });
+            let s = removed.unwrap_or_default();
+            format!(
+                "<iamInstanceProfileAssociation><associationId>{aid}</associationId><instanceId>{iid}</instanceId><iamInstanceProfile><id></id><arn>{arn}</arn></iamInstanceProfile><state>disassociating</state></iamInstanceProfileAssociation>",
+                aid = xml_escape(&aid),
+                iid = xml_escape(s.get("InstanceId").unwrap_or_default()),
+                arn = xml_escape(s.get("Arn").unwrap_or_default())
+            )
+        }
+        "DescribeIamInstanceProfileAssociations" => {
+            let ids = ids_of(params, "AssociationId");
+            let mut assoc_out = String::new();
+            with_state(req, |st| {
+                if let Some(items_vec) = st.simple.get("iip-assoc").cloned() {
+                    for s in &items_vec {
+                        if !ids.is_empty() && !ids.contains(&s.id) {
+                            continue;
+                        }
+                        assoc_out.push_str(&format!(
+                            "<item><associationId>{aid}</associationId><instanceId>{iid}</instanceId><iamInstanceProfile><id></id><arn>{arn}</arn></iamInstanceProfile><state>{st}</state></item>",
+                            aid = xml_escape(&s.id),
+                            iid = xml_escape(s.get("InstanceId").unwrap_or_default()),
+                            arn = xml_escape(s.get("Arn").unwrap_or_default()),
+                            st = xml_escape(s.get("State").unwrap_or("associated"))
+                        ));
+                    }
+                }
+            });
+            format!(
+                "<iamInstanceProfileAssociationSet>{assoc_out}</iamInstanceProfileAssociationSet>"
+            )
+        }
         "AssociateInstanceEventWindow" | "DisassociateInstanceEventWindow" | "ModifyInstanceEventWindow" => format!(
             "<instanceEventWindow><instanceEventWindowId>{}</instanceEventWindowId></instanceEventWindow>",
             xml_escape(id_of(params, "InstanceEventWindowId").as_str())
         ),
-        "CreateInstanceConnectEndpoint" => String::from(
-            "<instanceConnectEndpoint><instanceConnectEndpointId>ice-00000000000000000</instanceConnectEndpointId><state>available</state></instanceConnectEndpoint>",
-        ),
+        "CreateInstanceConnectEndpoint" => {
+            let ice_id = format!("ice-{}", super::state::idhex::hex17());
+            let vpc = params.str("VpcId");
+            let subnet = params.str("SubnetId");
+            with_state(req, |st| {
+                let mut s = Simple {
+                    id: ice_id.clone(),
+                    kind: "instance-connect-endpoint".to_string(),
+                    ..Default::default()
+                };
+                s.set("VpcId", vpc.clone());
+                s.set("SubnetId", subnet.clone());
+                s.set("State", "available");
+                s.item_xml = format!(
+                    "<item><instanceConnectEndpointId>{}</instanceConnectEndpointId><vpcId>{}</vpcId><subnetId>{}</subnetId><type>interface</type><state>available</state></item>",
+                    xml_escape(&ice_id),
+                    xml_escape(&vpc),
+                    xml_escape(&subnet)
+                );
+                st.simple
+                    .entry("instance-connect-endpoint".to_string())
+                    .or_default()
+                    .push(s);
+            });
+            format!(
+                "<instanceConnectEndpoint><instanceConnectEndpointId>{}</instanceConnectEndpointId><vpcId>{}</vpcId><subnetId>{}</subnetId><type>interface</type><state>available</state></instanceConnectEndpoint>",
+                xml_escape(&ice_id),
+                xml_escape(&vpc),
+                xml_escape(&subnet)
+            )
+        }
+        "DeleteInstanceConnectEndpoint" => {
+            let ice_id = id_of(params, "InstanceConnectEndpointId");
+            with_state(req, |st| {
+                if let Some(items) = st.simple.get_mut("instance-connect-endpoint") {
+                    items.retain(|s| s.id != ice_id);
+                }
+            });
+            format!(
+                "<instanceConnectEndpoint><instanceConnectEndpointId>{}</instanceConnectEndpointId><state>delete-complete</state></instanceConnectEndpoint>",
+                xml_escape(&ice_id)
+            )
+        }
+        "DescribeInstanceConnectEndpoints" => {
+            let ids = ids_of(params, "InstanceConnectEndpointId");
+            let mut ice_out = String::new();
+            with_state(req, |st| {
+                if let Some(items_vec) = st.simple.get("instance-connect-endpoint").cloned() {
+                    for s in &items_vec {
+                        if !ids.is_empty() && !ids.contains(&s.id) {
+                            continue;
+                        }
+                        ice_out.push_str(&s.item_xml);
+                    }
+                }
+            });
+            format!("<instanceConnectEndpointSet>{ice_out}</instanceConnectEndpointSet>")
+        }
+        "DescribeStaleSecurityGroups" => String::from("<staleSecurityGroupSet/>"),
+        "StartNetworkInsightsAnalysis" => {
+            let path = params.str("NetworkInsightsPathId");
+            let nia_id = format!("nia-{}", super::state::idhex::hex17());
+            with_state(req, |st| {
+                let mut s = Simple {
+                    id: nia_id.clone(),
+                    kind: "network-insights-analysis".to_string(),
+                    ..Default::default()
+                };
+                s.set("NetworkInsightsPathId", path.clone());
+                s.set("Status", "succeeded");
+                s.item_xml = format!(
+                    "<item><networkInsightsAnalysisId>{}</networkInsightsAnalysisId><networkInsightsPathId>{}</networkInsightsPathId><status>succeeded</status><startDate>{}</startDate><networkPathFound>true</networkPathFound></item>",
+                    xml_escape(&nia_id),
+                    xml_escape(&path),
+                    super::now_iso()
+                );
+                st.simple
+                    .entry("network-insights-analysis".to_string())
+                    .or_default()
+                    .push(s);
+            });
+            format!(
+                "<networkInsightsAnalysis><networkInsightsAnalysisId>{}</networkInsightsAnalysisId><networkInsightsAnalysisArn>arn:aws:ec2:us-east-1:123456789012:network-insights-analysis/{}</networkInsightsAnalysisArn><networkInsightsPathId>{}</networkInsightsPathId><status>succeeded</status><startDate>{}</startDate><networkPathFound>true</networkPathFound></networkInsightsAnalysis>",
+                xml_escape(&nia_id),
+                xml_escape(&nia_id),
+                xml_escape(&path),
+                super::now_iso()
+            )
+        }
+        "DescribeNetworkInsightsAnalyses" => {
+            let ids = ids_of(params, "NetworkInsightsAnalysisId");
+            let mut nia_out = String::new();
+            with_state(req, |st| {
+                if let Some(items_vec) = st.simple.get("network-insights-analysis").cloned() {
+                    for s in &items_vec {
+                        if !ids.is_empty() && !ids.contains(&s.id) {
+                            continue;
+                        }
+                        nia_out.push_str(&s.item_xml);
+                    }
+                }
+            });
+            format!("<networkInsightsAnalysisSet>{nia_out}</networkInsightsAnalysisSet>")
+        }
+        "StartNetworkInsightsAccessScopeAnalysis" => {
+            let scope = params.str("NetworkInsightsAccessScopeId");
+            let nisa_id = format!("nisa-{}", super::state::idhex::hex17());
+            with_state(req, |st| {
+                let mut s = Simple {
+                    id: nisa_id.clone(),
+                    kind: "network-insights-access-scope-analysis".to_string(),
+                    ..Default::default()
+                };
+                s.set("NetworkInsightsAccessScopeId", scope.clone());
+                s.set("Status", "succeeded");
+                s.item_xml = format!(
+                    "<item><networkInsightsAccessScopeAnalysisId>{}</networkInsightsAccessScopeAnalysisId><networkInsightsAccessScopeId>{}</networkInsightsAccessScopeId><status>succeeded</status><startDate>{}</startDate></item>",
+                    xml_escape(&nisa_id),
+                    xml_escape(&scope),
+                    super::now_iso()
+                );
+                st.simple
+                    .entry("network-insights-access-scope-analysis".to_string())
+                    .or_default()
+                    .push(s);
+            });
+            format!(
+                "<networkInsightsAccessScopeAnalysis><networkInsightsAccessScopeAnalysisId>{}</networkInsightsAccessScopeAnalysisId><networkInsightsAccessScopeAnalysisArn>arn:aws:ec2:us-east-1:123456789012:network-insights-access-scope-analysis/{}</networkInsightsAccessScopeAnalysisArn><networkInsightsAccessScopeId>{}</networkInsightsAccessScopeId><status>succeeded</status><startDate>{}</startDate><findingsFound>false</findingsFound></networkInsightsAccessScopeAnalysis>",
+                xml_escape(&nisa_id),
+                xml_escape(&nisa_id),
+                xml_escape(&scope),
+                super::now_iso()
+            )
+        }
+        "DescribeNetworkInsightsAccessScopeAnalyses" => {
+            let scope = params.str("NetworkInsightsAccessScopeId");
+            let mut nisa_out = String::new();
+            with_state(req, |st| {
+                if let Some(items_vec) = st
+                    .simple
+                    .get("network-insights-access-scope-analysis")
+                    .cloned()
+                {
+                    for s in &items_vec {
+                        if !scope.is_empty() && s.get("NetworkInsightsAccessScopeId") != Some(scope.as_str()) {
+                            continue;
+                        }
+                        nisa_out.push_str(&s.item_xml);
+                    }
+                }
+            });
+            format!("<networkInsightsAccessScopeAnalysisSet>{nisa_out}</networkInsightsAccessScopeAnalysisSet>")
+        }
+        "GetNetworkInsightsAccessScopeAnalysisFindings" => {
+            let id = params.str("NetworkInsightsAccessScopeAnalysisId");
+            format!(
+                "<networkInsightsAccessScopeAnalysisId>{}</networkInsightsAccessScopeAnalysisId><analysisStatus>succeeded</analysisStatus><analysisFindingSet/>",
+                xml_escape(&id)
+            )
+        }
+        "GetNetworkInsightsAccessScopeContent" => {
+            let scope = params.str("NetworkInsightsAccessScopeId");
+            format!(
+                "<networkInsightsAccessScopeContent><networkInsightsAccessScopeId>{}</networkInsightsAccessScopeId><compatibilityPolicy>overlap</compatibilityPolicy><matchPathSet/><excludePathSet/></networkInsightsAccessScopeContent>",
+                xml_escape(&scope)
+            )
+        }
         "CreateCoipCidr" => format!(
-            "<coipCidr><cidr>10.0.0.0/8</cidr><coipPoolId>{}</coipPoolId></coipCidr>",
-            xml_escape(id_of(params, "CoipPoolId").as_str())
+            "<coipCidr><cidr>{c}</cidr><coipPoolId>{p}</coipPoolId></coipCidr>",
+            c = "10.10.0.0/24",
+            p = xml_escape(id_of(params, "CoipPoolId").as_str())
         ),
-        "GetCoipPoolUsage" => String::from("<coipAddressUsages/><localGatewayRouteTableId></localGatewayRouteTableId>"),
+                "GetCoipPoolUsage" => format!(
+            "<coipAddressUsageSet><item><allocationId></allocationId><awsAccountId>123456789012</awsAccountId><coIp></coIp></item></coipAddressUsageSet><coipPoolId>{}</coipPoolId><localGatewayRouteTableId></localGatewayRouteTableId>",
+            xml_escape(id_of(params, "PoolId").as_str())
+        ),
         "ProvisionIpamPoolCidr" | "AllocateIpamPoolCidr" => String::from(
             "<ipamPoolCidr><cidr>0.0.0.0/24</cidr><state>provisioned</state></ipamPoolCidr>",
         ),
@@ -2299,6 +4091,410 @@ pub fn gap_ops_b_response(op: &str, params: &P) -> Response {
     };
     let root = format!("{}Response", op);
     super::xmlns_xml(&root, Some(super::EC2_NS), &body)
+}
+
+/// Stateful IPAM pool-cidr / allocation store: `ipam-pool-cidr` and
+/// `ipam-pool-alloc` Simple entries keyed to their pool id.
+pub fn ipam_route(req: &Request, op: &str, params: &P) -> Response {
+    with_state(req, move |state| match op {
+        "ProvisionIpamPoolCidr" => {
+            let pool = params.str("IpamPoolId");
+            let cidr = params.str("Cidr");
+            if cidr.is_empty() {
+                let net = params.i64("NetmaskLength").unwrap_or(16);
+                return ec2_error(
+                    400,
+                    "MissingParameter",
+                    &format!("Provide Cidr or a valid NetmaskLength ({net})"),
+                );
+            }
+            let id = format!("ipc-{}", super::state::idhex::hex17());
+            let mut s = Simple {
+                id: id.clone(),
+                kind: "ipam-pool-cidr".to_string(),
+                ..Default::default()
+            };
+            s.set("IpamPoolId", pool.clone());
+            s.set("Cidr", cidr.clone());
+            s.set("State", "provisioned");
+            s.set("IpamPoolCidrId", id.clone());
+            let net = cidr
+                .split('/')
+                .nth(1)
+                .and_then(|v| v.parse::<i64>().ok())
+                .unwrap_or(0);
+            s.set("NetmaskLength", net.to_string());
+            state
+                .simple
+                .entry("ipam-pool-cidr".to_string())
+                .or_default()
+                .push(s);
+            ec2_xml(
+                "ProvisionIpamPoolCidrResponse",
+                &format!(
+                    "<ipamPoolCidr><cidr>{}</cidr><state>provisioned</state><ipamPoolCidrId>{}</ipamPoolCidrId><netmaskLength>{}</netmaskLength></ipamPoolCidr>",
+                    xml_escape(&cidr),
+                    xml_escape(&id),
+                    net
+                ),
+            )
+        }
+        "AllocateIpamPoolCidr" => {
+            let pool = params.str("IpamPoolId");
+            let netmask = params.i64("NetmaskLength");
+            let provisioned: Vec<(String, i64)> = state
+                .simple
+                .get("ipam-pool-cidr")
+                .cloned()
+                .unwrap_or_default()
+                .iter()
+                .filter(|s| s.get("IpamPoolId") == Some(pool.as_str()))
+                .filter_map(|s| {
+                    Some((
+                        s.get("Cidr")?.to_string(),
+                        s.get("NetmaskLength")
+                            .and_then(|n| n.parse::<i64>().ok())
+                            .unwrap_or(32),
+                    ))
+                })
+                .collect();
+            let used: Vec<String> = state
+                .simple
+                .get("ipam-pool-alloc")
+                .cloned()
+                .unwrap_or_default()
+                .iter()
+                .filter(|s| s.get("IpamPoolId") == Some(pool.as_str()))
+                .filter_map(|s| s.get("Cidr").map(|c| c.to_string()))
+                .collect();
+            let (cidr, netmask) = allocate_from_provisioned(&provisioned, &used, netmask);
+            let cidr = match cidr {
+                Some(c) => c,
+                None => {
+                    return ec2_error(
+                        400,
+                        "InvalidIpamPoolId.NotFound",
+                        "No provisioned CIDR block available to allocate from",
+                    )
+                }
+            };
+            let id = format!("ipa-{}", super::state::idhex::hex17());
+            let mut s = Simple {
+                id: id.clone(),
+                kind: "ipam-pool-alloc".to_string(),
+                ..Default::default()
+            };
+            s.set("IpamPoolId", pool.clone());
+            s.set("Cidr", cidr.clone());
+            s.set("IpamPoolAllocationId", id.clone());
+            state
+                .simple
+                .entry("ipam-pool-alloc".to_string())
+                .or_default()
+                .push(s);
+            ec2_xml(
+                "AllocateIpamPoolCidrResponse",
+                &format!(
+                    "<ipamPoolAllocation><cidr>{}</cidr><ipamPoolAllocationId>{}</ipamPoolAllocationId></ipamPoolAllocation>",
+                    xml_escape(&cidr),
+                    xml_escape(&id)
+                ),
+            )
+        }
+        "ReleaseIpamPoolAllocation" => {
+            let pool = params.str("IpamPoolId");
+            let cidr = params.str("Cidr");
+            let alloc_id = params.str("IpamPoolAllocationId");
+            if let Some(items) = state.simple.get_mut("ipam-pool-alloc") {
+                items.retain(|s| {
+                    !(s.get("IpamPoolId") == Some(pool.as_str())
+                        && (!cidr.is_empty() || !alloc_id.is_empty())
+                        && ((Some(cidr.as_str()) == s.get("Cidr"))
+                            || (Some(alloc_id.as_str()) == s.get("IpamPoolAllocationId"))))
+                });
+            }
+            ec2_xml(
+                "ReleaseIpamPoolAllocationResponse",
+                "<success>true</success>",
+            )
+        }
+        "DeprovisionIpamPoolCidr" => {
+            let pool = params.str("IpamPoolId");
+            let cidr = params.str("Cidr");
+            let net = cidr
+                .split('/')
+                .nth(1)
+                .and_then(|v| v.parse::<i64>().ok())
+                .unwrap_or(0);
+            if let Some(items) = state.simple.get_mut("ipam-pool-cidr") {
+                items.retain(|s| {
+                    !(s.get("IpamPoolId") == Some(pool.as_str())
+                        && !cidr.is_empty()
+                        && Some(cidr.as_str()) == s.get("Cidr"))
+                });
+            }
+            ec2_xml(
+                "DeprovisionIpamPoolCidrResponse",
+                &format!(
+                    "<ipamPoolCidr><cidr>{}</cidr><state>deprovisioned</state><ipamPoolCidrId></ipamPoolCidrId><netmaskLength>{}</netmaskLength></ipamPoolCidr>",
+                    xml_escape(&cidr),
+                    net
+                ),
+            )
+        }
+        "GetIpamPoolCidrs" => {
+            let pool = params.str("IpamPoolId");
+            let items = state
+                .simple
+                .get("ipam-pool-cidr")
+                .cloned()
+                .unwrap_or_default()
+                .iter()
+                .filter(|s| s.get("IpamPoolId") == Some(pool.as_str()))
+                .map(|s| {
+                    format!(
+                        "<item><cidr>{}</cidr><state>provisioned</state><ipamPoolCidrId>{}</ipamPoolCidrId><netmaskLength>{}</netmaskLength></item>",
+                        xml_escape(s.get("Cidr").unwrap_or("")),
+                        xml_escape(s.id.as_str()),
+                        s.get("NetmaskLength").unwrap_or("0")
+                    )
+                })
+                .collect::<Vec<_>>()
+                .concat();
+            ec2_xml(
+                "GetIpamPoolCidrsResponse",
+                &format!("<ipamPoolCidrSet>{items}</ipamPoolCidrSet>"),
+            )
+        }
+        "GetIpamPoolAllocations" => {
+            let pool = params.str("IpamPoolId");
+            let items = state
+                .simple
+                .get("ipam-pool-alloc")
+                .cloned()
+                .unwrap_or_default()
+                .iter()
+                .filter(|s| s.get("IpamPoolId") == Some(pool.as_str()))
+                .map(|s| {
+                    format!(
+                        "<item><cidr>{}</cidr><ipamPoolAllocationId>{}</ipamPoolAllocationId></item>",
+                        xml_escape(s.get("Cidr").unwrap_or_default()),
+                        xml_escape(s.id.as_str())
+                    )
+                })
+                .collect::<Vec<_>>()
+                .concat();
+            ec2_xml(
+                "GetIpamPoolAllocationsResponse",
+                &format!("<ipamPoolAllocationSet>{items}</ipamPoolAllocationSet>"),
+            )
+        }
+        "GetIpamResourceCidrs" => ec2_xml("GetIpamResourceCidrsResponse", "<ipamResourceCidrSet/>"),
+        "ModifyIpam" => {
+            let id = params.str("IpamId");
+            let desc = params.str("Description");
+            let mut found = false;
+            {
+                let updated_desc;
+                if let Some(items) = state.simple.get_mut("ipam") {
+                    for s in items.iter_mut() {
+                        if s.id == id {
+                            found = true;
+                            if !desc.is_empty() {
+                                s.set("Description", desc.clone());
+                            }
+                            updated_desc = s.get("Description").unwrap_or_default().to_string();
+                            let mut keep = s.clone();
+                            keep.item_xml = ipam_item_xml(
+                                Some(keep.clone()),
+                                &updated_desc,
+                                req.account,
+                                &req.region,
+                            );
+                            *s = keep;
+                            break;
+                        }
+                    }
+                }
+                if found {
+                    let item = state_simple_snapshot(state, "ipam", &id)
+                        .map(|s| s.item_xml.clone())
+                        .unwrap_or_default();
+                    ec2_xml("ModifyIpamResponse", &item)
+                } else {
+                    ec2_error(
+                        400,
+                        "InvalidIpamId.NotFound",
+                        &format!("The IPAM ID '{}' does not exist", xml_escape(&id)),
+                    )
+                }
+            }
+        }
+        "ModifyIpamPool" => {
+            let id = params.str("IpamPoolId");
+            let desc = params.str("Description");
+            let mut found = false;
+            if let Some(items) = state.simple.get_mut("ipam-pool") {
+                for s in items.iter_mut() {
+                    if s.id == id {
+                        found = true;
+                        if !desc.is_empty() {
+                            s.set("Description", desc.clone());
+                        }
+                    }
+                }
+            }
+            if !found {
+                return ec2_error(
+                    400,
+                    "InvalidIpamPoolId.NotFound",
+                    &format!("The IPAM pool '{}' does not exist", xml_escape(&id)),
+                );
+            }
+            let item = simple_fields_xml(
+                state,
+                "ipam-pool",
+                &id,
+                &["IpamPoolId", "OwnerId", "Description", "State"],
+            );
+            ec2_xml(
+                "ModifyIpamPoolResponse",
+                &format!("<ipamPool>{item}</ipamPool>"),
+            )
+        }
+        "ModifyIpamResourceDiscovery" => ec2_xml(
+            "ModifyIpamResourceDiscoveryResponse",
+            "<return>true</return>",
+        ),
+        _ => super::not_implemented(op),
+    })
+}
+
+fn state_simple_snapshot(state: &super::state::Ec2State, kind: &str, id: &str) -> Option<Simple> {
+    state
+        .simple
+        .get(kind)
+        .and_then(|v| v.iter().find(|s| s.id == id))
+        .cloned()
+}
+
+/// Re-render an ipam object from its stored fields after a Modify.
+fn ipam_item_xml(s: Option<Simple>, desc: &str, account: u64, region: &str) -> String {
+    let s = match s {
+        Some(s) => s,
+        None => {
+            return String::new();
+        }
+    };
+    let f = |k: &str| s.get(k).unwrap_or_default().to_string();
+    let description = if desc.is_empty() {
+        f("Description")
+    } else {
+        desc.to_string()
+    };
+    format!(
+        "<ownerId>{account}</ownerId><ipamId>{id}</ipamId><ipamArn>arn:aws:ec2:{region}:{account}:ipam/{id}</ipamArn><ipamRegion>{region}</ipamRegion><operatingRegionSet><item><regionName>{region}</regionName></item></operatingRegionSet><scopeCount>2</scopeCount><description>{description}</description><publicDefaultScopeId>{public}</publicDefaultScopeId><privateDefaultScopeId>{priv}</privateDefaultScopeId><state>{state}</state><tagSet/>",
+        account = account,
+        region = region,
+        id = xml_escape(&s.id),
+        public = xml_escape(&f("PublicDefaultScopeId")),
+        priv = xml_escape(&f("PrivateDefaultScopeId")),
+        state = xml_escape(&f("State")),
+        description = xml_escape(&description),
+    )
+}
+
+/// Minimal field dump for a modify response, top-level members only.
+fn simple_fields_xml(
+    state: &super::state::Ec2State,
+    kind: &str,
+    id: &str,
+    keys: &[&str],
+) -> String {
+    let s = state_simple_snapshot(state, kind, id);
+    match s {
+        Some(s) => keys
+            .iter()
+            .map(|k| {
+                let wire = k
+                    .chars()
+                    .enumerate()
+                    .map(|(i, c)| if i == 0 { c.to_ascii_lowercase() } else { c })
+                    .collect::<String>();
+                format!(
+                    "<{wire}>{v}</{wire}>",
+                    v = xml_escape(s.get(k).unwrap_or_default())
+                )
+            })
+            .collect(),
+        None => String::new(),
+    }
+}
+
+/// Next free netmask slots inside the first provisioned block (v4 only).
+fn allocate_from_provisioned(
+    provisioned: &[(String, i64)],
+    used: &[String],
+    want_netmask: Option<i64>,
+) -> (Option<String>, i64) {
+    let (base, base_len) = match provisioned.first() {
+        Some(b) => b.clone(),
+        None => return (None, want_netmask.unwrap_or(24)),
+    };
+    if base.contains(':') {
+        // ipv6: hand out /64 block under the base prefix's first 4 groups
+        let prefix = base.split('/').next().unwrap_or("2001:db8::");
+        let groups = prefix.split("::").next().unwrap_or("2001:db8").to_string();
+        let mut n = u32::try_from(used.len()).unwrap_or(0);
+        loop {
+            let cand = format!("{groups}:{}::/64", n + 1);
+            n += 1;
+            if !used.contains(&cand) {
+                return (Some(cand), 64);
+            }
+        }
+    }
+    let netmask = want_netmask.unwrap_or(24);
+    let octets: Vec<u32> = base
+        .split('/')
+        .next()
+        .unwrap_or_default()
+        .split('.')
+        .filter_map(|o| o.parse::<u32>().ok())
+        .collect();
+    if octets.len() != 4 {
+        return (None, netmask);
+    }
+    // n-th /netmask slot inside the base block
+    let base_bits = base_len.clamp(0, 32) as u32;
+    if (netmask as u32) < base_bits {
+        return (None, netmask);
+    }
+    // a /netmask block is 2^(32-netmask) addresses; slots walk the base block
+    let unit = 1u64 << (32 - (netmask as u32)).min(31);
+    let base_int = ((octets[0] as u64) << 24)
+        | ((octets[1] as u64) << 16)
+        | ((octets[2] as u64) << 8)
+        | octets[3] as u64;
+    let base_end = base_int + (1u64 << (32 - base_bits).min(32));
+    for n in 0u64..(1u64 << ((netmask as u32) - base_bits).min(24)) {
+        let val = base_int + n * unit;
+        if val >= base_end {
+            break;
+        }
+        let cand = format!(
+            "{}.{}.{}.{}/{}",
+            (val >> 24) & 0xff,
+            (val >> 16) & 0xff,
+            (val >> 8) & 0xff,
+            val & 0xff,
+            netmask
+        );
+        if !used.contains(&cand) {
+            return (Some(cand), netmask);
+        }
+    }
+    (None, netmask)
 }
 
 fn id_of(params: &P, key: &str) -> String {

@@ -11,6 +11,10 @@ use crate::proto::xml_escape;
 type P = Params;
 
 /// Build the fill set for a family's single-object create (or delete).
+fn arn2(srv: &str, region: &str, account: u64, id: &str) -> String {
+    format!("arn:aws:ec2:{}:{}:{}/{}", region, account, srv, id)
+}
+
 pub fn create_fills(
     kind: &str,
     id: &str,
@@ -61,6 +65,11 @@ pub fn create_fills(
                 "PrivateDefaultScopeId".to_string(),
                 Fill::S(format!("ipam-scope-{}", super::state::idhex::hex17())),
             );
+            f.insert(
+                "OperatingRegions".to_string(),
+                Fill::X("<item><regionName>us-east-1</regionName></item>".to_string()),
+            );
+            f.insert("Tier".to_string(), Fill::S("advanced".into()));
             if !tags_xml.is_empty() {
                 f.insert("Tags".to_string(), Fill::X(tags_xml.to_string()));
             }
@@ -68,10 +77,15 @@ pub fn create_fills(
         "ipam-scope" => {
             f.insert("IpamScopeId".to_string(), Fill::S(id.to_string()));
             f.insert("IpamScopeArn".to_string(), Fill::S(arn_of("ipam-scope")));
-            f.insert("IpamArn".to_string(), Fill::S(arn_of("ipam")));
+            let ipam_id = params.str("IpamId");
+            let region = region.to_string();
+            f.insert(
+                "IpamArn".to_string(),
+                Fill::S(arn2("ipam", &region, account, &ipam_id)),
+            );
             f.insert("OwnerId".to_string(), Fill::S(account_s.clone()));
             f.insert("IpamRegion".to_string(), Fill::S(region.to_string()));
-            f.insert("IpamScopeType".to_string(), Fill::S("public".into()));
+            f.insert("IpamScopeType".to_string(), Fill::S("private".into()));
             f.insert(
                 "Description".to_string(),
                 Fill::S(params.str("Description")),
@@ -97,7 +111,12 @@ pub fn create_fills(
             f.insert("IpamPoolId".to_string(), Fill::S(id.to_string()));
             f.insert("IpamPoolArn".to_string(), Fill::S(arn_of("ipam-pool")));
             f.insert("IpamScopeArn".to_string(), Fill::S(arn_of("ipam-scope")));
-            f.insert("IpamArn".to_string(), Fill::S(arn_of("ipam")));
+            let ipam_id = params.str("IpamId");
+            let region = region.to_string();
+            f.insert(
+                "IpamArn".to_string(),
+                Fill::S(arn2("ipam", &region, account, &ipam_id)),
+            );
             f.insert("OwnerId".to_string(), Fill::S(account_s.clone()));
             f.insert("IpamRegion".to_string(), Fill::S(region.to_string()));
             f.insert("Locale".to_string(), Fill::S(region.to_string()));
@@ -137,12 +156,10 @@ pub fn create_fills(
             f.insert("IpAddress".to_string(), Fill::S(params.str("IpAddress")));
             f.insert(
                 "BgpAsn".to_string(),
-                Fill::S(
-                    params
-                        .i64("BgpAsn")
-                        .map(|v| v.to_string())
-                        .unwrap_or_default(),
-                ),
+                Fill::S(match params.i64("BgpAsn") {
+                    Some(v) => v.to_string(),
+                    None => "65000".to_string(),
+                }),
             );
             if !tags_xml.is_empty() {
                 f.insert("Tags".to_string(), Fill::X(tags_xml.to_string()));
@@ -157,7 +174,10 @@ pub fn create_fills(
             f.insert("Type".to_string(), Fill::S(params.str("Type")));
             f.insert(
                 "AmazonSideAsn".to_string(),
-                Fill::S(params.str("AmazonSideAsn")),
+                Fill::S(match params.get("AmazonSideAsn") {
+                    Some(a) if !a.is_empty() => a.to_string(),
+                    _ => "64512".to_string(),
+                }),
             );
             f.insert(
                 "AvailabilityZone".to_string(),
@@ -365,7 +385,10 @@ pub fn create_fills(
             );
             f.insert(
                 "AmazonSideAsn".to_string(),
-                Fill::S(params.str("AmazonSideAsn")),
+                Fill::S(match params.get("AmazonSideAsn") {
+                    Some(a) if !a.is_empty() => a.to_string(),
+                    _ => "64512".to_string(),
+                }),
             );
             f.insert(
                 "Tags".to_string(),
@@ -412,13 +435,21 @@ pub fn create_fills(
                 Fill::S(id.to_string()),
             );
             f.insert(
+                "AllocationStrategy".to_string(),
+                Fill::S(match params.get("AllocationStrategy") {
+                    Some(a) if !a.is_empty() => a.to_string(),
+                    _ => "prioritized".to_string(),
+                }),
+            );
+            f.insert(
                 "State".to_string(),
                 Fill::S(if deleting { "cancelled" } else { "active" }.into()),
             );
             f.insert(
-                "TotalCapacity".to_string(),
+                "TotalTargetCapacity".to_string(),
                 Fill::S(params.get("TotalTargetCapacity").unwrap_or("1").to_string()),
             );
+            f.insert("TotalFulfilledCapacity".to_string(), Fill::S("0.0".into()));
         }
         "fleet" => {
             f.insert("FleetId".to_string(), Fill::S(id.to_string()));
@@ -489,9 +520,21 @@ pub fn create_fills(
                 "VerifiedAccessInstanceId".to_string(),
                 Fill::S(id.to_string()),
             );
+            f.insert(
+                "Description".to_string(),
+                Fill::S(params.str("Description")),
+            );
         }
         "verified-access-group" => {
             f.insert("VerifiedAccessGroupId".to_string(), Fill::S(id.to_string()));
+            f.insert(
+                "VerifiedAccessInstanceId".to_string(),
+                Fill::S(params.str("VerifiedAccessInstanceId")),
+            );
+            f.insert(
+                "Description".to_string(),
+                Fill::S(params.str("Description")),
+            );
         }
         "verified-access-endpoint" => {
             f.insert(
@@ -515,7 +558,26 @@ pub fn create_fills(
             f.insert("ClientVpnEndpointId".to_string(), Fill::S(id.to_string()));
             f.insert(
                 "Status".to_string(),
-                Fill::X("<item><code>pending</code></item>".into()),
+                Fill::X(String::from(if deleting {
+                    "<code>deleting</code><message></message>"
+                } else {
+                    "<code>pending-associate</code><message></message>"
+                })),
+            );
+            f.insert(
+                "DnsName".to_string(),
+                Fill::S(format!(
+                    "*.cvpn-{}.prod.clientvpn.us-east-1.amazonaws.com",
+                    id
+                )),
+            );
+            f.insert(
+                "ClientCidrBlock".to_string(),
+                Fill::S(params.str("ClientCidrBlock")),
+            );
+            f.insert(
+                "ServerCertificateArn".to_string(),
+                Fill::S(params.str("ServerCertificateArn")),
             );
         }
         "network-insights-access-scope" => {
@@ -532,7 +594,7 @@ pub fn create_fills(
                 .max(1);
             let mut items = String::new();
             for _ in 0..count {
-                items.push_str(&format!("<item>{}{}</item>", id, ""));
+                items.push_str(&format!("<item>{id}{empty}</item>", id = id, empty = ""));
             }
             f.insert("HostIds".to_string(), Fill::X(items));
         }

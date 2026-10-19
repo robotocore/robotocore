@@ -57,6 +57,90 @@ pub fn route(req: &Request, params: &P) -> Response {
         "DescribeAddresses" => describe_addresses(req, params),
         "ReleaseAddress" => release_address(req, params),
         "AssociateAddress" => associate_address(req, params),
+        // Flow logs: stateful create/describe/delete driven off Simple store.
+        "CreateFlowLogs" => {
+            let n = params.count("ResourceId");
+            let mut ids = String::new();
+            with_state(req, |state| {
+                for i in 0..n {
+                    let resource_id = params
+                        .get(&format!("ResourceId.{}", i + 1))
+                        .unwrap_or_default()
+                        .to_string();
+                    let id = state.next_id("fl");
+                    let mut s = super::state::Simple {
+                        id: id.clone(),
+                        kind: "flow-log".to_string(),
+                        ..Default::default()
+                    };
+                    s.set("ResourceId", resource_id);
+                    s.set("TrafficType", params.str("TrafficType"));
+                    s.set(
+                        "LogDestinationType",
+                        params
+                            .get("LogDestinationType")
+                            .unwrap_or("cloud-watch-logs"),
+                    );
+                    s.set("LogGroupName", params.str("LogGroupName"));
+                    if !params.str("LogDestination").is_empty() {
+                        s.set("LogDestination", params.str("LogDestination"));
+                    }
+                    s.set("DeliverLogsStatus", "succeeded");
+                    state
+                        .simple
+                        .entry("flow-log".to_string())
+                        .or_default()
+                        .push(s);
+                    let _ = write!(ids, "<item>{}</item>", xml_escape(&id));
+                }
+            });
+            ec2_xml(
+                "CreateFlowLogsResponse",
+                &format!("<flowLogIdSet>{ids}</flowLogIdSet><unsuccessful/>"),
+            )
+        }
+        "DescribeFlowLogs" => {
+            let ids = super::handlers_misc::ids_of(params, "FlowLogId");
+            let mut items = String::new();
+            with_state(req, |state| {
+                if let Some(items_vec) = state.simple.get("flow-log").cloned() {
+                    for s in &items_vec {
+                        if !ids.is_empty() && !ids.contains(&s.id) {
+                            continue;
+                        }
+                        let rid = s.get("ResourceId").unwrap_or_default();
+                        let tt = s.get("TrafficType").unwrap_or("ALL");
+                        let lg = s.get("LogGroupName").unwrap_or_default();
+                        let ldt = s.get("LogDestinationType").unwrap_or("cloud-watch-logs");
+                        items.push_str(&format!(
+                            "<item><creationTime>{t}</creationTime><deliverLogsStatus>OK</deliverLogsStatus><flowLogId>{fid}</flowLogId><flowLogStatus>ACTIVE</flowLogStatus><groupId></groupId><logDestinationType>{ldt}</logDestinationType><logFormat>{fmt}</logFormat><logGroupName>{lg}</logGroupName><resourceId>{rid}</resourceId><trafficType>{tt}</trafficType><maxAggregationInterval>60</maxAggregationInterval>{tags}</item>",
+                            t = super::now_iso(),
+                            fid = xml_escape(&s.id),
+                            ldt = ldt,
+                            fmt = "${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${pkt-accepted} ${flow-status} ${log-status}",
+                            lg = xml_escape(lg),
+                            rid = xml_escape(rid),
+                            tt = xml_escape(tt),
+                            tags = tags_xml(&s.tags),
+                        ));
+                    }
+                }
+            });
+            ec2_xml(
+                "DescribeFlowLogsResponse",
+                &format!("<flowLogSet>{items}</flowLogSet>"),
+            )
+        }
+        "DeleteFlowLogs" => {
+            let ids = super::handlers_misc::ids_of(params, "FlowLogId");
+            with_state(req, |state| {
+                if let Some(items) = state.simple.get_mut("flow-log") {
+                    items.retain(|s| !ids.contains(&s.id));
+                }
+            });
+            ec2_xml("DeleteFlowLogsResponse", "<unsuccessful/>")
+        }
+
         "DisassociateAddress" => disassociate_address(req, params),
 
         "CreateRouteTable" => create_route_table(req, params),
@@ -628,7 +712,76 @@ fn update_sg_rule_descriptions(req: &Request, params: &P, egress: bool) -> Respo
 }
 
 fn modify_security_group_rules(req: &Request, params: &P) -> Response {
-    ok_xml("ModifySecurityGroupRulesResponse")
+    // pairs of (rule id, rule update) read off the flat wire params
+    let mut updates: Vec<(
+        String,
+        Option<String>,
+        Option<i64>,
+        Option<i64>,
+        Option<String>,
+    )> = Vec::new();
+    for i in params.container_indices("SecurityGroupRule") {
+        let rid = params
+            .sub("SecurityGroupRule", i, "SecurityGroupRuleId")
+            .unwrap_or_default()
+            .to_string();
+        if rid.is_empty() {
+            continue;
+        }
+        let proto = params
+            .get(&format!(
+                "SecurityGroupRule.{}.SecurityGroupRule.IpProtocol",
+                i + 1
+            ))
+            .map(|s| s.to_string());
+        let from = params.i64(&format!(
+            "SecurityGroupRule.{}.SecurityGroupRule.FromPort",
+            i + 1
+        ));
+        let to = params.i64(&format!(
+            "SecurityGroupRule.{}.SecurityGroupRule.ToPort",
+            i + 1
+        ));
+        let cidr = params
+            .get(&format!(
+                "SecurityGroupRule.{}.SecurityGroupRule.CidrIpv4",
+                i + 1
+            ))
+            .map(|s| s.to_string());
+        updates.push((rid, proto, from, to, cidr));
+    }
+    with_state(req, move |state| {
+        for (rid, proto, from, to, cidr) in &updates {
+            'outer: for sg in state.security_groups.iter_mut() {
+                for (egress, perms) in [
+                    (false, sg.permissions.as_mut_slice()),
+                    (true, sg.egress.as_mut_slice()),
+                ] {
+                    for (idx, perm) in perms.iter_mut().enumerate() {
+                        if sg_rule_id(&sg.id, egress, idx) != *rid {
+                            continue;
+                        }
+                        if let Some(pr) = proto {
+                            perm.protocol = pr.clone();
+                        }
+                        if from.is_some() {
+                            perm.from_port = *from;
+                        }
+                        if to.is_some() {
+                            perm.to_port = *to;
+                        }
+                        if let Some(c) = cidr {
+                            // preserve the description, swap the cidr
+                            let desc = perm.ip_ranges.iter().map(|(_, d)| d.clone()).next();
+                            perm.ip_ranges = vec![(c.clone(), desc.unwrap_or_default())];
+                        }
+                        break 'outer;
+                    }
+                }
+            }
+        }
+        ok_xml("ModifySecurityGroupRulesResponse")
+    })
 }
 
 fn associate_sg_vpc(req: &Request, params: &P) -> Response {
@@ -720,7 +873,7 @@ fn describe_sg_vpc_associations(req: &Request, params: &P) -> Response {
         ec2_xml(
             "DescribeSecurityGroupVpcAssociationsResponse",
             &format!(
-                "<securityGroupVpcAssociations>{}</securityGroupVpcAssociations>",
+                "<securityGroupVpcAssociationSet>{}</securityGroupVpcAssociationSet>",
                 body
             ),
         )
@@ -876,7 +1029,7 @@ pub fn igw_item_full(igw: &super::state::InternetGateway) -> String {
         );
     }
     format!(
-        "<item><internetGatewayId>{}</internetGatewayId><attachmentSet>{}</attachmentSet><ownerId>{}</ownerId>{}<tagSet>{}</tagSet></item>",
+        "<item><internetGatewayId>{}</internetGatewayId><attachmentSet>{}</attachmentSet><ownerId>{}</ownerId>{}{}</item>",
         xml_escape(&igw.id),
         attachments,
         "",
@@ -1030,8 +1183,14 @@ fn detach_internet_gateway(req: &Request, params: &P) -> Response {
 fn create_carrier_gateway(req: &Request, params: &P) -> Response {
     let vpc_id = params.str("VpcId");
     with_state(req, move |state| {
-        let cg_id = state.next_id("carrier-gateway");
-        let tags = wire_tags(params);
+        let cg_id = state.next_id("cagw");
+        let mut tags = wire_tags(params);
+        for (k2, v2) in super::handlers::tag_spec_tags(params) {
+            if !tags.iter().any(|(ek, _)| ek == &k2) {
+                tags.push((k2, v2));
+            }
+        }
+        let tags_xml_v = super::tags_inner(&tags);
         let mut s = super::state::Simple {
             id: cg_id.clone(),
             kind: "carrier-gateway".into(),
@@ -1055,7 +1214,7 @@ fn create_carrier_gateway(req: &Request, params: &P) -> Response {
                 xml_escape(&cg_id),
                 xml_escape(&vpc_id),
                 req.account,
-                ""
+                tags_xml_v
             ),
         )
     })
@@ -1206,6 +1365,13 @@ fn describe_addresses(req: &Request, params: &P) -> Response {
                     item,
                     "<privateIpAddress>{}</privateIpAddress>",
                     xml_escape(&eip.private_ip_address)
+                );
+            }
+            if let Some(ni) = &eip.network_interface_id {
+                let _ = write!(
+                    item,
+                    "<networkInterfaceId>{}</networkInterfaceId>",
+                    xml_escape(ni)
                 );
             }
             if !eip.tags.is_empty() {
