@@ -20,6 +20,7 @@ pub mod appconfig;
 pub mod appmesh;
 pub mod appsync;
 pub mod athena;
+pub mod autoscaling;
 pub mod backup;
 pub mod batch;
 pub mod bedrock;
@@ -124,6 +125,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "appmesh" => Some(appmesh::dispatch(req)),
         "appsync" => Some(appsync::dispatch(req)),
         "athena" => Some(athena::dispatch(req)),
+        "autoscaling" => autoscaling::dispatch(req),
         "backup" => backup::dispatch(req),
         "batch" => batch::dispatch(req),
         "bedrock" => bedrock::dispatch(req),
@@ -240,6 +242,7 @@ pub fn handles_service(service: &str) -> bool {
             | "appmesh"
             | "appsync"
             | "athena"
+            | "autoscaling"
             | "backup"
             | "batch"
             | "bedrock"
