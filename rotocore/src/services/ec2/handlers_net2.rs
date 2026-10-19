@@ -1595,8 +1595,44 @@ fn delete_vpc_endpoint_service(req: &Request, params: &P) -> Response {
 }
 
 fn describe_vpc_endpoint_services_cfg(req: &Request, params: &P) -> Response {
-    ec2_xml(
-        "DescribeVpcEndpointServiceConfigurationsResponse",
-        "<serviceConfigurations/>",
-    )
+    let ids: Vec<String> = params
+        .list("ServiceId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    with_state(req, move |state| {
+        let mut items = String::new();
+        for s in &state.vpc_endpoint_services {
+            if !ids.is_empty() && !ids.contains(&s.id) {
+                continue;
+            }
+            let mut nlbs = String::new();
+            for arn in &s.nlb_arns {
+                nlbs.push_str(&format!(
+                    "<item><networkLoadBalancerArn>{}</networkLoadBalancerArn></item>",
+                    crate::proto::xml_escape(arn)
+                ));
+            }
+            let mut privs = String::new();
+            for p in &s.permissions {
+                privs
+                    .push_str(&format!("<item><principal>{}</principal></item>", crate::proto::xml_escape(p)));
+            }
+            items.push_str(&format!(
+                "<item><serviceId>{}</serviceId><serviceName>com.amazonaws.vpce.us-east-1.{}.{}</serviceName><serviceType><item><serviceType>Interface</serviceType></item></serviceType><availabilityZoneSet/><acceptanceRequired>{}</acceptanceRequired><managesVpcEndpoints>false</managesVpcEndpoints><privateDnsNames/><baseEndpointDnsNames/><ownerId>123456789012</ownerId><networkLoadBalancerArns>{nlbs}</networkLoadBalancerArns><gatewayLoadBalancerArns/><supportedIpAddressTypes/><privateIpv4DnsNames/>{}<state>Available</state><tagSet/></item>",
+                crate::proto::xml_escape(&s.id),
+                req.account,
+                crate::proto::xml_escape(&s.id),
+                if s.acceptance_required { "true" } else { "false" },
+                privs
+            ));
+        }
+        ec2_xml(
+            "DescribeVpcEndpointServiceConfigurationsResponse",
+            &format!(
+                "<serviceConfigurationSet>{}</serviceConfigurationSet>",
+                items
+            ),
+        )
+    })
 }

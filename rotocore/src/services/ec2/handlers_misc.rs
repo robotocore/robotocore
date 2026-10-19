@@ -322,7 +322,7 @@ pub static SIMPLE_FAMILIES: &[FamilySpec] = &[
         "DescribePublicIpv4Pools",
         "DeletePublicIpv4Pool",
         "publicIpv4PoolSet",
-        "ipv4pool",
+        "ipv4pool-ec2",
         "PoolId"
     ),
     fam!(

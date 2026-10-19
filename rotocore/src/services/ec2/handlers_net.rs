@@ -717,7 +717,7 @@ fn describe_sg_vpc_associations(req: &Request, params: &P) -> Response {
         ec2_xml(
             "DescribeSecurityGroupVpcAssociationsResponse",
             &format!(
-                "<securityGroupVpcAssociations>{}</securityGroupVpcAssociations>",
+                "<securityGroupVpcAssociationSet>{}</securityGroupVpcAssociationSet>",
                 body
             ),
         )
@@ -1027,8 +1027,14 @@ fn detach_internet_gateway(req: &Request, params: &P) -> Response {
 fn create_carrier_gateway(req: &Request, params: &P) -> Response {
     let vpc_id = params.str("VpcId");
     with_state(req, move |state| {
-        let cg_id = state.next_id("carrier-gateway");
-        let tags = wire_tags(params);
+        let cg_id = state.next_id("cagw");
+        let mut tags = wire_tags(params);
+        for (k2, v2) in super::handlers::tag_spec_tags(params) {
+            if !tags.iter().any(|(ek, _)| ek == &k2) {
+                tags.push((k2, v2));
+            }
+        }
+        let tags_xml_v = super::tags_inner(&tags);
         let mut s = super::state::Simple {
             id: cg_id.clone(),
             kind: "carrier-gateway".into(),
@@ -1052,7 +1058,7 @@ fn create_carrier_gateway(req: &Request, params: &P) -> Response {
                 xml_escape(&cg_id),
                 xml_escape(&vpc_id),
                 req.account,
-                ""
+                tags_xml_v
             ),
         )
     })

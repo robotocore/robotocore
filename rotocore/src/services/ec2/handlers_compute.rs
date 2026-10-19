@@ -62,7 +62,7 @@ pub fn route(req: &Request, params: &P) -> Response {
         "DescribeVolumeAttribute" => describe_volume_attribute(req, params),
         "ModifyVolumeAttribute" => ok_xml("ModifyVolumeAttributeResponse"),
         "DescribeVolumeStatus" => describe_volume_status(req, params),
-        "DescribeVolumesModifications" => describe_volume_status(req, params),
+        "DescribeVolumesModifications" => describe_volume_modifications(req, params),
 
         // Snapshots
         "CreateSnapshot" => create_snapshot(req, params),
@@ -1820,6 +1820,42 @@ fn modify_volume(req: &Request, params: &P) -> Response {
         if let Some(t) = params.i64("Throughput") {
             state.volumes[vpos].throughput = Some(t);
         }
+        // record the modification for DescribeVolumesModifications
+        {
+            let mut mod_xml = String::new();
+            mod_xml.push_str("<modificationState>optimizing</modificationState>");
+            if let Some(s) = params.i64("Size") {
+                mod_xml.push_str(&format!("<targetSize>{}</targetSize>", s));
+            }
+            if let Some(tt) = params.get("VolumeType") {
+                mod_xml.push_str(&format!(
+                    "<targetVolumeType>{}</targetVolumeType>",
+                    xml_escape(tt)
+                ));
+            }
+            if let Some(i) = params.i64("Iops") {
+                mod_xml.push_str(&format!("<targetIops>{}</targetIops>", i));
+            }
+            if let Some(t) = params.i64("Throughput") {
+                mod_xml.push_str(&format!("<targetThroughput>{}</targetThroughput>", t));
+            }
+            let item = format!(
+                "<item><volumeId>{}</volumeId>{}</item>",
+                xml_escape(&id),
+                mod_xml
+            );
+            if let Some(items) = state.simple.get_mut("volume-modification") {
+                items.retain(|s| s.id != id);
+            }
+            state.simple.entry("volume-modification".to_string()).or_default().push(
+                super::state::Simple {
+                    id: id.clone(),
+                    kind: "volume-modification".to_string(),
+                    item_xml: item,
+                    ..Default::default()
+                },
+            );
+        }
         ec2_xml(
             "ModifyVolumeResponse",
             &format!(
@@ -1880,6 +1916,30 @@ fn describe_volume_status(req: &Request, params: &P) -> Response {
         ec2_xml(
             "DescribeVolumeStatusResponse",
             &format!("<volumeStatusSet>{}</volumeStatusSet>", items),
+        )
+    })
+}
+
+fn describe_volume_modifications(req: &Request, params: &P) -> Response {
+    let ids: Vec<String> = params
+        .list("VolumeId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    with_state(req, move |state| {
+        let ids = ids.clone();
+        let mut items = String::new();
+        if let Some(mods) = state.simple.get("volume-modification") {
+            for s in mods {
+                if !ids.is_empty() && !ids.contains(&s.id) {
+                    continue;
+                }
+                items.push_str(&s.item_xml);
+            }
+        }
+        ec2_xml(
+            "DescribeVolumesModificationsResponse",
+            &format!("<volumeModificationSet>{}</volumeModificationSet>", items),
         )
     })
 }
