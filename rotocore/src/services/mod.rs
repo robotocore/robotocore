@@ -86,6 +86,7 @@ pub mod s3control;
 pub mod sagemaker;
 pub mod securityhub;
 pub mod servicecatalog;
+pub mod ses;
 pub mod sesv2;
 pub mod shield;
 pub mod signer;
@@ -185,6 +186,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "sagemaker" => Some(sagemaker::dispatch(req)),
         "securityhub" => Some(securityhub::dispatch(req)),
         "servicecatalog" => servicecatalog::dispatch(req),
+        "ses" => ses::dispatch(req),
         "sesv2" => Some(sesv2::dispatch(req)),
         "shield" => shield::dispatch(req),
         "signer" => signer::dispatch(req),
@@ -291,6 +293,7 @@ pub fn handles_service(service: &str) -> bool {
             | "sagemaker"
             | "securityhub"
             | "servicecatalog"
+            | "ses"
             | "sesv2"
             | "shield"
             | "signer"
