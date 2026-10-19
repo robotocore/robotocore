@@ -39,10 +39,11 @@ struct Share {
 }
 
 impl Share {
-    /// moto's `ResourceShare.describe()` minus `featureSet`.
+    /// moto also emits `featureSet: "STANDARD"` here.
     fn describe(&self, account: u64) -> Value {
         json!({
             "allowExternalPrincipals": self.allow_external,
+            "featureSet": "STANDARD",
             "creationTime": self.creation_time,
             "lastUpdatedTime": self.last_updated,
             "name": self.name,
@@ -1862,7 +1863,7 @@ mod tests {
         assert!(share.get("creationTime").is_some());
         assert!(share.get("lastUpdatedTime").is_some());
         assert!(share.get("owningAccountId").is_some());
-        assert!(share.get("featureSet").is_none(), "moto drops featureSet");
+        assert_eq!(share.get("featureSet").and_then(Value::as_str), Some("STANDARD"), "moto emits featureSet");
 
         // list (SELF)
         req = mk(

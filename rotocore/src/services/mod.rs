@@ -59,7 +59,8 @@ pub mod macie2;
 pub mod managedblockchain;
 pub mod mediapackage;
 pub mod mediastore;
-pub mod mq;pub mod networkfirewall;
+pub mod mq;
+pub mod networkfirewall;
 pub mod opensearch;
 pub mod opensearchserverless;
 pub mod organizations;
@@ -91,7 +92,8 @@ pub mod timestreamquery;
 pub mod timestreamwrite;
 pub mod transcribe;
 pub mod wafv2;
-pub mod workspaces;pub mod xray;
+pub mod workspaces;
+pub mod xray;
 
 /// Ported service backends. An arm here routes that service to the native
 /// rotocore implementation the moment it reaches suite parity.
@@ -148,8 +150,9 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "macie2" => Some(macie2::dispatch(req)),
         "managedblockchain" => Some(managedblockchain::dispatch(req)),
         "mediapackage" => mediapackage::dispatch(req),
-"mediastore" => mediastore::dispatch(req),
-"mq" => mq::dispatch(req),        "networkfirewall" => networkfirewall::dispatch(req),
+        "mediastore" => mediastore::dispatch(req),
+        "mq" => mq::dispatch(req),
+        "networkfirewall" => networkfirewall::dispatch(req),
         "osis" => osis::dispatch(req),
         "opensearch" => Some(opensearch::dispatch(req)),
         "opensearchserverless" => Some(opensearchserverless::dispatch(req)),
@@ -182,8 +185,8 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "timestreamquery" => timestreamquery::dispatch(req),
         "timestreamwrite" => timestreamwrite::dispatch(req),
         "transcribe" => Some(transcribe::dispatch(req)),
-"wafv2" => wafv2::dispatch(req),
-"workspaces" => workspaces::dispatch(req),
+        "wafv2" => wafv2::dispatch(req),
+        "workspaces" => workspaces::dispatch(req),
         "xray" => Some(xray::dispatch(req)),
 
         _ => None,
@@ -250,8 +253,9 @@ pub fn handles_service(service: &str) -> bool {
             | "macie2"
             | "managedblockchain"
             | "mediapackage"
-| "mediastore"
-| "mq"            | "networkfirewall"
+            | "mediastore"
+            | "mq"
+            | "networkfirewall"
             | "opensearch"
             | "opensearchserverless"
             | "organizations"
@@ -282,8 +286,9 @@ pub fn handles_service(service: &str) -> bool {
             | "timestreamquery"
             | "timestreamwrite"
             | "transcribe"
-| "wafv2"
-| "workspaces"            | "xray"
+            | "wafv2"
+            | "workspaces"
+            | "xray"
     )
 }
 

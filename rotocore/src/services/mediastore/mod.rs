@@ -492,7 +492,7 @@ mod tests {
         assert!(names.contains(&"c-1"));
         assert!(body.get("NextToken").unwrap().is_null());
 
-        let (status, body) = send(
+        let (status, _body) = send(
             account,
             "DeleteContainer",
             json!({ "ContainerName": "c-1" }),
@@ -511,7 +511,7 @@ mod tests {
     fn missing_containers_raise_two_distinct_errors() {
         let account = next_account();
         // Describe/policy get+put use ResourceNotFoundException …
-        let (status, body) = send(
+        let (_status, body) = send(
             account,
             "DescribeContainer",
             json!({ "ContainerName": "gone" }),
@@ -582,7 +582,7 @@ mod tests {
             json!({ "ContainerName": "c-1" }),
         );
         assert_eq!(status, 200);
-        let (status, body) = send(
+        let (_status, body) = send(
             account,
             "GetContainerPolicy",
             json!({ "ContainerName": "c-1" }),
@@ -601,7 +601,7 @@ mod tests {
             json!({ "ContainerName": "c-1", "LifecyclePolicy": "{\"rules\":[{\"action\":\"EXPIRE\"}]}" }),
         );
         assert_eq!(status, 200);
-        let (status, body) = send(
+        let (_status, body) = send(
             account,
             "GetLifecyclePolicy",
             json!({ "ContainerName": "c-1" }),
@@ -619,7 +619,7 @@ mod tests {
         );
         assert_eq!(status, 200);
         assert_eq!(body, json!({ "ContainerLevelMetrics": "ENABLED" }));
-        let (status, body) = send(
+        let (_status, body) = send(
             account,
             "GetMetricPolicy",
             json!({ "ContainerName": "c-1" }),
@@ -636,7 +636,7 @@ mod tests {
         );
         assert_eq!(status, 400);
         assert_eq!(body["__type"], "PolicyNotFoundException");
-        let (status, body) = send(
+        let (_status, body) = send(
             account,
             "GetMetricPolicy",
             json!({ "ContainerName": "c-2" }),
@@ -673,11 +673,11 @@ mod tests {
             json!({ "ContainerName": "c-1" }),
         );
         assert_eq!(status, 200);
-        let (status, body) = send(account, "GetCorsPolicy", json!({ "ContainerName": "c-1" }));
+        let (_status, body) = send(account, "GetCorsPolicy", json!({ "ContainerName": "c-1" }));
         assert_eq!(body["__type"], "PolicyNotFoundException");
 
         // Unknown container: ContainerNotFoundException, not PolicyNotFound.
-        let (status, body) = send(account, "GetCorsPolicy", json!({ "ContainerName": "gone" }));
+        let (_status, body) = send(account, "GetCorsPolicy", json!({ "ContainerName": "gone" }));
         assert_eq!(body["__type"], "ContainerNotFoundException");
     }
 
@@ -715,7 +715,7 @@ mod tests {
             json!({ "Resource": arn, "TagKeys": ["env"] }),
         );
         assert_eq!(status, 200);
-        let (status, body) = send(account, "ListTagsForResource", json!({ "Resource": arn }));
+        let (_status, body) = send(account, "ListTagsForResource", json!({ "Resource": arn }));
         assert_eq!(body["Tags"], json!([{"Key": "project", "Value": "compat"}]));
 
         create(account, "t-2");

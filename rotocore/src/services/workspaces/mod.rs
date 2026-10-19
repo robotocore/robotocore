@@ -2647,7 +2647,7 @@ mod tests {
             json!({"GroupId": group_id, "UserRules": ["10.0.0.0/8"]}),
         );
         assert_eq!(status, 200);
-        let (status, body) = send(
+        let (_status, body) = send(
             account,
             "DescribeIpGroups",
             json!({ "GroupIds": [group_id] }),
@@ -2655,7 +2655,7 @@ mod tests {
         assert_eq!(body["Result"][0]["userRules"].as_array().unwrap().len(), 1);
         let (status, _) = send(account, "DeleteIpGroup", json!({ "GroupId": group_id }));
         assert_eq!(status, 200);
-        let (status, body) = send(account, "DescribeIpGroups", json!({}));
+        let (_status, body) = send(account, "DescribeIpGroups", json!({}));
         assert_eq!(body["Result"], json!([]));
     }
 
@@ -2751,7 +2751,7 @@ mod tests {
             json!({ "AliasId": alias_id }),
         );
         assert_eq!(status, 200);
-        let (status, body) = send(
+        let (_status, body) = send(
             account,
             "DescribeConnectionAliases",
             json!({ "ResourceId": "d-9267462133" }),
@@ -2768,7 +2768,7 @@ mod tests {
     #[test]
     fn workspace_image_operations() {
         let account = next_account();
-        let (dir_id, ws_id) = seeded_workspace(account);
+        let (_dir_id, ws_id) = seeded_workspace(account);
 
         // Creating from a real workspace works; a fake name collides.
         let (status, body) = send(
@@ -2827,7 +2827,7 @@ mod tests {
         let (status, body) = send(
             account,
             "DescribeWorkspaceImagePermissions",
-            json!({ "ImageId": format!("{image_id}") }),
+            json!({ "ImageId": image_id }),
         );
         assert_eq!(status, 200);
         assert_eq!(body["ImageId"], json!(image_id));
@@ -2839,7 +2839,7 @@ mod tests {
             json!({"ImageId": image_id, "AllowCopyImage": true, "SharedAccountId": "333344445555"}),
         );
         assert_eq!(status, 200);
-        let (status, body) = send(
+        let (_status, body) = send(
             account,
             "DescribeWorkspaceImagePermissions",
             json!({ "ImageId": image_id.clone() }),
@@ -2863,7 +2863,7 @@ mod tests {
             json!({"ImageId": image_id}),
         );
         assert_eq!(status, 200);
-        let (status, body) = send(
+        let (_status, body) = send(
             account,
             "DescribeWorkspaceImages",
             json!({ "ImageIds": [image_id] }),
@@ -2960,7 +2960,7 @@ mod tests {
         assert_eq!(status, 200);
         assert_eq!(body["AccountLink"]["AccountLinkStatus"], "LINKED");
 
-        let (status, body) = send(account, "ListAccountLinks", json!({}));
+        let (_status, body) = send(account, "ListAccountLinks", json!({}));
         assert_eq!(body["AccountLinks"].as_array().unwrap().len(), 1);
 
         let (status, body) = send(
@@ -2986,7 +2986,7 @@ mod tests {
             json!({ "LinkId": link_id.clone() }),
         );
         assert_eq!(status, 200);
-        let (status, body) = send(account, "ListAccountLinks", json!({}));
+        let (_status, body) = send(account, "ListAccountLinks", json!({}));
         assert_eq!(body["AccountLinks"], json!([]));
     }
 
@@ -3027,7 +3027,7 @@ mod tests {
             json!({"PoolId": pool_id, "Description": "updated", "Capacity": {"DesiredUserSessions": 3}}),
         );
         assert_eq!(status, 200);
-        let (status, body) = send(
+        let (_status, body) = send(
             account,
             "DescribeWorkspacesPools",
             json!({ "PoolIds": [pool_id.clone()] }),
@@ -3070,7 +3070,7 @@ mod tests {
             json!({ "PoolId": pool_id.clone() }),
         );
         assert_eq!(status, 200);
-        let (status, body) = send(
+        let (_status, body) = send(
             account,
             "DescribeWorkspacesPools",
             json!({ "PoolIds": [pool_id.clone()] }),
@@ -3092,7 +3092,7 @@ mod tests {
         assert_eq!(status, 200);
         assert_eq!(body["DedicatedTenancySupport"], "DISABLED");
 
-        let (status, body) = send(
+        let (status, _body) = send(
             account,
             "ModifyAccount",
             json!({
@@ -3102,7 +3102,7 @@ mod tests {
         );
         assert_eq!(status, 200);
 
-        let (status, body) = send(account, "DescribeAccount", json!({}));
+        let (_status, body) = send(account, "DescribeAccount", json!({}));
         assert_eq!(body["DedicatedTenancySupport"], "ENABLED");
         assert_eq!(body["DedicatedTenancyManagementCidrRange"], "10.0.0.0/16");
 
@@ -3168,7 +3168,7 @@ mod tests {
             json!({ "ResourceId": ws_id, "TagKeys": ["env"] }),
         );
         assert_eq!(status, 200);
-        let (status, body) = send(account, "DescribeTags", json!({ "ResourceId": ws_id }));
+        let (_status, body) = send(account, "DescribeTags", json!({ "ResourceId": ws_id }));
         assert_eq!(body["TagList"], json!([]));
     }
 
@@ -3186,7 +3186,7 @@ mod tests {
         assert_eq!(status, 400);
         assert_eq!(body["__type"], "ResourceNotFoundException");
 
-        let (status, body) = send(
+        let (_status, body) = send(
             account,
             "ModifyWorkspaceProperties",
             json!({"WorkspaceId": "ws-nonexistent999", "WorkspaceProperties": {"RunningMode": "AUTO_STOP"}}),
@@ -3211,7 +3211,7 @@ mod tests {
         }
 
         // Terminate reports its own 400-style error code.
-        let (status, body) = send(
+        let (_status, body) = send(
             account,
             "TerminateWorkspaces",
             json!({ "TerminateWorkspaceRequests": [{ "WorkspaceId": "ws-nonexistent123" }] }),
@@ -3225,7 +3225,7 @@ mod tests {
             json!({"WorkspaceId": ws_id, "WorkspaceState": "ADMIN_MAINTENANCE"}),
         );
         assert_eq!(status, 200);
-        let (status, body) = send(account, "DescribeWorkspaces", json!({}));
+        let (_status, body) = send(account, "DescribeWorkspaces", json!({}));
         assert_eq!(body["Workspaces"][0]["State"], "ADMIN_MAINTENANCE");
 
         // Snapshots: unknown errors, known empty.
@@ -3252,7 +3252,7 @@ mod tests {
             .starts_with("ws-"));
 
         // The connection status list only reports existing workspaces.
-        let (status, body) = send(account, "DescribeWorkspacesConnectionStatus", json!({}));
+        let (_status, body) = send(account, "DescribeWorkspacesConnectionStatus", json!({}));
         assert_eq!(
             body["WorkspacesConnectionStatus"][0]["ConnectionState"],
             "UNKNOWN"
@@ -3318,7 +3318,7 @@ mod tests {
         );
         assert_eq!(status, 200);
         let add_in_id = body["AddInId"].as_str().unwrap().to_string();
-        let (status, body) = send(
+        let (_status, body) = send(
             account,
             "DescribeConnectClientAddIns",
             json!({ "ResourceId": "d-fake12345" }),
@@ -3377,13 +3377,13 @@ mod tests {
         assert_eq!(body["__type"], "ResourceNotFoundException");
 
         // Updated and imported images return fresh ids.
-        let (status, body) = send(
+        let (_status, body) = send(
             account,
             "CreateUpdatedWorkspaceImage",
             json!({"Name": "updated-1", "SourceImageId": image_id, "Description": "d"}),
         );
         assert!(body["ImageId"].as_str().unwrap().starts_with("wsi-"));
-        let (status, body) = send(
+        let (_status, body) = send(
             account,
             "ImportWorkspaceImage",
             json!({"Ec2ImageId": "ami-fake12345", "IngestionProcess": "BYOL_REGULAR", "ImageName": "imported-1"}),

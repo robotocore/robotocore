@@ -38,7 +38,7 @@ def old_registry():
     if out.returncode != 0:
         print(f"FATAL: cannot read anchor registry at {ANCHOR_SHA}: {out.stderr.strip()}")
         sys.exit(2)
-    return dict(re.findall(r'\("([a-z0-9-]+)",\s*"([a-z]+)"', out.stdout))
+    return dict(re.findall(r'\(\s*"([a-z0-9-]+)",\s*"(?:native|moto)"', out.stdout))
 
 
 def twin_inventory():

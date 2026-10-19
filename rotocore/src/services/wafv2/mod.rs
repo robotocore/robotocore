@@ -1893,17 +1893,6 @@ mod tests {
         body["Summary"].clone()
     }
 
-    fn label_rule(labels: Value, statement: Value) -> Value {
-        json!({
-            "Name": "rule",
-            "Priority": 1,
-            "Statement": statement,
-            "Action": {"Block": {}},
-            "VisibilityConfig": visibility("rule"),
-            "RuleLabels": labels,
-        })
-    }
-
     #[test]
     fn web_acl_lifecycle() {
         let account = next_account();

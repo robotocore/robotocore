@@ -3035,7 +3035,7 @@ mod tests {
         assert!(mrap_alias("m").ends_with(".mrap"));
         let doc = "<a><b>1</b></a>";
         assert_eq!(xml_find(doc, "b"), Some("1"));
-        assert!(xml_has(doc, "c", "1") == false);
+        assert!(!xml_has(doc, "c", "1"));
     }
 
     #[test]

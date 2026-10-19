@@ -428,7 +428,18 @@ TOTAL_TIMEOUT = 1800  # 30 minutes max for a full run
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--services", default=",".join(sorted(NATIVE.keys())))
+
+    def _default_services():
+        # The drift gate covers every compat suite physically present on
+        # disk (restored/deleted suites follow the files, not a hardcoded
+        # list — wave-promoted suites are thereby drift-gated too).
+        suites = sorted(
+            p_.stem[len("test_"):-len("_compat")]
+            for p_ in (RUST_REPO / "tests" / "compatibility").glob("test_*_compat.py")
+        )
+        return ",".join(suites) if suites else ",".join(sorted(NATIVE.keys()))
+
+    ap.add_argument("--services", default=_default_services())
     ap.add_argument("--state", default=str(RUST_REPO / ".parity/state.json"))
     ap.add_argument("--next", action="store_true", help="just re-derive next work from state")
     ap.add_argument("--timeout", type=int, default=TOTAL_TIMEOUT,

@@ -919,20 +919,17 @@ mod tests {
             .as_str()
             .unwrap()
             .starts_with("arn:aws:glacier:"));
-        assert_eq!(
-            json_body(&dispatch(&mkreq(
-                acct,
-                "GET",
-                &format!("/{acct}/vaults"),
-                b"",
-                &[]
-            )))["VaultList"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|v| v["VaultName"] == "vaulter"),
-            true
-        );
+        assert!(json_body(&dispatch(&mkreq(
+            acct,
+            "GET",
+            &format!("/{acct}/vaults"),
+            b"",
+            &[]
+        )))["VaultList"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v["VaultName"] == "vaulter"),);
 
         let add = dispatch(&mkreq(
             acct,
@@ -1162,7 +1159,10 @@ mod tests {
             &[],
         ));
         let list: Value = serde_json::from_slice(&list.body).unwrap();
-        assert!(list["ProvisionedCapacityList"].as_array().unwrap().len() >= 1);
+        assert!(!list["ProvisionedCapacityList"]
+            .as_array()
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
