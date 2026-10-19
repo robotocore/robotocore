@@ -23,6 +23,7 @@ pub mod datasync;
 mod ec2;
 pub mod eks;
 pub mod elasticache;
+pub mod glue;
 pub mod greengrass;
 pub mod identitystore;
 pub mod inspector2;
@@ -37,8 +38,8 @@ pub mod opensearchserverless;
 pub mod organizations;
 pub mod pipes;
 pub mod polly;
-pub mod resourcegroupstaggingapi;
 mod rds;
+pub mod resourcegroupstaggingapi;
 pub mod route53resolver;
 pub mod sagemaker;
 pub mod securityhub;
@@ -94,6 +95,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "sesv2" => Some(sesv2::dispatch(req)),
         "support" => Some(support::dispatch(req)),
         "transcribe" => Some(transcribe::dispatch(req)),
+        "glue" => glue::dispatch(req),
         _ => None,
     }
 }
