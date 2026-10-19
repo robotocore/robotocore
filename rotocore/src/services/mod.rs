@@ -7,29 +7,36 @@
 use crate::{Request, Response};
 
 pub mod acm;
+pub mod acmpca;
 pub mod amp;
+pub mod apigateway;
+pub mod apigatewayv2;
 pub mod apigw_management;
 pub mod appmesh;
 pub mod appsync;
 pub mod athena;
 pub mod backup;
 pub mod batch;
+pub mod budgets;
 pub mod cloudformation;
 pub mod cloudfront;
 pub mod cloudtrail;
+pub mod cognito_identity;
 pub mod cognito_idp;
 pub mod comprehend;
 pub mod config;
 pub mod connect;
 pub mod databrew;
 pub mod datasync;
-mod ec2;
+pub mod dsql;
+pub mod ebs;
+pub mod ec2instanceconnect;
 pub mod eks;
 pub mod elasticache;
-pub mod glue;
-pub mod emr;
 pub mod elb;
 pub mod elbv2;
+pub mod emr;
+pub mod glue;
 pub mod greengrass;
 pub mod identitystore;
 pub mod inspector2;
@@ -41,57 +48,70 @@ pub mod lakeformation;
 pub mod macie2;
 pub mod managedblockchain;
 pub mod mediapackage;
+pub mod networkfirewall;
 pub mod opensearch;
 pub mod opensearchserverless;
 pub mod organizations;
+pub mod personalize;
 pub mod pipes;
 pub mod polly;
-mod rds;
 pub mod redshift;
 pub mod redshiftdata;
+pub mod ec2;
+pub mod rds;
+pub mod codepipeline;
+pub mod efs;
+pub mod rekognition;
+pub mod resource_groups;
 pub mod resourcegroupstaggingapi;
 pub mod route53resolver;
 pub mod sagemaker;
 pub mod securityhub;
 pub mod sesv2;
+pub mod ssoadmin;
 pub mod support;
+pub mod timestreaminfluxdb;
+pub mod timestreamquery;
+pub mod timestreamwrite;
 pub mod transcribe;
-
-// Pending ports (fall back to the moto sidecar): elbv2/elb, glue,
-// Pending ports (fall back to the moto sidecar): elbv2/elb, athena,
-// emr, cloudfront, iot, connect, apigateway(v1/v2), redshift and the long
-// Pending ports (fall back to the moto sidecar): elbv2/elb, athena, glue,
-// cloudfront, iot, connect, apigateway(v1/v2), redshift and the long
-// tail the ML-tail agent re-baselined through the sidecar.
 
 /// Ported service backends. An arm here routes that service to the native
 /// rotocore implementation the moment it reaches suite parity.
 pub fn dispatch(req: &Request) -> Option<Response> {
     match req.service.as_str() {
         "acm" => Some(acm::dispatch(req)),
+        "acmpca" => acmpca::dispatch(req),
         "amp" => Some(amp::dispatch(req)),
+        "apigateway" => Some(apigateway::dispatch(req)),
         "apigatewaymanagementapi" => Some(apigw_management::dispatch(req)),
+        "apigatewayv2" => Some(apigatewayv2::dispatch(req)),
         "appmesh" => Some(appmesh::dispatch(req)),
         "appsync" => Some(appsync::dispatch(req)),
-        "backup" => backup::dispatch(req),
         "athena" => Some(athena::dispatch(req)),
+        "backup" => backup::dispatch(req),
         "batch" => batch::dispatch(req),
+        "budgets" => budgets::dispatch(req),
         "cloudformation" => Some(self::cloudformation::dispatch(req)),
         "cloudfront" => Some(cloudfront::dispatch(req)),
         "cloudtrail" => Some(cloudtrail::dispatch(req)),
         "cognito-idp" => cognito_idp::dispatch(req),
+        "cognitoidentity" => cognito_identity::dispatch(req),
         "comprehend" => Some(comprehend::dispatch(req)),
-        "connect" => Some(connect::dispatch(req)),
         "config" => Some(config::dispatch(req)),
+        "connect" => Some(connect::dispatch(req)),
         "databrew" => databrew::dispatch(req),
         "datasync" => datasync::dispatch(req),
-        "ec2" => Some(self::ec2::dispatch(req)),
+        "dsql" => dsql::dispatch(req),
+        "ebs" => ebs::dispatch(req),
+        "ec2" => Some(ec2::dispatch(req)),
+        "ec2instanceconnect" => ec2instanceconnect::dispatch(req),
         "eks" => eks::dispatch(req),
         "elasticache" => Some(elasticache::dispatch(req)),
-        "emr" => Some(emr::dispatch(req)),
         "elb" => self::elb::dispatch(req),
         "elbv2" => self::elbv2::dispatch(req),
+        "emr" => Some(emr::dispatch(req)),
         "es" => Some(opensearch::dispatch(req)),
+        "glue" => glue::dispatch(req),
         "greengrass" => Some(greengrass::dispatch(req)),
         "identitystore" => identitystore::dispatch(req),
         "inspector2" => Some(inspector2::dispatch(req)),
@@ -103,22 +123,31 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "macie2" => Some(macie2::dispatch(req)),
         "managedblockchain" => Some(managedblockchain::dispatch(req)),
         "mediapackage" => mediapackage::dispatch(req),
+        "networkfirewall" => networkfirewall::dispatch(req),
         "opensearch" => Some(opensearch::dispatch(req)),
         "opensearchserverless" => Some(opensearchserverless::dispatch(req)),
         "organizations" => organizations::dispatch(req),
+        "personalize" => personalize::dispatch(req),
         "pipes" => Some(pipes::dispatch(req)),
         "polly" => Some(polly::dispatch(req)),
+        "rds" => Some(rds::dispatch(req)),
         "redshift" => Some(redshift::dispatch(req)),
         "redshiftdata" => Some(redshiftdata::dispatch(req)),
+        "codepipeline" => Some(codepipeline::dispatch(req)),
+        "efs" => Some(efs::dispatch(req)),
+        "rekognition" => Some(rekognition::dispatch(req)),
+        "resource-groups" => Some(resource_groups::dispatch(req)),
         "resourcegroupstaggingapi" => Some(resourcegroupstaggingapi::dispatch(req)),
-        "rds" => Some(self::rds::dispatch(req)),
         "route53resolver" => Some(route53resolver::dispatch(req)),
         "sagemaker" => Some(sagemaker::dispatch(req)),
         "securityhub" => Some(securityhub::dispatch(req)),
         "sesv2" => Some(sesv2::dispatch(req)),
+        "ssoadmin" => ssoadmin::dispatch(req),
         "support" => Some(support::dispatch(req)),
+        "timestreaminfluxdb" => timestreaminfluxdb::dispatch(req),
+        "timestreamquery" => timestreamquery::dispatch(req),
+        "timestreamwrite" => timestreamwrite::dispatch(req),
         "transcribe" => Some(transcribe::dispatch(req)),
-        "glue" => glue::dispatch(req),
         _ => None,
     }
 }
