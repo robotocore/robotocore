@@ -775,8 +775,11 @@ fn op_delete_load_balancer_listeners(state: &mut ElbState, p: &BTreeMap<String, 
 
 fn op_configure_health_check(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> OpResult {
     let name = p_string(p, "LoadBalancerName").unwrap_or_default().to_string();
-    let hc = p_struct_list(p, "HealthCheck").first().cloned().unwrap_or_default();
-    let hc: BTreeMap<String, ElbVal> = hc;
+    let hc = p.get("HealthCheck").cloned().unwrap_or(ElbVal::None);
+    let hc: BTreeMap<String, ElbVal> = match hc {
+        ElbVal::M(m) => m,
+        _ => BTreeMap::new(),
+    };
     let target = hc
         .get("Target")
         .and_then(|v| v.string())
