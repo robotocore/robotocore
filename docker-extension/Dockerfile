@@ -1,13 +1,18 @@
-FROM python:3.12-slim
+FROM rust:1.99-slim AS build
+
+WORKDIR /build
+
+# Backend crate (see vm/Cargo.toml); Cargo.lock is checked in so the
+# image build is reproducible with --locked.
+COPY vm/Cargo.toml vm/Cargo.lock ./
+COPY vm/src ./src
+RUN cargo build --locked --release
+
+FROM debian:bookworm-slim
 
 WORKDIR /app
 
-# Install backend dependencies
-COPY vm/requirements.txt /app/vm/requirements.txt
-RUN pip install --no-cache-dir -r /app/vm/requirements.txt
-
-# Copy backend
-COPY vm/ /app/vm/
+COPY --from=build /build/target/release/robotocore-extension-vm /app/robotocore-extension-vm
 
 # Copy UI
 COPY ui/ /app/ui/
@@ -21,4 +26,4 @@ LABEL com.docker.desktop.extension.icon="robotocore.svg"
 
 EXPOSE 8080
 
-CMD ["python", "/app/vm/main.py"]
+CMD ["/app/robotocore-extension-vm"]
