@@ -61,6 +61,7 @@ pub mod mediapackage;
 pub mod mediastore;
 pub mod mq;
 pub mod networkfirewall;
+pub mod networkmanager;
 pub mod opensearch;
 pub mod opensearchserverless;
 pub mod organizations;
@@ -153,6 +154,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "mediastore" => mediastore::dispatch(req),
         "mq" => mq::dispatch(req),
         "networkfirewall" => networkfirewall::dispatch(req),
+        "networkmanager" => networkmanager::dispatch(req),
         "osis" => osis::dispatch(req),
         "opensearch" => Some(opensearch::dispatch(req)),
         "opensearchserverless" => Some(opensearchserverless::dispatch(req)),
@@ -256,6 +258,7 @@ pub fn handles_service(service: &str) -> bool {
             | "mediastore"
             | "mq"
             | "networkfirewall"
+            | "networkmanager"
             | "opensearch"
             | "opensearchserverless"
             | "organizations"
