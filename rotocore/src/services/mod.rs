@@ -46,6 +46,7 @@ pub mod elasticbeanstalk;
 pub mod elb;
 pub mod elbv2;
 pub mod emr;
+pub mod fsx;
 pub mod glacier;
 pub mod glue;
 pub mod greengrass;
@@ -145,6 +146,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "elbv2" => self::elbv2::dispatch(req),
         "emr" => Some(emr::dispatch(req)),
         "es" => Some(opensearch::dispatch(req)),
+        "fsx" => fsx::dispatch(req),
         "glacier" => Some(glacier::dispatch(req)),
         "glue" => glue::dispatch(req),
         "greengrass" => Some(greengrass::dispatch(req)),
@@ -258,6 +260,7 @@ pub fn handles_service(service: &str) -> bool {
             | "elbv2"
             | "emr"
             | "es"
+            | "fsx"
             | "glacier"
             | "glue"
             | "greengrass"
