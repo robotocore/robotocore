@@ -35,6 +35,7 @@ pub mod connect;
 pub mod databrew;
 pub mod datapipeline;
 pub mod datasync;
+pub mod dms;
 pub mod dsql;
 pub mod ebs;
 pub mod ec2instanceconnect;
@@ -124,6 +125,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "databrew" => databrew::dispatch(req),
         "datapipeline" => datapipeline::dispatch(req),
         "datasync" => datasync::dispatch(req),
+        "dms" => dms::dispatch(req),
         "dsql" => dsql::dispatch(req),
         "ebs" => ebs::dispatch(req),
         "ec2" => Some(ec2::dispatch(req)),
@@ -227,6 +229,7 @@ pub fn handles_service(service: &str) -> bool {
             | "databrew"
             | "datapipeline"
             | "datasync"
+            | "dms"
             | "dsql"
             | "ebs"
             | "ec2"
