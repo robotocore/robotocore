@@ -6,7 +6,7 @@
 //! a registered state stays live and any later object writes are visible.
 //! Mirrors the `sqs::bridge` pattern for process-global access.
 
-use crate::models::S3State;
+use crate::models::{Bucket, S3State};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -26,11 +26,19 @@ pub fn register_state(account: u64, region: &str, state: &S3State) {
 
 /// Whether a bucket exists in the registered state for (account, region).
 pub fn bucket_exists(account: u64, region: &str, bucket: &str) -> bool {
+    get_bucket(account, region, bucket).is_some()
+}
+
+/// Live handle of `bucket` in the registered state for (account, region).
+///
+/// The returned `Arc` shares the bucket's interior `RwLock`s, so callers can
+/// read or update bucket-level configuration (policy, tagging, versioning,
+/// lifecycle, replication) exactly like moto's cross-backend delegation.
+pub fn get_bucket(account: u64, region: &str, bucket: &str) -> Option<std::sync::Arc<Bucket>> {
     registered()
         .read()
         .get(&(account, region.to_string()))
         .and_then(|state| state.get_bucket(bucket))
-        .is_some()
 }
 
 /// Body of the current (newest) version of `key` in `bucket`, from the
