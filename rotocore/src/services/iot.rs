@@ -6320,7 +6320,7 @@ mod tests {
         let slot = state();
         let mut guard = slot.write();
         let s = guard.entry((req.account, req.region.clone())).or_default();
-        handle(op, s, req, &segs, &body, &query).unwrap_or_else(|| ok_empty())
+        handle(op, s, req, &segs, &body, &query).unwrap_or_else(ok_empty)
     }
 
     #[test]

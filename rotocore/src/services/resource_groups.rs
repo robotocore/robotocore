@@ -450,7 +450,7 @@ mod tests {
             "/groups",
             json!({"Name": "second", "Tags": {"env": "staging"}}),
         ));
-        let arn = format!("arn:aws:resource-groups:us-west-1:123456789012:group/second");
+        let arn = "arn:aws:resource-groups:us-west-1:123456789012:group/second".to_string();
         let encoded = urlencoding::encode(&arn).into_owned();
         let get = dispatch(&req(
             "GET",

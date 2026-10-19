@@ -4176,10 +4176,10 @@ mod tests {
         assert!(arn.starts_with(
             "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/my-alb/"
         ));
-        assert_eq!(arn.split('/').last().unwrap().len(), 16);
+        assert_eq!(arn.split('/').next_back().unwrap().len(), 16);
         assert!(arn
             .split('/')
-            .last()
+            .next_back()
             .unwrap()
             .chars()
             .all(|c| c.is_ascii_hexdigit()));
@@ -4193,7 +4193,7 @@ mod tests {
         let slots = store::slot::<ElbV2State>("elbv2");
         let mut map = slots.write();
         let mut st = map.entry((123456789012, "us-east-1".into())).or_default();
-        let err = op_create_load_balancer(&req, &mut st, &p).unwrap_err();
+        let err = op_create_load_balancer(&req, st, &p).unwrap_err();
         assert!(matches!(err, ElbError::Service(400, c, _) if c == "SubnetNotFound"));
     }
 
@@ -4396,7 +4396,7 @@ mod tests {
     #[test]
     fn delete_rule_on_default_rule_yields_moto_500() {
         let req = req_for("DeleteRule", "");
-        let p = parse_params(&req);
+        let _p = parse_params(&req);
         let slots = store::slot::<ElbV2State>("elbv2");
         let mut map = slots.write();
         let st = map.entry((123456789012, "us-east-1".into())).or_default();

@@ -1218,7 +1218,7 @@ fn job_to_dict_json(job: Value) -> Value {
     record
 }
 
-fn extract_between<'a>(text: &'a str, start: &str, end: &str) -> String {
+fn extract_between(text: &str, start: &str, end: &str) -> String {
     match (text.find(start), text.find(end)) {
         (Some(s), Some(e)) if s + start.len() <= e => text[s + start.len()..e].to_string(),
         _ => String::new(),

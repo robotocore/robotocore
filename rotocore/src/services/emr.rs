@@ -2582,7 +2582,7 @@ mod tests {
 
         let bad_visible = run("SetVisibleToAllUsers", json!({"JobFlowIds": ["j-NOPE123"]}));
         assert_eq!(status_of(&bad_visible), 500);
-        let bad_term = run("TerminateJobFlows", json!({"JobFlowIds": ["j-NOPE123"]}));
+        let _bad_term = run("TerminateJobFlows", json!({"JobFlowIds": ["j-NOPE123"]}));
         assert_eq!(status_of(&bad), 500);
         assert_eq!(status_of(&bad_visible), 500);
 
@@ -2800,7 +2800,7 @@ mod tests {
         assert!(names.contains(&"task-group"));
         assert!(groups
             .iter()
-            .any(|g| g.get("Id").is_none_or(|v| v.is_null()) == false));
+            .any(|g| !g.get("Id").is_none_or(|v| v.is_null())));
 
         // fake cluster add → NoSuchCluster
         let err = run(

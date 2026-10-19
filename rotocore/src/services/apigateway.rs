@@ -268,7 +268,7 @@ fn with_state<T>(account: u64, region: &str, f: impl FnOnce(&mut State) -> T) ->
     let mut guard = SLOT.write();
     let state = guard
         .entry((account, region.to_string()))
-        .or_insert_with(State::new);
+        .or_default();
     f(state)
 }
 
@@ -3432,31 +3432,28 @@ fn path_matches(pattern: &str, path: &str) -> Option<Map<String, Value>> {
     let path_parts = normalize(path);
     let mut params = Map::new();
     for (index, ppart) in path_parts.iter().enumerate() {
-        match pattern_parts.get(index) {
-            Some(pattern_part) => {
-                if pattern_part.starts_with('{') {
-                    if pattern_part.ends_with("+}") {
-                        // greedy: the rest of the path
-                        let name = pattern_part
-                            .strip_suffix("+}")
-                            .unwrap_or_default()
-                            .trim_start_matches('{')
-                            .to_string();
-                        let rest: Vec<&str> = path_parts[index..].to_vec();
-                        params.insert(name.to_string(), json!(rest.join("/")));
-                        return Some(params);
-                    }
-                    if let Some(name) = pattern_part.strip_suffix("}") {
-                        let name = name.trim_start_matches('{');
-                        params.insert(name.to_string(), json!(*ppart));
-                    } else {
-                        return None;
-                    }
-                } else if *pattern_part != *ppart {
-                    return None;
+        {
+            let pattern_part = pattern_parts.get(index)?;
+            if pattern_part.starts_with('{') {
+                if pattern_part.ends_with("+}") {
+                    // greedy: the rest of the path
+                    let name = pattern_part
+                        .strip_suffix("+}")
+                        .unwrap_or_default()
+                        .trim_start_matches('{')
+                        .to_string();
+                    let rest: Vec<&str> = path_parts[index..].to_vec();
+                    params.insert(name.to_string(), json!(rest.join("/")));
+                    return Some(params);
                 }
+                {
+                    let name = pattern_part.strip_suffix("}")?;
+                    let name = name.trim_start_matches('{');
+                    params.insert(name.to_string(), json!(*ppart));
+                }
+            } else if *pattern_part != *ppart {
+                return None;
             }
-            None => return None,
         }
     }
     if pattern_parts.len() > path_parts.len() {

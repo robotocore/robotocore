@@ -5862,7 +5862,7 @@ mod tests {
             account,
             "POST",
             "/2020-05-31/function",
-            &create_body_stub(&create_body),
+            create_body_stub(&create_body),
             &[],
         ));
         assert_eq!(create.status, 201);
@@ -5917,7 +5917,7 @@ mod tests {
     fn count_occurrences(haystack: &[u8], needle: &[u8]) -> usize {
         haystack
             .windows(needle.len())
-            .filter(|w| *w == &needle[..])
+            .filter(|w| *w == needle)
             .count()
     }
 }
