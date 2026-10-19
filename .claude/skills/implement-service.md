@@ -5,9 +5,9 @@ Use this skill when implementing a new AWS service in robotocore or extending an
 ## Process
 
 1. **Research the service in both vendor submodules:**
-   - Read `vendor/moto/moto/{service}/models.py` to understand Moto's implementation
-   - Read `vendor/moto/moto/{service}/responses.py` to understand request/response handling
-   - Read `vendor/moto/moto/{service}/urls.py` to understand URL routing
+   - Read `.venv/lib/python3.13/site-packages/moto/moto/{service}/models.py` to understand Moto's implementation
+   - Read `.venv/lib/python3.13/site-packages/moto/moto/{service}/responses.py` to understand request/response handling
+   - Read `.venv/lib/python3.13/site-packages/moto/moto/{service}/urls.py` to understand URL routing
    - Read `services/{service}/` to understand LocalStack's implementation
    - Note any places where LocalStack extends beyond what Moto provides
 
@@ -16,14 +16,14 @@ Use this skill when implementing a new AWS service in robotocore or extending an
    - Run: `python -c "import botocore.session; s=botocore.session.get_session(); m=s.get_service_model('{service}'); print(sorted(m.operation_names))"`
 
 3. **Update the gateway router if needed:**
-   - If the service uses a unique routing mechanism (special headers, path patterns), add it to `src/robotocore/gateway/router.py`
+   - If the service uses a unique routing mechanism (special headers, path patterns), add it to `rotocore/src/services/gateway/router.py`
    - Add tests for the new routing rules in `tests/unit/gateway/test_router.py`
 
 4. **Create a service extension if Moto is insufficient:**
-   - Only create `src/robotocore/services/{service}/` if Moto's implementation is missing behavior that LocalStack provides
+   - Only create `rotocore/src/services/services/{service}/` if Moto's implementation is missing behavior that LocalStack provides
    - The moto_bridge should handle most services automatically
    - Extensions should wrap Moto, not replace it
-   - Register native providers in `src/robotocore/gateway/app.py` NATIVE_PROVIDERS dict
+   - Register native providers in `rotocore/src/services/gateway/app.py` NATIVE_PROVIDERS dict
 
 5. **Access Moto backends correctly:**
    ```python
@@ -42,10 +42,10 @@ Use this skill when implementing a new AWS service in robotocore or extending an
    - Tests must be runnable against both robotocore AND LocalStack (use ENDPOINT_URL env var)
 
 7. **Update the service registry:**
-   - Add entry to `src/robotocore/services/registry.py`
+   - Add entry to `rotocore/src/services/services/registry.py`
 
 8. **Add CloudFormation resource type if applicable:**
-   - Add create/delete handlers in `src/robotocore/services/cloudformation/resources.py`
+   - Add create/delete handlers in `rotocore/src/services/services/cloudformation/resources.py`
    - Check Moto method signatures with `inspect.signature()` — they change between versions
 
 9. **Run the full test suite:**

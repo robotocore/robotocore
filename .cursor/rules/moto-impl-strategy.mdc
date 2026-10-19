@@ -1,6 +1,6 @@
 ---
 description: Strategy and learnings for implementing missing Moto operations
-globs: vendor/moto/moto/**/models.py, vendor/moto/moto/**/responses.py, scripts/gen_*.py, tests/moto_impl/**
+globs: .venv/lib/python3.13/site-packages/moto/moto/**/models.py, .venv/lib/python3.13/site-packages/moto/moto/**/responses.py, scripts/gen_*.py, tests/moto_impl/**
 alwaysApply: false
 ---
 
@@ -32,7 +32,7 @@ It reports nouns as "missing" if ANY CRUD op is unimplemented. Many services (EK
 Always verify with `probe_service.py` before implementing.
 
 ### Native providers have separate state from Moto
-Robotocore has native providers for Lambda, SFN, ECS, etc. that maintain their own in-memory state (e.g., `_state_machines`, `EcsStore`). Operations NOT in the native provider's `_ACTION_MAP` are forwarded to Moto, which has a completely separate state store. If a resource was created by the native provider, Moto can't see it. When implementing new operations, check if the service has a native provider at `src/robotocore/services/{svc}/provider.py` and add the new ops there instead of (or in addition to) Moto.
+Robotocore has native providers for Lambda, SFN, ECS, etc. that maintain their own in-memory state (e.g., `_state_machines`, `EcsStore`). Operations NOT in the native provider's `_ACTION_MAP` are forwarded to Moto, which has a completely separate state store. If a resource was created by the native provider, Moto can't see it. When implementing new operations, check if the service has a native provider at `rotocore/src/services/services/{svc}/provider.py` and add the new ops there instead of (or in addition to) Moto.
 
 ### Moto lockfile update requires cache clear
 After pushing moto changes, `uv lock --upgrade-package moto` may return the cached old commit. Use `uv cache clean moto --force` first, then `uv lock --upgrade-package moto`. Also push to the correct remote branch name (`robotocore/all-fixes:robotocore/all-fixes`).
@@ -70,7 +70,7 @@ After pushing moto changes, `uv lock --upgrade-package moto` may return the cach
 1. Create worktree: `git worktree add ../robotocore-{svc} -b impl/{svc} HEAD`
 2. Init submodule: `cd worktree && git submodule update --init vendor/moto`
 3. Agent implements in worktree, commits to worktree branch
-4. Copy changed files from worktree to main: `cp worktree/vendor/moto/moto/{svc}/* main/vendor/moto/moto/{svc}/`
+4. Copy changed files from worktree to main: `cp worktree/.venv/lib/python3.13/site-packages/moto/moto/{svc}/* main/.venv/lib/python3.13/site-packages/moto/moto/{svc}/`
 5. Commit in main vendor/moto, push to fork, update lockfile
 6. Clean up: `rm -rf worktree && git worktree prune && git branch -D impl/{svc}`
 
@@ -81,7 +81,7 @@ Key lessons:
 
 ## Moto update flow
 
-1. Edit vendor/moto/moto/{service}/models.py + responses.py
+1. Edit .venv/lib/python3.13/site-packages/moto/moto/{service}/models.py + responses.py
 2. Push: `cd vendor/moto && git push jackdanger robotocore/all-fixes:robotocore/all-fixes`
 3. Lock: `cd ../.. && uv lock --upgrade-package moto`
 4. Sync: `uv sync`

@@ -35,8 +35,4 @@ EXPOSE 4566
 HEALTHCHECK --interval=5s --timeout=3s --start-period=5s --retries=6 \
     CMD ["/busybox", "wget", "-q", "--spider", "-T", "2", "http://127.0.0.1:4566/_robotocore/health"]
 
-# NOTE: the binary currently listens on 127.0.0.1 only; publishing ports with
-# `docker run -p` won't be reachable from the host until src/bin gains a
-# bind-address flag (post-python phase). Healthcheck + --network host runs
-# work today; the in-container probe hits the server over loopback.
 ENTRYPOINT ["/server/robotocore-rust", "--host", "0.0.0.0", "--port", "4566"]

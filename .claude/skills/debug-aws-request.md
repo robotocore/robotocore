@@ -22,12 +22,12 @@ Use this skill when a request to robotocore is failing, returning wrong response
    - Is the request reaching the gateway? Check uvicorn logs.
    - Is `route_to_service()` returning the correct service name?
    - Look at the Authorization header, X-Amz-Target, and URL path
-   - Add temporary debug logging to `src/robotocore/gateway/router.py` if needed
+   - Add temporary debug logging to `rotocore/src/services/gateway/router.py` if needed
 
 3. **Check the Moto bridge:**
    - Is `forward_to_moto()` finding the right backend?
    - Is the region/account extraction correct?
-   - Add logging to `src/robotocore/providers/moto_bridge.py`
+   - Add logging to `rotocore/src/services/providers/moto_bridge.py`
 
 4. **Compare with LocalStack:**
    - Run the same request against LocalStack to see the expected response

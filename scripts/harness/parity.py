@@ -178,35 +178,6 @@ def run_suite(suite_name, endpoint, out_xml):
     return results, r, timed_out
 
 
-def classify(py_res, rust_res):
-    """4-way classification with counts + failing test lists.
-
-    Trust rule (central, see also classify_rust_only for the single lane):
-    when a run is truncated (suite timeout / collection crash / empty XML),
-    the two sides see different test sets, which cannot be compared honestly;
-    the caller then omits the fidelity figure instead of publishing fiction.
-    """
-    py_names = set(py_res)
-    rust_names = set(rust_res)
-    names = py_names | rust_names
-    truncated = bool(py_names and rust_names and py_names != rust_names)
-    both_pass = [n for n in names if py_res.get(n) == "pass" and rust_res.get(n) == "pass"]
-    rust_gap = [n for n in names if py_res.get(n) == "pass" and rust_res.get(n) == "fail"]  # fidelity loss
-    py_only_fail = [n for n in names if py_res.get(n) == "fail" and rust_res.get(n) != "pass"]  # env issue
-    both_fail = [n for n in names if py_res.get(n) == "fail" and rust_res.get(n) == "fail"]
-    skipped = [n for n in names if "skip" in (py_res.get(n), rust_res.get(n))]
-    return {
-        "both_pass": len(both_pass),
-        "rust_gap": len(rust_gap),
-        "py_only_fail": len(py_only_fail),
-        "both_fail": len(both_fail),
-        "skipped": len(skipped),
-        "total": len(names),
-        "rust_gap_tests": sorted(rust_gap),
-        "truncated": truncated,
-    }
-
-
 def classify_rust_only(results, timed_out):
     """Single-lane classification for --rust-only runs.
 
@@ -227,100 +198,28 @@ def classify_rust_only(results, timed_out):
     }
 
 
-def run_all(services, state_dir):
-    if not ensure_rust_server():
-        log("[!!] aborting: Rust server / bridge unavailable")
-        return {"services": {}, "generated": time.strftime("%Y-%m-%dT%H:%M:%S"), "aborted": True}
-    xml_dir = Path(state_dir) / "xml"
-    xml_dir.mkdir(parents=True, exist_ok=True)
-    report = {"services": {}, "generated": time.strftime("%Y-%m-%dT%H:%M:%S")}
-    for svc in services:
-        suite = find_suite(svc)
-        if not suite:
-            report["services"][svc] = {"status": "no_suite", "spec_ops": spec_op_count(svc),
-                                       "crate": "native" if svc in NATIVE else "bridge"}
-            log(f"[skip] {svc}: no compat suite")
+def print_rust_only_summary(report, next_work):
+    """--parity fidelity map: actual pass counts vs the golden baseline."""
+    log("")
+    log("=" * 72)
+    log("EXPECTATIONS MAP (rust-only: pass counts, fidelity = actual / expected)")
+    log("=" * 72)
+    log(f"{'service':15} {'spec':>5} {'rust':>5} {'fid%':>6} {'exp':>6} {'drift':>5}")
+    for svc, d in sorted(report["services"].items()):
+        if d.get("status") != "ok":
+            log(f"{svc:15} {d.get('status','?'):15}")
             continue
-        log(f"[..] {svc}: running {suite.name} vs rust endpoint (baseline via expectations)...")
-        rust_res, _, timed_out = run_suite(suite.name, RUST_URL, str(xml_dir / f"{svc}_rust.xml"))
-        r = classify_rust_only(rust_res, timed_out)
-        rec = {
-            "status": "ok",
-            "crate": "native",
-            "spec_ops": spec_op_count(svc),
-            "pass": r["pass"], "fail": r["fail"], "skip": r["skip"],
-            "total": r["total"], "truncated": r["truncated"],
-        }
-        exp = (EXPECTATIONS.get(svc) or {}).get("pass")
-        if not r["truncated"] and exp is not None:
-            rec["expected"] = exp
-            rec["drift"] = r["pass"] - exp
-        report["services"][svc] = rec
-        mark = f"{r['pass']}/{r['total']}"
-        log(f"     {svc}: pass={mark}  drift={rec.get('drift')}")
-    return report
-
-
-def run_all_rust_only(services, state_dir, expectations):
-    """Run every suite ONCE against the Rust server; compare to the baseline.
-
-    No Python ground-truth server is contacted: fidelity is actual vs
-    expected, where expected comes from `.parity/expectations_current.json`
-    (per-suite pass counts frozen while the Python ground truth still
-    existed). Regressions are surfaced in the report as
-    `expectations_drift` so the caller can exit non-zero.
-    """
-    if not ensure_rust_server():
-        log("[!!] aborting: Rust server / bridge unavailable")
-        return {"services": {}, "generated": time.strftime("%Y-%m-%dT%H:%M:%S"), "aborted": True}
-    xml_dir = Path(state_dir) / "xml"
-    xml_dir.mkdir(parents=True, exist_ok=True)
-    report = {"services": {}, "generated": time.strftime("%Y-%m-%dT%H:%M:%S")}
-    for svc in services:
-        suite = find_suite(svc)
-        if not suite:
-            report["services"][svc] = {"status": "no_suite", "spec_ops": spec_op_count(svc),
-                                       "crate": "native" if svc in NATIVE else "bridge"}
-            log(f"[skip] {svc}: no compat suite")
-            continue
-        expected = (expectations.get(svc) or {}).get("pass")
-        log(f"[..] {svc}: running {suite.name} vs rust endpoint..." +
-            (f" (baseline {expected})" if expected is not None else " (no baseline entry)"))
-        rust_res, _, timed_out = run_suite(suite.name, RUST_URL, str(xml_dir / f"{svc}_rust.xml"))
-        r = classify_rust_only(rust_res, timed_out)
-        rec = {
-            "status": "ok",
-            "crate": "native" if svc in NATIVE else "bridge",
-            "spec_ops": spec_op_count(svc),
-            "pass": r["pass"], "fail": r["fail"], "skip": r["skip"],
-            "total": r["total"],
-            "truncated": r["truncated"],
-            "fidelity_pct": None,
-        }
-        if r["truncated"]:
-            # CRASH/empty-XML/timeout run — comparing partial numbers would be fiction.
-            log(f"[WARN] {svc}: truncated rust run ({r['pass']} of {r['total']} tests parsed); "
-                f"fidelity/drift omitted")
-        elif expected is None:
-            log(f"     {svc}: pass={r['pass']}/{r['total']}  (no baseline entry — promote with --update-expectations)")
-        else:
-            rec["expected"] = expected
-            if expected:
-                rec["fidelity_pct"] = round(100.0 * r["pass"] / expected, 1)
-            rec["drift"] = r["pass"] - expected  # negative = regression
-            mark = f"{rec['fidelity_pct']}%" if expected else "-"
-            if rec["fidelity_pct"] is not None and rec["fidelity_pct"] < 100.0:
-                mark += f" [-{rec['drift']} vs baseline {expected}]"
-            log(f"     {svc}: pass={r['pass']}/{r['total']}  fidelity={mark}")
-        report["services"][svc] = rec
-    regressions = drift_regressions(report, expectations)
-    if regressions:
-        log("")
-        log("EXPECTATIONS DRIFT (actual < baseline):")
-        for _, _s, line in regressions:
-            log(f"  {line}")
-    report["expectations_drift"] = [{"suite": s, "line": l} for _, s, l in regressions]
-    return report
+        exp = d.get("expected")
+        drift = d.get("drift")
+        fid = str(d.get("fidelity_pct") or "-")
+        drift = str(drift) if drift is not None else "-"
+        log(f"{svc:15} {str(d.get('spec_ops') or '?'):>5} "
+            f"{d['pass']:>5} {fid:>6} {str(exp if exp is not None else '-'):>6} {drift:>5}")
+    log("=" * 72)
+    if report.get("expectations_drift"):
+        log(f"EXPECTATIONS DRIFT: {len(report['expectations_drift'])} suite(s) below baseline")
+    log(f"NEXT WORK: {next_work}")
+    log("=" * 72)
 
 
 def drift_regressions(report, expectations):
@@ -342,6 +241,68 @@ def drift_regressions(report, expectations):
                     f"EXPECTATIONS DRIFT: suite {svc} expected {expected}, got {actual}"))
     out.sort(reverse=True)
     return out
+
+
+def classify_rust_only(results, timed_out):
+    """Single-lane classification: pass/fail/skip + truncation trust rule."""
+    counts = {"pass": 0, "fail": 0, "skip": 0}
+    for v in results.values():
+        counts[v] = counts.get(v, 0) + 1
+    return {
+        "pass": counts["pass"], "fail": counts["fail"], "skip": counts["skip"],
+        "total": len(results),
+        "truncated": bool(timed_out or not results),
+    }
+
+
+def run_all_rust_only(services, state_dir, expectations):
+    """Run every suite ONCE against the Rust server; compare to the baseline."""
+    if not ensure_rust_server():
+        log("[!!] aborting: Rust server unavailable")
+        return {"services": {}, "generated": time.strftime("%Y-%m-%dT%H:%M:%S"), "aborted": True}
+    xml_dir = Path(state_dir) / "xml"
+    xml_dir.mkdir(parents=True, exist_ok=True)
+    report = {"services": {}, "generated": time.strftime("%Y-%m-%dT%H:%M:%S")}
+    for svc in services:
+        suite = find_suite(svc)
+        if not suite:
+            report["services"][svc] = {"status": "no_suite", "spec_ops": spec_op_count(svc),
+                                       "crate": "native"}
+            log(f"[skip] {svc}: no compat suite")
+            continue
+        expected = (expectations.get(svc) or {}).get("pass")
+        log(f"[..] {svc}: running {suite.name} vs rust endpoint..." +
+            (f" (baseline {expected})" if expected is not None else " (no baseline entry)"))
+        rust_res, _, timed_out = run_suite(suite.name, RUST_URL, str(xml_dir / f"{svc}_rust.xml"))
+        r = classify_rust_only(rust_res, timed_out)
+        rec = {
+            "status": "ok", "crate": "native", "spec_ops": spec_op_count(svc),
+            "pass": r["pass"], "fail": r["fail"], "skip": r["skip"],
+            "total": r["total"], "truncated": r["truncated"], "fidelity_pct": None,
+        }
+        if r["truncated"]:
+            log(f"[WARN] {svc}: truncated run; fidelity/drift omitted")
+        elif expected is None:
+            log(f"     {svc}: pass={r['pass']}/{r['total']} (no baseline entry)")
+        else:
+            rec["expected"] = expected
+            if expected:
+                rec["fidelity_pct"] = round(100.0 * r["pass"] / expected, 1)
+            rec["drift"] = r["pass"] - expected
+            mark = f"{rec['fidelity_pct']}%" if expected else "-"
+            if rec["fidelity_pct"] is not None and rec["fidelity_pct"] < 100.0:
+                mark += f" [-{rec['drift']} vs baseline {expected}]"
+            log(f"     {svc}: pass={r['pass']}/{r['total']}  fidelity={mark}")
+        report["services"][svc] = rec
+    report["expectations_drift"] = [
+        {"suite": s, "line": l} for _, s, l in drift_regressions(report, expectations)
+    ]
+    if report["expectations_drift"]:
+        log("")
+        log("EXPECTATIONS DRIFT (actual < baseline):")
+        for _, _s, line in report["expectations_drift"]:
+            log(f"  {line}")
+    return report
 
 
 def load_expectations(path):
@@ -460,52 +421,6 @@ def save_state(report, next_work, state_path, mode=None):
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(json.dumps(state, indent=2))
     log(f"[ok] state written to {state_path}")
-
-
-def print_summary(report, next_work):
-    log("")
-    log("=" * 72)
-    log("FIDELITY MAP (rust_pass / py_pass, gap = fidelity loss)")
-    log("=" * 72)
-    log(f"{'service':15} {'type':7} {'spec':>5} {'py':>5} {'rust':>5} {'fid%':>6} {'gap':>4}")
-    for svc, d in sorted(report["services"].items()):
-        if d.get("status") != "ok":
-            log(f"{svc:15} {d.get('status','?'):15}")
-            continue
-        fid = d.get("fidelity_pct")
-        log(f"{svc:15} {d['crate']:7} {str(d.get('spec_ops') or '?'):>5} "
-            f"{d['py_pass']:>5} {d['rust_pass']:>5} {str(fid or '-'):>6} {d['rust_gap']:>4}")
-    log("=" * 72)
-    log(f"NEXT WORK: {next_work}")
-    log("=" * 72)
-
-
-def print_rust_only_summary(report, next_work):
-    """--rust-only fidelity map: actual pass counts vs the golden baseline."""
-    log("")
-    log("=" * 72)
-    log("EXPECTATIONS MAP (rust-only: pass counts, fidelity = actual / expected)")
-    log("=" * 72)
-    log(f"{'service':15} {'type':7} {'spec':>5} {'rust':>5} {'fid%':>6} {'exp':>6} {'drift':>5}")
-    for svc, d in sorted(report["services"].items()):
-        if d.get("status") != "ok":
-            log(f"{svc:15} {d.get('status','?'):15}")
-            continue
-        exp = d.get("expected")
-        drift = d.get("drift")
-        if d.get("truncated"):
-            fid = drift = "trunc"
-        else:
-            fid = str(d.get("fidelity_pct") or "-")
-            drift = str(drift) if drift is not None else "-"
-        log(f"{svc:15} {d['crate']:7} {str(d.get('spec_ops') or '?'):>5} "
-            f"{d['pass']:>5} {fid:>6} {str(exp if exp is not None else '-'):>6} {drift:>5}")
-    log("=" * 72)
-    if report.get("expectations_drift"):
-        log(f"EXPECTATIONS DRIFT: {len(report['expectations_drift'])} suite(s) below baseline "
-            f"(details above)")
-    log(f"NEXT WORK: {next_work}")
-    log("=" * 72)
 
 
 TOTAL_TIMEOUT = 1800  # 30 minutes max for a full run

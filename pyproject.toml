@@ -43,7 +43,6 @@ select = ["E", "F", "I", "N", "W", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-asyncio_mode = "auto"
 markers = [
     "iac: IaC integration tests (requires running server)",
     "compat: Compatibility tests (requires running server)",
