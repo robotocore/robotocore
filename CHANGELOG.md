@@ -6,6 +6,46 @@ auto-tags and publishes a versioned + `:latest` Docker image. Each release
 gets a top-level section here; the project source of truth for the
 maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
 
+## 2026.10.19 (unreleased, `port/rot-emr2` branch)
+
+### Added: native EMR backend on the pure-Rust server
+
+EMR moved from the moto sidecar to a native `rotocore` backend
+(`rotocore/src/services/emr.rs`). The repo's botocore data pins EMR to the
+JSON wire (`jsonVersion 1.1`, target-prefix `ElasticMapReduce`), so the
+backend speaks JSON, not query-XML.
+
+- 52 of the 60 spec operations are implemented: cluster lifecycle
+  (RunJobFlow/Describe/List/Terminate/tags/visibility/concurrency), steps
+  (Add/Describe/List/Cancel), instance groups and instance fleets, bootstrap
+  actions, Auto-Scaling policies, managed-scaling and auto-termination
+  policies, security configurations, block-public-access configuration,
+  studios and studio session mappings, notebook-execution accessors,
+  persistent app UIs, release labels, and per-release supported instance
+  types (data embedded from moto's resource files).
+- 8 operations deny with moto's exact `NotImplemented` document
+  (`The <op> action has not been implemented`, HTTP 501):
+  ListStudioSessionMappings, SetKeepJobFlowAliveWhenNoSteps,
+  SetUnhealthyNodeReplacement, GetClusterSessionCredentials,
+  GetPersistentAppUIPresignedURL, GetOnClusterAppUIPresignedURL,
+  StartNotebookExecution, UpdateStudio.
+- Error shapes mirror moto exactly, including its quirks: unknown clusters
+  answer `InvalidRequestException`/`NoSuchCluster`, a few moto dict reads
+  escape as KeyError → `InternalError` (500), keyword-form exceptions render
+  the fallback message "An unspecified service error occurred", and the
+  studio-session-mapping lookup keys interpolate an absent IdentityId as the
+  string `"None"`.
+- `test_emr_compat.py` holds 74 pass / 7 fail with the fail set identical to
+  the moto-sidecar baseline; `tests/moto_impl/test_emr_lifecycle.py` passes
+  11 / fails 5, matching the sidecar baseline exactly.
+
+#### Migration
+
+EMR calls to the Rust server no longer round-trip through the moto sidecar;
+state is in-memory and per-(account, region) as before. `Instances.
+InstanceFleets` on `RunJobFlow` stays a no-op (moto parity — fleets are
+created with `AddInstanceFleet`).
+
 ## 2026.5.14 (unreleased, `port/rot-state` branch)
 
 ### Added: state save/load/reset on the pure-Rust server
