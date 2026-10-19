@@ -33,7 +33,8 @@ pub mod cloudfront;
 pub mod cloudtrail;
 pub mod codebuild;
 pub mod codecommit;pub mod codepipeline;
-pub mod cognito_identity;
+pub mod codedeploy;
+pub mod codepipeline;pub mod cognito_identity;
 pub mod cognito_idp;
 pub mod comprehend;
 pub mod config;
@@ -150,6 +151,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "cognitoidentity" => cognito_identity::dispatch(req),
         "comprehend" => Some(comprehend::dispatch(req)),
         "config" => Some(config::dispatch(req)),
+        "codedeploy" => codedeploy::dispatch(req),
         "connect" => Some(connect::dispatch(req)),
         "connectcampaigns" => connectcampaigns::dispatch(req),
         "databrew" => databrew::dispatch(req),
@@ -272,6 +274,7 @@ pub fn handles_service(service: &str) -> bool {
             | "cognitoidentity"
             | "comprehend"
             | "config"
+            | "codedeploy"
             | "connect"
             | "connectcampaigns"
             | "databrew"
