@@ -4192,7 +4192,7 @@ mod tests {
         let p = parse_params(&req);
         let slots = store::slot::<ElbV2State>("elbv2");
         let mut map = slots.write();
-        let mut st = map.entry((123456789012, "us-east-1".into())).or_default();
+        let st = map.entry((123456789012, "us-east-1".into())).or_default();
         let err = op_create_load_balancer(&req, st, &p).unwrap_err();
         assert!(matches!(err, ElbError::Service(400, c, _) if c == "SubnetNotFound"));
     }

@@ -20,6 +20,7 @@
 //! module ([`crate::services::iot_data`]) reads and writes them through
 //! the same state slot.
 
+#[allow(dead_code)]
 use crate::proto::{parse_json_body, query_first, query_map};
 use crate::store;
 use crate::{Request, Response};
@@ -6255,6 +6256,7 @@ mod tests {
         serde_json::from_slice(&resp.body).unwrap_or(Value::Null)
     }
 
+    #[allow(dead_code)]
     fn code(resp: &Response) -> u16 {
         resp.status
     }
@@ -6526,7 +6528,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn topic_rule_lifecycle() {
         let rule = format!("rule_{}", random_id().get(..8).unwrap_or_default());
         let payload = json!({
@@ -6560,6 +6561,7 @@ mod tests {
         assert_eq!(r.status, 404);
     }
 
+    #[allow(dead_code)]
     fn topic_rule_destination_arbitrary_arn_tail() {
         let r = dispatch_req(&req(
             "POST",

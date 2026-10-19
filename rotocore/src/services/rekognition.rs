@@ -33,6 +33,7 @@ struct RekState {
     account: String,
 }
 
+#[allow(dead_code)]
 struct Collection {
     id: String,
     arn: String,

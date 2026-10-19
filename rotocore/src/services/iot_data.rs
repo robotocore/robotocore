@@ -489,6 +489,7 @@ mod tests {
         COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
     }
 
+    #[allow(dead_code)]
     fn iot_req(method: &str, path: &str, body: Value, account: u64) -> Request {
         Request {
             service: "iot".into(),
@@ -517,6 +518,7 @@ mod tests {
         }
     }
 
+    #[allow(dead_code)]
     fn seed_thing(account: u64, thing: &str) {
         let slot = iot_state();
         let mut guard = slot.write();

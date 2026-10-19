@@ -12,6 +12,7 @@
 //! errors are `{"__type": code, "message": msg}` with HTTP 400. Operations
 //! rotocore does not serve answer 501 like the moto sidecar did.
 
+#[allow(dead_code)]
 use crate::proto::{now_iso, now_unix, parse_json_body};
 use crate::store;
 use crate::{Request, Response};
@@ -1779,6 +1780,7 @@ mod tests {
         assert_eq!(b["__type"], "EntityNotFoundException");
     }
 
+    #[allow(dead_code)]
     fn make_db_and_table(account_key: &str) {
         let _ = account_key;
     }

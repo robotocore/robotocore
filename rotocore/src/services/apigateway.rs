@@ -17,6 +17,7 @@
 //! (`src/robotocore/services/apigateway/executor.py`), including the
 //! ANY-method fallback and `{param+}`/`{param}` path parameters.
 
+#[allow(dead_code)]
 use crate::store;
 use crate::{Request, Response};
 use once_cell::sync::Lazy;
@@ -251,6 +252,7 @@ static SLOT: Lazy<store::Slot<State>> = Lazy::new(|| store::slot::<State>("apiga
 
 impl State {
     /// moto's Account defaults; GetAccount must always return a body.
+    #[allow(dead_code)]
     fn new() -> State {
         State {
             account: json!({
@@ -266,9 +268,7 @@ impl State {
 
 fn with_state<T>(account: u64, region: &str, f: impl FnOnce(&mut State) -> T) -> T {
     let mut guard = SLOT.write();
-    let state = guard
-        .entry((account, region.to_string()))
-        .or_default();
+    let state = guard.entry((account, region.to_string())).or_default();
     f(state)
 }
 
