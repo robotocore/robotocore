@@ -1382,7 +1382,7 @@ fn create_subnet_cidr_reservation(req: &Request, params: &P) -> Response {
 }
 
 fn delete_subnet_cidr_reservation(req: &Request, params: &P) -> Response {
-    let reserve_id = params.str("ReservationId");
+    let reserve_id = params.str("SubnetCidrReservationId");
     with_state(req, move |state| {
         for s in state.subnets.iter_mut() {
             let before = s.cidr_reservations.len();

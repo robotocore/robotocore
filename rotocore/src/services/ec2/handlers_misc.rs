@@ -734,6 +734,51 @@ fn simple_family_route(req: &Request, params: &P) -> Response {
     if fam.kind == "network-insights-access-scope" {
         return nis_scope_route(req, params);
     }
+    if req.operation == "CreateVpnConnection" {
+        // moto validates both referenced gateways before creating
+        let cgw = params.str("CustomerGatewayId");
+        let vgw = params.str("VpnGatewayId");
+        if let Some(err) = with_state(req, move |state| {
+            // only gateway ids actually provided are validated (a Transit
+            // Gateway connection omits VpnGatewayId)
+            if !cgw.is_empty()
+                && !state
+                    .simple
+                    .get("customer-gateway")
+                    .map(|items| items.iter().any(|s| s.id == cgw))
+                    .unwrap_or(false)
+            {
+                return Some(ec2_error(
+                    400,
+                    "InvalidCustomerGatewayID.NotFound",
+                    &format!(
+                        "The customerGateway ID '{}' does not exist",
+                        xml_escape(&cgw)
+                    ),
+                ));
+            }
+            if !vgw.is_empty()
+                && !state
+                    .simple
+                    .get("vpn-gateway")
+                    .map(|items| items.iter().any(|s| s.id == vgw))
+                    .unwrap_or(false)
+            {
+                return Some(ec2_error(
+                    400,
+                    "InvalidVpnGatewayID.NotFound",
+                    &format!(
+                        "The vpnGateway ID '{}' does not exist",
+                        xml_escape(&vgw)
+                    ),
+                ));
+            }
+            None
+        }) {
+            return err;
+        }
+        return simple_create(req, params, fam);
+    }
     if matches!(
         fam.kind,
         "host" | "fleet" | "spot-fleet-request" | "spot-instance-request"
@@ -2994,10 +3039,31 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
             })
         }
         "ReplaceIamInstanceProfileAssociation" => {
-            ec2_xml(
-                "ReplaceIamInstanceProfileAssociationResponse",
-                "<iamInstanceProfileAssociation><associationId>iip-assoc-0000000000000000</associationId><iamInstanceProfile><arn></arn><id></id></iamInstanceProfile><instanceId></instanceId><state>associating</state></iamInstanceProfileAssociation>",
-            )
+            let aid = params.str("AssociationId");
+            with_state(req, move |state| {
+                let known = state
+                    .simple
+                    .get("iip-assoc")
+                    .map(|items| items.iter().any(|s| s.id == aid))
+                    .unwrap_or(false);
+                if !known {
+                    return ec2_error(
+                        400,
+                        "InvalidAssociationID.NotFound",
+                        &format!(
+                            "The association ID '{}' does not exist",
+                            xml_escape(&aid)
+                        ),
+                    );
+                }
+                ec2_xml(
+                    "ReplaceIamInstanceProfileAssociationResponse",
+                    &format!(
+                        "<iamInstanceProfileAssociation><associationId>{}</associationId><iamInstanceProfile><arn></arn><id></id></iamInstanceProfile><state>associating</state></iamInstanceProfileAssociation>",
+                        xml_escape(&aid)
+                    ),
+                )
+            })
         }
         _ => super::not_implemented(op),
     }

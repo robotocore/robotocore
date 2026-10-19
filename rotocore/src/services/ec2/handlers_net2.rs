@@ -1397,7 +1397,7 @@ fn endpoint_item(e: &super::state::VpcEndpoint) -> String {
     format!(
         "<item><vpcEndpointId>{}</vpcEndpointId>{}<vpcId>{}</vpcId><serviceName>{}</serviceName>{}<state>{}</state>{}<policyDocument></policyDocument>{}<requesterManaged>false</requesterManaged>{}{}{}</item>",
         crate::proto::xml_escape(&e.id),
-        if true { format!("<vpcEndpointType>{}</vpcEndpointType>", crate::proto::xml_escape(&e.endpoint_type)) },
+        format!("<vpcEndpointType>{}</vpcEndpointType>", crate::proto::xml_escape(&e.endpoint_type)),
         crate::proto::xml_escape(&e.vpc_id),
         crate::proto::xml_escape(&e.service_name),
         if rts.is_empty() { String::new() } else { format!("<routeTableIds>{}</routeTableIds>", rts) },
