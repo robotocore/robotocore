@@ -44,6 +44,7 @@ pub mod connectcampaigns;
 pub mod databrew;
 pub mod datapipeline;
 pub mod datasync;
+pub mod dax;
 pub mod dms;
 pub mod dsql;
 pub mod ebs;
@@ -159,6 +160,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "databrew" => databrew::dispatch(req),
         "datapipeline" => datapipeline::dispatch(req),
         "datasync" => datasync::dispatch(req),
+        "dax" => dax::dispatch(req),
         "dms" => dms::dispatch(req),
         "dsql" => dsql::dispatch(req),
         "ebs" => ebs::dispatch(req),
@@ -283,6 +285,7 @@ pub fn handles_service(service: &str) -> bool {
             | "databrew"
             | "datapipeline"
             | "datasync"
+            | "dax"
             | "dms"
             | "dsql"
             | "ebs"
