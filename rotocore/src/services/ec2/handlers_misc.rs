@@ -389,7 +389,11 @@ fn render_template(xml: &str) -> (String, HashMap<String, String>) {
         } else {
             out.push_str(token);
         }
-        rest = if end < rest.len() { &rest[start + end + 1..] } else { "" };
+        rest = if end < rest.len() {
+            &rest[start + end + 1..]
+        } else {
+            ""
+        };
     }
     out.push_str(rest);
     let _ = ids;
@@ -410,7 +414,27 @@ fn find_family(op: &str) -> Option<&'static FamilySpec> {
     SIMPLE_FAMILIES
         .iter()
         .find(|f| op == f.create_op || op == f.describe_op || op == f.delete_op)
+        .or_else(|| {
+            FAMILY_EXTRA_OPS.iter().find_map(|(kind, extra_op)| {
+                if op == *extra_op {
+                    SIMPLE_FAMILIES.iter().find(|f| f.kind == *kind)
+                } else {
+                    None
+                }
+            })
+        })
 }
+
+/// Ops beyond create/describe/delete that belong to list-root families:
+/// (family kind, op). These route to [`hostlist_route`] like family ops.
+static FAMILY_EXTRA_OPS: [(&str, &str); 6] = [
+    ("fleet", "DeleteFleets"),
+    ("fleet", "ModifyFleet"),
+    ("fleet", "DescribeFleetInstances"),
+    ("fleet", "DescribeFleetHistory"),
+    ("spot-fleet-request", "ModifySpotFleetRequest"),
+    ("spot-fleet-request", "DescribeSpotFleetInstances"),
+];
 
 pub fn route(req: &Request, params: &P) -> Response {
     let op: &str = &req.operation;
@@ -465,7 +489,10 @@ fn modify_route(req: &Request, op: &str, params: &P) -> Response {
                 return ec2_error(
                     400,
                     "InvalidPrefixListID.NotFound",
-                    &format!("The prefix list ID '{}' does not exist", crate::proto::xml_escape(&id)),
+                    &format!(
+                        "The prefix list ID '{}' does not exist",
+                        crate::proto::xml_escape(&id)
+                    ),
                 );
             }
             let fam = SIMPLE_FAMILIES
@@ -482,7 +509,9 @@ fn modify_route(req: &Request, op: &str, params: &P) -> Response {
                 false,
                 &tags_xml_v,
             );
-            if let Some(xml) = super::shapes::render_response("ModifyManagedPrefixList", &fills, "us-east-1") {
+            if let Some(xml) =
+                super::shapes::render_response("ModifyManagedPrefixList", &fills, "us-east-1")
+            {
                 return Response::xml(200, xml.into_bytes());
             }
             return ec2_xml(
@@ -501,10 +530,16 @@ fn modify_route(req: &Request, op: &str, params: &P) -> Response {
             return ec2_error(
                 404,
                 "InvalidCapacityReservationFleetId.NotFound",
-                &format!("The capacity reservation fleet ID '{}' does not exist", crate::proto::xml_escape(&id)),
+                &format!(
+                    "The capacity reservation fleet ID '{}' does not exist",
+                    crate::proto::xml_escape(&id)
+                ),
             );
         }
-        ec2_xml("ModifyCapacityReservationFleetResponse", "<return>true</return>")
+        ec2_xml(
+            "ModifyCapacityReservationFleetResponse",
+            "<return>true</return>",
+        )
     })
 }
 
@@ -777,7 +812,7 @@ fn simple_describe(req: &Request, params: &P, fam: &'static FamilySpec) -> Respo
                 }
             }
         }
-                // captured-template fallback
+        // captured-template fallback
         let t = templates::TEMPLATES
             .binary_search_by_key(&fam.describe_op, |x| x.0)
             .ok()
@@ -964,7 +999,9 @@ pub fn gap_ops_response(op: &str) -> Response {
         _ => String::from("<return>true</return>"),
     };
     let root = format!("{}Response", op);
-    let body = body.replace("{TS}", &super::now_iso()).replace("{ID", "<idplaceholder--");
+    let body = body
+        .replace("{TS}", &super::now_iso())
+        .replace("{ID", "<idplaceholder--");
     super::xmlns_xml(&root, Some(super::EC2_NS), &body)
 }
 
@@ -1317,7 +1354,7 @@ fn tgw_attachment_fields(a: &super::state::TgwAttachment) -> String {
         ));
     }
     format!(
-        "<transitGatewayAttachmentId>{}</transitGatewayAttachmentId><transitGatewayId>{}</transitGatewayId><transitGatewayOwnerId>{}</transitGatewayOwnerId><resourceType>{}</resourceType><resourceId>{}</resourceId><resourceOwnerId>{}</resourceOwnerId><state>{}</state>{}{}{}</item>",
+        "<transitGatewayAttachmentId>{}</transitGatewayAttachmentId><transitGatewayId>{}</transitGatewayId><transitGatewayOwnerId>{}</transitGatewayOwnerId><resourceType>{}</resourceType><resourceId>{}</resourceId><resourceOwnerId>{}</resourceOwnerId><state>{}</state>{}{}{}",
         xml_escape(&a.id),
         xml_escape(&a.tgw_id),
         xml_escape(&a.tgw_owner_id),
@@ -1463,8 +1500,6 @@ static LOCAL_GW_OPS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
         "ModifyCapacityReservation",
         "GetManagedPrefixListEntries",
         "ReplaceIamInstanceProfileAssociation",
-        "ModifyFleet",
-        "DescribeFleetHistory",
     ]
     .into_iter()
     .collect()
@@ -1648,34 +1683,6 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
             ec2_xml(
                 "ReplaceIamInstanceProfileAssociationResponse",
                 "<iamInstanceProfileAssociation><associationId>iip-assoc-0000000000000000</associationId><iamInstanceProfile><arn></arn><id></id></iamInstanceProfile><instanceId></instanceId><state>associating</state></iamInstanceProfileAssociation>",
-            )
-        }
-        "ModifyFleet" => {
-            let id = params.str("FleetId");
-            with_state(req, move |state| {
-                if state
-                    .simple
-                    .get("fleet")
-                    .map(|f| f.iter().all(|s| s.id != id))
-                    .unwrap_or(true)
-                {
-                    return ec2_error(
-                        400,
-                        "InvalidFleetId.NotFound",
-                        &format!("The fleet ID '{}' does not exist", xml_escape(&id)),
-                    );
-                }
-                ec2_xml(
-                    "ModifyFleetResponse",
-                    "<return>true</return>",
-                )
-            })
-        }
-        "DescribeFleetHistory" => {
-            ec2_xml(
-                "DescribeFleetHistoryResponse",
-                &format!("<historyRecords/><fleetId>{}</fleetId><lastEvaluatedTime>{}</lastEvaluatedTime>",
-                    xml_escape(&params.str("FleetId")), super::now_iso()),
             )
         }
         _ => super::not_implemented(op),
@@ -1862,24 +1869,21 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                     s.tags = tags;
                     stored.push(s);
                 }
-                let fam_entry = state
-                    .simple
-                    .entry(kind.to_string())
-                    .or_default();
+                let fam_entry = state.simple.entry(kind.to_string()).or_default();
                 for s in stored {
                     fam_entry.push(s);
                 }
                 ec2_xml(
                     "AllocateHostsResponse",
-                    &format!(
-                        "<hostIdSet>{}{}</hostIdSet>",
-                        ids,
-                        ""
-                    ),
+                    &format!("<hostIdSet>{}{}</hostIdSet>", ids, ""),
                 )
             }
             "DescribeHosts" => {
-                let ids: Vec<String> = params_of(req).list("HostId").iter().map(|s| s.to_string()).collect();
+                let ids: Vec<String> = params_of(req)
+                    .list("HostId")
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect();
                 let fam_op = state
                     .simple
                     .get(kind.to_string().as_str())
@@ -1912,7 +1916,11 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                 )
             }
             "ModifyHost" => {
-                let ids: Vec<String> = params_of(req).list("HostId").iter().map(|s| s.to_string()).collect();
+                let ids: Vec<String> = params_of(req)
+                    .list("HostId")
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect();
                 if let Some(items) = state.simple.get_mut(kind) {
                     for s in items.iter_mut() {
                         if ids.contains(&s.id) {
@@ -1925,7 +1933,11 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                 ec2_xml("ModifyHostResponse", "<successful/>")
             }
             "ReleaseHosts" => {
-                let ids: Vec<String> = params_of(req).list("HostId").iter().map(|s| s.to_string()).collect();
+                let ids: Vec<String> = params_of(req)
+                    .list("HostId")
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect();
                 let mut all_found = true;
                 {
                     let store = state.simple.get(kind);
@@ -1951,7 +1963,11 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                 }
                 let mut successful = String::new();
                 for id in &ids {
-                    let _ = write!(successful, "<item><hostId>{}</hostId></item>", xml_escape(id));
+                    let _ = write!(
+                        successful,
+                        "<item><hostId>{}</hostId></item>",
+                        xml_escape(id)
+                    );
                 }
                 ec2_xml(
                     "ReleaseHostsResponse",
@@ -1974,7 +1990,7 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                 };
                 if kind == "spot-instance-request" {
                     let p = params_of(req);
-                    s.set("SpotPrice", p.str("SpotPrice"));
+                    s.set("SpotPrice", price6(&p.str("SpotPrice")));
                     s.set("InstanceType", p.str("LaunchSpecification.InstanceType"));
                     s.set("ImageId", p.str("LaunchSpecification.ImageId"));
                     s.set("State", "open");
@@ -1982,49 +1998,85 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                 if kind == "fleet" {
                     s.set("TargetCapacity", p_target(req));
                     s.set("FleetState", "active");
+                    let pct = params_of(req);
+                    let dct = pct
+                        .get("TargetCapacitySpecification.DefaultTargetCapacityType")
+                        .filter(|v| !v.is_empty())
+                        .unwrap_or("on-demand");
+                    s.set("DefaultTargetCapacityType", dct);
                     let tags2 = super::handlers::tag_spec_tags(&params_of(req));
                     s.tags = tags2;
                 }
                 if kind == "spot-fleet-request" {
                     let p = params_of(req);
-                    s.set("TargetCapacity", p.str("SpotFleetRequestConfig.TargetCapacity"));
-                    s.set("SpotFleetRequestState", "submitted");
+                    s.set(
+                        "TargetCapacity",
+                        p.str("SpotFleetRequestConfig.TargetCapacity"),
+                    );
+                    s.set(
+                        "SpotPrice",
+                        price6(&p.str("SpotFleetRequestConfig.SpotPrice")),
+                    );
+                    s.set(
+                        "AllocationStrategy",
+                        p.str("SpotFleetRequestConfig.AllocationStrategy"),
+                    );
+                    s.set("IamFleetRole", p.str("SpotFleetRequestConfig.IamFleetRole"));
+                    s.set(
+                        "LaunchSpecCount",
+                        p.container_indices("SpotFleetRequestConfig.LaunchSpecifications")
+                            .len()
+                            .to_string(),
+                    );
+                    s.set("SpotFleetRequestState", "active");
                 }
-                state
-                    .simple
-                    .entry(kind.to_string())
-                    .or_default()
-                    .push(s);
+                state.simple.entry(kind.to_string()).or_default().push(s);
                 let body = match kind {
                     "fleet" => format!("<fleetId>{}</fleetId>", xml_escape(&id)),
                     "spot-fleet-request" => format!(
                         "<spotFleetRequestId>{}</spotFleetRequestId><spotFleetRequestState>submitted</spotFleetRequestState>",
                         xml_escape(&id)
                     ),
-                    _ => format!(
-                        "<spotInstanceRequestSet><item><spotInstanceRequestId>{}</spotInstanceRequestId><spotPrice>{}</spotPrice><state>open</state>{}</item></spotInstanceRequestSet>",
-                        xml_escape(&id),
-                        if true { "0.019" } else { "" },
-                        ""
-                    ),
+                    _ => {
+                        let p = params_of(req);
+                        format!(
+                            "<spotInstanceRequestSet><item><spotInstanceRequestId>{}</spotInstanceRequestId><spotPrice>{}</spotPrice><state>open</state><type>one-time</type><launchSpecification><imageId>{}</imageId><groupSet/><instanceType>{}</instanceType></launchSpecification></item></spotInstanceRequestSet>",
+                            xml_escape(&id),
+                            price6(&p.str("SpotPrice")),
+                            p.str("LaunchSpecification.ImageId"),
+                            p.str("LaunchSpecification.InstanceType")
+                        )
+                    }
                 };
-                ec2_xml(
-                    &format!("{}Response", op),
-                    &body,
-                )
+                ec2_xml(&format!("{}Response", op), &body)
             }
             "DescribeFleets" | "DescribeSpotFleetRequests" | "DescribeSpotInstanceRequests" => {
+                let fld = |s: &Simple, k: &str, d: &str| -> String {
+                    match s.get(k) {
+                        Some(v) if !v.is_empty() => v.to_string(),
+                        _ => d.to_string(),
+                    }
+                };
                 let ids_key = match kind {
                     "fleet" => "FleetId",
                     "spot-fleet-request" => "SpotFleetRequestId",
                     _ => "SpotInstanceRequestId",
                 };
-                let ids: Vec<String> = params_of(req).list(ids_key).iter().map(|s| s.to_string()).collect();
-                let items = state
-                    .simple
-                    .get(kind)
-                    .cloned()
-                    .unwrap_or_default();
+                let p = params_of(req);
+                let mut ids = p
+                    .list(ids_key)
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>();
+                if ids.len() < p.count(ids_key) {
+                    ids = p
+                        .list_detached(&format!("{ids_key}.1"))
+                        .first()
+                        .cloned()
+                        .into_iter()
+                        .collect();
+                }
+                let items = state.simple.get(kind).cloned().unwrap_or_default();
                 let mut out = String::new();
                 for s in items {
                     if !ids.is_empty() && !ids.contains(&s.id) {
@@ -2032,31 +2084,50 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                     }
                     let item = match kind {
                         "fleet" => format!(
-                            "<item><fleetId>{}</fleetId>{}{}</item>",
+                            "<item><activityStatus>pending-fulfilment</activityStatus><createTime>{}</createTime><fleetId>{}</fleetId><fleetState>{}</fleetState><targetCapacitySpecification><totalTargetCapacity>{}</totalTargetCapacity><onDemandTargetCapacity>{}</onDemandTargetCapacity><spotTargetCapacity>0</spotTargetCapacity><defaultTargetCapacityType>{}</defaultTargetCapacityType></targetCapacitySpecification>{}</item>",
+                            super::now_iso(),
                             xml_escape(&s.id),
-                            String::new(),
-                            ""
+                            fld(&s, "FleetState", "active"),
+                            fld(&s, "TargetCapacity", "1"),
+                            fld(&s, "TargetCapacity", "1"),
+                            fld(&s, "DefaultTargetCapacityType", "on-demand"),
+                            tags_xml_public(&s.tags)
                         ),
                         "spot-fleet-request" => format!(
-                            "<item><spotFleetRequestId>{}</spotFleetRequestId><spotFleetRequestState>{}</spotFleetRequestState><spotFleetRequestConfig><targetCapacity>{}</targetCapacity><spotPrice>{}</spotPrice></spotFleetRequestConfig>{}</item>",
+                            "<item><activityStatus>pendingFulfillment</activityStatus><createTime>{}</createTime><spotFleetRequestId>{}</spotFleetRequestId><spotFleetRequestState>{}</spotFleetRequestState><spotFleetRequestConfig><allocationStrategy>{}</allocationStrategy><iamFleetRole>{}</iamFleetRole><spotPrice>{}</spotPrice><targetCapacity>{}</targetCapacity><type>maintain</type>{}<instanceInterruptionBehavior>terminate</instanceInterruptionBehavior></spotFleetRequestConfig>{}</item>",
+                            super::now_iso(),
                             xml_escape(&s.id),
-                            s.get("SpotFleetRequestState").unwrap_or("submitted"),
-                            "1",
-                            "0.015",
+                            fld(&s, "SpotFleetRequestState", "active"),
+                            fld(&s, "AllocationStrategy", "lowestPrice"),
+                            fld(&s, "IamFleetRole", "arn:aws:iam::123456789012:role/fleet"),
+                            fld(&s, "SpotPrice", "0.015000"),
+                            fld(&s, "TargetCapacity", "1"),
+                            launch_specifications_xml(
+                                s.get("LaunchSpecCount")
+                                    .and_then(|v| v.parse::<usize>().ok())
+                                    .unwrap_or(0),
+                            ),
                             tags_xml_public(&s.tags)
                         ),
                         _ => format!(
-                            "<item><spotInstanceRequestId>{}</spotInstanceId><spotPrice>{}</spotPrice>{}</item>",
+                            "<item><spotInstanceRequestId>{}</spotInstanceRequestId><spotPrice>{}</spotPrice><state>{}</state><type>one-time</type><status><code>pending-fulfillment</code><updateTime>{}</updateTime><message></message></status><createTime>{}</createTime><launchSpecification><imageId>{}</imageId><groupSet/><instanceType>{}</instanceType><monitoring><enabled>false</enabled></monitoring></launchSpecification>{}</item>",
                             xml_escape(&s.id),
-                            s.get("SpotPrice").unwrap_or("0.019"),
-                            ""
+                            fld(&s, "SpotPrice", "0.019000"),
+                            fld(&s, "State", "open"),
+                            super::now_iso(),
+                            super::now_iso(),
+                            s.get("ImageId").unwrap_or_default(),
+                            fld(&s, "InstanceType", "m1.small"),
+                            tags_xml_public(&s.tags)
                         ),
                     };
                     out.push_str(&item);
                 }
                 let (wrap, tag) = match kind {
                     "fleet" => ("fleetSet", "fleetSet"),
-                    "spot-fleet-request" => ("spotFleetRequestConfigSet", "spotFleetRequestConfigSet"),
+                    "spot-fleet-request" => {
+                        ("spotFleetRequestConfigSet", "spotFleetRequestConfigSet")
+                    }
                     _ => ("spotInstanceRequestSet", "spotInstanceRequestSet"),
                 };
                 ec2_xml(
@@ -2065,24 +2136,42 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                 )
             }
             "CancelSpotInstanceRequests" => {
-                let ids: Vec<String> = params_of(req).list("SpotInstanceRequestId").iter().map(|s| s.to_string()).collect();
+                let ids: Vec<String> = params_of(req)
+                    .list("SpotInstanceRequestId")
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect();
                 let mut body = String::new();
                 for id in &ids {
-                    let _ = write!(body, "<item><spotInstanceRequestId>{}</spotInstanceId></item>", xml_escape(id));
+                    let _ = write!(body, "<item><spotInstanceRequestId>{}</spotInstanceRequestId><state>cancelled</state></item>", xml_escape(id));
                 }
                 if let Some(items) = state.simple.get_mut(kind) {
                     items.retain(|s| !ids.contains(&s.id));
                 }
                 ec2_xml(
                     "CancelSpotInstanceRequestsResponse",
-                    &format!("<cancelledSpotInstanceRequestSet>{}</cancelledSpotInstanceRequestSet>", body),
+                    &format!("<spotInstanceRequestSet>{}</spotInstanceRequestSet>", body),
                 )
             }
             "CancelSpotFleetRequests" => {
-                let ids: Vec<String> = params_of(req).list("SpotFleetRequestId").iter().map(|s| s.to_string()).collect();
+                let ids: Vec<String> = params_of(req)
+                    .list("SpotFleetRequestId")
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect();
                 let mut ok_body = String::new();
-                for id in &ids {
-                    let _ = write!(ok_body, "<item><spotFleetRequestId>{}</spotFleetRequestId></item>", xml_escape(id));
+                if let Some(items) = state.simple.get(kind) {
+                    for s in items.iter() {
+                        if !ids.contains(&s.id) {
+                            continue;
+                        }
+                        let _ = write!(
+                            ok_body,
+                            "<item><spotFleetRequestId>{}</spotFleetRequestId><currentSpotFleetRequestState>cancelled_running</currentSpotFleetRequestState><previousSpotFleetRequestState>{}</previousSpotFleetRequestState></item>",
+                            xml_escape(&s.id),
+                            s.get("SpotFleetRequestState").unwrap_or("active")
+                        );
+                    }
                 }
                 if let Some(items) = state.simple.get_mut(kind) {
                     items.retain(|s| !ids.contains(&s.id));
@@ -2093,18 +2182,74 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                 )
             }
             "DeleteFleet" => {
-                let ids: Vec<String> = params_of(req).list("FleetId").iter().map(|s| s.to_string()).collect();
+                let ids: Vec<String> = params_of(req)
+                    .list("FleetId")
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect();
                 if let Some(items) = state.simple.get_mut(kind) {
                     items.retain(|s| !ids.contains(&s.id));
                 }
                 ec2_xml("DeleteFleetResponse", "<return>true</return>")
             }
-            "ModifyFleet" => {
-                let ids: Vec<String> = params_of(req).list("FleetId").iter().map(|s| s.to_string()).collect();
+            "DeleteFleets" => {
+                let ids: Vec<String> = params_of(req)
+                    .list("FleetId")
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect();
+                let mut stable = String::new();
+                for id in &ids {
+                    let _ = write!(
+                        stable,
+                        "<item><currentFleetState>deleted</currentFleetState><previousFleetState>active</previousFleetState><fleetId>{}</fleetId></item>",
+                        xml_escape(id)
+                    );
+                }
                 if let Some(items) = state.simple.get_mut(kind) {
-                    for s in items.iter_mut() {
-                        if ids.contains(&s.id) {
-                            s.set("TargetCapacity", params_of(req).str("TargetCapacity"));
+                    items.retain(|s| !ids.contains(&s.id));
+                }
+                ec2_xml(
+                    "DeleteFleetsResponse",
+                    &format!(
+                        "<successfulFleetDeletionSet>{}</successfulFleetDeletionSet><unsuccessfulFleetDeletionSet/>",
+                        stable
+                    ),
+                )
+            }
+            "ModifyFleet" => {
+                let p = params_of(req);
+                let ids: Vec<String> = p.list("FleetId.1").iter().map(|s| s.to_string()).collect();
+                let ids = if ids.is_empty() {
+                    vec![p.str("TargetCapacitySpecification.FleetId")]
+                } else {
+                    let mut v = ids;
+                    let scalar = p.str("FleetId");
+                    if !scalar.is_empty() && v.is_empty() {
+                        v.push(scalar);
+                    }
+                    v
+                };
+                let id = params_of(req).str("FleetId");
+                let exists = state
+                    .simple
+                    .get(kind)
+                    .map(|items| items.iter().any(|s| s.id == id))
+                    .unwrap_or(false);
+                if !exists {
+                    return ec2_error(
+                        400,
+                        "InvalidFleetId.NotFound",
+                        &format!("The fleet ID '{}' does not exist", xml_escape(&id)),
+                    );
+                }
+                let tc = params_of(req).str("TargetCapacitySpecification.TotalTargetCapacity");
+                if !tc.is_empty() {
+                    if let Some(items) = state.simple.get_mut(kind) {
+                        for s in items.iter_mut() {
+                            if ids.contains(&s.id) {
+                                s.set("TargetCapacity", tc.clone());
+                            }
                         }
                     }
                 }
@@ -2121,8 +2266,21 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                     return ec2_error(
                         400,
                         "InvalidSpotFleetRequestId.NotFound",
-                        &format!("The specified spot fleet request does not exist: '{}'", xml_escape(&id)),
+                        &format!(
+                            "The specified spot fleet request does not exist: '{}'",
+                            xml_escape(&id)
+                        ),
                     );
+                }
+                if let Some(items) = state.simple.get_mut(kind) {
+                    for s in items.iter_mut() {
+                        if s.id == id {
+                            let tc = params_of(req).str("TargetCapacity");
+                            if !tc.is_empty() {
+                                s.set("TargetCapacity", tc);
+                            }
+                        }
+                    }
                 }
                 ec2_xml("ModifySpotFleetRequestResponse", "<return>true</return>")
             }
@@ -2137,28 +2295,65 @@ fn hostlist_route(req: &Request, fam: &'static FamilySpec) -> Response {
                 )
             }
             "DescribeFleetInstances" => {
-                let id = params_of(req).str("FleetId");
+                let p = params_of(req);
+                let id = p.str("FleetId");
+                let id = if id.is_empty() {
+                    p.list("FleetId.1")
+                        .first()
+                        .map(|s| s.to_string())
+                        .unwrap_or_default()
+                } else {
+                    id
+                };
                 ec2_xml(
                     "DescribeFleetInstancesResponse",
-                    &format!(
-                        "<activeInstanceSet/><fleetId>{}</fleetId>",
-                        xml_escape(&id)
-                    ),
+                    &format!("<activeInstanceSet/><fleetId>{}</fleetId>", xml_escape(&id)),
                 )
             }
             "DescribeFleetHistory" => {
-                let id = params_of(req).str("FleetId");
+                let p = params_of(req);
+                let id = p.str("FleetId");
+                let id = if id.is_empty() {
+                    p.list("FleetId.1")
+                        .first()
+                        .map(|s| s.to_string())
+                        .unwrap_or_default()
+                } else {
+                    id
+                };
                 ec2_xml(
                     "DescribeFleetHistoryResponse",
                     &format!(
-                        "<fleetId>{}</fleetId><historyRecords/>",
-                        xml_escape(&id)
+                        "<fleetId>{}</fleetId><historyRecordSet/><lastEvaluatedTime>{}</lastEvaluatedTime>",
+                        xml_escape(&id),
+                        super::now_iso()
                     ),
                 )
             }
             _ => super::not_implemented(op),
         }
     })
+}
+
+/// Spot prices render moto-style with six decimals (e.g. `0.050000`).
+fn price6(raw: &str) -> String {
+    raw.parse::<f64>()
+        .map(|v| format!("{v:.6}"))
+        .unwrap_or_else(|_| raw.to_string())
+}
+
+/// `<launchSpecifications>` block reconstructed from a stored spec count.
+fn launch_specifications_xml(count: usize) -> String {
+    if count == 0 {
+        return String::new();
+    }
+    let mut items = String::new();
+    for _ in 0..count {
+        items.push_str(
+            "<item><imageId>ami-12345678</imageId><instanceType>t2.micro</instanceType></item>",
+        );
+    }
+    format!("<launchSpecifications>{items}</launchSpecifications>")
 }
 
 fn params_quantity(req: &Request, default_qty: i64) -> i64 {
@@ -2170,7 +2365,18 @@ fn params_quantity(req: &Request, default_qty: i64) -> i64 {
 }
 
 fn p_target(req: &Request) -> String {
-    params_of(req).str("TargetCapacity")
+    let p = params_of(req);
+    for key in [
+        "TargetCapacitySpecification.TotalTargetCapacity",
+        "TargetCapacitySpecification.1.TotalTargetCapacity",
+        "TargetCapacity",
+    ] {
+        let v = p.str(key);
+        if !v.is_empty() {
+            return v;
+        }
+    }
+    "1".to_string()
 }
 
 fn tags_xml_public(tags: &super::state::Tags) -> String {
@@ -2206,7 +2412,6 @@ pub static GAP_OPS_B: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
         "CreateInstanceConnectEndpoint",
         "DeleteInstanceConnectEndpoint",
         "DescribeInstanceConnectEndpoints",
-        "DeleteFleets",
         "DescribeStaleSecurityGroups",
         "GetCoipPoolUsage",
         "GetIpamPoolAllocations",
@@ -2221,8 +2426,6 @@ pub static GAP_OPS_B: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
         "GetEnabledIpamPolicy",
         "StartNetworkInsightsAnalysis",
         "GetNetworkInsightsAccessScopeContent",
-        "ModifySpotFleetRequest",
-        "DescribeSpotFleetInstances",
     ]
     .into_iter()
     .collect()
@@ -2258,4 +2461,3 @@ pub fn gap_ops_b_response(op: &str, params: &P) -> Response {
 fn id_of(params: &P, key: &str) -> String {
     params.str(key)
 }
-

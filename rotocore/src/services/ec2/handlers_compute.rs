@@ -1689,10 +1689,7 @@ fn create_volume(req: &Request, params: &P) -> Response {
             .find(|x| x.id == id)
             .cloned()
             .unwrap_or_default();
-        ec2_xml(
-            "CreateVolumeResponse",
-            &super::ec2b::volume_fields(&v),
-        )
+        ec2_xml("CreateVolumeResponse", &super::ec2b::volume_fields(&v))
     })
 }
 
@@ -2647,7 +2644,10 @@ fn describe_launch_template_versions(req: &Request, params: &P) -> Response {
         }
         ec2_xml(
             "DescribeLaunchTemplateVersionsResponse",
-            &format!("<launchTemplateVersionSet>{}</launchTemplateVersionSet>", items),
+            &format!(
+                "<launchTemplateVersionSet>{}</launchTemplateVersionSet>",
+                items
+            ),
         )
     })
 }
@@ -2902,7 +2902,7 @@ fn describe_instance_types(req: &Request, params: &P) -> Response {
     }
     ec2_xml(
         "DescribeInstanceTypesResponse",
-        &format!("<instanceTypeSet>{}</instanceTypesSet>", items),
+        &format!("<instanceTypeSet>{}</instanceTypeSet>", items),
     )
 }
 
