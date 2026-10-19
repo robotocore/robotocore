@@ -705,10 +705,13 @@ fn handler_4(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
                 return not_found(format!("Contact list {name} not found"));
             }
             let mut contact = json!({
+                "ContactListName": name,
                 "EmailAddress": email,
                 "TopicPreferences": [],
                 "TopicDefaultPreferences": [],
                 "UnsubscribeAll": false,
+                "CreatedTimestamp": crate::proto::now_iso(),
+                "LastUpdatedTimestamp": crate::proto::now_iso(),
             });
             if let Some(p) = body.get("TopicPreferences") {
                 contact["TopicPreferences"] = p.clone();
