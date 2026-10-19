@@ -30,6 +30,7 @@ pub mod ce;
 pub mod clouddirectory;
 pub mod cloudformation;
 pub mod cloudfront;
+pub mod cloudhsmv2;
 pub mod cloudtrail;
 pub mod codebuild;
 pub mod codecommit;pub mod codepipeline;
@@ -146,9 +147,10 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "clouddirectory" => clouddirectory::dispatch(req),
         "cloudfront" => Some(cloudfront::dispatch(req)),
         "cloudtrail" => Some(cloudtrail::dispatch(req)),
+"cloudhsmv2" => cloudhsmv2::dispatch(req),
 "codebuild" => codebuild::dispatch(req),
 "codecommit" => codecommit::dispatch(req),        "cognito-idp" => cognito_idp::dispatch(req),
-        "cognitoidentity" => cognito_identity::dispatch(req),
+"cognito-idp" => cognito_idp::dispatch(req),        "cognitoidentity" => cognito_identity::dispatch(req),
         "comprehend" => Some(comprehend::dispatch(req)),
         "config" => Some(config::dispatch(req)),
         "codedeploy" => codedeploy::dispatch(req),
@@ -268,9 +270,10 @@ pub fn handles_service(service: &str) -> bool {
             | "clouddirectory"
             | "cloudfront"
             | "cloudtrail"
+| "cloudhsmv2"
 | "codebuild"
 | "codecommit"            | "codepipeline"
-            | "cognito-idp"
+| "codepipeline"            | "cognito-idp"
             | "cognitoidentity"
             | "comprehend"
             | "config"
