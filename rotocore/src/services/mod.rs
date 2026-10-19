@@ -23,6 +23,7 @@ pub mod batch;
 pub mod bedrock;
 pub mod budgets;
 pub mod ce;
+pub mod clouddirectory;
 pub mod cloudformation;
 pub mod cloudfront;
 pub mod cloudtrail;
@@ -126,6 +127,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "budgets" => budgets::dispatch(req),
         "ce" => ce::dispatch(req),
         "cloudformation" => Some(self::cloudformation::dispatch(req)),
+        "clouddirectory" => clouddirectory::dispatch(req),
         "cloudfront" => Some(cloudfront::dispatch(req)),
         "cloudtrail" => Some(cloudtrail::dispatch(req)),
         "cognito-idp" => cognito_idp::dispatch(req),
@@ -240,6 +242,7 @@ pub fn handles_service(service: &str) -> bool {
             | "budgets"
             | "ce"
             | "cloudformation"
+            | "clouddirectory"
             | "cloudfront"
             | "cloudtrail"
             | "codepipeline"
