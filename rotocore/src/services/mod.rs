@@ -58,8 +58,8 @@ pub mod lakeformation;
 pub mod macie2;
 pub mod managedblockchain;
 pub mod mediapackage;
-pub mod mq;
-pub mod networkfirewall;
+pub mod mediastore;
+pub mod mq;pub mod networkfirewall;
 pub mod opensearch;
 pub mod opensearchserverless;
 pub mod organizations;
@@ -148,8 +148,8 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "macie2" => Some(macie2::dispatch(req)),
         "managedblockchain" => Some(managedblockchain::dispatch(req)),
         "mediapackage" => mediapackage::dispatch(req),
-        "mq" => mq::dispatch(req),
-        "networkfirewall" => networkfirewall::dispatch(req),
+"mediastore" => mediastore::dispatch(req),
+"mq" => mq::dispatch(req),        "networkfirewall" => networkfirewall::dispatch(req),
         "osis" => osis::dispatch(req),
         "opensearch" => Some(opensearch::dispatch(req)),
         "opensearchserverless" => Some(opensearchserverless::dispatch(req)),
@@ -250,8 +250,8 @@ pub fn handles_service(service: &str) -> bool {
             | "macie2"
             | "managedblockchain"
             | "mediapackage"
-            | "mq"
-            | "networkfirewall"
+| "mediastore"
+| "mq"            | "networkfirewall"
             | "opensearch"
             | "opensearchserverless"
             | "organizations"
