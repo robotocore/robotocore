@@ -1,36 +1,21 @@
 #!/usr/bin/env python3
-"""Fidelity parity runner for the robotocore Rust port.
+"""Fidelity parity runner for robotocore (pure Rust).
 
-Two lanes exist during the port: the Python ground-truth server (:4566) and
-the Rust server (:4567). The endgame keeps only the Rust server.
-
-Modes:
-  --dual       (transitional default) every compat suite runs against BOTH
-               servers; fidelity % = rust_pass / py_pass (py vs rust).
-  --rust-only  (endgame, and fired automatically whenever the Python
-               ground-truth server is absent) every suite runs ONCE against
-               the Rust server; fidelity becomes actual vs expected, where
-               expected = per-suite pass counts in the golden baseline
-               `.parity/expectations_current.json`. Regressions print
-               "EXPECTATIONS DRIFT" and are also recorded in the state file;
-               the run exits 2 when a regression is found.
+The Python server and the moto sidecar are gone; every compat suite runs
+once against the single Rust server (rotocore natively implements every
+ported service). Fidelity is actual vs expected, where expected = per-suite
+pass counts in the golden baseline `.parity/expectations_current.json`.
+Regressions print "EXPECTATIONS DRIFT" and the run exits 2.
 
 Usage:
-    parity.py                    # full run, mode auto-detected (see --dual/--rust-only)
+    parity.py                    # full run (tests/compatibility against the Rust server)
     parity.py --services sqs,s3  # subset
-    parity.py --rust-only --services sqs,s3,ec2
-    parity.py --rust-only --update-expectations   # promote a clean full run to the baseline
+    parity.py --update-expectations   # promote a clean full run to the baseline
     parity.py --next             # just re-derive the next work item from state
     parity.py --state FILE       # state path (default: .parity/state.json)
     parity.py --expectations FILE  # baseline path (default: .parity/expectations_current.json)
 
-Ports come from the environment: PY_PORT (4566, unused in rust-only),
-RUST_PORT (4567), SIDECAR_PORT (4568).
-
-In dual mode the headline metric is *fidelity %* per service = rust_pass /
-py_pass; a value < 100% means Rust is losing behavior the Python (moto)
-server has. In rust-only mode it is rust_pass / expected_pass; a value
-< 100% means the Rust server dropped below the frozen baseline.
+Port comes from the environment: RUST_PORT (default 4566 — the shipped port).
 """
 from __future__ import annotations
 
@@ -47,9 +32,7 @@ REPO = Path(__file__).resolve().parents[2]
 RUST_REPO = Path(os.environ.get("RUST_REPO", REPO))
 # When invoked via `uv run python`, sys.executable IS the project venv python.
 PYV = os.environ.get("ROBOTOCORE_PYTHON", sys.executable)
-PY_PORT = os.environ.get("PY_PORT", "4566")
-RUST_PORT = os.environ.get("RUST_PORT", "4567")
-PY_URL = f"http://127.0.0.1:{PY_PORT}"
+RUST_PORT = os.environ.get("RUST_PORT", "4566")
 RUST_URL = f"http://127.0.0.1:{RUST_PORT}"
 RUST_BIN = str(RUST_REPO / "target/release/robotocore-rust")
 COMPAT_DIR = REPO / "tests/compatibility"
@@ -100,71 +83,9 @@ def sh(cmd, **kw):
     return subprocess.run(cmd, shell=True, capture_output=True, text=True, **kw)
 
 
-def python_server_up():
-    """Probe-only check: is a Python ground-truth server listening on PY_URL?"""
-    return sh(f"curl -sf --max-time 3 {PY_URL}/_robotocore/health", timeout=10).returncode == 0
-
-
-def ensure_python_server():
-    r = sh(f"curl -sf --max-time 3 {PY_URL}/_robotocore/health", timeout=10)
-    if r.returncode == 0:
-        log(f"[ok] Python server up at {PY_URL}")
-        return True
-    log("[..] Starting Python server (local uvicorn)...")
-    log_file = open("/tmp/parity_py.log", "w")
-    subprocess.Popen(
-        [PYV, "-m", "robotocore.main"],
-        stdout=log_file, stderr=subprocess.STDOUT, cwd=str(REPO),
-        env=dict(os.environ, ROBOTOCORE_PORT=PY_PORT),
-        start_new_session=True)
-    for _ in range(30):
-        time.sleep(2)
-        r = sh(f"curl -sf --max-time 3 {PY_URL}/_robotocore/health", timeout=10)
-        if r.returncode == 0:
-            log(f"[ok] Python server up at {PY_URL}")
-            return True
-    log("[!!] Python server failed to start (see /tmp/parity_py.log)")
-    return False
-
-
-SIDECAR_PORT = os.environ.get("SIDECAR_PORT", "4568")
-SIDECAR_URL = f"http://127.0.0.1:{SIDECAR_PORT}"
-SIDECAR_HEALTH = f"{SIDECAR_URL}/_sidecar/health"
-SIDECAR_SCRIPT = str(RUST_REPO / "scripts/moto_sidecar.py")
-state_dir_global = Path("/tmp/parity")
-
-
-def ensure_sidecar():
-    """Verify the moto sidecar daemon is up."""
-    r = sh(f"curl -sf --max-time 3 {SIDECAR_HEALTH}", timeout=10)
-    if r.returncode == 0:
-        log(f"[ok] moto sidecar up at {SIDECAR_URL}")
-        return True
-    log("[!!] moto sidecar not running. Start it with: bash scripts/start_parity_servers.sh")
-    return False
-
-
-def _bridge_ready():
-    """Probe the bridge with a real EC2 call. Returns True when it works."""
-    r = sh(
-        f"curl -s -X POST {RUST_URL}/ --max-time 10 "
-        f"-H 'Content-Type: application/x-www-form-urlencoded' "
-        f"-H 'Authorization: AWS4-HMAC-SHA256 Credential=123456789012/20240101/us-east-1/ec2/aws4_request' "
-        f"-H 'X-Amz-Date: 20240101T000000Z' "
-        f"-d 'Action=DescribeInstances&Version=2016-11-15' 2>/dev/null",
-        timeout=15,
-    )
-    return r.returncode == 0 and "<DescribeInstancesResponse" in r.stdout
-
-
 def ensure_rust_server():
-    """Ensure the Rust server is up WITH a WORKING moto bridge, using PID files.
-
-    Only touches processes belonging to THIS parity instance (LOG_PREFIX +
-    ports), never servers owned by other worktrees/agents.
-    """
-    ensure_sidecar()
-    log("[..] (Re)starting Rust server with moto bridge...")
+    """Ensure the Rust robotocore server is up (PID-file managed, sidecar-free)."""
+    log("[..] (Re)starting Rust server (rotocore native)...")
     sh(f"cd {RUST_REPO} && cargo build --release", timeout=600)
     pid_file = f"/tmp/{os.environ.get('LOG_PREFIX', 'parity')}_rust.pid"
     old_pid = None
@@ -176,53 +97,19 @@ def ensure_rust_server():
     if old_pid:
         sh(f"kill -0 {old_pid} 2>/dev/null && kill {old_pid} 2>/dev/null; true", timeout=10)
         time.sleep(1)
-    # Belt-and-braces: any process visibly bound to OUR port only
-    sh(f"fuser -k {RUST_PORT}/tcp 2>/dev/null; true", timeout=10)
-    time.sleep(1)
-    proc = subprocess.Popen([RUST_BIN, "--port", RUST_PORT, "--moto-url", SIDECAR_URL],
+    proc = subprocess.Popen([RUST_BIN, "--host", "127.0.0.1", "--port", RUST_PORT],
                             stdout=open(f"/tmp/{os.environ.get('LOG_PREFIX', 'parity')}_rust.log", "w"),
                             stderr=subprocess.STDOUT, start_new_session=True)
     with open(pid_file, "w") as f:
         f.write(str(proc.pid))
-    # Wait for the server to be up
     for _ in range(20):
         time.sleep(1)
         r = sh(f"curl -sf --max-time 3 {RUST_URL}/_robotocore/health", timeout=10)
         if r.returncode == 0:
-            break
-    # Wait for the BRIDGE to actually work (sidecar may still be loading backends)
-    for attempt in range(30):
-        # Check sidecar is still alive
-        sc = sh(f"curl -sf --max-time 3 {SIDECAR_HEALTH}", timeout=10)
-        if sc.returncode != 0:
-            log(f"[!!] sidecar died during bridge wait (attempt {attempt})")
-            # Restart sidecar
-            _restart_sidecar()
-            continue
-        if _bridge_ready():
-            log(f"[ok] Rust server (with working bridge) up at {RUST_URL}")
+            log(f"[ok] Rust server up at {RUST_URL}")
             return True
-        time.sleep(2)
-    log("[!!] Rust server up but bridge not working")
+    log("[!!] Rust server failed to start (see /tmp/parity_rust.log)")
     return False
-
-
-def _restart_sidecar():
-    # Kill only OUR sidecar (by PID file), not other worktrees' sidecars.
-    pid_file = f"/tmp/{os.environ.get('LOG_PREFIX', 'parity')}_sidecar.pid"
-    if os.path.exists(pid_file):
-        try:
-            old_pid = int(open(pid_file).read().strip())
-            sh(f"kill -0 {old_pid} 2>/dev/null && kill -9 {old_pid} 2>/dev/null; true", timeout=10)
-        except ValueError:
-            pass
-    sh(f"fuser -k {SIDECAR_PORT}/tcp 2>/dev/null; true", timeout=10)
-    time.sleep(1)
-    script = str(REPO / "scripts/moto_sidecar.py")
-    side_log = f"/tmp/{os.environ.get('LOG_PREFIX', 'parity')}_sidecar.log"
-    log_cmd = f"cd {REPO} && nohup {PYV} {script} --port {SIDECAR_PORT} > {side_log} 2>&1 & echo $! > {pid_file}"
-    subprocess.Popen(log_cmd, shell=True, cwd=str(REPO), start_new_session=True, executable="/bin/bash")
-    time.sleep(5)
 
 
 def spec_op_count(svc):
@@ -341,9 +228,6 @@ def classify_rust_only(results, timed_out):
 
 
 def run_all(services, state_dir):
-    if not ensure_python_server():
-        log("[!!] aborting: Python ground-truth server unavailable")
-        return {"services": {}, "generated": time.strftime("%Y-%m-%dT%H:%M:%S"), "aborted": True}
     if not ensure_rust_server():
         log("[!!] aborting: Rust server / bridge unavailable")
         return {"services": {}, "generated": time.strftime("%Y-%m-%dT%H:%M:%S"), "aborted": True}
@@ -357,27 +241,23 @@ def run_all(services, state_dir):
                                        "crate": "native" if svc in NATIVE else "bridge"}
             log(f"[skip] {svc}: no compat suite")
             continue
-        log(f"[..] {svc}: running {suite.name} vs both endpoints...")
-        py_res, _, _ = run_suite(suite.name, PY_URL, str(xml_dir / f"{svc}_py.xml"))
-        rust_res, _, _ = run_suite(suite.name, RUST_URL, str(xml_dir / f"{svc}_rust.xml"))
-        c = classify(py_res, rust_res)
-        py_pass = sum(1 for v in py_res.values() if v == "pass")
-        rust_pass = sum(1 for v in rust_res.values() if v == "pass")
-        if c["truncated"]:
-            # Test sets differ between runs — a fidelity% would be fiction.
-            fidelity = None
-            log(f"[WARN] {svc}: truncated run (py={len(py_res)} vs rust={len(rust_res)} tests); fidelity omitted")
-        else:
-            fidelity = round(100.0 * rust_pass / py_pass, 1) if py_pass else None
-        report["services"][svc] = {
+        log(f"[..] {svc}: running {suite.name} vs rust endpoint (baseline via expectations)...")
+        rust_res, _, timed_out = run_suite(suite.name, RUST_URL, str(xml_dir / f"{svc}_rust.xml"))
+        r = classify_rust_only(rust_res, timed_out)
+        rec = {
             "status": "ok",
-            "crate": "native" if svc in NATIVE else "bridge",
+            "crate": "native",
             "spec_ops": spec_op_count(svc),
-            "py_pass": py_pass, "rust_pass": rust_pass,
-            "fidelity_pct": fidelity,
-            **c,
+            "pass": r["pass"], "fail": r["fail"], "skip": r["skip"],
+            "total": r["total"], "truncated": r["truncated"],
         }
-        log(f"     {svc}: fidelity={fidelity}%  py={py_pass} rust={rust_pass} gap={c['rust_gap']}")
+        exp = (EXPECTATIONS.get(svc) or {}).get("pass")
+        if not r["truncated"] and exp is not None:
+            rec["expected"] = exp
+            rec["drift"] = r["pass"] - exp
+        report["services"][svc] = rec
+        mark = f"{r['pass']}/{r['total']}"
+        log(f"     {svc}: pass={mark}  drift={rec.get('drift')}")
     return report
 
 
@@ -660,17 +540,6 @@ def main():
         log("No state file. Run a full parity run first.")
         return
 
-    if args.dual and args.rust_only:
-        ap.error("--dual and --rust-only are mutually exclusive")
-
-    mode = "rust-only" if args.rust_only else "dual"
-    if not (args.dual or args.rust_only):
-        # Default: rust-only when the Python ground-truth server is absent.
-        if python_server_up():
-            log("[mode] python ground truth present -> dual")
-        else:
-            log("[mode] python ground truth absent -> rust-only")
-            mode = "rust-only"
 
     services = [s.strip() for s in args.services.split(",") if s.strip()]
     # include bridge spot-checks if not explicitly limited
@@ -687,11 +556,8 @@ def main():
     signal.signal(signal.SIGALRM, _timeout_handler)
     signal.alarm(args.timeout)
 
-    if mode == "rust-only":
-        expectations = load_expectations(expectations_path)
-        report = run_all_rust_only(services, state_path.parent, expectations)
-    else:
-        report = run_all(services, state_path.parent)
+    EXPECTATIONS = load_expectations(expectations_path)
+    report = run_all_rust_only(services, state_path.parent, EXPECTATIONS)
     signal.alarm(0)  # cancel the alarm
     if args.update_expectations:
         if report.get("aborted"):
@@ -699,15 +565,11 @@ def main():
         else:
             write_expectations(report, expectations_path)
     next_work = derive_next_work(report)
-    if mode == "rust-only":
-        print_rust_only_summary(report, next_work)
-        save_state(report, next_work, state_path, mode=mode)
-        if report.get("expectations_drift"):
-            log("[!!] baseline regression detected (see EXPECTATIONS DRIFT above)")
-            raise SystemExit(2)
-    else:
-        print_summary(report, next_work)
-        save_state(report, next_work, state_path, mode=mode)
+    print_rust_only_summary(report, next_work)
+    save_state(report, next_work, state_path, mode="rust-only")
+    if report.get("expectations_drift"):
+        log("[!!] baseline regression detected (see EXPECTATIONS DRIFT above)")
+        raise SystemExit(2)
 
 
 if __name__ == "__main__":

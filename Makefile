@@ -1,169 +1,84 @@
-.PHONY: test test-all unit-test integration-test compat-test compat-test-hot lint format \
-        docker-build docker-run docker-compare parity-report gap-analysis clean \
-        start stop status smoke help test-quality validate-tests lint-project \
+.PHONY: test compat-test compat-test-hot parity rust-test rust-lint rust-fmt \
+        docker-build docker-run serve clean help start stop status \
         test-iac test-iac-terraform test-iac-cloudformation test-iac-cdk \
-        test-iac-pulumi test-iac-serverless test-iac-sam release \
-        s3-semantic-audit s3-connectivity-matrix \
-        coverage pre-commit-install pre-commit
+        test-iac-pulumi test-iac-serverless test-iac-sam help
 
 N := $(shell python3 -c "import os; print(min(os.cpu_count() or 4, 12))")
-DEV := uv run python scripts/dev.py
 
-# Default: parallel unit tests (fast, no server needed)
-test: unit-test ## Run unit tests (default)
+# Default: compatibility tests (they need the running rust server)
+test: compat-test ## Run compatibility suites (starts the rust server)
 
-## ── Testing ──────────────────────────────────────────────────────────────────
+## ── Rust gates ───────────────────────────────────────────────────────────
 
-unit-test: ## Run unit tests in parallel (no server needed)
-	uv sync
-	uv run pytest tests/unit/ -n$(N) -q --tb=short
+rust-test: ## Run all Rust unit tests
+	cargo test --workspace
 
-coverage: ## Run unit tests with coverage report
-	uv sync
-	uv run pytest tests/unit/ -n$(N) -q --tb=short --cov=src/robotocore --cov-report=term-missing --cov-report=html:htmlcov
+rust-lint: ## Clippy (CI gate)
+	cargo clippy --workspace --all-targets -- -D warnings
 
-compat-test: ## Run compatibility tests (auto-starts/stops server)
-	$(DEV) test-compat
+rust-fmt: ## rustfmt check
+	cargo fmt --all --check
 
-compat-test-hot: ## Run compatibility tests (assumes server already running)
-	uv sync
+## ── Testing ────────────────────────────────────────────────────────────
+
+compat-test: ## Compatibility tests (auto-starts the rust server)
+	bash scripts/start_parity_servers.sh
 	uv run pytest tests/compatibility/ -n$(N) --dist=loadfile -q --tb=short
 
-integration-test: ## Run integration tests (auto-manages server)
-	$(DEV) test-integration
+compat-test-hot: ## Compatibility tests (assumes server already running)
+	uv run pytest tests/compatibility/ -n$(N) --dist=loadfile -q --tb=short
 
-test-all: ## Run all tests: unit + compat + integration
-	$(DEV) test-all
+parity: ## Full rust-only parity run against the golden baseline
+	uv run python scripts/harness/parity.py --update-expectations
 
-## ── IaC tests ────────────────────────────────────────────────────────────────
+## ── IaC tests ────────────────────────────────────────────────────────────
 
 test-iac: ## Run all IaC tests (requires running server + tool binaries)
-	uv sync
 	uv run pytest tests/iac/ -q --tb=short
 
-test-iac-terraform: ## Run Terraform IaC tests
-	uv sync
+test-iac-terraform: ## Terraform IaC tests
 	uv run pytest tests/iac/terraform/ -q --tb=short
 
-test-iac-cloudformation: ## Run CloudFormation IaC tests
-	uv sync
+test-iac-cloudformation: ## CloudFormation IaC tests
 	uv run pytest tests/iac/cloudformation/ -q --tb=short
 
-test-iac-cdk: ## Run CDK IaC tests
-	uv sync
+test-iac-cdk: ## CDK IaC tests
 	uv run pytest tests/iac/cdk/ -q --tb=short
 
-test-iac-pulumi: ## Run Pulumi IaC tests
-	uv sync
+test-iac-pulumi: ## Pulumi IaC tests
 	uv run pytest tests/iac/pulumi/ -q --tb=short
 
-test-iac-serverless: ## Run Serverless Framework IaC tests
-	uv sync
+test-iac-serverless: ## Serverless Framework IaC tests
 	uv run pytest tests/iac/serverless/ -q --tb=short
 
-test-iac-sam: ## Run SAM IaC tests
-	uv sync
+test-iac-sam: ## SAM IaC tests
 	uv run pytest tests/iac/sam/ -q --tb=short
 
-## ── Server ───────────────────────────────────────────────────────────────────
+## ── Server ────────────────────────────────────────────────────────────
 
-start: ## Start dev server in background (port 4566)
-	$(DEV) server-start
+start: ## Start the rust server (rotocore native)
+	bash scripts/start_parity_servers.sh
 
-stop: ## Stop dev server
-	$(DEV) server-stop
+stop: ## Stop the rust server
+	-kill $$(cat /tmp/parity_rust.pid 2>/dev/null) 2>/dev/null
 
-status: ## Show dev server status
-	$(DEV) server-status
+status: ## Show server status
+	curl -sf http://127.0.0.1:4566/_robotocore/health | python3 -m json.tool
 
-smoke: ## Run smoke tests (requires running server)
-	uv run python scripts/smoke_test.py
+## ── Docker ────────────────────────────────────────────────────────────
 
-## ── Code quality ─────────────────────────────────────────────────────────────
-
-lint: ## Check code with ruff (lint + format)
-	uv run ruff check src/ tests/ scripts/
-	uv run ruff format --check src/ tests/ scripts/
-
-format: ## Auto-format and fix code with ruff
-	uv run ruff format src/ tests/ scripts/
-	uv run ruff check --fix src/ tests/ scripts/
-
-test-quality: ## Static analysis: report compat test quality (no server needed)
-	uv run python scripts/validate_test_quality.py
-
-validate-tests: ## Runtime check: verify tests actually contact server (requires make start)
-	uv run python scripts/validate_tests_runtime.py --all --sample 10
-
-lint-project: ## Structural lint: registry sync, test quality, protocol drift (no server needed)
-	uv run python scripts/lint_project.py --fail
-
-pre-commit-install: ## Install pre-commit hooks into local git repo
-	uv run pre-commit install
-
-pre-commit: ## Run pre-commit checks on all files
-	uv run pre-commit run --all-files
-
-## ── Gap analysis ─────────────────────────────────────────────────────────────
-
-gap-analysis: ## Full gap analysis: robotocore vs LocalStack AND vs 100% botocore
-	@echo ""
-	@echo "══════════════════════════════════════════════════════════════════"
-	@echo "  Gap 1: Robotocore vs LocalStack — tier-by-tier comparison"
-	@echo "══════════════════════════════════════════════════════════════════"
-	uv run python scripts/analyze_localstack.py --tier-analysis
-	@echo ""
-	@echo "══════════════════════════════════════════════════════════════════"
-	@echo "  Gap 2: Robotocore vs LocalStack — community operation gaps"
-	@echo "══════════════════════════════════════════════════════════════════"
-	uv run python scripts/analyze_localstack.py --robotocore-gap
-	@echo ""
-	@echo "══════════════════════════════════════════════════════════════════"
-	@echo "  Gap 3: Robotocore vs 100% botocore AWS operation coverage"
-	@echo "══════════════════════════════════════════════════════════════════"
-	uv run python scripts/generate_parity_report.py
-
-batch-probe: ## Batch-probe all gap services against running server (requires make start)
-	uv run python scripts/batch_probe_gap.py --all
-
-parity-report: ## Generate full parity report to parity-report.json (auto-manages server)
-	$(DEV) server-start
-	ENDPOINT_URL=http://localhost:4566 uv run python scripts/generate_parity_report.py --output parity-report.json
-	$(DEV) server-stop
-
-s3-semantic-audit: ## Generate the S3 feature-level semantic audit report
-	uv run python scripts/s3_semantic_audit.py
-
-s3-connectivity-matrix: s3-semantic-audit ## Regenerate the S3 connectivity matrix
-	@echo "Wrote docs/s3-connectivity-matrix.md"
-
-## ── Docker ───────────────────────────────────────────────────────────────────
-
-docker-build: ## Build Docker image
+docker-build: ## Build the pure-Rust image
 	docker build -t robotocore .
 
-docker-run: docker-build ## Build and run Docker container on port 4566
+docker-run: ## Run the pure-Rust container on port 4566
 	docker run -p 4566:4566 robotocore
 
-docker-compare: ## Run robotocore + LocalStack side-by-side for comparison
-	docker compose --profile localstack up
+## ── Cleanup ────────────────────────────────────────────────────────────
 
-## ── Release ─────────────────────────────────────────────────────────────────
-
-release: ## Tag and push a CalVer release (auto-publishes Docker images via CI)
-	@VERSION=$$(date -u +%Y.%-m.%-d) && \
-	EXISTING=$$(git tag -l "v$$VERSION" "v$$VERSION.*" | wc -l | tr -d ' ') && \
-	if [ "$$EXISTING" -gt 0 ]; then VERSION="$$VERSION.$$EXISTING"; fi && \
-	echo "Releasing v$$VERSION" && \
-	git tag "v$$VERSION" && \
-	git push origin "v$$VERSION"
-
-## ── Misc ─────────────────────────────────────────────────────────────────────
-
-clean: ## Remove build artifacts, caches, and temp files
+clean: ## Remove build artifacts and caches
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name .pytest_cache -exec rm -rf {} + 2>/dev/null || true
-	rm -rf .mypy_cache .ruff_cache dist build *.egg-info parity-report.json .robotocore.pid .robotocore.log .robotocore-diag.log
+	rm -rf .mypy_cache .ruff_cache .robotocore.pid .robotocore.log
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"} \
