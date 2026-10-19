@@ -48,7 +48,7 @@ pub mod support;
 pub mod transcribe;
 
 // Pending ports (fall back to the moto sidecar): elbv2/elb, athena, glue,
-// emr, cloudfront, iot, connect, apigateway(v1/v2), redshift and the long
+// emr, cloudfront, iot, apigateway(v1/v2), redshift and the long
 // tail the ML-tail agent re-baselined through the sidecar.
 
 /// Ported service backends. An arm here routes that service to the native
@@ -66,6 +66,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "cloudtrail" => Some(cloudtrail::dispatch(req)),
         "cognito-idp" => cognito_idp::dispatch(req),
         "comprehend" => Some(comprehend::dispatch(req)),
+        "connect" => Some(connect::dispatch(req)),
         "config" => Some(config::dispatch(req)),
         "databrew" => databrew::dispatch(req),
         "datasync" => datasync::dispatch(req),
