@@ -8,6 +8,8 @@ use crate::{Request, Response};
 
 pub mod acm;
 pub mod amp;
+pub mod apigateway;
+pub mod apigatewayv2;
 pub mod apigw_management;
 pub mod appmesh;
 pub mod appsync;
@@ -37,8 +39,8 @@ pub mod opensearchserverless;
 pub mod organizations;
 pub mod pipes;
 pub mod polly;
-pub mod resourcegroupstaggingapi;
 mod rds;
+pub mod resourcegroupstaggingapi;
 pub mod route53resolver;
 pub mod sagemaker;
 pub mod securityhub;
@@ -47,8 +49,8 @@ pub mod support;
 pub mod transcribe;
 
 // Pending ports (fall back to the moto sidecar): elbv2/elb, athena, glue,
-// emr, cloudfront, iot, connect, apigateway(v1/v2), redshift and the long
-// tail the ML-tail agent re-baselined through the sidecar.
+// emr, cloudfront, iot, connect, redshift and the long tail the ML-tail
+// agent re-baselined through the sidecar.
 
 /// Ported service backends. An arm here routes that service to the native
 /// rotocore implementation the moment it reaches suite parity.
