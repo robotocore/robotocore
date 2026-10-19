@@ -2,27 +2,38 @@
 //!
 //! Replaces the moto sidecar for `textract` (`X-Amz-Target: Textract.<Op>`
 //! on `application/x-amz-json-1.1`). State is per-(account, region) and
-//! mirrors moto's `TextractBackend` (moto/textract): the two async-job maps
-//! changed by the Start/Get pairs. Every payload is moto's fixed fixture —
-//! empty `Blocks`, a page count drawn once per process, `JobStatus`
-//! "SUCCEEDED" — because moto parses no documents (`moto/textract/models.py`).
+//! mirrors moto's `TextractBackend` (moto/textract/models.py): one async-job
+//! map per Start/Get pair, plus the adapter / adapter-version / tagging
+//! stores. Every payload is moto's fixed fixture — empty `Blocks`, a page
+//! count drawn once per process, `JobStatus` "SUCCEEDED" — because moto
+//! parses no documents.
 //!
-//! Surface (probes/textract.json): only the six operations below were
-//! measurable moto-era (`working`, plus `AnalyzeID` whose probe could not
-//! fill `DocumentPages` but whose handler exists in moto). The remaining 19
-//! operations recorded 501 from the sidecar and stay 501 here — they are on
-//! the G2 ledger, not invented.
+//! Surface (matches the deployed fork's `responses.py`, which handles every
+//! botocore textract operation; `urls.py` routes the whole service to the
+//! same dispatcher): all 25 operations are served. The historical probe's 19
+//! `not_implemented` entries were recorded from a stale moto — the deployed
+//! module implements them, so per G2 they are in surface. The catch-all
+//! fallback stays for any operation outside the fork's handler table.
 //!
-//! moto quirk kept: `PAGES` is a class attribute, so the randomized page
-//! count is drawn once per process and shared by every call in every
-//! backend (`PAGES = mock_random.randint(5, 500)`).
+//! moto quirks kept:
+//! * `PAGES` is a class attribute holding `{"Pages": N}`, and every payload
+//!   nests it as `{"Pages": TextractBackend.PAGES}` — so the wire shape is
+//!   `{"Pages": {"Pages": N}}` (verified against the deployed module in
+//!   isolation, no test overrides). One 5..=500 draw per process, shared by
+//!   every operation in every backend.
+//! * Adapters carry two tag stores: creation tags frozen on the adapter
+//!   (surfaced by `GetAdapter`) and the mutable `tagger` map keyed by ARN
+//!   (surfaced by `ListTagsForResource`, mutated by Tag/Untag).
+//! * Adapter versions are numbered by current count (`str(len+1)`), so a
+//!   deleted version's number is reused.
 
 use crate::proto::{json_error, parse_json_body};
 use crate::store::{self, ScopeKey};
 use crate::{Request, Response};
+use chrono::Utc;
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
@@ -43,6 +54,14 @@ struct TextractStore {
     text_detection_jobs: BTreeMap<String, Value>,
     /// job id -> stored result — moto's `async_document_analysis_jobs`
     document_analysis_jobs: BTreeMap<String, Value>,
+    /// job id -> stored result — moto's `async_expense_analysis_jobs`
+    expense_jobs: BTreeMap<String, Value>,
+    /// job id -> stored result — moto's `async_lending_analysis_jobs`
+    lending_jobs: BTreeMap<String, Value>,
+    /// adapter id -> adapter — moto's `adapters`
+    adapters: BTreeMap<String, Adapter>,
+    /// resource arn -> tags — moto's `tagger`
+    tagger: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 fn with_store(req: &Request, f: impl FnOnce(&mut TextractStore) -> Response) -> Response {
@@ -58,6 +77,63 @@ static DOCUMENT_PAGES: Lazy<i64> = Lazy::new(|| {
     let draw = uuid::Uuid::new_v4().as_u128() % 496; // randint is inclusive
     (draw as i64) + 5
 });
+
+/// moto keeps `ds = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())`.
+fn creation_time() -> String {
+    Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
+}
+
+/// moto's `TextractAdapter` — `to_dict()` never exposes tags or the ARN.
+struct Adapter {
+    id: String,
+    name: String,
+    feature_types: Vec<String>,
+    description: String,
+    auto_update: String,
+    tags: BTreeMap<String, String>,
+    creation_time: String,
+    arn: String,
+    versions: BTreeMap<String, AdapterVersion>,
+}
+
+impl Adapter {
+    fn to_dict(&self) -> Value {
+        json!({
+            "AdapterId": self.id,
+            "AdapterName": self.name,
+            "FeatureTypes": self.feature_types,
+            "Description": self.description,
+            "AutoUpdate": self.auto_update,
+            "CreationTime": self.creation_time,
+        })
+    }
+}
+
+/// moto's `TextractAdapterVersion` — the dataset/KMS/output parameters are
+/// stored but `to_dict()` never returns them.
+struct AdapterVersion {
+    adapter_id: String,
+    version: String,
+    #[allow(dead_code)] // retained moto-side, never surfaced in to_dict()
+    dataset: Value,
+    #[allow(dead_code)] // ditto
+    kms_key_id: String,
+    #[allow(dead_code)] // ditto
+    output_config: Value,
+    tags: BTreeMap<String, String>,
+    creation_time: String,
+}
+
+impl AdapterVersion {
+    fn to_dict(&self) -> Value {
+        json!({
+            "AdapterId": self.adapter_id,
+            "AdapterVersion": self.version,
+            "Status": "ACTIVE",
+            "CreationTime": self.creation_time,
+        })
+    }
+}
 
 // ---------------------------------------------------------------------------
 // dispatch
@@ -116,15 +192,220 @@ fn route(req: &Request, st: &mut TextractStore) -> Response {
                 None => invalid_job_id(),
             }
         }
-        // --- synchronous identity analysis ----------------------------------
+        // --- synchronous analysis -------------------------------------------
+        "AnalyzeDocument" => ok(json!({
+            "Blocks": [],
+            "DocumentMetadata": document_metadata(),
+            "AnalyzeDocumentModelVersion": "1.0",
+        })),
+        "AnalyzeExpense" => ok(json!({
+            "DocumentMetadata": document_metadata(),
+            "ExpenseDocuments": [],
+        })),
         "AnalyzeID" => ok(json!({
-            "DocumentMetadata": { "Pages": *DOCUMENT_PAGES },
+            "DocumentMetadata": document_metadata(),
             "IdentityDocuments": [],
             "AnalyzeIDModelVersion": "1.0",
         })),
-        // Everything else recorded 501 moto-era (AnalyzeDocument,
-        // AnalyzeExpense, Get/Start ExpenseAnalysis, the Lending pair,
-        // adapter CRUD + versions, tagging) — prove nothing further.
+        // --- async expense analysis --------------------------------------------
+        "StartExpenseAnalysis" => {
+            if !truthy(body.get("DocumentLocation")) {
+                return invalid_parameter();
+            }
+            let job_id = uuid::Uuid::new_v4().to_string();
+            st.expense_jobs
+                .insert(job_id.clone(), expense_job_status_dict());
+            ok(json!({ "JobId": job_id }))
+        }
+        "GetExpenseAnalysis" => {
+            let job_id = as_str(&body, "JobId");
+            match st.expense_jobs.get(job_id) {
+                Some(job) => ok(job.clone()),
+                None => invalid_job_id(),
+            }
+        }
+        // --- async lending analysis -------------------------------------------
+        "StartLendingAnalysis" => {
+            if !truthy(body.get("DocumentLocation")) {
+                return invalid_parameter();
+            }
+            let job_id = uuid::Uuid::new_v4().to_string();
+            st.lending_jobs
+                .insert(job_id.clone(), lending_job_status_dict());
+            ok(json!({ "JobId": job_id }))
+        }
+        // moto returns the full job dict for both Get operations.
+        "GetLendingAnalysis" | "GetLendingAnalysisSummary" => {
+            let job_id = as_str(&body, "JobId");
+            match st.lending_jobs.get(job_id) {
+                Some(job) => ok(job.clone()),
+                None => invalid_job_id(),
+            }
+        }
+        // --- adapter CRUD ------------------------------------------------------
+        "CreateAdapter" => {
+            let tags = string_map(body.get("Tags"));
+            let id = uuid::Uuid::new_v4()
+                .simple()
+                .to_string()
+                .chars()
+                .take(12)
+                .collect::<String>(); // moto: str(uuid4()).replace("-", "")[:12]
+            let arn = format!(
+                "arn:aws:textract:{}:{}:adapter/{id}",
+                req.region, req.account
+            );
+            let adapter = Adapter {
+                id: id.clone(),
+                name: as_str(&body, "AdapterName").to_string(),
+                feature_types: string_list(body.get("FeatureTypes")),
+                description: as_str(&body, "Description").to_string(),
+                auto_update: body
+                    .get("AutoUpdate")
+                    .and_then(Value::as_str)
+                    .unwrap_or("DISABLED")
+                    .to_string(),
+                tags: tags.clone(),
+                creation_time: creation_time(),
+                arn: arn.clone(),
+                versions: BTreeMap::new(),
+            };
+            st.adapters.insert(id.clone(), adapter);
+            st.tagger.insert(arn, tags);
+            ok(json!({ "AdapterId": id }))
+        }
+        "DeleteAdapter" => match st.adapters.remove(as_str(&body, "AdapterId")) {
+            Some(adapter) => {
+                st.tagger.remove(&adapter.arn);
+                ok(json!({}))
+            }
+            None => resource_not_found(as_str(&body, "AdapterId")),
+        },
+        "GetAdapter" => match st.adapters.get(as_str(&body, "AdapterId")) {
+            Some(adapter) => {
+                let mut result = adapter.to_dict();
+                result["Tags"] = to_value(&adapter.tags);
+                ok(result)
+            }
+            None => resource_not_found(as_str(&body, "AdapterId")),
+        },
+        "UpdateAdapter" => {
+            let adapter_id = as_str(&body, "AdapterId").to_string();
+            match st.adapters.get_mut(&adapter_id) {
+                Some(adapter) => {
+                    if let Some(name) = body.get("AdapterName").and_then(Value::as_str) {
+                        adapter.name = name.to_string();
+                    }
+                    if let Some(description) = body.get("Description").and_then(Value::as_str) {
+                        adapter.description = description.to_string();
+                    }
+                    if let Some(auto_update) = body.get("AutoUpdate").and_then(Value::as_str) {
+                        adapter.auto_update = auto_update.to_string();
+                    }
+                    ok(json!({ "AdapterId": adapter_id }))
+                }
+                None => resource_not_found(&adapter_id),
+            }
+        }
+        // moto ignores MaxResults/NextToken/time filters ("Pagination has not
+        // yet been implemented").
+        "ListAdapters" => ok(json!({
+            "Adapters": st.adapters.values().map(Adapter::to_dict).collect::<Vec<_>>(),
+        })),
+        // --- adapter versions ---------------------------------------------------
+        "CreateAdapterVersion" => {
+            let adapter_id = as_str(&body, "AdapterId").to_string();
+            match st.adapters.get_mut(&adapter_id) {
+                Some(adapter) => {
+                    // moto numbers versions by current count.
+                    let version = (adapter.versions.len() + 1).to_string();
+                    adapter.versions.insert(
+                        version.clone(),
+                        AdapterVersion {
+                            adapter_id: adapter_id.clone(),
+                            version: version.clone(),
+                            dataset: body.get("DatasetConfig").cloned().unwrap_or(json!({})),
+                            kms_key_id: as_str(&body, "KMSKeyId").to_string(),
+                            output_config: body.get("OutputConfig").cloned().unwrap_or(json!({})),
+                            tags: string_map(body.get("Tags")),
+                            creation_time: creation_time(),
+                        },
+                    );
+                    ok(json!({ "AdapterId": adapter_id, "AdapterVersion": version }))
+                }
+                None => resource_not_found(&adapter_id),
+            }
+        }
+        "DeleteAdapterVersion" => {
+            let adapter_id = as_str(&body, "AdapterId").to_string();
+            let version = as_str(&body, "AdapterVersion").to_string();
+            match st.adapters.get_mut(&adapter_id) {
+                Some(adapter) => match adapter.versions.remove(&version) {
+                    Some(_) => ok(json!({})),
+                    None => resource_not_found(&format!("{adapter_id}/{version}")),
+                },
+                None => resource_not_found(&adapter_id),
+            }
+        }
+        "GetAdapterVersion" => {
+            let adapter_id = as_str(&body, "AdapterId").to_string();
+            let version = as_str(&body, "AdapterVersion").to_string();
+            match st
+                .adapters
+                .get(&adapter_id)
+                .and_then(|a| a.versions.get(&version))
+            {
+                Some(av) => {
+                    let mut result = av.to_dict();
+                    result["Tags"] = to_value(&av.tags);
+                    ok(result)
+                }
+                None => resource_not_found(&format!("{adapter_id}/{version}")),
+            }
+        }
+        "ListAdapterVersions" => {
+            let want = as_str(&body, "AdapterId");
+            let mut versions = Vec::new();
+            for (id, adapter) in &st.adapters {
+                if !want.is_empty() && id != want {
+                    continue;
+                }
+                versions.extend(adapter.versions.values().map(AdapterVersion::to_dict));
+            }
+            ok(json!({ "AdapterVersions": versions }))
+        }
+        // --- tagging ------------------------------------------------------------
+        "TagResource" => {
+            if let Value::Object(tags) = body.get("Tags").unwrap_or(&json!({})) {
+                let entry = st
+                    .tagger
+                    .entry(as_str(&body, "ResourceARN").to_string())
+                    .or_default();
+                for (k, v) in tags {
+                    if let Some(s) = v.as_str() {
+                        entry.insert(k.clone(), s.to_string());
+                    }
+                }
+            }
+            ok(json!({}))
+        }
+        "UntagResource" => {
+            let keys = string_list(body.get("TagKeys"));
+            let entry = st
+                .tagger
+                .entry(as_str(&body, "ResourceARN").to_string())
+                .or_default();
+            for key in keys {
+                entry.remove(&key);
+            }
+            ok(json!({}))
+        }
+        "ListTagsForResource" => {
+            let tags = st.tagger.get(as_str(&body, "ResourceARN"));
+            ok(json!({ "Tags": tags.map(to_value).unwrap_or_else(|| json!({})) }))
+        }
+        // The fork's urls.py hands the whole service to TextractResponse and
+        // every botocore operation has a handler; anything else falls back.
         other => json_error(
             501,
             "NotImplemented",
@@ -137,21 +418,46 @@ fn route(req: &Request, st: &mut TextractStore) -> Response {
 // moto's shared payload builders
 // ---------------------------------------------------------------------------
 
+/// moto's `DocumentMetadata: {"Pages": TextractBackend.PAGES}` — `PAGES` is
+/// itself `{"Pages": N}`, so the wire shape nests twice.
+fn document_metadata() -> Value {
+    json!({ "Pages": { "Pages": *DOCUMENT_PAGES } })
+}
+
 /// `TextractBackend.detect_document_text` — no JobStatus on the wire.
 fn text_result_without_status() -> Value {
     json!({
         "Blocks": [],
         "DetectDocumentTextModelVersion": "1.0",
-        "DocumentMetadata": { "Pages": *DOCUMENT_PAGES },
+        "DocumentMetadata": document_metadata(),
     })
 }
 
-/// `TextractJob.to_dict()` for engine-started jobs (both text detection
-/// and document analysis reuse the same dict).
+/// `TextractJob.to_dict()` for engine-started text/analysis jobs (both text
+/// detection and document analysis reuse the same dict).
 fn text_job_status_dict() -> Value {
     let mut job = text_result_without_status();
     job["JobStatus"] = json!("SUCCEEDED");
     job
+}
+
+/// `TextractBackend.start_expense_analysis`'s job payload.
+fn expense_job_status_dict() -> Value {
+    json!({
+        "Blocks": [],
+        "DocumentMetadata": document_metadata(),
+        "ExpenseDocuments": [],
+        "JobStatus": "SUCCEEDED",
+    })
+}
+
+/// `TextractBackend.start_lending_analysis`'s job payload.
+fn lending_job_status_dict() -> Value {
+    json!({
+        "DocumentMetadata": document_metadata(),
+        "Results": [],
+        "JobStatus": "SUCCEEDED",
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -180,6 +486,15 @@ fn invalid_parameter() -> Response {
     )
 }
 
+/// moto/textract/exceptions.py: 400 + Python `!r` repr of the resource id.
+fn resource_not_found(resource_id: &str) -> Response {
+    json_error(
+        400,
+        "ResourceNotFoundException",
+        &format!("The resource '{resource_id}' does not exist."),
+    )
+}
+
 /// Python truthiness innoculated for the optionals: false for null and
 /// empty containers (moto's `if not document_location`).
 fn truthy(value: Option<&Value>) -> bool {
@@ -193,6 +508,38 @@ fn truthy(value: Option<&Value>) -> bool {
 
 fn as_str<'a>(body: &'a Value, key: &str) -> &'a str {
     body.get(key).and_then(Value::as_str).unwrap_or("")
+}
+
+/// botocore sends tag maps as `{str: str}`; null/absent mean "no tags".
+fn string_map(value: Option<&Value>) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    if let Some(Value::Object(map)) = value {
+        for (k, v) in map {
+            if let Some(s) = v.as_str() {
+                out.insert(k.clone(), s.to_string());
+            }
+        }
+    }
+    out
+}
+
+fn to_value(map: &BTreeMap<String, String>) -> Value {
+    Value::Object(
+        map.iter()
+            .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+            .collect::<Map<String, Value>>(),
+    )
+}
+
+fn string_list(value: Option<&Value>) -> Vec<String> {
+    match value {
+        Some(Value::Array(items)) => items
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect(),
+        _ => Vec::new(),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -241,7 +588,8 @@ mod tests {
         assert_eq!(status, 200);
         assert_eq!(body["Blocks"], json!([]));
         assert_eq!(body["DetectDocumentTextModelVersion"], "1.0");
-        let pages = body["DocumentMetadata"]["Pages"].as_i64().unwrap();
+        // moto nested-vPages quirk: DocumentMetadata.Pages is PAGES ("Pages": N).
+        let pages = body["DocumentMetadata"]["Pages"]["Pages"].as_i64().unwrap();
         assert!((5..=500).contains(&pages), "pages {pages} out of range");
         assert!(body.get("JobStatus").is_none());
     }
@@ -254,8 +602,8 @@ mod tests {
         assert_eq!(status, 200);
         let (_, second) = send(next_account(), "AnalyzeID", json!({}));
         assert_eq!(
-            first["DocumentMetadata"]["Pages"].as_i64().unwrap(),
-            second["DocumentMetadata"]["Pages"].as_i64().unwrap()
+            first["DocumentMetadata"]["Pages"],
+            second["DocumentMetadata"]["Pages"]
         );
     }
 
@@ -279,7 +627,10 @@ mod tests {
         assert_eq!(status, 200);
         assert_eq!(body["JobStatus"], "SUCCEEDED");
         assert_eq!(body["Blocks"], json!([]));
-        assert!(body["DocumentMetadata"]["Pages"].is_i64());
+        assert_eq!(
+            body["DocumentMetadata"]["Pages"],
+            document_metadata()["Pages"]
+        );
     }
 
     #[test]
@@ -323,7 +674,7 @@ mod tests {
         assert_eq!(status, 200);
         assert_eq!(body["JobStatus"], "SUCCEEDED");
         assert_eq!(body["Blocks"], json!([]));
-        assert!(body["DocumentMetadata"]["Pages"].is_i64());
+        assert!(body["DocumentMetadata"]["Pages"]["Pages"].is_i64());
     }
 
     #[test]
@@ -375,7 +726,7 @@ mod tests {
         );
         assert_eq!(status, 200);
         assert_eq!(
-            body["DocumentMetadata"]["Pages"].as_i64().unwrap(),
+            body["DocumentMetadata"]["Pages"]["Pages"].as_i64().unwrap(),
             *DOCUMENT_PAGES
         );
         assert_eq!(body["IdentityDocuments"], json!([]));
@@ -383,33 +734,335 @@ mod tests {
     }
 
     #[test]
-    fn unmeasured_operations_stay_not_implemented() {
-        // Probe: not_implemented (501) across the rest of the textract
-        // surface — out of the moto-era surface, G2 ledger entries.
-        for operation in [
+    fn analyze_document_fixture() {
+        let (status, body) = send(
+            next_account(),
             "AnalyzeDocument",
+            json!({ "Document": s3_location(), "FeatureTypes": ["TABLES"] }),
+        );
+        assert_eq!(status, 200);
+        assert_eq!(body["Blocks"], json!([]));
+        assert_eq!(body["AnalyzeDocumentModelVersion"], "1.0");
+        assert!(body["DocumentMetadata"]["Pages"]["Pages"].is_i64());
+    }
+
+    #[test]
+    fn analyze_expense_fixture() {
+        let (status, body) = send(
+            next_account(),
             "AnalyzeExpense",
+            json!({ "Document": s3_location() }),
+        );
+        assert_eq!(status, 200);
+        assert_eq!(body["ExpenseDocuments"], json!([]));
+        assert!(body["DocumentMetadata"]["Pages"]["Pages"].is_i64());
+        assert!(body.get("JobStatus").is_none());
+    }
+
+    #[test]
+    fn expense_analysis_roundtrip() {
+        let account = next_account();
+        let (status, body) = send(
+            account,
             "StartExpenseAnalysis",
+            json!({ "DocumentLocation": s3_location() }),
+        );
+        assert_eq!(status, 200);
+        let job_id = body["JobId"].as_str().unwrap().to_string();
+
+        let (status, body) = send(account, "GetExpenseAnalysis", json!({ "JobId": job_id }));
+        assert_eq!(status, 200);
+        assert_eq!(body["JobStatus"], "SUCCEEDED");
+        assert_eq!(body["ExpenseDocuments"], json!([]));
+        assert!(body["DocumentMetadata"]["Pages"]["Pages"].is_i64());
+
+        // An expense job id is not fetchable from the other engines either.
+        let (status, body) = send(account, "GetLendingAnalysis", json!({ "JobId": job_id }));
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "InvalidJobIdException");
+    }
+
+    #[test]
+    fn expense_analysis_rejects_missing_location() {
+        let (status, body) = send(next_account(), "StartExpenseAnalysis", json!({}));
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "InvalidParameterException");
+    }
+
+    #[test]
+    fn expense_analysis_unknown_job() {
+        let (status, body) = send(
+            next_account(),
             "GetExpenseAnalysis",
+            json!({ "JobId": "00000000000000000000000000000000" }),
+        );
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "InvalidJobIdException");
+    }
+
+    #[test]
+    fn lending_analysis_roundtrip() {
+        let account = next_account();
+        let (status, body) = send(
+            account,
             "StartLendingAnalysis",
-            "GetLendingAnalysis",
-            "GetLendingAnalysisSummary",
-            "CreateAdapter",
-            "GetAdapter",
-            "UpdateAdapter",
-            "DeleteAdapter",
-            "ListAdapters",
-            "CreateAdapterVersion",
-            "GetAdapterVersion",
-            "ListAdapterVersions",
-            "DeleteAdapterVersion",
-            "TagResource",
-            "UntagResource",
-            "ListTagsForResource",
-        ] {
-            let (status, body) = send(next_account(), operation, json!({}));
-            assert_eq!(status, 501, "{operation}");
-            assert_eq!(body["__type"], "NotImplemented");
+            json!({ "DocumentLocation": s3_location() }),
+        );
+        assert_eq!(status, 200);
+        let job_id = body["JobId"].as_str().unwrap().to_string();
+
+        for operation in ["GetLendingAnalysis", "GetLendingAnalysisSummary"] {
+            let (status, body) = send(account, operation, json!({ "JobId": job_id }));
+            assert_eq!(status, 200, "{operation}");
+            assert_eq!(body["JobStatus"], "SUCCEEDED");
+            assert_eq!(body["Results"], json!([]));
+            assert!(body["DocumentMetadata"]["Pages"]["Pages"].is_i64());
         }
+
+        let (status, body) = send(
+            account,
+            "GetLendingAnalysisSummary",
+            json!({ "JobId": "00000000000000000000000000000000" }),
+        );
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "InvalidJobIdException");
+    }
+
+    #[test]
+    fn lending_analysis_rejects_missing_location() {
+        let (status, body) = send(next_account(), "StartLendingAnalysis", json!({}));
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "InvalidParameterException");
+    }
+
+    #[test]
+    fn adapter_crud_roundtrip() {
+        let account = next_account();
+
+        // Create with defaults.
+        let (status, body) = send(
+            account,
+            "CreateAdapter",
+            json!({ "AdapterName": "general" }),
+        );
+        assert_eq!(status, 200);
+        let adapter_id = body["AdapterId"].as_str().unwrap().to_string();
+        assert_eq!(adapter_id.len(), 12);
+
+        // Get honours the creation parameters.
+        let (status, body) = send(account, "GetAdapter", json!({ "AdapterId": adapter_id }));
+        assert_eq!(status, 200);
+        assert_eq!(body["AdapterId"], adapter_id);
+        assert_eq!(body["AdapterName"], "general");
+        assert_eq!(body["AutoUpdate"], "DISABLED");
+        assert_eq!(body["Description"], "");
+        assert!(body["CreationTime"].as_str().unwrap().ends_with('Z'));
+        assert_eq!(body["Tags"], json!({}));
+
+        // Update only the fields received (moto takes optional overrides).
+        let (status, body) = send(
+            account,
+            "UpdateAdapter",
+            json!({ "AdapterId": adapter_id, "AdapterName": "renamed" }),
+        );
+        assert_eq!(status, 200);
+        assert_eq!(body["AdapterId"], adapter_id);
+        // Unset fields survive.
+        let (_, body) = send(account, "GetAdapter", json!({ "AdapterId": adapter_id }));
+        assert_eq!(body["AdapterName"], "renamed");
+        assert_eq!(body["AutoUpdate"], "DISABLED");
+        assert_eq!(body["Description"], "");
+
+        // List contains the adapter.
+        let (_, body) = send(account, "ListAdapters", json!({}));
+        let ids: Vec<&str> = body["Adapters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|a| a["AdapterId"].as_str().unwrap())
+            .collect();
+        assert!(ids.contains(&adapter_id.as_str()));
+
+        // Delete, then it is gone.
+        let (status, body) = send(account, "DeleteAdapter", json!({ "AdapterId": adapter_id }));
+        assert_eq!(status, 200);
+        assert_eq!(body, json!({}));
+        let (status, body) = send(account, "GetAdapter", json!({ "AdapterId": adapter_id }));
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "ResourceNotFoundException");
+
+        // update/delete on unknown ids raise the same exception.
+        let (status, body) = send(
+            account,
+            "UpdateAdapter",
+            json!({ "AdapterId": adapter_id, "AdapterName": "ghost" }),
+        );
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "ResourceNotFoundException");
+    }
+
+    #[test]
+    fn adapter_version_crud_roundtrip() {
+        let account = next_account();
+
+        // Creating a version under a missing adapter fails first.
+        let (status, body) = send(
+            account,
+            "CreateAdapterVersion",
+            json!({ "AdapterId": "no-such-adapter" }),
+        );
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "ResourceNotFoundException");
+
+        let (_, body) = send(
+            account,
+            "CreateAdapter",
+            json!({ "AdapterName": "host", "FeatureTypes": ["TABLES"] }),
+        );
+        let adapter_id = body["AdapterId"].as_str().unwrap().to_string();
+
+        let (status, body) = send(
+            account,
+            "CreateAdapterVersion",
+            json!({
+                "AdapterId": adapter_id,
+                "DatasetConfig": { "ManifestS3Object": s3_location() },
+                "OutputConfig": { "S3Bucket": "out", "S3Prefix": "v/" },
+            }),
+        );
+        assert_eq!(status, 200);
+        assert_eq!(body["AdapterId"], adapter_id);
+        let version = body["AdapterVersion"].as_str().unwrap().to_string();
+        assert_eq!(version, "1"); // moto numbers versions by current count
+
+        // Get returns the ACTIVE version; Tags survive create-tags.
+        let (_, body) = send(
+            account,
+            "GetAdapterVersion",
+            json!({ "AdapterId": adapter_id, "AdapterVersion": version }),
+        );
+        assert_eq!(body["Status"], "ACTIVE");
+        assert_eq!(body["AdapterVersion"], version);
+        assert_eq!(body["Tags"], json!({}));
+
+        // List honours the adapter filter.
+        let (_, body) = send(
+            account,
+            "ListAdapterVersions",
+            json!({ "AdapterId": adapter_id }),
+        );
+        assert_eq!(body["AdapterVersions"].as_array().unwrap().len(), 1);
+        // An unfiltered list also finds it.
+        let (_, body) = send(account, "ListAdapterVersions", json!({}));
+        assert_eq!(body["AdapterVersions"].as_array().unwrap().len(), 1);
+
+        // A missing version raises for adapter_id/version.
+        let (status, body) = send(
+            account,
+            "GetAdapterVersion",
+            json!({ "AdapterId": adapter_id, "AdapterVersion": "99" }),
+        );
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "ResourceNotFoundException");
+
+        // Delete, then it is gone.
+        let (status, body) = send(
+            account,
+            "DeleteAdapterVersion",
+            json!({ "AdapterId": adapter_id, "AdapterVersion": version }),
+        );
+        assert_eq!(status, 200);
+        assert_eq!(body, json!({}));
+        let (status, body) = send(
+            account,
+            "DeleteAdapterVersion",
+            json!({ "AdapterId": adapter_id, "AdapterVersion": version }),
+        );
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "ResourceNotFoundException");
+
+        // moto numbers by count: after the delete the next create reuses "1".
+        let (_, body) = send(
+            account,
+            "CreateAdapterVersion",
+            json!({ "AdapterId": adapter_id, "DatasetConfig": {} }),
+        );
+        assert_eq!(body["AdapterVersion"], "1");
+    }
+
+    #[test]
+    fn tagging_roundtrip() {
+        let account = next_account();
+
+        // Creation tags land in the tagger map keyed by the adapter ARN.
+        let (_, body) = send(
+            account,
+            "CreateAdapter",
+            json!({ "AdapterName": "tagged", "Tags": { "created-by": "test" } }),
+        );
+        let adapter_id = body["AdapterId"].as_str().unwrap().to_string();
+        let arn = format!("arn:aws:textract:us-east-1:{account}:adapter/{adapter_id}");
+
+        let (status, body) = send(
+            account,
+            "ListTagsForResource",
+            json!({ "ResourceARN": arn }),
+        );
+        assert_eq!(status, 200);
+        assert_eq!(body["Tags"]["created-by"], "test");
+
+        // TagResource merges.
+        let (status, _) = send(
+            account,
+            "TagResource",
+            json!({ "ResourceARN": arn, "Tags": { "env": "test", "project": "robotocore" } }),
+        );
+        assert_eq!(status, 200);
+        // UntagResource removes only the listed keys.
+        let (status, _) = send(
+            account,
+            "UntagResource",
+            json!({ "ResourceARN": arn, "TagKeys": ["env", "missing"] }),
+        );
+        assert_eq!(status, 200);
+        let (_, body) = send(
+            account,
+            "ListTagsForResource",
+            json!({ "ResourceARN": arn }),
+        );
+        assert_eq!(
+            body["Tags"],
+            json!({ "project": "robotocore", "created-by": "test" })
+        );
+
+        // Unknown ARNs read empty, per moto's tagger.get(arn, {}).
+        let (_, body) = send(
+            account,
+            "ListTagsForResource",
+            json!({ "ResourceARN": "arn:aws:textract:us-east-1:1:adapter/none" }),
+        );
+        assert_eq!(body["Tags"], json!({}));
+    }
+
+    #[test]
+    fn adapter_state_is_isolated_per_account() {
+        // The default scope stays empty even after another account mutates.
+        let other = next_account();
+        let (status, body) = send(
+            other,
+            "CreateAdapter",
+            json!({ "AdapterName": "theirs", "FeatureTypes": ["FORMS"] }),
+        );
+        assert_eq!(status, 200);
+        let adapter_id = body["AdapterId"].as_str().unwrap().to_string();
+
+        let account = next_account();
+        let (_, body) = send(account, "ListAdapters", json!({}));
+        assert_eq!(body["Adapters"], json!([]));
+
+        // Same id in the other account is unknown here.
+        let (status, body) = send(account, "GetAdapter", json!({ "AdapterId": adapter_id }));
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "ResourceNotFoundException");
     }
 }
