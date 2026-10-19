@@ -25,6 +25,7 @@ pub mod budgets;
 pub mod ce;
 pub mod cloudformation;
 pub mod cloudfront;
+pub mod cloudhsmv2;
 pub mod cloudtrail;
 pub mod codepipeline;
 pub mod cognito_identity;
@@ -128,6 +129,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "cloudformation" => Some(self::cloudformation::dispatch(req)),
         "cloudfront" => Some(cloudfront::dispatch(req)),
         "cloudtrail" => Some(cloudtrail::dispatch(req)),
+        "cloudhsmv2" => cloudhsmv2::dispatch(req),
         "cognito-idp" => cognito_idp::dispatch(req),
         "cognitoidentity" => cognito_identity::dispatch(req),
         "comprehend" => Some(comprehend::dispatch(req)),
@@ -242,6 +244,7 @@ pub fn handles_service(service: &str) -> bool {
             | "cloudformation"
             | "cloudfront"
             | "cloudtrail"
+            | "cloudhsmv2"
             | "codepipeline"
             | "cognito-idp"
             | "cognitoidentity"
