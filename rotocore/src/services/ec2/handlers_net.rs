@@ -873,7 +873,7 @@ pub fn igw_item_full(igw: &super::state::InternetGateway) -> String {
         );
     }
     format!(
-        "<item><internetGatewayId>{}</internetGatewayId><attachmentSet>{}</attachmentSet><ownerId>{}</ownerId>{}<tagSet>{}</tagSet></item>",
+        "<item><internetGatewayId>{}</internetGatewayId><attachmentSet>{}</attachmentSet><ownerId>{}</ownerId>{}{}</item>",
         xml_escape(&igw.id),
         attachments,
         "",
@@ -1203,6 +1203,13 @@ fn describe_addresses(req: &Request, params: &P) -> Response {
                     item,
                     "<privateIpAddress>{}</privateIpAddress>",
                     xml_escape(&eip.private_ip_address)
+                );
+            }
+            if let Some(ni) = &eip.network_interface_id {
+                let _ = write!(
+                    item,
+                    "<networkInterfaceId>{}</networkInterfaceId>",
+                    xml_escape(ni)
                 );
             }
             if !eip.tags.is_empty() {

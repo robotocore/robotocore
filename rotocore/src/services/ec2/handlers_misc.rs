@@ -441,7 +441,7 @@ pub fn route(req: &Request, params: &P) -> Response {
     }
     // 0b) family-carryover gap ops
     if GAP_OPS_B.contains(op) {
-        return gap_ops_b_response(op, params);
+        return gap_ops_b_response(req, op, params);
     }
     // 1c) modify-style ops on simple families
     if MODIFY_OPS.contains(op) {
@@ -3104,7 +3104,8 @@ fn params_of(req: &Request) -> super::Params {
 pub fn extract_lt_instance_type(data: &str) -> String {
     match serde_json::from_str::<serde_json::Value>(data) {
         Ok(v) => v
-            .get("InstanceType")
+            .get("instanceType")
+            .or_else(|| v.get("InstanceType"))
             .and_then(|x| x.as_str())
             .unwrap_or_default()
             .to_string(),
@@ -3116,6 +3117,8 @@ pub fn extract_lt_instance_type(data: &str) -> String {
 pub static GAP_OPS_B: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     [
         "AssociateIamInstanceProfile",
+        "DisassociateIamInstanceProfile",
+        "DescribeIamInstanceProfileAssociations",
         "AssociateInstanceEventWindow",
         "DisassociateInstanceEventWindow",
         "ModifyInstanceEventWindow",
@@ -3135,9 +3138,74 @@ pub static GAP_OPS_B: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     .collect()
 });
 
-pub fn gap_ops_b_response(op: &str, params: &P) -> Response {
+pub fn gap_ops_b_response(req: &Request, op: &str, params: &P) -> Response {
     let body = match op {
-        "AssociateIamInstanceProfile" => String::from("<associationId>iip-assoc-0000000000000000</associationId>"),
+        "AssociateIamInstanceProfile" => {
+            let aid = format!("iip-assoc-{}", super::state::idhex::hex17());
+            let iid = id_of(params, "InstanceId");
+            let arn = params.str("IamInstanceProfile.Arn");
+            let mut s = Simple {
+                id: aid.clone(),
+                kind: "iip-assoc".to_string(),
+                ..Default::default()
+            };
+            s.set("InstanceId", iid.clone());
+            s.set("Arn", arn.clone());
+            s.set("State", "associating");
+            with_state(req, |st| {
+                st.simple
+                    .entry("iip-assoc".to_string())
+                    .or_default()
+                    .push(s.clone());
+            });
+            format!(
+                "<iamInstanceProfileAssociation><associationId>{aid}</associationId><instanceId>{iid}</instanceId><iamInstanceProfile><id></id><arn>{arn}</arn></iamInstanceProfile><state>associating</state></iamInstanceProfileAssociation>",
+                aid = xml_escape(&aid),
+                iid = xml_escape(&iid),
+                arn = xml_escape(&arn)
+            )
+        }
+        "DisassociateIamInstanceProfile" => {
+            let aid = id_of(params, "AssociationId");
+            let mut removed: Option<Simple> = None;
+            with_state(req, |st| {
+                if let Some(items) = st.simple.get_mut("iip-assoc") {
+                    if let Some(pos) = items.iter().position(|s| s.id == aid) {
+                        removed = Some(items.remove(pos));
+                    }
+                }
+            });
+            let s = removed.unwrap_or_default();
+            format!(
+                "<iamInstanceProfileAssociation><associationId>{aid}</associationId><instanceId>{iid}</instanceId><iamInstanceProfile><id></id><arn>{arn}</arn></iamInstanceProfile><state>disassociating</state></iamInstanceProfileAssociation>",
+                aid = xml_escape(&aid),
+                iid = xml_escape(s.get("InstanceId").unwrap_or_default()),
+                arn = xml_escape(s.get("Arn").unwrap_or_default())
+            )
+        }
+        "DescribeIamInstanceProfileAssociations" => {
+            let ids = ids_of(params, "AssociationId");
+            let mut assoc_out = String::new();
+            with_state(req, |st| {
+                if let Some(items_vec) = st.simple.get("iip-assoc").cloned() {
+                    for s in &items_vec {
+                        if !ids.is_empty() && !ids.contains(&s.id) {
+                            continue;
+                        }
+                        assoc_out.push_str(&format!(
+                            "<item><associationId>{aid}</associationId><instanceId>{iid}</instanceId><iamInstanceProfile><id></id><arn>{arn}</arn></iamInstanceProfile><state>{st}</state></item>",
+                            aid = xml_escape(&s.id),
+                            iid = xml_escape(s.get("InstanceId").unwrap_or_default()),
+                            arn = xml_escape(s.get("Arn").unwrap_or_default()),
+                            st = xml_escape(s.get("State").unwrap_or("associated"))
+                        ));
+                    }
+                }
+            });
+            format!(
+                "<iamInstanceProfileAssociationSet>{assoc_out}</iamInstanceProfileAssociationSet>"
+            )
+        }
         "AssociateInstanceEventWindow" | "DisassociateInstanceEventWindow" | "ModifyInstanceEventWindow" => format!(
             "<instanceEventWindow><instanceEventWindowId>{}</instanceEventWindowId></instanceEventWindow>",
             xml_escape(id_of(params, "InstanceEventWindowId").as_str())

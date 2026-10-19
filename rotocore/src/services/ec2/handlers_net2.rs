@@ -442,9 +442,26 @@ fn describe_eni_attribute(req: &Request, params: &P) -> Response {
         let _ = &attr;
         let _ = write!(
             body,
-            "<description>{}</description>",
+            "<description><value>{}</value></description>",
             crate::proto::xml_escape(&e.description)
         );
+        match &e.attached {
+            Some(att) => body.push_str(&format!(
+                "<attachment><attachmentId>{}</attachmentId><attachmentTime>1970-01-01T00:00:00.000Z</attachmentTime><deleteOnTermination>false</deleteOnTermination><deviceIndex>{}</deviceIndex><status>attached</status>{}</attachment>",
+                crate::proto::xml_escape(&att.attachment_id),
+                att.device_index,
+                format!("<instanceOwnerId>123456789012</instanceOwnerId><instanceId>{}</instanceId>", crate::proto::xml_escape(&att.instance_id))
+            )),
+            None => {
+                body.push_str("<attachment/>");
+            }
+        }
+        let _ = write!(
+            body,
+            "<sourceDestCheck><value>{}</value></sourceDestCheck>",
+            e.source_dest_check
+        );
+        body.push_str("<groupSet/>");
         ec2_xml("DescribeNetworkInterfaceAttributeResponse", &body)
     })
 }
@@ -913,11 +930,15 @@ fn dhc_item(d: &super::state::DhcpOptions) -> String {
     for (key, values) in &d.configurations {
         let mut vals = String::new();
         for v in values {
-            let _ = write!(vals, "<value>{}</value>", crate::proto::xml_escape(v));
+            let _ = write!(
+                vals,
+                "<item><value>{}</value></item>",
+                crate::proto::xml_escape(v)
+            );
         }
         let _ = write!(
             configs,
-            "<item><key>{}</key><values>{}</values></item>",
+            "<item><key>{}</key><valueSet>{}</valueSet></item>",
             crate::proto::xml_escape(key),
             vals
         );
@@ -928,7 +949,7 @@ fn dhc_item(d: &super::state::DhcpOptions) -> String {
         if configs.is_empty() {
             String::new()
         } else {
-            format!("<dhcpConfiguration>{}</dhcpConfiguration>", configs)
+            format!("<dhcpConfigurationSet>{}</dhcpConfigurationSet>", configs)
         },
         tags_xml(&d.tags)
     )
@@ -938,45 +959,72 @@ fn create_dhcp_options(req: &Request, params: &P) -> Response {
     with_state(req, move |state| {
         let id = state.next_id("dopt");
         let mut configs: Vec<(String, Vec<String>)> = Vec::new();
-        for i in params.container_indices("".trim()) {
-            let _ = i;
+        for i in params.container_indices("DhcpConfiguration") {
+            let base = format!("DhcpConfiguration.{}", i + 1);
+            let key = params
+                .get(&format!("{base}.Key"))
+                .unwrap_or_default()
+                .to_string();
+            if key.is_empty() {
+                continue;
+            }
+            let mut vals: Vec<String> = params
+                .list(&format!("{base}.Value"))
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+            if vals.is_empty() {
+                if let Some(v) = params.get(&format!("DhcpConfiguration.{key}")) {
+                    vals = v.split(',').map(str::to_string).collect();
+                }
+            }
+            configs.push((key, vals));
         }
-        let keys: &[&str] = &[
-            "domain-name-servers",
-            "domain-name",
-            "ntp-servers",
-            "netbios-name-servers",
-        ];
-        let wire_keys: &[&str] = &[
-            "DomainNameServers",
-            "DomainName",
-            "NtpServers",
-            "NetbiosNameServers",
-        ];
-        for (i, wk) in wire_keys.iter().enumerate() {
-            let vals: Vec<String> = params.list(wk).iter().map(|s| s.to_string()).collect();
-            if !vals.is_empty() {
-                configs.push((keys[i].to_string(), vals));
+        let mut tags = wire_tags(params);
+        for (k, v) in super::handlers::tag_spec_tags(params) {
+            if !tags.iter().any(|(ek, _)| ek == &k) {
+                tags.push((k, v));
             }
         }
-        let tags = wire_tags(params);
         let mut d = super::state::DhcpOptions {
             id: id.clone(),
             configurations: configs,
+            tags,
             ..Default::default()
         };
-        if !tags.is_empty() {
-            d.tags = tags;
-        }
-        state.dhcp_options.push(d);
+        let _ = &mut d;
+        state.dhcp_options.push(d.clone());
+        let cfg = dhcp_configurations_xml(&d);
         ec2_xml(
             "CreateDhcpOptionsResponse",
             &format!(
-                "<dhcpOptions><dhcpOptionsId>{}</dhcpOptionsId><dhcpConfiguration></dhcpConfiguration></dhcpOptions>",
-                crate::proto::xml_escape(&id)
+                "<dhcpOptions><dhcpOptionsId>{}</dhcpOptionsId>{}{}</dhcpOptions>",
+                crate::proto::xml_escape(&id),
+                cfg,
+                ""
             ),
         )
     })
+}
+
+/// `<dhcpConfigurationSet>` fragment; each key carries its valueSet.
+fn dhcp_configurations_xml(d: &super::state::DhcpOptions) -> String {
+    let mut items = String::new();
+    for (key, vals) in &d.configurations {
+        let mut vs = String::new();
+        for v in vals {
+            vs.push_str(&format!(
+                "<item><value>{}</value></item>",
+                crate::proto::xml_escape(v)
+            ));
+        }
+        items.push_str(&format!(
+            "<item><key>{k}</key><valueSet>{v}</valueSet></item>",
+            k = crate::proto::xml_escape(key),
+            v = vs
+        ));
+    }
+    format!("<dhcpConfigurationSet>{items}</dhcpConfigurationSet>")
 }
 
 fn delete_dhcp_options(req: &Request, params: &P) -> Response {

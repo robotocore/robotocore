@@ -912,15 +912,10 @@ fn get_instance_metadata_defaults(req: &Request, params: &P) -> Response {
 }
 
 fn modify_instance_metadata_defaults(req: &Request, params: &P) -> Response {
+    let _ = params;
     ec2_xml(
         "ModifyInstanceMetadataDefaultsResponse",
-        &format!(
-            "<accountLevel>{}<httpTokens>{}</httpTokens><httpEndpoint>{}</httpEndpoint><httpPutResponseHopLimit>{}</httpPutResponseHopLimit></accountLevel>",
-            "",
-            params.get("HttpTokens").unwrap_or("optional"),
-            params.get("HttpEndpoint").unwrap_or("enabled"),
-            params.get("HttpPutResponseHopLimit").unwrap_or("1"),
-        ),
+        "<return>true</return>",
     )
 }
 
@@ -1939,7 +1934,12 @@ fn create_snapshot(req: &Request, params: &P) -> Response {
             .find(|v| v.id == volume_id)
             .cloned()
             .unwrap_or_default();
-        let tags = wire_tags(params);
+        let mut tags = wire_tags(params);
+        for (k, v2) in super::handlers::tag_spec_tags(params) {
+            if !tags.iter().any(|(ek, _)| ek == &k) {
+                tags.push((k, v2));
+            }
+        }
         let snap = super::state::Snapshot {
             id: id.clone(),
             volume_id: volume_id.clone(),
@@ -1971,7 +1971,14 @@ fn describe_snapshots(req: &Request, params: &P) -> Response {
     with_state(req, move |state| {
         let account = req.account.to_string();
         let owners: Vec<String> = params.list("Owner").iter().map(|s| s.to_string()).collect();
-        let restorable_by = params.str("RestorableBy");
+        let restorable_by = params
+            .list("RestorableByUserIds")
+            .first()
+            .map(|s| s.to_string())
+            .filter(|s| !s.is_empty())
+            .or_else(|| params.list("RestorableBy").first().map(|s| s.to_string()))
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| params.str("RestorableBy"));
         let mut items = String::new();
         for s in &state.snapshots {
             if !ids.is_empty() && !ids.contains(&s.id) {
@@ -1999,7 +2006,7 @@ fn describe_snapshots(req: &Request, params: &P) -> Response {
         }
         ec2_xml(
             "DescribeSnapshotsResponse",
-            &format!("<snapshotsSet>{}</snapshotsSet>", items),
+            &format!("<snapshotSet>{}</snapshotSet>", items),
         )
     })
 }
@@ -2071,20 +2078,19 @@ fn describe_snapshot_attribute(req: &Request, params: &P) -> Response {
             .unwrap_or_default();
         let mut perms = String::new();
         for (k, v) in &snap.create_volume_permissions {
-            let _ = write!(perms, "<item><{k}>{v}</{k}></item>");
+            let wire = if k == "UserId" { "userId" } else { "group" };
+            let _ = write!(perms, "<item><{wire}>{v}</{wire}></item>");
         }
         ec2_xml(
             "DescribeSnapshotAttributeResponse",
             &format!(
-                "<snapshotId>{}</snapshotId>{}</createVolumePermission>{}<productCodes/><snapshotId>{}</snapshotId>",
+                "<snapshotId>{}</snapshotId>{}<productCodes/>",
                 xml_escape(&id),
                 if perms.is_empty() {
-                    String::from("<createVolumePermissions/>")
+                    String::from("<createVolumePermission/>")
                 } else {
-                    format!("<createVolumePermissions>{}</createVolumePermissions>", perms)
+                    format!("<createVolumePermission>{}</createVolumePermission>", perms)
                 },
-                String::new(),
-                xml_escape(&id)
             ),
         )
     })
@@ -2135,11 +2141,25 @@ fn create_snapshots(req: &Request, params: &P) -> Response {
     let description = params.str("Description");
     with_state(req, move |state| {
         let mut items = String::new();
-        for i in params.container_indices("InstanceSpecification") {
-            let instance_id = params
-                .sub("InstanceSpecification", i, "InstanceId")
-                .unwrap_or_default()
-                .to_string();
+        let instance_ids: Vec<String> = {
+            let direct = params.str("InstanceSpecification.InstanceId");
+            if !direct.is_empty() {
+                vec![direct]
+            } else {
+                params
+                    .container_indices("InstanceSpecification")
+                    .iter()
+                    .map(|i| {
+                        params
+                            .sub("InstanceSpecification", *i, "InstanceId")
+                            .unwrap_or_default()
+                            .to_string()
+                    })
+                    .collect()
+            }
+        };
+        let _ = items;
+        for instance_id in instance_ids {
             if state.instances.iter().all(|x| x.id != instance_id) {
                 return ec2_error(
                     400,
@@ -2208,7 +2228,7 @@ fn create_snapshots(req: &Request, params: &P) -> Response {
         }
         ec2_xml(
             "CreateSnapshotsResponse",
-            &format!("<snapshotsSet>{}</snapshotsSet>", items),
+            &format!("<snapshotSet>{}</snapshotSet>", items),
         )
     })
 }
@@ -2219,12 +2239,17 @@ fn create_snapshots(req: &Request, params: &P) -> Response {
 
 fn keypair_item(k: &super::state::Keypair) -> String {
     format!(
-        "<item><keyPairId>{}</keyPairId><keyName>{}</keyName><keyFingerprint>{}</keyFingerprint>{}{}</item>",
+        "<item><keyPairId>{}</keyPairId><keyName>{}</keyName><keyFingerprint>{}</keyFingerprint>{}{}{}</item>",
         xml_escape(&k.key_pair_id),
         xml_escape(&k.name),
         xml_escape(&k.fingerprint),
         if !k.material.is_empty() {
             format!("<keyMaterial>{}</keyMaterial>", xml_escape(&k.material))
+        } else {
+            String::new()
+        },
+        if !k.key_type.is_empty() {
+            format!("<keyType>{}</keyType>", xml_escape(&k.key_type))
         } else {
             String::new()
         },
@@ -2314,7 +2339,12 @@ fn create_key_pair(req: &Request, params: &P) -> Response {
             );
         }
         let (fingerprint, material) = new_key_material(&key_type);
-        let tags = wire_tags(params);
+        let mut tags = wire_tags(params);
+        for (k2, v2) in super::handlers::tag_spec_tags(params) {
+            if !tags.iter().any(|(ek, _)| ek == &k2) {
+                tags.push((k2, v2));
+            }
+        }
         let id = state.next_id("key");
         let kp = super::state::Keypair {
             name: name.clone(),
@@ -2481,11 +2511,14 @@ fn create_launch_template(req: &Request, params: &P) -> Response {
             );
         }
         let id = state.next_id("lt");
-        let data = params
-            .get("LaunchTemplateData.UserData")
-            .unwrap_or_default()
-            .to_string();
-        let tags = wire_tags(params);
+        let data = lt_data_json(params);
+        let mut tags = wire_tags(params);
+        for (k2, v2) in super::handlers::tag_spec_tags(params) {
+            if !tags.iter().any(|(ek, _)| ek == &k2) {
+                tags.push((k2, v2));
+            }
+        }
+        let _ = tags;
         let lt = super::state::LaunchTemplate {
             id: id.clone(),
             name: name.clone(),
@@ -2506,8 +2539,9 @@ fn create_launch_template(req: &Request, params: &P) -> Response {
         ec2_xml(
             "CreateLaunchTemplateResponse",
             &format!(
-                "<launchTemplate>{}{}</launchTemplate>",
+                "<launchTemplate>{}{}{}</launchTemplate>",
                 super::ec2b::template_label(&lt),
+                tags_xml(&lt.tags),
                 ""
             ),
         )
@@ -2531,7 +2565,7 @@ fn create_launch_template_version(req: &Request, params: &P) -> Response {
         let number = state.launch_templates[pos].latest_version + 1;
         let v = super::state::LaunchTemplateVersion {
             number,
-            data: String::new(),
+            data: lt_data_json(params),
             description: params.get("VersionDescription").map(|s| s.to_string()),
             created: now_iso(),
             default: false,
@@ -2539,18 +2573,22 @@ fn create_launch_template_version(req: &Request, params: &P) -> Response {
         state.launch_templates[pos].versions.push(v);
         state.launch_templates[pos].latest_version = number;
         let lt = state.launch_templates[pos].clone();
-        let instance_type = params
-            .get("LaunchTemplateData.InstanceType")
-            .unwrap_or_default()
-            .to_string();
+        let v_data = lt
+            .versions
+            .iter()
+            .find(|x| x.number == number)
+            .map(|x| x.data.clone())
+            .unwrap_or_default();
+
         ec2_xml(
             "CreateLaunchTemplateVersionResponse",
             &format!(
-                "<launchTemplateVersion><versionNumber>{}</versionNumber><launchTemplateId>{}</launchTemplateId><launchTemplateName>{}</launchTemplateName><launchTemplateData><instanceType>{}</instanceType></launchTemplateData><defaultVersion>false</defaultVersion></launchTemplateVersion>",
+                "<launchTemplateVersion><versionNumber>{}</versionNumber><launchTemplateId>{}</launchTemplateId><launchTemplateName>{}</launchTemplateName><launchTemplateData>{}{}</launchTemplateData><defaultVersion>false</defaultVersion></launchTemplateVersion>",
                 number,
                 xml_escape(&lt.id),
                 xml_escape(&lt.name),
-                xml_escape(instance_type.as_str())
+                lt_data_xml(&v_data),
+                ""
             ),
         )
     })
@@ -2611,8 +2649,9 @@ fn describe_launch_template_versions(req: &Request, params: &P) -> Response {
             }
         };
         let versions_param: Vec<String> = params
-            .list("Version")
+            .list("LaunchTemplateVersion")
             .iter()
+            .chain(params.list("Version").iter())
             .map(|s| s.to_string())
             .collect();
         let lt = state.launch_templates[pos].clone();
@@ -2626,7 +2665,7 @@ fn describe_launch_template_versions(req: &Request, params: &P) -> Response {
             {
                 continue;
             }
-            let it = super::handlers_misc::extract_lt_instance_type(v.data.as_str());
+            let it = lt_data_xml(v.data.as_str());
             items.push_str(&format!(
                 "<item><versionNumber>{}</versionNumber><launchTemplateId>{}</launchTemplateId><launchTemplateName>{}</launchTemplateName>{}{}{}<createdBy>arn:aws:sts::{}:root</createdBy><createTime>{}</createTime>{}<launchTemplateData>{}</launchTemplateData>{}</item>",
                 v.number,
@@ -2678,6 +2717,68 @@ fn delete_launch_template(req: &Request, params: &P) -> Response {
     })
 }
 
+/// Flattened LaunchTemplateData.* params as stored JSON.
+fn lt_data_json(params: &P) -> String {
+    use serde_json::{Map, Value};
+    let mut obj: Map<String, Value> = Map::new();
+    for (k, v) in [
+        ("InstanceType", "instanceType"),
+        ("ImageId", "imageId"),
+        ("KeyName", "keyName"),
+        ("SubnetId", "subnetId"),
+        ("UserData", "userData"),
+        ("PrivateIpAddress", "privateIpAddress"),
+    ] {
+        if let Some(val) = params.get(&format!("LaunchTemplateData.{k}")) {
+            if !val.is_empty() {
+                obj.insert(v.into(), Value::String(val.into()));
+            }
+        }
+    }
+    Value::Object(obj).to_string()
+}
+
+/// `<launchTemplateData>` inner from stored JSON.
+fn lt_data_xml(json: &str) -> String {
+    let mut inner = String::new();
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(json) {
+        if let Some(obj) = v.as_object() {
+            for (k, val) in obj {
+                if k == "instanceType" {
+                    if let Some(s) = val.as_str() {
+                        inner.push_str(&format!("<instanceType>{}</instanceType>", xml_escape(s)));
+                    }
+                } else if k == "imageId" {
+                    if let Some(s) = val.as_str() {
+                        inner.push_str(&format!("<imageId>{}</imageId>", xml_escape(s)));
+                    }
+                } else if k == "keyName" {
+                    if let Some(s) = val.as_str() {
+                        inner.push_str(&format!("<keyName>{}</keyName>", xml_escape(s)));
+                    }
+                } else if k == "subnetId" {
+                    if let Some(s) = val.as_str() {
+                        inner.push_str(&format!("<subnetId>{}</subnetId>", xml_escape(s)));
+                    }
+                } else if k == "userData" {
+                    if let Some(s) = val.as_str() {
+                        inner.push_str(&format!("<userData>{}</userData>", xml_escape(s)));
+                    }
+                } else if k == "privateIpAddress" {
+                    if let Some(s) = val.as_str() {
+                        inner.push_str(&format!(
+                            "<privateIpAddress>{}</privateIpAddress>",
+                            xml_escape(s)
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    let _ = inner;
+    inner
+}
+
 fn modify_launch_template(req: &Request, params: &P) -> Response {
     let id = params.str("LaunchTemplateId");
     let name = params.str("LaunchTemplateName");
@@ -2692,7 +2793,10 @@ fn modify_launch_template(req: &Request, params: &P) -> Response {
                 )
             }
         };
-        if let Some(v) = params.get("DefaultVersion") {
+        if let Some(v) = params
+            .get("SetDefaultVersion")
+            .or_else(|| params.get("DefaultVersion"))
+        {
             let v = v.to_string();
             let num: i64 = if v == "$Default" {
                 state.launch_templates[pos].default_version
@@ -2707,8 +2811,9 @@ fn modify_launch_template(req: &Request, params: &P) -> Response {
         ec2_xml(
             "ModifyLaunchTemplateResponse",
             &format!(
-                "<launchTemplate>{}{}</launchTemplate>",
+                "<launchTemplate>{}{}{}</launchTemplate>",
                 super::ec2b::template_label(&state.launch_templates[pos]),
+                tags_xml(&state.launch_templates[pos].tags),
                 ""
             ),
         )
@@ -2956,7 +3061,7 @@ fn describe_instance_type_offerings(req: &Request, params: &P) -> Response {
     ec2_xml(
         "DescribeInstanceTypeOfferingsResponse",
         &format!(
-            "<instanceTypeOfferingSet>{}</instanceTypeOfferingsSet>",
+            "<instanceTypeOfferingSet>{}</instanceTypeOfferingSet>",
             items
         ),
     )
