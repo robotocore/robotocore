@@ -600,25 +600,7 @@ pub fn create_fills(
             }
             f.insert("HostIds".to_string(), Fill::X(items));
         }
-        "tgw-peering" => {
-            f.insert(
-                "TransitGatewayAttachmentId".to_string(),
-                Fill::S(id.to_string()),
-            );
-        }
-        "tgw-connect" => {
-            f.insert(
-                "TransitGatewayAttachmentId".to_string(),
-                Fill::S(id.to_string()),
-            );
-        }
-        "tgw-connect-peer" => {
-            f.insert(
-                "TransitGatewayConnectPeerId".to_string(),
-                Fill::S(id.to_string()),
-            );
-        }
-        "coip-pool" => {
+                                "coip-pool" => {
             f.insert("PoolId".to_string(), Fill::S(id.to_string()));
             f.insert("PoolArn".to_string(), Fill::S(arn_of("coip-pool")));
             f.insert(

@@ -13,7 +13,10 @@
 
 #![allow(unused_variables)]
 
-use super::state::{idhex, Ec2State, NaclEntry, NetworkAcl, Route, RouteTable, SecurityGroup, Simple, Subnet, Tags, Vpc};
+use super::state::{
+    idhex, Ec2State, NaclEntry, NetworkAcl, Route, RouteTable, SecurityGroup, Simple, Subnet, Tags,
+    Vpc,
+};
 use super::{ec2_error, ec2_xml, tags_xml, with_state, Params};
 use crate::proto::xml_escape;
 use crate::{Request, Response};
@@ -1007,7 +1010,11 @@ fn set_classic_link_dns(req: &Request, params: &P, enable: bool) -> Response {
         let pos = state.vpcs.iter().position(|v| v.id == vpc_id).unwrap_or(0);
         state.vpcs[pos].classic_link_dns = enable;
         ec2_xml(
-            if enable { "EnableVpcClassicLinkDnsSupportResponse" } else { "DisableVpcClassicLinkDnsSupportResponse" },
+            if enable {
+                "EnableVpcClassicLinkDnsSupportResponse"
+            } else {
+                "DisableVpcClassicLinkDnsSupportResponse"
+            },
             "<return>true</return>",
         )
     })

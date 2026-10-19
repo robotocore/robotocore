@@ -767,10 +767,7 @@ fn simple_family_route(req: &Request, params: &P) -> Response {
                 return Some(ec2_error(
                     400,
                     "InvalidVpnGatewayID.NotFound",
-                    &format!(
-                        "The vpnGateway ID '{}' does not exist",
-                        xml_escape(&vgw)
-                    ),
+                    &format!("The vpnGateway ID '{}' does not exist", xml_escape(&vgw)),
                 ));
             }
             None
@@ -2567,7 +2564,10 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
             }
             ec2_xml(
                 "DescribeLocalGatewayRouteTablesResponse",
-                &format!("<localGatewayRouteTableSet>{}</localGatewayRouteTableSet>", items),
+                &format!(
+                    "<localGatewayRouteTableSet>{}</localGatewayRouteTableSet>",
+                    items
+                ),
             )
         }
         "DeleteLocalGatewayRouteTable" => {
@@ -2604,7 +2604,11 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
                 s.set("LocalGatewayVirtualInterfaceGroupId", vifg.clone());
                 s.set("Type", "static");
                 s.set("State", "active");
-                state.simple.entry("lgw-route".to_string()).or_default().push(s);
+                state
+                    .simple
+                    .entry("lgw-route".to_string())
+                    .or_default()
+                    .push(s);
                 ec2_xml(
                     "CreateLocalGatewayRouteResponse",
                     &format!(
@@ -2676,18 +2680,25 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
                 )
             })
         }
-        "DescribeLocalGatewayRouteTableVirtualInterfaceGroups" | "DescribeLocalGatewayVirtualInterfaceGroups" | "DescribeLocalGatewayVirtualInterfaces" | "DescribeLocalGatewayRouteTableVpcAssociations" | "DescribeLocalGatewayRouteTableVirtualInterfaceGroupAssociations" => {
+        "DescribeLocalGatewayRouteTableVirtualInterfaceGroups"
+        | "DescribeLocalGatewayVirtualInterfaceGroups"
+        | "DescribeLocalGatewayVirtualInterfaces"
+        | "DescribeLocalGatewayRouteTableVpcAssociations"
+        | "DescribeLocalGatewayRouteTableVirtualInterfaceGroupAssociations" => {
             let set = match op {
-                "DescribeLocalGatewayRouteTableVirtualInterfaceGroups" => "localGatewayRouteTableVirtualInterfaceGroupSet",
-                "DescribeLocalGatewayVirtualInterfaceGroups" => "localGatewayVirtualInterfaceGroupSet",
+                "DescribeLocalGatewayRouteTableVirtualInterfaceGroups" => {
+                    "localGatewayRouteTableVirtualInterfaceGroupSet"
+                }
+                "DescribeLocalGatewayVirtualInterfaceGroups" => {
+                    "localGatewayVirtualInterfaceGroupSet"
+                }
                 "DescribeLocalGatewayVirtualInterfaces" => "localGatewayVirtualInterfaceSet",
-                "DescribeLocalGatewayRouteTableVpcAssociations" => "localGatewayRouteTableVpcAssociationSet",
+                "DescribeLocalGatewayRouteTableVpcAssociations" => {
+                    "localGatewayRouteTableVpcAssociationSet"
+                }
                 _ => "localGatewayRouteTableVirtualInterfaceGroupAssociationSet",
             };
-            ec2_xml(
-                &format!("{}Response", op),
-                &format!("<{}/>", set),
-            )
+            ec2_xml(&format!("{}Response", op), &format!("<{}/>", set))
         }
         "ModifyCapacityReservation" => {
             let id = params.str("CapacityReservationId");
@@ -2709,11 +2720,19 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
                     return ec2_error(
                         400,
                         "InvalidPublicIpv4PoolID.NotFound",
-                        &format!("The public IPv4 pool ID '{}' does not exist", xml_escape(&pool)),
+                        &format!(
+                            "The public IPv4 pool ID '{}' does not exist",
+                            xml_escape(&pool)
+                        ),
                     );
                 }
                 // pick the network address from a monotonically allocated base
-                let child = format!("10.{}.{}.0/{}", state.ids.seq % 200, len / 16, len % 32 + 16);
+                let child = format!(
+                    "10.{}.{}.0/{}",
+                    state.ids.seq % 200,
+                    len / 16,
+                    len % 32 + 16
+                );
                 let mut s = Simple {
                     id: format!("pac-{}", super::state::idhex::hex17()),
                     kind: "public-ipv4-pool-cidr".to_string(),
@@ -2749,7 +2768,10 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
                     return ec2_error(
                         400,
                         "InvalidPublicIpv4PoolID.NotFound",
-                        &format!("The public IPv4 pool ID '{}' does not exist", xml_escape(&pool)),
+                        &format!(
+                            "The public IPv4 pool ID '{}' does not exist",
+                            xml_escape(&pool)
+                        ),
                     );
                 }
                 let mut found = false;
@@ -2769,7 +2791,11 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
                     return ec2_error(
                         400,
                         "InvalidPublicIpv4PoolCidr",
-                        &format!("The CIDR '{}' cannot be deprovisioned from pool '{}'", xml_escape(&cidr), xml_escape(&pool)),
+                        &format!(
+                            "The CIDR '{}' cannot be deprovisioned from pool '{}'",
+                            xml_escape(&cidr),
+                            xml_escape(&pool)
+                        ),
                     );
                 }
                 ec2_xml(
@@ -2782,10 +2808,7 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
                 )
             })
         }
-        "GetIpamResourceCidrs" => ec2_xml(
-            "GetIpamResourceCidrsResponse",
-            "<ipamResourceCidrs/>",
-        ),
+        "GetIpamResourceCidrs" => ec2_xml("GetIpamResourceCidrsResponse", "<ipamResourceCidrs/>"),
         "EnableFastLaunch" | "DisableFastLaunch" => {
             let image = params.str("ImageId");
             let owner = req.account;
@@ -2869,25 +2892,24 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
                         ));
                     }
                     if !lg.is_empty() {
-                        item.push_str(&format!(
-                            "<logGroupName>{}</logGroupName>",
-                            xml_escape(&lg)
-                        ));
+                        item.push_str(&format!("<logGroupName>{}</logGroupName>", xml_escape(&lg)));
                     }
                     item.push_str(&format!(
                         "<deliverLogsPermissionArn>{}</deliverLogsPermissionArn><maxAggregationInterval>60</maxAggregationInterval>",
                         xml_escape(&role)
                     ));
                     item.push_str("</item>");
-                    state.simple.entry("flow-log".to_string()).or_default().push(
-                        Simple {
+                    state
+                        .simple
+                        .entry("flow-log".to_string())
+                        .or_default()
+                        .push(Simple {
                             id: id.clone(),
                             kind: "flow-log".to_string(),
                             item_xml: item,
                             tags: wire_tags(params),
                             ..Default::default()
-                        },
-                    );
+                        });
                     ids_out.push_str(&format!("<item>{}</item>", xml_escape(&id)));
                 }
             });
@@ -2954,10 +2976,9 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
                         } else if s.item_xml.contains("<attachments/>") {
                             s.item_xml = s.item_xml.replace("<attachments/>", &item);
                         } else {
-                            s.item_xml = s.item_xml.replace(
-                                "</vpnGateway>",
-                                &format!("{item}</vpnGateway>"),
-                            );
+                            s.item_xml = s
+                                .item_xml
+                                .replace("</vpnGateway>", &format!("{item}</vpnGateway>"));
                         }
                     }
                 }
@@ -2992,12 +3013,12 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
                 }
                 ec2_xml("DetachVpnGatewayResponse", "<return>true</return>")
             })
-        },
-        "AssociateServiceLinkVirtualInterface" | "AttachInternetGatewayExtra" | "AttachClientVpnEndpointExtra" | "AttachCustomerGatewayExtra" => {
-            ec2_xml(
-                &format!("{}Response", op),
-                "<return>true</return>",
-            )
+        }
+        "AssociateServiceLinkVirtualInterface"
+        | "AttachInternetGatewayExtra"
+        | "AttachClientVpnEndpointExtra"
+        | "AttachCustomerGatewayExtra" => {
+            ec2_xml(&format!("{}Response", op), "<return>true</return>")
         }
         "GetManagedPrefixListEntries" => {
             let id = params.str("PrefixListId");
@@ -3050,10 +3071,7 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
                     return ec2_error(
                         400,
                         "InvalidAssociationID.NotFound",
-                        &format!(
-                            "The association ID '{}' does not exist",
-                            xml_escape(&aid)
-                        ),
+                        &format!("The association ID '{}' does not exist", xml_escape(&aid)),
                     );
                 }
                 ec2_xml(

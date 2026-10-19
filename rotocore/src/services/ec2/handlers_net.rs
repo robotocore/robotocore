@@ -710,8 +710,13 @@ fn update_sg_rule_descriptions(req: &Request, params: &P, egress: bool) -> Respo
 
 fn modify_security_group_rules(req: &Request, params: &P) -> Response {
     // pairs of (rule id, rule update) read off the flat wire params
-    let mut updates: Vec<(String, Option<String>, Option<i64>, Option<i64>, Option<String>)> =
-        Vec::new();
+    let mut updates: Vec<(
+        String,
+        Option<String>,
+        Option<i64>,
+        Option<i64>,
+        Option<String>,
+    )> = Vec::new();
     for i in params.container_indices("SecurityGroupRule") {
         let rid = params
             .sub("SecurityGroupRule", i, "SecurityGroupRuleId")
@@ -721,12 +726,24 @@ fn modify_security_group_rules(req: &Request, params: &P) -> Response {
             continue;
         }
         let proto = params
-            .get(&format!("SecurityGroupRule.{}.SecurityGroupRule.IpProtocol", i + 1))
+            .get(&format!(
+                "SecurityGroupRule.{}.SecurityGroupRule.IpProtocol",
+                i + 1
+            ))
             .map(|s| s.to_string());
-        let from = params.i64(&format!("SecurityGroupRule.{}.SecurityGroupRule.FromPort", i + 1));
-        let to = params.i64(&format!("SecurityGroupRule.{}.SecurityGroupRule.ToPort", i + 1));
+        let from = params.i64(&format!(
+            "SecurityGroupRule.{}.SecurityGroupRule.FromPort",
+            i + 1
+        ));
+        let to = params.i64(&format!(
+            "SecurityGroupRule.{}.SecurityGroupRule.ToPort",
+            i + 1
+        ));
         let cidr = params
-            .get(&format!("SecurityGroupRule.{}.SecurityGroupRule.CidrIpv4", i + 1))
+            .get(&format!(
+                "SecurityGroupRule.{}.SecurityGroupRule.CidrIpv4",
+                i + 1
+            ))
             .map(|s| s.to_string());
         updates.push((rid, proto, from, to, cidr));
     }
