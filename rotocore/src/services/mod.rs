@@ -122,7 +122,7 @@ pub mod timestreamquery;
 pub mod timestreamwrite;
 pub mod transcribe;
 pub mod transfer;
-pub mod wafv2;
+pub mod vpclattice;pub mod wafv2;
 pub mod workspaces;
 pub mod xray;
 
@@ -266,8 +266,8 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "timestreamquery" => timestreamquery::dispatch(req),
         "timestreamwrite" => timestreamwrite::dispatch(req),
         "transcribe" => Some(transcribe::dispatch(req)),
-        "transfer" => transfer::dispatch(req),
-        "wafv2" => wafv2::dispatch(req),
+"transfer" => transfer::dispatch(req),
+"vpclattice" => vpclattice::dispatch(req),        "wafv2" => wafv2::dispatch(req),
         "workspaces" => workspaces::dispatch(req),
         "xray" => Some(xray::dispatch(req)),
 
@@ -399,8 +399,8 @@ pub fn handles_service(service: &str) -> bool {
             | "timestreamquery"
             | "timestreamwrite"
             | "transcribe"
-            | "transfer"
-            | "wafv2"
+| "transfer"
+| "vpclattice"            | "wafv2"
             | "workspaces"
             | "xray"
     )
