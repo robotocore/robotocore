@@ -77,3 +77,6 @@ ecs = { path = "crates/ecs" }
 stepfunctions = { path = "crates/stepfunctions" }
 
 [dev-dependencies]
+
+[profile.release]
+strip = "symbols"
