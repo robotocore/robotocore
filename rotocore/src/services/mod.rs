@@ -109,6 +109,7 @@ pub mod s3vectors;pub mod sagemaker;
 pub mod sagemaker;
 pub mod sdb;pub mod securityhub;
 pub mod servicecatalog;
+pub mod servicequotas;
 pub mod ses;
 pub mod sesv2;
 pub mod shield;
@@ -245,6 +246,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
 "sagemaker" => Some(sagemaker::dispatch(req)),
 "sdb" => sdb::dispatch(req),        "securityhub" => Some(securityhub::dispatch(req)),
         "servicecatalog" => servicecatalog::dispatch(req),
+        "servicequotas" | "service-quotas" => servicequotas::dispatch(req),
         "ses" => ses::dispatch(req),
         "sesv2" => Some(sesv2::dispatch(req)),
         "shield" => shield::dispatch(req),
@@ -391,6 +393,8 @@ pub fn handles_service(service: &str) -> bool {
 | "sagemaker"
 | "sdb"            | "securityhub"
             | "servicecatalog"
+            | "service-quotas"
+            | "servicequotas"
             | "ses"
             | "sesv2"
             | "shield"
