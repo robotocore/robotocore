@@ -2019,6 +2019,18 @@ fn extract_service(
         }
     }
 
+    // SimpleDB is botocore's only SigV2 service: the signature rides in the
+    // form body, so there is no Authorization header for the credential-scope
+    // check and route_to_service parks the request on the unsigned-STS
+    // default, which the veto above then skips when the body names a non-STS
+    // action — leaving sdb requests named by no service at all. sdb's
+    // protocol pins Version=2009-04-15 in every request body; treat that
+    // exact shape (unsigned form post carrying sdb's fixed API version) as
+    // sdb so the rotocore backend owns the request.
+    if body_is_sdb(headers, body) {
+        return Ok("sdb".to_string());
+    }
+
     // Fallback: X-Amz-Target header (contains "service.Operation")
     if let Some(target) = headers.get("X-Amz-Target") {
         if let Ok(target_str) = target.to_str() {
@@ -2082,6 +2094,26 @@ fn unsigned_non_sts_action(headers: &HeaderMap, uri: &Uri, body: &[u8]) -> Optio
         }
     }
     None
+}
+
+/// True for an unsigned form post carrying SimpleDB's fixed API version
+/// (2009-04-15) — the exact shape botocore's sdb client always emits: a
+/// SigV2 POST form body (auth params inside the body, no Authorization
+/// header). The sdb API version is unique to sdb among `Version=` form
+/// fields, so this identifies only sdb requests.
+fn body_is_sdb(headers: &HeaderMap, body: &[u8]) -> bool {
+    if headers.get("Authorization").is_some() {
+        return false;
+    }
+    let form_body = headers
+        .get("Content-Type")
+        .and_then(|v| v.to_str().ok())
+        .map(|t| t.to_ascii_lowercase().contains("x-www-form-urlencoded"))
+        .unwrap_or(false);
+    form_body
+        && std::str::from_utf8(body)
+            .map(|b| b.contains("Version=2009-04-15"))
+            .unwrap_or(false)
 }
 
 /// Extract account ID from Authorization header.

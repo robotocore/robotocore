@@ -105,7 +105,8 @@ pub mod route53resolver;
 pub mod s3control;
 pub mod s3tables;
 pub mod s3vectors;pub mod sagemaker;
-pub mod securityhub;
+pub mod sagemaker;
+pub mod sdb;pub mod securityhub;
 pub mod servicecatalog;
 pub mod ses;
 pub mod sesv2;
@@ -238,7 +239,8 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "s3control" => s3control::dispatch(req),
 "s3tables" => s3tables::dispatch(req),
 "s3vectors" => s3vectors::dispatch(req),        "sagemaker" => Some(sagemaker::dispatch(req)),
-        "securityhub" => Some(securityhub::dispatch(req)),
+"sagemaker" => Some(sagemaker::dispatch(req)),
+"sdb" => sdb::dispatch(req),        "securityhub" => Some(securityhub::dispatch(req)),
         "servicecatalog" => servicecatalog::dispatch(req),
         "ses" => ses::dispatch(req),
         "sesv2" => Some(sesv2::dispatch(req)),
@@ -381,7 +383,8 @@ pub fn handles_service(service: &str) -> bool {
             | "s3control"
 | "s3tables"
 | "s3vectors"            | "sagemaker"
-            | "securityhub"
+| "sagemaker"
+| "sdb"            | "securityhub"
             | "servicecatalog"
             | "ses"
             | "sesv2"
