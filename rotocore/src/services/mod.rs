@@ -24,6 +24,7 @@ pub mod datasync;
 mod ec2;
 pub mod eks;
 pub mod elasticache;
+pub mod glue;
 pub mod greengrass;
 pub mod identitystore;
 pub mod inspector2;
@@ -48,6 +49,7 @@ pub mod support;
 pub mod transcribe;
 
 // Pending ports (fall back to the moto sidecar): elbv2/elb, glue,
+// Pending ports (fall back to the moto sidecar): elbv2/elb, athena,
 // emr, cloudfront, iot, connect, apigateway(v1/v2), redshift and the long
 // tail the ML-tail agent re-baselined through the sidecar.
 
@@ -96,6 +98,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "sesv2" => Some(sesv2::dispatch(req)),
         "support" => Some(support::dispatch(req)),
         "transcribe" => Some(transcribe::dispatch(req)),
+        "glue" => glue::dispatch(req),
         _ => None,
     }
 }
