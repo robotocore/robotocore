@@ -648,6 +648,43 @@ fn handle(req: &Request, g: &mut GlueState, op: &str, p: &Value) -> Response {
         "PutSchemaVersionMetadata" => try_resp!(put_schema_version_metadata(g, p)),
         "QuerySchemaVersionMetadata" => try_resp!(query_schema_version_metadata(g, p)),
         "RemoveSchemaVersionMetadata" => try_resp!(remove_schema_version_metadata(g, p)),
+        // --- Security configurations ----------------------------------------
+        "CreateSecurityConfiguration" => try_resp!(create_security_configuration(g, p)),
+        "GetSecurityConfiguration" => try_resp!(get_security_configuration(g, p)),
+        "GetSecurityConfigurations" => try_resp!(get_security_configurations(g)),
+        "DeleteSecurityConfiguration" => try_resp!(delete_security_configuration(g, p)),
+        // --- Dev endpoints ---------------------------------------------------
+        "CreateDevEndpoint" => try_resp!(create_dev_endpoint(g, p)),
+        "GetDevEndpoint" => try_resp!(get_dev_endpoint(g, p)),
+        "GetDevEndpoints" => try_resp!(get_dev_endpoints(g)),
+        "ListDevEndpoints" => try_resp!(list_dev_endpoints(g)),
+        "DeleteDevEndpoint" => try_resp!(delete_dev_endpoint(g, p)),
+        "UpdateDevEndpoint" => try_resp!(update_dev_endpoint(g, p)),
+        "BatchGetDevEndpoints" => try_resp!(batch_get_dev_endpoints(g, p)),
+        // --- Sessions + statements --------------------------------------------
+        "CreateSession" => try_resp!(create_session(g, p)),
+        "GetSession" => try_resp!(get_session(g, p)),
+        "ListSessions" => try_resp!(list_sessions(g)),
+        "DeleteSession" => try_resp!(delete_session(g, p)),
+        "StopSession" => try_resp!(stop_session(g, p)),
+        "RunStatement" => try_resp!(run_statement(g, p)),
+        "GetStatement" => try_resp!(get_statement(g, p)),
+        "ListStatements" => try_resp!(list_statements(g, p)),
+        "CancelStatement" => try_resp!(cancel_statement(g, p)),
+        // --- Connections -------------------------------------------------------
+        "CreateConnection" => try_resp!(create_connection(req, g, p)),
+        "GetConnection" => try_resp!(get_connection(g, p)),
+        "GetConnections" => try_resp!(get_connections(g)),
+        "UpdateConnection" => try_resp!(update_connection(g, p)),
+        "DeleteConnection" => try_resp!(delete_connection(g, p)),
+        "BatchDeleteConnection" => try_resp!(batch_delete_connection(g, p)),
+        // --- Resource policies + catalog encryption ----------------------------
+        "PutResourcePolicy" => try_resp!(put_resource_policy(g, p)),
+        "GetResourcePolicy" => try_resp!(get_resource_policy(g, p)),
+        "DeleteResourcePolicy" => try_resp!(delete_resource_policy(g, p)),
+        "GetResourcePolicies" => try_resp!(get_resource_policies(g)),
+        "PutDataCatalogEncryptionSettings" => try_resp!(put_dces(g, p)),
+        "GetDataCatalogEncryptionSettings" => try_resp!(get_dces(g, p)),
         // --- Everything else: deny by default (moto 501s too) ----------------
         _ => unimplemented(op),
     }
@@ -4803,5 +4840,857 @@ mod family3_tests {
         assert_eq!(r.status, 200);
         let b = body(&d(acct, "ListSchemas", json!({})));
         assert_eq!(b["Schemas"].as_array().unwrap().len(), 1);
+    }
+}
+// ---------------------------------------------------------------------------
+// Security configurations
+// ---------------------------------------------------------------------------
+
+fn security_config_dict(name: &str, config: &Value, created: f64) -> Value {
+    json!({
+        "Name": name,
+        "EncryptionConfiguration": config,
+        "CreatedTimestamp": created,
+        "Version": "1",
+    })
+}
+
+fn create_security_configuration(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "Name");
+    if g.security_configurations.contains_key(&name) {
+        return Err(err(
+            400,
+            "AlreadyExistsException",
+            &format!("SecurityConfiguration {name} already exists"),
+        ));
+    }
+    let config = p["EncryptionConfiguration"].clone();
+    let created = now_unix();
+    g.security_configurations
+        .insert(name.clone(), (config, created));
+    Ok(ok(&json!({ "Name": name, "CreatedTimestamp": created })))
+}
+
+fn get_security_configuration(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "Name");
+    let (config, created) = g
+        .security_configurations
+        .get(&name)
+        .ok_or_else(|| not_found(&format!("SecurityConfiguration {name} not found")))?;
+    Ok(ok(
+        &json!({ "SecurityConfiguration": security_config_dict(&name, config, *created) }),
+    ))
+}
+
+fn get_security_configurations(g: &mut GlueState) -> Result<Response, Response> {
+    let list: Vec<Value> = g
+        .security_configurations
+        .iter()
+        .map(|(name, (config, created))| security_config_dict(name, config, *created))
+        .collect();
+    Ok(ok(&json!({ "SecurityConfigurations": list })))
+}
+
+fn delete_security_configuration(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "Name");
+    if g.security_configurations.remove(&name).is_none() {
+        return Err(not_found(&format!(
+            "SecurityConfiguration {name} not found"
+        )));
+    }
+    Ok(empty_ok())
+}
+
+// ---------------------------------------------------------------------------
+// Dev endpoints
+// ---------------------------------------------------------------------------
+
+fn dev_endpoint_dict(rec: &DevEndpointRec) -> Value {
+    let mut obj = json!({
+        "EndpointName": rec.name,
+        "RoleArn": rec.role_arn,
+        "SecurityGroupIds": rec.security_group_ids,
+        "SubnetId": rec.subnet_id,
+        "YarnEndpointAddress": rec.yarn_endpoint_address,
+        "PrivateAddress": rec.private_address,
+        "ZeppelinRemoteSparkInterpreterPort": rec.zeppelin_port,
+        "Status": rec.status,
+        "WorkerType": rec.worker_type,
+        "GlueVersion": rec.glue_version,
+        "NumberOfWorkers": rec.number_of_workers,
+        "NumberOfNodes": rec.number_of_nodes,
+        "AvailabilityZone": rec.availability_zone,
+        "VpcId": rec.vpc_id,
+        "ExtraPythonLibsS3Path": rec.extra_python_libs_s3_path,
+        "ExtraJarsS3Path": rec.extra_jars_s3_path,
+        "CreatedTimestamp": rec.created,
+        "LastModifiedTimestamp": rec.created,
+        "PublicKey": rec.public_key,
+        "PublicKeys": rec.public_keys,
+        "SecurityConfiguration": rec.security_configuration,
+        "Arguments": rec.arguments,
+    });
+    obj.as_object_mut().unwrap().retain(|_, v| !v.is_null());
+    obj
+}
+
+fn find_dev_endpoint_mut<'a>(
+    g: &'a mut GlueState,
+    p: &Value,
+) -> Result<&'a mut DevEndpointRec, Response> {
+    let name = str_field(p, "EndpointName");
+    g.dev_endpoints
+        .get_mut(&name)
+        .ok_or_else(|| not_found(&format!("DevEndpoint {name} not found")))
+}
+
+fn create_dev_endpoint(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "EndpointName");
+    if g.dev_endpoints.contains_key(&name) {
+        return Err(err(
+            400,
+            "AlreadyExistsException",
+            &format!("DevEndpoint {name} already exists"),
+        ));
+    }
+    let rec = DevEndpointRec {
+        name: name.clone(),
+        role_arn: p["RoleArn"].clone(),
+        security_group_ids: match p["SecurityGroupIds"].is_null() {
+            true => json!([]),
+            false => p["SecurityGroupIds"].clone(),
+        },
+        subnet_id: p["SubnetId"]
+            .as_str()
+            .unwrap_or("subnet-default")
+            .to_string(),
+        worker_type: p["WorkerType"].as_str().unwrap_or("Standard").to_string(),
+        glue_version: p["GlueVersion"].as_str().unwrap_or("5.0").to_string(),
+        number_of_workers: p["NumberOfWorkers"].as_u64().unwrap_or(1),
+        number_of_nodes: p["NumberOfNodes"].as_u64().unwrap_or(1),
+        extra_python_libs_s3_path: p["ExtraPythonLibsS3Path"].clone(),
+        extra_jars_s3_path: p["ExtraJarsS3Path"].clone(),
+        security_configuration: p["SecurityConfiguration"].clone(),
+        arguments: match p["Arguments"].clone() {
+            Value::Null => json!({}),
+            v => v,
+        },
+        public_key: p["PublicKey"].clone(),
+        public_keys: p["PublicKeys"].clone(),
+        created: now_unix(),
+        private_address: json!(null),
+        yarn_endpoint_address: json!(null),
+        zeppelin_port: 9000,
+        status: "READY".to_string(),
+        availability_zone: json!("us-east-1a"),
+        vpc_id: json!("vpc-default"),
+    };
+    let dict = dev_endpoint_dict(&rec);
+    g.dev_endpoints.insert(name, rec);
+    Ok(ok(&dict))
+}
+
+fn get_dev_endpoint(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_dev_endpoint_mut(g, p)?;
+    Ok(ok(&json!({ "DevEndpoint": dev_endpoint_dict(rec) })))
+}
+
+fn get_dev_endpoints(g: &mut GlueState) -> Result<Response, Response> {
+    let list: Vec<Value> = g.dev_endpoints.values().map(dev_endpoint_dict).collect();
+    Ok(ok(&json!({ "DevEndpoints": list })))
+}
+
+fn list_dev_endpoints(g: &mut GlueState) -> Result<Response, Response> {
+    let names: Vec<Value> = g.dev_endpoints.keys().map(|k| json!(k)).collect();
+    Ok(ok(&json!({ "DevEndpointNames": names })))
+}
+
+fn delete_dev_endpoint(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "EndpointName");
+    if g.dev_endpoints.remove(&name).is_none() {
+        return Err(not_found(&format!("DevEndpoint {name} not found")));
+    }
+    Ok(empty_ok())
+}
+
+fn update_dev_endpoint(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_dev_endpoint_mut(g, p)?;
+    if let Some(key) = p.get("PublicKey") {
+        if !key.is_null() {
+            rec.public_key = key.clone();
+        }
+    }
+    Ok(empty_ok())
+}
+
+fn batch_get_dev_endpoints(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let wanted = str_list(&p["DevEndpointNames"]);
+    let mut found = Vec::new();
+    let mut missing = Vec::new();
+    for name in wanted.iter() {
+        match g.dev_endpoints.get(name) {
+            Some(rec) => found.push(dev_endpoint_dict(rec)),
+            None => missing.push(json!(name)),
+        }
+    }
+    let mut out = json!({ "DevEndpoints": found });
+    if !missing.is_empty() {
+        out["DevEndpointsNotFound"] = Value::Array(missing);
+    }
+    Ok(ok(&out))
+}
+
+// ---------------------------------------------------------------------------
+// Interactive sessions + statements
+// ---------------------------------------------------------------------------
+
+fn session_dict(rec: &SessionRec) -> Value {
+    json!({
+        "Id": rec.id,
+        "CreatedOn": rec.created,
+        "Status": rec.state,
+        "ErrorMessage": null,
+        "Description": rec.description,
+        "Role": rec.role,
+        "Command": rec.command,
+        "DefaultArguments": rec.default_arguments,
+        "Connections": rec.connections,
+        "Progress": 12.3,
+        "MaxCapacity": 123.0,
+        "SecurityConfiguration": rec.security_configuration,
+        "GlueVersion": rec.glue_version,
+    })
+}
+
+fn create_session(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let id = str_field(p, "Id");
+    if g.sessions.contains_key(&id) {
+        return Err(already_exists("Session already exists."));
+    }
+    let rec = SessionRec {
+        id: id.clone(),
+        description: p["Description"].clone(),
+        role: p["Role"].clone(),
+        command: p["Command"].clone(),
+        timeout: p["Timeout"].clone(),
+        idle_timeout: p["IdleTimeout"].clone(),
+        default_arguments: p["DefaultArguments"].clone(),
+        connections: p["Connections"].clone(),
+        max_capacity: p["MaxCapacity"].clone(),
+        number_of_workers: p["NumberOfWorkers"].clone(),
+        worker_type: p["WorkerType"].clone(),
+        security_configuration: p["SecurityConfiguration"].clone(),
+        glue_version: p["GlueVersion"].clone(),
+        tags: p["Tags"].clone(),
+        request_origin: p["RequestOrigin"].clone(),
+        state: "READY".to_string(),
+        created: now_unix(),
+        next_statement_id: 1,
+        statements: BTreeMap::new(),
+    };
+    tag_resource(
+        g,
+        &make_arn(&g.scope_region, g.scope_account, "session", &id),
+        p.get("Tags"),
+    );
+    g.sessions.insert(id, rec);
+    Ok(empty_ok())
+}
+
+fn find_session_mut<'a>(g: &'a mut GlueState, p: &Value) -> Result<&'a mut SessionRec, Response> {
+    // Statement ops address the session via `SessionId`; session ops via `Id`.
+    let id = if p.get("SessionId").map_or(false, Value::is_string) {
+        str_field(p, "SessionId")
+    } else {
+        str_field(p, "Id")
+    };
+    g.sessions
+        .get_mut(&id)
+        .ok_or_else(|| not_found(&format!("Session {id} not found.")))
+}
+
+fn get_session(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_session_mut(g, p)?;
+    Ok(ok(&json!({ "Session": session_dict(rec) })))
+}
+
+fn list_sessions(g: &mut GlueState) -> Result<Response, Response> {
+    let mut ids = Vec::new();
+    let mut sessions = Vec::new();
+    for rec in g.sessions.values() {
+        ids.push(json!(rec.id));
+        sessions.push(session_dict(rec));
+    }
+    Ok(ok(&json!({ "Ids": ids, "Sessions": sessions })))
+}
+
+fn delete_session(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let id = str_field(p, "Id");
+    if g.sessions.remove(&id).is_none() {
+        return Err(not_found(&format!("Session {id} not found.")));
+    }
+    Ok(ok(&json!({ "Id": id })))
+}
+
+fn stop_session(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_session_mut(g, p)?;
+    if rec.state != "READY" {
+        return Err(err(
+            400,
+            "IllegalSessionStateException",
+            &format!("Session is in {} status", rec.state),
+        ));
+    }
+    rec.state = "STOPPING".to_string();
+    Ok(ok(&json!({ "Id": str_field(p, "Id") })))
+}
+
+fn run_statement(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_session_mut(g, p)?;
+    let id = rec.next_statement_id;
+    rec.next_statement_id += 1;
+    let code = p["Code"].as_str().unwrap_or_default().to_string();
+    rec.statements.insert(
+        id,
+        json!({
+            "Id": id,
+            "Code": code,
+            "State": "RUNNING",
+            "Output": {},
+            "Progress": 0.0,
+        }),
+    );
+    Ok(ok(&json!({ "Id": id })))
+}
+
+fn get_statement(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_session_mut(g, p)?;
+    let id = p["Id"].as_u64().unwrap_or(0);
+    let statement = rec
+        .statements
+        .get(&id)
+        .ok_or_else(|| not_found(&format!("Statement {id} not found.")))?;
+    let out = statement.clone();
+    Ok(ok(&json!({ "Statement": out })))
+}
+
+fn list_statements(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_session_mut(g, p)?;
+    let list: Vec<Value> = rec.statements.values().cloned().collect();
+    Ok(ok(&json!({ "Statements": list })))
+}
+
+fn cancel_statement(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_session_mut(g, p)?;
+    let id = p["Id"].as_u64().unwrap_or(0);
+    if let Some(stmt) = rec.statements.get_mut(&id) {
+        stmt["State"] = json!("CANCELLED");
+    }
+    Ok(empty_ok())
+}
+
+// ---------------------------------------------------------------------------
+// Connections
+// ---------------------------------------------------------------------------
+
+fn connection_dict(rec: &ConnectionRec) -> Value {
+    let mut obj = json!({
+        "Name": rec.name,
+        "Description": rec.input["Description"],
+        "ConnectionProperties": rec.input["ConnectionProperties"],
+        "AthenaProperties": rec.input["AthenaProperties"],
+        "SparkProperties": rec.input["SparkProperties"],
+        "PythonProperties": rec.input["PythonProperties"],
+        "CreationTime": rec.created,
+        "LastUpdatedTime": rec.updated,
+        "PhysicalConnectionRequirements": rec.input["PhysicalConnectionRequirements"],
+        "Status": "READY",
+    });
+    obj.as_object_mut().unwrap().retain(|_, v| !v.is_null());
+    obj
+}
+
+fn find_connection_mut<'a>(
+    g: &'a mut GlueState,
+    p: &Value,
+) -> Result<&'a mut ConnectionRec, Response> {
+    let name = str_field(p, "Name");
+    g.connections
+        .get_mut(&name)
+        .ok_or_else(|| not_found(&format!("Connection {name} not found")))
+}
+
+fn create_connection(req: &Request, g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let input = p["ConnectionInput"].clone();
+    let name = str_field(&input, "Name");
+    if g.connections.contains_key(&name) {
+        return Err(err(
+            400,
+            "AlreadyExistsException",
+            &format!("Connection {name} already exists"),
+        ));
+    }
+    let arn = make_arn(
+        &g.scope_region.clone(),
+        g.scope_account,
+        "connection",
+        &name,
+    );
+    tag_resource(g, &arn, p.get("Tags"));
+    let now = now_unix();
+    g.connections.insert(
+        name,
+        ConnectionRec {
+            name: str_field(&input, "Name"),
+            input,
+            created: now,
+            updated: now,
+        },
+    );
+    let _ = req;
+    Ok(ok(&json!({ "CreateConnectionStatus": "READY" })))
+}
+
+fn get_connection(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_connection_mut(g, p)?;
+    Ok(ok(&json!({ "Connection": connection_dict(rec) })))
+}
+
+fn get_connections(g: &mut GlueState) -> Result<Response, Response> {
+    let list: Vec<Value> = g.connections.values().map(connection_dict).collect();
+    Ok(ok(&json!({ "ConnectionList": list })))
+}
+
+fn update_connection(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let rec = find_connection_mut(g, p)?;
+    let input = p["ConnectionInput"].clone();
+    rec.input = input;
+    rec.updated = now_unix();
+    Ok(empty_ok())
+}
+
+fn delete_connection(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let name = str_field(p, "ConnectionName");
+    if g.connections.remove(&name).is_none() {
+        return Err(not_found(&format!("Connection {name} not found")));
+    }
+    Ok(empty_ok())
+}
+
+fn batch_delete_connection(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let mut succeeded = Vec::new();
+    let mut errors = Vec::new();
+    for name in str_list(&p["ConnectionNameList"]) {
+        if g.connections.remove(&name).is_some() {
+            succeeded.push(json!(name));
+        } else {
+            errors.push(json!({
+                "ErrorDetail": {"ErrorCode": "EntityNotFoundException", "ErrorMessage": "Connection not found."}
+            }));
+        }
+    }
+    Ok(ok(&json!({ "Succeeded": succeeded, "Errors": errors })))
+}
+
+// ---------------------------------------------------------------------------
+// Resource policies + data catalog encryption settings
+// ---------------------------------------------------------------------------
+
+fn default_catalog_arn(g: &GlueState) -> String {
+    make_arn(&g.scope_region, g.scope_account, "catalog", "")
+}
+
+fn put_resource_policy(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let policy = p["PolicyInJson"].as_str().unwrap_or_default().to_string();
+    let arn = p["ResourceArn"]
+        .as_str()
+        .map(str::to_string)
+        .unwrap_or_else(|| default_catalog_arn(g));
+    let hash = md5_hash(policy.as_bytes());
+    match g.resource_policies.get_mut(&arn) {
+        Some(rec) => {
+            rec.0 = policy;
+            rec.1 = hash.clone();
+            rec.3 = now_unix();
+        }
+        None => {
+            g.resource_policies
+                .insert(arn, (policy, hash.clone(), now_unix(), now_unix()));
+        }
+    }
+    Ok(ok(&json!({ "PolicyHash": hash })))
+}
+
+fn md5_hash(data: &[u8]) -> String {
+    hex::encode(md5::compute(data).0)
+}
+
+fn get_resource_policy(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let arn = p["ResourceArn"]
+        .as_str()
+        .map(str::to_string)
+        .unwrap_or_else(|| default_catalog_arn(g));
+    match g.resource_policies.get(&arn) {
+        Some((policy, hash, created, updated)) => Ok(ok(&json!({
+            "PolicyInJson": policy,
+            "PolicyHash": hash,
+            "CreateTime": created,
+            "UpdateTime": updated,
+        }))),
+        None => Err(not_found("Policy does not exist")),
+    }
+}
+
+fn delete_resource_policy(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let arn = p["ResourceArn"]
+        .as_str()
+        .map(str::to_string)
+        .unwrap_or_else(|| default_catalog_arn(g));
+    if g.resource_policies.remove(&arn).is_none() {
+        return Err(not_found("Policy does not exist"));
+    }
+    Ok(empty_ok())
+}
+
+fn get_resource_policies(g: &mut GlueState) -> Result<Response, Response> {
+    let mut list = Vec::new();
+    for rec in g.resource_policies.values() {
+        list.push(json!({
+            "PolicyInJson": rec.0,
+            "PolicyHash": rec.1,
+            "CreateTime": rec.2,
+            "UpdateTime": rec.3,
+        }));
+    }
+    Ok(ok(&json!({ "GetResourcePoliciesResponseList": list })))
+}
+
+fn put_dces(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let catalog = p["CatalogId"]
+        .as_str()
+        .map(str::to_string)
+        .unwrap_or_else(|| g.scope_account.to_string());
+    g.data_catalog_encryption_settings
+        .insert(catalog, p["DataCatalogEncryptionSettings"].clone());
+    Ok(empty_ok())
+}
+
+fn get_dces(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let catalog = p["CatalogId"]
+        .as_str()
+        .map(str::to_string)
+        .unwrap_or_else(|| g.scope_account.to_string());
+    let stored = g.data_catalog_encryption_settings.get(&catalog);
+    let err_enc = stored
+        .map(|s| s["EncryptionAtRest"].clone())
+        .filter(|v| !v.is_null())
+        .unwrap_or_else(|| json!({"CatalogEncryptionMode": "DISABLED"}));
+    let conn_enc = stored
+        .map(|s| s["ConnectionPasswordEncryption"].clone())
+        .filter(|v| !v.is_null())
+        .unwrap_or_else(|| json!({"ReturnConnectionPasswordEncrypted": false}));
+    Ok(ok(&json!({
+        "DataCatalogEncryptionSettings": {
+            "EncryptionAtRest": err_enc,
+            "ConnectionPasswordEncryption": conn_enc,
+        }
+    })))
+}
+
+#[cfg(test)]
+mod family4_tests {
+    use super::*;
+    use bytes::Bytes;
+
+    fn req(op: &str, body_val: Value) -> Request {
+        Request {
+            service: "glue".into(),
+            operation: op.into(),
+            method: "POST".into(),
+            path: "/".into(),
+            query_string: String::new(),
+            headers: std::collections::HashMap::new(),
+            body: Bytes::from(serde_json::to_vec(&body_val).unwrap_or_default()),
+            account: 123456789012,
+            region: "us-east-1".into(),
+        }
+    }
+
+    fn scope() -> u64 {
+        uuid::Uuid::new_v4().as_u128() as u64
+    }
+
+    fn d(acct: u64, op: &str, v: Value) -> Response {
+        let mut r = req(op, v);
+        r.account = acct;
+        dispatch(&r).unwrap()
+    }
+
+    fn body(resp: &Response) -> Value {
+        serde_json::from_slice(&resp.body).unwrap_or(Value::Null)
+    }
+
+    fn err_code(resp: &Response) -> String {
+        body(resp)["__type"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    }
+
+    #[test]
+    fn security_configuration_crud() {
+        let acct = scope();
+        let r = d(
+            acct,
+            "CreateSecurityConfiguration",
+            json!({
+                "Name": "sc1",
+                "EncryptionConfiguration": {"S3Encryption": [{"S3EncryptionMode": "DISABLED"}]}
+            }),
+        );
+        assert_eq!(r.status, 200);
+        assert!(body(&r)["CreatedTimestamp"].as_f64().is_some());
+
+        let b = body(&d(acct, "GetSecurityConfiguration", json!({"Name": "sc1"})));
+        assert_eq!(b["SecurityConfiguration"]["Name"], "sc1");
+        assert!(b["SecurityConfiguration"]["EncryptionConfiguration"].is_object());
+
+        let b = body(&d(acct, "GetSecurityConfigurations", json!({})));
+        assert_eq!(b["SecurityConfigurations"].as_array().unwrap().len(), 1);
+
+        d(acct, "DeleteSecurityConfiguration", json!({"Name": "sc1"}));
+        assert_eq!(
+            err_code(&d(acct, "GetSecurityConfiguration", json!({"Name": "sc1"}))),
+            "EntityNotFoundException"
+        );
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "GetSecurityConfiguration",
+                json!({"Name": "nond"})
+            )),
+            "EntityNotFoundException"
+        );
+    }
+
+    #[test]
+    fn dev_endpoint_lifecycle() {
+        let acct = scope();
+        let r = d(
+            acct,
+            "CreateDevEndpoint",
+            json!({"EndpointName": "de1", "RoleArn": "arn:aws:iam::123456789012:role/r"}),
+        );
+        assert_eq!(r.status, 200);
+        let b = body(&r);
+        assert_eq!(b["EndpointName"], "de1");
+        assert!(b["CreatedTimestamp"].as_f64().is_some());
+        assert!(b["Arguments"].is_object());
+        assert!(b["SecurityGroupIds"].is_array());
+
+        let b = body(&d(acct, "GetDevEndpoint", json!({"EndpointName": "de1"})));
+        assert_eq!(b["DevEndpoint"]["EndpointName"], "de1");
+        assert_eq!(
+            b["DevEndpoint"]["RoleArn"],
+            "arn:aws:iam::123456789012:role/r"
+        );
+
+        let b = body(&d(acct, "GetDevEndpoints", json!({})));
+        assert_eq!(b["DevEndpoints"].as_array().unwrap().len(), 1);
+        let b = body(&d(acct, "ListDevEndpoints", json!({})));
+        assert_eq!(b["DevEndpointNames"], json!(["de1"]));
+
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "DeleteDevEndpoint",
+                json!({"EndpointName": "nond"})
+            )),
+            "EntityNotFoundException"
+        );
+
+        let b = body(&d(
+            acct,
+            "BatchGetDevEndpoints",
+            json!({"DevEndpointNames": ["de1", "zz"]}),
+        ));
+        assert_eq!(b["DevEndpoints"].as_array().unwrap().len(), 1);
+        assert_eq!(b["DevEndpointsNotFound"].as_array().unwrap().len(), 1);
+
+        d(acct, "DeleteDevEndpoint", json!({"EndpointName": "de1"}));
+        assert_eq!(
+            err_code(&d(acct, "GetDevEndpoint", json!({"EndpointName": "de1"}))),
+            "EntityNotFoundException"
+        );
+    }
+
+    #[test]
+    fn session_and_statements() {
+        let acct = scope();
+        assert_eq!(
+            d(
+                acct,
+                "CreateSession",
+                json!({"Id": "s1", "Role": "r", "Command": {"Name": "glueetl"}})
+            )
+            .status,
+            200
+        );
+
+        let b = body(&d(acct, "GetSession", json!({"Id": "s1"})));
+        assert_eq!(b["Session"]["Id"], "s1");
+        assert_eq!(b["Session"]["Role"], "r");
+
+        let b = body(&d(acct, "ListSessions", json!({})));
+        assert_eq!(b["Ids"], json!(["s1"]));
+
+        let b = body(&d(
+            acct,
+            "RunStatement",
+            json!({"SessionId": "s1", "Code": "print(1)"}),
+        ));
+        let sid = b["Id"].as_u64().unwrap();
+
+        let b = body(&d(
+            acct,
+            "GetStatement",
+            json!({"SessionId": "s1", "Id": sid}),
+        ));
+        assert_eq!(b["Statement"]["Code"], "print(1)");
+
+        let b = body(&d(acct, "ListStatements", json!({"SessionId": "s1"})));
+        assert_eq!(b["Statements"].as_array().unwrap().len(), 1);
+
+        assert_eq!(
+            d(
+                acct,
+                "CancelStatement",
+                json!({"SessionId": "s1", "Id": sid})
+            )
+            .status,
+            200
+        );
+
+        let b = body(&d(acct, "StopSession", json!({"Id": "s1"})));
+        assert_eq!(b["Id"], "s1");
+
+        // stop a second time: still READY->STOPPING transition already applied? —
+        // moto raises IllegalSessionStateException on non-READY.
+        let r = d(acct, "StopSession", json!({"Id": "s1"}));
+        assert_eq!(err_code(&r), "IllegalSessionStateException");
+
+        let b = body(&d(acct, "DeleteSession", json!({"Id": "s1"})));
+        assert_eq!(b["Id"], "s1");
+        assert_eq!(
+            err_code(&d(acct, "GetSession", json!({"Id": "s1"}))),
+            "EntityNotFoundException"
+        );
+    }
+
+    #[test]
+    fn connection_crud_and_batch_delete() {
+        let acct = scope();
+        let conn = json!({
+            "Name": "c1", "ConnectionType": "JDBC",
+            "ConnectionProperties": {"USERNAME": "u"}
+        });
+        let r = d(acct, "CreateConnection", json!({"ConnectionInput": conn}));
+        assert_eq!(r.status, 200);
+        assert_eq!(body(&r)["CreateConnectionStatus"], "READY");
+
+        let b = body(&d(acct, "GetConnection", json!({"Name": "c1"})));
+        assert_eq!(b["Connection"]["Name"], "c1");
+        assert!(b["Connection"]["ConnectionProperties"].is_object());
+
+        let b = body(&d(acct, "GetConnections", json!({})));
+        assert_eq!(b["ConnectionList"].as_array().unwrap().len(), 1);
+
+        d(
+            acct,
+            "UpdateConnection",
+            json!({"Name": "c1", "ConnectionInput": {"Name": "c1",
+                   "ConnectionProperties": {"USERNAME": "u2"}}}),
+        );
+        let b = body(&d(acct, "GetConnection", json!({"Name": "c1"})));
+        assert_eq!(b["Connection"]["ConnectionProperties"]["USERNAME"], "u2");
+
+        // duplicate
+        assert_eq!(
+            err_code(&d(
+                acct,
+                "CreateConnection",
+                json!({"ConnectionInput": conn})
+            )),
+            "AlreadyExistsException"
+        );
+
+        // batch delete: one succeeds, one missing
+        let b = body(&d(
+            acct,
+            "BatchDeleteConnection",
+            json!({"ConnectionNameList": ["c1", "zz"]}),
+        ));
+        assert_eq!(b["Succeeded"].as_array().unwrap().len(), 1);
+        assert_eq!(b["Errors"].as_array().unwrap().len(), 1);
+
+        assert_eq!(
+            err_code(&d(acct, "GetConnection", json!({"Name": "c1"}))),
+            "EntityNotFoundException"
+        );
+    }
+
+    #[test]
+    fn resource_policy_and_encryption() {
+        let acct = scope();
+        // No policy at first.
+        assert_eq!(
+            err_code(&d(acct, "GetResourcePolicy", json!({}))),
+            "EntityNotFoundException"
+        );
+
+        let policy = r#"{"Version":"2012-10-17","Statement":[]}"#;
+        let b = body(&d(
+            acct,
+            "PutResourcePolicy",
+            json!({"PolicyInJson": policy}),
+        ));
+        assert!(!str_field(&b, "PolicyHash").is_empty());
+
+        let b = body(&d(acct, "GetResourcePolicy", json!({})));
+        assert_eq!(b["PolicyInJson"], policy);
+
+        let b = body(&d(acct, "GetResourcePolicies", json!({})));
+        assert_eq!(
+            b["GetResourcePoliciesResponseList"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+
+        d(acct, "DeleteResourcePolicy", json!({}));
+        assert_eq!(
+            err_code(&d(acct, "GetResourcePolicy", json!({}))),
+            "EntityNotFoundException"
+        );
+        // delete idempotent-style error per moto
+        assert_eq!(
+            err_code(&d(acct, "DeleteResourcePolicy", json!({}))),
+            "EntityNotFoundException"
+        );
+
+        // data catalog encryption
+        let b = body(&d(acct, "GetDataCatalogEncryptionSettings", json!({})));
+        assert_eq!(
+            b["DataCatalogEncryptionSettings"]["EncryptionAtRest"]["CatalogEncryptionMode"],
+            "DISABLED"
+        );
+        d(
+            acct,
+            "PutDataCatalogEncryptionSettings",
+            json!({"DataCatalogEncryptionSettings": {"EncryptionAtRest": {"CatalogEncryptionMode": ""}}}),
+        );
+        let b = body(&d(acct, "GetDataCatalogEncryptionSettings", json!({})));
+        assert!(b["DataCatalogEncryptionSettings"].is_object());
     }
 }
