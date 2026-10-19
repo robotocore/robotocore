@@ -797,7 +797,7 @@ pub struct ConnectState {
     agent_statuses: HashMap<String, HashMap<String, Value>>,
     approved_origins: HashMap<String, Vec<String>>,
     bots: HashMap<String, Vec<Value>>,
-    contact_attributes: HashMap<String, HashMap<String, Value>>,
+    contact_attributes: HashMap<String, HashMap<String, Map<String, Value>>>,
     contact_evaluations: HashMap<String, HashMap<String, Value>>,
     contact_flow_module_aliases: HashMap<String, HashMap<String, HashMap<String, Value>>>,
     contact_flow_modules: HashMap<String, HashMap<String, Value>>,
@@ -1111,6 +1111,152 @@ fn handle(
         "UpdateUserHierarchyStructure" => {
             op_update_user_hierarchy_structure(st, param(params, "InstanceId"))
         }
+        // -- Contact flows ------------------------------------------------
+        "CreateContactFlow" => op_create_contact_flow(st, param(params, "InstanceId"), body),
+        "DescribeContactFlow" => op_describe_contact_flow(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactFlowId"),
+        ),
+        "UpdateContactFlowContent" => op_update_contact_flow_content(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactFlowId"),
+            body,
+        ),
+        "UpdateContactFlowName" => op_update_contact_flow_name(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactFlowId"),
+            body,
+        ),
+        "UpdateContactFlowMetadata" => op_update_contact_flow_metadata(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactFlowId"),
+            body,
+        ),
+        "DeleteContactFlow" => op_delete_contact_flow(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactFlowId"),
+        ),
+        "ListContactFlows" => op_list_contact_flows(st, param(params, "InstanceId")),
+        "ListContactFlowVersions" => op_list_contact_flow_versions(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactFlowId"),
+        ),
+        // -- Contact flow modules ---------------------------------------------
+        "CreateContactFlowModule" => {
+            op_create_contact_flow_module(st, param(params, "InstanceId"), body)
+        }
+        "DescribeContactFlowModule" => op_describe_contact_flow_module(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactFlowModuleId"),
+        ),
+        "UpdateContactFlowModuleContent" => op_update_contact_flow_module_content(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactFlowModuleId"),
+            body,
+        ),
+        "UpdateContactFlowModuleMetadata" => op_update_contact_flow_module_metadata(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactFlowModuleId"),
+            body,
+        ),
+        "DeleteContactFlowModule" => op_delete_contact_flow_module(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactFlowModuleId"),
+        ),
+        "ListContactFlowModules" => op_list_contact_flow_modules(st, param(params, "InstanceId")),
+        // -- Contact flow module aliases --------------------------------------
+        "CreateContactFlowModuleAlias" => op_create_contact_flow_module_alias(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactFlowModuleId"),
+            body,
+        ),
+        "DescribeContactFlowModuleAlias" => op_describe_contact_flow_module_alias(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactFlowModuleId"),
+            param(params, "AliasId"),
+        ),
+        "ListContactFlowModuleAliases" => op_list_contact_flow_module_aliases(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactFlowModuleId"),
+        ),
+        "UpdateContactFlowModuleAlias" => op_update_contact_flow_module_alias(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactFlowModuleId"),
+            param(params, "AliasId"),
+            body,
+        ),
+        "DeleteContactFlowModuleAlias" => op_delete_contact_flow_module_alias(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactFlowModuleId"),
+            param(params, "AliasId"),
+        ),
+        // -- Contacts ----------------------------------------------------------
+        "CreateContact" => op_create_contact(st, param(params, "InstanceId"), body),
+        "DescribeContact" => {
+            op_describe_contact(st, param(params, "InstanceId"), param(params, "ContactId"))
+        }
+        "UpdateContact" => op_update_contact(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactId"),
+            body,
+        ),
+        "StopContact" => {
+            let instance_id = match body_str(body, "InstanceId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            let contact_id = match body_str(body, "ContactId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            op_stop_contact(st, &instance_id, &contact_id)
+        }
+        // -- Contact attributes -------------------------------------------------
+        "GetContactAttributes" => op_get_contact_attributes(
+            st,
+            param(params, "InstanceId"),
+            param(params, "InitialContactId"),
+        ),
+        "UpdateContactAttributes" => op_update_contact_attributes(st, body),
+        // -- Contact evaluations -------------------------------------------------
+        "StartContactEvaluation" => {
+            op_start_contact_evaluation(st, param(params, "InstanceId"), body)
+        }
+        "DescribeContactEvaluation" => op_describe_contact_evaluation(
+            st,
+            param(params, "InstanceId"),
+            param(params, "EvaluationId"),
+        ),
+        "UpdateContactEvaluation" => op_update_contact_evaluation(
+            st,
+            param(params, "InstanceId"),
+            param(params, "EvaluationId"),
+            body,
+        ),
+        "DeleteContactEvaluation" => op_delete_contact_evaluation(
+            st,
+            param(params, "InstanceId"),
+            param(params, "EvaluationId"),
+        ),
+        "ListContactReferences" => op_list_contact_references(st, param(params, "InstanceId")),
+        // -- Flow association list (moto returns []) -------------------------------
+        "ListFlowAssociations" => op_list_flow_associations(st, param(params, "InstanceId")),
         _ => op_not_implemented(op),
     }
 }
@@ -2359,6 +2505,811 @@ fn op_update_user_hierarchy_structure(st: &mut ConnectState, instance_id: &str) 
 }
 
 // ---------------------------------------------------------------------------
+// Contact flows
+// ---------------------------------------------------------------------------
+
+fn instance_arn_or_404(st: &ConnectState, instance_id: &str) -> Option<String> {
+    st.instances.get(instance_id).map(|i| str_field(i, "Arn"))
+}
+
+fn op_create_contact_flow(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance_arn = match instance_arn_or_404(st, instance_id) {
+        Some(a) => a,
+        None => return notfound_instance(instance_id),
+    };
+    let name = match body_str(body, "Name") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let flow_type = match body_str(body, "Type") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let content = match body_str(body, "Content") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let flow_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("{instance_arn}/contact-flow/{flow_id}");
+    let status = opt_string(body, "Status").unwrap_or_else(|| "PUBLISHED".into());
+    let mut flow = Map::new();
+    flow.insert("Arn".into(), json!(arn.clone()));
+    flow.insert("Id".into(), json!(flow_id.clone()));
+    flow.insert("Name".into(), json!(name));
+    flow.insert("Type".into(), json!(flow_type));
+    flow.insert("State".into(), json!("ACTIVE"));
+    flow.insert("Status".into(), json!(status));
+    flow.insert(
+        "Description".into(),
+        json!(opt_string(body, "Description").unwrap_or_default()),
+    );
+    flow.insert("Content".into(), json!(content.clone()));
+    flow.insert(
+        "Tags".into(),
+        opt_val(body, "Tags").unwrap_or_else(|| json!({})),
+    );
+    flow.insert("FlowContentSha256".into(), json!(sha256_hex(&content)));
+    st.contact_flows
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(flow_id.clone(), Value::Object(flow));
+    tag_resource(st, &arn, opt_val(body, "Tags"));
+    ok(json!({"ContactFlowId": flow_id, "ContactFlowArn": arn}))
+}
+
+fn op_describe_contact_flow(st: &mut ConnectState, instance_id: &str, flow_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .contact_flows
+        .get(instance_id)
+        .and_then(|m| m.get(flow_id))
+    {
+        Some(f) => ok(json!({"ContactFlow": f.clone()})),
+        None => not_found(format!(
+            "Contact flow {flow_id} not found in instance {instance_id}"
+        )),
+    }
+}
+
+fn op_update_contact_flow_content(
+    st: &mut ConnectState,
+    instance_id: &str,
+    flow_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let content = match body_str(body, "Content") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let flow = match st
+        .contact_flows
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(flow_id))
+    {
+        Some(f) => f,
+        None => return not_found(format!("Contact flow {flow_id} not found")),
+    };
+    flow["Content"] = json!(content.clone());
+    flow["FlowContentSha256"] = json!(sha256_hex(&content));
+    ok(json!({}))
+}
+
+fn op_update_contact_flow_name(
+    st: &mut ConnectState,
+    instance_id: &str,
+    flow_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let flow = match st
+        .contact_flows
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(flow_id))
+    {
+        Some(f) => f,
+        None => return not_found(format!("Contact flow {flow_id} not found")),
+    };
+    if let Some(name) = opt_val(body, "Name") {
+        flow["Name"] = name;
+    }
+    if let Some(desc) = opt_val(body, "Description") {
+        flow["Description"] = desc;
+    }
+    ok(json!({}))
+}
+
+fn op_update_contact_flow_metadata(
+    st: &mut ConnectState,
+    instance_id: &str,
+    flow_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let flow = match st
+        .contact_flows
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(flow_id))
+    {
+        Some(f) => f,
+        None => return not_found(format!("Contact flow {flow_id} not found")),
+    };
+    if let Some(name) = opt_val(body, "Name") {
+        flow["Name"] = name;
+    }
+    if let Some(desc) = opt_val(body, "Description") {
+        flow["Description"] = desc;
+    }
+    if let Some(state) = opt_val(body, "ContactFlowState") {
+        flow["State"] = state;
+    }
+    ok(json!({}))
+}
+
+fn op_delete_contact_flow(st: &mut ConnectState, instance_id: &str, flow_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .contact_flows
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(flow_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Contact flow {flow_id} not found")),
+    }
+}
+
+fn op_list_contact_flows(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let empty = HashMap::new();
+    let flows = st.contact_flows.get(instance_id).unwrap_or(&empty);
+    let rows: Vec<Value> = flows
+        .values()
+        .map(|f| {
+            json!({
+                "Id": f["Id"],
+                "Arn": f["Arn"],
+                "Name": f["Name"],
+                "ContactFlowType": f["Type"],
+                "ContactFlowState": f["State"],
+                "ContactFlowStatus": f["Status"],
+            })
+        })
+        .collect();
+    ok(json!({"ContactFlowSummaryList": rows}))
+}
+
+fn op_list_contact_flow_versions(
+    st: &mut ConnectState,
+    instance_id: &str,
+    flow_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let rows: Vec<Value> = st
+        .contact_flows
+        .get(instance_id)
+        .and_then(|m| m.get(flow_id))
+        .map(|f| {
+            vec![json!({
+                "Arn": f["Arn"],
+                "Id": f["Id"],
+                "Name": f["Name"],
+                "Version": 1,
+            })]
+        })
+        .unwrap_or_default();
+    ok(json!({"ContactFlowVersionSummaryList": rows}))
+}
+
+// ---------------------------------------------------------------------------
+// Contact flow modules
+// ---------------------------------------------------------------------------
+
+fn op_create_contact_flow_module(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance_arn = match instance_arn_or_404(st, instance_id) {
+        Some(a) => a,
+        None => return notfound_instance(instance_id),
+    };
+    let name = match body_str(body, "Name") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let content = match body_str(body, "Content") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let module_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("{instance_arn}/flow-module/{module_id}");
+    let mut stored = Map::new();
+    stored.insert("Arn".into(), json!(arn.clone()));
+    stored.insert("Id".into(), json!(module_id.clone()));
+    stored.insert("Name".into(), json!(name));
+    stored.insert("Content".into(), json!(content.clone()));
+    stored.insert(
+        "Description".into(),
+        json!(opt_string(body, "Description").unwrap_or_default()),
+    );
+    stored.insert("State".into(), json!("ACTIVE"));
+    stored.insert("Status".into(), json!("PUBLISHED"));
+    stored.insert(
+        "Tags".into(),
+        opt_val(body, "Tags").unwrap_or_else(|| json!({})),
+    );
+    stored.insert(
+        "FlowModuleContentSha256".into(),
+        json!(sha256_hex(&content)),
+    );
+    st.contact_flow_modules
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(module_id.clone(), Value::Object(stored));
+    tag_resource(st, &arn, opt_val(body, "Tags"));
+    ok(json!({"Id": module_id, "Arn": arn}))
+}
+
+fn op_describe_contact_flow_module(
+    st: &mut ConnectState,
+    instance_id: &str,
+    module_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .contact_flow_modules
+        .get(instance_id)
+        .and_then(|m| m.get(module_id))
+    {
+        Some(m) => ok(json!({"ContactFlowModule": m.clone()})),
+        None => not_found(format!(
+            "Contact flow module {module_id} not found in instance {instance_id}"
+        )),
+    }
+}
+
+fn op_update_contact_flow_module_content(
+    st: &mut ConnectState,
+    instance_id: &str,
+    module_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let content = match body_str(body, "Content") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let module = match st
+        .contact_flow_modules
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(module_id))
+    {
+        Some(m) => m,
+        None => return not_found(format!("Contact flow module {module_id} not found")),
+    };
+    module["Content"] = json!(content.clone());
+    module["FlowModuleContentSha256"] = json!(sha256_hex(&content));
+    ok(json!({}))
+}
+
+fn op_update_contact_flow_module_metadata(
+    st: &mut ConnectState,
+    instance_id: &str,
+    module_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let module = match st
+        .contact_flow_modules
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(module_id))
+    {
+        Some(m) => m,
+        None => return not_found(format!("Contact flow module {module_id} not found")),
+    };
+    if let Some(name) = opt_val(body, "Name") {
+        module["Name"] = name;
+    }
+    if let Some(desc) = opt_val(body, "Description") {
+        module["Description"] = desc;
+    }
+    if let Some(state) = opt_val(body, "State") {
+        module["State"] = state;
+    }
+    ok(json!({}))
+}
+
+fn op_delete_contact_flow_module(
+    st: &mut ConnectState,
+    instance_id: &str,
+    module_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .contact_flow_modules
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(module_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Contact flow module {module_id} not found")),
+    }
+}
+
+fn op_list_contact_flow_modules(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let empty = HashMap::new();
+    let modules = st.contact_flow_modules.get(instance_id).unwrap_or(&empty);
+    let rows: Vec<Value> = modules
+        .values()
+        .map(|m| {
+            json!({
+                "Id": m["Id"],
+                "Arn": m["Arn"],
+                "Name": m["Name"],
+                "State": m["State"],
+            })
+        })
+        .collect();
+    ok(json!({"ContactFlowModulesSummaryList": rows}))
+}
+
+// ---------------------------------------------------------------------------
+// Contact flow module aliases
+// ---------------------------------------------------------------------------
+
+fn op_create_contact_flow_module_alias(
+    st: &mut ConnectState,
+    instance_id: &str,
+    module_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance_arn = match instance_arn_or_404(st, instance_id) {
+        Some(a) => a,
+        None => return notfound_instance(instance_id),
+    };
+    let name = match body_str(body, "AliasName") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let version = match body_str(body, "ContactFlowModuleVersion") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let alias_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("{instance_arn}/flow-module/{module_id}/alias/{alias_id}");
+    let mut alias = Map::new();
+    alias.insert("AliasId".into(), json!(alias_id.clone()));
+    alias.insert("AliasArn".into(), json!(arn.clone()));
+    alias.insert("ContactFlowModuleId".into(), json!(module_id));
+    alias.insert("Name".into(), json!(name));
+    alias.insert("TargetContactFlowModuleVersion".into(), json!(version));
+    alias.insert(
+        "Description".into(),
+        json!(opt_string(body, "Description").unwrap_or_default()),
+    );
+    let stamp = now_iso();
+    alias.insert("CreateTimestamp".into(), json!(stamp.clone()));
+    alias.insert("ModifiedTimestamp".into(), json!(stamp));
+    // moto does not require the parent module to exist.
+    st.contact_flow_module_aliases
+        .entry(instance_id.to_string())
+        .or_default()
+        .entry(module_id.to_string())
+        .or_default()
+        .insert(alias_id.clone(), Value::Object(alias));
+    ok(json!({"Id": alias_id, "ContactFlowModuleArn": arn}))
+}
+
+fn op_describe_contact_flow_module_alias(
+    st: &mut ConnectState,
+    instance_id: &str,
+    module_id: &str,
+    alias_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .contact_flow_module_aliases
+        .get(instance_id)
+        .and_then(|m| m.get(module_id))
+        .and_then(|a| a.get(alias_id))
+    {
+        Some(a) => ok(json!({"ContactFlowModuleAlias": a.clone()})),
+        None => not_found(format!("Contact flow module alias {alias_id} not found")),
+    }
+}
+
+fn op_list_contact_flow_module_aliases(
+    st: &mut ConnectState,
+    instance_id: &str,
+    module_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let rows: Vec<Value> = st
+        .contact_flow_module_aliases
+        .get(instance_id)
+        .and_then(|m| m.get(module_id))
+        .map(|a| a.values().cloned().collect())
+        .unwrap_or_default();
+    ok(json!({"ContactFlowModuleAliasSummaryList": rows}))
+}
+
+fn op_update_contact_flow_module_alias(
+    st: &mut ConnectState,
+    instance_id: &str,
+    module_id: &str,
+    alias_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let alias = match st
+        .contact_flow_module_aliases
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(module_id))
+        .and_then(|a| a.get_mut(alias_id))
+    {
+        Some(a) => a,
+        None => return not_found(format!("Contact flow module alias {alias_id} not found")),
+    };
+    if let Some(name) = opt_val(body, "Name") {
+        alias["Name"] = name;
+    }
+    if let Some(version) = opt_val(body, "TargetContactFlowModuleVersion") {
+        alias["TargetContactFlowModuleVersion"] = version;
+    }
+    if let Some(desc) = opt_val(body, "Description") {
+        alias["Description"] = desc;
+    }
+    alias["ModifiedTimestamp"] = json!(now_iso());
+    ok(json!({"ContactFlowModuleAlias": alias.clone()}))
+}
+
+fn op_delete_contact_flow_module_alias(
+    st: &mut ConnectState,
+    instance_id: &str,
+    module_id: &str,
+    alias_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .contact_flow_module_aliases
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(module_id))
+        .and_then(|a| a.remove(alias_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Contact flow module alias {alias_id} not found")),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Contacts
+// ---------------------------------------------------------------------------
+
+fn op_create_contact(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance_id = if instance_arn_or_404(st, instance_id).is_some() {
+        instance_id.to_string()
+    } else {
+        // moto falls back to the body InstanceId for /contact/create-contact.
+        let from_body = opt_string(body, "InstanceId").unwrap_or_default();
+        if instance_arn_or_404(st, &from_body).is_none() {
+            return notfound_instance(instance_id);
+        }
+        from_body
+    };
+    let channel = match body_str(body, "Channel") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let initiation_method = match body_str(body, "InitiationMethod") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let instance_arn = instance_arn_or_404(st, &instance_id).unwrap_or_default();
+    let contact_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("{instance_arn}/contact/{contact_id}");
+    let stamp = now_iso();
+    let mut contact = Map::new();
+    contact.insert("Id".into(), json!(contact_id.clone()));
+    contact.insert("Arn".into(), json!(arn.clone()));
+    contact.insert("Channel".into(), json!(channel));
+    contact.insert("InitiationMethod".into(), json!(initiation_method));
+    contact.insert(
+        "Name".into(),
+        json!(opt_string(body, "Name").unwrap_or_default()),
+    );
+    contact.insert(
+        "Description".into(),
+        json!(opt_string(body, "Description").unwrap_or_default()),
+    );
+    contact.insert("InitiationTimestamp".into(), json!(stamp.clone()));
+    contact.insert("LastUpdateTimestamp".into(), json!(stamp));
+    if let Some(rc) =
+        opt_val(body, "RelatedContactId").filter(|v| !v.as_str().unwrap_or_default().is_empty())
+    {
+        contact.insert("RelatedContactId".into(), rc);
+    }
+    if let Some(sa) =
+        opt_val(body, "SegmentAttributes").filter(|v| v.as_object().is_some_and(|m| !m.is_empty()))
+    {
+        contact.insert("SegmentAttributes".into(), sa);
+    }
+    if let Some(ui) = opt_val(body, "UserInfo").filter(|v| !v.is_null()) {
+        contact.insert("UserInfo".into(), ui);
+    }
+    st.contacts
+        .entry(instance_id)
+        .or_default()
+        .insert(contact_id.clone(), Value::Object(contact));
+    ok(json!({"ContactId": contact_id, "ContactArn": arn}))
+}
+
+fn op_describe_contact(st: &mut ConnectState, instance_id: &str, contact_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st.contacts.get(instance_id).and_then(|m| m.get(contact_id)) {
+        Some(c) => ok(json!({"Contact": c.clone()})),
+        None => not_found(format!("Contact {contact_id} not found")),
+    }
+}
+
+fn op_update_contact(
+    st: &mut ConnectState,
+    instance_id: &str,
+    contact_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let contact = match st
+        .contacts
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(contact_id))
+    {
+        Some(c) => c,
+        None => return not_found(format!("Contact {contact_id} not found")),
+    };
+    if let Some(name) = opt_val(body, "Name") {
+        contact["Name"] = name;
+    }
+    if let Some(desc) = opt_val(body, "Description") {
+        contact["Description"] = desc;
+    }
+    contact["LastUpdateTimestamp"] = json!(now_iso());
+    ok(json!({}))
+}
+
+fn op_stop_contact(st: &mut ConnectState, instance_id: &str, contact_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .contacts
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(contact_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Contact {contact_id} not found")),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Contact attributes
+// ---------------------------------------------------------------------------
+
+fn op_get_contact_attributes(
+    st: &mut ConnectState,
+    instance_id: &str,
+    contact_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let attrs = st
+        .contact_attributes
+        .get(instance_id)
+        .and_then(|i| i.get(contact_id))
+        .cloned()
+        .unwrap_or_default();
+    ok(json!({"Attributes": attrs}))
+}
+
+fn op_update_contact_attributes(st: &mut ConnectState, body: &Map<String, Value>) -> Response {
+    let instance_id = match body_str(body, "InstanceId") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let initial_contact_id = match body_str(body, "InitialContactId") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    if !st.instances.contains_key(&instance_id) {
+        return notfound_instance(&instance_id);
+    }
+    if let Some(Value::Object(attrs)) = opt_val(body, "Attributes") {
+        let entry = st
+            .contact_attributes
+            .entry(instance_id)
+            .or_default()
+            .entry(initial_contact_id)
+            .or_default();
+        for (k, v) in attrs {
+            entry.insert(k, v);
+        }
+    }
+    ok(json!({}))
+}
+
+// ---------------------------------------------------------------------------
+// Contact evaluations
+// ---------------------------------------------------------------------------
+
+fn op_start_contact_evaluation(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance_arn = match instance_arn_or_404(st, instance_id) {
+        Some(a) => a,
+        None => return notfound_instance(instance_id),
+    };
+    let contact_id = match body_str(body, "ContactId") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let form_id = match body_str(body, "EvaluationFormId") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let evaluation_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("{instance_arn}/contact-evaluation/{evaluation_id}");
+    let stamp = now_iso();
+    let mut evaluation = Map::new();
+    evaluation.insert("EvaluationId".into(), json!(evaluation_id.clone()));
+    evaluation.insert("EvaluationArn".into(), json!(arn.clone()));
+    evaluation.insert("ContactId".into(), json!(contact_id));
+    evaluation.insert("EvaluationFormId".into(), json!(form_id));
+    evaluation.insert(
+        "Status".into(),
+        json!(opt_string(body, "Status").unwrap_or_else(|| "DRAFT".into())),
+    );
+    evaluation.insert(
+        "Answers".into(),
+        opt_val(body, "Answers").unwrap_or_else(|| json!({})),
+    );
+    if let Some(notes) = opt_val(body, "Notes").filter(|v| !v.is_null()) {
+        evaluation.insert("Notes".into(), notes);
+    }
+    evaluation.insert("CreateTimestamp".into(), json!(stamp.clone()));
+    evaluation.insert("ModifiedTimestamp".into(), json!(stamp));
+    st.contact_evaluations
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(evaluation_id.clone(), Value::Object(evaluation));
+    ok(json!({"EvaluationId": evaluation_id, "EvaluationArn": arn}))
+}
+
+fn op_describe_contact_evaluation(
+    st: &mut ConnectState,
+    instance_id: &str,
+    evaluation_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .contact_evaluations
+        .get(instance_id)
+        .and_then(|m| m.get(evaluation_id))
+    {
+        Some(e) => ok(json!({"ContactEvaluation": e.clone()})),
+        None => not_found(format!("Contact evaluation {evaluation_id} not found")),
+    }
+}
+
+fn op_update_contact_evaluation(
+    st: &mut ConnectState,
+    instance_id: &str,
+    evaluation_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let evaluation = match st
+        .contact_evaluations
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(evaluation_id))
+    {
+        Some(e) => e,
+        None => return not_found(format!("Contact evaluation {evaluation_id} not found")),
+    };
+    if let Some(status) = opt_val(body, "Status") {
+        evaluation["Status"] = status;
+    }
+    if let Some(answers) = opt_val(body, "Answers") {
+        evaluation["Answers"] = answers;
+    }
+    if let Some(notes) = opt_val(body, "Notes") {
+        evaluation["Notes"] = notes;
+    }
+    evaluation["ModifiedTimestamp"] = json!(now_iso());
+    ok(json!({"ContactEvaluation": evaluation.clone()}))
+}
+
+fn op_delete_contact_evaluation(
+    st: &mut ConnectState,
+    instance_id: &str,
+    evaluation_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .contact_evaluations
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(evaluation_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Contact evaluation {evaluation_id} not found")),
+    }
+}
+
+fn op_list_contact_references(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    ok(json!({"ReferenceSummaryList": []}))
+}
+
+fn op_list_flow_associations(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    ok(json!({"FlowAssociationSummaryList": []}))
+}
+// ---------------------------------------------------------------------------
 // Unit tests
 // ---------------------------------------------------------------------------
 
@@ -3121,6 +4072,347 @@ mod tests {
             "",
         );
         assert_eq!(status_of(&missing), 404);
+    }
+
+    // -- Contact flows --------------------------------------------------------
+
+    #[test]
+    fn contact_flow_lifecycle() {
+        let (id, _) = make_instance(json!({}));
+        let content = r#"{"Version":"2019-10-30","StartAction":"a1","Actions":[]}"#;
+        let create = request(
+            "PUT",
+            &format!("/contact-flows/{id}"),
+            json!({"Name": "F", "Type": "CONTACT_FLOW", "Content": content}),
+            "",
+        );
+        let created = body_of(&create);
+        let fid = created["ContactFlowId"].as_str().unwrap().to_string();
+        assert!(created["ContactFlowArn"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/contact-flow/{fid}")));
+
+        let desc = request("GET", &format!("/contact-flows/{id}/{fid}"), json!({}), "");
+        let described = body_of(&desc);
+        let flow = &described["ContactFlow"];
+        assert_eq!(flow["Name"], "F");
+        assert_eq!(flow["Type"], "CONTACT_FLOW");
+        assert_eq!(flow["State"], "ACTIVE");
+        assert_eq!(flow["Status"], "PUBLISHED");
+        // sha256 of the stored content
+        assert_eq!(flow["FlowContentSha256"].as_str().unwrap().len(), 64);
+
+        let upd_content = request(
+            "POST",
+            &format!("/contact-flows/{id}/{fid}/content"),
+            json!({"Content": "{\"Version\":\"2019-10-30\"}"}),
+            "",
+        );
+        assert_eq!(status_of(&upd_content), 200);
+        let upd_name = request(
+            "POST",
+            &format!("/contact-flows/{id}/{fid}/name"),
+            json!({"Name": "F2", "Description": "d"}),
+            "",
+        );
+        assert_eq!(status_of(&upd_name), 200);
+        let upd_meta = request(
+            "POST",
+            &format!("/contact-flows/{id}/{fid}/metadata"),
+            json!({"ContactFlowState": "ARCHIVED"}),
+            "",
+        );
+        assert_eq!(status_of(&upd_meta), 200);
+        let versions = request(
+            "GET",
+            &format!("/contact-flows/{id}/{fid}/versions"),
+            json!({}),
+            "",
+        );
+        let versions_body = body_of(&versions);
+        assert!(versions_body["ContactFlowVersionSummaryList"][0]["Version"]
+            .as_i64()
+            .is_some());
+
+        let listed = request(
+            "GET",
+            &format!("/contact-flows-summary/{id}"),
+            json!({}),
+            "",
+        );
+        let list_body = body_of(&listed);
+        let rows = list_body["ContactFlowSummaryList"].as_array().unwrap();
+        assert_eq!(rows[0]["Name"], "F2");
+        assert_eq!(rows[0]["ContactFlowState"], "ARCHIVED");
+
+        let del = request(
+            "DELETE",
+            &format!("/contact-flows/{id}/{fid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&del), 200);
+        let after = request("GET", &format!("/contact-flows/{id}/{fid}"), json!({}), "");
+        assert_eq!(status_of(&after), 404);
+    }
+
+    #[test]
+    fn contact_flow_module_and_alias_lifecycle() {
+        let (id, _) = make_instance(json!({}));
+        let create = request(
+            "PUT",
+            &format!("/contact-flow-modules/{id}"),
+            json!({"Name": "M", "Content": "{}"}),
+            "",
+        );
+        let created = body_of(&create);
+        let mid = created["Id"].as_str().unwrap().to_string();
+        assert!(created["Arn"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/flow-module/{mid}")));
+
+        let desc = request(
+            "GET",
+            &format!("/contact-flow-modules/{id}/{mid}"),
+            json!({}),
+            "",
+        );
+        let described = body_of(&desc);
+        assert_eq!(described["ContactFlowModule"]["Name"], "M");
+        assert_eq!(described["ContactFlowModule"]["Status"], "PUBLISHED");
+
+        let upd = request(
+            "POST",
+            &format!("/contact-flow-modules/{id}/{mid}/metadata"),
+            json!({"Name": "M2"}),
+            "",
+        );
+        assert_eq!(status_of(&upd), 200);
+        let upd_content = request(
+            "POST",
+            &format!("/contact-flow-modules/{id}/{mid}/content"),
+            json!({"Content": "{\"x\":1}"}),
+            "",
+        );
+        assert_eq!(status_of(&upd_content), 200);
+
+        let listed = request(
+            "GET",
+            &format!("/contact-flow-modules-summary/{id}"),
+            json!({}),
+            "",
+        );
+        let listed_body = body_of(&listed);
+        assert_eq!(
+            listed_body["ContactFlowModulesSummaryList"][0]["Name"],
+            "M2"
+        );
+
+        // alias lifecycle (moto does not require the parent module to exist)
+        let alias = request(
+            "PUT",
+            &format!("/contact-flow-modules/{id}/nonexistent-module/alias"),
+            json!({"AliasName": "A", "ContactFlowModuleVersion": 1}),
+            "",
+        );
+        let alias_body = body_of(&alias);
+        let aid = alias_body["Id"].as_str().unwrap().to_string();
+        assert!(alias_body["ContactFlowModuleArn"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/alias/{aid}")));
+
+        let desc = request(
+            "GET",
+            &format!("/contact-flow-modules/{id}/nonexistent-module/alias/{aid}"),
+            json!({}),
+            "",
+        );
+        let described = body_of(&desc);
+        assert_eq!(described["ContactFlowModuleAlias"]["Name"], "A");
+        assert_eq!(
+            described["ContactFlowModuleAlias"]["TargetContactFlowModuleVersion"],
+            "1"
+        );
+
+        let upd = request(
+            "POST",
+            &format!("/contact-flow-modules/{id}/nonexistent-module/alias/{aid}"),
+            json!({"Name": "A2", "TargetContactFlowModuleVersion": 2}),
+            "",
+        );
+        assert_eq!(status_of(&upd), 200);
+        let updated = body_of(&upd);
+        assert_eq!(updated["ContactFlowModuleAlias"]["Name"], "A2");
+        // update stores the raw JSON member (number); create stringifies.
+        assert_eq!(
+            updated["ContactFlowModuleAlias"]["TargetContactFlowModuleVersion"],
+            2
+        );
+
+        let del = request(
+            "DELETE",
+            &format!("/contact-flow-modules/{id}/nonexistent-module/alias/{aid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&del), 200);
+        let gone = request(
+            "GET",
+            &format!("/contact-flow-modules/{id}/nonexistent-module/alias/{aid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&gone), 404);
+
+        let del_module = request(
+            "DELETE",
+            &format!("/contact-flow-modules/{id}/{mid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&del_module), 200);
+        let gone_module = request(
+            "GET",
+            &format!("/contact-flow-modules/{id}/{mid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&gone_module), 404);
+    }
+
+    #[test]
+    fn contact_lifecycle() {
+        let (id, _) = make_instance(json!({}));
+        let create = request(
+            "PUT",
+            "/contact/create-contact",
+            json!({"InstanceId": id.clone(), "Channel": "VOICE", "InitiationMethod": "INBOUND"}),
+            "",
+        );
+        let created = body_of(&create);
+        let cid = created["ContactId"].as_str().unwrap().to_string();
+        // /contact/create-contact has no InstanceId path segment: the body
+        // InstanceId is the only locator (moto falls back to it).
+        assert_eq!(cid.len(), 36);
+        assert!(created["ContactArn"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/contact/{cid}")));
+
+        let desc = request("GET", &format!("/contacts/{id}/{cid}"), json!({}), "");
+        let described = body_of(&desc);
+        let contact = &described["Contact"];
+        assert_eq!(contact["Channel"], "VOICE");
+        assert_eq!(contact["InitiationMethod"], "INBOUND");
+        assert!(contact["InitiationTimestamp"].as_str().is_some());
+
+        let upd = request(
+            "POST",
+            &format!("/contacts/{id}/{cid}"),
+            json!({"Name": "changed"}),
+            "",
+        );
+        assert_eq!(status_of(&upd), 200);
+        let desc = request("GET", &format!("/contacts/{id}/{cid}"), json!({}), "");
+        let described = body_of(&desc);
+        assert_eq!(described["Contact"]["Name"], "changed");
+
+        // contact attributes ride on a separate store
+        let upd_attrs = request(
+            "POST",
+            "/contact/attributes",
+            json!({"InstanceId": id.clone(), "InitialContactId": cid.clone(), "Attributes": {"foo": "bar"}}),
+            "",
+        );
+        assert_eq!(status_of(&upd_attrs), 200);
+        let get_attrs = request(
+            "GET",
+            &format!("/contact/attributes/{id}/{cid}"),
+            json!({}),
+            "",
+        );
+        let attrs_body = body_of(&get_attrs);
+        assert_eq!(attrs_body["Attributes"]["foo"], "bar");
+
+        // stop removes the contact
+        let stop = request(
+            "POST",
+            "/contact/stop",
+            json!({"InstanceId": id.clone(), "ContactId": cid.clone()}),
+            "",
+        );
+        assert_eq!(status_of(&stop), 200);
+        let after = request("GET", &format!("/contacts/{id}/{cid}"), json!({}), "");
+        assert_eq!(status_of(&after), 404);
+    }
+
+    #[test]
+    fn contact_evaluation_lifecycle() {
+        let (id, _) = make_instance(json!({}));
+        let contact = request(
+            "PUT",
+            "/contact/create-contact",
+            json!({"InstanceId": id.clone(), "Channel": "VOICE", "InitiationMethod": "INBOUND"}),
+            "",
+        );
+        let contact_id = body_of(&contact)["ContactId"].as_str().unwrap().to_string();
+        // moto takes any EvaluationFormId at evaluation start (no FK check)
+        let create = request(
+            "PUT",
+            &format!("/contact-evaluations/{id}"),
+            json!({"ContactId": contact_id.clone(), "EvaluationFormId": "form-1"}),
+            "",
+        );
+        let created = body_of(&create);
+        let eid = created["EvaluationId"].as_str().unwrap().to_string();
+        assert!(created["EvaluationArn"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/contact-evaluation/{eid}")));
+
+        let desc = request(
+            "GET",
+            &format!("/contact-evaluations/{id}/{eid}"),
+            json!({}),
+            "",
+        );
+        // moto presents the evaluation under "ContactEvaluation"
+        let described = body_of(&desc);
+        assert!(described.get("ContactEvaluation").is_some());
+        assert_eq!(
+            described["ContactEvaluation"]["ContactId"],
+            contact_id.as_str()
+        );
+        assert_eq!(described["ContactEvaluation"]["EvaluationFormId"], "form-1");
+        assert_eq!(described["ContactEvaluation"]["Status"], "DRAFT");
+
+        let upd = request(
+            "POST",
+            &format!("/contact-evaluations/{id}/{eid}"),
+            json!({"Status": "SUBMITTED"}),
+            "",
+        );
+        assert_eq!(status_of(&upd), 200);
+        let updated = body_of(&upd);
+        assert_eq!(updated["ContactEvaluation"]["Status"], "SUBMITTED");
+
+        let del = request(
+            "DELETE",
+            &format!("/contact-evaluations/{id}/{eid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&del), 200);
+        let after = request(
+            "GET",
+            &format!("/contact-evaluations/{id}/{eid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&after), 404);
     }
 
     // -- deny-by-default -----------------------------------------------------
