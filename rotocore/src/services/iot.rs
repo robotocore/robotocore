@@ -6526,7 +6526,7 @@ mod tests {
     }
 
     #[test]
-        #[test]
+    #[test]
     fn topic_rule_lifecycle() {
         let rule = format!("rule_{}", random_id().get(..8).unwrap_or_default());
         let payload = json!({
@@ -6560,7 +6560,7 @@ mod tests {
         assert_eq!(r.status, 404);
     }
 
-fn topic_rule_destination_arbitrary_arn_tail() {
+    fn topic_rule_destination_arbitrary_arn_tail() {
         let r = dispatch_req(&req(
             "POST",
             "/destinations",
