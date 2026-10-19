@@ -42,6 +42,7 @@ pub mod elasticache;
 pub mod elb;
 pub mod elbv2;
 pub mod emr;
+pub mod glacier;
 pub mod glue;
 pub mod greengrass;
 pub mod guardduty;
@@ -122,6 +123,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "elbv2" => self::elbv2::dispatch(req),
         "emr" => Some(emr::dispatch(req)),
         "es" => Some(opensearch::dispatch(req)),
+        "glacier" => Some(glacier::dispatch(req)),
         "glue" => glue::dispatch(req),
         "greengrass" => Some(greengrass::dispatch(req)),
         "guardduty" => Some(guardduty::dispatch(req)),
@@ -217,6 +219,7 @@ pub fn handles_service(service: &str) -> bool {
             | "elbv2"
             | "emr"
             | "es"
+            | "glacier"
             | "glue"
             | "greengrass"
             | "guardduty"
@@ -275,13 +278,14 @@ mod tests {
             "acm",
             "connect",
             "glue",
+            "glacier",
             "elasticache",
             "codepipeline",
             "xray",
         ] {
             assert!(handles_service(service), "{service} should be armed");
         }
-        for service in ["glacier", "account", "cloudwatch", "athena-x-nothing", ""] {
+        for service in ["account", "cloudwatch", "athena-x-nothing", ""] {
             assert!(!handles_service(service), "{service} should not be armed");
         }
     }

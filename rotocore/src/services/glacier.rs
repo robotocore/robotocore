@@ -200,11 +200,10 @@ pub fn dispatch(req: &Request) -> Response {
         .find_map(|kv| kv.strip_prefix("operation="))
         .unwrap_or("");
     // Upload endpoints carry raw bytes; everything else is a JSON body.
-    let is_binary = match (segments.len(), segments.get(4)) {
-        (5, Some(&"archives")) => true,
-        (5, Some(&"multipart-uploads")) | (6, Some(&"multipart-uploads")) => true,
-        _ => false,
-    };
+    let is_binary = matches!(
+        (segments.len(), segments.get(4)),
+        (5, Some(&"archives")) | (5, Some(&"multipart-uploads")) | (6, Some(&"multipart-uploads"))
+    );
     let params = if !is_binary && !req.body.is_empty() {
         crate::proto::parse_json_body(&req.body)
     } else {
