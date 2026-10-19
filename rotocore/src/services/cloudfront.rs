@@ -5555,4 +5555,100 @@ mod tests {
         assert_eq!(behavior.text_of("ViewerProtocolPolicy"), Some("https-only"));
     }
 
+    // ----- etag semantics + tags -----
+
+    #[test]
+    fn update_requires_if_match() {
+        let account = next_account();
+        let slug = format!("etag-{}", next_account());
+        let create = dispatch(&make_req(
+            account,
+            "POST",
+            "/2020-05-31/distribution",
+            &dist_config_xml(&slug, "ref-etag"),
+            &[],
+        ));
+        let id = dist_id(&create);
+        let update = dispatch(&make_req(
+            account,
+            "PUT",
+            &format!("/2020-05-31/distribution/{id}/config"),
+            &dist_config_xml(&slug, "ref-etag-2"),
+            &[],
+        ));
+        assert_eq!(update.status, 400);
+        assert_eq!(text(&update, &["Error", "Code"]), "InvalidIfMatchVersion");
+    }
+
+    #[test]
+    fn delete_requires_if_match() {
+        let account = next_account();
+        let resp = dispatch(&make_req(
+            account,
+            "DELETE",
+            "/2020-05-31/distribution/ENONEXISTENT123",
+            "",
+            &[],
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(text(&resp, &["Error", "Code"]), "InvalidIfMatchVersion");
+    }
+
+    #[test]
+    fn tags_roundtrip() {
+        let account = next_account();
+        let slug = format!("tag-{}", next_account());
+        let full = dist_config_xml(&slug, "ref-tags");
+        let config_inner = full
+            .trim_start_matches(&format!("<DistributionConfig xmlns=\"{XMLNS}\">"))
+            .trim_end_matches("</DistributionConfig>");
+        let config_inner = config_inner.to_string();
+        let body = format!(
+            "<DistributionConfigWithTags xmlns=\"{XMLNS}\">{config_inner}<Tags><Items><Tag><Key>env</Key><Value>test</Value></Tag><Tag><Key>team</Key><Value>infra</Value></Tag></Items></Tags></DistributionConfigWithTags>"
+        );
+        let create = dispatch(&make_req(
+            account,
+            "POST",
+            "/2020-05-31/distribution",
+            &body,
+            &[],
+        ));
+        assert_eq!(create.status, 200);
+        let arn = text(&create, &["ARN"]);
+        assert!(!arn.is_empty());
+
+        let list = dispatch(&make_req(
+            account,
+            "GET",
+            &format!("/2020-05-31/tagging?Resource={}", urlencoding::encode(&arn)),
+            "",
+            &[],
+        ));
+        assert!(String::from_utf8_lossy(&list.body).contains("<Key>env</Key>"));
+        assert!(String::from_utf8_lossy(&list.body).contains("<Value>infra</Value>"));
+
+        // Untag one key.
+        let untag = dispatch(&make_req(
+            account,
+            "POST",
+            &format!(
+                "/2020-05-31/tagging?Operation=Untag&Resource={}",
+                urlencoding::encode(&arn)
+            ),
+            "<TagKeys><Items><Key>env</Key></Items></TagKeys>",
+            &[],
+        ));
+        assert_eq!(untag.status, 200);
+        let list2 = dispatch(&make_req(
+            account,
+            "GET",
+            &format!("/2020-05-31/tagging?Resource={}", urlencoding::encode(&arn)),
+            "",
+            &[],
+        ));
+        let after = String::from_utf8_lossy(&list2.body);
+        assert!(!after.contains("<Key>env</Key>"));
+        assert!(after.contains("<Key>team</Key>"));
+    }
+
 }
