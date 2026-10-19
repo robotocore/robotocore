@@ -1257,6 +1257,191 @@ fn handle(
         "ListContactReferences" => op_list_contact_references(st, param(params, "InstanceId")),
         // -- Flow association list (moto returns []) -------------------------------
         "ListFlowAssociations" => op_list_flow_associations(st, param(params, "InstanceId")),
+        // -- Hours of operations ----------------------------------------------
+        "CreateHoursOfOperation" => {
+            op_create_hours_of_operation(st, param(params, "InstanceId"), body)
+        }
+        "DescribeHoursOfOperation" => op_describe_hours_of_operation(
+            st,
+            param(params, "InstanceId"),
+            param(params, "HoursOfOperationId"),
+        ),
+        "UpdateHoursOfOperation" => op_update_hours_of_operation(
+            st,
+            param(params, "InstanceId"),
+            param(params, "HoursOfOperationId"),
+            body,
+        ),
+        "DeleteHoursOfOperation" => op_delete_hours_of_operation(
+            st,
+            param(params, "InstanceId"),
+            param(params, "HoursOfOperationId"),
+        ),
+        "ListHoursOfOperations" => op_list_hours_of_operations(st, param(params, "InstanceId")),
+        // -- Hours of operation overrides --------------------------------------
+        "CreateHoursOfOperationOverride" => op_create_hours_of_operation_override(
+            st,
+            param(params, "InstanceId"),
+            param(params, "HoursOfOperationId"),
+            body,
+        ),
+        "DescribeHoursOfOperationOverride" => op_describe_hours_of_operation_override(
+            st,
+            param(params, "InstanceId"),
+            param(params, "HoursOfOperationId"),
+            param(params, "HoursOfOperationOverrideId"),
+        ),
+        "UpdateHoursOfOperationOverride" => op_update_hours_of_operation_override(
+            st,
+            param(params, "InstanceId"),
+            param(params, "HoursOfOperationId"),
+            param(params, "HoursOfOperationOverrideId"),
+            body,
+        ),
+        "DeleteHoursOfOperationOverride" => op_delete_hours_of_operation_override(
+            st,
+            param(params, "InstanceId"),
+            param(params, "HoursOfOperationId"),
+            param(params, "HoursOfOperationOverrideId"),
+        ),
+        "ListHoursOfOperationOverrides" => op_list_hours_of_operation_overrides(
+            st,
+            param(params, "InstanceId"),
+            param(params, "HoursOfOperationId"),
+        ),
+        // -- Queues --------------------------------------------------------------
+        "CreateQueue" => op_create_queue(st, param(params, "InstanceId"), body),
+        "DescribeQueue" => {
+            op_describe_queue(st, param(params, "InstanceId"), param(params, "QueueId"))
+        }
+        "UpdateQueueName" => op_update_queue_name(
+            st,
+            param(params, "InstanceId"),
+            param(params, "QueueId"),
+            body,
+        ),
+        "UpdateQueueStatus" => op_update_queue_status(
+            st,
+            param(params, "InstanceId"),
+            param(params, "QueueId"),
+            body,
+        ),
+        "UpdateQueueMaxContacts" => op_update_queue_max_contacts(
+            st,
+            param(params, "InstanceId"),
+            param(params, "QueueId"),
+            body,
+        ),
+        "UpdateQueueHoursOfOperation" => op_update_queue_hours_of_operation(
+            st,
+            param(params, "InstanceId"),
+            param(params, "QueueId"),
+            body,
+        ),
+        "UpdateQueueOutboundCallerConfig" => op_update_queue_outbound_caller_config(
+            st,
+            param(params, "InstanceId"),
+            param(params, "QueueId"),
+            body,
+        ),
+        "DeleteQueue" => op_delete_queue(st, param(params, "InstanceId"), param(params, "QueueId")),
+        "ListQueues" => op_list_queues(st, param(params, "InstanceId")),
+        "ListQueueQuickConnects" => {
+            op_list_queue_quick_connects(st, param(params, "InstanceId"), param(params, "QueueId"))
+        }
+        "AssociateQueueQuickConnects" => op_associate_queue_quick_connects(
+            st,
+            param(params, "InstanceId"),
+            param(params, "QueueId"),
+            body,
+        ),
+        "DisassociateQueueQuickConnects" => op_disassociate_queue_quick_connects(
+            st,
+            param(params, "InstanceId"),
+            param(params, "QueueId"),
+            body,
+        ),
+        // -- Quick connects ------------------------------------------------------
+        "CreateQuickConnect" => op_create_quick_connect(st, param(params, "InstanceId"), body),
+        "DescribeQuickConnect" => op_describe_quick_connect(
+            st,
+            param(params, "InstanceId"),
+            param(params, "QuickConnectId"),
+        ),
+        "UpdateQuickConnectName" => op_update_quick_connect_name(
+            st,
+            param(params, "InstanceId"),
+            param(params, "QuickConnectId"),
+            body,
+        ),
+        "UpdateQuickConnectConfig" => op_update_quick_connect_config(
+            st,
+            param(params, "InstanceId"),
+            param(params, "QuickConnectId"),
+            body,
+        ),
+        "DeleteQuickConnect" => op_delete_quick_connect(
+            st,
+            param(params, "InstanceId"),
+            param(params, "QuickConnectId"),
+        ),
+        "ListQuickConnects" => op_list_quick_connects(st, param(params, "InstanceId")),
+        // -- Routing profiles ------------------------------------------------------
+        "CreateRoutingProfile" => op_create_routing_profile(st, param(params, "InstanceId"), body),
+        "DescribeRoutingProfile" => op_describe_routing_profile(
+            st,
+            param(params, "InstanceId"),
+            param(params, "RoutingProfileId"),
+        ),
+        "UpdateRoutingProfileName" => op_update_routing_profile_name(
+            st,
+            param(params, "InstanceId"),
+            param(params, "RoutingProfileId"),
+            body,
+        ),
+        "UpdateRoutingProfileConcurrency" => op_update_routing_profile_concurrency(
+            st,
+            param(params, "InstanceId"),
+            param(params, "RoutingProfileId"),
+            body,
+        ),
+        "UpdateRoutingProfileDefaultOutboundQueue" => {
+            op_update_routing_profile_default_outbound_queue(
+                st,
+                param(params, "InstanceId"),
+                param(params, "RoutingProfileId"),
+                body,
+            )
+        }
+        "DeleteRoutingProfile" => op_delete_routing_profile(
+            st,
+            param(params, "InstanceId"),
+            param(params, "RoutingProfileId"),
+        ),
+        "ListRoutingProfiles" => op_list_routing_profiles(st, param(params, "InstanceId")),
+        "ListRoutingProfileQueues" => op_list_routing_profile_queues(
+            st,
+            param(params, "InstanceId"),
+            param(params, "RoutingProfileId"),
+        ),
+        "AssociateRoutingProfileQueues" => op_associate_routing_profile_queues(
+            st,
+            param(params, "InstanceId"),
+            param(params, "RoutingProfileId"),
+            body,
+        ),
+        "DisassociateRoutingProfileQueues" => op_disassociate_routing_profile_queues(
+            st,
+            param(params, "InstanceId"),
+            param(params, "RoutingProfileId"),
+            body,
+        ),
+        "UpdateRoutingProfileQueues" => op_update_routing_profile_queues(
+            st,
+            param(params, "InstanceId"),
+            param(params, "RoutingProfileId"),
+            body,
+        ),
         _ => op_not_implemented(op),
     }
 }
@@ -3309,6 +3494,1100 @@ fn op_list_flow_associations(st: &mut ConnectState, instance_id: &str) -> Respon
     }
     ok(json!({"FlowAssociationSummaryList": []}))
 }
+
+// ---------------------------------------------------------------------------
+// Hours of operations
+// ---------------------------------------------------------------------------
+
+fn op_create_hours_of_operation(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance = match st.instances.get(instance_id) {
+        Some(i) => i.clone(),
+        None => return notfound_instance(instance_id),
+    };
+    let name = match body_str(body, "Name") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let time_zone = match body_str(body, "TimeZone") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let config = match opt_val(body, "Config") {
+        Some(v) => v,
+        None => return missing_body_param("Config"),
+    };
+    let hoo_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("{}/operating-hours/{hoo_id}", str_field(&instance, "Arn"));
+    let mut stored = Map::new();
+    stored.insert("HoursOfOperationId".into(), json!(hoo_id.clone()));
+    stored.insert("HoursOfOperationArn".into(), json!(arn.clone()));
+    stored.insert("Name".into(), json!(name));
+    stored.insert(
+        "Description".into(),
+        json!(opt_string(body, "Description").unwrap_or_default()),
+    );
+    stored.insert("TimeZone".into(), json!(time_zone));
+    stored.insert("Config".into(), config);
+    stored.insert(
+        "Tags".into(),
+        opt_val(body, "Tags").unwrap_or_else(|| json!({})),
+    );
+    stored.insert("LastModifiedTime".into(), json!(now_iso()));
+    stored.insert("LastModifiedRegion".into(), json!(region_of(&instance)));
+    st.hours_of_operations
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(hoo_id.clone(), Value::Object(stored));
+    tag_resource(st, &arn, opt_val(body, "Tags"));
+    ok(json!({"HoursOfOperationId": hoo_id, "HoursOfOperationArn": arn}))
+}
+
+fn op_describe_hours_of_operation(
+    st: &mut ConnectState,
+    instance_id: &str,
+    hoo_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .hours_of_operations
+        .get(instance_id)
+        .and_then(|m| m.get(hoo_id))
+    {
+        Some(h) => ok(json!({"HoursOfOperation": h.clone()})),
+        None => not_found(format!(
+            "Hours of operation {hoo_id} not found in instance {instance_id}"
+        )),
+    }
+}
+
+fn op_update_hours_of_operation(
+    st: &mut ConnectState,
+    instance_id: &str,
+    hoo_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let hoo = match st
+        .hours_of_operations
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(hoo_id))
+    {
+        Some(h) => h,
+        None => return not_found(format!("Hours of operation {hoo_id} not found")),
+    };
+    if let Some(name) = opt_val(body, "Name") {
+        hoo["Name"] = name;
+    }
+    if let Some(desc) = opt_val(body, "Description") {
+        hoo["Description"] = desc;
+    }
+    if let Some(tz) = opt_val(body, "TimeZone") {
+        hoo["TimeZone"] = tz;
+    }
+    if let Some(config) = opt_val(body, "Config") {
+        hoo["Config"] = config;
+    }
+    hoo["LastModifiedTime"] = json!(now_iso());
+    ok(json!({}))
+}
+
+fn op_delete_hours_of_operation(
+    st: &mut ConnectState,
+    instance_id: &str,
+    hoo_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .hours_of_operations
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(hoo_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Hours of operation {hoo_id} not found")),
+    }
+}
+
+fn op_list_hours_of_operations(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let empty = HashMap::new();
+    let hoos = st.hours_of_operations.get(instance_id).unwrap_or(&empty);
+    let rows: Vec<Value> = hoos
+        .values()
+        .map(|h| {
+            json!({
+                "Id": h["HoursOfOperationId"],
+                "Arn": h["HoursOfOperationArn"],
+                "Name": h["Name"],
+                "LastModifiedTime": h["LastModifiedTime"],
+                "LastModifiedRegion": h["LastModifiedRegion"],
+            })
+        })
+        .collect();
+    ok(json!({"HoursOfOperationSummaryList": rows}))
+}
+
+// ---------------------------------------------------------------------------
+// Hours of operation overrides (keyed instance:hours_of_operation_id)
+// ---------------------------------------------------------------------------
+
+fn op_create_hours_of_operation_override(
+    st: &mut ConnectState,
+    instance_id: &str,
+    hoo_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let name = match body_str(body, "Name") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let override_id = uuid::Uuid::new_v4().to_string();
+    let mut stored = Map::new();
+    stored.insert(
+        "HoursOfOperationOverrideId".into(),
+        json!(override_id.clone()),
+    );
+    stored.insert("Name".into(), json!(name));
+    stored.insert(
+        "Description".into(),
+        json!(opt_string(body, "Description").unwrap_or_default()),
+    );
+    stored.insert(
+        "Config".into(),
+        opt_val(body, "Config").unwrap_or_else(|| json!([])),
+    );
+    stored.insert(
+        "EffectiveFrom".into(),
+        json!(opt_string(body, "EffectiveFrom").unwrap_or_default()),
+    );
+    stored.insert(
+        "EffectiveTill".into(),
+        json!(opt_string(body, "EffectiveTill").unwrap_or_default()),
+    );
+    let key = format!("{instance_id}:{hoo_id}");
+    st.hours_of_operation_overrides
+        .entry(key)
+        .or_default()
+        .insert(override_id.clone(), Value::Object(stored));
+    ok(json!({"HoursOfOperationOverrideId": override_id}))
+}
+
+fn op_describe_hours_of_operation_override(
+    st: &mut ConnectState,
+    instance_id: &str,
+    hoo_id: &str,
+    override_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let key = format!("{instance_id}:{hoo_id}");
+    match st
+        .hours_of_operation_overrides
+        .get(&key)
+        .and_then(|m| m.get(override_id))
+    {
+        Some(o) => ok(json!({"HoursOfOperationOverride": o.clone()})),
+        None => not_found(format!(
+            "Hours of operation override {override_id} not found"
+        )),
+    }
+}
+
+fn op_update_hours_of_operation_override(
+    st: &mut ConnectState,
+    instance_id: &str,
+    hoo_id: &str,
+    override_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let key = format!("{instance_id}:{hoo_id}");
+    let override_row = match st
+        .hours_of_operation_overrides
+        .get_mut(&key)
+        .and_then(|m| m.get_mut(override_id))
+    {
+        Some(o) => o,
+        None => {
+            return not_found(format!(
+                "Hours of operation override {override_id} not found"
+            ))
+        }
+    };
+    if let Some(name) = opt_val(body, "Name") {
+        override_row["Name"] = name;
+    }
+    if let Some(desc) = opt_val(body, "Description") {
+        override_row["Description"] = desc;
+    }
+    if let Some(config) = opt_val(body, "Config") {
+        override_row["Config"] = config;
+    }
+    if let Some(from) = opt_val(body, "EffectiveFrom") {
+        override_row["EffectiveFrom"] = from;
+    }
+    if let Some(till) = opt_val(body, "EffectiveTill") {
+        override_row["EffectiveTill"] = till;
+    }
+    ok(json!({}))
+}
+
+fn op_delete_hours_of_operation_override(
+    st: &mut ConnectState,
+    instance_id: &str,
+    hoo_id: &str,
+    override_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let key = format!("{instance_id}:{hoo_id}");
+    match st
+        .hours_of_operation_overrides
+        .get_mut(&key)
+        .and_then(|m| m.remove(override_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!(
+            "Hours of operation override {override_id} not found"
+        )),
+    }
+}
+
+fn op_list_hours_of_operation_overrides(
+    st: &mut ConnectState,
+    instance_id: &str,
+    hoo_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let key = format!("{instance_id}:{hoo_id}");
+    let rows: Vec<Value> = st
+        .hours_of_operation_overrides
+        .get(&key)
+        .map(|m| m.values().cloned().collect())
+        .unwrap_or_default();
+    ok(json!({"HoursOfOperationOverrideList": rows}))
+}
+
+// ---------------------------------------------------------------------------
+// Queues
+// ---------------------------------------------------------------------------
+
+fn op_create_queue(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance = match st.instances.get(instance_id) {
+        Some(i) => i.clone(),
+        None => return notfound_instance(instance_id),
+    };
+    let name = match body_str(body, "Name") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let hours_of_operation_id = match body_str(body, "HoursOfOperationId") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let queue_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("{}/queue/{queue_id}", str_field(&instance, "Arn"));
+    let mut stored = Map::new();
+    stored.insert("Name".into(), json!(name));
+    stored.insert("QueueArn".into(), json!(arn.clone()));
+    stored.insert("QueueId".into(), json!(queue_id.clone()));
+    stored.insert(
+        "Description".into(),
+        json!(opt_string(body, "Description").unwrap_or_default()),
+    );
+    stored.insert(
+        "OutboundCallerConfig".into(),
+        opt_val(body, "OutboundCallerConfig").unwrap_or_else(|| json!({})),
+    );
+    stored.insert("HoursOfOperationId".into(), json!(hours_of_operation_id));
+    // moto: max_contacts or 0
+    let max_contacts = body.get("MaxContacts").and_then(Value::as_i64).unwrap_or(0);
+    stored.insert("MaxContacts".into(), json!(max_contacts));
+    stored.insert("Status".into(), json!("ENABLED"));
+    stored.insert(
+        "Tags".into(),
+        opt_val(body, "Tags").unwrap_or_else(|| json!({})),
+    );
+    stored.insert("LastModifiedTime".into(), json!(now_iso()));
+    stored.insert("LastModifiedRegion".into(), json!(region_of(&instance)));
+    st.queues
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(queue_id.clone(), Value::Object(stored));
+    tag_resource(st, &arn, opt_val(body, "Tags"));
+    ok(json!({"QueueId": queue_id, "QueueArn": arn}))
+}
+
+fn op_describe_queue(st: &mut ConnectState, instance_id: &str, queue_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st.queues.get(instance_id).and_then(|m| m.get(queue_id)) {
+        Some(q) => ok(json!({"Queue": q.clone()})),
+        None => not_found(format!(
+            "Queue {queue_id} not found in instance {instance_id}"
+        )),
+    }
+}
+
+fn queue_at<'a>(
+    st: &'a mut ConnectState,
+    instance_id: &str,
+    queue_id: &str,
+) -> Result<&'a mut Value, Response> {
+    let present = st
+        .queues
+        .get(instance_id)
+        .is_some_and(|m| m.contains_key(queue_id));
+    if !present {
+        return Err(not_found(format!("Queue {queue_id} not found")));
+    }
+    let queue = st
+        .queues
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(queue_id))
+        .unwrap();
+    Ok(queue)
+}
+
+fn op_update_queue_name(
+    st: &mut ConnectState,
+    instance_id: &str,
+    queue_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let queue = match queue_at(st, instance_id, queue_id) {
+        Ok(q) => q,
+        Err(resp) => return resp,
+    };
+    if let Some(name) = opt_val(body, "Name") {
+        queue["Name"] = name;
+    }
+    if let Some(desc) = opt_val(body, "Description") {
+        queue["Description"] = desc;
+    }
+    queue["LastModifiedTime"] = json!(now_iso());
+    ok(json!({}))
+}
+
+fn op_update_queue_status(
+    st: &mut ConnectState,
+    instance_id: &str,
+    queue_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let status = match body_str(body, "Status") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let queue = match queue_at(st, instance_id, queue_id) {
+        Ok(q) => q,
+        Err(resp) => return resp,
+    };
+    queue["Status"] = json!(status);
+    queue["LastModifiedTime"] = json!(now_iso());
+    ok(json!({}))
+}
+
+fn op_update_queue_max_contacts(
+    st: &mut ConnectState,
+    instance_id: &str,
+    queue_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let max_contacts = match body.get("MaxContacts") {
+        Some(Value::Number(n)) => n.as_i64().unwrap_or(0),
+        Some(other) => other
+            .as_str()
+            .unwrap_or_default()
+            .parse::<i64>()
+            .unwrap_or(0),
+        None => return missing_body_param("MaxContacts"),
+    };
+    let queue = match queue_at(st, instance_id, queue_id) {
+        Ok(q) => q,
+        Err(resp) => return resp,
+    };
+    queue["MaxContacts"] = json!(max_contacts);
+    queue["LastModifiedTime"] = json!(now_iso());
+    ok(json!({}))
+}
+
+fn op_update_queue_hours_of_operation(
+    st: &mut ConnectState,
+    instance_id: &str,
+    queue_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let hoo_id = match body_str(body, "HoursOfOperationId") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let queue = match queue_at(st, instance_id, queue_id) {
+        Ok(q) => q,
+        Err(resp) => return resp,
+    };
+    queue["HoursOfOperationId"] = json!(hoo_id);
+    queue["LastModifiedTime"] = json!(now_iso());
+    ok(json!({}))
+}
+
+fn op_update_queue_outbound_caller_config(
+    st: &mut ConnectState,
+    instance_id: &str,
+    queue_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let config = match opt_val(body, "OutboundCallerConfig") {
+        Some(v) => v,
+        None => return missing_body_param("OutboundCallerConfig"),
+    };
+    let queue = match queue_at(st, instance_id, queue_id) {
+        Ok(q) => q,
+        Err(resp) => return resp,
+    };
+    queue["OutboundCallerConfig"] = config;
+    queue["LastModifiedTime"] = json!(now_iso());
+    ok(json!({}))
+}
+
+fn op_delete_queue(st: &mut ConnectState, instance_id: &str, queue_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .queues
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(queue_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Queue {queue_id} not found")),
+    }
+}
+
+fn op_list_queues(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let empty = HashMap::new();
+    let queues = st.queues.get(instance_id).unwrap_or(&empty);
+    let rows: Vec<Value> = queues
+        .values()
+        .map(|q| {
+            json!({
+                "Id": q["QueueId"],
+                "Arn": q["QueueArn"],
+                "Name": q["Name"],
+                "QueueType": "STANDARD",
+                "LastModifiedTime": q["LastModifiedTime"],
+                "LastModifiedRegion": q["LastModifiedRegion"],
+            })
+        })
+        .collect();
+    ok(json!({"QueueSummaryList": rows}))
+}
+
+fn op_list_queue_quick_connects(
+    st: &mut ConnectState,
+    instance_id: &str,
+    queue_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let assoc_ids = st
+        .queue_quick_connect_associations
+        .get(instance_id)
+        .and_then(|m| m.get(queue_id))
+        .cloned()
+        .unwrap_or_default();
+    let empty = HashMap::new();
+    let qcs = st.quick_connects.get(instance_id).unwrap_or(&empty);
+    // moto: no explicit associations -> every quick connect
+    let targets: Vec<&Value> = if assoc_ids.is_empty() {
+        qcs.values().collect()
+    } else {
+        assoc_ids.iter().filter_map(|id| qcs.get(id)).collect()
+    };
+    let rows: Vec<Value> = targets
+        .iter()
+        .map(|qc| {
+            json!({
+                "QuickConnectId": qc["QuickConnectId"],
+                "Name": qc["Name"],
+                "QuickConnectType": qc["QuickConnectConfig"]["QuickConnectType"],
+            })
+        })
+        .collect();
+    ok(json!({"QuickConnectSummaryList": rows}))
+}
+
+fn op_associate_queue_quick_connects(
+    st: &mut ConnectState,
+    instance_id: &str,
+    queue_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let ids = match opt_val(body, "QuickConnectIds") {
+        Some(Value::Array(a)) => a
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect::<Vec<_>>(),
+        _ => return missing_body_param("QuickConnectIds"),
+    };
+    let entry = st
+        .queue_quick_connect_associations
+        .entry(instance_id.to_string())
+        .or_default()
+        .entry(queue_id.to_string())
+        .or_default();
+    for id in ids {
+        if !entry.contains(&id) {
+            entry.push(id);
+        }
+    }
+    ok(json!({}))
+}
+
+fn op_disassociate_queue_quick_connects(
+    st: &mut ConnectState,
+    instance_id: &str,
+    queue_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    if let Some(Value::Array(ids)) = opt_val(body, "QuickConnectIds") {
+        if let Some(entry) = st
+            .queue_quick_connect_associations
+            .get_mut(instance_id)
+            .and_then(|m| m.get_mut(queue_id))
+        {
+            for id in ids {
+                if let Some(id) = id.as_str() {
+                    entry.retain(|x| x != id);
+                }
+            }
+        }
+    }
+    ok(json!({}))
+}
+
+// ---------------------------------------------------------------------------
+// Quick connects
+// ---------------------------------------------------------------------------
+
+fn op_create_quick_connect(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance = match st.instances.get(instance_id) {
+        Some(i) => i.clone(),
+        None => return notfound_instance(instance_id),
+    };
+    let name = match body_str(body, "Name") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let config = match opt_val(body, "QuickConnectConfig") {
+        Some(v) => v,
+        None => return missing_body_param("QuickConnectConfig"),
+    };
+    let qc_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!(
+        "{}/transfer-destination/{qc_id}",
+        str_field(&instance, "Arn")
+    );
+    let mut stored = Map::new();
+    stored.insert("QuickConnectARN".into(), json!(arn.clone()));
+    stored.insert("QuickConnectId".into(), json!(qc_id.clone()));
+    stored.insert("Name".into(), json!(name));
+    stored.insert(
+        "Description".into(),
+        json!(opt_string(body, "Description").unwrap_or_default()),
+    );
+    stored.insert("QuickConnectConfig".into(), config);
+    stored.insert(
+        "Tags".into(),
+        opt_val(body, "Tags").unwrap_or_else(|| json!({})),
+    );
+    stored.insert("LastModifiedTime".into(), json!(now_iso()));
+    stored.insert("LastModifiedRegion".into(), json!(region_of(&instance)));
+    st.quick_connects
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(qc_id.clone(), Value::Object(stored.clone()));
+    tag_resource(st, &arn, opt_val(body, "Tags"));
+    ok(json!({"QuickConnectARN": arn, "QuickConnectId": qc_id}))
+}
+
+fn op_describe_quick_connect(st: &mut ConnectState, instance_id: &str, qc_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .quick_connects
+        .get(instance_id)
+        .and_then(|m| m.get(qc_id))
+    {
+        Some(qc) => ok(json!({"QuickConnect": qc.clone()})),
+        None => not_found(format!(
+            "Quick connect {qc_id} not found in instance {instance_id}"
+        )),
+    }
+}
+
+fn op_update_quick_connect_name(
+    st: &mut ConnectState,
+    instance_id: &str,
+    qc_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let qc = match st
+        .quick_connects
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(qc_id))
+    {
+        Some(qc) => qc,
+        None => return not_found(format!("Quick connect {qc_id} not found")),
+    };
+    if let Some(name) = opt_val(body, "Name") {
+        qc["Name"] = name;
+    }
+    if let Some(desc) = opt_val(body, "Description") {
+        qc["Description"] = desc;
+    }
+    qc["LastModifiedTime"] = json!(now_iso());
+    ok(json!({}))
+}
+
+fn op_update_quick_connect_config(
+    st: &mut ConnectState,
+    instance_id: &str,
+    qc_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let config = match opt_val(body, "QuickConnectConfig") {
+        Some(v) => v,
+        None => return missing_body_param("QuickConnectConfig"),
+    };
+    let qc = match st
+        .quick_connects
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(qc_id))
+    {
+        Some(qc) => qc,
+        None => return not_found(format!("Quick connect {qc_id} not found")),
+    };
+    qc["QuickConnectConfig"] = config;
+    qc["LastModifiedTime"] = json!(now_iso());
+    ok(json!({}))
+}
+
+fn op_delete_quick_connect(st: &mut ConnectState, instance_id: &str, qc_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .quick_connects
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(qc_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Quick connect {qc_id} not found")),
+    }
+}
+
+fn op_list_quick_connects(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let empty = HashMap::new();
+    let qcs = st.quick_connects.get(instance_id).unwrap_or(&empty);
+    let rows: Vec<Value> = qcs
+        .values()
+        .map(|qc| {
+            json!({
+                "QuickConnectId": qc["QuickConnectId"],
+                "QuickConnectARN": qc["QuickConnectARN"],
+                "Name": qc["Name"],
+                "QuickConnectType": qc["QuickConnectConfig"]["QuickConnectType"],
+                "LastModifiedTime": qc["LastModifiedTime"],
+                "LastModifiedRegion": qc["LastModifiedRegion"],
+            })
+        })
+        .collect();
+    ok(json!({"QuickConnectSummaryList": rows}))
+}
+
+// ---------------------------------------------------------------------------
+// Routing profiles
+// ---------------------------------------------------------------------------
+
+fn op_create_routing_profile(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance = match st.instances.get(instance_id) {
+        Some(i) => i.clone(),
+        None => return notfound_instance(instance_id),
+    };
+    let name = match body_str(body, "Name") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let description = match body_str(body, "Description") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let default_outbound_queue_id = match body_str(body, "DefaultOutboundQueueId") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let media_concurrencies = match opt_val(body, "MediaConcurrencies") {
+        Some(v) => v,
+        None => return missing_body_param("MediaConcurrencies"),
+    };
+    let rp_id = uuid::Uuid::new_v4().to_string();
+    let arn = format!("{}/routing-profile/{rp_id}", str_field(&instance, "Arn"));
+    let mut stored = Map::new();
+    stored.insert("InstanceId".into(), json!(instance_id));
+    stored.insert("Name".into(), json!(name));
+    stored.insert("RoutingProfileArn".into(), json!(arn.clone()));
+    stored.insert("RoutingProfileId".into(), json!(rp_id.clone()));
+    stored.insert("Description".into(), json!(description));
+    stored.insert("MediaConcurrencies".into(), media_concurrencies);
+    stored.insert(
+        "DefaultOutboundQueueId".into(),
+        json!(default_outbound_queue_id),
+    );
+    stored.insert(
+        "Tags".into(),
+        opt_val(body, "Tags").unwrap_or_else(|| json!({})),
+    );
+    stored.insert("NumberOfAssociatedQueues".into(), json!(0));
+    stored.insert("LastModifiedTime".into(), json!(now_iso()));
+    stored.insert("LastModifiedRegion".into(), json!(region_of(&instance)));
+    st.routing_profiles
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(rp_id.clone(), Value::Object(stored));
+    tag_resource(st, &arn, opt_val(body, "Tags"));
+    ok(json!({"RoutingProfileArn": arn, "RoutingProfileId": rp_id}))
+}
+
+fn op_describe_routing_profile(st: &mut ConnectState, instance_id: &str, rp_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .routing_profiles
+        .get(instance_id)
+        .and_then(|m| m.get(rp_id))
+    {
+        Some(rp) => ok(json!({"RoutingProfile": rp.clone()})),
+        None => not_found(format!(
+            "Routing profile {rp_id} not found in instance {instance_id}"
+        )),
+    }
+}
+
+fn routing_profile_at<'a>(
+    st: &'a mut ConnectState,
+    instance_id: &str,
+    rp_id: &str,
+) -> Result<&'a mut Value, Response> {
+    let present = st
+        .routing_profiles
+        .get(instance_id)
+        .is_some_and(|m| m.contains_key(rp_id));
+    if !present {
+        return Err(not_found(format!("Routing profile {rp_id} not found")));
+    }
+    let rp = st
+        .routing_profiles
+        .get_mut(instance_id)
+        .and_then(|m| m.get_mut(rp_id))
+        .unwrap();
+    Ok(rp)
+}
+
+fn op_update_routing_profile_name(
+    st: &mut ConnectState,
+    instance_id: &str,
+    rp_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let rp = match routing_profile_at(st, instance_id, rp_id) {
+        Ok(rp) => rp,
+        Err(resp) => return resp,
+    };
+    if let Some(name) = opt_val(body, "Name") {
+        rp["Name"] = name;
+    }
+    if let Some(desc) = opt_val(body, "Description") {
+        rp["Description"] = desc;
+    }
+    rp["LastModifiedTime"] = json!(now_iso());
+    ok(json!({}))
+}
+
+fn op_update_routing_profile_concurrency(
+    st: &mut ConnectState,
+    instance_id: &str,
+    rp_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let concurrencies = match opt_val(body, "MediaConcurrencies") {
+        Some(v) => v,
+        None => return missing_body_param("MediaConcurrencies"),
+    };
+    let rp = match routing_profile_at(st, instance_id, rp_id) {
+        Ok(rp) => rp,
+        Err(resp) => return resp,
+    };
+    rp["MediaConcurrencies"] = concurrencies;
+    rp["LastModifiedTime"] = json!(now_iso());
+    ok(json!({}))
+}
+
+fn op_update_routing_profile_default_outbound_queue(
+    st: &mut ConnectState,
+    instance_id: &str,
+    rp_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let queue_id = match body_str(body, "DefaultOutboundQueueId") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let rp = match routing_profile_at(st, instance_id, rp_id) {
+        Ok(rp) => rp,
+        Err(resp) => return resp,
+    };
+    rp["DefaultOutboundQueueId"] = json!(queue_id);
+    rp["LastModifiedTime"] = json!(now_iso());
+    ok(json!({}))
+}
+
+fn op_delete_routing_profile(st: &mut ConnectState, instance_id: &str, rp_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .routing_profiles
+        .get_mut(instance_id)
+        .and_then(|m| m.remove(rp_id))
+    {
+        Some(_) => ok(json!({})),
+        None => not_found(format!("Routing profile {rp_id} not found")),
+    }
+}
+
+fn op_list_routing_profiles(st: &mut ConnectState, instance_id: &str) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let empty = HashMap::new();
+    let rps = st.routing_profiles.get(instance_id).unwrap_or(&empty);
+    let rows: Vec<Value> = rps
+        .values()
+        .map(|rp| {
+            json!({
+                "Id": rp["RoutingProfileId"],
+                "Arn": rp["RoutingProfileArn"],
+                "Name": rp["Name"],
+                "LastModifiedTime": rp["LastModifiedTime"],
+                "LastModifiedRegion": rp["LastModifiedRegion"],
+            })
+        })
+        .collect();
+    ok(json!({"RoutingProfileSummaryList": rows}))
+}
+
+fn op_list_routing_profile_queues(
+    st: &mut ConnectState,
+    instance_id: &str,
+    rp_id: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let rows: Vec<Value> = st
+        .routing_profile_queue_associations
+        .get(instance_id)
+        .and_then(|m| m.get(rp_id))
+        .cloned()
+        .unwrap_or_default();
+    ok(json!({"RoutingProfileQueueConfigSummaryList": rows}))
+}
+
+fn op_associate_routing_profile_queues(
+    st: &mut ConnectState,
+    instance_id: &str,
+    rp_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    // moto checks the routing profile first
+    if routing_profile_at(st, instance_id, rp_id).is_err() {
+        return not_found(format!("Routing profile {rp_id} not found"));
+    }
+    let configs = match opt_val(body, "QueueConfigs") {
+        Some(Value::Array(a)) => a.clone(),
+        _ => return missing_body_param("QueueConfigs"),
+    };
+    let entry = st
+        .routing_profile_queue_associations
+        .entry(instance_id.to_string())
+        .or_default()
+        .entry(rp_id.to_string())
+        .or_default();
+    entry.extend(configs);
+    let count = entry.len();
+    drop(entry);
+    if let Ok(rp) = routing_profile_at(st, instance_id, rp_id) {
+        rp["NumberOfAssociatedQueues"] = json!(count);
+    }
+    ok(json!({}))
+}
+
+fn op_disassociate_routing_profile_queues(
+    st: &mut ConnectState,
+    instance_id: &str,
+    rp_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    if routing_profile_at(st, instance_id, rp_id).is_err() {
+        return not_found(format!("Routing profile {rp_id} not found"));
+    }
+    let references = match opt_val(body, "QueueReferences") {
+        Some(v) => v,
+        None => return missing_body_param("QueueReferences"),
+    };
+    let remove_ids: Vec<String> = references
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|r| r.get("QueueId"))
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let entry = st
+        .routing_profile_queue_associations
+        .entry(instance_id.to_string())
+        .or_default()
+        .entry(rp_id.to_string())
+        .or_default();
+    entry.retain(|cfg| {
+        let qid = cfg
+            .get("QueueReference")
+            .and_then(|r| r.get("QueueId"))
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        !remove_ids.iter().any(|id| id == qid)
+    });
+    let count = entry.len();
+    drop(entry);
+    if let Ok(rp) = routing_profile_at(st, instance_id, rp_id) {
+        rp["NumberOfAssociatedQueues"] = json!(count);
+    }
+    ok(json!({}))
+}
+
+fn op_update_routing_profile_queues(
+    st: &mut ConnectState,
+    instance_id: &str,
+    rp_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    if routing_profile_at(st, instance_id, rp_id).is_err() {
+        return not_found(format!("Routing profile {rp_id} not found"));
+    }
+    let configs = match opt_val(body, "QueueConfigs") {
+        Some(Value::Array(a)) => a.clone(),
+        _ => return missing_body_param("QueueConfigs"),
+    };
+    st.routing_profile_queue_associations
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(rp_id.to_string(), configs.clone());
+    if let Ok(rp) = routing_profile_at(st, instance_id, rp_id) {
+        rp["NumberOfAssociatedQueues"] = json!(configs.len());
+    }
+    ok(json!({}))
+}
 // ---------------------------------------------------------------------------
 // Unit tests
 // ---------------------------------------------------------------------------
@@ -4409,6 +5688,509 @@ mod tests {
         let after = request(
             "GET",
             &format!("/contact-evaluations/{id}/{eid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&after), 404);
+    }
+
+    // -- Hours of operations ----------------------------------------------
+
+    #[test]
+    fn hours_of_operation_lifecycle() {
+        let (id, _) = make_instance(json!({}));
+        let create = request(
+            "PUT",
+            &format!("/hours-of-operations/{id}"),
+            json!({"Name": "BH", "TimeZone": "America/New_York", "Config": [
+                {"Day": "MONDAY", "StartTime": {"Hours": 9, "Minutes": 0}, "EndTime": {"Hours": 17, "Minutes": 0}}
+            ]}),
+            "",
+        );
+        let created = body_of(&create);
+        let hid = created["HoursOfOperationId"].as_str().unwrap().to_string();
+        assert!(created["HoursOfOperationArn"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/operating-hours/{hid}")));
+
+        let desc = request(
+            "GET",
+            &format!("/hours-of-operations/{id}/{hid}"),
+            json!({}),
+            "",
+        );
+        let described = body_of(&desc);
+        let hoo = &described["HoursOfOperation"];
+        assert_eq!(hoo["Name"], "BH");
+        assert_eq!(hoo["TimeZone"], "America/New_York");
+        assert_eq!(hoo["Config"][0]["Day"], "MONDAY");
+
+        let upd = request(
+            "POST",
+            &format!("/hours-of-operations/{id}/{hid}"),
+            json!({"Name": "BH2"}),
+            "",
+        );
+        assert_eq!(status_of(&upd), 200);
+
+        let listed = request(
+            "GET",
+            &format!("/hours-of-operations-summary/{id}"),
+            json!({}),
+            "",
+        );
+        let list_body = body_of(&listed);
+        assert_eq!(list_body["HoursOfOperationSummaryList"][0]["Name"], "BH2");
+
+        let del = request(
+            "DELETE",
+            &format!("/hours-of-operations/{id}/{hid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&del), 200);
+        let after = request(
+            "GET",
+            &format!("/hours-of-operations/{id}/{hid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&after), 404);
+    }
+
+    #[test]
+    fn hours_of_operation_override_lifecycle() {
+        let (id, _) = make_instance(json!({}));
+        let create = request(
+            "PUT",
+            &format!("/hours-of-operations/{id}/hoo-1/overrides"),
+            json!({"Name": "Holiday", "EffectiveFrom": "2020-01-01", "EffectiveTill": "2020-12-31",
+                   "Config": [{"Day": "MONDAY"}]}),
+            "",
+        );
+        let created = body_of(&create);
+        let oid = created["HoursOfOperationOverrideId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert_eq!(oid.len(), 36);
+
+        let desc = request(
+            "GET",
+            &format!("/hours-of-operations/{id}/hoo-1/overrides/{oid}"),
+            json!({}),
+            "",
+        );
+        let described = body_of(&desc);
+        let override_row = &described["HoursOfOperationOverride"];
+        assert_eq!(override_row["Name"], "Holiday");
+        assert_eq!(override_row["EffectiveFrom"], "2020-01-01");
+        assert_eq!(override_row["EffectiveTill"], "2020-12-31");
+        assert_eq!(override_row["Config"][0]["Day"], "MONDAY");
+
+        let upd = request(
+            "POST",
+            &format!("/hours-of-operations/{id}/hoo-1/overrides/{oid}"),
+            json!({"Name": "Holiday2"}),
+            "",
+        );
+        assert_eq!(status_of(&upd), 200);
+
+        let listed = request(
+            "GET",
+            &format!("/hours-of-operations/{id}/hoo-1/overrides"),
+            json!({}),
+            "",
+        );
+        let list_body = body_of(&listed);
+        let rows = list_body["HoursOfOperationOverrideList"]
+            .as_array()
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["Name"], "Holiday2");
+
+        // overrides live under instance+hours key: another hoo is empty
+        let other = request(
+            "GET",
+            &format!("/hours-of-operations/{id}/other-hoo/overrides"),
+            json!({}),
+            "",
+        );
+        let other_body = body_of(&other);
+        assert_eq!(
+            other_body["HoursOfOperationOverrideList"]
+                .as_array()
+                .unwrap()
+                .len(),
+            0
+        );
+
+        let del = request(
+            "DELETE",
+            &format!("/hours-of-operations/{id}/hoo-1/overrides/{oid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&del), 200);
+        let after = request(
+            "GET",
+            &format!("/hours-of-operations/{id}/hoo-1/overrides/{oid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&after), 404);
+    }
+
+    // -- Queues ---------------------------------------------------------------
+
+    #[test]
+    fn queue_lifecycle_and_updates() {
+        let (id, _) = make_instance(json!({}));
+        let create = request(
+            "PUT",
+            &format!("/queues/{id}"),
+            json!({"Name": "Q1", "HoursOfOperationId": "hoo-1", "MaxContacts": 10}),
+            "",
+        );
+        let created = body_of(&create);
+        let qid = created["QueueId"].as_str().unwrap().to_string();
+        assert!(created["QueueArn"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/queue/{qid}")));
+
+        let desc = request("GET", &format!("/queues/{id}/{qid}"), json!({}), "");
+        let described = body_of(&desc);
+        let queue = &described["Queue"];
+        assert_eq!(queue["Name"], "Q1");
+        assert_eq!(queue["HoursOfOperationId"], "hoo-1");
+        assert_eq!(queue["MaxContacts"], 10);
+        assert_eq!(queue["Status"], "ENABLED");
+        assert_eq!(queue["OutboundCallerConfig"], serde_json::json!({}));
+
+        let rename = request(
+            "POST",
+            &format!("/queues/{id}/{qid}/name"),
+            json!({"Name": "Q2", "Description": "d"}),
+            "",
+        );
+        assert_eq!(status_of(&rename), 200);
+        let status = request(
+            "POST",
+            &format!("/queues/{id}/{qid}/status"),
+            json!({"Status": "DEFERRED"}),
+            "",
+        );
+        assert_eq!(status_of(&status), 200);
+        let maxc = request(
+            "POST",
+            &format!("/queues/{id}/{qid}/max-contacts"),
+            json!({"MaxContacts": 20}),
+            "",
+        );
+        assert_eq!(status_of(&maxc), 200);
+        let hoo = request(
+            "POST",
+            &format!("/queues/{id}/{qid}/hours-of-operation"),
+            json!({"HoursOfOperationId": "hoo-2"}),
+            "",
+        );
+        assert_eq!(status_of(&hoo), 200);
+        let cfg = request(
+            "POST",
+            &format!("/queues/{id}/{qid}/outbound-caller-config"),
+            json!({"OutboundCallerConfig": {"OutboundCallerIdName": "calls"}}),
+            "",
+        );
+        assert_eq!(status_of(&cfg), 200);
+
+        let desc = request("GET", &format!("/queues/{id}/{qid}"), json!({}), "");
+        let described = body_of(&desc);
+        let queue = &described["Queue"];
+        assert_eq!(queue["Name"], "Q2");
+        assert_eq!(queue["Description"], "d");
+        assert_eq!(queue["Status"], "DEFERRED");
+        assert_eq!(queue["MaxContacts"], 20);
+        assert_eq!(queue["HoursOfOperationId"], "hoo-2");
+        assert_eq!(
+            queue["OutboundCallerConfig"]["OutboundCallerIdName"],
+            "calls"
+        );
+
+        let listed = request("GET", &format!("/queues-summary/{id}"), json!({}), "");
+        let list_body = body_of(&listed);
+        let rows = list_body["QueueSummaryList"].as_array().unwrap();
+        assert_eq!(rows[0]["QueueType"], "STANDARD");
+        assert_eq!(rows[0]["Name"], "Q2");
+
+        let del = request("DELETE", &format!("/queues/{id}/{qid}"), json!({}), "");
+        assert_eq!(status_of(&del), 200);
+        let after = request("GET", &format!("/queues/{id}/{qid}"), json!({}), "");
+        assert_eq!(status_of(&after), 404);
+    }
+
+    // -- Quick connects ---------------------------------------------------------
+
+    #[test]
+    fn quick_connect_lifecycle_and_queue_association() {
+        let (id, _) = make_instance(json!({}));
+        let config = json!({"QuickConnectType": "PHONE_NUMBER",
+                            "QuickConnectConfig": {"PhoneNumber": "+15551001"}});
+        let create = request(
+            "PUT",
+            &format!("/quick-connects/{id}"),
+            json!({"Name": "QC1", "QuickConnectConfig": config}),
+            "",
+        );
+        let created = body_of(&create);
+        let qcid1 = created["QuickConnectId"].as_str().unwrap().to_string();
+        assert!(created["QuickConnectARN"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/transfer-destination/{qcid1}")));
+
+        let create2 = request(
+            "PUT",
+            &format!("/quick-connects/{id}"),
+            json!({"Name": "QC2", "QuickConnectConfig": {"QuickConnectType": "QUEUE"}}),
+            "",
+        );
+        let qcid2 = body_of(&create2)["QuickConnectId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let desc = request(
+            "GET",
+            &format!("/quick-connects/{id}/{qcid1}"),
+            json!({}),
+            "",
+        );
+        let described = body_of(&desc);
+        assert_eq!(described["QuickConnect"]["Name"], "QC1");
+        assert_eq!(
+            described["QuickConnect"]["QuickConnectConfig"]["QuickConnectType"],
+            "PHONE_NUMBER"
+        );
+
+        let listed = request("GET", &format!("/quick-connects/{id}"), json!({}), "");
+        let list_body = body_of(&listed);
+        let rows = list_body["QuickConnectSummaryList"].as_array().unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["QuickConnectType"], "PHONE_NUMBER");
+
+        // queue association
+        let queue = request(
+            "PUT",
+            &format!("/queues/{id}"),
+            json!({"Name": "QA", "HoursOfOperationId": "hoo-1"}),
+            "",
+        );
+        let qid = body_of(&queue)["QueueId"].as_str().unwrap().to_string();
+        let assoc = request(
+            "POST",
+            &format!("/queues/{id}/{qid}/associate-quick-connects"),
+            json!({"QuickConnectIds": [qcid1.clone()]}),
+            "",
+        );
+        assert_eq!(status_of(&assoc), 200);
+        let listed = request(
+            "GET",
+            &format!("/queues/{id}/{qid}/quick-connects"),
+            json!({}),
+            "",
+        );
+        let assoc_body = body_of(&listed);
+        let rows = assoc_body["QuickConnectSummaryList"].as_array().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["Name"], "QC1");
+
+        let disassoc = request(
+            "POST",
+            &format!("/queues/{id}/{qid}/disassociate-quick-connects"),
+            json!({"QuickConnectIds": [qcid1]}),
+            "",
+        );
+        assert_eq!(status_of(&disassoc), 200);
+
+        // config update
+        let upd = request(
+            "POST",
+            &format!("/quick-connects/{id}/{qcid2}/config"),
+            json!({"QuickConnectConfig": {"QuickConnectType": "USER"}}),
+            "",
+        );
+        assert_eq!(status_of(&upd), 200);
+        let desc = request(
+            "GET",
+            &format!("/quick-connects/{id}/{qcid2}"),
+            json!({}),
+            "",
+        );
+        let described = body_of(&desc);
+        assert_eq!(
+            described["QuickConnect"]["QuickConnectConfig"]["QuickConnectType"],
+            "USER"
+        );
+
+        let del = request(
+            "DELETE",
+            &format!("/quick-connects/{id}/{qcid2}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&del), 200);
+        let after = request(
+            "GET",
+            &format!("/quick-connects/{id}/{qcid2}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&after), 404);
+    }
+
+    // -- Routing profiles ---------------------------------------------------------
+
+    #[test]
+    fn routing_profile_lifecycle_and_queue_association() {
+        let (id, _) = make_instance(json!({}));
+        let create = request(
+            "PUT",
+            &format!("/routing-profiles/{id}"),
+            json!({"Name": "RP1", "Description": "d", "DefaultOutboundQueueId": "q-1",
+                   "MediaConcurrencies": [{"Channel": "VOICE", "Concurrency": 1}]}),
+            "",
+        );
+        let created = body_of(&create);
+        let rpid = created["RoutingProfileId"].as_str().unwrap().to_string();
+        assert!(created["RoutingProfileArn"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("/routing-profile/{rpid}")));
+
+        let desc = request(
+            "GET",
+            &format!("/routing-profiles/{id}/{rpid}"),
+            json!({}),
+            "",
+        );
+        let described = body_of(&desc);
+        let rp = &described["RoutingProfile"];
+        assert_eq!(rp["Name"], "RP1");
+        assert_eq!(rp["InstanceId"], id.as_str());
+        assert_eq!(rp["NumberOfAssociatedQueues"], 0);
+        assert_eq!(rp["DefaultOutboundQueueId"], "q-1");
+        assert_eq!(rp["MediaConcurrencies"][0]["Channel"], "VOICE");
+
+        let upd_name = request(
+            "POST",
+            &format!("/routing-profiles/{id}/{rpid}/name"),
+            json!({"Name": "RP2"}),
+            "",
+        );
+        assert_eq!(status_of(&upd_name), 200);
+        let upd_conc = request(
+            "POST",
+            &format!("/routing-profiles/{id}/{rpid}/concurrency"),
+            json!({"MediaConcurrencies": [{"Channel": "CHAT", "Concurrency": 2}]}),
+            "",
+        );
+        assert_eq!(status_of(&upd_conc), 200);
+        let upd_q = request(
+            "POST",
+            &format!("/routing-profiles/{id}/{rpid}/default-outbound-queue"),
+            json!({"DefaultOutboundQueueId": "q-2"}),
+            "",
+        );
+        assert_eq!(status_of(&upd_q), 200);
+
+        let listed = request(
+            "GET",
+            &format!("/routing-profiles-summary/{id}"),
+            json!({}),
+            "",
+        );
+        let list_body = body_of(&listed);
+        assert_eq!(list_body["RoutingProfileSummaryList"][0]["Name"], "RP2");
+
+        // queue association
+        let assoc = request(
+            "POST",
+            &format!("/routing-profiles/{id}/{rpid}/associate-queues"),
+            json!({"QueueConfigs": [
+                {"QueueReference": {"Channel": "VOICE", "QueueId": "q-1"}, "QueuePriority": 1},
+                {"QueueReference": {"Channel": "CHAT", "QueueId": "q-2"}, "QueuePriority": 2}
+            ]}),
+            "",
+        );
+        assert_eq!(status_of(&assoc), 200);
+        let listed_q = request(
+            "GET",
+            &format!("/routing-profiles/{id}/{rpid}/queues"),
+            json!({}),
+            "",
+        );
+        let listed_q_body = body_of(&listed_q);
+        let rows = listed_q_body["RoutingProfileQueueConfigSummaryList"]
+            .as_array()
+            .unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["QueueReference"]["QueueId"], "q-1");
+
+        let disassoc = request(
+            "POST",
+            &format!("/routing-profiles/{id}/{rpid}/disassociate-queues"),
+            json!({"QueueReferences": [{"QueueId": "q-1"}]}),
+            "",
+        );
+        assert_eq!(status_of(&disassoc), 200);
+        let listed_q = request(
+            "GET",
+            &format!("/routing-profiles/{id}/{rpid}/queues"),
+            json!({}),
+            "",
+        );
+        let after_body = body_of(&listed_q);
+        let rows = after_body["RoutingProfileQueueConfigSummaryList"]
+            .as_array()
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+
+        let update_qs = request(
+            "POST",
+            &format!("/routing-profiles/{id}/{rpid}/queues"),
+            json!({"QueueConfigs": [
+                {"QueueReference": {"Channel": "TASK", "QueueId": "q-3"}, "QueuePriority": 1}
+            ]}),
+            "",
+        );
+        assert_eq!(status_of(&update_qs), 200);
+
+        let desc = request(
+            "GET",
+            &format!("/routing-profiles/{id}/{rpid}"),
+            json!({}),
+            "",
+        );
+        let described = body_of(&desc);
+        assert_eq!(described["RoutingProfile"]["NumberOfAssociatedQueues"], 1);
+        assert_eq!(described["RoutingProfile"]["DefaultOutboundQueueId"], "q-2");
+        assert_eq!(
+            described["RoutingProfile"]["MediaConcurrencies"][0]["Channel"],
+            "CHAT"
+        );
+
+        let del = request(
+            "DELETE",
+            &format!("/routing-profiles/{id}/{rpid}"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&del), 200);
+        let after = request(
+            "GET",
+            &format!("/routing-profiles/{id}/{rpid}"),
             json!({}),
             "",
         );
