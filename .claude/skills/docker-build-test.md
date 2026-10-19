@@ -6,28 +6,28 @@ Use this skill when building the robotocore Docker image and running tests again
 
 ```bash
 docker build -t robotocore .
-# Image size target: < 600MB (currently ~559MB)
-docker image ls robotocore --format "{{.Size}}"
+docker image ls robotocore --format "{{.Repository}} {{.Size}}"
 ```
+
+The image is pure Rust (no Python, no package manager, distroless-style runtime).
 
 ## Run
 
 ```bash
-# Run the container on a test port
 docker rm -f robotocore-test 2>/dev/null
 docker run -d --name robotocore-test -p 14567:4566 robotocore
-sleep 5
+sleep 2
 curl -s http://localhost:14567/_robotocore/health
 ```
 
 ## Test against the container
 
 ```bash
-# Run all compatibility tests
+# Run all compatibility tests against the container
 ENDPOINT_URL=http://localhost:14567 uv run pytest tests/compatibility/ -q
 
-# Generate parity report
-uv run python scripts/parity_report.py
+# Full parity run against the golden baseline
+make parity
 ```
 
 ## Clean up
@@ -37,8 +37,17 @@ docker rm -f robotocore-test
 ```
 
 ## Notes
-- Uses `python:3.12-slim` as base, supports ARM and x86
+- Rust multi-stage build; supports ARM and x86
 - Port 4566 exposed (same as LocalStack)
-- `MOTO_ALLOW_NONEXISTENT_REGION=true` set in image
 - Health check at `/_robotocore/health`
-- Don't install dev dependencies in image (`--no-dev`)
+- The Rust binary inside is the same one `cargo run -p robotocore-rust` builds
+
+## Docker Desktop extension (docker-extension/)
+
+The extension backend lives in `docker-extension/vm/` (an axum crate) and
+builds separately — its context is `docker-extension/`, not the repo root:
+
+```bash
+docker build -f docker-extension/Dockerfile -t robotocore/docker-desktop-extension:local docker-extension/
+docker run --rm -p 8191:8191 -e EXTENSION_PORT=8191 robotocore/docker-desktop-extension:local
+```

@@ -294,19 +294,28 @@ robotocore (named for [botocore](https://github.com/boto/botocore)) is a **digit
 - **Single container** — one `docker run` command, no config, no cloud
 - **MIT licensed** — free forever, no paid tiers, no registration, no telemetry
 
-Built by [Jack Danger](https://github.com/jackdanger), a maintainer of [Moto](https://github.com/getmoto/moto), on top of Moto's ~195 service implementations.
+Built by [Jack Danger](https://github.com/jackdanger). Entirely in Rust — the gateway, the moto-equivalent service engine (`rotocore/`), and the per-service crates. No Python in the product.
 
 ---
 
 ## Supported Services
 
-**158 services** are available at two levels of fidelity:
+**157 services** are registered at one of two levels:
 
-- **Native providers** (46 services) — robotocore intercepts the request and handles it directly, adding behavior that Moto doesn't provide: real Lambda execution, SQS visibility timeouts, SigV4 authentication, IAM policy evaluation, CloudFormation resource orchestration, etc. These services are where robotocore goes beyond what any mock library can do.
+- **native** — a Rust backend answers in-process: the gateway core (Lambda execution, SQS visibility timeouts, SigV4 auth, IAM policy evaluation, CloudFormation resource orchestration) plus the rotocore engine's ported backends — currently 92 of 157 (S3, SQS, DynamoDB, EC2, Connect, Glue, ELB/ELBv2, CloudFront, Redshift, EMR, IoT, Athena, and more).
 
-- **Moto-backed services** (112 services) — requests are forwarded to [Moto](https://github.com/getmoto/moto)'s backend. Moto stores and retrieves resources in memory with correct AWS response formats. While building robotocore we also [automatically implemented](prompts/20260309-020000-moto-implementation-wave1.md) over 450 new operations in Moto across 30+ services — those fixes will be sent upstream.
+- **absent** — requests answer `501 NotImplemented` until a backend is ported (~65 of 157: bedrock, mq, pinpoint, quicksight, wafv2, workspaces, …).
 
-### Native providers (46)
+Ask the running twin for the authoritative, always-current list:
+
+```bash
+curl -s http://localhost:4566/_robotocore/services | python3 -c "
+import json, sys, collections
+s = json.load(sys.stdin)['services']
+print(len(s), dict(collections.Counter(x['status'] for x in s)))"
+```
+
+### Native highlights
 
 | Service | Notes |
 |---------|-------|
@@ -349,28 +358,18 @@ Built by [Jack Danger](https://github.com/jackdanger), a maintainer of [Moto](ht
 | Support | Trusted Advisor |
 | X-Ray | Trace management |
 
-### Moto-backed services (112)
-
-<details>
-<summary>Click to expand full list</summary>
-
-Account, ACM-PCA, AMP, AppConfig, Application Auto Scaling, App Mesh, Athena, Auto Scaling, Backup, Bedrock, Bedrock Agent, Budgets, CE, Cloud Directory, CloudFront, CloudHSM v2, CloudTrail, CodeBuild, CodeCommit, CodeDeploy, CodePipeline, Cognito Identity, Comprehend, Connect, DataBrew, Data Pipeline, DataSync, DAX, DMS, Directory Service, DSQL, EC2 Instance Connect, EFS, EKS, ElastiCache, Elastic Beanstalk, ELB, ELBv2, EMR, EMR Containers, EMR Serverless, FSx, Glacier, Glue, Greengrass, GuardDuty, Identity Store, Inspector2, IoT, IoT Data, IVS, Kafka, Kinesis Analytics v2, Kinesis Video, KMS, Lake Formation, Lex v2, Macie2, Managed Blockchain, MediaConnect, MediaLive, MediaPackage, MediaPackage v2, MediaStore, MemoryDB, MQ, Network Firewall, Network Manager, OpenSearch Serverless, Organizations, OSIS, Panorama, Pinpoint, Pipes, Polly, QuickSight, RAM, RDS, RDS Data, Redshift, Redshift Data, Resilience Hub, Route 53 Domains, Route 53 Resolver, S3 Control, S3 Tables, S3 Vectors, SageMaker, Security Hub, Service Catalog, Service Catalog App Registry, Service Discovery, Shield, Signer, SSO Admin, SWF, Synthetics, Textract, Timestream InfluxDB, Timestream Query, Timestream Write, Transfer, VPC Lattice, WAFv2, WorkSpaces, WorkSpaces Web.
-
-</details>
-
 ---
 
 ## Migrating from other emulators
 
-robotocore replaces these open-source AWS emulators — each link has a step-by-step migration guide:
+robotocore is a drop-in replacement for other open-source AWS emulators — same port (4566), same AWS wire protocol, with added behavioral fidelity (snapshots, audit, multi-account):
 
-- **[LocalStack Community Edition](LOCALSTACK.md)** — same port (4566), drop-in replacement. No auth token required, ever.
-- **[moto standalone server](src/robotocore/services/README.md)** — same Moto backends with behavioral fidelity, snapshots, chaos engineering
-- **[kinesalite](src/robotocore/services/kinesis/README.md)** — all 17 ops plus Enhanced Fan-Out, encryption, UpdateShardCount
-- **[dynalite](src/robotocore/services/dynamodb/README.md)** / **[DynamoDB Local](src/robotocore/services/dynamodb/README.md)** — transactions, streams, PartiQL, no JVM
-- **[ElasticMQ](src/robotocore/services/sqs/README.md)** — real visibility timeouts, DLQ, FIFO, plus 157 other services
-- **[goaws](src/robotocore/services/sqs/README.md)** — SQS + [SNS](src/robotocore/services/sns/README.md) with message filtering, Lambda targets, FIFO topics
-- **[s3rver](src/robotocore/services/s3/README.md)** / **[Adobe S3Mock](src/robotocore/services/s3/README.md)** — versioning, multipart, lifecycle, presigned URLs
+- **[LocalStack Community Edition](docs/index.html)** — no auth token required, ever.
+- **[moto](https://github.com/getmoto/moto)** — robotocore's rotocore engine reimplements moto's service layer natively in Rust, with behavioral fidelity and snapshots.
+- **kinesalite** — all 17 ops plus Enhanced Fan-Out, encryption, UpdateShardCount
+- **dynalite / DynamoDB Local** — transactions, streams, PartiQL, no JVM
+- **ElasticMQ** — real visibility timeouts, DLQ, FIFO
+- **s3rver / S3Mock** — versioning, multipart, lifecycle, presigned URLs
 
 ## S3 Semantic Audit
 

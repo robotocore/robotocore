@@ -183,9 +183,9 @@ for x in s: print(f\"{x['name']:32} {x['status']}\")
 "
 ```
 
-**Native providers** (full behavioral fidelity): ACM, API Gateway v1, API Gateway v2, AppSync, Batch, CloudFormation, CloudWatch, CloudWatch Logs, Cognito User Pools, Config, DynamoDB, DynamoDB Streams, EC2, ECR, ECS, Elasticsearch, EventBridge, Firehose, IAM, Kinesis, Lambda, OpenSearch, Rekognition, Resource Groups, Resource Groups Tagging, Route 53, S3, Scheduler, Secrets Manager, SES, SES v2, SNS, SQS, SSM, Step Functions, STS, Support, X-Ray.
+**Native providers** (a Rust backend answers in-process): athena, cloudfront, connect, ec2, elb, elbv2, emr, glue, iot, redshift, and more — currently 92 of the 157 registered services including every service listed in the gateway core (S3, SQS, SNS, DynamoDB, DynamoDB Streams, Lambda, IAM, KMS, SSM, Secrets Manager, Step Functions, STS, CloudWatch, CloudWatch Logs, EventBridge, Kinesis, Firehose, ECR, ECS, API Gateway v1/v2, AppSync, Batch, Cognito User Pools, Config, Route 53, Scheduler, SES v1/v2, Support, X-Ray…).
 
-**Moto-backed services**: Account, ACM-PCA, AMP, AppConfig, Application Auto Scaling, App Mesh, Athena, Auto Scaling, Backup, Bedrock, Bedrock Agent, Budgets, CE, Cloud Directory, CloudFront, CloudHSM v2, CloudTrail, CodeBuild, CodeCommit, CodeDeploy, CodePipeline, Cognito Identity, Comprehend, Connect, DataBrew, Data Pipeline, DataSync, DAX, DMS, Directory Service, DSQL, EC2 Instance Connect, EFS, EKS, ElastiCache, Elastic Beanstalk, ELB, ELBv2, EMR, EMR Containers, EMR Serverless, FSx, Glacier, Glue, Greengrass, GuardDuty, Identity Store, Inspector2, IoT, IoT Data, IVS, Kafka, Kinesis Analytics v2, Kinesis Video, KMS, Lake Formation, Lex v2, Macie2, Managed Blockchain, MediaConnect, MediaLive, MediaPackage, MediaPackage v2, MediaStore, MemoryDB, MQ, Network Firewall, Network Manager, OpenSearch Serverless, Organizations, OSIS, Panorama, Pinpoint, Pipes, Polly, QuickSight, RAM, RDS, RDS Data, Redshift, Redshift Data, Resilience Hub, Route 53 Domains, Route 53 Resolver, S3 Control, S3 Tables, S3 Vectors, SageMaker, Security Hub, Service Catalog, Service Catalog App Registry, Service Discovery, Shield, Signer, SSO Admin, SWF, Synthetics, Textract, Timestream InfluxDB, Timestream Query, Timestream Write, Transfer, VPC Lattice, WAFv2, WorkSpaces, WorkSpaces Web.
+**Absent services** (requests answer `501 NotImplemented`, ~65 of 157): account, appconfig, application-autoscaling, autoscaling, bedrock family, cloudhsmv2, datasync family, dynamodbstreams-era gap services such as kafka-video, mq family, pinpoint, quicksight, wafv2, workspaces, and others — see the live endpoint for the authoritative list. Pruning the old moto sidecar turned previously "moto-backed" services into absent ones; they return `501 NotImplemented` until a rotocore backend lands.
 
 ---
 
@@ -352,7 +352,7 @@ for svc, status in sorted(h.get('services', {}).items()):
 
 | Endpoint | Returns |
 |---|---|
-| `GET /_robotocore/health` | Per-service status, native or moto, request counts, uptime, version |
+| `GET /_robotocore/health` | Per-service status (`native`/`absent`), request counts, uptime, version |
 | `GET /_robotocore/services` | Per-service protocol (json, rest-json, query) and description |
 | `GET /_robotocore/audit?limit=N` | Recent calls with operation, status code, account, region |
 | `GET /_robotocore/usage/errors` | Error totals grouped by status code, plus recent errors |
@@ -360,7 +360,9 @@ for svc, status in sorted(h.get('services', {}).items()):
 | `GET /_robotocore/config` | Version and runtime config |
 | `GET /_robotocore/diagnose` | Full diagnostic bundle; returns 403 unless `DEBUG=1` or `ROBOTOCORE_DIAG=1` |
 
-`native` in the health output means a robotocore provider with added behavioral fidelity; `moto` means the operation is served by Moto's backend.
+`native` in the health output means a Rust backend answers in-process (gateway core handler or a rotocore backend); `absent` means requests get `501 NotImplemented`. Both labels are derived from the real handler tables at request time, not from a static table.
+
+Only HTTP `501` with the `NotImplemented` error code means "genuinely absent" — the gateway never reports an unimplemented operation as `InternalError`.
 
 ---
 
@@ -510,7 +512,7 @@ services:
 
 - **Repository**: https://github.com/robotocore/robotocore
 - **Issues**: https://github.com/robotocore/robotocore/issues
-- **Built on**: [Moto](https://github.com/getmoto/moto) (~195 AWS service implementations)
-- **Author**: Jack Danger, a Moto maintainer
+- **Implementation**: pure Rust — the gateway (`src/core/`), the moto-equivalent engine (`rotocore/`), and per-service crates (`crates/`). No Python in the server; language bindings live under `bindings/`.
+- **Author**: Jack Danger
 
 See [CLAUDE.md](CLAUDE.md) for contributor architecture notes.
