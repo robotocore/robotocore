@@ -32,6 +32,7 @@ pub mod cognito_idp;
 pub mod comprehend;
 pub mod config;
 pub mod connect;
+pub mod connectcampaigns;
 pub mod databrew;
 pub mod datapipeline;
 pub mod datasync;
@@ -132,6 +133,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "comprehend" => Some(comprehend::dispatch(req)),
         "config" => Some(config::dispatch(req)),
         "connect" => Some(connect::dispatch(req)),
+        "connectcampaigns" => connectcampaigns::dispatch(req),
         "databrew" => databrew::dispatch(req),
         "datapipeline" => datapipeline::dispatch(req),
         "datasync" => datasync::dispatch(req),
@@ -246,6 +248,7 @@ pub fn handles_service(service: &str) -> bool {
             | "comprehend"
             | "config"
             | "connect"
+            | "connectcampaigns"
             | "databrew"
             | "datapipeline"
             | "datasync"
@@ -336,6 +339,7 @@ mod tests {
         for service in [
             "acm",
             "connect",
+            "connectcampaigns",
             "glue",
             "glacier",
             "elasticache",
