@@ -5229,4 +5229,225 @@ fn empty_resp_status(status: u16) -> Response {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use bytes::Bytes;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    fn next_account() -> u64 {
+        static NEXT: AtomicU64 = AtomicU64::new(90_000_000_001);
+        NEXT.fetch_add(1, Ordering::SeqCst)
+    }
+
+    fn make_req(
+        account: u64,
+        method: &str,
+        path: &str,
+        body: &str,
+        headers: &[(&str, &str)],
+    ) -> Request {
+        let (path_part, query_part) = match path.split_once('?') {
+            Some((p, q)) => (p.to_string(), q.to_string()),
+            None => (path.to_string(), String::new()),
+        };
+        Request {
+            service: "cloudfront".to_string(),
+            operation: String::new(),
+            method: method.to_string(),
+            path: path_part,
+            query_string: query_part,
+            headers: headers
+                .iter()
+                .map(|(k, v)| (k.to_lowercase(), v.to_string()))
+                .collect(),
+            body: Bytes::from(body.to_string()),
+            account,
+            region: "us-east-1".to_string(),
+        }
+    }
+
+    fn dist_config_xml(comment: &str, caller: &str) -> String {
+        format!(
+            "<DistributionConfig xmlns=\"{XMLNS}\"><CallerReference>{caller}</CallerReference>\
+<Origins><Quantity>1</Quantity><Items><Origin><Id>o1</Id><DomainName>example.com</DomainName>\
+<CustomOriginConfig><HTTPPort>80</HTTPPort><HTTPSPort>443</HTTPSPort>\
+<OriginProtocolPolicy>http-only</OriginProtocolPolicy></CustomOriginConfig></Origin></Items></Origins>\
+<DefaultCacheBehavior><TargetOriginId>o1</TargetOriginId><ViewerProtocolPolicy>allow-all</ViewerProtocolPolicy>\
+<ForwardedValues><QueryString>false</QueryString><Cookies><Forward>none</Forward></Cookies></ForwardedValues>\
+</DefaultCacheBehavior><Comment>{comment}</Comment><Enabled>true</Enabled></DistributionConfig>"
+        )
+    }
+
+    fn header(resp: &Response, name: &str) -> String {
+        resp.headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.clone())
+            .unwrap_or_default()
+    }
+
+    fn dist_id(resp: &Response) -> String {
+        let tree = parse_xml(&resp.body).expect("xml body");
+        tree.sub(&["Id"]).map(El::as_str).unwrap_or("").to_string()
+    }
+
+    fn text(resp: &Response, path: &[&str]) -> String {
+        let tree = parse_xml(&resp.body).expect("xml body");
+        tree.sub(path)
+            .map(|e| e.as_str().to_string())
+            .unwrap_or_default()
+    }
+
+    // ----- distributions CRUD -----
+
+    #[test]
+    fn distribution_crud_roundtrip() {
+        let account = next_account();
+        let req = make_req(
+            account,
+            "POST",
+            "/2020-05-31/distribution",
+            &dist_config_xml("crud-test", "ref-crud"),
+            &[],
+        );
+        let create = dispatch(&req);
+        assert_eq!(create.status, 200);
+        let id = dist_id(&create);
+        assert_eq!(id.len(), 13);
+        assert_eq!(text(&create, &["Status"]), "InProgress");
+        assert_eq!(
+            text(&create, &["DistributionConfig", "Comment"]),
+            "crud-test"
+        );
+        assert!(text(&create, &["ARN"]).starts_with("arn:aws:cloudfront:"));
+        assert!(create.body != b"");
+
+        // ETag is present on create and get
+        let etag = header(&create, "ETag");
+        assert!(!etag.is_empty());
+
+        let get = dispatch(&make_req(
+            account,
+            "GET",
+            &format!("/2020-05-31/distribution/{id}"),
+            "",
+            &[],
+        ));
+        assert_eq!(get.status, 200, "get still 200");
+        assert_eq!(header(&get, "ETag"), etag, "etag stable across get");
+        // ManagedState advances on first read.
+        assert_eq!(text(&get, &["Status"]), "Deployed");
+
+        // Update keeps identity/etag and echoes the new comment.
+        let mut new_cfg = dist_config_xml("updated-comment", "ref-crud");
+        new_cfg = new_cfg.replace(
+            "<CallerReference>ref-crud</CallerReference>",
+            &format!(
+                "<CallerReference>{caller_new}</CallerReference>",
+                caller_new = "ref-crud-2"
+            ),
+        );
+        let update = dispatch(&make_req(
+            account,
+            "PUT",
+            &format!("/2020-05-31/distribution/{id}/config"),
+            &new_cfg,
+            &[("If-Match", &etag)],
+        ));
+        assert_eq!(update.status, 200);
+        assert_eq!(
+            text(&update, &["DistributionConfig", "Comment"]),
+            "updated-comment"
+        );
+        assert_eq!(header(&update, "ETag"), etag);
+
+        // Delete uses the If-Match header and removes from the list.
+        let del = dispatch(&make_req(
+            account,
+            "DELETE",
+            &format!("/2020-05-31/distribution/{id}"),
+            "",
+            &[("If-Match", &etag)],
+        ));
+        assert_eq!(del.status, 204);
+        let list = dispatch(&make_req(
+            account,
+            "GET",
+            "/2020-05-31/distribution",
+            "",
+            &[],
+        ));
+        let tree = parse_xml(&list.body).expect("list body");
+        assert_eq!(text(&list, &["Quantity"]), "0");
+        let _ = tree;
+    }
+
+    #[test]
+    fn distribution_list_includes_created() {
+        let account = next_account();
+        dispatch(&make_req(
+            account,
+            "POST",
+            "/2020-05-31/distribution",
+            &dist_config_xml("list-test", "ref-list"),
+            &[],
+        ));
+        let list = dispatch(&make_req(
+            account,
+            "GET",
+            "/2020-05-31/distribution",
+            "",
+            &[],
+        ));
+        assert!(list
+            .body
+            .windows(b"DistributionSummary".len())
+            .any(|w| w == b"DistributionSummary"));
+        let tree = parse_xml(&list.body).expect("xml");
+        let quantity = tree
+            .sub(&["Quantity"])
+            .map(|e| e.as_str().parse::<usize>().unwrap_or(0))
+            .unwrap_or(0);
+        assert!(quantity >= 1);
+    }
+
+    #[test]
+    fn create_rejects_duplicate_caller_reference() {
+        let account = next_account();
+        let slug = format!("dup-{}", next_account());
+        let first = dispatch(&make_req(
+            account,
+            "POST",
+            "/2020-05-31/distribution",
+            &dist_config_xml(&slug, "ref-dup"),
+            &[],
+        ));
+        assert_eq!(first.status, 200);
+        let second = dispatch(&make_req(
+            account,
+            "POST",
+            "/2020-05-31/distribution",
+            &dist_config_xml(&slug, "ref-dup"),
+            &[],
+        ));
+        assert_eq!(second.status, 400);
+        assert_eq!(
+            text(&second, &["Error", "Code"]),
+            "DistributionAlreadyExists"
+        );
+    }
+
+    #[test]
+    fn get_unknown_distribution_is_no_such() {
+        let account = next_account();
+        let resp = dispatch(&make_req(
+            account,
+            "GET",
+            "/2020-05-31/distribution/ENONEXISTENT123",
+            "",
+            &[],
+        ));
+        assert_eq!(resp.status, 404);
+        assert_eq!(text(&resp, &["Error", "Code"]), "NoSuchDistribution");
+    }
+
 }
