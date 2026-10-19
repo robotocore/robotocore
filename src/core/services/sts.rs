@@ -7,6 +7,32 @@ use crate::core::protocol::{ParsedRequest, ParsedResponse};
 use http::StatusCode;
 use serde_json::json;
 
+/// Every operation the STS handler implements. The gateway consults this
+/// list when an unsigned request lands on `/`: only a request naming one
+/// of these operations belongs to STS; anything else must not be answered
+/// with STS-shaped errors. Keep in sync with the match in
+/// `handle_sts_request`.
+pub const STS_KNOWN_OPS: &[&str] = &[
+    "AssumeRole",
+    "AssumeRoleWithSAML",
+    "AssumeRoleWithWebIdentity",
+    "AssumeRoot",
+    "DecodeAWSAccountId",
+    "DecodeAuthorizationMessage",
+    "GetAccessKeyInfo",
+    "GetAccessKeyLastUsed",
+    "GetCallerIdentity",
+    "GetDelegatedAccessToken",
+    "GetFederationToken",
+    "GetSessionToken",
+    "GetWebIdentityToken",
+];
+
+/// True when the given action is an STS operation this build implements.
+pub fn is_known_sts_op(action: &str) -> bool {
+    STS_KNOWN_OPS.contains(&action)
+}
+
 /// Handle STS requests.
 pub async fn handle_sts_request(
     req: &ParsedRequest,

@@ -1130,7 +1130,7 @@ pub async fn catch_all_handler(
     }
 
     // Determine service from URI and headers
-    let service = match extract_service(&method, &uri, &headers) {
+    let service = match extract_service(&method, &uri, &headers, &body_bytes) {
         Ok(s) => refine_service_for_body(&s, &body_bytes),
         Err(e) => {
             audit_out(
@@ -1990,7 +1990,12 @@ pub async fn state_import_handler(
 ///
 /// Uses the full AWS service router first, falling back to the legacy
 /// X-Amz-Target / path heuristics only when the router cannot decide.
-fn extract_service(method: &Method, uri: &Uri, headers: &HeaderMap) -> Result<String, String> {
+fn extract_service(
+    method: &Method,
+    uri: &Uri,
+    headers: &HeaderMap,
+    body: &[u8],
+) -> Result<String, String> {
     // Build a router request from method, URI, and headers
     let mut header_pairs: Vec<(String, String)> = headers
         .iter()
@@ -2017,7 +2022,17 @@ fn extract_service(method: &Method, uri: &Uri, headers: &HeaderMap) -> Result<St
         headers: header_pairs,
     };
     if let Some(service) = route_to_service(&router_req) {
-        return Ok(service);
+        // route_to_service defaults any unsigned form post on `/` to STS
+        // (it cannot see the body). When the body names a concrete non-STS
+        // operation, that default is a misroute: the client is talking to
+        // some other service, and an STS-shaped InvalidAction error would
+        // mislead the SDK. Veto the default and fall through to the
+        // generic paths below instead. Signed requests keep faithful STS
+        // behavior (the real endpoint answers InvalidAction XML for an
+        // unknown operation).
+        if !(service == "sts" && unsigned_non_sts_action(headers, uri, body).is_some()) {
+            return Ok(service);
+        }
     }
 
     // Fallback: X-Amz-Target header (contains "service.Operation")
@@ -2031,11 +2046,9 @@ fn extract_service(method: &Method, uri: &Uri, headers: &HeaderMap) -> Result<St
 
     // Fallback: path-based detection (e.g., /bucket/key for S3)
     let path = uri.path();
-    if path.starts_with("/") {
+    if path == "/" && unsigned_non_sts_action(headers, uri, body).is_none() {
         // Default to sts for root path
-        if path == "/" {
-            return Ok("sts".to_string());
-        }
+        return Ok("sts".to_string());
     }
 
     // REST-path services (xray, cloudfront, bedrock family, arm paths) route by
@@ -2045,7 +2058,36 @@ fn extract_service(method: &Method, uri: &Uri, headers: &HeaderMap) -> Result<St
     // the first path segment. (Note: rotocore's dispatch is visited later with
     // whatever name lands; returning "" signals "unknown" and the gateway
     // returns a 501-style JSON error.)
-    Err("Could not determine service".to_string())
+    Err("request does not match a known AWS service endpoint".to_string())
+}
+
+/// A concrete AWS operation named by an *unsigned* request that is not an
+/// STS operation, found in the `Action` form field or the query string.
+/// `route_to_service` cannot see request bodies, so it parks every
+/// unsigned form-bodied call on `/` with STS; when such a call names a
+/// real non-STS action, answering with STS-shaped XML (e.g. "Unknown STS
+/// operation") misleads SDKs into treating the twin as a broken STS
+/// endpoint. Callers veto the STS default for these requests so the
+/// generic gateway error paths can answer instead.
+fn unsigned_non_sts_action(headers: &HeaderMap, uri: &Uri, body: &[u8]) -> Option<String> {
+    if headers.get("Authorization").is_some() {
+        return None;
+    }
+    let action_in = |encoded: &str| -> Option<String> {
+        encoded.split('&').find_map(|pair| {
+            let (k, v) = pair.split_once('=')?;
+            (k == "Action" && !v.is_empty()).then(|| v.to_string())
+        })
+    };
+    if let Some(action) = action_in(uri.query().unwrap_or("")) {
+        return (!sts::is_known_sts_op(&action)).then_some(action);
+    }
+    if let Some(action) = action_in(&String::from_utf8_lossy(body)) {
+        if !sts::is_known_sts_op(&action) {
+            return Some(action);
+        }
+    }
+    None
 }
 
 /// Extract account ID from Authorization header.
@@ -2167,14 +2209,23 @@ fn response_from_parsed(resp: ParsedResponse, service: &str, operation: &str) ->
 
 /// Build an error response shaped like an AWS SDK error so clients parse it.
 fn error_response(status: StatusCode, message: &str) -> Response {
+    // The one error shape a twin-wide convention depends on: 501 means the
+    // operation is genuinely absent (see AGENTS.md "Reading errors
+    // correctly"), so it must carry the NotImplemented error code, not
+    // InternalError — SDKs treat InternalError as "implemented and broken".
+    let errortype = if status == StatusCode::NOT_IMPLEMENTED {
+        "NotImplemented"
+    } else {
+        "InternalError"
+    };
     let error = json!({
-        "__type": "InternalError",
+        "__type": errortype,
         "message": message,
     });
 
     (
         status,
-        [("x-amzn-errortype", "InternalError".to_string())],
+        [("x-amzn-errortype", errortype.to_string())],
         axum::Json(error),
     )
         .into_response()
@@ -2191,7 +2242,7 @@ mod tests {
 
         let uri = "/".parse().unwrap();
         let method = Method::POST;
-        let service = extract_service(&method, &uri, &headers).unwrap();
+        let service = extract_service(&method, &uri, &headers, b"").unwrap();
         assert_eq!(service, "sts");
     }
 
@@ -2225,7 +2276,7 @@ mod tests {
         headers.insert("X-Amz-Target", "AmazonSQS.SendMessage".parse().unwrap());
         let uri = "/".parse().unwrap();
         let method = Method::POST;
-        let service = extract_service(&method, &uri, &headers).unwrap();
+        let service = extract_service(&method, &uri, &headers, b"").unwrap();
         assert_eq!(service, "sqs");
     }
 
@@ -2238,7 +2289,7 @@ mod tests {
         );
         let uri = "/".parse().unwrap();
         let method = Method::POST;
-        let service = extract_service(&method, &uri, &headers).unwrap();
+        let service = extract_service(&method, &uri, &headers, b"").unwrap();
         assert_eq!(service, "sqs");
     }
 
@@ -2253,7 +2304,85 @@ mod tests {
         );
         let uri = "/123456789012/my-queue".parse().unwrap();
         let method = Method::POST;
-        let service = extract_service(&method, &uri, &headers).unwrap();
+        let service = extract_service(&method, &uri, &headers, b"").unwrap();
         assert_eq!(service, "sqs");
+    }
+
+    #[test]
+    fn test_extract_service_unsigned_unknown_action_is_not_sts() {
+        // An unsigned form post naming a concrete non-STS operation must
+        // not park on STS — the twin previously answered such requests
+        // with STS-shaped "Unknown STS operation" XML that SDKs read as a
+        // real STS failure.
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "content-type",
+            "application/x-www-form-urlencoded".parse().unwrap(),
+        );
+        let uri = "/".parse().unwrap();
+        let method = Method::POST;
+        let err = extract_service(
+            &method,
+            &uri,
+            &headers,
+            b"Action=CreateVault&Version=2012-06-15",
+        )
+        .unwrap_err();
+        assert!(err.contains("request does not match a known AWS service endpoint"));
+    }
+
+    #[test]
+    fn test_extract_service_unsigned_post_to_root_without_action_is_sts() {
+        let headers = HeaderMap::new();
+        let uri = "/".parse().unwrap();
+        let method = Method::POST;
+        let service = extract_service(&method, &uri, &headers, b"").unwrap();
+        assert_eq!(service, "sts");
+    }
+
+    #[test]
+    fn test_extract_service_unsigned_unknown_action_with_target() {
+        // Same request, but carrying an X-Amz-Target: the target's service
+        // prefix wins and the gateway degrades to the generic
+        // NotImplemented path later ("Service robocorefake not
+        // implemented") instead of an STS-shaped error.
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Amz-Target", "RobocoreFake.NonExistent".parse().unwrap());
+        let uri = "/".parse().unwrap();
+        let method = Method::POST;
+        let service = extract_service(&method, &uri, &headers, b"Action=Foo").unwrap();
+        assert_eq!(service, "robocorefake");
+    }
+
+    #[test]
+    fn test_extract_service_signed_sts_unknown_action_still_sts() {
+        // A signed STS request with an unknown operation belongs to STS;
+        // the handler keeps faithful InvalidAction behavior.
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "Authorization",
+            "AWS4-HMAC-SHA256 Credential=123456789012/20260101/us-east-1/sts/aws4_request, SignedHeaders=host, Signature=abc"
+                .parse()
+                .unwrap(),
+        );
+        let uri = "/".parse().unwrap();
+        let method = Method::POST;
+        let service = extract_service(&method, &uri, &headers, b"Action=NotARealOp").unwrap();
+        assert_eq!(service, "sts");
+    }
+
+    #[test]
+    fn test_error_response_501_carries_not_implemented() {
+        let resp = error_response(StatusCode::NOT_IMPLEMENTED, "Service x not implemented");
+        assert_eq!(resp.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(
+            resp.headers().get("x-amzn-errortype").unwrap(),
+            "NotImplemented"
+        );
+        let other = error_response(StatusCode::SERVICE_UNAVAILABLE, "down");
+        assert_eq!(
+            other.headers().get("x-amzn-errortype").unwrap(),
+            "InternalError"
+        );
     }
 }
