@@ -158,12 +158,10 @@ pub fn create_fills(
             f.insert("IpAddress".to_string(), Fill::S(params.str("IpAddress")));
             f.insert(
                 "BgpAsn".to_string(),
-                Fill::S(
-                    params
-                        .i64("BgpAsn")
-                        .map(|v| v.to_string())
-                        .unwrap_or_default(),
-                ),
+                Fill::S(match params.i64("BgpAsn") {
+                    Some(v) => v.to_string(),
+                    None => "65000".to_string(),
+                }),
             );
             if !tags_xml.is_empty() {
                 f.insert("Tags".to_string(), Fill::X(tags_xml.to_string()));
@@ -178,7 +176,10 @@ pub fn create_fills(
             f.insert("Type".to_string(), Fill::S(params.str("Type")));
             f.insert(
                 "AmazonSideAsn".to_string(),
-                Fill::S(params.str("AmazonSideAsn")),
+                Fill::S(match params.get("AmazonSideAsn") {
+                    Some(a) if !a.is_empty() => a.to_string(),
+                    _ => "64512".to_string(),
+                }),
             );
             f.insert(
                 "AvailabilityZone".to_string(),
@@ -386,7 +387,10 @@ pub fn create_fills(
             );
             f.insert(
                 "AmazonSideAsn".to_string(),
-                Fill::S(params.str("AmazonSideAsn")),
+                Fill::S(match params.get("AmazonSideAsn") {
+                    Some(a) if !a.is_empty() => a.to_string(),
+                    _ => "64512".to_string(),
+                }),
             );
             f.insert(
                 "Tags".to_string(),
@@ -544,7 +548,23 @@ pub fn create_fills(
             f.insert("ClientVpnEndpointId".to_string(), Fill::S(id.to_string()));
             f.insert(
                 "Status".to_string(),
-                Fill::X("<item><code>pending</code></item>".into()),
+                Fill::X(String::from(if deleting {
+                    "<code>deleting</code><message></message>"
+                } else {
+                    "<code>pending-associate</code><message></message>"
+                })),
+            );
+            f.insert(
+                "DnsName".to_string(),
+                Fill::S(format!("*.cvpn-{}.prod.clientvpn.us-east-1.amazonaws.com", id)),
+            );
+            f.insert(
+                "ClientCidrBlock".to_string(),
+                Fill::S(params.str("ClientCidrBlock")),
+            );
+            f.insert(
+                "ServerCertificateArn".to_string(),
+                Fill::S(params.str("ServerCertificateArn")),
             );
         }
         "network-insights-access-scope" => {

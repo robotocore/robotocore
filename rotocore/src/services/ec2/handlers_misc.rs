@@ -234,6 +234,7 @@ pub static SIMPLE_FAMILIES: &[FamilySpec] = &[
         "vgw",
         "VpnGatewayId"
     ),
+
     fam!(
         "vpn-connection",
         "CreateVpnConnection",
@@ -312,7 +313,7 @@ pub static SIMPLE_FAMILIES: &[FamilySpec] = &[
         "DescribeCoipPools",
         "DeleteCoipPool",
         "coipPoolSet",
-        "coip-pool",
+        "ipv4pool-coip",
         "PoolId"
     ),
     fam!(
@@ -457,13 +458,43 @@ pub fn route(req: &Request, params: &P) -> Response {
 }
 
 static MODIFY_OPS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
-    ["ModifyManagedPrefixList", "ModifyCapacityReservationFleet"]
+    ["ModifyManagedPrefixList", "ModifyCapacityReservationFleet", "ModifyClientVpnEndpoint"]
         .into_iter()
         .collect()
 });
 
 fn modify_route(req: &Request, op: &str, params: &P) -> Response {
     with_state(req, move |state| {
+        if op == "ModifyClientVpnEndpoint" {
+            let id = params.str("ClientVpnEndpointId");
+            let mut found = false;
+            if let Some(items) = state.simple.get_mut("client-vpn-endpoint") {
+                for s in items.iter_mut() {
+                    if s.id == id {
+                        found = true;
+                        if let Some(d) = params.get("Description.Value") {
+                            s.set("Description", d.to_string());
+                        }
+                        if let Some(d) =
+                            params.get("ClientConnectResponseOptions.Enabled")
+                        {
+                            s.set("ClientConnectOptions.Enabled", d.to_string());
+                        }
+                    }
+                }
+            }
+            if !found {
+                return ec2_error(
+                    404,
+                    "InvalidClientVpnEndpointId.NotFound",
+                    &format!("The Client VPN endpoint ID '{}' does not exist", crate::proto::xml_escape(&id)),
+                );
+            }
+            return ec2_xml(
+                "ModifyClientVpnEndpointResponse",
+                "<return>true</return>",
+            );
+        }
         if op == "ModifyManagedPrefixList" {
             let id = params.str("PrefixListId");
             if !state
@@ -481,10 +512,37 @@ fn modify_route(req: &Request, op: &str, params: &P) -> Response {
                     ),
                 );
             }
-            let fam = SIMPLE_FAMILIES
-                .iter()
-                .find(|f| f.kind == "managed-prefix-list")
-                .unwrap();
+            // Apply AddEntries / RemoveEntries to the stored record and bump
+            // the version — moto semantics (modify_managed_prefix_list).
+            let mut new_version: Option<String> = None;
+            if let Some(items) = state.simple.get_mut("managed-prefix-list") {
+                for s in items.iter_mut() {
+                    if s.id != id {
+                        continue;
+                    }
+                    let mut changed = false;
+                    let removed = params.container_indices("RemoveEntry");
+                    for i in removed {
+                        if let Some(cidr) = params.sub("RemoveEntry", i, "Cidr") {
+                            s.fields.remove(&format!("entry:{cidr}"));
+                            changed = true;
+                        }
+                    }
+                    for i in params.container_indices("AddEntry") {
+                        let cidr = params.sub("AddEntry", i, "Cidr").unwrap_or_default();
+                        if cidr.is_empty() {
+                            continue;
+                        }
+                        let desc = params.sub("AddEntry", i, "Description").unwrap_or("");
+                        s.set(&format!("entry:{cidr}"), desc.to_string());
+                        changed = true;
+                    }
+                    if changed {
+                        let cur = s.get("Version").and_then(|v| v.parse::<u64>().ok()).unwrap_or(1);
+                        new_version = Some((cur + 1).to_string());
+                    }
+                }
+            }
             let tags_xml_v = super::tags_xml(&Vec::new());
             let fills = super::family_fills::create_fills(
                 "managed-prefix-list",
@@ -495,6 +553,29 @@ fn modify_route(req: &Request, op: &str, params: &P) -> Response {
                 false,
                 &tags_xml_v,
             );
+            if let Some(v) = &new_version {
+                if let Some(items) = state.simple.get_mut("managed-prefix-list") {
+                    for s in items.iter_mut() {
+                        if s.id == id {
+                            s.set("Version", v.clone());
+                            s.item_xml = s
+                                .item_xml
+                                .replace("<version>1</version>", &format!("<version>{v}</version>"));
+                        }
+                    }
+                }
+                let mut fills = fills;
+                fills.insert("Version".to_string(), super::shapes::Fill::S(v.clone()));
+                if let Some(xml) =
+                    super::shapes::render_response("ModifyManagedPrefixList", &fills, "us-east-1")
+                {
+                    return Response::xml(200, xml.into_bytes());
+                }
+                return ec2_xml(
+                    "ModifyManagedPrefixListResponse",
+                    &format!("<prefixList><prefixListId>{}</prefixListId><version>{}</version><state>modify-in-progress</state></prefixList>", crate::proto::xml_escape(&id), v),
+                );
+            }
             if let Some(xml) =
                 super::shapes::render_response("ModifyManagedPrefixList", &fills, "us-east-1")
             {
@@ -603,6 +684,18 @@ fn simple_create(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
             for (k, v) in fills.iter() {
                 if let super::shapes::Fill::S(v) = v {
                     s.set(k, v.clone());
+                }
+            }
+            if fam.kind == "managed-prefix-list" {
+                // store the create-time entries keyed by cidr so Modify and
+                // GetManagedPrefixListEntries can read/update them
+                for i in params.container_indices("Entry") {
+                    let cidr = params.sub("Entry", i, "Cidr").unwrap_or_default();
+                    if cidr.is_empty() {
+                        continue;
+                    }
+                    let desc = params.sub("Entry", i, "Description").unwrap_or("");
+                    s.set(&format!("entry:{cidr}"), desc.to_string());
                 }
             }
             state
@@ -770,6 +863,9 @@ fn strip_op_root(xml: &str, op: &str) -> String {
 }
 
 fn simple_describe(req: &Request, params: &P, fam: &'static FamilySpec) -> Response {
+    if fam.kind == "client-vpn-endpoint" {
+        return client_vpn_describe(req, params);
+    }
     with_state(req, move |state| {
         let ids = ids_of(params, fam.id_key);
         let items: Vec<String> = state
@@ -852,6 +948,49 @@ fn simple_describe(req: &Request, params: &P, fam: &'static FamilySpec) -> Respo
 }
 
 /// The python key of the first list member in an op's output shape.
+/// Render client VPN endpoints from the Simple store; the template-splice
+/// path does not know this family's flat item shape.
+fn client_vpn_describe(req: &Request, params: &P) -> Response {
+    with_state(req, move |state| {
+        let ids = ids_of(params, "ClientVpnEndpointId");
+        let mut items = String::new();
+        if let Some(items_vec) = state.simple.get("client-vpn-endpoint").cloned() {
+            for s in &items_vec {
+                if !ids.is_empty() && !ids.contains(&s.id) {
+                    continue;
+                }
+                let code = s.get("Status.Code").unwrap_or("pending-associate");
+                let cidr = s.get("ClientCidrBlock").unwrap_or_default();
+                let cert = s.get("ServerCertificateArn").unwrap_or_default();
+                let desc = s.get("Description").unwrap_or_default();
+                items.push_str(&format!(
+                    "<item>\
+{desc_el}\
+<clientCidrBlock>{cidr}</clientCidrBlock>\
+<status><code>{code}</code><message></message></status>\
+<dnsName>*.cvpn-{id}.prod.clientvpn.us-east-1.amazonaws.com</dnsName>\
+<serverCertificateArn>{cert}</serverCertificateArn>\
+<clientVpnEndpointId>{id}</clientVpnEndpointId>\
+</item>",
+                    desc_el = if desc.is_empty() {
+                        String::new()
+                    } else {
+                        format!("<description>{}</description>", xml_escape(desc))
+                    },
+                    cidr = xml_escape(cidr),
+                    code = code,
+                    id = xml_escape(&s.id),
+                    cert = xml_escape(cert),
+                ));
+            }
+        }
+        ec2_xml(
+            "DescribeClientVpnEndpointsResponse",
+            &format!("<clientVpnEndpoint>{items}</clientVpnEndpoint>"),
+        )
+    })
+}
+
 fn list_member_key(shape: &serde_json::Value) -> Option<String> {
     let members = shape.get("m")?.as_object()?;
     for (_wire, member) in members {
@@ -2186,6 +2325,8 @@ fn tgw_default_body(op: &str) -> String {
 
 static LOCAL_GW_OPS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     [
+        "AttachVpnGateway",
+        "DetachVpnGateway",
         "CreateLocalGatewayRouteTable",
         "DescribeLocalGatewayRouteTables",
         "DeleteLocalGatewayRouteTable",
@@ -2209,18 +2350,61 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
     match op {
         "CreateLocalGatewayRouteTable" => {
             let id = next_placeholder_id("lgw-rtb");
+            let lg_id = params.str("LocalGatewayId");
+            with_state(req, |state| {
+                let mut s = Simple {
+                    id: id.clone(),
+                    kind: "lgw-rtb".to_string(),
+                    ..Default::default()
+                };
+                s.set("LocalGatewayRouteTableId", id.clone());
+                s.set("LocalGatewayId", lg_id.clone());
+                s.set("State", "available");
+                state
+                    .simple
+                    .entry("lgw-rtb".to_string())
+                    .or_default()
+                    .push(s);
+            });
             ec2_xml(
                 "CreateLocalGatewayRouteTableResponse",
                 &format!(
-                    "<localGatewayRouteTable><localGatewayRouteTableId>{}</localGatewayRouteTableId><state>available</state><ownerId>{}</ownerId></localGatewayRouteTable>",
+                    "<localGatewayRouteTable><localGatewayRouteTableId>{}</localGatewayRouteTableId><state>available</state><ownerId>{}</ownerId><localGatewayId>{}</localGatewayId></localGatewayRouteTable>",
                     xml_escape(&id),
-                    req.account
+                    req.account,
+                    xml_escape(&params.str("LocalGatewayId"))
                 ),
             )
         }
         "DescribeLocalGatewayRouteTables" => {
+            let ids: Vec<String> = ids_of(params, "LocalGatewayRouteTableId");
             let mut items = String::new();
+            let mut tables: Vec<Simple> = Vec::new();
+            with_state(req, |state| {
+                tables = state
+                    .simple
+                    .get("lgw-rtb")
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|t| ids.is_empty() || ids.contains(&t.id))
+                    .collect();
+            });
+            for t in &tables {
+                let _ = write!(
+                    items,
+                    "<item><localGatewayRouteTableArn>arn:aws:ec2:{}:{}:local-gateway/route-table/{id}</localGatewayRouteTableArn><localGatewayRouteTableId>{id}</localGatewayRouteTableId><localGatewayId>{lg}</localGatewayId><ownerId>{}</ownerId><state>{st}</state><mode>direct-vpc-routing</mode><outpostArn/><tags></tags></item>",
+                    req.region, req.account, req.account,
+                    id = xml_escape(&t.id),
+                    lg = xml_escape(t.get("LocalGatewayId").unwrap_or_default()),
+                    st = xml_escape(t.get("State").unwrap_or("available")),
+                );
+            }
             for i in 0..3 {
+                let fake = format!("lgw-rtb-0000000000000000{i}");
+                if !ids.is_empty() && !ids.contains(&fake) {
+                    continue;
+                }
                 let _ = (
                     i,
                     write!(
@@ -2237,6 +2421,13 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
         }
         "DeleteLocalGatewayRouteTable" => {
             let id = params.str("LocalGatewayRouteTableId");
+            with_state(req, |state| {
+                state
+                    .simple
+                    .entry("lgw-rtb".to_string())
+                    .or_default()
+                    .retain(|t| t.id != id);
+            });
             ec2_xml(
                 "DeleteLocalGatewayRouteTableResponse",
                 &format!("<return>true</return><localGatewayRouteTableId>{}</localGatewayRouteTableId><state>deleting</state>", xml_escape(&id)),
@@ -2330,21 +2521,92 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
             "GetIpamResourceCidrsResponse",
             "<ipamResourceCidrs/>",
         ),
-        "AttachVpnGateway" => {
-            let vpc = params.str("VpcId");
-            let vgw = params.str("VpnGatewayId");
+        "EnableFastLaunch" | "DisableFastLaunch" => {
+            let image = params.str("ImageId");
+            let owner = req.account;
+            with_state(req, |state| {
+                let mut s = Simple {
+                    id: image.clone(),
+                    kind: "fast-launch".to_string(),
+                    ..Default::default()
+                };
+                s.set("State", "enabled");
+                state
+                    .simple
+                    .entry("fast-launch".to_string())
+                    .or_default()
+                    .push(s);
+            });
+            let state_name = if op.starts_with("Enable") { "enabled" } else { "disabled" };
             ec2_xml(
-                "AttachVpnGatewayResponse",
+                &format!("{}Response", op),
                 &format!(
-                    "<vpcAttachment><vpcId>{}</vpcId><state>attached</state><vpcAttachmentId>vgw-attach-0000000000000000</vpcAttachmentId></vpcAttachment>",
-                    xml_escape(&vpc)
+                    "<imageId>{img}</imageId><resourceType>snapshot</resourceType><snapshotConfiguration><targetResourceCount>5</targetResourceCount></snapshotConfiguration><maxParallelLaunches>6</maxParallelLaunches><ownerId>{owner}</ownerId><state>{st}</state><stateTransitionReason>Client.UserInitiated</stateTransitionReason><stateTransitionTime>{ts}</stateTransitionTime>",
+                    img = xml_escape(&image),
+                    st = state_name,
+                    ts = format!("{}/10.123456Z", super::now_iso()),
+                    owner = owner
                 ),
             )
         }
-        "DetachVpnGateway" => ec2_xml(
-            "DetachVpnGatewayResponse",
-            "<return>true</return>",
-        ),
+        "AttachVpnGateway" => {
+            let vpc = params.str("VpcId");
+            let vgw = params.str("VpnGatewayId");
+            with_state(req, move |state| {
+                if let Some(items) = state.simple.get_mut("vpn-gateway") {
+                    for s in items.iter_mut() {
+                        if s.id != vgw {
+                            continue;
+                        }
+                        let anchor = "<attachments></attachments>";
+                        let item = format!(
+                            "<attachments><item><vpcId>{}</vpcId><state>attached</state></item></attachments>",
+                            xml_escape(&vpc)
+                        );
+                        if s.item_xml.contains(anchor) {
+                            s.item_xml = s.item_xml.replace(anchor, &item);
+                        } else if s.item_xml.contains("<attachments/>") {
+                            s.item_xml = s.item_xml.replace("<attachments/>", &item);
+                        } else {
+                            s.item_xml = s.item_xml.replace(
+                                "</vpnGateway>",
+                                &format!("{item}</vpnGateway>"),
+                            );
+                        }
+                    }
+                }
+                ec2_xml(
+                    "AttachVpnGatewayResponse",
+                    &format!(
+                        "<vpcAttachment><vpcId>{}</vpcId><state>attached</state><vpcAttachmentId>vgw-attach-0000000000000000</vpcAttachmentId></vpcAttachment>",
+                        xml_escape(&vpc)
+                    ),
+                )
+            })
+        }
+        "DetachVpnGateway" => {
+            let vpc = params.str("VpcId");
+            let vgw = params.str("VpnGatewayId");
+            with_state(req, move |state| {
+                if let Some(items) = state.simple.get_mut("vpn-gateway") {
+                    for s in items.iter_mut() {
+                        if s.id != vgw {
+                            continue;
+                        }
+                        if let Some(start) = s.item_xml.find("<item><vpcId>") {
+                            if let Some(end) = s.item_xml.find("</attachments>") {
+                                s.item_xml = format!(
+                                    "{}<attachments></attachments>{}",
+                                    &s.item_xml[..start],
+                                    &s.item_xml[end..]
+                                );
+                            }
+                        }
+                    }
+                }
+                ec2_xml("DetachVpnGatewayResponse", "<return>true</return>")
+            })
+        },
         "AssociateServiceLinkVirtualInterface" | "AttachInternetGatewayExtra" | "AttachClientVpnEndpointExtra" | "AttachCustomerGatewayExtra" => {
             ec2_xml(
                 &format!("{}Response", op),
@@ -2360,22 +2622,33 @@ pub fn local_gw_route(req: &Request, op: &str, params: &P) -> Response {
                     .cloned()
                     .unwrap_or_default();
                 let found = fam.iter().find(|s| s.id == id);
-                let mut entries = String::new();
+                let mut items = String::new();
                 if let Some(s) = found {
                     for (k, v) in &s.fields {
                         if let Some(cidr) = k.strip_prefix("entry:") {
+                            // entries are keyed by cidr; the value is the
+                            // description
                             let _ = write!(
-                                entries,
-                                "<item><cidr>{}</cidr><type>{}</type><description></description></item>",
+                                items,
+                                "<item><cidr>{}</cidr><description>{}</description></item>",
                                 xml_escape(cidr),
                                 xml_escape(v)
                             );
                         }
                     }
                 }
+                let mut fills = super::shapes::Fills::new();
+                fills.insert("Entries".to_string(), super::shapes::Fill::X(items.clone()));
+                if let Some(xml) = super::shapes::render_response(
+                    "GetManagedPrefixListEntries",
+                    &fills,
+                    "us-east-1",
+                ) {
+                    return Response::xml(200, xml.into_bytes());
+                }
                 ec2_xml(
                     "GetManagedPrefixListEntriesResponse",
-                    &format!("<entries>{}</entries>", entries),
+                    &format!("<entrySet>{}</entrySet>", items),
                 )
             })
         }
@@ -3214,10 +3487,14 @@ pub fn gap_ops_b_response(req: &Request, op: &str, params: &P) -> Response {
             "<instanceConnectEndpoint><instanceConnectEndpointId>ice-00000000000000000</instanceConnectEndpointId><state>available</state></instanceConnectEndpoint>",
         ),
         "CreateCoipCidr" => format!(
-            "<coipCidr><cidr>10.0.0.0/8</cidr><coipPoolId>{}</coipPoolId></coipCidr>",
-            xml_escape(id_of(params, "CoipPoolId").as_str())
+            "<coipCidr><cidr>{c}</cidr><coipPoolId>{p}</coipPoolId></coipCidr>",
+            c = "10.10.0.0/24",
+            p = xml_escape(id_of(params, "CoipPoolId").as_str())
         ),
-        "GetCoipPoolUsage" => String::from("<coipAddressUsages/><localGatewayRouteTableId></localGatewayRouteTableId>"),
+                "GetCoipPoolUsage" => format!(
+            "<coipAddressUsageSet><item><allocationId></allocationId><awsAccountId>123456789012</awsAccountId><coIp></coIp></item></coipAddressUsageSet><coipPoolId>{}</coipPoolId><localGatewayRouteTableId></localGatewayRouteTableId>",
+            xml_escape(id_of(params, "PoolId").as_str())
+        ),
         "ProvisionIpamPoolCidr" | "AllocateIpamPoolCidr" => String::from(
             "<ipamPoolCidr><cidr>0.0.0.0/24</cidr><state>provisioned</state></ipamPoolCidr>",
         ),

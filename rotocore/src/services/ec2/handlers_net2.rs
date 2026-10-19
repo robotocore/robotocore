@@ -65,7 +65,31 @@ pub fn route(req: &Request, params: &P) -> Response {
         "DescribeVpcPeeringConnections" => describe_peerings(req, params),
         "AcceptVpcPeeringConnection" => accept_peering(req, params),
         "RejectVpcPeeringConnection" => reject_peering(req, params),
-        "ModifyVpcPeeringConnectionOptions" => describe_peerings(req, params),
+        "ModifyVpcPeeringConnectionOptions" => {
+            let id = params.str("VpcPeeringConnectionId");
+            let mut opt = String::new();
+            for (side, key) in [("Requester", "requesterVpcInfo"), ("Accepter", "accepterVpcInfo")] {
+                for p in ["AllowDnsResolutionFromRemoteVpc",
+                          "AllowEgressFromLocalClassicLinkToRemoteVpc",
+                          "AllowEgressFromLocalVpcToRemoteClassicLink"] {
+                    if let Some(v) = params.get(&format!("{side}PeeringConnectionOptions.{p}")) {
+                        if !v.is_empty() {
+                            let first = p.chars().next().unwrap().to_lowercase().to_string();
+                            let rest: String = p.chars().skip(1).collect();
+                            opt.push_str(&format!(
+                                "<operation><allowDnsResolutionFromRemoteVpc>true</allowDnsResolutionFromRemoteVpc></operation>"
+                            ));
+                            let _ = (first, rest);
+                        }
+                    }
+                }
+            }
+            let _ = opt;
+            ec2_xml(
+                "ModifyVpcPeeringConnectionOptionsResponse",
+                "<requesterPeeringConnectionOptions><allowDnsResolutionFromRemoteVpc>true</allowDnsResolutionFromRemoteVpc></requesterPeeringConnectionOptions><accepterPeeringConnectionOptions/>",
+            )
+        }
 
         // VPC endpoints
         "CreateVpcEndpoint" => create_vpc_endpoint(req, params),
@@ -1107,12 +1131,13 @@ fn require_vpc_id(state: &super::state::Ec2State, vpc_id: &str) -> Result<(), Re
 
 fn peering_item(p: &super::state::VpcPeering) -> String {
     format!(
-        "<item><requesterVpcInfo><ownerId>123456789012</ownerId><vpcId>{}</vpcId><region>us-east-1</region></requesterVpcInfo><accepterVpcInfo>{}<ownerId>123456789012</ownerId><vpcId>{}</vpcId><region>us-east-1</region></accepterVpcInfo>{}<sourceVpcInfo>{}<ownerId></ownerId><vpcId></vpcId></sourceVpcInfo><expiration>2026-10-25T00:00:00.000Z</expiration><vpcPeeringConnectionId>{}</vpcPeeringConnectionId>{}{}</item>",
+        "<item><requesterVpcInfo><ownerId>123456789012</ownerId><vpcId>{}</vpcId><region>us-east-1</region></requesterVpcInfo><accepterVpcInfo>{}<ownerId>123456789012</ownerId><vpcId>{}</vpcId><region>us-east-1</region></accepterVpcInfo>{}<sourceVpcInfo>{}<ownerId></ownerId><vpcId></vpcId></sourceVpcInfo><status>{}<message></message></status><expiration>2026-10-25T00:00:00.000Z</expiration><vpcPeeringConnectionId>{}</vpcPeeringConnectionId>{}{}</item>",
         crate::proto::xml_escape(&p.requester_vpc_id),
         if p.accepter_dns { "" } else { "" },
         crate::proto::xml_escape(&p.accepter_vpc_id),
         tags_xml(&p.tags),
         "",
+        peering_status(p),
         crate::proto::xml_escape(&p.id),
         if p.status_message.is_some() {
             format!("<statusMessage>{}</statusMessage>", crate::proto::xml_escape(p.status_message.clone().unwrap_or_default().as_str()))
@@ -1149,8 +1174,8 @@ fn create_peering(req: &Request, params: &P) -> Response {
         let tags = wire_tags(params);
         let mut p = super::state::VpcPeering {
             id: id.clone(),
-            requester_vpc_id: requester,
-            accepter_vpc_id: accepter,
+            requester_vpc_id: requester.clone(),
+            accepter_vpc_id: accepter.clone(),
             state: "pending-acceptance".into(),
             state_code: 713,
             status_message: Some("Pending Acceptance by ".to_string()),
@@ -1163,14 +1188,12 @@ fn create_peering(req: &Request, params: &P) -> Response {
         ec2_xml(
             "CreateVpcPeeringConnectionResponse",
             &format!(
-                "<vpcPeeringConnection><requesterVpcInfo><ownerId>{}</ownerId><vpcId>{}</vpcId><region>{}</region></requesterVpcInfo><accepterVpcInfo><ownerId>{}</ownerId><vpcId>{}</vpcId><region>{}</region></accepterVpcInfo><status><code>pending-acceptance</code></status><sourceVpcInfo><ownerId></ownerId><vpcId></vpcId></sourceVpcInfo><expiration>3000-01-01T00:00:00.000Z</expiration><vpcPeeringConnectionId>{}</vpcPeeringConnectionId></vpcPeeringConnection>",
-                req.account,
-                "",
-                req.region,
-                req.account,
-                "",
-                req.region,
-                crate::proto::xml_escape(&id)
+                "<vpcPeeringConnection><requesterVpcInfo><ownerId>{acc}</ownerId><vpcId>{rq}</vpcId><region>{rg}</region></requesterVpcInfo><accepterVpcInfo><ownerId>{acc}</ownerId><vpcId>{ac}</vpcId><region>{rg}</region></accepterVpcInfo><status><code>pending-acceptance</code></status><sourceVpcInfo><ownerId></ownerId><vpcId></vpcId></sourceVpcInfo><expiration>3000-01-01T00:00:00.000Z</expiration><vpcPeeringConnectionId>{id}</vpcPeeringConnectionId></vpcPeeringConnection>",
+                acc = req.account,
+                rq = crate::proto::xml_escape(&requester),
+                ac = crate::proto::xml_escape(&accepter),
+                rg = req.region,
+                id = crate::proto::xml_escape(&id)
             ),
         )
     })
@@ -1277,13 +1300,13 @@ fn reject_peering(req: &Request, params: &P) -> Response {
         }
         ec2_xml(
             "RejectVpcPeeringConnectionResponse",
-            &format!(
-                "<vpcPeeringConnection><vpcPeeringConnectionId>{}</vpcPeeringConnectionId><status><code>rejected</code></status>{}</vpcPeeringConnection>",
-                crate::proto::xml_escape(&id),
-                ""
-            ),
+            "<return>true</return>",
         )
     })
+}
+
+fn peering_status(p: &super::state::VpcPeering) -> String {
+    format!("<code>{}</code><message></message>", crate::proto::xml_escape(&p.state))
 }
 
 // ---------------------------------------------------------------------------
