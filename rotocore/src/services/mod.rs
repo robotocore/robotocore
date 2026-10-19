@@ -67,6 +67,7 @@ pub mod opensearchserverless;
 pub mod organizations;
 pub mod osis;
 pub mod personalize;
+pub mod pinpoint;
 pub mod pipes;
 pub mod polly;
 pub mod quicksight;
@@ -162,6 +163,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "organizations" => organizations::dispatch(req),
         "personalize" => personalize::dispatch(req),
         "pipes" => Some(pipes::dispatch(req)),
+        "pinpoint" => pinpoint::dispatch(req),
         "polly" => Some(polly::dispatch(req)),
         "quicksight" => quicksight::dispatch(req),
         "ram" => ram::dispatch(req),
@@ -267,6 +269,7 @@ pub fn handles_service(service: &str) -> bool {
             | "osis"
             | "personalize"
             | "pipes"
+            | "pinpoint"
             | "polly"
             | "quicksight"
             | "ram"
