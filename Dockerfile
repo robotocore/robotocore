@@ -6,7 +6,7 @@
 # busybox used solely for the HTTP healthcheck (distroless has no shell,
 # curl or wget of its own).
 
-FROM rust:1.89-slim AS builder
+FROM rust:1.99-slim-bookworm AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates pkg-config \
