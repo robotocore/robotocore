@@ -27,6 +27,8 @@ pub mod eks;
 pub mod elasticache;
 pub mod glue;
 pub mod emr;
+pub mod elb;
+pub mod elbv2;
 pub mod greengrass;
 pub mod identitystore;
 pub mod inspector2;
@@ -85,6 +87,8 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "eks" => eks::dispatch(req),
         "elasticache" => Some(elasticache::dispatch(req)),
         "emr" => Some(emr::dispatch(req)),
+        "elb" => self::elb::dispatch(req),
+        "elbv2" => self::elbv2::dispatch(req),
         "es" => Some(opensearch::dispatch(req)),
         "greengrass" => Some(greengrass::dispatch(req)),
         "identitystore" => identitystore::dispatch(req),
