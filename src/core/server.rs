@@ -1121,7 +1121,7 @@ pub async fn catch_all_handler(
 
     // Determine service from URI and headers
     let service = match extract_service(&method, &uri, &headers) {
-        Ok(s) => s,
+        Ok(s) => refine_service_for_body(&s, &body_bytes),
         Err(e) => {
             audit_out(
                 None,
@@ -1415,6 +1415,25 @@ fn audit_out(
         region: region.to_string(),
         error,
     });
+}
+
+/// ELB Classic and ELBv2 share the signing name `elasticloadbalancing`.
+/// The router disambiguates by the `Version=2012-06-01` query parameter, but
+/// boto3 sends that version inside the urlencoded form body, so the gateway
+/// consults it here before the elbv2 arm swallows the request.
+fn refine_service_for_body(service: &str, body: &[u8]) -> String {
+    if service != "elbv2" {
+        return service.to_string();
+    }
+    let form = String::from_utf8_lossy(body);
+    let has_version = form
+        .split('&')
+        .any(|pair| pair == "Version=2012-06-01" || pair.starts_with("Version=2012-06-01&"));
+    if has_version {
+        "elb".to_string()
+    } else {
+        service.to_string()
+    }
 }
 
 fn opt_op(operation: &str) -> Option<&str> {
