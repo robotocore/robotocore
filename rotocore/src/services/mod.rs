@@ -70,6 +70,7 @@ pub mod iot;
 pub mod iot_data;
 pub mod ivs;
 pub mod kinesisanalyticsv2;
+pub mod kinesisvideo;
 pub mod lakeformation;
 pub mod macie2;
 pub mod managedblockchain;
@@ -195,6 +196,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "kafka" => Some(kafka::dispatch(req)),
 
         "kinesisanalyticsv2" => Some(kinesisanalyticsv2::dispatch(req)),
+        "kinesisvideo" => kinesisvideo::dispatch(req),
         "lakeformation" => Some(lakeformation::dispatch(req)),
         "macie2" => Some(macie2::dispatch(req)),
         "managedblockchain" => Some(managedblockchain::dispatch(req)),
@@ -334,6 +336,7 @@ pub fn handles_service(service: &str) -> bool {
             | "ivs"
             | "kafka"
             | "kinesisanalyticsv2"
+            | "kinesisvideo"
             | "lakeformation"
             | "macie2"
             | "managedblockchain"
