@@ -30,7 +30,8 @@ ureq = { version = "2.10", default-features = false }
 # Cross-service reads (CreateTrail's S3-bucket existence check mirrors moto's
 # `s3_backends[...].get_bucket` probe via the s3 crate's state bridge).
 s3 = { path = "../crates/s3" }
-# Dynamodbstreams reads stream metadata and captured mutation records from
-# the dynamodb crate through its cross-service bridge (moto parity:
-# DynamoDBStreamsBackend reaches into dynamodb_backends for tables).
+# Cross-service bridges (moto parity): dynamodbstreams reaches into
+# dynamodb_backends for tables; RegisterScalableTarget probes
+# ecs_backends describe_services via the ecs crate's state bridge.
 dynamodb = { path = "../crates/dynamodb" }
+ecs = { path = "../crates/ecs" }

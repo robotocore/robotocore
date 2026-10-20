@@ -42,10 +42,13 @@ impl EcsHandler {
 
     pub(crate) fn get_state(&self, account: u64, region: &str) -> EcsState {
         let mut states = self.state.write();
-        states
+        let state = states
             .entry((account, region.to_string()))
             .or_default()
-            .clone()
+            .clone();
+        // Expose the live state to other crates via the bridge.
+        crate::bridge::register_state(account, region, &state);
+        state
     }
 
     pub fn handle(&self, req: AwsRequest) -> AwsResponse {
