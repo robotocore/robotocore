@@ -95,6 +95,7 @@ pub mod polly;
 pub mod quicksight;
 pub mod ram;
 pub mod rds;
+pub mod rdsdata;
 pub mod redshift;
 pub mod redshiftdata;
 pub mod rekognition;
@@ -229,6 +230,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "quicksight" => quicksight::dispatch(req),
         "ram" => ram::dispatch(req),
         "rds" => Some(rds::dispatch(req)),
+        "rdsdata" => Some(rdsdata::dispatch(req)),
         "redshift" => Some(redshift::dispatch(req)),
         "redshiftdata" => Some(redshiftdata::dispatch(req)),
         "resiliencehub" => Some(resiliencehub::dispatch(req)),
@@ -381,6 +383,7 @@ pub fn handles_service(service: &str) -> bool {
             | "quicksight"
             | "ram"
             | "rds"
+            | "rdsdata"
             | "redshift"
             | "redshiftdata"
             | "rekognition"
@@ -438,6 +441,7 @@ mod tests {
             "glacier",
             "elasticache",
             "codepipeline",
+            "rdsdata",
             "xray",
         ] {
             assert!(handles_service(service), "{service} should be armed");
