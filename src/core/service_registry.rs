@@ -192,7 +192,7 @@ pub const SERVICE_REGISTRY: &[(&str, &str, &str, &str)] = &[
         "Managed Blockchain",
     ),
     ("mediaconnect", "native", "rest-json", "MediaConnect"),
-    ("medialive", "moto", "rest-json", "MediaLive"),
+    ("medialive", "native", "rest-json", "MediaLive"),
     ("mediapackage", "moto", "rest-json", "MediaPackage"),
     ("mediapackagev2", "moto", "rest-json", "MediaPackage v2"),
     ("mediastore", "native", "json", "MediaStore"),

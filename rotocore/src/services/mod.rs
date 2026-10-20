@@ -76,6 +76,7 @@ pub mod lakeformation;
 pub mod macie2;
 pub mod managedblockchain;
 pub mod mediaconnect;
+pub mod medialive;
 pub mod mediapackage;
 pub mod mediastore;
 pub mod memorydb;
@@ -209,6 +210,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "macie2" => Some(macie2::dispatch(req)),
         "managedblockchain" => Some(managedblockchain::dispatch(req)),
         "mediaconnect" => mediaconnect::dispatch(req),
+        "medialive" => medialive::dispatch(req),
         "mediapackage" => mediapackage::dispatch(req),
         "mediastore" => mediastore::dispatch(req),
         "memorydb" => memorydb::dispatch(req),
@@ -360,6 +362,7 @@ pub fn handles_service(service: &str) -> bool {
             | "macie2"
             | "managedblockchain"
             | "mediaconnect"
+            | "medialive"
             | "mediapackage"
             | "mediastore"
             | "memorydb"
@@ -434,6 +437,7 @@ mod tests {
             "glacier",
             "elasticache",
             "codepipeline",
+            "medialive",
             "xray",
         ] {
             assert!(handles_service(service), "{service} should be armed");
