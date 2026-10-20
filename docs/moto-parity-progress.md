@@ -191,3 +191,58 @@ are parsed by `tooling/moto_port_progress.py`.
 - Promotion: exit 0 with 135 suites drift-gated.
 - Gate after wave: 142 native of 157; REMAINING 15 = 7 to port + 8
   G2-uncertain.
+
+## Wave 6 (2026-10-20, on top of 70e3f59d) — three services
+
+- Ported: `forecast` (23/23 — the fork implements only the DatasetGroup
+  family; everything else 501 verbatim), `rdsdata` (8/8 — one routed op,
+  ExecuteStatement default QueryResults), `servicecatalogappregistry`
+  (3/3 — greedy `/applications/(.+)/resources` dispatch so ARN-addressed
+  lookups resolve like moto's urls.py; ValidationException lookup by
+  arn/id/name).
+- Infra: `POST /_robotocore/config` ported with the python twin's exact
+  statuses (403 without `ENABLE_CONFIG_UPDATES=1`) — the
+  iam-enforcement suite's 4 ERRORS become clean skips.
+- Wave-5 review F2.1 fixed: `extract_account_from_request` now reads
+  SigV2 `AWSAccessKeyId` from the form body (sdb per-account isolation;
+  moto's get_account_id_from path).
+- Gate after wave: 156 native of 157 (before appautoscaling/neptune).
+
+## Wave 7 (2026-10-20, ten parallel worktree agents) — eleven services
+
+- Ported: `medialive` (131/131; pagination tokens, batch-op failure
+  shapes, per-kind transient states; ARN quirk kept), `lexv2models`
+  (23/23; `$`-separated alias ARNs, auto-created `test` alias),
+  `emrserverless` (11/11 with moto's re-sort-per-page paginator),
+  `emrcontainers` (5/5; literal job-id regex preserved; 501 deny for
+  modelled-but-unrouted ops), `mediastore-data` (7/7; real
+  ContentLength, ETag literal, TEMPORAL storage class), 
+  `sagemaker-runtime` (10/10; signing scope `sagemaker` chain; async
+  invoke writes to a loopback mirror bucket), `scheduler` (34/34;
+  checksum-token paginator, `x or "UTC"` timezone semantics),
+  `servicediscovery` (34/34 including the lowercase `operationId` moto
+  bug), `kinesis-video-archived-media` (10/10; fixed sample-micro
+  payload, moto session-token shape), `dynamodbstreams` (20/20; 
+  22-digit sequence numbers via u128 iterators, PartiQL INSERT/UPDATE/
+  DELETE stream capture added to the dynamodb crate bridge),
+  `applicationautoscaling` (9/9; 13 unit tests — ECS cross-service
+  bridge kept: moto probes ecs_backends.describe_services on register;
+  moto's enum fault order, namespace regexes, TargetTracking alarm
+  fan-out shapes).
+- G2 resolved by porting: `applicationautoscaling` and
+  `dynamodbstreams` were the never-registered/unproven moto-coverage
+  cases — both now native with probe+fork double evidence.
+- `neptune` (G2 evidence case): moto implements neptune via the shared
+  rds backend (moto/neptune/README + engine branches in rds/models.py:
+  port 8182, `default.neptune1.3`, engine version 1.3.2.1) — the twin's
+  rds backend gained the `neptune` label arm + MasterUsername retention
+  fix; live probe 12/12 with a real neptune client; both `rds`-scope and
+  `neptune`-scope label paths verified (botocore signs neptune under
+  scope `rds`).
+- Gate script after merges: 157/157 old-served services native;
+  G2 list fully resolved; GATE CLOSED pending final lane + parity.
+- Promotion: exit 0; baseline 180 suites drift-gated (wave-6/7 suites
+  row appended with 358 combined passes).
+- Infra: disk-full incidents twice (root at 100% from 12 concurrent
+  worktree builds); reclaimed per the perf10 policy (merged-only
+  worktree targets + main incremental).
