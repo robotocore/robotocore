@@ -194,6 +194,7 @@ pub const SERVICE_REGISTRY: &[(&str, &str, &str, &str)] = &[
     ("mediastore-data", "native", "rest-json", "Mediastore Data"),
     ("memorydb", "native", "json", "MemoryDB for Redis"),
     ("mq", "native", "rest-json", "Amazon MQ Message Brokers"),
+    ("neptune", "native", "query", "Neptune"),
     ("networkfirewall", "moto", "json", "Network Firewall"),
     ("networkmanager", "native", "rest-json", "Network Manager"),
     ("opensearch", "native", "rest-json", "OpenSearch Service"),

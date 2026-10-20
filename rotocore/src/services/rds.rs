@@ -2887,7 +2887,12 @@ fn grab_tag(text: &str, tag: &str) -> Option<String> {
 
 /// Entry point: route an RDS op to its handler.
 pub fn dispatch(req: &Request) -> Response {
-    if req.service != "rds" {
+    // moto serves neptune through its rds backend (moto/neptune/README:
+    // "Neptune service is handled by the RDS service backend"), so the
+    // `neptune` engine label reuses this dispatch beside `rds` — boto
+    // signs neptune's model under the `rds` scope, older SDK generations
+    // under `neptune`.
+    if req.service != "rds" && req.service != "neptune" {
         let e = RdsError::new(501, "NotImplemented", "rds handled via match");
         return error_response(&e);
     }
@@ -3762,11 +3767,11 @@ fn cluster_object(name: &str, p: &Params, region: &str) -> Result<DBCluster, Rds
     };
     let managed = p_bool(p, "ManageMasterUserPassword").unwrap_or(false);
     let global_id = p_string(p, "GlobalClusterIdentifier").map(|s| s.to_lowercase());
-    let user = if global_id.is_some() || engine == "neptune" {
-        None
-    } else {
-        Some(p_string(p, "MasterUsername").unwrap_or_default())
-    };
+    // moto stores MasterUsername whenever provided (rds/models.py:592) — the
+    // neptune engine and global-cluster members only skip the required-check
+    // (models.py:605-618), and MasterUserPassword is withheld for neptune
+    // (models.py:620-621).
+    let user = p_string(p, "MasterUsername");
     if user.is_none() && !managed && engine != "neptune" && global_id.is_none() {
         return Err(RdsError::client400(
             "InvalidParameterValue",
@@ -8900,6 +8905,85 @@ mod op_tests {
             "DBClusterIdentifier=CL1&SkipFinalSnapshot=true",
         );
         assert!(delc.unwrap().unwrap().contains("cl1"));
+    }
+
+    // ---- neptune engine quirks (moto serves neptune via rds) ----------------
+
+    #[test]
+    fn neptune_cluster_quirks() {
+        // Default port 8182 (rds/models.py:946), version 1.3.2.1
+        // (models.py:935) and cluster parameter group default.neptune1.3
+        // (models.py:630); AllocatedStorage 0 (models.py:961).
+        let create = run(
+            "CreateDBCluster",
+            "DBClusterIdentifier=NEP&Engine=neptune&MasterUsername=admin&MasterUserPassword=hunter2",
+        );
+        let xml = create.unwrap().unwrap();
+        assert!(xml.contains("<Engine>neptune</Engine>"), "xml: {xml}");
+        assert!(xml.contains("<Port>8182</Port>"), "xml: {xml}");
+        assert!(
+            xml.contains("<DBClusterParameterGroup>default.neptune1.3</DBClusterParameterGroup>"),
+            "xml: {xml}"
+        );
+        assert!(
+            xml.contains("<EngineVersion>1.3.2.1</EngineVersion>"),
+            "xml: {xml}"
+        );
+        assert!(
+            xml.contains("<AllocatedStorage>0</AllocatedStorage>"),
+            "xml: {xml}"
+        );
+        // moto stores MasterUsername even for neptune (models.py:592
+        // assigns before the neptune validation skip at 605-612).
+        assert!(
+            xml.contains("<MasterUsername>admin</MasterUsername>"),
+            "xml: {xml}"
+        );
+
+        // describe echoes the same quirk values
+        let desc = run("DescribeDBClusters", "DBClusterIdentifier=NEP");
+        let dx = desc.unwrap().unwrap();
+        assert!(dx.contains("<Port>8182</Port>"), "xml: {dx}");
+        assert!(
+            dx.contains("<DBClusterParameterGroup>default.neptune1.3</DBClusterParameterGroup>"),
+            "xml: {dx}"
+        );
+    }
+
+    #[test]
+    fn neptune_master_username_optional_and_invalid_engine_rejected() {
+        // neptune skips the MasterUsername required-check (models.py:605-612)
+        let no_user = run("CreateDBCluster", "DBClusterIdentifier=NEPX&Engine=neptune");
+        assert!(no_user.is_ok(), "err: {:?}", no_user.err());
+        let xml = no_user.as_ref().unwrap().as_deref().unwrap_or("");
+        assert!(!xml.contains("<MasterUsername>"), "xml: {xml}");
+
+        // the engine set stays fixed (models.py valid engines include
+        // neptune); unknown engines are rejected
+        let bad = run(
+            "CreateDBCluster",
+            "DBClusterIdentifier=BAD&Engine=oracle9&MasterUsername=a",
+        );
+        assert_eq!(bad.err().unwrap().code, "InvalidParameterValue");
+    }
+
+    #[test]
+    fn aurora_cluster_defaults_unaffected() {
+        // The else-branch of models.py:630: default.aurora8.0, port 3306.
+        let create = run(
+            "CreateDBCluster",
+            "DBClusterIdentifier=AUR&Engine=aurora-mysql&MasterUsername=admin&MasterUserPassword=password123!",
+        );
+        let xml = create.unwrap().unwrap();
+        assert!(xml.contains("<Port>3306</Port>"), "xml: {xml}");
+        assert!(
+            xml.contains("<DBClusterParameterGroup>default.aurora8.0</DBClusterParameterGroup>"),
+            "xml: {xml}"
+        );
+        assert!(
+            xml.contains("<MasterUsername>admin</MasterUsername>"),
+            "xml: {xml}"
+        );
     }
 
     // ---- Parameter groups --------------------------------------------------
