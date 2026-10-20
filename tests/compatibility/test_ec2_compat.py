@@ -4590,17 +4590,7 @@ class TestEC2VPCEndpointServiceConfig:
 
     def _create_nlb(self, ec2):
         """Create a VPC, subnet, and NLB for endpoint service testing."""
-        import boto3
-        from botocore.config import Config
-
-        elbv2 = boto3.client(
-            "elbv2",
-            endpoint_url="http://localhost:4566",
-            region_name="us-east-1",
-            aws_access_key_id="testing",
-            aws_secret_access_key="testing",
-            config=Config(),
-        )
+        elbv2 = make_client("elbv2")
         vpc = ec2.create_vpc(CidrBlock="10.210.0.0/16")
         vpc_id = vpc["Vpc"]["VpcId"]
         sub = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.210.1.0/24")

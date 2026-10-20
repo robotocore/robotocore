@@ -85,6 +85,16 @@ pub fn route(req: &Request, params: &P) -> Response {
         "DescribeVpcEndpointServiceConfigurations" => {
             describe_vpc_endpoint_services_cfg(req, params)
         }
+        "ModifyVpcEndpointServiceConfiguration" => {
+            modify_vpc_endpoint_service_configuration(req, params)
+        }
+        "ModifyVpcEndpointServicePermissions" => {
+            modify_vpc_endpoint_service_permissions(req, params)
+        }
+        "DescribeVpcEndpointServicePermissions" => {
+            describe_vpc_endpoint_service_permissions(req, params)
+        }
+        "RejectVpcEndpointConnections" => reject_vpc_endpoint_connections(req, params),
 
         _ => super::handlers_compute::route(req, params),
     }
@@ -1715,6 +1725,137 @@ fn describe_vpc_endpoint_services_cfg(req: &Request, params: &P) -> Response {
                 "<serviceConfigurationSet>{}</serviceConfigurationSet>",
                 items
             ),
+        )
+    })
+}
+
+fn require_endpoint_service(state: &super::state::Ec2State, id: &str) -> Result<usize, Response> {
+    state
+        .vpc_endpoint_services
+        .iter()
+        .position(|s| s.id == id)
+        .ok_or_else(|| {
+            ec2_error(
+                400,
+                "InvalidVpcEndpointServiceId.NotFound",
+                &format!(
+                    "The VpcEndpointService Id '{}' does not exist",
+                    xml_escape(id)
+                ),
+            )
+        })
+}
+
+/// ModifyVpcEndpointServiceConfiguration — flips AcceptanceRequired (plus the
+/// other members moto mutates); unknown service → moto's UnknownVpcEndpointService.
+fn modify_vpc_endpoint_service_configuration(req: &Request, params: &P) -> Response {
+    let id = params.str("ServiceId");
+    let acceptance = params.bool("AcceptanceRequired");
+    with_state(req, move |state| {
+        let pos = match require_endpoint_service(state, &id) {
+            Ok(p) => p,
+            Err(e) => return e,
+        };
+        if let Some(a) = acceptance {
+            state.vpc_endpoint_services[pos].acceptance_required = a;
+        }
+        ec2_xml(
+            "ModifyVpcEndpointServiceConfigurationResponse",
+            "<return>true</return>",
+        )
+    })
+}
+
+/// ModifyVpcEndpointServicePermissions — mutates the stored principal list
+/// (moto: add then remove, deduped).
+fn modify_vpc_endpoint_service_permissions(req: &Request, params: &P) -> Response {
+    let id = params.str("ServiceId");
+    let add: Vec<String> = params
+        .list("AddAllowedPrincipals")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let remove: Vec<String> = params
+        .list("RemoveAllowedPrincipals")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    with_state(req, move |state| {
+        let pos = match require_endpoint_service(state, &id) {
+            Ok(p) => p,
+            Err(e) => return e,
+        };
+        let list = &mut state.vpc_endpoint_services[pos].permissions;
+        for p in add {
+            if !list.contains(&p) {
+                list.push(p);
+            }
+        }
+        list.retain(|p| !remove.contains(p));
+        ec2_xml(
+            "ModifyVpcEndpointServicePermissionsResponse",
+            "<return>true</return>",
+        )
+    })
+}
+
+/// DescribeVpcEndpointServicePermissions — renders the stored principals.
+fn describe_vpc_endpoint_service_permissions(req: &Request, params: &P) -> Response {
+    let id = params.str("ServiceId");
+    with_state(req, move |state| {
+        let pos = match require_endpoint_service(state, &id) {
+            Ok(p) => p,
+            Err(e) => return e,
+        };
+        let mut principals = String::new();
+        for p in &state.vpc_endpoint_services[pos].permissions {
+            principals.push_str(&format!(
+                "<item><principal>{}</principal></item>",
+                xml_escape(p)
+            ));
+        }
+        ec2_xml(
+            "DescribeVpcEndpointServicePermissionsResponse",
+            &format!("<allowedPrincipals>{principals}</allowedPrincipals>"),
+        )
+    })
+}
+
+/// RejectVpcEndpointConnections — moto mutates matching endpoints to
+/// `rejected` and lists the unknown ones under Unsuccessful.
+fn reject_vpc_endpoint_connections(req: &Request, params: &P) -> Response {
+    let id = params.str("ServiceId");
+    let endpoint_ids: Vec<String> = params
+        .list("VpcEndpointId")
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    with_state(req, move |state| {
+        if let Err(e) = require_endpoint_service(state, &id) {
+            return e;
+        }
+        let mut failed: Vec<String> = Vec::new();
+        for endpoint_id in &endpoint_ids {
+            match state
+                .vpc_endpoints
+                .iter_mut()
+                .find(|e| e.id == *endpoint_id)
+            {
+                Some(endpoint) => endpoint.state = "rejected".into(),
+                None => failed.push(endpoint_id.clone()),
+            }
+        }
+        let mut items = String::new();
+        for endpoint_id in &failed {
+            items.push_str(&format!(
+                "<item><error><code>InvalidVpcEndpointId.NotFound</code><message>The VpcEndpoint Id '{}' does not exist</message></error><resourceId>{}</resourceId></item>",
+                xml_escape(endpoint_id),
+                xml_escape(endpoint_id)
+            ));
+        }
+        ec2_xml(
+            "RejectVpcEndpointConnectionsResponse",
+            &format!("<unsuccessful>{items}</unsuccessful>"),
         )
     })
 }
