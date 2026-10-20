@@ -2889,6 +2889,19 @@ fn stub_action(
         "DescribeGeneratedTemplate" => describe_generated_template(params, region, &account),
         "UpdateGeneratedTemplate" => update_generated_template(params, region, &account),
         "CreateStackRefactor" => verify_stack_refactor(params, region, &account),
+        // moto's handler: a canned result echoing the (optional) refactor id.
+        "DescribeStackRefactor" => Ok(xml::ok(
+            "DescribeStackRefactorResponse",
+            &xml::dict_to_xml(&json!({
+                "StackRefactorId": params
+                    .get("StackRefactorId")
+                    .cloned()
+                    .unwrap_or_else(|| Uuid::new_v4().to_string()),
+                "Status": "CREATE_COMPLETE",
+                "StatusReason": "",
+                "ExecutionStatus": "AVAILABLE",
+            })),
+        )),
         "ListTypes" => Ok(xml::ok(action, "<TypeSummaries/>")),
         "ListTypeRegistrations" => Ok(xml::ok(action, "<RegistrationTokenList/>")),
         "ListGeneratedTemplates" => Ok(xml::ok(action, "<Summaries/>")),

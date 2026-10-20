@@ -21,6 +21,8 @@ struct RgState {
     groups: HashMap<String, Group>,
     region: String,
     account: String,
+    /// task arn -> tag-sync task record (moto's `tag_sync_tasks` dict).
+    tag_sync_tasks: Vec<(String, Value)>,
 }
 
 struct Group {
@@ -53,6 +55,11 @@ pub fn dispatch(req: &Request) -> Response {
         ("POST", "put-group-configuration") => st.put_group_configuration(&params),
         ("POST", "list-group-resources") => st.list_group_resources(),
         ("POST", "list-tag-sync-tasks") => Response::json_status(200, &json!({"TagSyncTasks": []})),
+        ("POST", "start-tag-sync-task") => st.start_tag_sync_task(&params),
+        ("POST", "get-tag-sync-task") => st.get_tag_sync_task(&params_str(&params, "TaskArn")),
+        ("POST", "cancel-tag-sync-task") => {
+            st.cancel_tag_sync_task(&params_str(&params, "TaskArn"))
+        }
         ("POST", "get-account-settings") => st.get_account_settings(),
         ("POST", "update-account-settings") => st.update_account_settings(&params),
         ("GET", p) if let Some(arn) = tags_path_arn(p) => st.get_tags(arn),
@@ -362,6 +369,121 @@ impl RgState {
             }}),
         )
     }
+
+    /// moto's `start_tag_sync_task`: resolve the group identifier either as
+    /// an echoed ARN or (verbatim moto bug) as a bare name glued onto the
+    /// ARN prefix without the `group/` segment.
+    fn start_tag_sync_task(&mut self, params: &Value) -> Response {
+        let group = params_str(params, "Group");
+        let role_arn = params_str(params, "RoleArn");
+        let tag_key = params.get("TagKey").and_then(Value::as_str);
+        let tag_value = params.get("TagValue").and_then(Value::as_str);
+        let resource_query = params.get("ResourceQuery");
+
+        if tag_key.is_some() && tag_value.is_some() && resource_query.is_some() {
+            return bad_request(
+                "To define a task, you can use TagKey and TagValue with non-null values, or use a ResourceQuery",
+            );
+        }
+
+        let (group_arn, group_name) = if group.contains(":group/") {
+            (
+                group.clone(),
+                group.rsplit(":group/").next().unwrap_or("").to_string(),
+            )
+        } else {
+            (
+                format!(
+                    "arn:aws:resource-groups:{}:{}:{}",
+                    self.region, self.account, group
+                ),
+                group,
+            )
+        };
+        let task_id = random_str_id(27);
+        let task_arn = format!("{group_arn}/tag-sync-task/{task_id}");
+
+        let mut record = json!({
+            "GroupArn": group_arn,
+            "GroupName": group_name,
+            "TaskArn": task_arn,
+        });
+        if resource_query.is_none() && tag_key.is_some() && tag_value.is_some() {
+            record["TagKey"] = json!(tag_key);
+            record["TagValue"] = json!(tag_value);
+        } else if resource_query.is_some() && tag_key.is_none() && tag_value.is_none() {
+            record["ResourceQuery"] = resource_query.cloned().unwrap_or(Value::Null);
+        }
+        record["RoleArn"] = json!(role_arn);
+        // as_dict(): Status and CreatedAt are part of the record but the
+        // start response deletes them (moto quirk).
+        self.tag_sync_tasks.push((
+            record["TaskArn"].as_str().unwrap_or_default().to_string(),
+            record.clone(),
+        ));
+        Response::json_status(200, &record)
+    }
+
+    fn get_tag_sync_task(&self, task_arn: &str) -> Response {
+        match self.tag_sync_tasks.iter().find(|(a, _)| a == task_arn) {
+            Some((_, t)) => {
+                let mut out = t.clone();
+                out["Status"] = json!("ACTIVE");
+                out["CreatedAt"] = json!(str_like_datetime());
+                Response::json_status(200, &out)
+            }
+            // moto indexes the dict directly — unknown tasks hit an
+            // unhandled KeyError and the werkzeug server 500s.
+            None => moto_crash_500(),
+        }
+    }
+
+    fn cancel_tag_sync_task(&mut self, task_arn: &str) -> Response {
+        if self.tag_sync_tasks.iter().any(|(a, _)| a == task_arn) {
+            self.tag_sync_tasks.retain(|(a, _)| a != task_arn);
+            Response::json_status(200, &json!({}))
+        } else {
+            moto_crash_500()
+        }
+    }
+}
+
+/// moto's id generator (`generate_str_id`): lowercase alphanumerics.
+fn random_str_id(len: usize) -> String {
+    const ALPHA: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
+    let mut out = String::new();
+    for b in uuid::Uuid::new_v4().as_bytes() {
+        if out.len() == len {
+            break;
+        }
+        out.push(ALPHA[(*b % 36) as usize] as char);
+    }
+    while out.len() < len {
+        for b in uuid::Uuid::new_v4().as_bytes() {
+            out.push(ALPHA[(*b % 36) as usize] as char);
+        }
+    }
+    out.truncate(len);
+    out
+}
+
+/// moto keeps unhandled `KeyError`s under the werkzeug server: a bare 500
+/// page is what the wire produces.
+fn moto_crash_500() -> Response {
+    Response {
+        status: 500,
+        headers: vec![("Content-Type".to_string(), "text/html; charset=utf-8".to_string())],
+        body: "<!doctype html>\n<html lang=en>\n<title>500 Internal Server Error</title>\n<h1>Internal Server Error</h1>\n<p>The server encountered an internal error and was unable to complete your request. Either the server is overloaded or there is an error in the application.</p>\n"
+            .as_bytes()
+            .to_vec(),
+    }
+}
+
+/// moto's `str(datetime)` rendering (naive local time, microseconds).
+fn str_like_datetime() -> String {
+    chrono::Utc::now()
+        .format("%Y-%m-%d %H:%M:%S%.6f")
+        .to_string()
 }
 
 fn group_body(g: &Group) -> Value {
@@ -520,5 +642,99 @@ mod tests {
         .unwrap();
         assert_eq!(resp["ResourceIdentifiers"], json!([]));
         assert_eq!(resp["QueryErrors"], json!([]));
+    }
+
+    #[test]
+    fn tag_sync_task_lifecycle() {
+        // Group::AR given -> echo; plain name -> moto's bare-name quirk.
+        let started = dispatch(&req(
+            "POST",
+            "/start-tag-sync-task",
+            json!({
+                "Group": "arn:aws:resource-groups:us-east-1:479412340000:group/g",
+                "RoleArn": "arn:aws:iam::479412340000:role/r",
+                "TagKey": "k",
+                "TagValue": "v",
+            }),
+        ));
+        assert_eq!(started.status, 200);
+        let body: Value = serde_json::from_slice(&started.body).unwrap();
+        assert_eq!(
+            body["GroupArn"],
+            "arn:aws:resource-groups:us-east-1:479412340000:group/g"
+        );
+        assert_eq!(body["GroupName"], "g");
+        assert_eq!(body["TagKey"], "k");
+        assert_eq!(body["TagValue"], "v");
+        assert_eq!(body["RoleArn"], "arn:aws:iam::479412340000:role/r");
+        // The start response omits Status/CreatedAt (moto deletes them).
+        assert!(body.get("Status").is_none());
+        assert!(body.get("CreatedAt").is_none());
+        let task_arn = body["TaskArn"].as_str().unwrap().to_string();
+        assert!(task_arn
+            .starts_with("arn:aws:resource-groups:us-east-1:479412340000:group/g/tag-sync-task/"));
+        assert_eq!(task_arn.rsplit('/').next().unwrap().len(), 27);
+
+        let got = dispatch(&req(
+            "POST",
+            "/get-tag-sync-task",
+            json!({"TaskArn": &task_arn}),
+        ));
+        assert_eq!(got.status, 200);
+        let got: Value = serde_json::from_slice(&got.body).unwrap();
+        assert_eq!(got["Status"], "ACTIVE");
+        assert!(got["CreatedAt"].as_str().unwrap().contains(':'), "{got}");
+
+        let cancelled = dispatch(&req(
+            "POST",
+            "/cancel-tag-sync-task",
+            json!({"TaskArn": &task_arn}),
+        ));
+        assert_eq!(cancelled.status, 200);
+
+        // After cancellation moto's dict access KeyErrors -> werkzeug 500.
+        let gone = dispatch(&req(
+            "POST",
+            "/get-tag-sync-task",
+            json!({"TaskArn": &task_arn}),
+        ));
+        assert_eq!(gone.status, 500);
+        assert!(String::from_utf8_lossy(&gone.body).contains("500 Internal Server Error"));
+        let gone = dispatch(&req(
+            "POST",
+            "/cancel-tag-sync-task",
+            json!({"TaskArn": &task_arn}),
+        ));
+        assert_eq!(gone.status, 500);
+
+        // Both tags AND a query -> moto's BadRequestException.
+        let bad = dispatch(&req(
+            "POST",
+            "/start-tag-sync-task",
+            json!({
+                "Group": "g", "RoleArn": "arn:aws:iam::479412340000:role/r",
+                "TagKey": "k", "TagValue": "v",
+                "ResourceQuery": {"Type": "TAG_FILTERS_1_0", "Query": "{}"},
+            }),
+        ));
+        assert_eq!(bad.status, 400);
+        let bad: Value = serde_json::from_slice(&bad.body).unwrap();
+        assert_eq!(bad["__type"], "BadRequestException");
+
+        // Plain group name: moto glues the name after the account id with no
+        // `group/` segment (quirk kept verbatim).
+        let started = dispatch(&req(
+            "POST",
+            "/start-tag-sync-task",
+            json!({"Group": "bare-name", "RoleArn": "arn:aws:iam::479412340000:role/r"}),
+        ));
+        let started: Value = serde_json::from_slice(&started.body).unwrap();
+        assert_eq!(
+            started["GroupArn"],
+            "arn:aws:resource-groups:us-east-1:123456789031:bare-name"
+        );
+        // Neither TagKey nor ResourceQuery branch applies.
+        assert!(started.get("TagKey").is_none());
+        assert!(started.get("ResourceQuery").is_none());
     }
 }

@@ -18,6 +18,8 @@ struct State {
     clusters: Vec<Value>,
     /// Parameter group id -> group dict.
     param_groups: Vec<Value>,
+    /// resource ARN -> tags (moto's tagger.dao: the ARN is not validated).
+    tags: Vec<(String, Vec<(String, String)>)>,
 }
 
 fn state() -> store::Slot<State> {
@@ -105,6 +107,58 @@ impl StateDefaults for Value {
 
 fn find<'a>(list: &'a [Value], id: &str) -> Option<&'a Value> {
     list.iter().find(|v| v["id"] == json!(id))
+}
+
+/// moto's `Tagger.validate_tags`: each tag dict entry {"key","value"} yields
+/// one message per bad key, one per bad value, joined as
+/// "N validation error(s) detected: ...".
+fn validate_tags(tags: Option<&serde_json::Map<String, Value>>) -> Option<String> {
+    // The key pattern's leading `(?!aws:)` look-ahead is unsupported by the
+    // `regex` crate; reject `aws:`-prefixed keys via the guard below instead.
+    static KEY_RE: Lazy<regex::Regex> =
+        Lazy::new(|| regex::Regex::new(r"^([\w\s\d_.:/=+\-@]*)$").unwrap());
+    static VALUE_RE: Lazy<regex::Regex> =
+        Lazy::new(|| regex::Regex::new(r"^([\w\s\d_.:/=+\-@]*)$").unwrap());
+
+    let map = tags?;
+    let mut errors: Vec<String> = Vec::new();
+    for (idx, (key_s, value)) in map.iter().enumerate() {
+        let idx = idx + 1;
+        let key_s = key_s.clone();
+        let value_s = value.as_str().unwrap_or_default();
+        // len(key) validations come from botocore; moto checks the value side
+        // of both members.
+        if key_s.len() > 128 {
+            errors.push(format!(
+                "Value '{key_s}' at 'tags.{idx}.member.key' failed to satisfy constraint: Member must have length less than or equal to 128"
+            ));
+        }
+        if !(!key_s.starts_with("aws:") && KEY_RE.is_match(&key_s)) {
+            errors.push(format!(
+                "Value '{key_s}' at 'tags.{idx}.member.key' failed to satisfy constraint: Member must satisfy regular expression pattern: ^(?!aws:)[{{a-zA-Z0-9 }}_.://=+-@%]*$"
+            ));
+        }
+        if value_s.len() > 256 {
+            errors.push(format!(
+                "Value '{value_s}' at 'tags.{idx}.member.value' failed to satisfy constraint: Member must have length less than or equal to 256"
+            ));
+        }
+        if !VALUE_RE.is_match(value_s) {
+            errors.push(format!(
+                "Value '{value_s}' at 'tags.{idx}.member.value' failed to satisfy constraint: Member must satisfy regular expression pattern: ^[{{a-zA-Z0-9 }}_.://=+-@%]*$"
+            ));
+        }
+    }
+    if errors.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "{} validation error{} detected: {}",
+            errors.len(),
+            if errors.len() > 1 { "s" } else { "" },
+            errors.join("; ")
+        ))
+    }
 }
 
 fn not_found(id: &str) -> Response {
@@ -206,6 +260,61 @@ fn handle(req: &Request, st: &mut State, p: &Value, region: &str, account: u64) 
                 .collect();
             ok(&json!({"items": items}))
         }
+        "GetDbParameterGroup" => {
+            let identifier = p.get("identifier").and_then(Value::as_str).unwrap_or("");
+            match find(&st.param_groups, identifier) {
+                Some(group) => ok(group),
+                None => {
+                    let e = json!({
+                        "__type": "ResourceNotFoundException",
+                        "message": format!(
+                            "DB parameter group with identifier {identifier} not found"
+                        ),
+                    });
+                    Response::json(400, serde_json::to_vec(&e).unwrap_or_default())
+                }
+            }
+        }
+        "TagResource" => {
+            let arn = p.get("resourceArn").and_then(Value::as_str).unwrap_or("");
+            if let Some(errmsg) = validate_tags(p.get("tags").and_then(|t| t.as_object())) {
+                let e = json!({ "__type": "ValidationException", "message": errmsg });
+                return Response::json(400, serde_json::to_vec(&e).unwrap_or_default());
+            }
+            let mut new_tags: Vec<(String, String)> = p
+                .get("tags")
+                .and_then(Value::as_object)
+                .map(|m| {
+                    m.iter()
+                        .map(|(k, v)| (k.clone(), v.as_str().unwrap_or_default().to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            match st.tags.iter_mut().find(|(a, _)| a == arn) {
+                Some((_, existing)) => {
+                    for (k, v) in new_tags.drain(..) {
+                        existing.retain(|(ek, _)| *ek != k);
+                        existing.push((k, v));
+                    }
+                }
+                None => st.tags.push((arn.to_string(), new_tags)),
+            }
+            ok(&json!({}))
+        }
+        "ListTagsForResource" => {
+            let arn = p.get("resourceArn").and_then(Value::as_str).unwrap_or("");
+            let tags: Vec<(String, String)> = st
+                .tags
+                .iter()
+                .find(|(a, _)| a == arn)
+                .map(|(_, v)| v.clone())
+                .unwrap_or_default();
+            let map: serde_json::Map<String, Value> = tags
+                .into_iter()
+                .map(|(k, v)| (k, Value::String(v)))
+                .collect();
+            ok(&json!({ "tags": Value::Object(map) }))
+        }
         _ => {
             let e = json!({
                 "__type": "NotImplemented",
@@ -240,7 +349,6 @@ mod tests {
         let slot = state();
         let mut st = slot.write();
         let b = st.entry((123456789012, "us-east-1".into())).or_default();
-
         let created = handle(
             &req("CreateDbInstance"),
             b,
@@ -287,5 +395,85 @@ mod tests {
             123456789012,
         );
         assert_eq!(missing.status, 404);
+    }
+    #[test]
+    fn param_group_tags_and_unknown_arns() {
+        let slot = state();
+        let mut st = slot.write();
+        let b = st.entry((223456789112, "us-east-1".into())).or_default();
+
+        // GetDbParameterGroup: unknown identifier -> moto's 400 RNFE text.
+        let resp = handle(
+            &req("GetDbParameterGroup"),
+            b,
+            &json!({"identifier": "nope"}),
+            "us-east-1",
+            223456789112,
+        );
+        assert_eq!(resp.status, 400);
+        let v: Value = serde_json::from_slice(&resp.body).unwrap();
+        assert_eq!(v["__type"], "ResourceNotFoundException");
+        assert_eq!(
+            v["message"],
+            "DB parameter group with identifier nope not found"
+        );
+
+        // TagResource / ListTagsForResource: the ARN is not validated, tags
+        // follow moto's arn-keyed store (unknown arn -> accepted).
+        let arn = "arn:aws:timestream-influxdb:us-east-1:223456789112:db-instance/none";
+        let resp = handle(
+            &req("TagResource"),
+            b,
+            &json!({"resourceArn": arn, "tags": {"a": "b"}}),
+            "us-east-1",
+            223456789112,
+        );
+        assert_eq!(resp.status, 200);
+        let resp = handle(
+            &req("ListTagsForResource"),
+            b,
+            &json!({"resourceArn": arn}),
+            "us-east-1",
+            223456789112,
+        );
+        let v: Value = serde_json::from_slice(&resp.body).unwrap();
+        assert_eq!(v["tags"]["a"], "b");
+
+        // aws:-prefixed keys are rejected with moto's ValidationException.
+        let resp = handle(
+            &req("TagResource"),
+            b,
+            &json!({"resourceArn": arn, "tags": {"aws:tag": "blocked"}}),
+            "us-east-1",
+            223456789112,
+        );
+        assert_eq!(resp.status, 400);
+        let v: Value = serde_json::from_slice(&resp.body).unwrap();
+        assert_eq!(v["__type"], "ValidationException");
+        assert!(v["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("1 validation error detected: Value 'aws:tag' at 'tags.1.member.key'"));
+
+        // A parameter group created through the module answers cleanly.
+        let created = handle(
+            &req("CreateDbParameterGroup"),
+            b,
+            &json!({"name": "pg", "description": "d", "parameters": {}}),
+            "us-east-1",
+            223456789112,
+        );
+        let created: Value = serde_json::from_slice(&created.body).unwrap();
+        let pid = created["id"].as_str().unwrap().to_string();
+        let got = handle(
+            &req("GetDbParameterGroup"),
+            b,
+            &json!({"identifier": &pid}),
+            "us-east-1",
+            223456789112,
+        );
+        assert_eq!(got.status, 200);
+        let got: Value = serde_json::from_slice(&got.body).unwrap();
+        assert_eq!(got["name"], "pg");
     }
 }
