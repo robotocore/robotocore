@@ -1,43 +1,43 @@
 {
   "service": "mediaconnect",
-  "generated_at": "2026-10-20T06:49:51.696509+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-20T20:50:09.018206+00:00",
+  "endpoint": "http://localhost:4792",
   "counts": {
-    "working": 13,
+    "working": 76,
     "needs_params": 6,
-    "not_implemented": 63,
+    "not_implemented": 0,
     "500_error": 0
   },
   "operations": [
     {
       "operation": "AddBridgeOutputs",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "AddBridgeSources",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "AddFlowMediaStreams",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "AddFlowOutputs",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "AddFlowSources",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "AddFlowVpcInterfaces",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "BatchGetRouterInput",
@@ -86,108 +86,108 @@
     },
     {
       "operation": "DeleteBridge",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DeleteFlow",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DeleteGateway",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DeleteRouterInput",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DeleteRouterNetworkInterface",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DeleteRouterOutput",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DeregisterGatewayInstance",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DescribeBridge",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DescribeFlow",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DescribeFlowSourceMetadata",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DescribeFlowSourceThumbnail",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DescribeGateway",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DescribeGatewayInstance",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DescribeOffering",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DescribeReservation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "GetRouterInput",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "GetRouterInputSourceMetadata",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "GetRouterInputThumbnail",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "GetRouterNetworkInterface",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "GetRouterOutput",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "GrantFlowEntitlements",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "ListBridges",
@@ -241,183 +241,183 @@
     },
     {
       "operation": "ListTagsForGlobalResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListTagsForResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PurchaseOffering",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "RemoveBridgeOutput",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "RemoveBridgeSource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "RemoveFlowMediaStream",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "RemoveFlowOutput",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "RemoveFlowSource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "RemoveFlowVpcInterface",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "RestartRouterInput",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "RestartRouterOutput",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "RevokeFlowEntitlement",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "StartFlow",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "StartRouterInput",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "StartRouterOutput",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "StopFlow",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "StopRouterInput",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "StopRouterOutput",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "TagGlobalResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "TagResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "TakeRouterInput",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UntagGlobalResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UntagResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateBridge",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateBridgeOutput",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateBridgeSource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateBridgeState",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateFlow",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateFlowEntitlement",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateFlowMediaStream",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateFlowOutput",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateFlowSource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateGatewayInstance",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateRouterInput",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateRouterNetworkInterface",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateRouterOutput",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     }
   ]
 }

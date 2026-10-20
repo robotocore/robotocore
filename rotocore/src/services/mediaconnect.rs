@@ -89,7 +89,9 @@ fn as_string(v: Option<&Value>) -> String {
 
 struct Seg {
     text: String,
-    /// False when the decoded segment contains `.` or `/` (moto bind failure).
+    /// False when the *raw* segment contains `.` or `/` (moto bind failure):
+    /// moto's `[^/.]+` regex runs against the still-percent-encoded URL, so
+    /// `%2F`/`%2E` escapes bind; only literal dots and slashes do not.
     bindable: bool,
 }
 
@@ -101,8 +103,8 @@ fn split_path(path: &str) -> Option<Vec<Seg>> {
             // Duplicate/trailing slashes do not bind moto's `[^/.]+`.
             return None;
         }
+        let bindable = !raw.contains('.') && !raw.contains('/');
         let text = url_decode(raw);
-        let bindable = !text.contains('.') && !text.contains('/');
         segs.push(Seg { text, bindable });
     }
     Some(segs)
@@ -1628,12 +1630,13 @@ fn update_flow_media_stream(
 }
 
 fn describe_flow_source_metadata(st: &mut State, flow_arn: &str) -> Response {
-    let Some(f) = find_mut(&mut st.flows, flow_arn) else {
+    // moto checks existence only (describe_flow is the op that resolves
+    // transient states); this handler must not mutate the flow's status.
+    if find(&st.flows, flow_arn).is_none() {
         return not_found("Flow not found.");
-    };
-    resolve_transient(f);
+    }
     ok_json(&json!({
-        "flowArn": f["flowArn"],
+        "flowArn": flow_arn,
         "messages": [],
         "timestamp": "2024-01-01T00:00:00Z",
         "transportMediaInfo": {},
@@ -1641,10 +1644,10 @@ fn describe_flow_source_metadata(st: &mut State, flow_arn: &str) -> Response {
 }
 
 fn describe_flow_source_thumbnail(st: &mut State, flow_arn: &str) -> Response {
-    let Some(f) = find(&st.flows, flow_arn).cloned() else {
+    // moto checks existence only.
+    if find(&st.flows, flow_arn).is_none() {
         return not_found("Flow not found.");
     };
-    let _ = f;
     ok_json(&json!({
         "thumbnail": {
             "flowArn": flow_arn,
@@ -2290,5 +2293,131 @@ mod tests {
         r.account = acct;
         let out = body(&dispatch(&r).unwrap())["routerOutput"].clone();
         assert!(out["routerInputArn"].as_str().unwrap().ends_with(":x"));
+    }
+
+    // moto's `[^/.]+` binds against the percent-encoded URL, so ARN paths
+    // containing %2F (like the prober's auto-filled `thing/probe-test`) still
+    // reach the handlers, which answer moto's not-found errors — never 501.
+    #[test]
+    fn percent_encoded_slash_in_arn_still_binds() {
+        let acct = scope();
+        let filler = "arn%3Aaws%3Amediaconnect%3Aus-east-1%3A123456789012%3Athing%2Fprobe-test";
+        // GET describe: moto's NotFoundException "Flow not found.".
+        let mut r = req("GET", format!("/v1/flows/{filler}"), json!({}));
+        r.account = acct;
+        let resp = dispatch(&r).unwrap();
+        assert_eq!(resp.status, 400);
+        assert_eq!(body(&resp)["__type"], "NotFoundException");
+
+        // POST on a sub-resource: moto's "flow with arn=… not found".
+        r = req(
+            "POST",
+            format!("/v1/flows/{filler}/outputs"),
+            json!({"outputs": [{"name": "out", "protocol": "zixi-push"}]}),
+        );
+        r.account = acct;
+        let resp = dispatch(&r).unwrap();
+        assert_eq!(resp.status, 400);
+        assert!(body(&resp)["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("flow with arn=arn:aws:mediaconnect:us-east-1:123456789012"));
+
+        // Bridges, gateways and gateway instances bind the same way with
+        // their own "not found." messages.
+        r = req("GET", format!("/v1/bridges/{filler}"), json!({}));
+        r.account = acct;
+        assert_eq!(body(&dispatch(&r).unwrap())["message"], "Bridge not found.");
+        r = req("GET", format!("/v1/gateways/{filler}"), json!({}));
+        r.account = acct;
+        assert_eq!(
+            body(&dispatch(&r).unwrap())["message"],
+            "Gateway not found."
+        );
+        r = req("GET", format!("/v1/gateway-instances/{filler}"), json!({}));
+        r.account = acct;
+        assert_eq!(
+            body(&dispatch(&r).unwrap())["message"],
+            "Gateway instance not found."
+        );
+
+        // Router resources and tags round-trip through the same bind.
+        r = req(
+            "PUT",
+            format!("/v1/routerOutput/takeRouterInput/{filler}"),
+            json!({}),
+        );
+        r.account = acct;
+        assert_eq!(
+            body(&dispatch(&r).unwrap())["message"],
+            "Router output not found."
+        );
+        r = req("GET", format!("/tags/{filler}"), json!({}));
+        r.account = acct;
+        assert_eq!(
+            body(&dispatch(&r).unwrap())["message"],
+            "Resource not found."
+        );
+        r = req(
+            "PUT",
+            format!("/v1/routerNetworkInterface/{filler}"),
+            json!({}),
+        );
+        r.account = acct;
+        assert_eq!(
+            body(&dispatch(&r).unwrap())["message"],
+            "Router network interface not found."
+        );
+    }
+
+    // %2E is an escape moto's regex never sees — the encoded segment binds,
+    // decodes to a dot, and simply does not match any record.
+    #[test]
+    fn percent_encoded_dot_binds() {
+        let acct = scope();
+        let mut r = req("GET", "/v1/flows/arn%3Awith%2Edot", json!({}));
+        r.account = acct;
+        let resp = dispatch(&r).unwrap();
+        assert_eq!(resp.status, 400);
+        assert_eq!(body(&resp)["message"], "Flow not found.");
+    }
+
+    // source-metadata and source-thumbnail only check existence (moto
+    // resolves transient states exclusively in describe_flow), so a started
+    // flow's stored status stays STARTING — observable through delete_flow.
+    #[test]
+    fn source_metadata_does_not_resolve_transient_status() {
+        let acct = scope();
+        let mut r = req("POST", "/v1/flows", create_flow_body());
+        r.account = acct;
+        let arn = body(&dispatch(&r).unwrap())["flow"]["flowArn"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let enc = urlencoded(&arn);
+
+        r = req("POST", format!("/v1/flows/start/{enc}"), json!({}));
+        r.account = acct;
+        assert_eq!(body(&dispatch(&r).unwrap())["status"], "STARTING");
+
+        r = req("GET", format!("/v1/flows/{enc}/source-metadata"), json!({}));
+        r.account = acct;
+        let resp = dispatch(&r).unwrap();
+        assert_eq!(resp.status, 200);
+        assert_eq!(body(&resp)["flowArn"], arn);
+        assert_eq!(body(&resp)["messages"], json!([]));
+
+        // A thumbnail-only look must not flip the status either.
+        r = req(
+            "GET",
+            format!("/v1/flows/{enc}/source-thumbnail"),
+            json!({}),
+        );
+        r.account = acct;
+        assert_eq!(dispatch(&r).unwrap().status, 200);
+
+        r = req("DELETE", format!("/v1/flows/{enc}"), json!({}));
+        r.account = acct;
+        assert_eq!(body(&dispatch(&r).unwrap())["status"], "STARTING");
     }
 }
