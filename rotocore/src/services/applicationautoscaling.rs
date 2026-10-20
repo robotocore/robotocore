@@ -472,6 +472,14 @@ fn register_scalable_target(
         let exists = match parts.as_slice() {
             // resource id is `service/{cluster}/{name}`.
             [_kind, cluster, service] => {
+                // moto: describe_services raises ClusterNotFoundException for a
+                // missing cluster ("Cluster not found.") and only raises
+                // AWSValidationException when the cluster exists but the
+                // service is missing (applicationautoscaling/models.py:140,
+                // ecs/models.py:1637).
+                if !ecs::bridge::cluster_exists(account, region, cluster) {
+                    return fault("ClusterNotFoundException", "Cluster not found.");
+                }
                 ecs::bridge::service_exists(account, region, cluster, service)
             }
             // moto unpacks three slash components and crashes otherwise;
@@ -1036,6 +1044,10 @@ mod tests {
     /// moto's `ecs_backends`).
     fn seed_ecs_service(account: u64, cluster: &str, service: &str) {
         let state = ecs::models::EcsState::new();
+        state
+            .clusters
+            .write()
+            .insert(cluster.to_string(), json!({ "clusterName": cluster }));
         state.services.write().insert(
             cluster.to_string(),
             HashMap::from([(
@@ -1249,7 +1261,8 @@ mod tests {
     #[test]
     fn ecs_target_requires_live_service() {
         let account = next_account();
-        // No ECS state for the scope at all: moto faults.
+        // No ECS state for the scope at all: moto's describe_services raises
+        // ClusterNotFoundException (the ecs backend itself always exists).
         let (status, body) = send(
             account,
             "RegisterScalableTarget",
@@ -1260,13 +1273,15 @@ mod tests {
             }),
         );
         assert_eq!(status, 400);
-        assert_eq!(
-            body["message"],
-            "ECS service doesn't exist: service/default/web"
-        );
+        assert_eq!(body["message"], "Cluster not found.");
 
-        // Now register only the cluster half, not the service.
+        // Now register the cluster, not the service: the missing-service
+        // case is moto's AWSValidationException.
         let state = ecs::models::EcsState::new();
+        state
+            .clusters
+            .write()
+            .insert("default".to_string(), json!({ "clusterName": "default" }));
         state.services.write().insert(
             "default".to_string(),
             HashMap::from([(

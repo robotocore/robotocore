@@ -382,7 +382,119 @@ impl S3Handler {
         }
     }
 
+    /// Bucket name carried in the Host header of a virtual-hosted-style
+    /// request (`<bucket>.<endpoint-host>`).
+    ///
+    /// Botocore uses virtual-hosted addressing for S3 Express directory
+    /// buckets even against a custom endpoint (endpoint ruleset rule
+    /// `{Bucket}.{url#authority}`), so those requests arrive with an empty
+    /// path-level bucket and the bucket only in `Host`. Mirrors the host
+    /// shapes of the gateway's `s3_routing::parse_s3_vhost`: the
+    /// `S3_HOSTNAME` custom base, `<bucket>.s3.<rest>`, and
+    /// `<bucket>.localhost` (which is how botocore addresses a localhost
+    /// custom endpoint).
+    fn vhost_bucket_from_host(host: Option<&str>) -> Option<String> {
+        let host = host?;
+        let host = match host.rsplit_once(':') {
+            Some((h, port)) if port.chars().all(|c| c.is_ascii_digit()) => h,
+            _ => host,
+        };
+        if host.is_empty() {
+            return None;
+        }
+        let hostname = std::env::var("S3_HOSTNAME")
+            .unwrap_or_else(|_| "s3.localhost.robotocore.cloud".to_string());
+        let custom_suffix = format!(".{}", hostname);
+        if let Some(bucket) = host.strip_suffix(custom_suffix.as_str()) {
+            if !bucket.is_empty() && !bucket.starts_with('.') {
+                return Some(bucket.to_string());
+            }
+        }
+        if let Some((bucket, _rest)) = host.split_once(".s3.") {
+            if !bucket.is_empty() && !bucket.starts_with('.') {
+                return Some(bucket.to_string());
+            }
+        }
+        if let Some(label) = host.strip_suffix(".localhost") {
+            if !label.is_empty() && !label.contains('.') {
+                return Some(label.to_string());
+            }
+        }
+        None
+    }
+
+    /// Rewrite a virtual-hosted-style request so bucket/key/operation match
+    /// the path-style shapes the handler expects — the same transformation
+    /// the gateway's `s3_routing::rewrite_vhost_to_path` performs for hosts
+    /// it recognizes. For a virtual-hosted request the gateway pulled the
+    /// key's first segment out of the path into `bucket`; move that segment
+    /// under the Host-carried bucket and re-detect the operation from the
+    /// equivalent path-style shape.
+    ///
+    /// Operation fusion: the operation arriving from the gateway was derived
+    /// with the FULL query (its pre-dispatch detection sees value-less
+    /// params); the re-detect here sees the crate's query_params, which the
+    /// gateway's to_s3_request rebuilds keeping only k=v pairs — value-less
+    /// params ("?session") are dropped. So an arriving operation wins unless
+    /// it is one of the blind shape endpoints the lost-bucket path produces
+    /// (ListBuckets/CreateBucket/...); the re-detect is authoritative for
+    /// the reshaped shape in that case.
+    ///
+    /// Requests without a virtual-hosted Host (path-style callers) parse to
+    /// None here and pass through untouched.
+    fn normalize_virtual_host(req: &mut AwsRequest) {
+        let host_bucket =
+            match Self::vhost_bucket_from_host(req.headers.get("host").map(String::as_str)) {
+                Some(b) => b,
+                None => return,
+            };
+        // Rebuild the path-style shape: /{host-bucket}/{former-path}.
+        let path_bucket = req.bucket.as_deref().unwrap_or("");
+        let former_key = match (path_bucket, req.key.as_deref()) {
+            ("", k) => k.filter(|s| !s.is_empty()).map(String::from),
+            (b, Some(k)) if !k.is_empty() => Some(format!("{}/{}", b, k)),
+            (b, _) => Some(b.to_string()),
+        };
+        let owned_path = match &former_key {
+            Some(key) => format!("/{}/{}", host_bucket, key),
+            None => format!("/{}", host_bucket),
+        };
+        // botocore percent-encodes special characters in path keys;
+        // detect_s3_operation only inspects the path shape.
+        let redetect = Self::detect_s3_operation(&req.method, &owned_path, &req.query_params);
+        let arriving = req.operation.clone();
+        let blind = |op: &str| {
+            matches!(
+                op,
+                "" | "ListBuckets"
+                    | "ListObjects"
+                    | "ListObjectsV2"
+                    | "CreateBucket"
+                    | "HeadBucket"
+                    | "DeleteBucket"
+            )
+        };
+        req.operation = match redetect {
+            Some(red) if !blind(&red) => red,
+            _ if blind(&arriving) => redetect.unwrap_or(arriving),
+            _ => arriving,
+        };
+        // botocore serializes RenameSource as the x-amz-rename-source
+        // header, but the renameObject query param is value-less and the
+        // gateway drops it from query_params — recover the op here.
+        if req.method == "PUT"
+            && req.operation == "PutObject"
+            && req.headers.contains_key("x-amz-rename-source")
+        {
+            req.operation = "RenameObject".to_string();
+        }
+        req.bucket = Some(host_bucket);
+        req.key = former_key;
+    }
+
     pub fn handle(&self, req: AwsRequest) -> AwsResponse {
+        let mut req = req;
+        Self::normalize_virtual_host(&mut req);
         let operation = req.operation.as_str();
         match operation {
             "ListBuckets" => self.list_buckets(&req),
@@ -558,6 +670,32 @@ impl S3Handler {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '-')
     }
 
+    /// moto s3/models.py:1920: a directory bucket name must match
+    /// r"--[a-z0-9]+-az\d+--x-s3$".
+    fn directory_bucket_name_valid(name: &str) -> bool {
+        let azid_azn = name
+            .strip_suffix("--x-s3")
+            .and_then(|rest| rest.rsplit_once("--"))
+            .map(|(_, az)| az);
+        match azid_azn {
+            Some(az) => {
+                // "<azid>-az<N>" — azid is lowercase alnum, N is digits.
+                match az.rsplit_once("-az") {
+                    Some((azid, n)) => {
+                        !azid.is_empty()
+                            && azid
+                                .chars()
+                                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+                            && !n.is_empty()
+                            && n.chars().all(|c| c.is_ascii_digit())
+                    }
+                    None => false,
+                }
+            }
+            None => false,
+        }
+    }
+
     fn user_metadata(req: &AwsRequest) -> HashMap<String, String> {
         req.headers
             .iter()
@@ -662,10 +800,24 @@ impl S3Handler {
             }
         };
 
+        // moto s3/responses.py _bucket_response_put → models.py create_bucket():
+        // directory-ness comes from the parsed CreateBucketConfiguration/Bucket/Type
+        // (is_directory_bucket == bucket_type == "Directory"); there is no
+        // name-suffix inference. A directory bucket additionally must match
+        // r"--[a-z0-9]+-az\d+--x-s3$" (InvalidBucketName otherwise).
         let body_str = String::from_utf8_lossy(&req.body);
-        let directory =
-            body_str.contains("<Type>Directory</Type>") || bucket_name.ends_with("--x-s3");
-        if !directory && !Self::valid_bucket_name(&bucket_name) {
+        let bucket_type = xml_sections(&body_str, "Bucket")
+            .first()
+            .and_then(|section| xml_text(section, "Type"));
+        let directory = bucket_type.as_deref() == Some("Directory");
+        if !Self::valid_bucket_name(&bucket_name) {
+            return AwsResponse::error(
+                400,
+                "InvalidBucketName",
+                "The specified bucket is not valid",
+            );
+        }
+        if directory && !Self::directory_bucket_name_valid(&bucket_name) {
             return AwsResponse::error(
                 400,
                 "InvalidBucketName",
@@ -2866,28 +3018,66 @@ impl S3Handler {
     // ------------------------------------------------------------------
 
     fn create_session(&self, req: &AwsRequest) -> AwsResponse {
-        // Session credentials are accepted for any path; matches the Python
-        // provider's native CreateSession handling.
-        let _ = req;
+        // moto s3/models.py:1974 create_session(): a bucket that exists and
+        // is not directory-typed is InvalidRequest ("CreateSession is only
+        // supported for directory buckets."). A missing bucket still answers:
+        // botocore's S3 Express credential refresh runs CreateSession BEFORE
+        // its own CreateBucket request lands (before-sign auth resolution of
+        // the v4-s3express scheme), so permissing here is what the client
+        // flow requires (matches the Python twin's native handling).
+        if Self::bucket_param(req).is_none() {
+            // moto answers GET / without a bucket from the bucket-level
+            // dispatch (all_buckets / ListDirectoryBuckets), not from
+            // create_session — mirror that via the list handler.
+            return self.list_buckets(req);
+        }
+        let (state, _bucket_name) = (self.get_state(req.account, &req.region), ());
+        if let Some(bucket) = state.get_bucket(Self::bucket_param(req).as_deref().unwrap_or_default())
+        {
+            if !bucket.directory {
+                return AwsResponse::error(
+                    400,
+                    "InvalidRequest",
+                    "CreateSession is only supported for directory buckets.",
+                );
+            }
+        }
+        // moto: seed = "{bucket_name}-{account_id}-{utc-now isoformat}" and
+        // key_hash = sha256(seed)[:40]; AccessKeyId is "ASIA" + the first 16
+        // characters upper-cased, the session token carries a literal
+        // "FwoGZXIvYXdzE" prefix, expiration is now + 12 hours.
+        let now = chrono::Utc::now();
+        let bucket_name = Self::bucket_param(req).unwrap_or_default();
         let seed = format!(
-            "{}:{}",
-            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0),
-            uuid::Uuid::new_v4()
+            "{}-{}-{}",
+            bucket_name,
+            req.account,
+            now.format("%Y-%m-%dT%H:%M:%S%.6f+00:00"),
         );
-        let hex_digest = {
+        let key_hash: String = {
             use sha2::{Digest, Sha256};
-            hex::encode(Sha256::digest(seed.as_bytes()))
-        };
-        let expiry = (chrono::Utc::now() + chrono::Duration::hours(12))
+            let digest = Sha256::digest(seed.as_bytes());
+            hex::encode(digest)
+        }
+        .chars()
+        .take(40)
+        .collect();
+        let expiration = (now + chrono::Duration::hours(12))
             .format("%Y-%m-%dT%H:%M:%SZ")
             .to_string();
         let body = format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<CreateSessionResult>\n  <Credentials>\n    <SessionToken>FwoGZXIvYXdzE{hex}</SessionToken>\n    <SecretAccessKey>{hex}</SecretAccessKey>\n    <AccessKeyId>ASIA{ak}</AccessKeyId>\n    <Expiration>{expiry}</Expiration>\n  </Credentials>\n</CreateSessionResult>",
-            hex = hex_digest,
-            ak = hex_digest[..16].to_ascii_uppercase(),
-            expiry = expiry
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<CreateSessionResult>\n  <Credentials>\n    <SessionToken>FwoGZXIvYXdzE{key_hash}</SessionToken>\n    <SecretAccessKey>{key_hash}</SecretAccessKey>\n    <AccessKeyId>ASIA{access}</AccessKeyId>\n    <Expiration>{expiration}</Expiration>\n  </Credentials>\n</CreateSessionResult>",
+            key_hash = key_hash,
+            access = key_hash[..16].to_ascii_uppercase(),
+            expiration = expiration,
         );
+        // moto S3_CREATE_SESSION_RESPONSE template (responses.py:3769).
         AwsResponse::xml(200, body)
+    }
+
+    /// The request's bucket name, present and non-empty.
+    fn bucket_param(req: &AwsRequest) -> Option<String> {
+        req.bucket.clone().filter(|b| !b.is_empty())
     }
 
     fn rename_object(&self, req: &AwsRequest) -> AwsResponse {
@@ -2895,54 +3085,40 @@ impl S3Handler {
             Ok(p) => p,
             Err(e) => return e,
         };
+        if !bucket.directory {
+            return AwsResponse::error(
+                400,
+                "InvalidRequest",
+                "RenameObject is only supported for directory buckets.",
+            );
+        }
         let (_bucket_name, dest_key) = Self::bucket_and_key(req);
+        // moto s3/models.py:2004 rename_object(): the source strip takes the
+        // "<bucket>/" prefix off the front of x-amz-rename-source (first
+        // slash onward), without URL decoding; a missing header yields an
+        // empty source which is simply NoSuchKey.
         let rename_source = req
             .headers
             .get("x-amz-rename-source")
             .cloned()
             .unwrap_or_default();
-        if rename_source.is_empty() {
-            return AwsResponse::error(400, "InvalidArgument", "x-amz-rename-source is required");
-        }
-        let decoded = urlencoding::decode(&rename_source)
-            .map(String::from)
-            .unwrap_or_else(|_| rename_source.clone());
-        let trimmed = decoded.trim_start_matches('/');
-        let src_key = match trimmed.split_once('/') {
-            // Format "<bucket>/<key>" — the bucket prefix may equal this bucket.
+        let src_key = match rename_source.split_once('/') {
             Some((_src_bucket, key)) => key.to_string(),
-            None => trimmed.to_string(),
+            None => rename_source.clone(),
         };
-        if src_key.is_empty() {
-            return AwsResponse::error(400, "InvalidArgument", "x-amz-rename-source is invalid");
-        }
-
-        let source = {
-            let objects = bucket.objects.write();
-            match objects.get(&src_key) {
-                Some(entry) => entry.versions.first().cloned(),
-                None => None,
-            }
-        };
-        let source = match source {
-            Some(v) => v,
+        // moto: bucket.keys[new_key] = obj ... del bucket.keys[source_key] —
+        // the insert happens before the delete, so overwriting an existing
+        // destination works and a source==destination rename drops the entry
+        // (matches moto's dict semantics).
+        let mut objects = bucket.objects.write();
+        let entry = match objects.get(&src_key).cloned() {
+            Some(entry) => entry,
             None => {
-                return AwsResponse::error(404, "NoSuchKey", "The specified key does not exist")
+                return AwsResponse::error(404, "NoSuchKey", "The specified key does not exist.")
             }
         };
-        {
-            let mut objects = bucket.objects.write();
-            objects.remove(&src_key);
-        }
-        Self::store_bytes(
-            &bucket,
-            &dest_key,
-            source.data.clone(),
-            source.content_type.clone(),
-            source.metadata.clone(),
-            source.tags.clone(),
-            source.storage_class.clone(),
-        );
+        objects.insert(dest_key.clone(), entry);
+        objects.remove(&src_key);
         AwsResponse::no_content(200)
     }
 
@@ -3250,11 +3426,21 @@ impl S3Handler {
         let has_key = !second.is_empty();
 
         if !has_bucket {
-            return if method == "GET" {
-                Some("ListBuckets".to_string())
-            } else {
-                None
-            };
+            // Virtual-hosted-style Session requests carry the bucket in the
+            // Host header (botocore S3 Express endpoint rules), so don't
+            // assume ListBuckets when the session queries are present —
+            // normalize_virtual_host fills the bucket in afterwards, and
+            // create_session falls back to ListBuckets when it stays empty.
+            if method == "GET" {
+                if query_params.contains_key("session") {
+                    return Some("CreateSession".to_string());
+                }
+                return Some("ListBuckets".to_string());
+            }
+            if method == "POST" && query_params.contains_key("createSession") {
+                return Some("CreateSession".to_string());
+            }
+            return None;
         }
 
         // S3 Object Lambda write-back path: POST /{RequestRoute}/WriteGetObjectResponse
@@ -3514,6 +3700,11 @@ impl S3Handler {
             "POST" => {
                 if q("delete") {
                     Some("DeleteObjects".to_string())
+                } else if q("createSession") {
+                    // Real S3 accepts POST /{Bucket}?createSession for S3
+                    // Express (botocore's older model shadows it as
+                    // GET ?session; answer both).
+                    Some("CreateSession".to_string())
                 } else if q("notification") {
                     Some("PutBucketNotification".to_string())
                 } else if q("uploads") {
@@ -3750,5 +3941,507 @@ mod tests {
             S3Handler::detect_s3_operation("GET", "/", &HashMap::new()),
             Some("ListBuckets".to_string())
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // S3 Express: directory buckets / CreateSession / RenameObject
+    // (moto evidence: model.py:1098 is_directory_bucket, 1974 create_session,
+    // 2004 rename_object, responses.py:583 GET ?session)
+    // -----------------------------------------------------------------------
+
+    /// CreateBucketConfiguration body the botocore fixtures send for a
+    /// directory bucket.
+    const DIR_BUCKET_CONFIG: &str = r#"<CreateBucketConfiguration><Location><Type>AvailabilityZone</Type><Name>use1-az1</Name></Location><Bucket><Type>Directory</Type><DataRedundancy>SingleAvailabilityZone</DataRedundancy></Bucket></CreateBucketConfiguration>"#;
+
+    /// A request as the gateway delivers it: bucket/key split from the path,
+    /// decoded query params, the operation pre-detected from method+path+query
+    /// (S3ServiceHandler::handle_sync), and a raw Host header.
+    fn wire_req(
+        method: &str,
+        bucket: Option<&str>,
+        key: Option<&str>,
+        query: &[(&str, &str)],
+        host: &str,
+    ) -> AwsRequest {
+        let mut query_params = HashMap::new();
+        for (k, v) in query {
+            query_params.insert(k.to_string(), v.to_string());
+        }
+        let mut headers = HashMap::new();
+        headers.insert("host".to_string(), host.to_string());
+        // Path equivalent of the gateway's bucket/key split, used for
+        // operation detection exactly like S3ServiceHandler.
+        let path = format!(
+            "/{}{}",
+            bucket.unwrap_or_default(),
+            key.map(|k| format!("/{}", k)).unwrap_or_default()
+        );
+        let operation =
+            S3Handler::detect_s3_operation(method, &path, &query_params).unwrap_or_default();
+        AwsRequest {
+            service: "s3".to_string(),
+            operation,
+            account: 123456789012,
+            region: "us-east-1".to_string(),
+            bucket: bucket.map(String::from).filter(|s| !s.is_empty()),
+            key: key.map(String::from).filter(|s| !s.is_empty()),
+            query_params,
+            headers,
+            method: method.to_string(),
+            body: Bytes::new(),
+            params: Value::Null,
+        }
+    }
+
+    /// The moto CreateSession XML: every credential member present.
+    fn assert_session_credentials(body: &str) {
+        assert!(body.contains("<CreateSessionResult>"), "body: {body}");
+        assert!(body.contains("<Credentials>"), "body: {body}");
+        let token = xml_text(body, "SessionToken").expect("SessionToken");
+        assert!(token.starts_with("FwoGZXIvYXdzE"), "token: {token}"); // models.py:1990
+        assert_eq!(token.len(), 13 + 40); // "FwoGZXIvYXdzE" + 40-char hash
+        let secret = xml_text(body, "SecretAccessKey").expect("SecretAccessKey");
+        assert_eq!(secret.len(), 40); // sha256 hexdigest truncated to 40
+        let access = xml_text(body, "AccessKeyId").expect("AccessKeyId");
+        assert!(access.starts_with("ASIA"), "access: {access}"); // models.py:1987
+        assert_eq!(access.len(), 4 + 16);
+        assert_eq!(
+            access[4..],
+            secret[..16].to_ascii_uppercase(),
+            "AccessKeyId derives from the SecretAccessKey hash"
+        );
+        let expiration = xml_text(body, "Expiration").expect("Expiration");
+        assert!(
+            chrono::NaiveDateTime::parse_from_str(&expiration, "%Y-%m-%dT%H:%M:%SZ").is_ok(),
+            "expiration format: {expiration}"
+        );
+    }
+
+    #[test]
+    fn test_directory_bucket_type_from_create_config() {
+        let handler = S3Handler::new();
+        let name = "compat-dir-abc123--use1-az1--x-s3";
+
+        // moto: Explicit Bucket{Type=Directory} config makes it a directory bucket.
+        let req = make_req(
+            "CreateBucket",
+            Some(name),
+            None,
+            DIR_BUCKET_CONFIG.as_bytes(),
+        );
+        assert_eq!(handler.handle(req).status, 200);
+        let bucket = handler
+            .get_state(123456789012, "us-east-1")
+            .get_bucket(name)
+            .unwrap();
+        assert!(bucket.directory, "moto predicate: bucket_type == Directory");
+
+        // No directory config → ordinary bucket (no --x-s3 name inference).
+        let req = make_req("CreateBucket", Some("plain-bucket"), None, b"");
+        assert_eq!(handler.handle(req).status, 200);
+        let bucket = handler
+            .get_state(123456789012, "us-east-1")
+            .get_bucket("plain-bucket")
+            .unwrap();
+        assert!(!bucket.directory);
+    }
+
+    #[test]
+    fn test_directory_bucket_name_validation() {
+        let handler = S3Handler::new();
+        // moto models.py:1920: Bucket{Type=Directory} with a name that lacks
+        // the "--azid-azN--x-s3" suffix is InvalidBucketName.
+        let req = make_req(
+            "CreateBucket",
+            Some("not-a-directory-bucket"),
+            None,
+            DIR_BUCKET_CONFIG.as_bytes(),
+        );
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 400);
+        assert!(String::from_utf8_lossy(&resp.body).contains("InvalidBucketName"));
+
+        // The az id must be lowercase alnum and the az zone numeric.
+        let req = make_req(
+            "CreateBucket",
+            Some("compat-ren-global-s3--x-s3"),
+            None,
+            DIR_BUCKET_CONFIG.as_bytes(),
+        );
+        assert_eq!(handler.handle(req).status, 400);
+
+        let valid = S3Handler::directory_bucket_name_valid("compat-dir-abc123--use1-az1--x-s3");
+        assert!(valid);
+        assert!(!S3Handler::directory_bucket_name_valid("plain-bucket"));
+        assert!(!S3Handler::directory_bucket_name_valid(
+            "compat-ren-global-s3--x-s3"
+        ));
+    }
+
+    #[test]
+    fn test_create_session_moto_credentials() {
+        let handler = S3Handler::new();
+        let name = "compat-dir-abc123--use1-az1--x-s3";
+        handler.handle(make_req(
+            "CreateBucket",
+            Some(name),
+            None,
+            DIR_BUCKET_CONFIG.as_bytes(),
+        ));
+
+        let req = make_req("CreateSession", Some(name), None, b"");
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert_session_credentials(&body);
+    }
+
+    #[test]
+    fn test_create_session_non_directory_is_invalid_request() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("plain-bucket"), None, b""));
+
+        // moto models.py:1980: S3ClientError("InvalidRequest",
+        // "CreateSession is only supported for directory buckets.")
+        let req = make_req("CreateSession", Some("plain-bucket"), None, b"");
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 400);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<Code>InvalidRequest</Code>"));
+        assert!(body.contains("CreateSession is only supported for directory buckets."));
+    }
+
+    #[test]
+    fn test_create_session_answers_before_bucket_exists() {
+        let handler = S3Handler::new();
+        // botocore's S3 Express refresh sends CreateSession BEFORE its own
+        // CreateBucket lands (v4-s3express auth resolution), so a missing
+        // bucket still gets credentials — this is what the compat fixture
+        // flow requires.
+        let name = "compat-dir-later--use1-az1--x-s3";
+        let req = make_req("CreateSession", Some(name), None, b"");
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+        assert_session_credentials(&String::from_utf8_lossy(&resp.body));
+    }
+
+    #[test]
+    fn test_rename_object_moves_object() {
+        let handler = S3Handler::new();
+        let name = "compat-ren-abc123--use1-az1--x-s3";
+        handler.handle(make_req(
+            "CreateBucket",
+            Some(name),
+            None,
+            DIR_BUCKET_CONFIG.as_bytes(),
+        ));
+        handler.handle(make_req(
+            "PutObject",
+            Some(name),
+            Some("source.txt"),
+            b"hello rename",
+        ));
+
+        // moto responses.py:3769: PUT /{Bucket}/{Key}?renameObject with
+        // x-amz-rename-source: "<bucket>/<key>".
+        let mut req = make_req("RenameObject", Some(name), Some("destination.txt"), b"");
+        req.headers.insert(
+            "x-amz-rename-source".to_string(),
+            format!("{name}/source.txt"),
+        );
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+
+        // The destination carries the moved object; the source is gone.
+        let dest = handler.handle(make_req(
+            "GetObject",
+            Some(name),
+            Some("destination.txt"),
+            b"",
+        ));
+        assert_eq!(dest.status, 200);
+        assert_eq!(dest.body, b"hello rename".to_vec());
+        let src = handler.handle(make_req("GetObject", Some(name), Some("source.txt"), b""));
+        assert_eq!(src.status, 404);
+        assert!(String::from_utf8_lossy(&src.body).contains("NoSuchKey"));
+    }
+
+    #[test]
+    fn test_rename_object_missing_source_is_no_such_key() {
+        let handler = S3Handler::new();
+        let name = "compat-ren-abc123--use1-az1--x-s3";
+        handler.handle(make_req(
+            "CreateBucket",
+            Some(name),
+            None,
+            DIR_BUCKET_CONFIG.as_bytes(),
+        ));
+
+        let mut req = make_req("RenameObject", Some(name), Some("dst"), b"");
+        req.headers.insert(
+            "x-amz-rename-source".to_string(),
+            format!("{name}/missing.txt"),
+        );
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 404);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(
+            body.contains("<Code>NoSuchKey</Code>"),
+            "moto MissingKey: 404 NoSuchKey 'The specified key does not exist.' got: {body}"
+        );
+
+        // moto responses.py:1861: an empty/absent x-amz-rename-source also
+        // resolves to NoSuchKey (no InvalidArgument shadowing).
+        let req = make_req("RenameObject", Some(name), Some("dst"), b"");
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 404);
+    }
+
+    #[test]
+    fn test_rename_object_moto_move_semantics() {
+        let handler = S3Handler::new();
+        let name = "compat-ren-abc123--use1-az1--x-s3";
+        handler.handle(make_req(
+            "CreateBucket",
+            Some(name),
+            None,
+            DIR_BUCKET_CONFIG.as_bytes(),
+        ));
+        handler.handle(make_req("PutObject", Some(name), Some("a.txt"), b"AAA"));
+        handler.handle(make_req("PutObject", Some(name), Some("b.txt"), b"BBB"));
+
+        // Existing destination is overwritten by the move.
+        let mut req = make_req("RenameObject", Some(name), Some("b.txt"), b"");
+        req.headers
+            .insert("x-amz-rename-source".to_string(), format!("{name}/a.txt"));
+        assert_eq!(handler.handle(req).status, 200);
+        let dest = handler.handle(make_req("GetObject", Some(name), Some("b.txt"), b""));
+        assert_eq!(dest.body, b"AAA".to_vec());
+
+        // moto dict order (insert then delete): source == destination
+        // renames drop the entry, exactly like bucket.keys[new] = obj; del
+        // bucket.keys[source] deletes the key when both are equal.
+        let mut req = make_req("RenameObject", Some(name), Some("b.txt"), b"");
+        req.headers
+            .insert("x-amz-rename-source".to_string(), format!("{name}/b.txt"));
+        assert_eq!(handler.handle(req).status, 200);
+        let gone = handler.handle(make_req("GetObject", Some(name), Some("b.txt"), b""));
+        assert_eq!(gone.status, 404);
+    }
+
+    #[test]
+    fn test_rename_object_non_directory_is_invalid_request() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("plain-bucket"), None, b""));
+        handler.handle(make_req(
+            "PutObject",
+            Some("plain-bucket"),
+            Some("k"),
+            b"data",
+        ));
+
+        let mut req = make_req("RenameObject", Some("plain-bucket"), Some("k2"), b"");
+        req.headers.insert(
+            "x-amz-rename-source".to_string(),
+            "plain-bucket/k".to_string(),
+        );
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 400);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<Code>InvalidRequest</Code>"));
+        assert!(body.contains("RenameObject is only supported for directory buckets."));
+    }
+
+    #[test]
+    fn test_detect_session_operations() {
+        let mut q = HashMap::new();
+        q.insert("session".to_string(), String::new());
+        assert_eq!(
+            S3Handler::detect_s3_operation("GET", "/", &q),
+            Some("CreateSession".to_string())
+        );
+        // moto responses.py:583 intercepts "session" in the bucket-level GET.
+        assert_eq!(
+            S3Handler::detect_s3_operation("GET", "/bucket", &q),
+            Some("CreateSession".to_string())
+        );
+        q.insert("createSession".to_string(), String::new());
+        assert_eq!(
+            S3Handler::detect_s3_operation("POST", "/", &q),
+            Some("CreateSession".to_string())
+        );
+        assert_eq!(
+            S3Handler::detect_s3_operation("POST", "/bucket", &q),
+            Some("CreateSession".to_string())
+        );
+    }
+
+    #[test]
+    fn test_vhost_bucket_from_host() {
+        // Parity with the gateway's s3_routing::parse_s3_vhost shapes.
+        assert_eq!(
+            S3Handler::vhost_bucket_from_host(Some("mybucket--use1-az1--x-s3.localhost:4566")),
+            Some("mybucket--use1-az1--x-s3".to_string())
+        );
+        assert_eq!(
+            S3Handler::vhost_bucket_from_host(Some("mybucket.s3.us-east-1.amazonaws.com")),
+            Some("mybucket".to_string())
+        );
+        assert_eq!(
+            S3Handler::vhost_bucket_from_host(Some("mybucket.s3.localhost.robotocore.cloud")),
+            Some("mybucket".to_string())
+        );
+        // Path-style hosts: no virtual host.
+        assert_eq!(
+            S3Handler::vhost_bucket_from_host(Some("localhost:4783")),
+            None
+        );
+        assert_eq!(
+            S3Handler::vhost_bucket_from_host(Some("s3.amazonaws.com")),
+            None
+        );
+        assert_eq!(S3Handler::vhost_bucket_from_host(Some("example.com")), None);
+        assert_eq!(S3Handler::vhost_bucket_from_host(None), None);
+    }
+
+    #[test]
+    fn test_vhost_session_request_resolves_bucket() {
+        // A botocore S3 Express refresh: GET /?session with the bucket in a
+        // virtual-hosted Host header. The twin must resolve the bucket and
+        // answer the moto CreateSession XML.
+        let handler = S3Handler::new();
+        let name = "compat-dir-abc123--use1-az1--x-s3";
+        handler.handle(make_req(
+            "CreateBucket",
+            Some(name),
+            None,
+            DIR_BUCKET_CONFIG.as_bytes(),
+        ));
+
+        let req = wire_req(
+            "GET",
+            None,
+            None,
+            &[("session", "")],
+            &format!("{}.localhost:4783", name),
+        );
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+        assert_session_credentials(&String::from_utf8_lossy(&resp.body));
+
+        // POST /{Bucket}?createSession (the wire shape from newer S3
+        // endpoint rules) answers the same credentials.
+        let req = wire_req(
+            "POST",
+            Some(name),
+            None,
+            &[("createSession", "")],
+            "localhost:4783",
+        );
+        assert_eq!(handler.handle(req).status, 200);
+    }
+
+    #[test]
+    fn test_vhost_object_request_rewrites_to_path_style() {
+        // Virtual-hosted S3 Express object traffic: PUT /destination.txt
+        // with Host=<bucket>.localhost — the gateway split "destination.txt"
+        // out as the bucket. The handler must rebuild bucket/key and re-detect
+        // RenameObject.
+        let handler = S3Handler::new();
+        let name = "compat-ren-abc123--use1-az1--x-s3";
+        handler.handle(make_req(
+            "CreateBucket",
+            Some(name),
+            None,
+            DIR_BUCKET_CONFIG.as_bytes(),
+        ));
+        handler.handle(make_req(
+            "PutObject",
+            Some(name),
+            Some("source.txt"),
+            b"hello rename",
+        ));
+
+        let mut req = wire_req(
+            "PUT",
+            Some("destination.txt"),
+            None,
+            &[("renameObject", "")],
+            &format!("{}.localhost:4783", name),
+        );
+        req.headers.insert(
+            "x-amz-rename-source".to_string(),
+            format!("{name}/source.txt"),
+        );
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+        let dest = handler.handle(make_req(
+            "GetObject",
+            Some(name),
+            Some("destination.txt"),
+            b"",
+        ));
+        assert_eq!(dest.status, 200);
+        assert_eq!(dest.body, b"hello rename".to_vec());
+    }
+
+    #[test]
+    fn test_vhost_rename_recovered_from_rename_source_header() {
+        // On the wire the gateway's to_s3_request drops the value-less
+        // renameObject query param, so the re-detect lands on PutObject;
+        // the x-amz-rename-source header (moto s3/responses.py:1861) is the
+        // operation's own marker and recovers RenameObject.
+        let handler = S3Handler::new();
+        let name = "compat-ren-abc123--use1-az1--x-s3";
+        handler.handle(make_req(
+            "CreateBucket",
+            Some(name),
+            None,
+            DIR_BUCKET_CONFIG.as_bytes(),
+        ));
+        handler.handle(make_req(
+            "PutObject",
+            Some(name),
+            Some("source.txt"),
+            b"hello rename",
+        ));
+
+        // No query params survive the gateway; the arriving op is the blind
+        // bucket-level PUT fallback, exactly like the real wire.
+        let mut req = wire_req(
+            "PUT",
+            Some("destination.txt"),
+            None,
+            &[],
+            &format!("{}.localhost:4783", name),
+        );
+        req.headers.insert(
+            "x-amz-rename-source".to_string(),
+            format!("{name}/source.txt"),
+        );
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+        let dest = handler.handle(make_req(
+            "GetObject",
+            Some(name),
+            Some("destination.txt"),
+            b"",
+        ));
+        assert_eq!(dest.status, 200);
+        assert_eq!(dest.body, b"hello rename".to_vec());
+        let src = handler.handle(make_req("GetObject", Some(name), Some("source.txt"), b""));
+        assert_eq!(src.status, 404);
+    }
+
+    #[test]
+    fn test_vhost_session_without_bucket_falls_back_to_list_buckets() {
+        // moto answers GET / (path-style, no bucket) from the root dispatch
+        // (all_buckets) even with a ?session query — no virtual host means
+        // no bucket to establish a session for.
+        let handler = S3Handler::new();
+        let req = wire_req("GET", None, None, &[("session", "")], "localhost:4783");
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+        assert!(String::from_utf8_lossy(&resp.body).contains("ListAllMyBucketsResult"));
     }
 }

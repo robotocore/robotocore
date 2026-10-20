@@ -677,7 +677,9 @@ impl DynamoDbHandler {
         let _ = state;
 
         // Stream capture mirrors moto's put_item hook (INSERT / MODIFY).
-        let old_serde = old.as_ref().map(|i| attrmap_to_serde(&i.attributes));
+        let old_serde = streaming::stream_enabled(&table)
+            .then(|| old.as_ref().map(|i| attrmap_to_serde(&i.attributes)))
+            .flatten();
         streaming::record_mutation(
             &table,
             old_serde.as_ref().map(|m| m as &Map<String, Value>),
@@ -753,7 +755,9 @@ impl DynamoDbHandler {
         let old = table.items.write().remove(&key);
         // Stream capture mirrors moto's delete_item hook (REMOVE only when
         // the item actually existed — moto emits no event without an image).
-        let old_serde = old.as_ref().map(|i| attrmap_to_serde(&i.attributes));
+        let old_serde = streaming::stream_enabled(&table)
+            .then(|| old.as_ref().map(|i| attrmap_to_serde(&i.attributes)))
+            .flatten();
         streaming::record_mutation(
             &table,
             old_serde.as_ref().map(|m| m as &Map<String, Value>),
@@ -836,7 +840,9 @@ impl DynamoDbHandler {
 
         // Stream capture mirrors moto's update_item hook
         // (INSERT when the item was absent, MODIFY otherwise).
-        let old_serde = old_attrs.as_ref().map(attrmap_to_serde);
+        let old_serde = streaming::stream_enabled(&table)
+            .then(|| old_attrs.as_ref().map(attrmap_to_serde))
+            .flatten();
         streaming::record_mutation(
             &table,
             old_serde.as_ref().map(|m| m as &Map<String, Value>),
@@ -1383,7 +1389,9 @@ impl DynamoDbHandler {
                             .items
                             .write()
                             .insert(key, Arc::new(Item::new(attrs_to_map(&attrs))));
-                        let old_serde = old.as_ref().map(attrmap_to_serde);
+                        let old_serde = streaming::stream_enabled(&table)
+                            .then(|| old.as_ref().map(attrmap_to_serde))
+                            .flatten();
                         streaming::record_mutation(
                             &table,
                             old_serde.as_ref().map(|m| m as &Map<String, Value>),
@@ -1395,7 +1403,9 @@ impl DynamoDbHandler {
                             key_json.as_object().cloned().unwrap_or_default();
                         if let Some(key) = item_key(&table, &key_attrs) {
                             let old = table.items.write().remove(&key);
-                            let old_serde = old.as_ref().map(|i| attrmap_to_serde(&i.attributes));
+                            let old_serde = streaming::stream_enabled(&table)
+                                .then(|| old.as_ref().map(|i| attrmap_to_serde(&i.attributes)))
+                                .flatten();
                             streaming::record_mutation(
                                 &table,
                                 old_serde.as_ref().map(|m| m as &Map<String, Value>),
@@ -1634,12 +1644,15 @@ impl DynamoDbHandler {
                 .write()
                 .insert(put.key.clone(), Arc::new(Item::new(put.attrs.clone())));
             // Stream capture mirrors moto's transact put hook.
-            let old_serde = old.as_ref().map(attrmap_to_serde);
-            let new_serde = attrmap_to_serde(&put.attrs.clone());
+            let old_serde = streaming::stream_enabled(&put.table)
+                .then(|| old.as_ref().map(attrmap_to_serde))
+                .flatten();
+            let new_serde =
+                streaming::stream_enabled(&put.table).then(|| attrmap_to_serde(&put.attrs.clone()));
             streaming::record_mutation(
                 &put.table,
                 old_serde.as_ref().map(|m| m as &Map<String, Value>),
-                Some(&new_serde),
+                new_serde.as_ref().map(|m| m as &Map<String, Value>),
             );
         }
         for upd in updates {
@@ -1664,7 +1677,9 @@ impl DynamoDbHandler {
             }
             // Stream capture mirrors moto's transact update hook
             // (INSERT when the item was absent, MODIFY otherwise).
-            let old_serde = old.as_ref().map(attrmap_to_serde);
+            let old_serde = streaming::stream_enabled(&upd.table)
+                .then(|| old.as_ref().map(attrmap_to_serde))
+                .flatten();
             streaming::record_mutation(
                 &upd.table,
                 old_serde.as_ref().map(|m| m as &Map<String, Value>),
@@ -1677,7 +1692,9 @@ impl DynamoDbHandler {
         }
         for del in deletes {
             let old = del.table.items.write().remove(&del.key);
-            let old_serde = old.as_ref().map(|i| attrmap_to_serde(&i.attributes));
+            let old_serde = streaming::stream_enabled(&del.table)
+                .then(|| old.as_ref().map(|i| attrmap_to_serde(&i.attributes)))
+                .flatten();
             streaming::record_mutation(
                 &del.table,
                 old_serde.as_ref().map(|m| m as &Map<String, Value>),
@@ -2159,7 +2176,9 @@ fn partiql_run(
                 }
             }
             for (key, attrs) in replacements {
-                let old = items.get(&key).map(|i| attrmap_to_serde(&i.attributes));
+                let old = streaming::stream_enabled(&table)
+                    .then(|| items.get(&key).map(|i| attrmap_to_serde(&i.attributes)))
+                    .flatten();
                 items.insert(key, Arc::new(Item::new(attrs.clone())));
                 // Stream capture mirrors moto's PartiQL UPDATE (via put_item).
                 streaming::record_mutation(
@@ -2179,7 +2198,9 @@ fn partiql_run(
                 .collect();
             for key in to_remove {
                 let old = items.remove(&key);
-                let old_serde = old.as_ref().map(|i| attrmap_to_serde(&i.attributes));
+                let old_serde = streaming::stream_enabled(&table)
+                    .then(|| old.as_ref().map(|i| attrmap_to_serde(&i.attributes)))
+                    .flatten();
                 // Stream capture mirrors moto's PartiQL DELETE (via
                 // delete_item's hook; no event when the item was absent).
                 streaming::record_mutation(

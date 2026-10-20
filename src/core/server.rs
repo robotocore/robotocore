@@ -1560,10 +1560,8 @@ pub async fn config_update_handler(body: axum::body::Bytes) -> Response {
     };
     let mut updated = serde_json::Map::new();
     for (key, value) in updates {
-        let value_str = match value {
-            serde_json::Value::String(s) => s.clone(),
-            other => other.to_string(),
-        };
+        // python twin echoes str(value): `True`/`None`/`['a']` shapes.
+        let value_str = crate::core::runtime_config::python_repr(value);
         if !crate::core::runtime_config::MUTABLE_SETTINGS
             .iter()
             .any(|(k, _)| k == key)
@@ -2192,6 +2190,16 @@ fn body_is_sdb(headers: &HeaderMap, body: &[u8]) -> bool {
 
 /// Extract account ID from Authorization header.
 fn extract_account_from_request(headers: &HeaderMap, query_string: &str, body: &[u8]) -> u64 {
+    // Explicit per-test override header wins over every credential-like
+    // source (mirrors the python twin's x-moto-account-id priority).
+    if let Some(account_header) = headers.get("X-Robotocore-Account") {
+        if let Ok(account_str) = account_header.to_str() {
+            if let Ok(account) = account_str.parse::<u64>() {
+                return account;
+            }
+        }
+    }
+
     // Try to get account from Authorization header
     if let Some(auth) = headers.get("Authorization") {
         if let Ok(auth_str) = auth.to_str() {
@@ -2229,15 +2237,6 @@ fn extract_account_from_request(headers: &HeaderMap, query_string: &str, body: &
         let key = urlencoding::decode(&v).unwrap_or_default();
         if !key.is_empty() {
             return parse_account_from_key(&key);
-        }
-    }
-
-    // Try custom headers
-    if let Some(account_header) = headers.get("X-Robotocore-Account") {
-        if let Ok(account_str) = account_header.to_str() {
-            if let Ok(account) = account_str.parse::<u64>() {
-                return account;
-            }
         }
     }
 

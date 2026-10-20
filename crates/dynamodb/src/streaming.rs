@@ -17,6 +17,12 @@ pub const STARTING_SEQUENCE_NUMBER: &str = "1100000000017454423009";
 
 /// Attach the shard and stream label (moto sets both once, when streams
 /// are configured on the table).
+/// Cheap predicate mirroring `record_mutation`'s gate so callers can skip
+/// the serde deep-copies for non-stream tables entirely.
+pub fn stream_enabled(table: &Table) -> bool {
+    *table.stream_enabled.read()
+}
+
 pub fn enable_stream(table: &Table) {
     {
         let mut shard = table.stream_shard.write();
@@ -26,7 +32,12 @@ pub fn enable_stream(table: &Table) {
     }
     let mut label = table.stream_label.write();
     if label.is_none() {
-        *label = Some(chrono::Utc::now().to_rfc3339());
+        // moto: naive `datetime.utcnow().isoformat()` — no UTC offset.
+        *label = Some(
+            chrono::Utc::now()
+                .format("%Y-%m-%dT%H:%M:%S%.6f")
+                .to_string(),
+        );
     }
 }
 

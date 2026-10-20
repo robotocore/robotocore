@@ -192,14 +192,16 @@ are parsed by `tooling/moto_port_progress.py`.
 - Gate after wave: 142 native of 157; REMAINING 15 = 7 to port + 8
   G2-uncertain.
 
-## Wave 6 (2026-10-20, on top of 70e3f59d) — three services
+## Wave 6 (2026-10-20, on top of 70e3f59d) — four services
 
 - Ported: `forecast` (23/23 — the fork implements only the DatasetGroup
   family; everything else 501 verbatim), `rdsdata` (8/8 — one routed op,
   ExecuteStatement default QueryResults), `servicecatalogappregistry`
   (3/3 — greedy `/applications/(.+)/resources` dispatch so ARN-addressed
   lookups resolve like moto's urls.py; ValidationException lookup by
-  arn/id/name).
+  arn/id/name), `mediapackagev2` (30/30 — channel groups → channels →
+  origin endpoints → harvest jobs; unix-seconds timestamps, tag-casing
+  per botocore locationName, never_return InputType quirk).
 - Infra: `POST /_robotocore/config` ported with the python twin's exact
   statuses (403 without `ENABLE_CONFIG_UPDATES=1`) — the
   iam-enforcement suite's 4 ERRORS become clean skips.
@@ -240,7 +242,18 @@ are parsed by `tooling/moto_port_progress.py`.
   `neptune`-scope label paths verified (botocore signs neptune under
   scope `rds`).
 - Gate script after merges: 157/157 old-served services native;
-  G2 list fully resolved; GATE CLOSED pending final lane + parity.
+  G2 list fully resolved; GATE PASS.
+- Adversarial review of origin/rust..rust folded in: ECS probe separates
+  moto's ClusterNotFoundException from the missing-service
+  AWSValidationException; dynamodb stream capture skips serde copies on
+  non-stream tables (notify stream-label keeps moto's naive-UTC shape);
+  X-Robotocore-Account override ranked above the SigV2 body source;
+  config endpoint echoes python str() reprs; four stale registry rows
+  flipped (forecast, mediapackagev2, servicecatalogappregistry, rdsdata).
+- Known gap (recorded): probes/*.json artifacts are not regenerated for
+  any wave service (the sidecar-era prober is gone), so
+  docs/coverage.html under-reports the rust fleet; coverage.html is a
+  stale artifact awaiting a rust-side prober.
 - Promotion: exit 0; baseline 180 suites drift-gated (wave-6/7 suites
   row appended with 358 combined passes).
 - Infra: disk-full incidents twice (root at 100% from 12 concurrent

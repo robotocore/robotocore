@@ -24,6 +24,24 @@ pub fn register_state(account: u64, region: &str, state: &EcsState) {
         .insert((account, region.to_string()), state.clone());
 }
 
+/// Whether `cluster` exists (moto's `_get_cluster` raises
+/// ClusterNotFoundException before the service check) for (account, region).
+/// Keys follow the ECS state's clusters map; moto normalizes the name to the
+/// part after the last slash.
+pub fn cluster_exists(account: u64, region: &str, cluster: &str) -> bool {
+    let name = cluster.split('/').next_back().unwrap_or(cluster);
+    registered()
+        .read()
+        .get(&(account, region.to_string()))
+        .map(|state| {
+            state
+                .clusters
+                .read()
+                .contains_key(name)
+        })
+        .unwrap_or(false)
+}
+
 /// Whether `service` exists in `cluster` for (account, region), mirroring moto's
 /// `ecs_backend.describe_services(cluster, [service])` one-hit probe.
 pub fn service_exists(account: u64, region: &str, cluster: &str, service: &str) -> bool {

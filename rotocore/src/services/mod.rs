@@ -523,7 +523,6 @@ mod tests {
             "sagemaker-runtime",
             "scheduler",
             "servicediscovery",
-            "servicediscovery",
             "xray",
             "servicecatalogappregistry",
         ] {

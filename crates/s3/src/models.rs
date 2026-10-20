@@ -63,7 +63,7 @@ pub struct DeleteMarker {
 }
 
 /// All revisions of one object key, newest first within each list.
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ObjectEntry {
     #[serde(default)]
     pub versions: Vec<ObjectVersion>,

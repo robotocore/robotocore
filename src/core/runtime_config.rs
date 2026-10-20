@@ -9,9 +9,10 @@
 //! NOTE: values are stored and reflected back on GET-style reads; settings
 //! whose consumers are not ported to the rust gateway yet (ENFORCE_IAM
 //! middleware, audit-log resize, retention toggles) are accepted but have
-//! no consumer. Read `runtime_config::current(key)` when wiring those
+//! no consumer. Read `runtime_config::get(key)` when wiring those
 //! subsystems so they honor runtime overrides.
 
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -69,6 +70,7 @@ pub fn set(key: &str, value: String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn unknown_keys_are_rejectable() {
@@ -82,7 +84,60 @@ mod tests {
         assert_eq!(get("DYNAMODB_REMOVE_EXPIRED_ITEMS"), Some("0".to_string()));
     }
 
+    #[test]
+    fn python_repr_matches_str() {
+        assert_eq!(python_repr(&json!(true)), "True");
+        assert_eq!(python_repr(&json!(null)), "None");
+        assert_eq!(python_repr(&json!(3)), "3");
+        assert_eq!(python_repr(&json!(["a"])), "['a']");
+        assert_eq!(python_repr(&json!({"a": 1})), "{'a': 1}");
+        assert_eq!(python_repr(&json!("en")), "en");
+    }
+
     fn known_key(key: &str) -> bool {
         MUTABLE_SETTINGS.iter().any(|(k, _)| *k == key)
     }
+}
+
+/// Python `str(value)` for the config endpoint's echo of non-string values:
+/// bools render `True`/`False`, null renders `None`, arrays and objects use
+/// single-quoted separators — the wire shape the python twin produced.
+pub fn python_repr(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Bool(true) => "True".to_string(),
+        serde_json::Value::Bool(false) => "False".to_string(),
+        serde_json::Value::Null => "None".to_string(),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::Array(items) => {
+            // str(["a"]) == "['a']" — container members render repr(),
+            // which quotes strings.
+            let inner: Vec<String> = items.iter().map(python_repr_member).collect();
+            format!("[{}]", inner.join(", "))
+        }
+        serde_json::Value::Object(map) => {
+            let inner: Vec<String> = map
+                .iter()
+                .map(|(k, v)| {
+                    format!(
+                        "{}: {}",
+                        python_repr_member(&Value::String(k.clone())),
+                        python_repr_member(v)
+                    )
+                })
+                .collect();
+            format!("{{{}}}", inner.join(", "))
+        }
+    }
+}
+
+/// Inside containers (list items, dict keys and values) python uses repr():
+/// strings carry single quotes. The settings whitelist only ever carries
+/// ASCII values, so the only escapes are backslash and quote.
+fn python_repr_member(value: &serde_json::Value) -> String {
+    if let serde_json::Value::String(s) = value {
+        let escaped = s.replace('\\', "\\\\").replace('\'', "\\'");
+        return format!("'{escaped}'");
+    }
+    python_repr(value)
 }
