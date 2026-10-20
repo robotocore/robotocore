@@ -35,14 +35,6 @@ pub fn get_state(account: u64, region: &str) -> Option<LambdaState> {
         .cloned()
 }
 
-pub(crate) fn get_registered() -> Vec<(u64, String, LambdaState)> {
-    registered()
-        .read()
-        .iter()
-        .map(|((a, r), s)| (*a, r.clone(), s.clone()))
-        .collect()
-}
-
 /// Successful = handler returned; failure = handler raised / runtime invalid.
 pub struct InvokeOutcome {
     pub payload: String,
