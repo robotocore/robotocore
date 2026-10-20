@@ -332,9 +332,11 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "TagResource" => Some(tag_resource(s, &p)),
         "UntagResource" => Some(untag_resource(s, &p)),
         "ListTagsForResource" => Some(list_tags_for_resource(s, &p)),
-        "EnableAwsServiceAccess" => Some(enable_service_access(s, &p)),
-        "DisableAwsServiceAccess" => Some(disable_service_access(s, &p)),
-        "ListAwsServiceAccessForOrganization" => Some(list_service_access(s)),
+        // Wire casing per the AWS API: the service-access ops spell "AWS"
+        // in caps, unlike the Aws-mixed variants first assumed here.
+        "EnableAWSServiceAccess" => Some(enable_service_access(s, &p)),
+        "DisableAWSServiceAccess" => Some(disable_service_access(s, &p)),
+        "ListAWSServiceAccessForOrganization" => Some(list_service_access(s)),
         "RegisterDelegatedAdministrator" => Some(register_delegated_admin(s, &p)),
         "DeregisterDelegatedAdministrator" => Some(deregister_delegated_admin(s, &p)),
         "ListDelegatedAdministrators" => Some(list_delegated_admins(s, &p)),
@@ -2031,12 +2033,12 @@ mod tests {
         let acct = scope();
         make_org(acct);
         let mut r = req(
-            "EnableAwsServiceAccess",
+            "EnableAWSServiceAccess",
             json!({"ServicePrincipal": "ssm.amazonaws.com"}),
         );
         r.account = acct;
         dispatch(&r).unwrap();
-        r = req("ListAwsServiceAccessForOrganization", json!({}));
+        r = req("ListAWSServiceAccessForOrganization", json!({}));
         r.account = acct;
         let b = body(&dispatch(&r).unwrap());
         assert!(b["EnabledServicePrincipals"]
@@ -2155,7 +2157,7 @@ mod tests {
             .unwrap()
             .to_string();
         r = req(
-            "EnableAwsServiceAccess",
+            "EnableAWSServiceAccess",
             json!({"ServicePrincipal": "ssm.amazonaws.com"}),
         );
         r.account = acct;

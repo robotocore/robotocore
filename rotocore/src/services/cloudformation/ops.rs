@@ -508,8 +508,8 @@ fn create_resource(
                 .and_then(Value::as_str)
                 .map(String::from)
                 .unwrap_or_else(|| fallback_name(logical_id));
-            let (url, attrs) =
-                mirror::create_sqs_queue(&name, account, region).ok_or("sqs mirror failed")?;
+            let (url, attrs) = mirror::create_sqs_queue(props, &name, account, region)
+                .ok_or("sqs mirror failed")?;
             (Some(url), json_obj(&attrs))
         }
         "AWS::SNS::Topic" => {
@@ -1296,10 +1296,21 @@ fn delete_stack_action(params: &HashMap<String, String>, region: &str, account: 
     let account_num: u64 = account.parse().unwrap_or(123456789012);
     let name = param(params, "StackName").to_string();
     with_store(account_num, region, |store| {
+        // Prefer a live record over a stale DELETE_COMPLETE one, matching
+        // `find_stack`'s name resolution — otherwise a deleted-then-remade
+        // stack delete hits the tombstone and the live stack leaks.
         let pos = store
             .stacks
             .iter()
-            .position(|s| s.stack_id == name || (s.stack_name == name));
+            .position(|s| {
+                (s.stack_id == name || s.stack_name == name) && s.status != "DELETE_COMPLETE"
+            })
+            .or_else(|| {
+                store
+                    .stacks
+                    .iter()
+                    .position(|s| s.stack_id == name || s.stack_name == name)
+            });
         let Some(pos) = pos else {
             // Python provider: deleting an unknown stack is a no-op.
             return Ok(xml::empty("DeleteStackResponse"));
@@ -1419,19 +1430,29 @@ fn list_stacks(params: &HashMap<String, String>, account_num: u64, region: &str)
         i += 1;
     }
     with_store(account_num, region, |store| {
-        let summaries: Vec<Value> = store
-            .stacks
-            .iter()
-            .filter(|s| filter.is_empty() || filter.contains(&s.status))
-            .map(|s| {
-                json!({
-                    "StackId": s.stack_id,
-                    "StackName": s.stack_name,
-                    "StackStatus": s.status,
-                    "CreationTime": xml::timestamp_from(s.created),
-                })
-            })
-            .collect();
+        // moto order: live records first (`self.stacks`), then the deleted
+        // ones (`self.deleted_stacks`) — so name lookups over the list see
+        // the live stack before any DELETE_COMPLETE tombstone.
+        let mut live_summaries: Vec<Value> = Vec::new();
+        let mut deleted_summaries: Vec<Value> = Vec::new();
+        for s in store.stacks.iter() {
+            if !filter.is_empty() && !filter.contains(&s.status) {
+                continue;
+            }
+            let summary = json!({
+                "StackId": s.stack_id,
+                "StackName": s.stack_name,
+                "StackStatus": s.status,
+                "CreationTime": xml::timestamp_from(s.created),
+            });
+            if s.status == "DELETE_COMPLETE" {
+                deleted_summaries.push(summary);
+            } else {
+                live_summaries.push(summary);
+            }
+        }
+        live_summaries.extend(deleted_summaries);
+        let summaries = live_summaries;
         Ok(xml::ok(
             "ListStacksResponse",
             &xml::dict_to_xml(&json!({"StackSummaries": summaries})),
