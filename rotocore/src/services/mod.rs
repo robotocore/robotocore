@@ -110,6 +110,7 @@ pub mod sagemaker;
 pub mod sdb;
 pub mod securityhub;
 pub mod servicecatalog;
+pub mod servicecatalogappregistry;
 pub mod servicequotas;
 pub mod ses;
 pub mod sesv2;
@@ -244,7 +245,14 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "sagemaker" => Some(sagemaker::dispatch(req)),
         "sdb" => sdb::dispatch(req),
         "securityhub" => Some(securityhub::dispatch(req)),
-        "servicecatalog" => servicecatalog::dispatch(req),
+        "servicecatalog" => servicecatalogappregistry::dispatch(req)
+            // AppRegistry shares the Service Catalog signing name: requests
+            // arrive labeled `servicecatalog` (rest-json URIs), while the
+            // JSON Service Catalog API dispatches on X-Amz-Target. The two
+            // URI families are disjoint, so route appregistry paths through
+            // its backend and everything else to Service Catalog.
+            .or_else(|| servicecatalog::dispatch(req)),
+        "servicecatalogappregistry" => servicecatalogappregistry::dispatch(req),
         "servicequotas" | "service-quotas" => servicequotas::dispatch(req),
         "ses" => ses::dispatch(req),
         "sesv2" => Some(sesv2::dispatch(req)),
@@ -394,6 +402,7 @@ pub fn handles_service(service: &str) -> bool {
             | "sdb"
             | "securityhub"
             | "servicecatalog"
+            | "servicecatalogappregistry"
             | "service-quotas"
             | "servicequotas"
             | "ses"
@@ -435,6 +444,7 @@ mod tests {
             "elasticache",
             "codepipeline",
             "xray",
+            "servicecatalogappregistry",
         ] {
             assert!(handles_service(service), "{service} should be armed");
         }
