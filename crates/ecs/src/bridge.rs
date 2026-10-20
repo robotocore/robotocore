@@ -33,12 +33,7 @@ pub fn cluster_exists(account: u64, region: &str, cluster: &str) -> bool {
     registered()
         .read()
         .get(&(account, region.to_string()))
-        .map(|state| {
-            state
-                .clusters
-                .read()
-                .contains_key(name)
-        })
+        .map(|state| state.clusters.read().contains_key(name))
         .unwrap_or(false)
 }
 
