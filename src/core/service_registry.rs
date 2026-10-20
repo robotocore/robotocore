@@ -263,7 +263,7 @@ pub const SERVICE_REGISTRY: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "servicediscovery",
-        "moto",
+        "native",
         "json",
         "Cloud Map Service Discovery",
     ),

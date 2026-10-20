@@ -122,6 +122,7 @@ pub mod sdb;
 pub mod securityhub;
 pub mod servicecatalog;
 pub mod servicecatalogappregistry;
+pub mod servicediscovery;
 pub mod servicequotas;
 pub mod ses;
 pub mod sesv2;
@@ -291,6 +292,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
             // its backend and everything else to Service Catalog.
             .or_else(|| servicecatalog::dispatch(req)),
         "servicecatalogappregistry" => servicecatalogappregistry::dispatch(req),
+        "servicediscovery" => servicediscovery::dispatch(req),
         "servicequotas" | "service-quotas" => servicequotas::dispatch(req),
         "ses" => ses::dispatch(req),
         "sesv2" => Some(sesv2::dispatch(req)),
@@ -452,6 +454,7 @@ pub fn handles_service(service: &str) -> bool {
             | "securityhub"
             | "servicecatalog"
             | "servicecatalogappregistry"
+            | "servicediscovery"
             | "service-quotas"
             | "servicequotas"
             | "ses"
@@ -503,6 +506,8 @@ mod tests {
             "mediastore-data",
             "sagemaker-runtime",
             "scheduler",
+            "servicediscovery",
+            "servicediscovery",
             "xray",
             "servicecatalogappregistry",
         ] {
