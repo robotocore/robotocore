@@ -390,6 +390,19 @@ impl LambdaHandler {
             "SnapStart": {"ApplyOn": "None", "OptimizationStatus": "Off"},
             "LastUpdateStatus": "Successful",
         });
+        // moto echoes VpcConfig as given and stamps VpcId when groups supply.
+        if let Some(vpc) = f.vpc_config.read().as_ref() {
+            let mut vpc = vpc.clone();
+            let has_groups = vpc
+                .get("SecurityGroupIds")
+                .and_then(Value::as_array)
+                .map(|g| !g.is_empty())
+                .unwrap_or(false);
+            if has_groups && vpc.get("VpcId").is_none() {
+                vpc["VpcId"] = json!("vpc-123abc");
+            }
+            cfg["VpcConfig"] = vpc;
+        }
         if let Some(vars) = f.environment.read().as_ref() {
             if !vars.is_empty() {
                 cfg["Environment"] = json!({"Variables": vars});
@@ -436,6 +449,9 @@ impl LambdaHandler {
         }
         if let Some(m) = req.param_u64("MemorySize") {
             *func.memory_size.write() = m as u32;
+        }
+        if let Some(vpc) = req.params.get("VpcConfig") {
+            *func.vpc_config.write() = Some(vpc.clone());
         }
         // Deployment package: ZipFile arrives base64-encoded by botocore.
         // Without an inline package, fall back to the S3 source (S3Bucket +
@@ -645,6 +661,9 @@ impl LambdaHandler {
         }
         if let Some(rt) = req.param_str("Runtime") {
             *func.runtime.write() = rt;
+        }
+        if let Some(vpc) = req.params.get("VpcConfig") {
+            *func.vpc_config.write() = Some(vpc.clone());
         }
         if let Some(t) = req.param_u64("Timeout") {
             *func.timeout.write() = t as u32;
@@ -1137,12 +1156,13 @@ impl LambdaHandler {
             "BatchSize": e.batch_size,
             "EventSourceArn": e.event_source_arn,
             "FunctionArn": e.function_arn,
+            "StartingPosition": e.starting_position,
             "MaximumBatchingWindowInSeconds": 0,
             "State": e.state,
             "StateTransitionReason": e.state_transition_reason,
             "LastModified": e.last_modified,
-            "FunctionResponseTypes": [],
-            "FilterCriteria": Value::Null,
+            "FunctionResponseTypes": e.function_response_types.clone().unwrap_or_default(),
+            "FilterCriteria": e.filter_criteria.clone().unwrap_or(Value::Null),
             "BisectBatchOnFunctionError": false,
             "MaximumRetryAttempts": -1,
         })
@@ -1155,6 +1175,14 @@ impl LambdaHandler {
             Err(resp) => return resp,
         };
         let uuid_val = uuid::Uuid::new_v4().to_string();
+        let is_sqs = req
+            .param_str("EventSourceArn")
+            .map(|a| a.contains(":sqs:"))
+            .unwrap_or(true);
+        // moto: stream sources default their starting position to TRIM_HORIZON.
+        let starting_position = req
+            .param_str("StartingPosition")
+            .or_else(|| (!is_sqs).then(|| "TRIM_HORIZON".to_string()));
         let em = Arc::new(crate::models::EventSourceMapping {
             uuid: uuid_val.clone(),
             function_arn: func.function_arn.clone(),
@@ -1168,6 +1196,19 @@ impl LambdaHandler {
                 .get("Enabled")
                 .and_then(Value::as_bool)
                 .unwrap_or(true),
+            starting_position,
+            filter_criteria: req.params.get("FilterCriteria").cloned(),
+            function_response_types: req
+                .params
+                .get("FunctionResponseTypes")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(Value::as_str)
+                        .map(String::from)
+                        .collect::<Vec<String>>()
+                })
+                .filter(|t: &Vec<String>| !t.is_empty()),
         });
         state
             .event_source_mappings
@@ -1221,6 +1262,24 @@ impl LambdaHandler {
             last_modified: epoch_now(),
             batch_size,
             enabled,
+            starting_position: em.starting_position.clone(),
+            filter_criteria: req
+                .params
+                .get("FilterCriteria")
+                .cloned()
+                .or_else(|| em.filter_criteria.clone()),
+            function_response_types: req
+                .params
+                .get("FunctionResponseTypes")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(Value::as_str)
+                        .map(String::from)
+                        .collect::<Vec<String>>()
+                })
+                .filter(|t: &Vec<String>| !t.is_empty())
+                .or_else(|| em.function_response_types.clone()),
         });
         state
             .event_source_mappings
@@ -1260,6 +1319,90 @@ impl LambdaHandler {
             .map(|e| Self::esm_dict(e))
             .collect();
         AwsResponse::json(200, json!({ "EventSourceMappings": ems }))
+    }
+
+    /// Engine hook: snapshot of every stored ESM, tagged with the
+    /// (account, region) state it belongs to. The gateway's engine thread
+    /// polls these and invokes the mapped functions.
+    pub fn esm_snapshot(&self) -> Vec<crate::models::EsmMappingEntry> {
+        let states = self.state.read();
+        let mut out = Vec::new();
+        for ((account, region), st) in states.iter() {
+            for m in st.event_source_mappings.read().values() {
+                out.push(crate::models::EsmMappingEntry {
+                    account: *account,
+                    region: region.clone(),
+                    mapping: (**m).clone(),
+                });
+            }
+        }
+        out
+    }
+
+    /// Engine hook: run one invocation of `function_name` with an event
+    /// payload (no request-shaping — ESM delivery is synchronous and
+    /// unversioned, like moto's `func.invoke`).
+    pub fn invoke_engine_event(
+        &self,
+        account: u64,
+        region: &str,
+        function_name: &str,
+        event: &Value,
+    ) -> crate::models::EngineInvokeResult {
+        let state = self.state_for(account, region);
+        let event_str = event.to_string();
+        let req = AwsRequest {
+            service: "lambda".to_string(),
+            operation: "Invoke".to_string(),
+            account,
+            region: region.to_string(),
+            params: json!({"FunctionName": function_name}),
+            body: bytes::Bytes::from(event_str),
+            method: "POST".into(),
+            path: format!("/2015-03-31/functions/{function_name}/invocations"),
+            query_string: String::new(),
+            headers: HashMap::new(),
+        };
+        let func = match resolve_fn(&state, &req, function_name) {
+            Ok(f) => f,
+            Err(resp) => {
+                return crate::models::EngineInvokeResult {
+                    function_error: Some("ResourceNotFoundException".to_string()),
+                    payload: resp.body,
+                };
+            }
+        };
+        match Self::execute(&state, &req, &func) {
+            Ok(r) => crate::models::EngineInvokeResult {
+                function_error: r.function_error,
+                payload: r.payload,
+            },
+            Err(resp) => crate::models::EngineInvokeResult {
+                function_error: Some("Unhandled".to_string()),
+                payload: resp.body,
+            },
+        }
+    }
+
+    /// Find a function URL config by its url-id (the first host label of
+    /// `https://{url_id}.lambda-url.{region}.on.aws/`). Returns the owning
+    /// (account, region) and the stored config JSON. Scans every state so a
+    /// URL request without credentials resolves like AWS does (URLs live on
+    /// their own domain, outside any account context).
+    pub fn find_url_config(&self, url_id: &str) -> Option<(u64, String, Value)> {
+        let prefix = format!("https://{url_id}.");
+        let states = self.state.read();
+        for ((account, region), st) in states.iter() {
+            for config in st.url_configs.read().values() {
+                match config.get("FunctionUrl").and_then(Value::as_str) {
+                    Some(url) if url.starts_with(&prefix) => {
+                        return Some((*account, region.clone(), config.clone()));
+                    }
+                    _ => continue,
+                }
+            }
+        }
+        None
     }
 
     // ---------------------------------------------------------------
