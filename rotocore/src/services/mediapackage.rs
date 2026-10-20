@@ -1,11 +1,12 @@
 //! MediaPackage backend (REST-JSON).
 //!
 //! Port of moto's MediaPackage: channels, origin endpoints and harvest
-//! jobs. Wire shapes mirror moto's `to_dict` output; ops moto does not
-//! route (tags, configureLogs, rotate*) fall through to the 501 like the
-//! sidecar's bind failure.
+//! jobs. Wire shapes mirror moto's `to_dict` output. Ops moto does not
+//! route (tags, configureLogs, rotate*) are implemented from the botocore
+//! REST bindings (PUT /channels/{id}/configure_logs, PUT /channels/{id}/credentials,
+//! PUT /channels/{id}/ingest_endpoints/{ep}/credentials, tags under /tags/{arn}).
 
-use crate::proto::{json_error, parse_json_body};
+use crate::proto::{json_error, parse_json_body, query_map, url_decode};
 use crate::store;
 use crate::{Request, Response};
 use once_cell::sync::Lazy;
@@ -50,29 +51,56 @@ pub fn dispatch(req: &Request) -> Option<Response> {
     if req.service != "mediapackage" {
         return None;
     }
-    // moto binds `[^/.]+` for ids; an id containing a dot fails the bind and
-    // the sidecar 501s — fall through to the same outcome here.
-    let (root, sub) = path_parts(&req.path)?;
     let method = req.method.as_str();
     let region = req.region.clone();
+    let path = req.path.trim_end_matches('/');
+    let segments: Vec<&str> = path.trim_start_matches('/').split('/').collect();
 
     let slot = state();
     let mut st = slot.write();
     let st = st.entry((req.account, req.region.clone())).or_default();
 
-    match (method, root, sub) {
-        (_, "channels", None) | (_, "channels", Some("")) => match method {
+    route_method(method, region, st, req, &segments)
+}
+
+fn route_method(
+    method: &str,
+    region: String,
+    st: &mut State,
+    req: &Request,
+    segments: &[&str],
+) -> Option<Response> {
+    // moto binds ids as `[^/.]+`; a segment containing '.' fails the bind and
+    // the sidecar 501s — fall through to the same outcome here. Tag ARN
+    // segments are checked raw (botocore leaves '.' unescaped in ARNs).
+    if segments.iter().any(|s| s.contains('.')) {
+        return None;
+    }
+    match segments {
+        ["channels"] | ["channels", ""] => match method {
             "POST" => Some(create_channel(st, &req.body, &region)),
             "GET" => Some(json_list("channels", &st.channels)),
             _ => None,
         },
-        ("GET" | "PUT" | "DELETE", "channels", Some(id)) => match method {
+        ["channels", id] => match method {
             "GET" => Some(get_channel(st, id)),
             "PUT" => Some(update_channel(st, id, &parse_json_body(&req.body))),
             "DELETE" => Some(delete_channel(st, id)),
             _ => None,
         },
-        (_, "origin_endpoints", None) | (_, "origin_endpoints", Some("")) => match method {
+        ["channels", id, "configure_logs"] if method == "PUT" => {
+            Some(configure_logs(st, id, &parse_json_body(&req.body)))
+        }
+        ["channels", id, "credentials"] if method == "PUT" => {
+            // RotateChannelCredentials: re-renders the channel (fresh ingest
+            // credentials are not modeled; moto tracks none).
+            Some(get_channel(st, id))
+        }
+        ["channels", id, "ingest_endpoints", _ep, "credentials"] if method == "PUT" => {
+            // RotateIngestEndpointCredentials: missing channel → NotFound.
+            Some(get_channel(st, id))
+        }
+        ["origin_endpoints"] | ["origin_endpoints", ""] => match method {
             "POST" => Some(create_origin_endpoint(
                 st,
                 &parse_json_body(&req.body),
@@ -81,49 +109,60 @@ pub fn dispatch(req: &Request) -> Option<Response> {
             "GET" => Some(json_list("originEndpoints", &st.origin_endpoints)),
             _ => None,
         },
-        ("GET" | "PUT" | "DELETE", "origin_endpoints", Some(id)) => match method {
+        ["origin_endpoints", id] => match method {
             "GET" => Some(get_origin_endpoint(st, id)),
             "PUT" => Some(update_origin_endpoint(st, id, &parse_json_body(&req.body))),
             "DELETE" => Some(delete_origin_endpoint(st, id)),
             _ => None,
         },
-        (_, "harvest_jobs", None) | (_, "harvest_jobs", Some("")) => match method {
+        ["harvest_jobs"] | ["harvest_jobs", ""] => match method {
             "POST" => Some(create_harvest_job(st, &parse_json_body(&req.body), &region)),
             "GET" => Some(json_list("harvestJobs", &st.harvest_jobs)),
             _ => None,
         },
-        ("GET", "harvest_jobs", Some(id)) => Some(get_harvest_job(st, id)),
-        _ => None,
-    }
-}
-
-/// Split "/a/b/c" into root "a" and the remainder after the second slash.
-/// A remainder containing "." fails moto's `[^/.]+` path binding and the
-/// sidecar 501s, so those also route nowhere here.
-/// Returns None when the path does not start with "/<root>".
-fn path_parts(path: &str) -> Option<(&str, Option<&str>)> {
-    let rest = path.strip_prefix('/')?;
-    let (root, sub) = match rest.find('/') {
-        Some(i) => (&rest[..i], Some(&rest[i + 1..])),
-        None => (rest, None),
-    };
-    if root.is_empty() {
-        return None;
-    }
-    match sub {
-        None => Some((root, None)),
-        Some(s) => {
-            if s.is_empty() {
-                // "/channels/" still binds the collection (strict_slashes).
-                Some((root, Some(s)))
-            } else if s.contains('/') || s.contains('.') {
-                // moto binds ids as one segment `[^/.]+`; anything else fails
-                // the route bind and the sidecar 501s — route nowhere here.
-                None
-            } else {
-                Some((root, Some(s)))
+        ["harvest_jobs", id] if method == "GET" => Some(get_harvest_job(st, id)),
+        ["tags", arn_seg] => {
+            let arn = url_decode(arn_seg);
+            match (method, index_by_arn(st, &arn)) {
+                ("GET", Some(target)) => {
+                    let tags = target.tags(st).as_object().cloned().unwrap_or_default();
+                    Some(ok_json(&json!({ "tags": tags })))
+                }
+                ("POST", Some(target)) => {
+                    let p = parse_json_body(&req.body);
+                    let record = target.record_mut(st);
+                    if record["tags"].is_null() {
+                        record["tags"] = json!({});
+                    }
+                    if let (Some(dest), Some(src)) =
+                        (record["tags"].as_object_mut(), p["tags"].as_object())
+                    {
+                        for (k, v) in src {
+                            dest.insert(k.clone(), v.clone());
+                        }
+                    }
+                    Some(Response::new(204, "application/json", ""))
+                }
+                ("DELETE", Some(target)) => {
+                    let keys = query_map(&req.query_string)
+                        .get("tagKeys")
+                        .cloned()
+                        .unwrap_or_default();
+                    let record = target.record_mut(st);
+                    if let Some(tags) = record["tags"].as_object_mut() {
+                        for key in keys {
+                            tags.remove(&key);
+                        }
+                    }
+                    Some(Response::new(204, "application/json", ""))
+                }
+                ("GET" | "POST" | "DELETE", None) => {
+                    Some(not_found(&format!("resource with arn={arn}")))
+                }
+                _ => None,
             }
         }
+        _ => None,
     }
 }
 
@@ -283,18 +322,71 @@ fn get_harvest_job(st: &State, id: &str) -> Response {
     }
 }
 
+/// ConfigureLogs — stores the log-config members on the channel and re-renders
+/// it (wire: PUT /channels/{id}/configure_logs).
+fn configure_logs(st: &mut State, id: &str, p: &Value) -> Response {
+    match st.channels.iter_mut().find(|(k, _)| *k == id) {
+        Some((_, c)) => {
+            c["ingressAccessLogs"] = p["ingressAccessLogs"].clone();
+            c["egressAccessLogs"] = p["egressAccessLogs"].clone();
+            ok_json(c)
+        }
+        None => not_found(&format!("channel with id={id}")),
+    }
+}
+
+/// Position of a resource by ARN; tag ops apply to channels and origin
+/// endpoints (the taggable resources in moto's model).
+enum TagTarget {
+    Channel(usize),
+    OriginEndpoint(usize),
+}
+
+impl TagTarget {
+    fn tags<'a>(&self, st: &'a State) -> &'a Value {
+        match self {
+            TagTarget::Channel(i) => &st.channels[*i].1["tags"],
+            TagTarget::OriginEndpoint(i) => &st.origin_endpoints[*i].1["tags"],
+        }
+    }
+
+    fn record_mut<'a>(&self, st: &'a mut State) -> &'a mut Value {
+        match self {
+            TagTarget::Channel(i) => &mut st.channels[*i].1,
+            TagTarget::OriginEndpoint(i) => &mut st.origin_endpoints[*i].1,
+        }
+    }
+}
+
+fn index_by_arn(st: &State, arn: &str) -> Option<TagTarget> {
+    st.channels
+        .iter()
+        .position(|(_, v)| v["arn"].as_str() == Some(arn))
+        .map(TagTarget::Channel)
+        .or_else(|| {
+            st.origin_endpoints
+                .iter()
+                .position(|(_, v)| v["arn"].as_str() == Some(arn))
+                .map(TagTarget::OriginEndpoint)
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use bytes::Bytes;
 
     fn req(method: &str, path: &str, body: Value) -> Request {
+        let (path, query_string) = match path.split_once('?') {
+            Some((p, q)) => (p.to_string(), q.to_string()),
+            None => (path.to_string(), String::new()),
+        };
         Request {
             service: "mediapackage".into(),
             operation: String::new(),
             method: method.into(),
-            path: path.into(),
-            query_string: String::new(),
+            path,
+            query_string,
             headers: std::collections::HashMap::new(),
             body: Bytes::from(serde_json::to_vec(&body).unwrap_or_default()),
             account: 123456789012,
@@ -423,14 +515,127 @@ mod tests {
     }
 
     #[test]
-    fn path_splitting() {
-        assert_eq!(path_parts("/channels"), Some(("channels", None)));
-        assert_eq!(path_parts("/channels/"), Some(("channels", Some(""))));
-        assert_eq!(
-            path_parts("/channels/ch-1"),
-            Some(("channels", Some("ch-1")))
-        );
-        assert!(path_parts("/channels/ch.1").is_none()); // moto rejects '.' ids
+    fn segment_binding() {
+        // moto rejects '.' ids (bind failure -> caller 501s).
+        assert!(dispatch(&req("GET", "/channels/ch.1", json!({}))).is_none());
         assert!(dispatch(&req("GET", "/", json!({}))).is_none());
+        assert!(dispatch(&req("GET", "/channels", json!({}))).is_some());
+    }
+
+    #[test]
+    fn configure_logs_and_rotate() {
+        let acct = scope();
+        let mut r = req(
+            "POST",
+            "/channels",
+            json!({"id": "chC", "tags": {"env": "test"}}),
+        );
+        r.account = acct;
+        dispatch(&r).unwrap();
+
+        // ConfigureLogs updates and re-renders the channel.
+        r = req(
+            "PUT",
+            "/channels/chC/configure_logs",
+            json!({"ingressAccessLogs": {"logGroupName": "g"}}),
+        );
+        r.account = acct;
+        let resp = dispatch(&r).unwrap();
+        assert_eq!(resp.status, 200);
+        assert_eq!(body(&resp)["id"], "chC");
+        assert_eq!(body(&resp)["ingressAccessLogs"]["logGroupName"], "g");
+
+        r = req("PUT", "/channels/no-such/configure_logs", json!({}));
+        r.account = acct;
+        assert_eq!(dispatch(&r).unwrap().status, 400);
+
+        // RotateChannelCredentials re-renders the channel.
+        r = req("PUT", "/channels/chC/credentials", json!({}));
+        r.account = acct;
+        let resp = dispatch(&r).unwrap();
+        assert_eq!(resp.status, 200);
+        assert_eq!(body(&resp)["id"], "chC");
+
+        r = req("PUT", "/channels/no-such/credentials", json!({}));
+        r.account = acct;
+        assert_eq!(dispatch(&r).unwrap().status, 400);
+
+        // RotateIngestEndpointCredentials: missing channel -> NotFound.
+        r = req(
+            "PUT",
+            "/channels/no-such/ingest_endpoints/ep/credentials",
+            json!({}),
+        );
+        r.account = acct;
+        let resp = dispatch(&r).unwrap();
+        assert_eq!(resp.status, 400);
+        assert_eq!(body(&resp)["__type"], "NotFoundException");
+
+        r = req(
+            "PUT",
+            "/channels/chC/ingest_endpoints/ep/credentials",
+            json!({}),
+        );
+        r.account = acct;
+        assert_eq!(dispatch(&r).unwrap().status, 200);
+    }
+
+    #[test]
+    fn tag_ops_round_trip() {
+        let acct = scope();
+        let mut r = req(
+            "POST",
+            "/channels",
+            json!({"id": "chT", "tags": {"env": "test"}}),
+        );
+        r.account = acct;
+        let created = body(&dispatch(&r).unwrap());
+        let arn = created["arn"].as_str().unwrap().to_string();
+        // botocore percent-encodes ':' in the URI (dots stay raw).
+        let encoded = arn.replace(':', "%3A");
+        assert!(encoded.find('.').is_none());
+
+        // ListTagsForResource
+        let mut r = req("GET", &format!("/tags/{encoded}"), json!({}));
+        r.account = acct;
+        assert_eq!(body(&dispatch(&r).unwrap())["tags"]["env"], "test");
+
+        // TagResource merges (204 empty).
+        r = req(
+            "POST",
+            &format!("/tags/{encoded}"),
+            json!({"tags": {"stage": "prod"}}),
+        );
+        r.account = acct;
+        let resp = dispatch(&r).unwrap();
+        assert_eq!(resp.status, 204);
+
+        r = req("GET", &format!("/tags/{encoded}"), json!({}));
+        r.account = acct;
+        let tags = body(&dispatch(&r).unwrap())["tags"].clone();
+        assert_eq!(tags["env"], "test");
+        assert_eq!(tags["stage"], "prod");
+
+        // UntagResource removes query-listed keys (204 empty).
+        r = req("DELETE", &format!("/tags/{encoded}?tagKeys=env"), json!({}));
+        r.account = acct;
+        assert_eq!(dispatch(&r).unwrap().status, 204);
+
+        r = req("GET", &format!("/tags/{encoded}"), json!({}));
+        r.account = acct;
+        let tags = body(&dispatch(&r).unwrap())["tags"].clone();
+        assert!(tags.get("env").is_none());
+        assert_eq!(tags["stage"], "prod");
+
+        // Unknown arn -> NotFound.
+        r = req(
+            "GET",
+            "/tags/arn%3Aaws%3Amediapackage%3Achannel%3Anope",
+            json!({}),
+        );
+        r.account = acct;
+        let resp = dispatch(&r).unwrap();
+        assert_eq!(resp.status, 400);
+        assert_eq!(body(&resp)["__type"], "NotFoundException");
     }
 }

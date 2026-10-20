@@ -2,9 +2,9 @@
 //!
 //! Routes (moto's polly url table): GET /v1/voices,
 //! GET/PUT/DELETE /v1/lexicons[/{name}], POST /v1/speech. Async synthesis
-//! tasks are not modeled by moto; those routes return the sidecar's
-//! route-miss error verbatim ("Service polly is not yet implemented", 501),
-//! which mirrors the py-lane baseline failures.
+//! tasks are not modeled by moto; those routes are implemented from the
+//! botocore REST bindings (/v1/synthesisTasks[/{TaskId}]) with the task
+//! member set the compat suite pins.
 
 use crate::store;
 use crate::{Request, Response};
@@ -19,6 +19,8 @@ static SLOT: Lazy<store::Slot<PollyState>> = Lazy::new(|| store::slot::<PollySta
 #[derive(Default)]
 struct PollyState {
     lexicons: HashMap<String, Lexicon>,
+    /// Insertion-ordered synthesis tasks ((TaskId, SynthesisTask record)).
+    synthesis_tasks: Vec<(String, Value)>,
     region: String,
     account: String,
 }
@@ -114,6 +116,9 @@ pub fn dispatch(req: &Request) -> Response {
         ("PUT", ["v1", "lexicons", name]) => st.put_lexicon(name, &req.body),
         ("DELETE", ["v1", "lexicons", name]) => st.delete_lexicon(name),
         ("POST", ["v1", "speech"]) => synthesize_speech(&req.body, st),
+        ("POST", ["v1", "synthesisTasks"]) => start_synthesis_task(&req.body, st),
+        ("GET", ["v1", "synthesisTasks"]) => list_synthesis_tasks(&req.query_string, st),
+        ("GET", ["v1", "synthesisTasks", task_id]) => get_synthesis_task(st, task_id),
         _ => rest_err(),
     }
 }
@@ -353,6 +358,163 @@ fn synthesize_speech(body: &[u8], st: &PollyState) -> Response {
     Response::new(200, content_type, "\0\0\0\0\0\0\0\0")
 }
 
+/// POST /v1/synthesisTasks — StartSpeechSynthesisTask. Async synthesis is
+/// not modeled by moto and the exec engine does not render audio here, so
+/// tasks record the request and immediately settle as `completed`.
+fn start_synthesis_task(body: &[u8], st: &mut PollyState) -> Response {
+    let params: Value = serde_json::from_slice(body).unwrap_or(json!({}));
+
+    let Some(output_format) = params.get("OutputFormat").and_then(Value::as_str) else {
+        return json_error(400, "MissingParameter", "Missing parameter OutputFormat");
+    };
+    if !["json", "mp3", "ogg_vorbis", "pcm"].contains(&output_format) {
+        return json_error(
+            400,
+            "InvalidParameterValue",
+            "Not one of json, mp3, ogg_vorbis, pcm",
+        );
+    }
+
+    if params
+        .get("SampleRate")
+        .and_then(|sr| {
+            sr.as_i64()
+                .or_else(|| sr.as_str().and_then(|s| s.parse().ok()))
+        })
+        .is_some_and(|v| ![8000, 16000, 22050].contains(&v))
+    {
+        return json_error(
+            400,
+            "InvalidSampleRateException",
+            "The specified sample rate is not valid.",
+        );
+    }
+
+    if let Some(engine) = params.get("Engine").and_then(Value::as_str) {
+        if !["standard", "neural", "long-form", "generative"].contains(&engine) {
+            return json_error(400, "InvalidParameterValue", "Not a valid engine");
+        }
+    }
+
+    if let Some(names) = params.get("LexiconNames").and_then(Value::as_array) {
+        for name in names {
+            if !st.lexicons.contains_key(name.as_str().unwrap_or_default()) {
+                return json_error(400, "LexiconNotFoundException", "Lexicon not found");
+            }
+        }
+    }
+
+    let Some(text) = params.get("Text").and_then(Value::as_str) else {
+        return json_error(400, "MissingParameter", "Missing parameter Text");
+    };
+    let mut text_type = "text";
+    if let Some(tt) = params.get("TextType").and_then(Value::as_str) {
+        if !["ssml", "text"].contains(&tt) {
+            return json_error(400, "InvalidParameterValue", "Not one of ssml, text");
+        }
+        text_type = tt;
+    }
+    let Some(voice_id) = params.get("VoiceId").and_then(Value::as_str) else {
+        return json_error(400, "MissingParameter", "Missing parameter VoiceId");
+    };
+    if !VOICE_IDS.contains(&voice_id) {
+        return json_error(
+            400,
+            "InvalidParameterValue",
+            "Not one of the supported voices",
+        );
+    }
+    let Some(bucket) = params.get("OutputS3BucketName").and_then(Value::as_str) else {
+        return json_error(
+            400,
+            "MissingParameter",
+            "Missing parameter OutputS3BucketName",
+        );
+    };
+    if text.len() > 3000 {
+        return json_error(400, "TextLengthExceededException", "Text too long");
+    }
+
+    let task_id = uuid::Uuid::new_v4().to_string();
+    let ext = match output_format {
+        "mp3" => "mp3",
+        "ogg_vorbis" => "ogg",
+        "pcm" => "pcm",
+        _ => "json",
+    };
+    let key_prefix = params
+        .get("OutputS3KeyPrefix")
+        .and_then(Value::as_str)
+        .unwrap_or(&st.account);
+    let output_uri =
+        format!("https://s3.amazonaws.com/{bucket}/{key_prefix}/{voice_id}/{task_id}.{ext}");
+
+    let mut task = serde_json::Map::new();
+    task.insert(
+        "Engine".into(),
+        params.get("Engine").cloned().unwrap_or(json!("standard")),
+    );
+    task.insert("TaskId".into(), json!(task_id));
+    task.insert("TaskStatus".into(), json!("completed"));
+    task.insert("OutputUri".into(), json!(output_uri));
+    task.insert("CreationTime".into(), json!(crate::proto::now_unix()));
+    task.insert("RequestCharacters".into(), json!(text.len()));
+    task.insert("OutputFormat".into(), json!(output_format));
+    task.insert("TextType".into(), json!(text_type));
+    task.insert("VoiceId".into(), json!(voice_id));
+    for (in_key, out_key) in [
+        ("LanguageCode", "LanguageCode"),
+        ("SampleRate", "SampleRate"),
+        ("LexiconNames", "LexiconNames"),
+        ("SpeechMarkTypes", "SpeechMarkTypes"),
+        ("SnsTopicArn", "SnsTopicArn"),
+    ] {
+        if let Some(v) = params.get(in_key) {
+            if !v.is_null() {
+                task.insert(out_key.into(), v.clone());
+            }
+        }
+    }
+    let task = Value::Object(task);
+    st.synthesis_tasks.push((task_id, task.clone()));
+    Response::json_status(200, &json!({ "SynthesisTask": task }))
+}
+
+/// GET /v1/synthesisTasks — ListSpeechSynthesisTasks with optional Status filter.
+fn list_synthesis_tasks(query: &str, st: &PollyState) -> Response {
+    let mut status_filter = None;
+    for kv in query.split('&') {
+        if let Some((k, v)) = kv.split_once('=') {
+            if k == "Status" || k == "status" {
+                status_filter = Some(urldecode(v));
+            }
+        }
+    }
+    let tasks: Vec<Value> = st
+        .synthesis_tasks
+        .iter()
+        .filter(|(_, t)| {
+            status_filter
+                .as_ref()
+                .is_none_or(|s| t["TaskStatus"].as_str() == Some(s))
+        })
+        .map(|(_, t)| t.clone())
+        .collect();
+    Response::json_status(200, &json!({ "SynthesisTasks": tasks }))
+}
+
+/// GET /v1/synthesisTasks/{TaskId} — GetSpeechSynthesisTask.
+fn get_synthesis_task(st: &PollyState, task_id: &str) -> Response {
+    match st.synthesis_tasks.iter().find(|(k, _)| k == task_id) {
+        Some((_, t)) => Response::json_status(200, &json!({ "SynthesisTask": t })),
+        None => json_error(
+            400,
+            "SynthesisTaskNotFoundException",
+            "Speech synthesis task not found",
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -447,10 +609,80 @@ mod tests {
 
     #[test]
     fn unknown_route_is_not_implemented() {
-        let r = dispatch(&req("POST", "/v1/synthesisTasks", "{}"));
+        let r = dispatch(&req("POST", "/v1/no-such", "{}"));
         assert_eq!(r.status, 501);
         let body: Value = serde_json::from_slice(&r.body).unwrap();
         assert_eq!(body["__type"], "NotImplemented");
         assert_eq!(body["message"], "Service polly is not yet implemented");
+    }
+
+    #[test]
+    fn synthesis_task_lifecycle() {
+        // Start one task, then verify get/list round-trips.
+        let r = dispatch(&req(
+            "POST",
+            "/v1/synthesisTasks",
+            r#"{"Engine": "standard", "OutputFormat": "mp3", "OutputS3BucketName": "my-bucket", "Text": "Hello world", "VoiceId": "Joanna"}"#,
+        ));
+        assert_eq!(r.status, 200, "{}", String::from_utf8_lossy(&r.body));
+        let b: Value = serde_json::from_slice(&r.body).unwrap();
+        let task = &b["SynthesisTask"];
+        assert!(task["TaskId"].is_string());
+        assert_eq!(task["TaskStatus"], "completed");
+        assert!(task["OutputUri"].as_str().unwrap().contains("my-bucket"));
+        assert_eq!(task["VoiceId"], "Joanna");
+        assert_eq!(task["OutputFormat"], "mp3");
+
+        let task_id = task["TaskId"].as_str().unwrap().to_string();
+        let r = dispatch(&req("GET", &format!("/v1/synthesisTasks/{task_id}"), ""));
+        assert_eq!(r.status, 200);
+        let b: Value = serde_json::from_slice(&r.body).unwrap();
+        assert_eq!(b["SynthesisTask"]["TaskId"], task_id);
+
+        let r = dispatch(&req("GET", "/v1/synthesisTasks", ""));
+        assert_eq!(r.status, 200);
+        let b: Value = serde_json::from_slice(&r.body).unwrap();
+        assert!(!b["SynthesisTasks"].as_array().unwrap().is_empty());
+
+        // Second task then filtered list.
+        let r = dispatch(&req(
+            "POST",
+            "/v1/synthesisTasks",
+            r#"{"OutputFormat": "mp3", "OutputS3BucketName": "my-bucket", "Text": "Second", "VoiceId": "Matthew"}"#,
+        ));
+        assert_eq!(r.status, 200);
+
+        let r = dispatch(&req("GET", "/v1/synthesisTasks?Status=completed", ""));
+        let b: Value = serde_json::from_slice(&r.body).unwrap();
+        assert_eq!(b["SynthesisTasks"].as_array().unwrap().len(), 2);
+
+        // Unknown task id → SynthesisTaskNotFoundException.
+        let r = dispatch(&req("GET", "/v1/synthesisTasks/nonexistent-id-xyz", ""));
+        assert_eq!(r.status, 400);
+        let b: Value = serde_json::from_slice(&r.body).unwrap();
+        assert_eq!(b["__type"], "SynthesisTaskNotFoundException");
+    }
+
+    #[test]
+    fn synthesis_task_validation() {
+        // Missing bucket → MissingParameter.
+        let r = dispatch(&req(
+            "POST",
+            "/v1/synthesisTasks",
+            r#"{"OutputFormat": "mp3", "Text": "hi", "VoiceId": "Joanna"}"#,
+        ));
+        assert_eq!(r.status, 400);
+        let b: Value = serde_json::from_slice(&r.body).unwrap();
+        assert_eq!(b["__type"], "MissingParameter");
+
+        // Unsupported voice → InvalidParameterValue.
+        let r = dispatch(&req(
+            "POST",
+            "/v1/synthesisTasks",
+            r#"{"OutputFormat": "mp3", "OutputS3BucketName": "b", "Text": "hi", "VoiceId": "Nope"}"#,
+        ));
+        assert_eq!(r.status, 400);
+        let b: Value = serde_json::from_slice(&r.body).unwrap();
+        assert_eq!(b["__type"], "InvalidParameterValue");
     }
 }

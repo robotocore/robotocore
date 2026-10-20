@@ -7,10 +7,11 @@
 //!
 //! - Denied-by-default ops return moto's `NotImplemented` document
 //!   (`The <snake_op> action has not been implemented`, HTTP 501). The
-//!   suite-frozen gap list: ListStudioSessionMappings,
+//!   remaining 501 is UpdateStudio (moto routes absent, suite unpins it).
+//!   The former gap ops (ListStudioSessionMappings, StartNotebookExecution,
 //!   SetKeepJobFlowAliveWhenNoSteps, SetUnhealthyNodeReplacement,
 //!   GetClusterSessionCredentials, GetPersistentAppUIPresignedURL,
-//!   GetOnClusterAppUIPresignedURL, StartNotebookExecution (plus UpdateStudio).
+//!   GetOnClusterAppUIPresignedURL) are now implemented per the suites.
 //! - Unknown clusters answer `InvalidRequestException`/`NoSuchCluster`; a few
 //!   moto paths (bare `self.clusters[id]` dict reads) escape as KeyError →
 //!   `InternalError` (SetTerminationProtection, SetVisibleToAllUsers,
@@ -207,8 +208,7 @@ struct EmrState {
     /// Mapping key `{studio}:{identity_type}:{identity_id}` (moto's f-string
     /// key; absent IdentityId shows up as the string "None").
     studio_session_mappings: HashMap<String, StudioSessionMapping>,
-    /// Notebook executions {id: start_epoch}; only ever empty on the suites
-    /// (StartNotebookExecution is denied), but the accessors stay moto-faithful.
+    /// Notebook executions {id: record} in moto's create order.
     notebook_executions: HashMap<String, NotebookExecution>,
     managed_scaling_policies: HashMap<String, Value>,
     auto_termination_policies: HashMap<String, Value>,
@@ -1010,13 +1010,18 @@ pub fn dispatch(req: &Request) -> Response {
         "GetStudioSessionMapping" => get_studio_session_mapping(st, &body),
         "UpdateStudioSessionMapping" => update_studio_session_mapping(st, &body),
         "DeleteStudioSessionMapping" => delete_studio_session_mapping(st, &body),
-        "ListStudioSessionMappings" => Err(not_implemented(&op)),
+        "ListStudioSessionMappings" => list_studio_session_mappings(st, &body),
         "DescribeNotebookExecution" => describe_notebook_execution(st, &body),
         "StopNotebookExecution" => stop_notebook_execution(st, &body),
         "ListNotebookExecutions" => list_notebook_executions(st, &body),
-        "StartNotebookExecution" => Err(not_implemented(&op)),
+        "StartNotebookExecution" => start_notebook_execution(st, account, &region, &body),
+        "SetKeepJobFlowAliveWhenNoSteps" => set_keep_job_flow_alive_when_no_steps(st, &body),
+        "SetUnhealthyNodeReplacement" => set_unhealthy_node_replacement(&body),
+        "GetClusterSessionCredentials" => get_cluster_session_credentials(&body),
         "CreatePersistentAppUI" => create_persistent_app_ui(st, account, &region, &body),
         "DescribePersistentAppUI" => describe_persistent_app_ui(st, account, &region, &body),
+        "GetPersistentAppUIPresignedURL" => get_persistent_app_ui_presigned_url(st, &region, &body),
+        "GetOnClusterAppUIPresignedURL" => get_on_cluster_app_ui_presigned_url(&region, &body),
         "DescribeReleaseLabel" => describe_release_label(st, &body),
         "ListReleaseLabels" => list_release_labels(),
         "ListSupportedInstanceTypes" => list_supported_instance_types(&body),
@@ -2242,6 +2247,112 @@ fn list_notebook_executions(state: &mut EmrState, body: &Value) -> OpResult {
     Ok(json!({"NotebookExecutions": list}))
 }
 
+/// StartNotebookExecution — moto's `create_notebook_execution` backend
+/// (moto routes it under the patched-spec action name; no cluster-id
+/// validation, the suites start executions against fake clusters).
+fn start_notebook_execution(
+    state: &mut EmrState,
+    account: u64,
+    region: &str,
+    body: &Value,
+) -> OpResult {
+    let id = format!("ex-{}", random_id());
+    let execution = NotebookExecution {
+        id: id.clone(),
+        editor_id: as_str(param(body, "EditorId")).unwrap_or_default(),
+        execution_engine: param(body, "ExecutionEngine").cloned().unwrap_or(json!({})),
+        service_role: as_str(param(body, "ServiceRole")).unwrap_or_default(),
+        name: as_str(param(body, "NotebookExecutionName")).unwrap_or_default(),
+        params: as_str(param(body, "NotebookParams")).unwrap_or_default(),
+        status: "STARTING".into(),
+        start_at: now_ts(),
+        end_at: None,
+    };
+    state.notebook_executions.insert(id.clone(), execution);
+    let _ = (account, region);
+    Ok(json!({"NotebookExecutionId": id}))
+}
+
+/// SetKeepJobFlowAliveWhenNoSteps — flips the flag on clusters it finds;
+/// unknown job-flow ids still succeed (suite pins 200 for fake ids).
+fn set_keep_job_flow_alive_when_no_steps(state: &mut EmrState, body: &Value) -> OpResult {
+    let keep = bool_param(param(body, "KeepJobFlowAliveWhenNoSteps"), false);
+    for id in str_list(param(body, "JobFlowIds")) {
+        if let Some(cluster) = state.clusters.get_mut(&id) {
+            cluster.keep_job_flow_alive_when_no_steps = keep;
+        }
+    }
+    Ok(json!({}))
+}
+
+/// SetUnhealthyNodeReplacement — acknowledged without state (the flag has no
+/// rendered surface; suites pin 200 even for unknown job-flow ids).
+fn set_unhealthy_node_replacement(body: &Value) -> OpResult {
+    let _ = str_list(param(body, "JobFlowIds"));
+    let _ = bool_param(param(body, "UnhealthyNodeReplacement"), false);
+    Ok(json!({}))
+}
+
+/// GetClusterSessionCredentials — synthetic session credentials; no cluster
+/// validation (suite pins Credentials + ExpiresAt presence only).
+/// `Credentials` is a botocore union: exactly one member (UsernamePassword).
+fn get_cluster_session_credentials(body: &Value) -> OpResult {
+    let _ = as_str(param(body, "ClusterId"));
+    let secret: String = uuid::Uuid::new_v4()
+        .as_bytes()
+        .iter()
+        .flat_map(|b| [format!("{:02x}", b), format!("{:02x}", b)])
+        .take(40)
+        .collect();
+    Ok(json!({
+        "Credentials": {
+            "UsernamePassword": {
+                "Username": format!("hadoop-{}", random_id().to_lowercase()),
+                "Password": secret,
+            }
+        },
+        "ExpiresAt": now_ts() + 12.0 * 3600.0,
+    }))
+}
+
+/// ListStudioSessionMappings — moto's model keeps the mappings but its
+/// responses table lacks the route; render the stored mappings with the
+/// same member set as GetStudioSessionMapping, optionally filtered.
+fn list_studio_session_mappings(state: &mut EmrState, body: &Value) -> OpResult {
+    let studio_filter = as_str(param(body, "StudioId"));
+    let identity_type_filter = as_str(param(body, "IdentityType"));
+    let mut items: Vec<&StudioSessionMapping> = state
+        .studio_session_mappings
+        .values()
+        .filter(|m| studio_filter.as_ref().is_none_or(|s| s == &m.studio_id))
+        .filter(|m| {
+            identity_type_filter
+                .as_ref()
+                .is_none_or(|t| t == &m.identity_type)
+        })
+        .collect();
+    items.sort_by(|a, b| {
+        a.created_at
+            .partial_cmp(&b.created_at)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let session_mappings = items
+        .into_iter()
+        .map(|m| {
+            json!({
+                "StudioId": m.studio_id,
+                "IdentityId": m.identity_id,
+                "IdentityName": m.identity_name,
+                "IdentityType": m.identity_type,
+                "SessionPolicyArn": m.session_policy_arn,
+                "CreationTime": m.created_at,
+                "LastModifiedTime": m.last_modified_at,
+            })
+        })
+        .collect::<Vec<_>>();
+    Ok(json!({"SessionMappings": session_mappings}))
+}
+
 /// CreatePersistentAppUI — patched-spec output only surfaces the id member.
 fn create_persistent_app_ui(
     state: &mut EmrState,
@@ -2284,6 +2395,39 @@ fn describe_persistent_app_ui(
             "LastModifiedTime": ui.last_modified_at,
             "PersistentAppUIArn": format!("arn:aws:elasticmapreduce:{}:{}:persistent-app-ui/{}", region, account, ui.id),
         }
+    }))
+}
+
+/// GetPersistentAppUIPresignedURL — requires an existing PersistentAppUI
+/// (same lookup as DescribePersistentAppUI); the URL itself is synthetic.
+fn get_persistent_app_ui_presigned_url(
+    state: &mut EmrState,
+    region: &str,
+    body: &Value,
+) -> OpResult {
+    let id = as_str(param(body, "PersistentAppUIId")).unwrap_or_default();
+    let ui = state
+        .persistent_app_uis
+        .get(&id)
+        .ok_or_else(|| resource_not_found(&format!("PersistentAppUI {id} does not exist.")))?;
+    Ok(json!({
+        "PresignedURL": format!(
+            "https://persistence.prod.{region}.amazonaws.com/persistent-app-ui/{}?arn={}",
+            ui.id, ui.target_resource_arn
+        ),
+    }))
+}
+
+/// GetOnClusterAppUIPresignedURL — no cluster validation (suite pins 200
+/// against a fake cluster id).
+fn get_on_cluster_app_ui_presigned_url(region: &str, body: &Value) -> OpResult {
+    let cluster_id = as_str(param(body, "ClusterId")).unwrap_or_default();
+    let ui_type = as_str(param(body, "OnClusterAppUIType")).unwrap_or_default();
+    let _ = as_str(param(body, "ExecutionRoleArn"));
+    Ok(json!({
+        "PresignedURL": format!(
+            "https://on-cluster-uis.prod.{region}.amazonaws.com/on-cluster-ui/{ui_type}/{cluster_id}"
+        ),
     }))
 }
 
@@ -3202,16 +3346,24 @@ mod tests {
 
     #[test]
     fn notebook_and_persistent_app_ui() {
-        // StartNotebookExecution is denied (moto parity)
-        let denied = run(
+        // StartNotebookExecution creates an execution (moto backend under the
+        // patched-spec action name; no cluster validation).
+        let started = body_of(&run(
             "StartNotebookExecution",
-            json!({"ExecutionEngine": {"Id": "j-1"}}),
-        );
-        assert_eq!(status_of(&denied), 501);
-        assert_eq!(
-            body_of(&denied)["message"],
-            "The start_notebook_execution action has not been implemented"
-        );
+            json!({
+                "ExecutionEngine": {"Id": "j-FAKE123", "Type": "EMR"},
+                "ServiceRole": "arn:aws:iam::123456789012:role/EMR_Notebooks_DefaultRole",
+            }),
+        ));
+        let nid = started["NotebookExecutionId"].as_str().unwrap().to_string();
+        assert!(nid.starts_with("ex-"));
+
+        let described = body_of(&run(
+            "DescribeNotebookExecution",
+            json!({"NotebookExecutionId": nid}),
+        ));
+        assert_eq!(described["NotebookExecution"]["NotebookExecutionId"], nid);
+        assert_eq!(described["NotebookExecution"]["Status"], "STARTING");
 
         // describe/stop of a nonexistent execution → generic InvalidRequest
         let miss_desc = run(
@@ -3226,11 +3378,17 @@ mod tests {
         );
         assert_eq!(status_of(&miss_stop), 400);
 
-        let listed = body_of(&run("ListNotebookExecutions", json!({})));
-        assert_eq!(
-            listed["NotebookExecutions"].as_array().unwrap(),
-            &json!([]).as_array().unwrap().to_vec()
-        );
+        let listed = body_of(&run(
+            "ListNotebookExecutions",
+            json!({"Status": "STARTING"}),
+        ));
+        let ids: Vec<&str> = listed["NotebookExecutions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["NotebookExecutionId"].as_str().unwrap())
+            .collect();
+        assert!(ids.contains(&nid.as_str()));
 
         let ui = body_of(&run(
             "CreatePersistentAppUI",
@@ -3359,39 +3517,84 @@ mod tests {
     }
 
     #[test]
-    fn gap_ops_deny_501() {
-        for (op, snake) in [
-            ("ListStudioSessionMappings", "list_studio_session_mappings"),
-            (
-                "SetKeepJobFlowAliveWhenNoSteps",
-                "set_keep_job_flow_alive_when_no_steps",
-            ),
-            (
-                "SetUnhealthyNodeReplacement",
-                "set_unhealthy_node_replacement",
-            ),
-            (
-                "GetClusterSessionCredentials",
-                "get_cluster_session_credentials",
-            ),
-            (
-                "GetPersistentAppUIPresignedURL",
-                "get_persistent_app_ui_presigned_url",
-            ),
-            (
-                "GetOnClusterAppUIPresignedURL",
-                "get_on_cluster_app_ui_presigned_url",
-            ),
-            ("UpdateStudio", "update_studio"),
-        ] {
-            let resp = run(op, json!({}));
-            assert_eq!(status_of(&resp), 501, "{op}");
-            assert_eq!(body_of(&resp)["__type"], "NotImplemented", "{op}");
-            assert_eq!(
-                body_of(&resp)["message"],
-                format!("The {snake} action has not been implemented"),
-                "{op}"
-            );
-        }
+    fn update_studio_remains_deny_501() {
+        let resp = run("UpdateStudio", json!({}));
+        assert_eq!(status_of(&resp), 501);
+        assert_eq!(body_of(&resp)["__type"], "NotImplemented");
+        assert_eq!(
+            body_of(&resp)["message"],
+            "The update_studio action has not been implemented"
+        );
+    }
+
+    #[test]
+    fn gap_ops_now_implemented() {
+        // ListStudioSessionMappings — rendering present even before any
+        // mapping exists (may see mappings from parallel unit tests).
+        let listed = body_of(&run("ListStudioSessionMappings", json!({})));
+        assert!(listed["SessionMappings"].as_array().is_some());
+
+        // SetKeepJobFlowAliveWhenNoSteps / SetUnhealthyNodeReplacement on a
+        // fake job-flow id → 200 (suite-pinned), and the flag flips on a real
+        // cluster.
+        let flipped = run(
+            "SetKeepJobFlowAliveWhenNoSteps",
+            json!({"JobFlowIds": ["j-FAKE123456"], "KeepJobFlowAliveWhenNoSteps": true}),
+        );
+        assert_eq!(status_of(&flipped), 200);
+        assert_eq!(body_of(&flipped), json!({}));
+        let fake_replacement = run(
+            "SetUnhealthyNodeReplacement",
+            json!({"JobFlowIds": ["j-FAKE123456"], "UnhealthyNodeReplacement": true}),
+        );
+        assert_eq!(status_of(&fake_replacement), 200);
+
+        let id = cluster_fixture("alive");
+        let resp = run(
+            "SetKeepJobFlowAliveWhenNoSteps",
+            json!({"JobFlowIds": [id], "KeepJobFlowAliveWhenNoSteps": false}),
+        );
+        assert_eq!(status_of(&resp), 200);
+        let described = body_of(&run("DescribeJobFlows", json!({"JobFlowIds": [id]})));
+        assert_eq!(
+            described["JobFlows"][0]["Instances"]["KeepJobFlowAliveWhenNoSteps"],
+            false
+        );
+        run("TerminateJobFlows", json!({"JobFlowIds": [id]}));
+
+        // GetClusterSessionCredentials → credentials struct + expiry.
+        let creds = body_of(&run(
+            "GetClusterSessionCredentials",
+            json!({"ClusterId": "j-FAKE12345", "ExecutionRoleArn": "arn:aws:iam::123456789012:role/test-role"}),
+        ));
+        assert!(creds["Credentials"]["UsernamePassword"]["Username"].is_string());
+        assert!(creds["Credentials"]["UsernamePassword"]["Password"].is_string());
+        assert!(creds["ExpiresAt"].is_number());
+
+        // GetPersistentAppUIPresignedURL (existing id) / unknown id error.
+        let ui = body_of(&run(
+            "CreatePersistentAppUI",
+            json!({"TargetResourceArn": "arn:aws:emr:us-east-1:123456789012:cluster/j-1"}),
+        ));
+        let ui_id = ui["PersistentAppUIId"].as_str().unwrap().to_string();
+        let url = body_of(&run(
+            "GetPersistentAppUIPresignedURL",
+            json!({"PersistentAppUIId": ui_id}),
+        ));
+        assert!(url["PresignedURL"].as_str().unwrap().contains(&ui_id));
+        let miss_url = run(
+            "GetPersistentAppUIPresignedURL",
+            json!({"PersistentAppUIId": "nope"}),
+        );
+        assert_eq!(status_of(&miss_url), 400);
+        assert_eq!(body_of(&miss_url)["ErrorCode"], "ResourceNotFound");
+
+        // GetOnClusterAppUIPresignedURL → 200 even for a fake cluster id.
+        let on_cluster = run(
+            "GetOnClusterAppUIPresignedURL",
+            json!({"ClusterId": "j-FAKE123", "OnClusterAppUIType": "SPARK_HISTORY_SERVER"}),
+        );
+        assert_eq!(status_of(&on_cluster), 200);
+        assert!(body_of(&on_cluster)["PresignedURL"].is_string());
     }
 }
