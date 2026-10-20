@@ -295,20 +295,6 @@ impl Engine {
         let mapping = &entry.mapping;
         let key = (entry.account, entry.region.clone(), mapping.uuid.clone());
         let last = self.ddb_last_seq.get(&key).cloned();
-        if last.is_none() && Self::starting_position(mapping) != "TRIM_HORIZON" {
-            // LATEST: skip everything recorded before now.
-            if let Some(records) =
-                native
-                    .dynamodb
-                    .stream_records_after(entry.account, &entry.region, table_name, None)
-            {
-                if let Some(max_seq) = records.iter().filter_map(seq_of).max_by_key(|s| seq_num(s))
-                {
-                    self.ddb_last_seq.insert(key, max_seq);
-                }
-            }
-            return;
-        }
         let Some(records) = native.dynamodb.stream_records_after(
             entry.account,
             &entry.region,

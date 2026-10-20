@@ -126,12 +126,19 @@ pub fn invoke_by_arn(arn: &str, event: &Value) -> Option<InvokeOutcome> {
             function_error: Some("Runtime.InvalidRuntime".to_string()),
         });
     };
+    eprintln!(
+        "invoke_by_arn outcome payload={} err={:?}",
+        out.payload, out.function_error
+    );
+    eprintln!(
+        "invoke_by_arn outcome payload={} err={:?}",
+        out.payload, out.function_error
+    );
     Some(InvokeOutcome {
         payload: out.payload,
         function_error: out.function_error,
     })
 }
-
 /// Sharpest ARN form: (base function name, lambda state) for resolution.
 fn resolve_function(arn: &str) -> Option<Arc<crate::models::LambdaFunction>> {
     let mut parts = arn.split(':');
