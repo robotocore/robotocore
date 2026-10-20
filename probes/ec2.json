@@ -1,12 +1,12 @@
 {
   "service": "ec2",
-  "generated_at": "2026-10-20T06:49:12.019875+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-20T09:28:46.306881+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
-    "working": 187,
+    "working": 213,
     "needs_params": 6,
     "not_implemented": 236,
-    "500_error": 323
+    "500_error": 297
   },
   "operations": [
     {
@@ -31,23 +31,23 @@
     },
     {
       "operation": "AcceptTransitGatewayPeeringAttachment",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "likely implemented (InvalidTransitGatewayAttachmentID.NotFound: TransitGatewayAttachment probe-test-value not found)"
     },
     {
       "operation": "AcceptTransitGatewayVpcAttachment",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "AcceptVpcEndpointConnections",
       "status": "working",
-      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-ed8b2b3d' does not exist)"
+      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-3cf704ec' does not exist)"
     },
     {
       "operation": "AcceptVpcPeeringConnection",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "likely implemented (InvalidVpcPeeringConnectionId.NotFound: The vpc peering connection 'probe-test-value' does not exist)"
     },
     {
       "operation": "AdvertiseByoipCidr",
@@ -56,18 +56,18 @@
     },
     {
       "operation": "AllocateAddress",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "AllocateHosts",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "AllocateIpamPoolCidr",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "likely implemented (InvalidIpamPoolId.NotFound: No provisioned CIDR block available to allocate from)"
     },
     {
       "operation": "ApplySecurityGroupsToClientVpnTargetNetwork",
@@ -76,13 +76,13 @@
     },
     {
       "operation": "AssignIpv6Addresses",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "likely implemented (InvalidNetworkInterfaceID.NotFound: The interface ID 'probe-test-value' does not exist)"
     },
     {
       "operation": "AssignPrivateIpAddresses",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "likely implemented (InvalidNetworkInterfaceID.NotFound: The interface ID 'probe-test-value' does not exist)"
     },
     {
       "operation": "AssignPrivateNatGatewayAddress",
@@ -91,8 +91,8 @@
     },
     {
       "operation": "AssociateAddress",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "likely implemented (InvalidAllocationID.NotFound: ElasticTouch allocation id '' was not found)"
     },
     {
       "operation": "AssociateCapacityReservationBillingOwner",
@@ -106,8 +106,8 @@
     },
     {
       "operation": "AssociateDhcpOptions",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "likely implemented (InvalidVpcID.NotFound: Vpc {probe-test-value} not found)"
     },
     {
       "operation": "AssociateEnclaveCertificateIamRole",
@@ -116,8 +116,8 @@
     },
     {
       "operation": "AssociateIamInstanceProfile",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "AssociateInstanceEventWindow",
@@ -146,18 +146,18 @@
     },
     {
       "operation": "AssociateRouteTable",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "likely implemented (InvalidRouteTableID.NotFound: The route table 'probe-test-value' does not exist)"
     },
     {
       "operation": "AssociateSecurityGroupVpc",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "likely implemented (InvalidGroup.NotFound: The security group 'probe-test-value' does not exist)"
     },
     {
       "operation": "AssociateSubnetCidrBlock",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "likely implemented (InvalidSubnetID.NotFound: The subnet ID 'probe-test-value' does not exist)"
     },
     {
       "operation": "AssociateTransitGatewayMulticastDomain",
@@ -171,8 +171,8 @@
     },
     {
       "operation": "AssociateTransitGatewayRouteTable",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "likely implemented (InvalidTransitGatewayRouteTableID.NotFound: TransitGatewayRouteTable probe-test-value not found)"
     },
     {
       "operation": "AssociateTrunkInterface",
@@ -181,8 +181,8 @@
     },
     {
       "operation": "AssociateVpcCidrBlock",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "likely implemented (InvalidVpcID.NotFound: Vpc {probe-test-value} not found)"
     },
     {
       "operation": "AttachClassicLinkVpc",
@@ -191,13 +191,13 @@
     },
     {
       "operation": "AttachInternetGateway",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "likely implemented (InvalidInternetGatewayID.NotFound: The gateway ID 'probe-test-value' does not exist)"
     },
     {
       "operation": "AttachNetworkInterface",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "likely implemented (InvalidNetworkInterfaceID.NotFound: The interface ID 'probe-test-value' does not exist)"
     },
     {
       "operation": "AttachVerifiedAccessTrustProvider",
@@ -206,13 +206,13 @@
     },
     {
       "operation": "AttachVolume",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "likely implemented (InvalidVolume.NotFound: The volume 'probe-test-value' does not exist)"
     },
     {
       "operation": "AttachVpnGateway",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "AuthorizeClientVpnIngress",
@@ -221,13 +221,13 @@
     },
     {
       "operation": "AuthorizeSecurityGroupEgress",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "likely implemented (InvalidGroup.NotFound: The security group 'probe-test-value' does not exist)"
     },
     {
       "operation": "AuthorizeSecurityGroupIngress",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "likely implemented (InvalidGroup.NotFound: The security group '' does not exist)"
     },
     {
       "operation": "BundleInstance",
@@ -241,13 +241,13 @@
     },
     {
       "operation": "CancelCapacityReservation",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: The id 'probe-test-value' does not exist)"
     },
     {
       "operation": "CancelCapacityReservationFleets",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CancelConversionTask",
@@ -281,13 +281,13 @@
     },
     {
       "operation": "CancelSpotFleetRequests",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CancelSpotInstanceRequests",
-      "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ConfirmProductInstance",
@@ -302,12 +302,12 @@
     {
       "operation": "CopyImage",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CopySnapshot",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CopyVolumes",
@@ -322,7 +322,7 @@
     {
       "operation": "CreateCapacityReservation",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateCapacityReservationBySplitting",
@@ -332,17 +332,17 @@
     {
       "operation": "CreateCapacityReservationFleet",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateCarrierGateway",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateClientVpnEndpoint",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateClientVpnRoute",
@@ -357,22 +357,22 @@
     {
       "operation": "CreateCoipPool",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateCustomerGateway",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateDefaultSubnet",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateDefaultVpc",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateDelegateMacVolumeOwnershipTask",
@@ -382,22 +382,22 @@
     {
       "operation": "CreateDhcpOptions",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateEgressOnlyInternetGateway",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateFleet",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateFlowLogs",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateFpgaImage",
@@ -407,7 +407,7 @@
     {
       "operation": "CreateImage",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateImageUsageReport",
@@ -417,12 +417,12 @@
     {
       "operation": "CreateInstanceConnectEndpoint",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateInstanceEventWindow",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateInstanceExportTask",
@@ -432,7 +432,7 @@
     {
       "operation": "CreateInternetGateway",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateInterruptibleCapacityReservationAllocation",
@@ -442,7 +442,7 @@
     {
       "operation": "CreateIpam",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateIpamExternalResourceVerificationToken",
@@ -457,7 +457,7 @@
     {
       "operation": "CreateIpamPool",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateIpamPrefixListResolver",
@@ -472,37 +472,37 @@
     {
       "operation": "CreateIpamResourceDiscovery",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateIpamScope",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateKeyPair",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateLaunchTemplate",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateLaunchTemplateVersion",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateLocalGatewayRoute",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateLocalGatewayRouteTable",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateLocalGatewayRouteTableVirtualInterfaceGroupAssociation",
@@ -532,37 +532,37 @@
     {
       "operation": "CreateManagedPrefixList",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateNatGateway",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateNetworkAcl",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateNetworkAclEntry",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateNetworkInsightsAccessScope",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateNetworkInsightsPath",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateNetworkInterface",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateNetworkInterfacePermission",
@@ -572,12 +572,12 @@
     {
       "operation": "CreatePlacementGroup",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreatePublicIpv4Pool",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateReplaceRootVolumeTask",
@@ -597,7 +597,7 @@
     {
       "operation": "CreateRoute",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateRouteServer",
@@ -617,7 +617,7 @@
     {
       "operation": "CreateRouteTable",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateSecondaryNetwork",
@@ -632,17 +632,17 @@
     {
       "operation": "CreateSecurityGroup",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateSnapshot",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateSnapshots",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateSpotDatafeedSubscription",
@@ -657,52 +657,52 @@
     {
       "operation": "CreateSubnet",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateSubnetCidrReservation",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateTags",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateTrafficMirrorFilter",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateTrafficMirrorFilterRule",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateTrafficMirrorSession",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateTrafficMirrorTarget",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateTransitGateway",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateTransitGatewayConnect",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateTransitGatewayConnectPeer",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateTransitGatewayMeteringPolicy",
@@ -722,7 +722,7 @@
     {
       "operation": "CreateTransitGatewayPeeringAttachment",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateTransitGatewayPolicyTable",
@@ -732,17 +732,17 @@
     {
       "operation": "CreateTransitGatewayPrefixListReference",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateTransitGatewayRoute",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateTransitGatewayRouteTable",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateTransitGatewayRouteTableAnnouncement",
@@ -752,32 +752,32 @@
     {
       "operation": "CreateTransitGatewayVpcAttachment",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateVerifiedAccessEndpoint",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateVerifiedAccessGroup",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateVerifiedAccessInstance",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateVerifiedAccessTrustProvider",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateVolume",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateVpc",
@@ -797,7 +797,7 @@
     {
       "operation": "CreateVpcEndpoint",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateVpcEndpointConnectionNotification",
@@ -807,12 +807,12 @@
     {
       "operation": "CreateVpcEndpointServiceConfiguration",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateVpcPeeringConnection",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateVpnConcentrator",
@@ -822,7 +822,7 @@
     {
       "operation": "CreateVpnConnection",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "CreateVpnConnectionRoute",
@@ -832,7 +832,7 @@
     {
       "operation": "CreateVpnGateway",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteCapacityManagerDataExport",
@@ -842,12 +842,12 @@
     {
       "operation": "DeleteCarrierGateway",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteClientVpnEndpoint",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteClientVpnRoute",
@@ -862,32 +862,32 @@
     {
       "operation": "DeleteCoipPool",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteCustomerGateway",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteDhcpOptions",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteEgressOnlyInternetGateway",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteFleets",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteFlowLogs",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteFpgaImage",
@@ -902,22 +902,22 @@
     {
       "operation": "DeleteInstanceConnectEndpoint",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteInstanceEventWindow",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteInternetGateway",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteIpam",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteIpamExternalResourceVerificationToken",
@@ -932,7 +932,7 @@
     {
       "operation": "DeleteIpamPool",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteIpamPrefixListResolver",
@@ -947,22 +947,22 @@
     {
       "operation": "DeleteIpamResourceDiscovery",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteIpamScope",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteKeyPair",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteLaunchTemplate",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteLaunchTemplateVersions",
@@ -972,12 +972,12 @@
     {
       "operation": "DeleteLocalGatewayRoute",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteLocalGatewayRouteTable",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteLocalGatewayRouteTableVirtualInterfaceGroupAssociation",
@@ -1002,27 +1002,27 @@
     {
       "operation": "DeleteManagedPrefixList",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteNatGateway",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteNetworkAcl",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteNetworkAclEntry",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteNetworkInsightsAccessScope",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteNetworkInsightsAccessScopeAnalysis",
@@ -1037,12 +1037,12 @@
     {
       "operation": "DeleteNetworkInsightsPath",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteNetworkInterface",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteNetworkInterfacePermission",
@@ -1052,12 +1052,12 @@
     {
       "operation": "DeletePlacementGroup",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeletePublicIpv4Pool",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteQueuedReservedInstances",
@@ -1067,7 +1067,7 @@
     {
       "operation": "DeleteRoute",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteRouteServer",
@@ -1087,7 +1087,7 @@
     {
       "operation": "DeleteRouteTable",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteSecondaryNetwork",
@@ -1102,7 +1102,7 @@
     {
       "operation": "DeleteSnapshot",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteSpotDatafeedSubscription",
@@ -1112,47 +1112,47 @@
     {
       "operation": "DeleteSubnetCidrReservation",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteTags",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteTrafficMirrorFilter",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteTrafficMirrorFilterRule",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteTrafficMirrorSession",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteTrafficMirrorTarget",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteTransitGateway",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteTransitGatewayConnect",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteTransitGatewayConnectPeer",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteTransitGatewayMeteringPolicy",
@@ -1172,7 +1172,7 @@
     {
       "operation": "DeleteTransitGatewayPeeringAttachment",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteTransitGatewayPolicyTable",
@@ -1182,17 +1182,17 @@
     {
       "operation": "DeleteTransitGatewayPrefixListReference",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteTransitGatewayRoute",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteTransitGatewayRouteTable",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteTransitGatewayRouteTableAnnouncement",
@@ -1202,32 +1202,32 @@
     {
       "operation": "DeleteTransitGatewayVpcAttachment",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteVerifiedAccessEndpoint",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteVerifiedAccessGroup",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteVerifiedAccessInstance",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteVerifiedAccessTrustProvider",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteVolume",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteVpcBlockPublicAccessExclusion",
@@ -1247,17 +1247,17 @@
     {
       "operation": "DeleteVpcEndpointServiceConfigurations",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteVpcEndpoints",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteVpcPeeringConnection",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteVpnConcentrator",
@@ -1267,7 +1267,7 @@
     {
       "operation": "DeleteVpnConnection",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeleteVpnConnectionRoute",
@@ -1277,7 +1277,7 @@
     {
       "operation": "DeleteVpnGateway",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeprovisionByoipCidr",
@@ -1292,17 +1292,17 @@
     {
       "operation": "DeprovisionIpamPoolCidr",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeprovisionPublicIpv4PoolCidr",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeregisterImage",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeregisterInstanceEventNotificationAttributes",
@@ -1312,12 +1312,12 @@
     {
       "operation": "DeregisterTransitGatewayMulticastGroupMembers",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DeregisterTransitGatewayMulticastGroupSources",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeAccountAttributes",
@@ -1332,7 +1332,7 @@
     {
       "operation": "DescribeAddresses",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeAddressesAttribute",
@@ -1402,7 +1402,7 @@
     {
       "operation": "DescribeCapacityReservationFleets",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeCapacityReservationTopology",
@@ -1412,12 +1412,12 @@
     {
       "operation": "DescribeCapacityReservations",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeCarrierGateways",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeClassicLinkInstances",
@@ -1437,7 +1437,7 @@
     {
       "operation": "DescribeClientVpnEndpoints",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeClientVpnRoutes",
@@ -1452,7 +1452,7 @@
     {
       "operation": "DescribeCoipPools",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeConversionTasks",
@@ -1462,7 +1462,7 @@
     {
       "operation": "DescribeCustomerGateways",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeDeclarativePoliciesReports",
@@ -1472,12 +1472,12 @@
     {
       "operation": "DescribeDhcpOptions",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeEgressOnlyInternetGateways",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeElasticGpus",
@@ -1497,7 +1497,7 @@
     {
       "operation": "DescribeFastLaunchImages",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeFastSnapshotRestores",
@@ -1507,22 +1507,22 @@
     {
       "operation": "DescribeFleetHistory",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeFleetInstances",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeFleets",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeFlowLogs",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeFpgaImageAttribute",
@@ -1547,12 +1547,12 @@
     {
       "operation": "DescribeHosts",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeIamInstanceProfileAssociations",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeIdFormat",
@@ -1567,7 +1567,7 @@
     {
       "operation": "DescribeImageAttribute",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeImageReferences",
@@ -1587,7 +1587,7 @@
     {
       "operation": "DescribeImages",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeImportImageTasks",
@@ -1602,12 +1602,12 @@
     {
       "operation": "DescribeInstanceAttribute",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeInstanceConnectEndpoints",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeInstanceCreditSpecifications",
@@ -1622,7 +1622,7 @@
     {
       "operation": "DescribeInstanceEventWindows",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeInstanceImageMetadata",
@@ -1642,7 +1642,7 @@
     {
       "operation": "DescribeInstanceStatus",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeInstanceTopology",
@@ -1662,12 +1662,12 @@
     {
       "operation": "DescribeInstances",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeInternetGateways",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeIpamByoasn",
@@ -1687,7 +1687,7 @@
     {
       "operation": "DescribeIpamPools",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeIpamPrefixListResolverTargets",
@@ -1702,7 +1702,7 @@
     {
       "operation": "DescribeIpamResourceDiscoveries",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeIpamResourceDiscoveryAssociations",
@@ -1712,12 +1712,12 @@
     {
       "operation": "DescribeIpamScopes",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeIpams",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeIpv6Pools",
@@ -1727,17 +1727,17 @@
     {
       "operation": "DescribeKeyPairs",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeLaunchTemplateVersions",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeLaunchTemplates",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeLocalGatewayRouteTableVirtualInterfaceGroupAssociations",
@@ -1752,7 +1752,7 @@
     {
       "operation": "DescribeLocalGatewayRouteTables",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeLocalGatewayVirtualInterfaceGroups",
@@ -1787,7 +1787,7 @@
     {
       "operation": "DescribeManagedPrefixLists",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeMovingAddresses",
@@ -1797,37 +1797,37 @@
     {
       "operation": "DescribeNatGateways",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeNetworkAcls",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeNetworkInsightsAccessScopeAnalyses",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeNetworkInsightsAccessScopes",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeNetworkInsightsAnalyses",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeNetworkInsightsPaths",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeNetworkInterfaceAttribute",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeNetworkInterfacePermissions",
@@ -1837,7 +1837,7 @@
     {
       "operation": "DescribeNetworkInterfaces",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeOutpostLags",
@@ -1847,7 +1847,7 @@
     {
       "operation": "DescribePlacementGroups",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribePrefixLists",
@@ -1862,7 +1862,7 @@
     {
       "operation": "DescribePublicIpv4Pools",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeRegions",
@@ -1912,7 +1912,7 @@
     {
       "operation": "DescribeRouteTables",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeScheduledInstanceAvailability",
@@ -1947,17 +1947,17 @@
     {
       "operation": "DescribeSecurityGroupRules",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeSecurityGroupVpcAssociations",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeSecurityGroups",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeServiceLinkVirtualInterfaces",
@@ -1967,7 +1967,7 @@
     {
       "operation": "DescribeSnapshotAttribute",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeSnapshotTierStatus",
@@ -1977,7 +1977,7 @@
     {
       "operation": "DescribeSnapshots",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeSpotDatafeedSubscription",
@@ -1987,7 +1987,7 @@
     {
       "operation": "DescribeSpotFleetInstances",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeSpotFleetRequestHistory",
@@ -1997,12 +1997,12 @@
     {
       "operation": "DescribeSpotFleetRequests",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeSpotInstanceRequests",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeSpotPriceHistory",
@@ -2022,32 +2022,32 @@
     {
       "operation": "DescribeSubnets",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeTags",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeTrafficMirrorFilterRules",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeTrafficMirrorFilters",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeTrafficMirrorSessions",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeTrafficMirrorTargets",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeTransitGatewayAttachments",
@@ -2057,12 +2057,12 @@
     {
       "operation": "DescribeTransitGatewayConnectPeers",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeTransitGatewayConnects",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeTransitGatewayMeteringPolicies",
@@ -2077,7 +2077,7 @@
     {
       "operation": "DescribeTransitGatewayPeeringAttachments",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeTransitGatewayPolicyTables",
@@ -2092,17 +2092,17 @@
     {
       "operation": "DescribeTransitGatewayRouteTables",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeTransitGatewayVpcAttachments",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeTransitGateways",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeTrunkInterfaceAssociations",
@@ -2112,12 +2112,12 @@
     {
       "operation": "DescribeVerifiedAccessEndpoints",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeVerifiedAccessGroups",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeVerifiedAccessInstanceLoggingConfigurations",
@@ -2127,37 +2127,37 @@
     {
       "operation": "DescribeVerifiedAccessInstances",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeVerifiedAccessTrustProviders",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeVolumeAttribute",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeVolumeStatus",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeVolumes",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeVolumesModifications",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeVpcAttribute",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeVpcBlockPublicAccessExclusions",
@@ -2172,7 +2172,7 @@
     {
       "operation": "DescribeVpcClassicLink",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeVpcClassicLinkDnsSupport",
@@ -2202,12 +2202,12 @@
     {
       "operation": "DescribeVpcEndpointServiceConfigurations",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeVpcEndpointServicePermissions",
       "status": "working",
-      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-4f839a35' does not exist)"
+      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-a586d3a3' does not exist)"
     },
     {
       "operation": "DescribeVpcEndpointServices",
@@ -2217,17 +2217,17 @@
     {
       "operation": "DescribeVpcEndpoints",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeVpcPeeringConnections",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeVpcs",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeVpnConcentrators",
@@ -2237,12 +2237,12 @@
     {
       "operation": "DescribeVpnConnections",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DescribeVpnGateways",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DetachClassicLinkVpc",
@@ -2252,12 +2252,12 @@
     {
       "operation": "DetachInternetGateway",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DetachNetworkInterface",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DetachVerifiedAccessTrustProvider",
@@ -2267,12 +2267,12 @@
     {
       "operation": "DetachVolume",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DetachVpnGateway",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DisableAddressTransfer",
@@ -2297,12 +2297,12 @@
     {
       "operation": "DisableEbsEncryptionByDefault",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DisableFastLaunch",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DisableFastSnapshotRestores",
@@ -2352,7 +2352,7 @@
     {
       "operation": "DisableSerialConsoleAccess",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DisableSnapshotBlockPublicAccess",
@@ -2362,7 +2362,7 @@
     {
       "operation": "DisableTransitGatewayRouteTablePropagation",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DisableVgwRoutePropagation",
@@ -2372,17 +2372,17 @@
     {
       "operation": "DisableVpcClassicLink",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DisableVpcClassicLinkDnsSupport",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DisassociateAddress",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DisassociateCapacityReservationBillingOwner",
@@ -2402,7 +2402,7 @@
     {
       "operation": "DisassociateIamInstanceProfile",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DisassociateInstanceEventWindow",
@@ -2432,17 +2432,17 @@
     {
       "operation": "DisassociateRouteTable",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DisassociateSecurityGroupVpc",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DisassociateSubnetCidrBlock",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DisassociateTransitGatewayMulticastDomain",
@@ -2457,7 +2457,7 @@
     {
       "operation": "DisassociateTransitGatewayRouteTable",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "DisassociateTrunkInterface",
@@ -2467,7 +2467,7 @@
     {
       "operation": "DisassociateVpcCidrBlock",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "EnableAddressTransfer",
@@ -2492,12 +2492,12 @@
     {
       "operation": "EnableEbsEncryptionByDefault",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "EnableFastLaunch",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "EnableFastSnapshotRestores",
@@ -2552,7 +2552,7 @@
     {
       "operation": "EnableSerialConsoleAccess",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "EnableSnapshotBlockPublicAccess",
@@ -2562,7 +2562,7 @@
     {
       "operation": "EnableTransitGatewayRouteTablePropagation",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "EnableVgwRoutePropagation",
@@ -2577,12 +2577,12 @@
     {
       "operation": "EnableVpcClassicLink",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "EnableVpcClassicLinkDnsSupport",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ExportClientVpnClientCertificateRevocationList",
@@ -2662,7 +2662,7 @@
     {
       "operation": "GetConsoleOutput",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "GetConsoleScreenshot",
@@ -2687,7 +2687,7 @@
     {
       "operation": "GetEbsEncryptionByDefault",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "GetEnabledIpamPolicy",
@@ -2737,7 +2737,7 @@
     {
       "operation": "GetInstanceUefiData",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "GetIpamAddressHistory",
@@ -2772,12 +2772,12 @@
     {
       "operation": "GetIpamPoolAllocations",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "GetIpamPoolCidrs",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "GetIpamPrefixListResolverRules",
@@ -2797,12 +2797,12 @@
     {
       "operation": "GetIpamResourceCidrs",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "GetLaunchTemplateData",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "GetManagedPrefixListAssociations",
@@ -2812,7 +2812,7 @@
     {
       "operation": "GetManagedPrefixListEntries",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "GetNetworkInsightsAccessScopeAnalysisFindings",
@@ -2827,7 +2827,7 @@
     {
       "operation": "GetPasswordData",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "GetReservedInstancesExchangeQuote",
@@ -2857,7 +2857,7 @@
     {
       "operation": "GetSerialConsoleAccessStatus",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "GetSnapshotBlockPublicAccessState",
@@ -2872,7 +2872,7 @@
     {
       "operation": "GetSubnetCidrReservations",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "GetTransitGatewayAttachmentPropagations",
@@ -2902,17 +2902,17 @@
     {
       "operation": "GetTransitGatewayPrefixListReferences",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "GetTransitGatewayRouteTableAssociations",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "GetTransitGatewayRouteTablePropagations",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "GetVerifiedAccessEndpointPolicy",
@@ -2967,7 +2967,7 @@
     {
       "operation": "ImportKeyPair",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ImportSnapshot",
@@ -3017,12 +3017,12 @@
     {
       "operation": "ModifyCapacityReservationFleet",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ModifyClientVpnEndpoint",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ModifyDefaultCreditSpecification",
@@ -3037,7 +3037,7 @@
     {
       "operation": "ModifyFleet",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ModifyFpgaImageAttribute",
@@ -3047,7 +3047,7 @@
     {
       "operation": "ModifyHosts",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ModifyIdFormat",
@@ -3062,12 +3062,12 @@
     {
       "operation": "ModifyImageAttribute",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ModifyInstanceAttribute",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ModifyInstanceCapacityReservationAttributes",
@@ -3112,7 +3112,7 @@
     {
       "operation": "ModifyInstanceMetadataOptions",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ModifyInstanceNetworkPerformanceOptions",
@@ -3127,7 +3127,7 @@
     {
       "operation": "ModifyIpam",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ModifyIpamPolicyAllocationRules",
@@ -3137,7 +3137,7 @@
     {
       "operation": "ModifyIpamPool",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ModifyIpamPrefixListResolver",
@@ -3157,7 +3157,7 @@
     {
       "operation": "ModifyIpamResourceDiscovery",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ModifyIpamScope",
@@ -3167,7 +3167,7 @@
     {
       "operation": "ModifyLaunchTemplate",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ModifyLocalGatewayRoute",
@@ -3177,12 +3177,12 @@
     {
       "operation": "ModifyManagedPrefixList",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ModifyNetworkInterfaceAttribute",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ModifyPrivateDnsNameOptions",
@@ -3207,12 +3207,12 @@
     {
       "operation": "ModifySecurityGroupRules",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ModifySnapshotAttribute",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ModifySnapshotTier",
@@ -3222,12 +3222,12 @@
     {
       "operation": "ModifySpotFleetRequest",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ModifySubnetAttribute",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ModifyTrafficMirrorFilterNetworkServices",
@@ -3247,7 +3247,7 @@
     {
       "operation": "ModifyTransitGateway",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ModifyTransitGatewayMeteringPolicy",
@@ -3262,7 +3262,7 @@
     {
       "operation": "ModifyTransitGatewayVpcAttachment",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ModifyVerifiedAccessEndpoint",
@@ -3302,7 +3302,7 @@
     {
       "operation": "ModifyVolume",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ModifyVolumeAttribute",
@@ -3312,7 +3312,7 @@
     {
       "operation": "ModifyVpcAttribute",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ModifyVpcBlockPublicAccessExclusion",
@@ -3332,7 +3332,7 @@
     {
       "operation": "ModifyVpcEndpoint",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ModifyVpcEndpointConnectionNotification",
@@ -3342,7 +3342,7 @@
     {
       "operation": "ModifyVpcEndpointServiceConfiguration",
       "status": "working",
-      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-50d2a9fe' does not exist)"
+      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-37659439' does not exist)"
     },
     {
       "operation": "ModifyVpcEndpointServicePayerResponsibility",
@@ -3352,7 +3352,7 @@
     {
       "operation": "ModifyVpcEndpointServicePermissions",
       "status": "working",
-      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-c9867d84' does not exist)"
+      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-776bf3cc' does not exist)"
     },
     {
       "operation": "ModifyVpcPeeringConnectionOptions",
@@ -3387,7 +3387,7 @@
     {
       "operation": "MonitorInstances",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "MoveAddressToVpc",
@@ -3417,12 +3417,12 @@
     {
       "operation": "ProvisionIpamPoolCidr",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ProvisionPublicIpv4PoolCidr",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "PurchaseCapacityBlock",
@@ -3457,7 +3457,7 @@
     {
       "operation": "RegisterImage",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "RegisterInstanceEventNotificationAttributes",
@@ -3482,12 +3482,12 @@
     {
       "operation": "RejectTransitGatewayMulticastDomainAssociations",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "RejectTransitGatewayPeeringAttachment",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "RejectTransitGatewayVpcAttachment",
@@ -3497,32 +3497,32 @@
     {
       "operation": "RejectVpcEndpointConnections",
       "status": "working",
-      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-fb78f8d2' does not exist)"
+      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-73bf1a7b' does not exist)"
     },
     {
       "operation": "RejectVpcPeeringConnection",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ReleaseAddress",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ReleaseHosts",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ReleaseIpamPoolAllocation",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ReplaceIamInstanceProfileAssociation",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ReplaceImageCriteriaInAllowedImagesSettings",
@@ -3532,22 +3532,22 @@
     {
       "operation": "ReplaceNetworkAclAssociation",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ReplaceNetworkAclEntry",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ReplaceRoute",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ReplaceRouteTableAssociation",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ReplaceTransitGatewayRoute",
@@ -3567,12 +3567,12 @@
     {
       "operation": "RequestSpotFleet",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "RequestSpotInstances",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "ResetAddressAttribute",
@@ -3647,17 +3647,17 @@
     {
       "operation": "RevokeSecurityGroupEgress",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "RevokeSecurityGroupIngress",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "RunInstances",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "RunScheduledInstances",
@@ -3667,7 +3667,7 @@
     {
       "operation": "SearchLocalGatewayRoutes",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "SearchTransitGatewayMulticastGroups",
@@ -3677,7 +3677,7 @@
     {
       "operation": "SearchTransitGatewayRoutes",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "SendDiagnosticInterrupt",
@@ -3692,17 +3692,17 @@
     {
       "operation": "StartInstances",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "StartNetworkInsightsAccessScopeAnalysis",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "StartNetworkInsightsAnalysis",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "StartVpcEndpointServicePrivateDnsVerification",
@@ -3712,7 +3712,7 @@
     {
       "operation": "StopInstances",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "TerminateClientVpnConnections",
@@ -3722,12 +3722,12 @@
     {
       "operation": "UnassignIpv6Addresses",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "UnassignPrivateIpAddresses",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "UnassignPrivateNatGatewayAddress",
@@ -3742,7 +3742,7 @@
     {
       "operation": "UnmonitorInstances",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "UpdateCapacityManagerOrganizationsAccess",
@@ -3757,12 +3757,12 @@
     {
       "operation": "UpdateSecurityGroupRuleDescriptionsEgress",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "UpdateSecurityGroupRuleDescriptionsIngress",
       "status": "500_error",
-      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4599/\""
     },
     {
       "operation": "WithdrawByoipCidr",
