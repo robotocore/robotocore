@@ -249,6 +249,11 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "mediastore-data" => mediastore_data::dispatch(req),
         "memorydb" => memorydb::dispatch(req),
         "mq" => mq::dispatch(req),
+        // moto implements neptune inside its rds backend (moto/neptune/
+        // README), so the neptune engine label delegates to rds::dispatch —
+        // which accepts both labels. Boto itself signs neptune's model under
+        // the `rds` scope; older SDK generations sign `neptune`.
+        "neptune" => Some(rds::dispatch(req)),
         "networkfirewall" => networkfirewall::dispatch(req),
         "networkmanager" => networkmanager::dispatch(req),
         "osis" => osis::dispatch(req),
@@ -426,6 +431,7 @@ pub fn handles_service(service: &str) -> bool {
             | "mediastore-data"
             | "memorydb"
             | "mq"
+            | "neptune"
             | "networkfirewall"
             | "networkmanager"
             | "opensearch"
@@ -508,6 +514,8 @@ mod tests {
             "kinesisvideo",
             "kinesis-video-archived-media",
             "codepipeline",
+            "rds",
+            "neptune",
             "rdsdata",
             "lexv2models",
             "medialive",
