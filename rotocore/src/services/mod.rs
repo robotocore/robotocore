@@ -83,6 +83,7 @@ pub mod managedblockchain;
 pub mod mediaconnect;
 pub mod medialive;
 pub mod mediapackage;
+pub mod mediapackagev2;
 pub mod mediastore;
 pub mod memorydb;
 pub mod mq;
@@ -230,6 +231,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "mediaconnect" => mediaconnect::dispatch(req),
         "medialive" => medialive::dispatch(req),
         "mediapackage" => mediapackage::dispatch(req),
+        "mediapackagev2" => mediapackagev2::dispatch(req),
         "mediastore" => mediastore::dispatch(req),
         "memorydb" => memorydb::dispatch(req),
         "mq" => mq::dispatch(req),
@@ -395,6 +397,7 @@ pub fn handles_service(service: &str) -> bool {
             | "mediaconnect"
             | "medialive"
             | "mediapackage"
+            | "mediapackagev2"
             | "mediastore"
             | "memorydb"
             | "mq"
