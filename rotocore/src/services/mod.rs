@@ -107,6 +107,7 @@ pub mod s3control;
 pub mod s3tables;
 pub mod s3vectors;
 pub mod sagemaker;
+pub mod scheduler;
 pub mod sdb;
 pub mod securityhub;
 pub mod servicecatalog;
@@ -242,6 +243,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "s3tables" => s3tables::dispatch(req),
         "s3vectors" => s3vectors::dispatch(req),
         "sagemaker" => Some(sagemaker::dispatch(req)),
+        "scheduler" => scheduler::dispatch(req),
         "sdb" => sdb::dispatch(req),
         "securityhub" => Some(securityhub::dispatch(req)),
         "servicecatalog" => servicecatalog::dispatch(req),
@@ -391,6 +393,7 @@ pub fn handles_service(service: &str) -> bool {
             | "s3tables"
             | "s3vectors"
             | "sagemaker"
+            | "scheduler"
             | "sdb"
             | "securityhub"
             | "servicecatalog"
@@ -434,6 +437,7 @@ mod tests {
             "glacier",
             "elasticache",
             "codepipeline",
+            "scheduler",
             "xray",
         ] {
             assert!(handles_service(service), "{service} should be armed");
