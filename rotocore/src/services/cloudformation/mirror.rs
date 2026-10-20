@@ -181,15 +181,43 @@ pub fn s3_call(method: &str, bucket: &str, account: &str, region: &str) -> Mirro
 // resource stays absent (stack flows on, like the sidecar's best-effort).
 // ---------------------------------------------------------------------------
 
-pub fn create_sqs_queue(name: &str, account: &str, region: &str) -> Option<(String, Value)> {
-    let resp = form_call(
-        "sqs",
-        "CreateQueue",
-        "2012-11-05",
-        &[("QueueName", name.to_string())],
-        account,
-        region,
-    );
+pub fn create_sqs_queue(
+    props: &Value,
+    name: &str,
+    account: &str,
+    region: &str,
+) -> Option<(String, Value)> {
+    // AWS::SQS::Queue properties ride in as queue attributes (moto forwards
+    // every property through to `sqs_backend.create_queue`). SQS is a JSON
+    // protocol service on the wire today, and the form-encoded legacy path
+    // drops Attribute.N.Name/Value pairs — so post JSON with X-Amz-Target.
+    let mut body = json!({ "QueueName": name });
+    let attrs = sqs_queue_attributes(props);
+    if attrs.as_object().is_some_and(|m| !m.is_empty()) {
+        body.as_object_mut()
+            .unwrap()
+            .insert("Attributes".to_string(), attrs);
+    }
+    if let Some(tags) = props
+        .get("Tags")
+        .and_then(Value::as_array)
+        .filter(|t| !t.is_empty())
+    {
+        // CFN Tags [{Key, Value}] → SQS tags {name: value}.
+        let mut tag_map = serde_json::Map::new();
+        for t in tags {
+            if let (Some(k), Some(v)) = (
+                t.get("Key").and_then(Value::as_str),
+                t.get("Value").and_then(Value::as_str),
+            ) {
+                tag_map.insert(k.to_string(), json!(v));
+            }
+        }
+        body.as_object_mut()
+            .unwrap()
+            .insert("tags".to_string(), Value::Object(tag_map));
+    }
+    let resp = json_call("AmazonSQS.CreateQueue", "sqs", "/", body, account, region);
     if !resp.ok() {
         return None;
     }
@@ -205,6 +233,61 @@ pub fn create_sqs_queue(name: &str, account: &str, region: &str) -> Option<(Stri
         "QueueUrl": url,
     });
     Some((url, attrs))
+}
+
+/// Queue attributes derivable from AWS::SQS::Queue properties, stringified
+/// the way SQS serializes them (moto's `Queue._set_attributes` names).
+fn sqs_queue_attributes(props: &Value) -> Value {
+    let mut out = serde_json::Map::new();
+    let Some(obj) = props.as_object() else {
+        return Value::Object(out);
+    };
+    for (key, v) in obj {
+        if v.is_null() {
+            continue;
+        }
+        let scalar_names = [
+            "VisibilityTimeout",
+            "DelaySeconds",
+            "MaximumMessageSize",
+            "MessageRetentionPeriod",
+            "ReceiveMessageWaitTimeSeconds",
+            "KmsDataKeyReusePeriodSeconds",
+            "KmsMasterKeyId",
+            "DeduplicationScope",
+            "FifoThroughputLimit",
+            "RedriveAllowPolicy",
+        ];
+        let bool_names = [
+            "FifoQueue",
+            "ContentBasedDeduplication",
+            "SqsManagedSseEnabled",
+        ];
+        let policy_names = ["Policy", "RedrivePolicy"];
+        let rendered = if scalar_names.contains(&key.as_str()) {
+            match v {
+                Value::String(s) => s.clone(),
+                other => other.to_string(),
+            }
+        } else if bool_names.contains(&key.as_str()) {
+            match v {
+                Value::Bool(b) => {
+                    if *b {
+                        "true".to_string()
+                    } else {
+                        "false".to_string()
+                    }
+                }
+                other => other.to_string(),
+            }
+        } else if policy_names.contains(&key.as_str()) {
+            policy_json(v)
+        } else {
+            continue;
+        };
+        out.insert(key.clone(), Value::String(rendered));
+    }
+    Value::Object(out)
 }
 
 fn text(body: &str, tag: &str) -> Option<String> {
