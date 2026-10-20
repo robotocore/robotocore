@@ -60,6 +60,7 @@ pub mod elasticbeanstalk;
 pub mod elb;
 pub mod elbv2;
 pub mod emr;
+pub mod emrcontainers;
 pub mod fsx;
 pub mod glacier;
 pub mod glue;
@@ -190,6 +191,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "elb" => self::elb::dispatch(req),
         "elbv2" => self::elbv2::dispatch(req),
         "emr" => Some(emr::dispatch(req)),
+        "emrcontainers" => emrcontainers::dispatch(req),
         "es" => Some(opensearch::dispatch(req)),
         "fsx" => fsx::dispatch(req),
         "glacier" => Some(glacier::dispatch(req)),
@@ -342,6 +344,7 @@ pub fn handles_service(service: &str) -> bool {
             | "elb"
             | "elbv2"
             | "emr"
+            | "emrcontainers"
             | "es"
             | "fsx"
             | "glacier"
@@ -430,6 +433,7 @@ mod tests {
             "acm",
             "connect",
             "connectcampaigns",
+            "emrcontainers",
             "glue",
             "glacier",
             "elasticache",
