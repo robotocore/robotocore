@@ -728,6 +728,9 @@ fn resolve_op(method: &str, segs: &[String]) -> Option<&'static str> {
             ("POST", 4) if segs[1] == "mitigationactions" && segs[2] == "tasks" => {
                 Some("StartAuditMitigationActionsTask")
             }
+            ("PUT", 5) if segs[1] == "mitigationactions" && segs[4] == "cancel" => {
+                Some("CancelAuditMitigationActionsTask")
+            }
             ("GET", 4) if segs[1] == "mitigationactions" && segs[2] == "tasks" => {
                 Some("DescribeAuditMitigationActionsTask")
             }
@@ -1220,6 +1223,7 @@ fn handle(
         "UpdateAuditSuppression" => update_audit_suppression(s, body),
         "ListAuditSuppressions" => list_audit_suppressions(),
         "StartAuditMitigationActionsTask" => start_audit_mitigation_actions_task(s, &seg(3), body),
+        "CancelAuditMitigationActionsTask" => cancel_audit_mitigation_actions_task(),
         "DescribeAuditMitigationActionsTask" => describe_audit_mitigation_actions_task(s, &seg(3)),
         "ListAuditMitigationActionsTasks" => list_audit_mitigation_actions_tasks(),
         "ListAuditMitigationActionsExecutions" => list_audit_mitigation_actions_executions(),
@@ -5527,6 +5531,12 @@ fn start_audit_mitigation_actions_task(
         }),
     );
     Ok(ok_json(&json!({"taskId": task_id})))
+}
+
+/// moto: cancel_audit_mitigation_actions_task always succeeds (an empty
+/// result); tasks are only persisted by ID.
+fn cancel_audit_mitigation_actions_task() -> Result<Response, Response> {
+    Ok(ok_empty())
 }
 
 fn describe_audit_mitigation_actions_task(

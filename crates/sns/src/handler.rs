@@ -9,9 +9,24 @@ use crate::models::{SmsSandboxNumber, SnsState, Subscription, Topic};
 use crate::protocol::{AwsRequest, AwsResponse};
 use sqs::SqsHandler as _;
 
+type StateMap = Arc<RwLock<HashMap<(u64, String), SnsState>>>;
+
+/// Process-wide SNS state map shared by every `SnsHandler` instance.
+///
+/// Cross-service callers (S3 bucket notifications, ...) construct their own
+/// handler instance; sharing the state map lets those instances see the same
+/// topics and subscriptions as the server's registered SNS handler, mirroring
+/// moto's in-process backend semantics (the sqs crate does the same).
+fn global_states() -> StateMap {
+    static STATES: std::sync::OnceLock<StateMap> = std::sync::OnceLock::new();
+    STATES
+        .get_or_init(|| Arc::new(RwLock::new(HashMap::new())))
+        .clone()
+}
+
 /// The SNS service handler.
 pub struct SnsHandler {
-    pub(crate) state: RwLock<HashMap<(u64, String), SnsState>>,
+    pub(crate) state: StateMap,
     /// SQS handler used for cross-service delivery (shares the in-process SQS store).
     sqs: sqs::DefaultSqsHandler,
 }
@@ -66,7 +81,7 @@ fn member_list_xml(field: &str, members: &[String]) -> String {
 impl SnsHandler {
     pub fn new() -> Self {
         Self {
-            state: RwLock::new(HashMap::new()),
+            state: global_states(),
             sqs: sqs::DefaultSqsHandler::new(),
         }
     }
@@ -86,7 +101,6 @@ impl SnsHandler {
             .or_default()
             .clone()
     }
-
     fn not_found(arne: &str) -> AwsResponse {
         AwsResponse::error(404, "NotFound", &format!("Topic {} not found", arne))
     }

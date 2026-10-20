@@ -374,10 +374,11 @@ impl S3Handler {
         let name = req.bucket.clone().unwrap_or_default();
         match state.get_bucket(&name) {
             Some(b) => Ok((state, b)),
-            None => Err(AwsResponse::error(
+            None => Err(AwsResponse::bucket_error(
                 404,
                 "NoSuchBucket",
                 "The specified bucket does not exist",
+                &name,
             )),
         }
     }
@@ -650,7 +651,12 @@ impl S3Handler {
 
     fn bucket_or_404(state: &S3State, name: &str) -> Result<Arc<Bucket>, AwsResponse> {
         state.get_bucket(name).ok_or_else(|| {
-            AwsResponse::error(404, "NoSuchBucket", "The specified bucket does not exist")
+            AwsResponse::bucket_error(
+                404,
+                "NoSuchBucket",
+                "The specified bucket does not exist",
+                name,
+            )
         })
     }
 
@@ -863,7 +869,12 @@ impl S3Handler {
         let state = self.get_state(req.account, &req.region);
         let name = req.bucket.clone().unwrap_or_default();
         if state.get_bucket(&name).is_none() {
-            return AwsResponse::error(404, "NoSuchBucket", "The specified bucket does not exist");
+            return AwsResponse::bucket_error(
+                404,
+                "NoSuchBucket",
+                "The specified bucket does not exist",
+                &name,
+            );
         }
         AwsResponse::no_content(200)
     }
@@ -1407,6 +1418,11 @@ impl S3Handler {
 
     fn list_objects_v1(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
+        // Listing a missing bucket is NoSuchBucket (moto raises MissingBucket);
+        // the listing engine otherwise returns an empty success.
+        if let Err(resp) = Self::bucket_or_404(&state, &req.bucket.clone().unwrap_or_default()) {
+            return resp;
+        }
         let (contents, prefixes, last_emitted) = self.collect_listing(&state, req);
         let bucket_name = req.bucket.clone().unwrap_or_default();
         let prefix = req.query_params.get("prefix").cloned().unwrap_or_default();
@@ -1464,6 +1480,10 @@ impl S3Handler {
 
     fn list_objects_v2(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
+        // Listing a missing bucket is NoSuchBucket (moto raises MissingBucket).
+        if let Err(resp) = Self::bucket_or_404(&state, &req.bucket.clone().unwrap_or_default()) {
+            return resp;
+        }
         let (contents, prefixes, last_emitted) = self.collect_listing(&state, req);
         let bucket_name = req.bucket.clone().unwrap_or_default();
         let prefix = req.query_params.get("prefix").cloned().unwrap_or_default();
@@ -3192,7 +3212,26 @@ impl S3Handler {
                 sqs::bridge::deliver_to_arn(&target.arn, &message);
             }
         }
-        // Topic and Lambda targets are not wired cross-crate in the Rust port.
+        // Topic targets publish to SNS, whose fan-out builds the standard SNS
+        // envelope and delivers to SQS subscribers. The ad-hoc SNS handler
+        // shares SNS's process-global topic state (moto's in-process backend
+        // semantics). Lambda targets are not wired cross-crate in the Rust port.
+        for target in config.topics.iter() {
+            if event_matches(event_name, target, key) {
+                let sns = sns::DefaultSnsHandler::new();
+                let _ = sns.handle(sns::AwsRequest {
+                    service: "sns".to_string(),
+                    operation: "Publish".to_string(),
+                    account: req.account,
+                    region: req.region.clone(),
+                    params: json!({
+                        "TopicArn": target.arn.clone(),
+                        "Message": message,
+                    }),
+                    body: bytes::Bytes::new(),
+                });
+            }
+        }
 
         if config.eventbridge {
             let event = json!({

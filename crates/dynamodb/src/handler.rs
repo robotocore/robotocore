@@ -150,6 +150,101 @@ impl DynamoDbHandler {
             .unwrap_or_default()
     }
 
+    /// moto `DynamoHandler._validate_table_creation` attribute validation:
+    /// AttributeDefinitions must exactly cover the primary (and index) key
+    /// attribute names.
+    fn validate_attribute_definitions(
+        params: &Value,
+        key_schema: &[KeySchema],
+        attribute_definitions: &[AttributeDefinition],
+    ) -> Option<AwsResponse> {
+        let mut expected: Vec<&str> = key_schema
+            .iter()
+            .map(|k| k.attribute_name.as_str())
+            .collect();
+        let indexes: Vec<&str> = ["GlobalSecondaryIndexes", "LocalSecondaryIndexes"]
+            .iter()
+            .filter_map(|field| params.get(*field).and_then(Value::as_array))
+            .flatten()
+            .filter_map(|idx| idx.get("KeySchema").and_then(Value::as_array))
+            .flatten()
+            .filter_map(|k| k.get("AttributeName").and_then(Value::as_str))
+            .collect();
+        let has_index = params.get("GlobalSecondaryIndexes").is_some()
+            || params.get("LocalSecondaryIndexes").is_some();
+        for name in &indexes {
+            if !expected.contains(name) {
+                expected.push(name);
+            }
+        }
+        expected.sort_unstable();
+        let mut actual: Vec<&str> = attribute_definitions
+            .iter()
+            .map(|a| a.attribute_name.as_str())
+            .collect();
+        actual.sort_unstable();
+
+        if actual == expected {
+            return None;
+        }
+        let err_head = "One or more parameter values were invalid: ";
+        let dump = |list: &[&str]| {
+            format!(
+                "[{}]",
+                list.iter()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        };
+        let message = if actual.len() > expected.len() {
+            if has_index {
+                format!(
+                    "{err_head}Some AttributeDefinitions are not used. AttributeDefinitions: {}, keys used: {}",
+                    dump(&actual),
+                    dump(&expected)
+                )
+            } else {
+                format!(
+                    "{err_head}Number of attributes in KeySchema does not exactly match number of attributes defined in AttributeDefinitions"
+                )
+            }
+        } else if actual.len() < expected.len() {
+            if has_index {
+                let missing: Vec<&str> = expected
+                    .iter()
+                    .copied()
+                    .filter(|k| !actual.contains(k))
+                    .collect();
+                format!(
+                    "{err_head}Some index key attributes are not defined in AttributeDefinitions. Keys: {}, AttributeDefinitions: {}",
+                    dump(&missing),
+                    dump(&actual)
+                )
+            } else {
+                "Invalid KeySchema: Some index key attribute have no definition".to_string()
+            }
+        } else if has_index {
+            let missing: Vec<&str> = expected
+                .iter()
+                .copied()
+                .filter(|k| !actual.contains(k))
+                .collect();
+            format!(
+                "{err_head}Some index key attributes are not defined in AttributeDefinitions. Keys: {}, AttributeDefinitions: {}",
+                dump(&missing),
+                dump(&actual)
+            )
+        } else {
+            format!(
+                "{err_head}Some index key attributes are not defined in AttributeDefinitions. Keys: {}, AttributeDefinitions: {}",
+                dump(&expected),
+                dump(&actual)
+            )
+        };
+        Some(AwsResponse::error(400, "ValidationException", &message))
+    }
+
     fn parse_attr_defs(v: Option<&Value>) -> Vec<AttributeDefinition> {
         v.and_then(|v| v.as_array())
             .map(|arr| {
@@ -224,6 +319,12 @@ impl DynamoDbHandler {
         let billing_mode = param_str(&req.params, "BillingMode")
             .unwrap_or("PROVISIONED")
             .to_string();
+
+        if let Some(resp) =
+            Self::validate_attribute_definitions(&req.params, &key_schema, &attribute_definitions)
+        {
+            return resp;
+        }
 
         let table = Arc::new(Table::new(
             table_name.clone(),

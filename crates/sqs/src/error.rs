@@ -41,7 +41,9 @@ impl SqsError {
 
     pub fn status_code(&self) -> u16 {
         match self {
-            SqsError::NonExistentQueue(_) => 404,
+            // AWS query-protocol SQS errors are 400; NonExistentQueue included
+            // (moto's RESTError defaults to 400).
+            SqsError::NonExistentQueue(_) => 400,
             SqsError::InvalidAttributeName(_) => 400,
             SqsError::ReceiptHandleIsInvalid(_) => 400,
             SqsError::MessageNotInflight(_) => 400,

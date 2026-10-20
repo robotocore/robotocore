@@ -16,9 +16,9 @@
 //! - `GetNamedQuery` on a missing id crashes moto with
 //!   `'NoneType' object has no attribute 'name'` — reproduced as a
 //!   500 `InternalError`.
-//! - `CreateCapacityReservation` without `Tags` crashes moto with
-//!   `'NoneType' object is not iterable` — reproduced so the compat suite
-//!   keeps its exact sidecar count (1 failure).
+//! - `CreateCapacityReservation` without `Tags` succeeds: moto's
+//!   `CapacityReservation.__init__` normalizes `tags or []` and
+//!   `TaggingService.tag_resource` no-ops on `None`.
 //! - `GetPreparedStatement` on a missing name surfaces moto's
 //!   `AthenaClientError` body verbatim (`Error`/`RequestId` envelope).
 //! - Unknown operations answer `501 NotImplemented` like the sidecar.
@@ -43,18 +43,6 @@ fn invalid_request(message: &str) -> Response {
 
 fn invalid_argument(message: &str) -> Response {
     json_error(400, "InvalidArgumentException", message)
-}
-
-/// moto crash on `CreateCapacityReservation` with no `Tags` (TypeError
-/// iterating None) — kept so the suite count matches the sidecar.
-fn null_tags_internal_error() -> Response {
-    Response::json_status(
-        500,
-        &json!({
-            "__type": "InternalError",
-            "message": "'NoneType' object is not iterable",
-        }),
-    )
 }
 
 /// moto crash on `GetNamedQuery` with a missing id (`nq.name` on None).
@@ -1146,21 +1134,20 @@ fn op_create_capacity_reservation(
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string();
-    // moto: `CapacityReservation.__init__` calls `create_tags(tags)` before
-    // storing — iterating a `None` tag list is a TypeError (sidecar 500).
+    // moto: `CapacityReservation.__init__` normalizes missing tags to the
+    // empty list and `TaggingService.tag_resource` no-ops on `None`.
     let tags = body.get("Tags").filter(|tags| !tags.is_null()).cloned();
-    if tags.is_none() {
-        return Err(null_tags_internal_error());
-    }
     let reservation = CapacityReservation {
         target_dpus: body.get("TargetDpus").cloned().unwrap_or(Value::Null),
         tags: tags.clone(),
     };
+    if let Some(tag_list) = tags.as_ref() {
+        st.tagger.tag_resource(
+            &resource_arn(region, account, "capacity-reservation", &name),
+            Some(tag_list),
+        );
+    }
     st.capacity_reservations.push((name.clone(), reservation));
-    st.tagger.tag_resource(
-        &resource_arn(region, account, "capacity-reservation", &name),
-        tags.as_ref(),
-    );
     Ok(json!({}))
 }
 
@@ -2733,16 +2720,21 @@ mod tests {
     #[test]
     fn capacity_reservation_lifecycle_and_errors() {
         let account = fresh_account();
-        // no Tags → the sidecar's moto crash
+        // no Tags succeeds — moto normalizes `tags or []` and skips tagging
         let resp = run(
             account,
             "CreateCapacityReservation",
             json!({"Name": "cr-no-tags", "TargetDpus": 24}),
         );
-        assert_eq!(resp.status, 500);
-        let err = body_of(&resp);
-        assert_eq!(err["__type"], "InternalError");
-        assert_eq!(err["message"], "'NoneType' object is not iterable");
+        assert_eq!(resp.status, 200);
+        let cr = body_of(&run(
+            account,
+            "GetCapacityReservation",
+            json!({"Name": "cr-no-tags"}),
+        ))["CapacityReservation"]
+            .clone();
+        assert_eq!(cr["TargetDpus"], 24);
+        assert_eq!(cr["Tags"], json!([]));
 
         // with tags the reservation is created
         run(
