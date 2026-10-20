@@ -1515,6 +1515,76 @@ pub async fn config_handler() -> impl IntoResponse {
     (StatusCode::OK, axum::Json(config))
 }
 
+/// `POST /_robotocore/config` — runtime config updates, mirroring the
+/// python twin's behavior verbatim: 403 unless the twin was launched with
+/// `ENABLE_CONFIG_UPDATES=1`, 400 for empty/invalid/non-object bodies and
+/// non-whitelisted keys, `{"status": "updated", "updated": {...}}` on
+/// success.
+///
+/// Values are stored in the runtime-config override table; settings whose
+/// consumers are not ported to the rust gateway yet are accepted but have
+/// no consumer (see `core::runtime_config`).
+pub async fn config_update_handler(body: axum::body::Bytes) -> Response {
+    const DISABLED: &str = "Runtime config updates are disabled. Set ENABLE_CONFIG_UPDATES=1.";
+    if !crate::core::runtime_config::updates_enabled() {
+        return (
+            StatusCode::FORBIDDEN,
+            axum::Json(json!({ "error": DISABLED })),
+        )
+            .into_response();
+    }
+    if body.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            axum::Json(json!({ "error": "No settings provided" })),
+        )
+            .into_response();
+    }
+    let updates: serde_json::Value = match serde_json::from_slice(&body) {
+        Ok(v) => v,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                axum::Json(json!({ "error": "Invalid JSON" })),
+            )
+                .into_response()
+        }
+    };
+    let Some(updates) = updates.as_object() else {
+        return (
+            StatusCode::BAD_REQUEST,
+            axum::Json(json!({ "error": "Expected JSON object" })),
+        )
+            .into_response();
+    };
+    let mut updated = serde_json::Map::new();
+    for (key, value) in updates {
+        let value_str = match value {
+            serde_json::Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+        if !crate::core::runtime_config::MUTABLE_SETTINGS
+            .iter()
+            .any(|(k, _)| k == key)
+        {
+            return (
+                StatusCode::BAD_REQUEST,
+                axum::Json(
+                    json!({ "error": format!("Setting {key} cannot be changed at runtime") }),
+                ),
+            )
+                .into_response();
+        }
+        crate::core::runtime_config::set(key, value_str.clone());
+        updated.insert(key.clone(), json!(value_str));
+    }
+    (
+        StatusCode::OK,
+        axum::Json(json!({ "status": "updated", "updated": updated })),
+    )
+        .into_response()
+}
+
 /// Audit endpoint: `?limit=N` recent call records.
 pub async fn audit_handler(uri: Uri) -> impl IntoResponse {
     // Python: `?limit=N` (int required; anything non-numeric is a 400)
@@ -1589,7 +1659,10 @@ pub fn build_router(
 
     Router::new()
         .route("/_robotocore/health", get(health_handler))
-        .route("/_robotocore/config", get(config_handler))
+        .route(
+            "/_robotocore/config",
+            get(config_handler).post(config_update_handler),
+        )
         .route("/_robotocore/audit", get(audit_handler))
         .route("/_robotocore/runtimes", get(runtimes_handler))
         .route("/_robotocore/services", get(services_handler))
