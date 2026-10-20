@@ -252,7 +252,6 @@ static SLOT: Lazy<store::Slot<State>> = Lazy::new(|| store::slot::<State>("apiga
 
 impl State {
     /// moto's Account defaults; GetAccount must always return a body.
-    #[allow(dead_code)]
     fn new() -> State {
         State {
             account: json!({
@@ -268,7 +267,10 @@ impl State {
 
 fn with_state<T>(account: u64, region: &str, f: impl FnOnce(&mut State) -> T) -> T {
     let mut guard = SLOT.write();
-    let state = guard.entry((account, region.to_string())).or_default();
+    // Seed moto's Account defaults (GetAccount can never return a null body).
+    let state = guard
+        .entry((account, region.to_string()))
+        .or_insert_with(State::new);
     f(state)
 }
 
@@ -842,13 +844,15 @@ fn route(
             if !state.usage_plans.contains_key(*usage_plan_id) {
                 return not_found("Invalid Usage Plan ID specified");
             }
-            ok(json!({
-                "usagePlanId": usage_plan_id,
-                "startDate": today_date(),
-                "endDate": today_date(),
-                "position": Value::Null,
-                "items": {},
-            }))
+            ok(get_usage_body(usage_plan_id))
+        }
+        // UpdateUsage is PATCH /usageplans/{plan}/keys/{keyId}/usage; moto
+        // ignores the patch ops and the key, and echoes get_usage(path[2]).
+        ["usageplans", usage_plan_id, "keys", _key_id, "usage"] => {
+            if !state.usage_plans.contains_key(*usage_plan_id) {
+                return not_found("Invalid Usage Plan ID specified");
+            }
+            ok(get_usage_body(usage_plan_id))
         }
         ["domainnames"] => match req.method.as_str() {
             "POST" => create_domain_name(state, params),
@@ -3277,6 +3281,17 @@ fn op_value_json(op: &PatchOp) -> Value {
     }
 }
 
+/// The Usage shape moto's get_usage/update_usage return for an empty plan.
+fn get_usage_body(usage_plan_id: &str) -> Value {
+    json!({
+        "usagePlanId": usage_plan_id,
+        "startDate": today_date(),
+        "endDate": today_date(),
+        "position": Value::Null,
+        "items": {},
+    })
+}
+
 fn create_domain_name_access_association(
     state: &mut State,
     params: &Map<String, Value>,
@@ -3740,5 +3755,46 @@ mod tests {
         assert_eq!(got.status, 200, "get integration response");
         let body = parsed(&got);
         assert_eq!(body["statusCode"], "200");
+    }
+
+    #[test]
+    fn account_and_usage() {
+        let acct = fresh_ctx();
+
+        // GetAccount returns moto's Account defaults, never a null body.
+        let account = parsed(&dispatch(&req("GET", "/account", json!({}), acct)));
+        assert!(account.get("apiKeyVersion").is_some(), "account body");
+        assert_eq!(account["throttleSettings"]["burstLimit"], 5000);
+
+        // UpdateUsage echoes get_usage for the plan in the path.
+        let plan = parsed(&dispatch(&req(
+            "POST",
+            "/usageplans",
+            json!({"name": "up"}),
+            acct,
+        )))["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let usage = parsed(&dispatch(&req(
+            "PATCH",
+            &format!("/usageplans/{plan}/keys/fake-key/usage"),
+            json!({"patchOperations": [{"op": "replace", "path": "/remaining", "value": "100"}]}),
+            acct,
+        )));
+        assert_eq!(usage["usagePlanId"], plan);
+        assert!(usage["items"].as_object().is_some());
+        // Unknown plan id keeps moto's "Invalid Usage Plan ID specified".
+        let missing = dispatch(&req(
+            "PATCH",
+            "/usageplans/ghost/keys/k/usage",
+            json!({}),
+            acct,
+        ));
+        assert_eq!(missing.status, 404);
+        assert_eq!(
+            parsed(&missing)["message"],
+            "Invalid Usage Plan ID specified"
+        );
     }
 }
