@@ -1,11 +1,11 @@
 {
   "service": "organizations",
-  "generated_at": "2026-10-20T08:07:41.805775+00:00",
-  "endpoint": "http://localhost:4599",
+  "generated_at": "2026-10-20T09:06:33.472389+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 50,
+    "working": 53,
     "needs_params": 0,
-    "not_implemented": 13,
+    "not_implemented": 10,
     "500_error": 0
   },
   "operations": [
@@ -136,8 +136,8 @@
     },
     {
       "operation": "DisableAWSServiceAccess",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (InvalidInputException: You specified an unrecognized service principal.)"
     },
     {
       "operation": "DisablePolicyType",
@@ -146,8 +146,8 @@
     },
     {
       "operation": "EnableAWSServiceAccess",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "EnableAllFeatures",
@@ -176,8 +176,8 @@
     },
     {
       "operation": "ListAWSServiceAccessForOrganization",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListAccounts",

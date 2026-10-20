@@ -27,6 +27,7 @@ one probes/<service>.json artifact per service.
 import argparse
 import json
 import sys
+import time
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
@@ -214,9 +215,14 @@ def list_services(endpoint: str) -> list[dict]:
 
 
 def probe_service(
-    service_name: str, all_ops: bool, endpoint: str, read_timeout: float = 60.0
+    service_name: str, all_ops: bool, endpoint: str, read_timeout: float = 60.0,
+    budget: float = 0.0,
 ) -> dict:
-    """Probe every operation of one service. Returns the artifact dict."""
+    """Probe every operation of one service. Returns the artifact dict.
+
+    budget: wall-clock seconds before the probe stops mid-service and records
+    note "partial: time-boxed" (0 = no budget).
+    """
     botocore_name = _botocore_service_name(service_name)
     client = make_client(botocore_name, endpoint, read_timeout)
     known = KNOWN_PARAMS.get(service_name, {})
@@ -227,8 +233,13 @@ def probe_service(
         "500_error": 0,
     }
     results = []
+    deadline = time.monotonic() + budget if budget > 0 else None
+    note = None
 
     for op in get_operations(botocore_name, all_ops):
+        if deadline is not None and time.monotonic() > deadline:
+            note = "partial: time-boxed"
+            break
         # Priority: known params > auto-filled > empty
         if op in known:
             params = known[op]
@@ -240,13 +251,16 @@ def probe_service(
         counts[status] += 1
         results.append({"operation": op, "status": status, "message": msg})
 
-    return {
+    artifact = {
         "service": service_name,
         "generated_at": datetime.now(UTC).isoformat(),
         "endpoint": endpoint,
         "counts": counts,
         "operations": results,
     }
+    if note:
+        artifact["note"] = note
+    return artifact
 
 
 def _run_all_services(args) -> int:
@@ -266,7 +280,8 @@ def _run_all_services(args) -> int:
         svc = entry["name"]
         try:
             result = probe_service(
-                svc, all_ops=True, endpoint=args.endpoint, read_timeout=args.timeout
+                svc, all_ops=True, endpoint=args.endpoint, read_timeout=args.timeout,
+                budget=args.budget,
             )
         except Exception as exc:  # noqa: BLE001 — one bad service must not stop the fleet
             print(f"[{i}/{len(endpoints)}] {svc}: SKIPPED ({str(exc)[:80]})", flush=True)
@@ -323,13 +338,20 @@ def main():
         default=60.0,
         help="Per-operation read timeout in seconds (default: 60)",
     )
+    parser.add_argument(
+        "--budget",
+        type=float,
+        default=0.0,
+        help="Per-service wall-clock budget in seconds; on expiry the artifact "
+        "is written partial with note 'partial: time-boxed' (default: none)",
+    )
     args = parser.parse_args()
 
     if args.all_services:
         return _run_all_services(args)
 
     result = probe_service(args.service, all_ops=args.all, endpoint=args.endpoint,
-                           read_timeout=args.timeout)
+                           read_timeout=args.timeout, budget=args.budget)
     counts = result["counts"]
     results = result["operations"]
 
