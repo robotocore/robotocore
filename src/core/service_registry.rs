@@ -113,7 +113,7 @@ pub const SERVICE_REGISTRY: &[(&str, &str, &str, &str)] = &[
     ),
     ("emr", "moto", "json", "Elastic MapReduce"),
     ("emrcontainers", "native", "rest-json", "EMR on EKS"),
-    ("emrserverless", "moto", "rest-json", "EMR Serverless"),
+    ("emrserverless", "native", "rest-json", "EMR Serverless"),
     ("es", "native", "rest-json", "Elasticsearch Service"),
     (
         "events",

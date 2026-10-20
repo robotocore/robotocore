@@ -60,8 +60,12 @@ pub mod elasticbeanstalk;
 pub mod elb;
 pub mod elbv2;
 pub mod emr;
+<<<<<<< HEAD
 pub mod emrcontainers;
 pub mod forecast;
+=======
+pub mod emrserverless;
+>>>>>>> port/rot-emrserverless
 pub mod fsx;
 pub mod glacier;
 pub mod glue;
@@ -194,7 +198,11 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "elb" => self::elb::dispatch(req),
         "elbv2" => self::elbv2::dispatch(req),
         "emr" => Some(emr::dispatch(req)),
+<<<<<<< HEAD
         "emrcontainers" => emrcontainers::dispatch(req),
+=======
+        "emrserverless" => emrserverless::dispatch(req),
+>>>>>>> port/rot-emrserverless
         "es" => Some(opensearch::dispatch(req)),
         "forecast" => forecast::dispatch(req),
         "fsx" => fsx::dispatch(req),
@@ -356,7 +364,11 @@ pub fn handles_service(service: &str) -> bool {
             | "elb"
             | "elbv2"
             | "emr"
+<<<<<<< HEAD
             | "emrcontainers"
+=======
+            | "emrserverless"
+>>>>>>> port/rot-emrserverless
             | "es"
             | "forecast"
             | "fsx"
@@ -453,6 +465,7 @@ mod tests {
             "glue",
             "glacier",
             "elasticache",
+            "emrserverless",
             "codepipeline",
             "rdsdata",
             "xray",
