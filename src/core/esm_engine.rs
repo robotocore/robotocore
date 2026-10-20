@@ -306,25 +306,37 @@ impl Engine {
         if records.is_empty() {
             return;
         }
+        // Batch capacity per moto's EventSourceMapping.batch_size: each
+        // invocation window carries at most that many matching records, and
+        // the watermark advances only through records actually delivered
+        // (a failed window re-delivers on the next poll).
+        let batch_cap = (mapping.batch_size).max(1) as usize;
         let matching = self.build_ddb_event(mapping, entry, &records);
-        // Filters may have dropped every record; the cursor still advances.
-        let all_delivered_seq = records.iter().filter_map(seq_of).max_by_key(|s| seq_num(s));
         if matching.is_empty() {
-            if let Some(seq) = all_delivered_seq {
+            // Filters dropped everything; the cursor still advances past
+            // these records.
+            if let Some(seq) = records.iter().filter_map(seq_of).max_by_key(|s| seq_num(s)) {
                 self.ddb_last_seq.insert(key, seq);
             }
             return;
         }
-        let result = native.lambda.invoke_engine_event(
-            entry.account,
-            &entry.region,
-            &mapping.function_arn,
-            &json!({"Records": matching}),
-        );
-        if result.function_error.is_none() {
-            if let Some(seq) = all_delivered_seq {
-                self.ddb_last_seq.insert(key, seq);
+        let mut last_seq: Option<String> = None;
+        for window in matching.chunks(batch_cap) {
+            let result = native.lambda.invoke_engine_event(
+                entry.account,
+                &entry.region,
+                &mapping.function_arn,
+                &json!({"Records": window}),
+            );
+            if result.function_error.is_some() {
+                break;
             }
+            if let Some(seq) = window.iter().filter_map(seq_of).max_by_key(|s| seq_num(s)) {
+                last_seq = Some(seq);
+            }
+        }
+        if let Some(seq) = last_seq {
+            self.ddb_last_seq.insert(key, seq);
         }
     }
 
