@@ -286,7 +286,10 @@ impl PipesState {
             .values()
             .filter(|pipe| {
                 let _name = pipe["Name"].as_str().unwrap_or_default().to_string();
-                if !(wanted("NamePrefix", "Name", pipe) || wanted("namePrefix", "Name", pipe)) {
+                // `wanted` returns true when its key is absent, so the two
+                // casings compose with `&&` — an `||` short-circuits the
+                // filter to always-pass.
+                if !(wanted("NamePrefix", "Name", pipe) && wanted("namePrefix", "Name", pipe)) {
                     return false;
                 }
                 wanted("DesiredState", "DesiredState", pipe)

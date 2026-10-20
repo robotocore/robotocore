@@ -400,6 +400,11 @@ fn describe_instances(req: &Request, params: &P) -> Response {
         let region = req.region.clone();
         let account = req.account;
         let all: Vec<Instance> = state.instances.clone();
+        // moto raises InvalidInstanceID.NotFound for the first unknown ID
+        // instead of silently listing an empty reservation set.
+        if let Some(missing) = ids.iter().find(|id| !all.iter().any(|i| i.id == **id)) {
+            return not_found_instance(missing);
+        }
         let sgs: Vec<super::state::SecurityGroup> = state.security_groups.clone();
         let mut matches: Vec<&Instance> = Vec::new();
         for i in &all {

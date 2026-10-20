@@ -1752,6 +1752,7 @@ impl SagemakerState {
                 }));
             }
 
+            "ListMonitoringAlerts" => return ok(json!({"MonitoringAlertSummaries": []})),
             "ListMonitoringAlertHistory" => return ok(json!({"MonitoringAlertHistory": []})),
             "ListMonitoringExecutions" => return ok(json!({"MonitoringExecutionSummaries": []})),
             "ListPipelineExecutionSteps" => return ok(json!({"PipelineExecutionSteps": []})),
