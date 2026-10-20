@@ -677,6 +677,16 @@ impl LambdaHandler {
         func: &Arc<LambdaFunction>,
     ) -> Result<runtime::ExecResult, AwsResponse> {
         let event = String::from_utf8_lossy(&req.body).to_string();
+        // The payload is decoded before anything else (the Python-era
+        // provider ran `json.loads(body)` on the raw request body), so a
+        // non-JSON body fails the request rather than reaching the handler.
+        if !req.body.is_empty() && serde_json::from_slice::<Value>(&req.body).is_err() {
+            return Err(AwsResponse::error(
+                400,
+                "InvalidRequestContent",
+                "The request payload is not valid JSON.",
+            ));
+        }
         let invocation_type = req
             .header("x-amz-invocation-type")
             .unwrap_or("RequestResponse");
@@ -697,18 +707,7 @@ impl LambdaHandler {
                 logs: String::new(),
             });
         }
-        let is_python: bool = crate::runtime::is_python_runtime(&func.runtime.read());
-        if !is_python {
-            // Non-python runtimes have no executor in this backend; mirror
-            // the ground-truth shape: 200 response with function-error
-            // header Runtime.InvalidRuntime and a null payload.
-            return Ok(runtime::ExecResult {
-                payload: "null".to_string(),
-                function_error: Some("Runtime.InvalidRuntime".to_string()),
-                logs: String::new(),
-            });
-        }
-        // Collect layer zips for PYTHONPATH resolution.
+        // Collect layer zips: both runtimes resolve imports through them.
         let mut layer_zips: Vec<Vec<u8>> = Vec::new();
         for layer_entry in func.layers.read().iter() {
             let arn = layer_entry.get("Arn").and_then(Value::as_str).unwrap_or("");
@@ -720,6 +719,32 @@ impl LambdaHandler {
             }
         }
         let env_vars = func.environment.read().clone().unwrap_or_default();
+        // Node.js runtimes execute through the node bootstrap.
+        if runtime::is_node_runtime(&func.runtime.read()) {
+            return Ok(runtime::execute_nodejs(
+                &zip_bytes,
+                &layer_zips,
+                &func.handler.read().clone(),
+                &event,
+                &func.function_name,
+                &func.version.read().clone(),
+                &env_vars,
+                *func.timeout.read(),
+                *func.memory_size.read(),
+                &req.region.clone(),
+                &req.account.to_string(),
+            ));
+        }
+        if !crate::runtime::is_python_runtime(&func.runtime.read()) {
+            // Other runtimes have no executor in this backend; mirror
+            // the ground-truth shape: 200 response with function-error
+            // header Runtime.InvalidRuntime and a null payload.
+            return Ok(runtime::ExecResult {
+                payload: "null".to_string(),
+                function_error: Some("Runtime.InvalidRuntime".to_string()),
+                logs: String::new(),
+            });
+        }
         Ok(runtime::execute_python(
             &zip_bytes,
             &layer_zips,
@@ -2519,6 +2544,8 @@ mod tests {
 
     #[test]
     fn test_non_python_runtime_invoke_is_error_shaped() {
+        // Runtimes with no executor keep the InvalidRuntime shape; nodejs
+        // runtimes execute through the node bootstrap instead.
         let zip_b64 = base64::engine::general_purpose::STANDARD
             .encode(make_code_zip("exports.handler = async (e) => ({ok: true})"));
         let handler = LambdaHandler::new();
@@ -2526,8 +2553,8 @@ mod tests {
             "POST",
             json!({
                 "FunctionName": "node-fn",
-                "Runtime": "nodejs20.x",
-                "Handler": "index.handler",
+                "Runtime": "ruby3.2",
+                "Handler": "app.handler",
                 "Code": {"ZipFile": zip_b64}
             }),
             "/2015-03-31/functions",
