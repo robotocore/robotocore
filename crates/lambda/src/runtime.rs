@@ -49,9 +49,11 @@ class Ctx:
         self.log_group_name = f"/aws/lambda/{self.function_name}"
         self.log_stream_name = "{date}/[$LATEST]{rid}".format(date=time.strftime("%Y/%m/%d", time.gmtime()), rid=uuid.uuid4().hex[:32])
         self._timeout_ms = int(meta.get("timeout", 3)) * 1000
+        self._started = time.time()
 
     def get_remaining_time_in_millis(self):
-        return self._timeout_ms
+        elapsed_ms = int((time.time() - self._started) * 1000)
+        return max(0, self._timeout_ms - elapsed_ms)
 
 
 def safe_extract(zippath, outdir):
@@ -242,6 +244,7 @@ pub fn execute_python(
         "function_arn": function_arn,
         "memory_size": memory_size,
         "timeout": timeout_secs,
+        "handler": handler,
     });
     let _ = fs::write(work.join("fn.json"), meta.to_string());
     for (i, layer) in layer_zips.iter().enumerate() {
@@ -384,21 +387,517 @@ pub fn is_python_runtime(runtime: &str) -> bool {
     r.is_empty() || r.starts_with("python") || r == "custom"
 }
 
+/// Whether this runtime family executes through the Node.js bootstrap.
+pub fn is_node_runtime(runtime: &str) -> bool {
+    runtime.trim().to_ascii_lowercase().starts_with("nodejs")
+}
+
+const BOOTSTRAP_JS: &str = r#"#!/usr/bin/env node
+/**
+ * robotocore Node.js Lambda bootstrap: extracts the deployment package and
+ * layer zips into the current directory, reads the JSON event from stdin,
+ * invokes the handler, and writes the JSON result to stdout (logs on stderr).
+ *
+ * Protocol (mirrors the Python-era twin): exit 0 = success with the JSON
+ * result on stdout; non-zero exit = failure — a stdout object carrying
+ * "errorMessage" maps to FunctionError "Handled", anything else becomes
+ * FunctionError "Unhandled" ({errorType: Runtime.ExitError}).
+ *
+ * Usage: node lambda_bootstrap.js [layerN.zip...] code.zip
+ */
+const fs = require('fs');
+const path = require('path');
+const zlib = require('zlib');
+
+/** Extract one zip archive into destDir (central-directory walk + inflateRaw). */
+function extractZip(zipPath, destDir) {
+    const buf = fs.readFileSync(zipPath);
+    // Locate the End Of Central Directory record, scanning past the comment.
+    let eocd = -1;
+    for (let i = buf.length - 22; i >= 0 && i >= buf.length - 22 - 65535; i--) {
+        if (buf.readUInt32LE(i) === 0x06054b50) {
+            eocd = i;
+            break;
+        }
+    }
+    if (eocd < 0) throw new Error(`Invalid ZIP archive: ${zipPath}`);
+    const entryCount = buf.readUInt16LE(eocd + 10);
+    let offset = buf.readUInt32LE(eocd + 16);
+    for (let i = 0; i < entryCount; i++) {
+        if (buf.readUInt32LE(offset) !== 0x02014b50) {
+            throw new Error(`Corrupt ZIP central directory in ${zipPath}`);
+        }
+        const method = buf.readUInt16LE(offset + 10);
+        const csize = buf.readUInt32LE(offset + 20);
+        const nameLen = buf.readUInt16LE(offset + 28);
+        const extraLen = buf.readUInt16LE(offset + 30);
+        const commentLen = buf.readUInt16LE(offset + 32);
+        const lfhOffset = buf.readUInt32LE(offset + 42);
+        const name = buf.slice(offset + 46, offset + 46 + nameLen).toString('utf8');
+        offset += 46 + nameLen + extraLen + commentLen;
+
+        const normalized = name.replace(/\\/g, '/');
+        if (normalized.startsWith('/') || normalized.split('/').includes('..')) {
+            throw new Error(`Unsafe path in ZIP archive: ${name}`);
+        }
+        // Payload location comes from the local header: name/extra lengths
+        // can differ from the central directory (streamed archives).
+        const lfhNameLen = buf.readUInt16LE(lfhOffset + 26);
+        const lfhExtraLen = buf.readUInt16LE(lfhOffset + 28);
+        const dataStart = lfhOffset + 30 + lfhNameLen + lfhExtraLen;
+        const outPath = path.join(destDir, ...normalized.split('/'));
+        if (normalized.endsWith('/')) {
+            fs.mkdirSync(outPath, { recursive: true });
+            continue;
+        }
+        fs.mkdirSync(path.dirname(outPath), { recursive: true });
+        const data = buf.slice(dataStart, dataStart + csize);
+        let content;
+        if (method === 0) {
+            content = data;
+        } else if (method === 8) {
+            content = zlib.inflateRawSync(data);
+        } else {
+            throw new Error(`Unsupported compression method ${method} for ${name}`);
+        }
+        fs.writeFileSync(outPath, content);
+    }
+}
+
+function readStdin() {
+    return new Promise((resolve, reject) => {
+        let all = '';
+        process.stdin.setEncoding('utf8');
+        process.stdin.on('data', (chunk) => {
+            all += chunk;
+        });
+        process.stdin.on('end', () => resolve(all));
+        process.stdin.on('error', reject);
+    });
+}
+
+/** Write one final JSON document to stdout, exit with `code` on flush. */
+function send(text, code) {
+    process.stdout.write(text, () => process.exit(code));
+    // Belt-and-braces for cases where the flush callback never fires (EPIPE).
+    setTimeout(() => process.exit(code), 5000).unref();
+}
+
+function fail(message, errorType) {
+    send(JSON.stringify({ errorMessage: message, errorType }), 1);
+}
+
+async function main() {
+    // argv[2..]: layer zips first, then the code zip, so code wins conflicts.
+    const zips = process.argv.slice(2);
+    for (const zipPath of zips) {
+        extractZip(zipPath, process.cwd());
+    }
+
+    const handler = process.env._HANDLER || '';
+    if (!handler) {
+        return fail('No handler specified', 'Runtime.HandlerNotFound');
+    }
+    const dot = handler.lastIndexOf('.');
+    if (dot < 0) {
+        return fail(`Bad handler format: ${handler}`, 'Runtime.HandlerNotFound');
+    }
+    const modulePath = handler.substring(0, dot);
+    const funcName = handler.substring(dot + 1);
+
+    const eventText = await readStdin();
+    let event;
+    try {
+        event = JSON.parse(eventText);
+    } catch (e) {
+        event = {};
+    }
+
+    const requestId = require('crypto').randomUUID();
+    const context = {
+        functionName: process.env.AWS_LAMBDA_FUNCTION_NAME,
+        functionVersion: process.env.AWS_LAMBDA_FUNCTION_VERSION || '$LATEST',
+        invokedFunctionArn: `arn:aws:lambda:${process.env.AWS_REGION || 'us-east-1'}:${
+            process.env.AWS_ACCOUNT_ID || '123456789012'
+        }:function:${process.env.AWS_LAMBDA_FUNCTION_NAME}`,
+        memoryLimitInMB: process.env.AWS_LAMBDA_FUNCTION_MEMORY_SIZE || '128',
+        awsRequestId: requestId,
+        logGroupName: `/aws/lambda/${process.env.AWS_LAMBDA_FUNCTION_NAME}`,
+        logStreamName: `${new Date().toISOString().split('T')[0].replace(/-/g, '/')}/$LATEST`,
+        getRemainingTimeInMillis: () => {
+            const timeout = parseInt(process.env.AWS_LAMBDA_FUNCTION_TIMEOUT || '3', 10);
+            return timeout * 1000;
+        },
+        done: (err, result) => {
+            if (err) throw err;
+            return result;
+        },
+        succeed: (result) => result,
+        fail: (err) => {
+            throw err;
+        },
+    };
+
+    let handlerModule;
+    try {
+        handlerModule = require(path.resolve(process.cwd(), modulePath));
+    } catch (e) {
+        return fail(`Cannot find module '${modulePath}': ${e.message}`, 'Runtime.ImportModuleError');
+    }
+    const handlerFunc = handlerModule[funcName];
+    if (typeof handlerFunc !== 'function') {
+        return fail(
+            `Handler '${funcName}' is not a function in '${modulePath}'`,
+            'Runtime.HandlerNotFound',
+        );
+    }
+
+    try {
+        let result;
+        if (handlerFunc.length <= 2) {
+            // async handler or 2-arg handler — awaited promise result
+            result = await handlerFunc(event, context);
+        } else {
+            // callback-style handler(event, context, callback)
+            result = await new Promise((resolve, reject) => {
+                handlerFunc(event, context, (err, res) => {
+                    if (err) reject(err);
+                    else resolve(res);
+                });
+            });
+        }
+        send(JSON.stringify(result === undefined ? null : result), 0);
+    } catch (e) {
+        send(
+            JSON.stringify({
+                errorMessage: e.message || String(e),
+                errorType: e.constructor ? e.constructor.name : 'Error',
+                stackTrace: (e.stack || '').split('\n'),
+            }),
+            1,
+        );
+    }
+}
+
+main().catch((e) => {
+    process.stderr.write(`Bootstrap error: ${e.message}\n`);
+    process.exit(1);
+});
+"#;
+
+/// Node binary discovery: ROBOTOCORE_NODE override, then $PATH, then the
+/// newest nvm-managed node under ~/.nvm/versions/node.
+fn find_node() -> Option<String> {
+    if let Ok(path) = std::env::var("ROBOTOCORE_NODE") {
+        if !path.is_empty() {
+            return Some(path);
+        }
+    }
+    if let Ok(paths) = std::env::var("PATH") {
+        for dir in paths.split(':') {
+            if dir.is_empty() {
+                continue;
+            }
+            let candidate = std::path::Path::new(dir).join("node");
+            if candidate.is_file() {
+                return Some(candidate.to_string_lossy().into_owned());
+            }
+        }
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        let nvm = std::path::PathBuf::from(home)
+            .join(".nvm")
+            .join("versions")
+            .join("node");
+        if let Ok(entries) = fs::read_dir(&nvm) {
+            let mut best: Option<(Vec<u64>, PathBuf)> = None;
+            for entry in entries.flatten() {
+                let bin = entry.path().join("bin").join("node");
+                if !bin.is_file() {
+                    continue;
+                }
+                let version: Vec<u64> = entry
+                    .file_name()
+                    .to_string_lossy()
+                    .trim_start_matches('v')
+                    .split('.')
+                    .map(|part| part.parse::<u64>().unwrap_or(0))
+                    .collect();
+                if best
+                    .as_ref()
+                    .is_none_or(|(best_version, _): &(Vec<u64>, PathBuf)| &version > best_version)
+                {
+                    best = Some((version, bin));
+                }
+            }
+            if let Some((_, bin)) = best {
+                return Some(bin.to_string_lossy().into_owned());
+            }
+        }
+    }
+    None
+}
+
+/// Execute a Node.js Lambda handler in a subprocess bootstrap.
+///
+/// Mirrors the Python-era twin's `runtimes/node.py` + `runtimes/base.py`:
+/// node reads the JSON event from stdin and prints the JSON result to
+/// stdout (logs go to stderr), with `timeout + 2`s of grace before the
+/// child is killed and a `Task.TimedOut` error is reported.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_nodejs(
+    code_zip: &[u8],
+    layer_zips: &[Vec<u8>],
+    handler: &str,
+    event: &str,
+    function_name: &str,
+    function_version: &str,
+    env_vars: &HashMap<String, String>,
+    timeout_secs: u32,
+    memory_size: u32,
+    region: &str,
+    account_id: &str,
+) -> ExecResult {
+    if find_node().is_none() {
+        return ExecResult {
+            payload: "null".to_string(),
+            function_error: Some("Runtime.InvalidRuntime".to_string()),
+            logs: "Node.js not installed".to_string(),
+        };
+    }
+    let work = std::env::temp_dir().join(format!(
+        "robotocore-lambda-node/{}-{}",
+        safe_dir_name(function_name),
+        uuid::Uuid::new_v4().simple()
+    ));
+    let cleanup = |p: &PathBuf| {
+        let _ = fs::remove_dir_all(p);
+    };
+    let runtime_broken = |msg: String, logs: String| -> ExecResult {
+        cleanup(&work);
+        ExecResult {
+            payload: json!({"errorMessage": msg, "errorType": "Runtime.InvalidRuntime"})
+                .to_string(),
+            function_error: Some("Runtime.InvalidRuntime".to_string()),
+            logs,
+        }
+    };
+    if fs::create_dir_all(&work).is_err() {
+        return runtime_broken("failed to create execution dir".to_string(), String::new());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&work, fs::Permissions::from_mode(0o700));
+    }
+    // Layers extract first, then the code, so code files win conflicts —
+    // the bootstrap receives them in that order and unpacks into cwd.
+    let mut extract_args: Vec<PathBuf> = Vec::new();
+    for (i, layer) in layer_zips.iter().enumerate() {
+        let path = work.join(format!("layer{}.zip", i));
+        if fs::write(&path, layer).is_err() {
+            return runtime_broken("failed to write layer package".to_string(), String::new());
+        }
+        extract_args.push(path);
+    }
+    if fs::write(work.join("code.zip"), code_zip).is_err() {
+        return runtime_broken(
+            "failed to write deployment package".to_string(),
+            String::new(),
+        );
+    }
+    extract_args.push(work.join("code.zip"));
+    let event_str = if event.trim().is_empty() {
+        "{}".to_string()
+    } else {
+        event.to_string()
+    };
+    let event_path = work.join("event.json");
+    if fs::write(&event_path, event_str).is_err() {
+        return runtime_broken("failed to write event".to_string(), String::new());
+    }
+    let bootstrap = work.join("lambda_bootstrap.js");
+    if fs::write(&bootstrap, BOOTSTRAP_JS).is_err() {
+        return runtime_broken(
+            "failed to write handler bootstrap".to_string(),
+            String::new(),
+        );
+    }
+    // The bootstrap unpacks everything into its cwd, which doubles as
+    // NODE_PATH so code/layers resolve bare requires.
+    let code_dir = work.join("code");
+    if fs::create_dir_all(&code_dir).is_err() {
+        return runtime_broken("failed to create code dir".to_string(), String::new());
+    }
+    let node_path = [
+        code_dir.clone(),
+        code_dir.join("node_modules"),
+        code_dir.join("nodejs"),
+        code_dir.join("nodejs").join("node_modules"),
+    ]
+    .iter()
+    .map(|p| p.to_string_lossy().into_owned())
+    .collect::<Vec<String>>()
+    .join(":");
+
+    let event_file = match fs::File::open(&event_path) {
+        Ok(f) => f,
+        Err(e) => return runtime_broken(e.to_string(), String::new()),
+    };
+    let mut cmd = std::process::Command::new(find_node().unwrap_or_else(|| "node".to_string()));
+    cmd.arg(bootstrap)
+        .args(&extract_args)
+        .current_dir(&code_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .stdin(Stdio::from(event_file));
+    cmd.env("NODE_PATH", node_path)
+        .env("AWS_LAMBDA_FUNCTION_NAME", function_name)
+        .env("AWS_LAMBDA_FUNCTION_VERSION", function_version)
+        .env("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", memory_size.to_string())
+        .env("AWS_LAMBDA_FUNCTION_TIMEOUT", timeout_secs.to_string())
+        .env("AWS_REGION", region)
+        .env("AWS_DEFAULT_REGION", region)
+        .env("AWS_ACCOUNT_ID", account_id)
+        .env("AWS_ACCESS_KEY_ID", "testing")
+        .env("AWS_SECRET_ACCESS_KEY", "testing")
+        .env("_HANDLER", handler);
+    for (k, v) in env_vars {
+        cmd.env(k, v);
+    }
+
+    let mut child: Child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => return runtime_broken(format!("Runtime not found: {e}"), String::new()),
+    };
+
+    // Drain pipes on dedicated threads (bounded tail) so the child never
+    // deadlocks on a full pipe buffer while nobody reads.
+    let stdout_rx = drain_thread(child.stdout.take());
+    let stderr_rx = drain_thread(child.stderr.take());
+
+    // Grace period beyond the Lambda timeout, as in the Python-era twin.
+    let wait_secs = u64::from(timeout_secs.max(1)) + 2;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(wait_secs);
+    let mut timed_out = false;
+    let mut status: Option<std::process::ExitStatus> = None;
+    loop {
+        match child.try_wait() {
+            Ok(Some(s)) => {
+                status = Some(s);
+                break;
+            }
+            Ok(None) => {
+                if std::time::Instant::now() > deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    timed_out = true;
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+            Err(e) => return runtime_broken(e.to_string(), String::new()),
+        }
+    }
+
+    // Bounded drain grace: the child is reaped, but grandchildren may hold
+    // the pipes open past our deadline, in which case abandon the text.
+    let drain_deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+    let stdout = collect_by(&stdout_rx, drain_deadline);
+    let stderr = collect_by(&stderr_rx, drain_deadline);
+    cleanup(&work);
+
+    if timed_out {
+        return ExecResult {
+            payload: json!({
+                "errorMessage": format!("Task timed out after {timeout_secs}.00 seconds"),
+                "errorType": "Task.TimedOut",
+            })
+            .to_string(),
+            function_error: Some("Task.TimedOut".to_string()),
+            logs: format!("Function timed out after {timeout_secs}s"),
+        };
+    }
+
+    let stdout_trim = stdout.trim();
+    if status.is_some_and(|s| s.success()) {
+        if stdout_trim.is_empty() {
+            return ExecResult {
+                payload: "null".to_string(),
+                function_error: None,
+                logs: stderr,
+            };
+        }
+        // Handlers always emit JSON; non-JSON stdout is surfaced as a JSON
+        // string, exactly like the Python-era twin's raw-string fallback.
+        let payload = if serde_json::from_str::<Value>(stdout_trim).is_ok() {
+            stdout_trim.to_string()
+        } else {
+            json!(stdout_trim).to_string()
+        };
+        return ExecResult {
+            payload,
+            function_error: None,
+            logs: stderr,
+        };
+    }
+    // Failure: a stdout JSON object announcing an errorMessage is a handler
+    // error → "Handled"; anything else is a runtime crash → "Unhandled".
+    let is_handler_error = serde_json::from_str::<Value>(stdout_trim)
+        .ok()
+        .filter(|obj| obj.is_object() && obj.get("errorMessage").is_some())
+        .is_some();
+    if is_handler_error {
+        return ExecResult {
+            payload: stdout_trim.to_string(),
+            function_error: Some("Handled".to_string()),
+            logs: stderr,
+        };
+    }
+    // No structured error: fall back to stdout or the last log line.
+    let error_message = if !stdout_trim.is_empty() {
+        stdout_trim.to_string()
+    } else {
+        let last_log = stderr.lines().last().unwrap_or("");
+        if last_log.is_empty() {
+            "Unknown error".to_string()
+        } else {
+            last_log.to_string()
+        }
+    };
+    ExecResult {
+        payload: json!({
+            "errorMessage": error_message,
+            "errorType": "Runtime.ExitError",
+            "stackTrace": stderr.lines().collect::<Vec<&str>>(),
+        })
+        .to_string(),
+        function_error: Some("Unhandled".to_string()),
+        logs: stderr,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn make_zip(code: &str) -> Vec<u8> {
+        make_zip_named(code, "lambda_function.py")
+    }
+
+    /// Zip one source file for the shim/bootstrap exec tests.
+    fn make_zip_named(code: &str, filename: &str) -> Vec<u8> {
         // The shim requires python3 anyway, so build the test zip with it.
         let dir = std::env::temp_dir().join(format!("lam-test-{}", uuid::Uuid::new_v4().simple()));
         fs::create_dir_all(&dir).unwrap();
         let zpath = dir.join("t.zip");
-        let snippet = "import io, sys, zipfile\nbuf = io.BytesIO()\nze = zipfile.ZipFile(buf, 'w')\nze.writestr('lambda_function.py', sys.argv[2])\nze.close()\nopen(sys.argv[1], 'wb').write(buf.getvalue())\n";
+        let snippet = "import io, sys, zipfile\nif len(sys.argv) < 4:\n    sys.argv.append('lambda_function.py')\nbuf = io.BytesIO()\nze = zipfile.ZipFile(buf, 'w')\nze.writestr(sys.argv[3], sys.argv[2])\nze.close()\nopen(sys.argv[1], 'wb').write(buf.getvalue())\n";
         let out = std::process::Command::new("python3")
             .arg("-c")
             .arg(snippet)
             .arg(zpath.as_os_str())
             .arg(code)
+            .arg(filename)
             .stdin(Stdio::null())
             .output()
             .expect("python3 failed");
@@ -583,6 +1082,107 @@ mod tests {
             "tail semantics: end of stream must be kept, got ending {:?}",
             &res.logs[res.logs.len().saturating_sub(64)..]
         );
+    }
+
+    #[test]
+    fn test_execute_nodejs_success() {
+        let code = r#"exports.handler = async (event) => ({ ok: event.spec["x"] });"#;
+        let zip = make_zip_named(code, "index.js");
+        let res = execute_nodejs(
+            &zip,
+            &[],
+            "index.handler",
+            r#"{"spec": {"x": 7}}"#,
+            "node-fn",
+            "$LATEST",
+            &HashMap::new(),
+            20,
+            128,
+            "us-east-1",
+            "123456789012",
+        );
+        assert_eq!(res.function_error, None, "logs: {}", res.logs);
+        assert_eq!(
+            serde_json::from_str::<Value>(&res.payload).unwrap()["ok"],
+            json!(7)
+        );
+    }
+
+    #[test]
+    fn test_execute_nodejs_error_and_context() {
+        let code = r#"
+exports.handler = async (event, context) => {
+    return {
+        name: context.functionName,
+        mem: context.memoryLimitInMB,
+        remaining: context.getRemainingTimeInMillis() > 0,
+    };
+};"#;
+        let zip = make_zip_named(code, "index.js");
+        let res = execute_nodejs(
+            &zip,
+            &[],
+            "index.handler",
+            r#"{}"#,
+            "node-fn",
+            "$LATEST",
+            &HashMap::new(),
+            20,
+            256,
+            "us-east-1",
+            "123456789012",
+        );
+        assert_eq!(res.function_error, None, "logs: {}", res.logs);
+        let payload: Value = serde_json::from_str(&res.payload).unwrap();
+        assert_eq!(payload["name"], json!("node-fn"));
+        assert_eq!(payload["mem"], json!("256"));
+        assert_eq!(payload["remaining"], json!(true));
+
+        let throw_zip = make_zip_named(
+            "exports.handler = async () => { throw new Error('boom'); };",
+            "index.js",
+        );
+        let res = execute_nodejs(
+            &throw_zip,
+            &[],
+            "index.handler",
+            r#"{}"#,
+            "node-fn",
+            "$LATEST",
+            &HashMap::new(),
+            20,
+            128,
+            "us-east-1",
+            "123456789012",
+        );
+        assert_eq!(res.function_error.as_deref(), Some("Handled"));
+        let payload: Value = serde_json::from_str(&res.payload).unwrap();
+        assert_eq!(payload["errorType"], "Error");
+        assert_eq!(payload["errorMessage"], "boom");
+    }
+
+    #[test]
+    fn test_execute_nodejs_handler_not_found() {
+        let zip = make_zip_named("exports.handler = async () => 'ok';", "index.js");
+        let res = execute_nodejs(
+            &zip,
+            &[],
+            "index.wrong_name",
+            r#"{}"#,
+            "node-fn",
+            "$LATEST",
+            &HashMap::new(),
+            20,
+            128,
+            "us-east-1",
+            "123456789012",
+        );
+        assert_eq!(res.function_error.as_deref(), Some("Handled"));
+        let payload: Value = serde_json::from_str(&res.payload).unwrap();
+        assert!(payload["errorMessage"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("wrong_name"));
     }
 
     #[test]
