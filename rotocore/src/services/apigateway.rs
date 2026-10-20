@@ -211,13 +211,10 @@ fn set_member(target: &mut Value, key: &str, value: Option<String>) {
     }
 }
 
-/// Apply `replace path` patches for the given member-name suffixes.
-
 // ---------------------------------------------------------------------------
 // State (entities stored exactly as moto serializes them on the wire)
 // ---------------------------------------------------------------------------
 
-#[derive(Default)]
 struct State {
     /// REST API `to_dict` wire bodies, keyed by api id.
     apis: BTreeMap<String, Value>,
@@ -250,27 +247,44 @@ struct State {
 
 static SLOT: Lazy<store::Slot<State>> = Lazy::new(|| store::slot::<State>("apigateway"));
 
-impl State {
+impl Default for State {
     /// moto's Account defaults; GetAccount must always return a body.
-    fn new() -> State {
+    fn default() -> Self {
         State {
+            apis: BTreeMap::default(),
+            resources: BTreeMap::default(),
+            stages: BTreeMap::default(),
+            deployments: BTreeMap::default(),
+            authorizers: BTreeMap::default(),
+            gateway_responses: BTreeMap::default(),
+            models: BTreeMap::default(),
+            request_validators: BTreeMap::default(),
+            documentation_parts: BTreeMap::default(),
+            documentation_versions: BTreeMap::default(),
+            roots: BTreeMap::default(),
+            domain_names: BTreeMap::default(),
+            base_path_mappings: BTreeMap::default(),
+            keys: BTreeMap::default(),
+            usage_plans: BTreeMap::default(),
+            usage_plan_keys: BTreeMap::default(),
+            vpc_links: BTreeMap::default(),
+            client_certificates: BTreeMap::default(),
             account: json!({
                 "cloudwatchRoleArn": Value::Null,
                 "throttleSettings": { "burstLimit": 5000, "rateLimit": 10000.0 },
                 "features": Value::Null,
                 "apiKeyVersion": "1",
             }),
-            ..State::default()
+            domain_access_associations: BTreeMap::default(),
         }
     }
 }
 
 fn with_state<T>(account: u64, region: &str, f: impl FnOnce(&mut State) -> T) -> T {
     let mut guard = SLOT.write();
-    // Seed moto's Account defaults (GetAccount can never return a null body).
-    let state = guard
-        .entry((account, region.to_string()))
-        .or_insert_with(State::new);
+    // Seeding via Default keeps moto's Account defaults; GetAccount can
+    // never return a null body.
+    let state = guard.entry((account, region.to_string())).or_default();
     f(state)
 }
 
