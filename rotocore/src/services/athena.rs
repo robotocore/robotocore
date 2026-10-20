@@ -1135,8 +1135,15 @@ fn op_create_capacity_reservation(
         .unwrap_or_default()
         .to_string();
     // moto: `CapacityReservation.__init__` normalizes missing tags to the
-    // empty list and `TaggingService.tag_resource` no-ops on `None`.
-    let tags = body.get("Tags").filter(|tags| !tags.is_null()).cloned();
+    // empty list (moto/athena/models.py:474) and its None-tolerant tagger
+    // tags the primary ARN with [] — Get answers Tags: [] for tagless
+    // creates.
+    let tags = Some(
+        body.get("Tags")
+            .filter(|tags| !tags.is_null())
+            .cloned()
+            .unwrap_or(json!([])),
+    );
     let reservation = CapacityReservation {
         target_dpus: body.get("TargetDpus").cloned().unwrap_or(Value::Null),
         tags: tags.clone(),
