@@ -67,38 +67,6 @@ pub fn set(key: &str, value: String) {
         .insert(key.to_string(), value);
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn unknown_keys_are_rejectable() {
-        assert!(!known_key("NOT_A_SETTING"));
-        assert!(known_key("ENFORCE_IAM"));
-    }
-
-    #[test]
-    fn set_and_get_round_trip() {
-        set("DYNAMODB_REMOVE_EXPIRED_ITEMS", "0".to_string());
-        assert_eq!(get("DYNAMODB_REMOVE_EXPIRED_ITEMS"), Some("0".to_string()));
-    }
-
-    #[test]
-    fn python_repr_matches_str() {
-        assert_eq!(python_repr(&json!(true)), "True");
-        assert_eq!(python_repr(&json!(null)), "None");
-        assert_eq!(python_repr(&json!(3)), "3");
-        assert_eq!(python_repr(&json!(["a"])), "['a']");
-        assert_eq!(python_repr(&json!({"a": 1})), "{'a': 1}");
-        assert_eq!(python_repr(&json!("en")), "en");
-    }
-
-    fn known_key(key: &str) -> bool {
-        MUTABLE_SETTINGS.iter().any(|(k, _)| *k == key)
-    }
-}
-
 /// Python `str(value)` for the config endpoint's echo of non-string values:
 /// bools render `True`/`False`, null renders `None`, arrays and objects use
 /// single-quoted separators — the wire shape the python twin produced.
@@ -140,4 +108,36 @@ fn python_repr_member(value: &serde_json::Value) -> String {
         return format!("'{escaped}'");
     }
     python_repr(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn unknown_keys_are_rejectable() {
+        assert!(!known_key("NOT_A_SETTING"));
+        assert!(known_key("ENFORCE_IAM"));
+    }
+
+    #[test]
+    fn set_and_get_round_trip() {
+        set("DYNAMODB_REMOVE_EXPIRED_ITEMS", "0".to_string());
+        assert_eq!(get("DYNAMODB_REMOVE_EXPIRED_ITEMS"), Some("0".to_string()));
+    }
+
+    #[test]
+    fn python_repr_matches_str() {
+        assert_eq!(python_repr(&json!(true)), "True");
+        assert_eq!(python_repr(&json!(null)), "None");
+        assert_eq!(python_repr(&json!(3)), "3");
+        assert_eq!(python_repr(&json!(["a"])), "['a']");
+        assert_eq!(python_repr(&json!({"a": 1})), "{'a': 1}");
+        assert_eq!(python_repr(&json!("en")), "en");
+    }
+
+    fn known_key(key: &str) -> bool {
+        MUTABLE_SETTINGS.iter().any(|(k, _)| *k == key)
+    }
 }
