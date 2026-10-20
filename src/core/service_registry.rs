@@ -177,7 +177,7 @@ pub const SERVICE_REGISTRY: &[(&str, &str, &str, &str)] = &[
         "rest-json",
         "Lambda with in-process Python execution",
     ),
-    ("lexv2models", "moto", "rest-json", "Lex v2 Models"),
+    ("lexv2models", "native", "rest-json", "Lex v2 Models"),
     ("logs", "native", "json", "CloudWatch Logs"),
     ("macie2", "moto", "rest-json", "Macie v2"),
     (
