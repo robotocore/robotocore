@@ -697,18 +697,8 @@ impl LambdaHandler {
                 logs: String::new(),
             });
         }
-        let is_python: bool = crate::runtime::is_python_runtime(&func.runtime.read());
-        if !is_python {
-            // Non-python runtimes have no executor in this backend; mirror
-            // the ground-truth shape: 200 response with function-error
-            // header Runtime.InvalidRuntime and a null payload.
-            return Ok(runtime::ExecResult {
-                payload: "null".to_string(),
-                function_error: Some("Runtime.InvalidRuntime".to_string()),
-                logs: String::new(),
-            });
-        }
-        // Collect layer zips for PYTHONPATH resolution.
+        // Collect layer zips for the executors (PYTHONPATH resolution for
+        // python, layer files for custom runtimes).
         let mut layer_zips: Vec<Vec<u8>> = Vec::new();
         for layer_entry in func.layers.read().iter() {
             let arn = layer_entry.get("Arn").and_then(Value::as_str).unwrap_or("");
@@ -720,6 +710,34 @@ impl LambdaHandler {
             }
         }
         let env_vars = func.environment.read().clone().unwrap_or_default();
+        if runtime::is_custom_runtime(&func.runtime.read()) {
+            // provided./go runtimes run the `bootstrap` executable from the
+            // package with the event on stdin and the result JSON on stdout.
+            return Ok(runtime::execute_custom(
+                &zip_bytes,
+                &layer_zips,
+                &func.handler.read().clone(),
+                &event,
+                &func.function_name,
+                &func.version.read().clone(),
+                &env_vars,
+                *func.timeout.read(),
+                *func.memory_size.read(),
+                &req.region.clone(),
+                &req.account.to_string(),
+            ));
+        }
+        let is_python: bool = crate::runtime::is_python_runtime(&func.runtime.read());
+        if !is_python {
+            // Non-python runtimes have no executor in this backend; mirror
+            // the ground-truth shape: 200 response with function-error
+            // header Runtime.InvalidRuntime and a null payload.
+            return Ok(runtime::ExecResult {
+                payload: "null".to_string(),
+                function_error: Some("Runtime.InvalidRuntime".to_string()),
+                logs: String::new(),
+            });
+        }
         Ok(runtime::execute_python(
             &zip_bytes,
             &layer_zips,

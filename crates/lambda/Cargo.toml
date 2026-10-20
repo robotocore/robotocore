@@ -13,4 +13,5 @@ chrono = { version = "0.4", features = ["serde"] }
 parking_lot = "0.12"
 base64 = "0.22"
 sha2 = "0.10"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 s3 = { path = "../s3" }
