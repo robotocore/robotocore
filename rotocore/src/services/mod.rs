@@ -51,6 +51,7 @@ pub mod directconnect;
 pub mod dms;
 pub mod ds;
 pub mod dsql;
+pub mod dynamodbstreams;
 pub mod ebs;
 pub mod ec2instanceconnect;
 pub mod efs;
@@ -181,6 +182,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "dms" => dms::dispatch(req),
         "ds" => ds::dispatch(req),
         "dsql" => dsql::dispatch(req),
+        "dynamodbstreams" => dynamodbstreams::dispatch(req),
         "ebs" => ebs::dispatch(req),
         "ec2" => Some(ec2::dispatch(req)),
         "ec2instanceconnect" => ec2instanceconnect::dispatch(req),
@@ -332,6 +334,7 @@ pub fn handles_service(service: &str) -> bool {
             | "dms"
             | "ds"
             | "dsql"
+            | "dynamodbstreams"
             | "ebs"
             | "ec2"
             | "ec2instanceconnect"
@@ -432,6 +435,7 @@ mod tests {
             "connectcampaigns",
             "glue",
             "glacier",
+            "dynamodbstreams",
             "elasticache",
             "codepipeline",
             "xray",

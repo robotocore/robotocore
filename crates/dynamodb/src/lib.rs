@@ -2,12 +2,14 @@
 //!
 //! Implements the core DynamoDB operations using the json protocol (x-amz-json-1.0).
 
+pub mod bridge;
 pub mod error;
 pub mod expr;
 pub mod handler;
 pub mod models;
 pub mod protocol;
 pub mod snapshot;
+pub mod streaming;
 
 pub use protocol::{AwsRequest, AwsResponse};
 

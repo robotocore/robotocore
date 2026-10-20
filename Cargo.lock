@@ -1377,6 +1377,7 @@ dependencies = [
  "base64",
  "bytes",
  "chrono",
+ "dynamodb",
  "hex",
  "md5",
  "once_cell",
