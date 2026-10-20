@@ -1,11 +1,11 @@
 {
   "service": "ssoadmin",
-  "generated_at": "2026-10-20T08:10:51.641905+00:00",
-  "endpoint": "http://localhost:4599",
+  "generated_at": "2026-10-20T21:31:17.832564+00:00",
+  "endpoint": "http://localhost:4793",
   "counts": {
-    "working": 13,
+    "working": 25,
     "needs_params": 7,
-    "not_implemented": 59,
+    "not_implemented": 47,
     "500_error": 0
   },
   "operations": [
@@ -16,13 +16,13 @@
     },
     {
       "operation": "AttachCustomerManagedPolicyReferenceToPermissionSet",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "AttachManagedPolicyToPermissionSet",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateAccountAssignment",
@@ -91,8 +91,8 @@
     },
     {
       "operation": "DeleteInlinePolicyFromPermissionSet",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteInstance",
@@ -107,7 +107,7 @@
     {
       "operation": "DeletePermissionSet",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeletePermissionsBoundaryFromPermissionSet",
@@ -176,13 +176,13 @@
     },
     {
       "operation": "DetachCustomerManagedPolicyReferenceFromPermissionSet",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DetachManagedPolicyFromPermissionSet",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetApplicationAccessScope",
@@ -211,8 +211,8 @@
     },
     {
       "operation": "GetInlinePolicyForPermissionSet",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetPermissionsBoundaryForPermissionSet",
@@ -241,8 +241,8 @@
     },
     {
       "operation": "ListAccountsForProvisionedPermissionSet",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListApplicationAccessScopes",
@@ -281,8 +281,8 @@
     },
     {
       "operation": "ListCustomerManagedPolicyReferencesInPermissionSet",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListInstances",
@@ -291,8 +291,8 @@
     },
     {
       "operation": "ListManagedPoliciesInPermissionSet",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListPermissionSetProvisioningStatus",
@@ -326,8 +326,8 @@
     },
     {
       "operation": "ProvisionPermissionSet",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutApplicationAccessScope",
@@ -356,8 +356,8 @@
     },
     {
       "operation": "PutInlinePolicyToPermissionSet",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutPermissionsBoundaryToPermissionSet",
@@ -386,8 +386,8 @@
     },
     {
       "operation": "UpdateInstance",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateInstanceAccessControlAttributeConfiguration",
