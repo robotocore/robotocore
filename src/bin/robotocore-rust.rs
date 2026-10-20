@@ -43,6 +43,11 @@ async fn main() {
 
     // Create service registry
     let (registry, native_handlers) = ServiceRegistry::new_with_handlers();
+
+    // Event source mapping engine: polls SQS/Kinesis/DynamoDB streams and
+    // invokes mapped Lambda functions in-process.
+    robotocore_rust::core::esm_engine::start(std::sync::Arc::new(native_handlers.clone()));
+
     let snapshots = std::sync::Arc::new(SnapshotRegistry::new(&native_handlers));
 
     // Build the Axum app — every serviced request is answered by the

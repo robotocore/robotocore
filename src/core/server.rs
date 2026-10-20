@@ -759,6 +759,7 @@ impl ServiceHandler for StepFunctionsServiceHandler {
 }
 
 /// Handler instances shared between the wire path and the snapshot registry.
+#[derive(Clone)]
 pub struct NativeHandlers {
     pub sqs: Arc<sqs::DefaultSqsHandler>,
     pub s3: Arc<s3::DefaultS3Handler>,
@@ -1117,6 +1118,45 @@ pub async fn catch_all_handler(
         .await;
         audit_out(
             Some("apigateway"),
+            None,
+            &req_method,
+            &req_path,
+            result.status().as_u16(),
+            req_start,
+            &account_id,
+            &region_for_audit,
+            None,
+        );
+        return result;
+    }
+
+    // Lambda function URL HTTP surface: /lambda-url/{url-id}/{path…}
+    // (served by its own executor like the deployed-API bridge above).
+    if let Some(target) = crate::core::furl_exec::match_url(uri.path()) {
+        let account =
+            extract_account_from_request(&headers, uri.query().unwrap_or(""), &body_bytes);
+        let account_id = account.to_string();
+        let region_for_audit = extract_region_from_request(&headers)
+            .or_else(|| extract_region_from_query(uri.query().unwrap_or("")))
+            .unwrap_or_else(|| "us-east-1".to_string());
+        let mut exec_headers: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        for (key, value) in headers.iter() {
+            if let Ok(v) = value.to_str() {
+                exec_headers.insert(key.as_str().to_lowercase(), v.to_string());
+            }
+        }
+        let result = crate::core::furl_exec::execute(
+            &state.registry.native,
+            &method,
+            target,
+            account,
+            &body_bytes,
+            &exec_headers,
+            uri.query().unwrap_or(""),
+        );
+        audit_out(
+            Some("lambda"),
             None,
             &req_method,
             &req_path,

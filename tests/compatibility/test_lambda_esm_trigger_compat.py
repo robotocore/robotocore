@@ -9,6 +9,7 @@ and we poll for that marker to confirm invocation happened.
 
 import io
 import json
+import os
 import time
 import uuid
 import zipfile
@@ -178,8 +179,10 @@ def _get_marker_items(dynamodb, marker_table: str) -> list[dict]:
 
 
 ENDPOINT_URL = "http://host.docker.internal:4566"
-# For in-process Lambda execution, localhost works
-LOCAL_ENDPOINT = "http://localhost:4566"
+# Marker writes from the Lambda code must reach the twin under test — the
+# same env contract test_lambda_integrations_compat.py uses (origins: the
+# suite was recorded against a twin at 4566; keep that as the default).
+LOCAL_ENDPOINT = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
 
 
 class TestSQSToLambdaTrigger:

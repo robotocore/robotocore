@@ -46,4 +46,26 @@ impl DefaultLambdaHandler {
     pub fn reset(&self) {
         self.inner.reset()
     }
+
+    /// Engine hook: snapshot of every stored ESM (see `LambdaHandler`).
+    pub fn esm_snapshot(&self) -> Vec<crate::models::EsmMappingEntry> {
+        self.inner.esm_snapshot()
+    }
+
+    /// Engine hook: run one ESM-driven invocation (see `LambdaHandler`).
+    pub fn invoke_engine_event(
+        &self,
+        account: u64,
+        region: &str,
+        function_name: &str,
+        event: &serde_json::Value,
+    ) -> crate::models::EngineInvokeResult {
+        self.inner
+            .invoke_engine_event(account, region, function_name, event)
+    }
+
+    /// Function-URL lookup by url-id (see `LambdaHandler`).
+    pub fn find_url_config(&self, url_id: &str) -> Option<(u64, String, serde_json::Value)> {
+        self.inner.find_url_config(url_id)
+    }
 }

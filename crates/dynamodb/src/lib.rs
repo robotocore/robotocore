@@ -51,4 +51,16 @@ impl DefaultDynamoDbHandler {
     pub fn reset(&self) {
         self.inner.reset()
     }
+
+    /// Engine hook: stream capture records for the table (see `DynamoDbHandler`).
+    pub fn stream_records_after(
+        &self,
+        account: u64,
+        region: &str,
+        table_name: &str,
+        after_seq: Option<String>,
+    ) -> Option<Vec<serde_json::Value>> {
+        self.inner
+            .stream_records_after(account, region, table_name, after_seq)
+    }
 }

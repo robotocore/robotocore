@@ -91,6 +91,9 @@ pub struct LambdaFunction {
     /// Scaling configs keyed by qualifier.
     #[serde(with = "crate::snapshot::rw")]
     pub scaling_configs: RwLock<HashMap<String, Value>>,
+    /// VpcConfig as passed by the caller (moto echoes it; None when absent).
+    #[serde(with = "crate::snapshot::rw")]
+    pub vpc_config: RwLock<Option<Value>>,
     pub policy: Arc<FunctionPolicy>,
 }
 
@@ -121,6 +124,7 @@ impl LambdaFunction {
             runtime_mgmt_config: RwLock::new(None),
             recursion_config: RwLock::new("Terminate".to_string()),
             scaling_configs: RwLock::new(HashMap::new()),
+            vpc_config: RwLock::new(None),
             policy: Arc::new(FunctionPolicy::new()),
         }
     }
@@ -153,6 +157,7 @@ impl LambdaFunction {
             runtime_mgmt_config: RwLock::new(self.runtime_mgmt_config.read().clone()),
             recursion_config: RwLock::new(cl(&self.recursion_config)),
             scaling_configs: RwLock::new(self.scaling_configs.read().clone()),
+            vpc_config: RwLock::new(self.vpc_config.read().clone()),
             policy: Arc::clone(&self.policy),
         }
     }
@@ -183,7 +188,7 @@ pub struct LambdaAlias {
 }
 
 /// An event source mapping (native store mirroring the Python provider keys).
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventSourceMapping {
     pub uuid: String,
     pub function_arn: String,
@@ -193,6 +198,33 @@ pub struct EventSourceMapping {
     pub last_modified: f64,
     pub batch_size: u32,
     pub enabled: bool,
+    /// Only set for stream sources (kinesis / dynamodb streams); moto stores
+    /// it and defaults non-SQS sources to TRIM_HORIZON.
+    #[serde(default)]
+    pub starting_position: Option<String>,
+    /// `{"Filters": [{"Pattern": "…"}]}` when the caller passed one.
+    #[serde(default)]
+    pub filter_criteria: Option<Value>,
+    /// Non-empty only with `FunctionResponseTypes` (e.g. ReportBatchItemFailures).
+    #[serde(default)]
+    pub function_response_types: Option<Vec<String>>,
+}
+
+/// One stored ESM as seen by the gateway's engine thread, tagged with the
+/// (account, region) it lives in (the handler keeps states keyed by both).
+#[derive(Debug, Clone)]
+pub struct EsmMappingEntry {
+    pub account: u64,
+    pub region: String,
+    pub mapping: EventSourceMapping,
+}
+
+/// Result of an engine-triggered invocation (ESM delivery).
+pub struct EngineInvokeResult {
+    /// `Some("Handled")` when the handler raised / timed out; otherwise None.
+    pub function_error: Option<String>,
+    /// Raw payload body (a JSON string or "null").
+    pub payload: String,
 }
 
 /// A single published layer version.

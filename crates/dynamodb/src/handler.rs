@@ -393,6 +393,45 @@ impl DynamoDbHandler {
         }
     }
 
+    /// Engine hook: stream capture records for `table_name` beyond the
+    /// given sequence number (exclusive), in shard order. `None` when the
+    /// table does not exist or its streams were never enabled.
+    pub fn stream_records_after(
+        &self,
+        account: u64,
+        region: &str,
+        table_name: &str,
+        after_seq: Option<String>,
+    ) -> Option<Vec<Value>> {
+        let state = self.get_state(account, region);
+        let table = state.get_table(table_name)?;
+        if !streaming::stream_enabled(&table) {
+            return None;
+        }
+        let shard_guard = table.stream_shard.read();
+        let Some(shard) = shard_guard.as_ref() else {
+            return Some(Vec::new());
+        };
+        let records = shard.records.read().clone();
+        Some(
+            records
+                .into_iter()
+                .filter(|r| {
+                    let seq = r
+                        .get("dynamodb")
+                        .and_then(|d| d.get("SequenceNumber"))
+                        .and_then(Value::as_str)
+                        .map(String::from)
+                        .unwrap_or_default();
+                    match &after_seq {
+                        None => true,
+                        Some(after) => compare_seq(&seq, after),
+                    }
+                })
+                .collect(),
+        )
+    }
+
     fn describe_table(&self, req: &AwsRequest) -> AwsResponse {
         let table_name = param_str(&req.params, "TableName")
             .unwrap_or_default()
@@ -458,7 +497,7 @@ impl DynamoDbHandler {
                 .collect()
         };
 
-        let description = json!({
+        let mut description = json!({
             "TableName": table.name,
             "TableStatus": *table.status.read(),
             "TableId": format!("{}", uuid::Uuid::new_v4()),
@@ -475,6 +514,15 @@ impl DynamoDbHandler {
             "BillingModeSummary": { "BillingMode": table.billing_mode },
             "TableClassSummary": { "TableClass": "STANDARD" },
         });
+        // moto emits the stream fields on stream-enabled tables
+        // (moto/dynamodb/models/table.py: LatestStreamLabel + LatestStreamArn).
+        if *table.stream_enabled.read() {
+            if let Some(label) = table.stream_label.read().as_ref() {
+                description["LatestStreamLabel"] = json!(label);
+                description["LatestStreamArn"] =
+                    json!(format!("{}/stream/{}", *table.table_arn.read(), label));
+            }
+        }
         AwsResponse::json(status, json!({ wrapper: description }))
     }
 
@@ -3405,6 +3453,15 @@ impl DynamoDbHandler {
 /// Insert a nested `Value` at an attribute path into a projected output map.
 fn set_nested(out: &mut Map<String, Value>, segs: &[String], val: Value) {
     let _ = expr_engine::set_path(out, segs, val);
+}
+
+/// Numeric compare of two decimal SequenceNumber strings (moto's stream
+/// sequence literals exceed u64 but fit u128); unparseable sorts before.
+fn compare_seq(candidate: &str, after: &str) -> bool {
+    match (candidate.parse::<u128>(), after.parse::<u128>()) {
+        (Ok(a), Ok(b)) => a > b,
+        _ => candidate.as_bytes() > after.as_bytes(),
+    }
 }
 
 #[cfg(test)]
