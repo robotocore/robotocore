@@ -1,31 +1,33 @@
 {
   "service": "autoscaling",
+  "generated_at": "2026-10-20T05:26:59.634439+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 35,
+    "working": 65,
     "needs_params": 0,
-    "not_implemented": 9,
-    "500_error": 22
+    "not_implemented": 1,
+    "500_error": 0
   },
   "operations": [
     {
       "operation": "AttachInstances",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "AttachLoadBalancerTargetGroups",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "AttachLoadBalancers",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "AttachTrafficSources",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "BatchDeleteScheduledAction",
@@ -44,8 +46,8 @@
     },
     {
       "operation": "CompleteLifecycleAction",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "CreateAutoScalingGroup",
@@ -64,8 +66,8 @@
     },
     {
       "operation": "DeleteAutoScalingGroup",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "DeleteLaunchConfiguration",
@@ -99,8 +101,8 @@
     },
     {
       "operation": "DeleteWarmPool",
-      "status": "500_error",
-      "message": "server crash (InternalError: list index out of range)"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "DescribeAccountLimits",
@@ -149,13 +151,13 @@
     },
     {
       "operation": "DescribeLoadBalancerTargetGroups",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "DescribeLoadBalancers",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "DescribeMetricCollectionTypes",
@@ -199,63 +201,63 @@
     },
     {
       "operation": "DescribeTrafficSources",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "DescribeWarmPool",
-      "status": "500_error",
-      "message": "server crash (InternalError: list index out of range)"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "DetachInstances",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "DetachLoadBalancerTargetGroups",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "DetachLoadBalancers",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "DetachTrafficSources",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "DisableMetricsCollection",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "EnableMetricsCollection",
-      "status": "500_error",
-      "message": "server crash (InternalError: list index out of range)"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "EnterStandby",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "ExecutePolicy",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "ExitStandby",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "GetPredictiveScalingForecast",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "LaunchInstances",
@@ -265,12 +267,12 @@
     {
       "operation": "PutLifecycleHook",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "PutNotificationConfiguration",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "PutScalingPolicy",
@@ -284,38 +286,38 @@
     },
     {
       "operation": "PutWarmPool",
-      "status": "500_error",
-      "message": "server crash (InternalError: list index out of range)"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "RecordLifecycleActionHeartbeat",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "ResumeProcesses",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "RollbackInstanceRefresh",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "SetDesiredCapacity",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "SetInstanceHealth",
-      "status": "500_error",
-      "message": "server crash (InternalError: Valid instance health states are: [Healthy, Unhealthy])"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "SetInstanceProtection",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "StartInstanceRefresh",
@@ -324,13 +326,13 @@
     },
     {
       "operation": "SuspendProcesses",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "TerminateInstanceInAutoScalingGroup",
-      "status": "500_error",
-      "message": "exception: Connection was closed before we received a valid response fr"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "UpdateAutoScalingGroup",

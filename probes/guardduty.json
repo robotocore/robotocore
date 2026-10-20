@@ -1,0 +1,448 @@
+{
+  "service": "guardduty",
+  "generated_at": "2026-10-20T06:49:30.710719+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 74,
+    "needs_params": 13,
+    "not_implemented": 0,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AcceptAdministratorInvitation",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "AcceptInvitation",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "ArchiveFindings",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "CreateDetector",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateFilter",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "CreateIPSet",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "CreateMalwareProtectionPlan",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateMembers",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreatePublishingDestination",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "CreateSampleFindings",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "CreateThreatEntitySet",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "CreateThreatIntelSet",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "CreateTrustedEntitySet",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "DeclineInvitations",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteDetector",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteFilter",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "DeleteIPSet",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "DeleteInvitations",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteMalwareProtectionPlan",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteMembers",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeletePublishingDestination",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "DeleteThreatEntitySet",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "DeleteThreatIntelSet",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "DeleteTrustedEntitySet",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "DescribeMalwareScans",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "DescribeOrganizationConfiguration",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "DescribePublishingDestination",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "DisableOrganizationAdminAccount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateFromAdministratorAccount",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "DisassociateFromMasterAccount",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "DisassociateMembers",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "EnableOrganizationAdminAccount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAdministratorAccount",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "GetCoverageStatistics",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "GetDetector",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "GetFilter",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "GetFindings",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "GetFindingsStatistics",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "GetIPSet",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "GetInvitationsCount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetMalwareProtectionPlan",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetMalwareScan",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetMalwareScanSettings",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "GetMasterAccount",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "GetMemberDetectors",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetMembers",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetOrganizationStatistics",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetRemainingFreeTrialDays",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetThreatEntitySet",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "GetThreatIntelSet",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "GetTrustedEntitySet",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "GetUsageStatistics",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "InviteMembers",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "ListCoverage",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "ListDetectors",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFilters",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "ListFindings",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "ListIPSets",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "ListInvitations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMalwareProtectionPlans",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMalwareScans",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMembers",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "ListOrganizationAdminAccounts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPublishingDestinations",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListThreatEntitySets",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "ListThreatIntelSets",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "ListTrustedEntitySets",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "SendObjectMalwareScan",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartMalwareScan",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartMonitoringMembers",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StopMonitoringMembers",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UnarchiveFindings",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateDetector",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "UpdateFilter",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "UpdateFindingsFeedback",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "UpdateIPSet",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "UpdateMalwareProtectionPlan",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateMalwareScanSettings",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "UpdateMemberDetectors",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateOrganizationConfiguration",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "UpdatePublishingDestination",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "UpdateThreatEntitySet",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "UpdateThreatIntelSet",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    },
+    {
+      "operation": "UpdateTrustedEntitySet",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
+    }
+  ]
+}

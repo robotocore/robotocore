@@ -1,9 +1,11 @@
 {
   "service": "neptune",
+  "generated_at": "2026-10-20T08:07:37.795064+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
-    "working": 64,
+    "working": 67,
     "needs_params": 0,
-    "not_implemented": 3,
+    "not_implemented": 0,
     "500_error": 1
   },
   "operations": [
@@ -20,7 +22,7 @@
     {
       "operation": "AddTagsToResource",
       "status": "working",
-      "message": "implemented (InvalidParameterValue)"
+      "message": "OK"
     },
     {
       "operation": "ApplyPendingMaintenanceAction",
@@ -30,7 +32,7 @@
     {
       "operation": "CopyDBClusterParameterGroup",
       "status": "working",
-      "message": "likely implemented (DBParameterGroupNotFound: DB Parameter Group probe-test-value not found.)"
+      "message": "likely implemented (DBParameterGroupNotFound: DBClusterParameterGroup not found: probe-test-value)"
     },
     {
       "operation": "CopyDBClusterSnapshot",
@@ -224,8 +226,8 @@
     },
     {
       "operation": "FailoverDBCluster",
-      "status": "500_error",
-      "message": "server crash (InternalError: RDSBackend.failover_db_cluster() missing 1 required position)"
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: The source cluster could not be found or cannot be accessed:)"
     },
     {
       "operation": "FailoverGlobalCluster",
@@ -235,7 +237,7 @@
     {
       "operation": "ListTagsForResource",
       "status": "working",
-      "message": "implemented (InvalidParameterValue)"
+      "message": "OK"
     },
     {
       "operation": "ModifyDBCluster",
@@ -294,13 +296,13 @@
     },
     {
       "operation": "RemoveFromGlobalCluster",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: 'RemoveFromGlobalClusterResult'"
     },
     {
       "operation": "RemoveRoleFromDBCluster",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
     },
     {
       "operation": "RemoveSourceIdentifierFromSubscription",
@@ -310,17 +312,17 @@
     {
       "operation": "RemoveTagsFromResource",
       "status": "working",
-      "message": "implemented (InvalidParameterValue)"
+      "message": "OK"
     },
     {
       "operation": "ResetDBClusterParameterGroup",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DBParameterGroupNotFound: DBClusterParameterGroup not found: probe-test-value)"
     },
     {
       "operation": "ResetDBParameterGroup",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DBParameterGroupNotFound: DB Parameter Group probe-test-value not found.)"
     },
     {
       "operation": "RestoreDBClusterFromSnapshot",

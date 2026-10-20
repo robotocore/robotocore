@@ -1,5 +1,7 @@
 {
   "service": "ram",
+  "generated_at": "2026-10-20T08:07:54.426807+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
     "working": 35,
     "needs_params": 0,

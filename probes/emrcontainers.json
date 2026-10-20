@@ -1,0 +1,128 @@
+{
+  "service": "emrcontainers",
+  "generated_at": "2026-10-20T08:11:13.199454+00:00",
+  "endpoint": "http://localhost:4599",
+  "counts": {
+    "working": 10,
+    "needs_params": 0,
+    "not_implemented": 12,
+    "500_error": 1
+  },
+  "operations": [
+    {
+      "operation": "CancelJobRun",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "CreateJobTemplate",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateManagedEndpoint",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateSecurityConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateVirtualCluster",
+      "status": "500_error",
+      "message": "server crash (InternalError: 'info')"
+    },
+    {
+      "operation": "DeleteJobTemplate",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteManagedEndpoint",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteVirtualCluster",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeJobRun",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeJobTemplate",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeManagedEndpoint",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeSecurityConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeVirtualCluster",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "GetManagedEndpointSessionCredentials",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "ListJobRuns",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListJobTemplates",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListManagedEndpoints",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListSecurityConfigurations",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListVirtualClusters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartJobRun",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    }
+  ]
+}

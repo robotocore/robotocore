@@ -1,5 +1,7 @@
 {
   "service": "sts",
+  "generated_at": "2026-10-20T08:08:38.484109+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
     "working": 10,
     "needs_params": 1,

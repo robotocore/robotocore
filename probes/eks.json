@@ -1,16 +1,18 @@
 {
   "service": "eks",
+  "generated_at": "2026-10-20T06:49:14.960403+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 46,
+    "working": 61,
     "needs_params": 1,
-    "not_implemented": 13,
-    "500_error": 3
+    "not_implemented": 1,
+    "500_error": 0
   },
   "operations": [
     {
       "operation": "AssociateAccessPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "AssociateEncryptionConfig",
@@ -39,8 +41,8 @@
     },
     {
       "operation": "CreateCluster",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'group')"
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
     },
     {
       "operation": "CreateEksAnywhereSubscription",
@@ -64,8 +66,8 @@
     },
     {
       "operation": "DeleteAccessEntry",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteAddon",
@@ -104,8 +106,8 @@
     },
     {
       "operation": "DescribeAccessEntry",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeAddon",
@@ -159,8 +161,8 @@
     },
     {
       "operation": "DescribeInsightsRefresh",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeNodegroup",
@@ -174,13 +176,13 @@
     },
     {
       "operation": "DescribeUpdate",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DisassociateAccessPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DisassociateIdentityProviderConfig",
@@ -204,8 +206,8 @@
     },
     {
       "operation": "ListAssociatedAccessPolicies",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListCapabilities",
@@ -224,8 +226,8 @@
     },
     {
       "operation": "ListFargateProfiles",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListIdentityProviderConfigs",
@@ -239,8 +241,8 @@
     },
     {
       "operation": "ListNodegroups",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListPodIdentityAssociations",
@@ -254,8 +256,8 @@
     },
     {
       "operation": "ListUpdates",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "RegisterCluster",
@@ -264,8 +266,8 @@
     },
     {
       "operation": "StartInsightsRefresh",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "TagResource",
@@ -279,8 +281,8 @@
     },
     {
       "operation": "UpdateAccessEntry",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateAddon",
@@ -314,13 +316,13 @@
     },
     {
       "operation": "UpdateNodegroupVersion",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdatePodIdentityAssociation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     }
   ]
 }

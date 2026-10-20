@@ -1,10 +1,12 @@
 {
   "service": "inspector2",
+  "generated_at": "2026-10-20T06:49:35.827838+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 58,
+    "working": 61,
     "needs_params": 14,
     "not_implemented": 0,
-    "500_error": 3
+    "500_error": 0
   },
   "operations": [
     {
@@ -119,8 +121,8 @@
     },
     {
       "operation": "Disable",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object is not iterable)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DisableDelegatedAdminAccount",
@@ -334,8 +336,8 @@
     },
     {
       "operation": "UntagResource",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object is not iterable)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateCisScanConfiguration",
@@ -369,8 +371,8 @@
     },
     {
       "operation": "UpdateFilter",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'arn:aws:inspector2:us-east-1:123456789012:thing/probe-test')"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateOrgEc2DeepInspectionConfiguration",

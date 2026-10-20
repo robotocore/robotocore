@@ -1,5 +1,7 @@
 {
   "service": "pipes",
+  "generated_at": "2026-10-20T08:07:45.914696+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
     "working": 10,
     "needs_params": 0,
@@ -30,7 +32,7 @@
     {
       "operation": "ListTagsForResource",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "StartPipe",
@@ -45,12 +47,12 @@
     {
       "operation": "TagResource",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UntagResource",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdatePipe",

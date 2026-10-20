@@ -1,10 +1,12 @@
 {
   "service": "servicecatalog",
+  "generated_at": "2026-10-20T08:08:30.084048+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
-    "working": 84,
+    "working": 88,
     "needs_params": 2,
-    "not_implemented": 3,
-    "500_error": 1
+    "not_implemented": 0,
+    "500_error": 0
   },
   "operations": [
     {
@@ -214,8 +216,8 @@
     },
     {
       "operation": "DisableAWSOrganizationsAccess",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DisassociateBudgetFromResource",
@@ -244,8 +246,8 @@
     },
     {
       "operation": "EnableAWSOrganizationsAccess",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ExecuteProvisionedProductPlan",
@@ -259,8 +261,8 @@
     },
     {
       "operation": "GetAWSOrganizationsAccessStatus",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetProvisionedProductOutputs",
@@ -394,8 +396,8 @@
     },
     {
       "operation": "SearchProducts",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'list' object has no attribute 'items')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "SearchProductsAsAdmin",

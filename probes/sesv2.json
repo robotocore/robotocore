@@ -1,9 +1,11 @@
 {
   "service": "sesv2",
+  "generated_at": "2026-10-20T08:08:33.219554+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
-    "working": 108,
+    "working": 109,
     "needs_params": 1,
-    "not_implemented": 1,
+    "not_implemented": 0,
     "500_error": 0
   },
   "operations": [
@@ -15,7 +17,7 @@
     {
       "operation": "CancelExportJob",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "CreateConfigurationSet",
@@ -145,7 +147,7 @@
     {
       "operation": "DeleteSuppressedDestination",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteTenant",
@@ -190,7 +192,7 @@
     {
       "operation": "GetCustomVerificationEmailTemplate",
       "status": "working",
-      "message": "likely implemented (CustomVerificationEmailTemplateDoesNotExistException: Custom verification email template does not exist: probe-tes)"
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "GetDedicatedIp",
@@ -250,17 +252,17 @@
     {
       "operation": "GetExportJob",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "GetImportJob",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "GetMessageInsights",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetMultiRegionEndpoint",
@@ -280,7 +282,7 @@
     {
       "operation": "GetTenant",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "ListConfigurationSets",
@@ -495,12 +497,12 @@
     {
       "operation": "SendCustomVerificationEmail",
       "status": "working",
-      "message": "likely implemented (CustomVerificationEmailTemplateDoesNotExistException: Custom verification email template does not exist: probe-tes)"
+      "message": "OK"
     },
     {
       "operation": "SendEmail",
       "status": "working",
-      "message": "likely implemented (MessageRejected: Email address not verified None)"
+      "message": "OK"
     },
     {
       "operation": "TagResource",
@@ -535,7 +537,7 @@
     {
       "operation": "UpdateCustomVerificationEmailTemplate",
       "status": "working",
-      "message": "likely implemented (CustomVerificationEmailTemplateDoesNotExistException: Custom verification email template does not exist: probe-tes)"
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateEmailIdentityPolicy",

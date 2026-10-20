@@ -1,0 +1,118 @@
+{
+  "service": "sqs",
+  "generated_at": "2026-10-20T08:08:34.709553+00:00",
+  "endpoint": "http://localhost:4599",
+  "counts": {
+    "working": 21,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AddPermission",
+      "status": "working",
+      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: The specified queue does not exist.)"
+    },
+    {
+      "operation": "CancelMessageMoveTask",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "ChangeMessageVisibility",
+      "status": "working",
+      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: The specified queue does not exist.)"
+    },
+    {
+      "operation": "ChangeMessageVisibilityBatch",
+      "status": "working",
+      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/probe does not exist)"
+    },
+    {
+      "operation": "CreateQueue",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteMessage",
+      "status": "working",
+      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/probe does not exist)"
+    },
+    {
+      "operation": "DeleteMessageBatch",
+      "status": "working",
+      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/probe does not exist)"
+    },
+    {
+      "operation": "GetQueueAttributes",
+      "status": "working",
+      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/probe does not exist)"
+    },
+    {
+      "operation": "GetQueueUrl",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDeadLetterSourceQueues",
+      "status": "working",
+      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: The specified queue does not exist.)"
+    },
+    {
+      "operation": "ListMessageMoveTasks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListQueueTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListQueues",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ReceiveMessage",
+      "status": "working",
+      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/probe does not exist)"
+    },
+    {
+      "operation": "RemovePermission",
+      "status": "working",
+      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: The specified queue does not exist.)"
+    },
+    {
+      "operation": "SendMessage",
+      "status": "working",
+      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/probe does not exist)"
+    },
+    {
+      "operation": "SendMessageBatch",
+      "status": "working",
+      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/probe does not exist)"
+    },
+    {
+      "operation": "SetQueueAttributes",
+      "status": "working",
+      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: The specified queue does not exist.)"
+    },
+    {
+      "operation": "StartMessageMoveTask",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "TagQueue",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagQueue",
+      "status": "working",
+      "message": "OK"
+    }
+  ]
+}

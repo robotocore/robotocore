@@ -1,10 +1,12 @@
 {
   "service": "signer",
+  "generated_at": "2026-10-20T08:08:33.880407+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
-    "working": 16,
+    "working": 17,
     "needs_params": 1,
     "not_implemented": 0,
-    "500_error": 2
+    "500_error": 1
   },
   "operations": [
     {
@@ -14,8 +16,8 @@
     },
     {
       "operation": "CancelSigningProfile",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeSigningJob",
@@ -70,7 +72,7 @@
     {
       "operation": "RemoveProfilePermission",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "RevokeSignature",

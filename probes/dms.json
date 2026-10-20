@@ -1,10 +1,12 @@
 {
   "service": "dms",
+  "generated_at": "2026-10-20T05:27:37.566334+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 114,
+    "working": 116,
     "needs_params": 2,
     "not_implemented": 0,
-    "500_error": 3
+    "500_error": 1
   },
   "operations": [
     {
@@ -40,7 +42,7 @@
     {
       "operation": "CreateDataMigration",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceAlreadyExistsFault: The resource you are attempting to create already exists.)"
     },
     {
       "operation": "CreateDataProvider",
@@ -219,8 +221,8 @@
     },
     {
       "operation": "DescribeEngineVersions",
-      "status": "500_error",
-      "message": "exception: Invalid timestamp \"\": String does not contain a date: "
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeEventCategories",
@@ -384,8 +386,8 @@
     },
     {
       "operation": "DescribeReplicationTasks",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object is not iterable)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeReplications",

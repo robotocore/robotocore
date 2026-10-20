@@ -1,10 +1,12 @@
 {
   "service": "s3control",
+  "generated_at": "2026-10-20T08:08:09.427015+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
-    "working": 77,
+    "working": 83,
     "needs_params": 0,
-    "not_implemented": 14,
-    "500_error": 5
+    "not_implemented": 11,
+    "500_error": 2
   },
   "operations": [
     {
@@ -14,8 +16,8 @@
     },
     {
       "operation": "CreateAccessGrant",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'None' has no attribute 'get')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateAccessGrantsInstance",
@@ -215,7 +217,7 @@
     {
       "operation": "GetAccessPointPolicyForObjectLambda",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (NoSuchAccessPoint: The specified accesspoint does not exist)"
     },
     {
       "operation": "GetAccessPointPolicyStatus",
@@ -374,8 +376,8 @@
     },
     {
       "operation": "ListTagsForResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutAccessGrantsInstanceResourcePolicy",
@@ -405,7 +407,7 @@
     {
       "operation": "PutBucketLifecycleConfiguration",
       "status": "500_error",
-      "message": "server crash (InternalError: no element found: line 1, column 0)"
+      "message": "server crash (InternalError: no element found)"
     },
     {
       "operation": "PutBucketPolicy",
@@ -425,12 +427,12 @@
     {
       "operation": "PutBucketVersioning",
       "status": "500_error",
-      "message": "server crash (InternalError: 'PutBucketVersioningRequest')"
+      "message": "server crash (InternalError: &#39;PutBucketVersioningRequest&#39;)"
     },
     {
       "operation": "PutJobTagging",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'get')"
+      "status": "working",
+      "message": "likely implemented (NoSuchJob: The specified job does not exist: probe-test-value)"
     },
     {
       "operation": "PutMultiRegionAccessPointPolicy",
@@ -454,18 +456,18 @@
     },
     {
       "operation": "SubmitMultiRegionAccessPointRoutes",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'get')"
+      "status": "working",
+      "message": "likely implemented (NoSuchMultiRegionAccessPoint: The specified multi-region access point does not exist)"
     },
     {
       "operation": "TagResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UntagResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateAccessGrantsLocation",

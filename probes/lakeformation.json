@@ -1,10 +1,12 @@
 {
   "service": "lakeformation",
+  "generated_at": "2026-10-20T06:49:46.134011+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 31,
+    "working": 49,
     "needs_params": 10,
-    "not_implemented": 18,
-    "500_error": 2
+    "not_implemented": 1,
+    "500_error": 1
   },
   "operations": [
     {
@@ -49,18 +51,18 @@
     },
     {
       "operation": "CreateLFTagExpression",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateLakeFormationIdentityCenterConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateLakeFormationOptIn",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteDataCellsFilter",
@@ -74,18 +76,18 @@
     },
     {
       "operation": "DeleteLFTagExpression",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteLakeFormationIdentityCenterConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteLakeFormationOptIn",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteObjectsOnCancel",
@@ -100,7 +102,7 @@
     {
       "operation": "DescribeLakeFormationIdentityCenterConfiguration",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (EntityNotFoundException: Entity not found)"
     },
     {
       "operation": "DescribeResource",
@@ -114,8 +116,8 @@
     },
     {
       "operation": "ExtendTransaction",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Entity not found)"
     },
     {
       "operation": "GetDataCellsFilter",
@@ -144,8 +146,8 @@
     },
     {
       "operation": "GetLFTagExpression",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Entity not found)"
     },
     {
       "operation": "GetQueryState",
@@ -164,13 +166,13 @@
     },
     {
       "operation": "GetTableObjects",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetTemporaryDataLocationCredentials",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetTemporaryGluePartitionCredentials",
@@ -204,8 +206,8 @@
     },
     {
       "operation": "ListLFTagExpressions",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListLFTags",
@@ -214,8 +216,8 @@
     },
     {
       "operation": "ListLakeFormationOptIns",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListPermissions",
@@ -229,8 +231,8 @@
     },
     {
       "operation": "ListTableStorageOptimizers",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListTransactions",
@@ -284,23 +286,23 @@
     },
     {
       "operation": "UpdateLFTag",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateLFTagExpression",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Entity not found)"
     },
     {
       "operation": "UpdateLakeFormationIdentityCenterConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Entity not found)"
     },
     {
       "operation": "UpdateResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateTableObjects",
@@ -309,8 +311,8 @@
     },
     {
       "operation": "UpdateTableStorageOptimizer",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     }
   ]
 }

@@ -1,9 +1,11 @@
 {
   "service": "datasync",
+  "generated_at": "2026-10-20T05:27:33.756162+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 27,
+    "working": 29,
     "needs_params": 9,
-    "not_implemented": 17,
+    "not_implemented": 15,
     "500_error": 0
   },
   "operations": [
@@ -79,8 +81,8 @@
     },
     {
       "operation": "DeleteAgent",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
     },
     {
       "operation": "DeleteLocation",
@@ -204,8 +206,8 @@
     },
     {
       "operation": "UpdateAgent",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
     },
     {
       "operation": "UpdateLocationAzureBlob",

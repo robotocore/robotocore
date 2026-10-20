@@ -1,9 +1,11 @@
 {
   "service": "databrew",
+  "generated_at": "2026-10-20T05:27:32.633449+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 22,
+    "working": 32,
     "needs_params": 4,
-    "not_implemented": 18,
+    "not_implemented": 8,
     "500_error": 0
   },
   "operations": [
@@ -24,8 +26,8 @@
     },
     {
       "operation": "CreateProject",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateRecipe",
@@ -44,8 +46,8 @@
     },
     {
       "operation": "CreateSchedule",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteDataset",
@@ -59,8 +61,8 @@
     },
     {
       "operation": "DeleteProject",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteRecipeVersion",
@@ -74,8 +76,8 @@
     },
     {
       "operation": "DeleteSchedule",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeDataset",
@@ -94,8 +96,8 @@
     },
     {
       "operation": "DescribeProject",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeRecipe",
@@ -109,8 +111,8 @@
     },
     {
       "operation": "DescribeSchedule",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListDatasets",
@@ -129,8 +131,8 @@
     },
     {
       "operation": "ListProjects",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListRecipeVersions",
@@ -149,8 +151,8 @@
     },
     {
       "operation": "ListSchedules",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListTagsForResource",
@@ -204,8 +206,8 @@
     },
     {
       "operation": "UpdateProject",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateRecipe",
@@ -224,8 +226,8 @@
     },
     {
       "operation": "UpdateSchedule",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     }
   ]
 }

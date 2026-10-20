@@ -1,10 +1,12 @@
 {
   "service": "apigateway",
+  "generated_at": "2026-10-20T05:26:54.035860+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 91,
+    "working": 120,
     "needs_params": 0,
-    "not_implemented": 25,
-    "500_error": 7
+    "not_implemented": 3,
+    "500_error": 0
   },
   "operations": [
     {
@@ -15,7 +17,7 @@
     {
       "operation": "CreateAuthorizer",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "CreateBasePathMapping",
@@ -44,8 +46,8 @@
     },
     {
       "operation": "CreateDomainNameAccessAssociation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateModel",
@@ -99,8 +101,8 @@
     },
     {
       "operation": "DeleteBasePathMapping",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DeleteClientCertificate",
@@ -129,8 +131,8 @@
     },
     {
       "operation": "DeleteDomainNameAccessAssociation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteGatewayResponse",
@@ -144,8 +146,8 @@
     },
     {
       "operation": "DeleteIntegrationResponse",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DeleteMethod",
@@ -154,18 +156,18 @@
     },
     {
       "operation": "DeleteMethodResponse",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DeleteModel",
       "status": "working",
-      "message": "likely implemented (404: Invalid API identifier specified)"
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DeleteRequestValidator",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "likely implemented (BadRequestException: Invalid Request Validator Id specified)"
     },
     {
       "operation": "DeleteResource",
@@ -179,13 +181,13 @@
     },
     {
       "operation": "DeleteUsagePlan",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteUsagePlanKey",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteVpcLink",
@@ -195,12 +197,12 @@
     {
       "operation": "FlushStageAuthorizersCache",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "FlushStageCache",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "GenerateClientCertificate",
@@ -289,8 +291,8 @@
     },
     {
       "operation": "GetDomainNameAccessAssociations",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetDomainNames",
@@ -319,8 +321,8 @@
     },
     {
       "operation": "GetIntegrationResponse",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "GetMethod",
@@ -329,8 +331,8 @@
     },
     {
       "operation": "GetMethodResponse",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "GetModel",
@@ -339,8 +341,8 @@
     },
     {
       "operation": "GetModelTemplate",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetModels",
@@ -350,7 +352,7 @@
     {
       "operation": "GetRequestValidator",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "likely implemented (BadRequestException: Invalid Request Validator Id specified)"
     },
     {
       "operation": "GetRequestValidators",
@@ -384,13 +386,13 @@
     },
     {
       "operation": "GetSdkType",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "GetSdkTypes",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetStage",
@@ -444,18 +446,18 @@
     },
     {
       "operation": "ImportApiKeys",
-      "status": "500_error",
-      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
-    },
-    {
-      "operation": "ImportDocumentationParts",
       "status": "not_implemented",
       "message": "not implemented (501)"
     },
     {
-      "operation": "ImportRestApi",
+      "operation": "ImportDocumentationParts",
       "status": "working",
       "message": "OK"
+    },
+    {
+      "operation": "ImportRestApi",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: No name specified)"
     },
     {
       "operation": "PutGatewayResponse",
@@ -469,8 +471,8 @@
     },
     {
       "operation": "PutIntegrationResponse",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "PutMethod",
@@ -479,18 +481,18 @@
     },
     {
       "operation": "PutMethodResponse",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "PutRestApi",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'paths')"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "RejectDomainNameAccessAssociation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "TagResource",
@@ -499,13 +501,13 @@
     },
     {
       "operation": "TestInvokeAuthorizer",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "TestInvokeMethod",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UntagResource",
@@ -514,8 +516,8 @@
     },
     {
       "operation": "UpdateAccount",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object is not iterable)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateApiKey",
@@ -539,8 +541,8 @@
     },
     {
       "operation": "UpdateDeployment",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateDocumentationPart",
@@ -554,8 +556,8 @@
     },
     {
       "operation": "UpdateDomainName",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateGatewayResponse",
@@ -569,8 +571,8 @@
     },
     {
       "operation": "UpdateIntegrationResponse",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateMethod",
@@ -579,28 +581,28 @@
     },
     {
       "operation": "UpdateMethodResponse",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
-    },
-    {
-      "operation": "UpdateModel",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
-    },
-    {
-      "operation": "UpdateRequestValidator",
       "status": "working",
       "message": "implemented (NotFoundException)"
     },
     {
+      "operation": "UpdateModel",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateRequestValidator",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: Invalid Request Validator Id specified)"
+    },
+    {
       "operation": "UpdateResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateRestApi",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object is not iterable)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateStage",
@@ -619,8 +621,8 @@
     },
     {
       "operation": "UpdateVpcLink",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     }
   ]
 }

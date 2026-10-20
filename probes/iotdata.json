@@ -1,0 +1,53 @@
+{
+  "service": "iotdata",
+  "generated_at": "2026-10-20T08:11:13.472026+00:00",
+  "endpoint": "http://localhost:4599",
+  "counts": {
+    "working": 8,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "DeleteConnection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteThingShadow",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetRetainedMessage",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetThingShadow",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListNamedShadowsForThing",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListRetainedMessages",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "Publish",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateThingShadow",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    }
+  ]
+}

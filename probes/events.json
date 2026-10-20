@@ -1,16 +1,18 @@
 {
   "service": "events",
+  "generated_at": "2026-10-20T06:49:19.543746+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 45,
+    "working": 52,
     "needs_params": 5,
-    "not_implemented": 5,
-    "500_error": 2
+    "not_implemented": 0,
+    "500_error": 0
   },
   "operations": [
     {
       "operation": "ActivateEventSource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CancelReplay",
@@ -49,13 +51,13 @@
     },
     {
       "operation": "DeactivateEventSource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeauthorizeConnection",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteApiDestination",
@@ -74,8 +76,8 @@
     },
     {
       "operation": "DeleteEndpoint",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteEventBus",
@@ -90,7 +92,7 @@
     {
       "operation": "DeleteRule",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeApiDestination",
@@ -119,8 +121,8 @@
     },
     {
       "operation": "DescribeEventSource",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribePartnerEventSource",
@@ -140,12 +142,12 @@
     {
       "operation": "DisableRule",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "EnableRule",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "ListApiDestinations",
@@ -230,7 +232,7 @@
     {
       "operation": "PutRule",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (InvalidParameter)"
     },
     {
       "operation": "PutTargets",
@@ -250,7 +252,7 @@
     {
       "operation": "StartReplay",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "TagResource",
@@ -259,8 +261,8 @@
     },
     {
       "operation": "TestEventPattern",
-      "status": "500_error",
-      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+      "status": "working",
+      "message": "likely implemented (InvalidEventPatternExpression: Event pattern is not valid JSON)"
     },
     {
       "operation": "UntagResource",
@@ -284,8 +286,8 @@
     },
     {
       "operation": "UpdateEndpoint",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateEventBus",

@@ -1,9 +1,11 @@
 {
   "service": "xray",
+  "generated_at": "2026-10-20T08:08:44.290793+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
-    "working": 32,
+    "working": 36,
     "needs_params": 2,
-    "not_implemented": 4,
+    "not_implemented": 0,
     "500_error": 0
   },
   "operations": [
@@ -119,8 +121,8 @@
     },
     {
       "operation": "GetTraceSegmentDestination",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetTraceSummaries",
@@ -179,8 +181,8 @@
     },
     {
       "operation": "UpdateGroup",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
     },
     {
       "operation": "UpdateIndexingRule",
@@ -189,13 +191,13 @@
     },
     {
       "operation": "UpdateSamplingRule",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
     },
     {
       "operation": "UpdateTraceSegmentDestination",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     }
   ]
 }

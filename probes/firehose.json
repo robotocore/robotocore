@@ -1,0 +1,73 @@
+{
+  "service": "firehose",
+  "generated_at": "2026-10-20T06:49:19.687711+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 9,
+    "needs_params": 3,
+    "not_implemented": 0,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "CreateDeliveryStream",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDeliveryStream",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeDeliveryStream",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListDeliveryStreams",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForDeliveryStream",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutRecord",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutRecordBatch",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StartDeliveryStreamEncryption",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StopDeliveryStreamEncryption",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "TagDeliveryStream",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UntagDeliveryStream",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateDestination",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    }
+  ]
+}

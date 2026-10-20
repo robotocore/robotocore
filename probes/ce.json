@@ -1,5 +1,7 @@
 {
   "service": "ce",
+  "generated_at": "2026-10-20T05:27:04.850343+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 41,
     "needs_params": 6,

@@ -1,10 +1,12 @@
 {
   "service": "pinpoint",
+  "generated_at": "2026-10-20T08:07:45.756623+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
-    "working": 117,
+    "working": 122,
     "needs_params": 0,
-    "not_implemented": 2,
-    "500_error": 3
+    "not_implemented": 0,
+    "500_error": 0
   },
   "operations": [
     {
@@ -249,8 +251,8 @@
     },
     {
       "operation": "GetCampaignVersion",
-      "status": "500_error",
-      "message": "server crash (InternalError: invalid literal for int() with base 10: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "GetCampaignVersions",
@@ -389,8 +391,8 @@
     },
     {
       "operation": "GetSegmentVersion",
-      "status": "500_error",
-      "message": "server crash (InternalError: invalid literal for int() with base 10: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "GetSegmentVersions",
@@ -474,8 +476,8 @@
     },
     {
       "operation": "SendOTPMessage",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "SendUsersMessages",
@@ -489,8 +491,8 @@
     },
     {
       "operation": "UntagResource",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object is not iterable)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateAdmChannel",
@@ -614,8 +616,8 @@
     },
     {
       "operation": "VerifyOTPMessage",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     }
   ]
 }

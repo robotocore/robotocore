@@ -1,10 +1,12 @@
 {
   "service": "cloudfront",
+  "generated_at": "2026-10-20T05:27:10.509403+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 128,
+    "working": 161,
     "needs_params": 5,
-    "not_implemented": 1,
-    "500_error": 32
+    "not_implemented": 0,
+    "500_error": 0
   },
   "operations": [
     {
@@ -29,8 +31,8 @@
     },
     {
       "operation": "CreateAnycastIpList",
-      "status": "500_error",
-      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateCachePolicy",
@@ -44,13 +46,13 @@
     },
     {
       "operation": "CreateConnectionFunction",
-      "status": "500_error",
-      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateConnectionGroup",
-      "status": "500_error",
-      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateContinuousDeploymentPolicy",
@@ -64,8 +66,8 @@
     },
     {
       "operation": "CreateDistributionTenant",
-      "status": "500_error",
-      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateDistributionWithTags",
@@ -94,8 +96,8 @@
     },
     {
       "operation": "CreateInvalidationForDistributionTenant",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateKeyGroup",
@@ -154,8 +156,8 @@
     },
     {
       "operation": "CreateVpcOrigin",
-      "status": "500_error",
-      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteAnycastIpList",
@@ -269,8 +271,8 @@
     },
     {
       "operation": "DescribeConnectionFunction",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "likely implemented (NoSuchResource: The connection function probe-test-value does not exist.)"
     },
     {
       "operation": "DescribeFunction",
@@ -320,17 +322,17 @@
     {
       "operation": "GetConnectionFunction",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (NoSuchResource: The connection function probe-test-value does not exist.)"
     },
     {
       "operation": "GetConnectionGroup",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "likely implemented (NoSuchResource: The connection group probe-test-value does not exist.)"
     },
     {
       "operation": "GetConnectionGroupByRoutingEndpoint",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetContinuousDeploymentPolicy",
@@ -354,13 +356,13 @@
     },
     {
       "operation": "GetDistributionTenant",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "likely implemented (NoSuchResource: The distribution tenant probe-test-value does not exist.)"
     },
     {
       "operation": "GetDistributionTenantByDomain",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetFieldLevelEncryption",
@@ -394,8 +396,8 @@
     },
     {
       "operation": "GetInvalidationForDistributionTenant",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetKeyGroup",
@@ -409,8 +411,8 @@
     },
     {
       "operation": "GetManagedCertificateDetails",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetMonitoringSubscription",
@@ -454,8 +456,8 @@
     },
     {
       "operation": "GetResourcePolicy",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetResponseHeadersPolicy",
@@ -479,8 +481,8 @@
     },
     {
       "operation": "GetTrustStore",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "likely implemented (NoSuchResource: The trust store probe-test-value does not exist.)"
     },
     {
       "operation": "GetVpcOrigin",
@@ -489,8 +491,8 @@
     },
     {
       "operation": "ListAnycastIpLists",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListCachePolicies",
@@ -509,13 +511,13 @@
     },
     {
       "operation": "ListConnectionFunctions",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListConnectionGroups",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListContinuousDeploymentPolicies",
@@ -524,13 +526,13 @@
     },
     {
       "operation": "ListDistributionTenants",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListDistributionTenantsByCustomization",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListDistributions",
@@ -569,8 +571,8 @@
     },
     {
       "operation": "ListDistributionsByOwnedResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListDistributionsByRealtimeLogConfig",
@@ -599,8 +601,8 @@
     },
     {
       "operation": "ListDomainConflicts",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListFieldLevelEncryptionConfigs",
@@ -624,8 +626,8 @@
     },
     {
       "operation": "ListInvalidationsForDistributionTenant",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListKeyGroups",
@@ -674,18 +676,18 @@
     },
     {
       "operation": "ListTrustStores",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListVpcOrigins",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PublishConnectionFunction",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "likely implemented (NoSuchResource: The connection function probe-test-value does not exist.)"
     },
     {
       "operation": "PublishFunction",
@@ -694,8 +696,8 @@
     },
     {
       "operation": "PutResourcePolicy",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "TagResource",
@@ -704,8 +706,8 @@
     },
     {
       "operation": "TestConnectionFunction",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "TestFunction",
@@ -734,13 +736,13 @@
     },
     {
       "operation": "UpdateConnectionFunction",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "likely implemented (NoSuchResource: The connection function probe-test-value does not exist.)"
     },
     {
       "operation": "UpdateConnectionGroup",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "likely implemented (NoSuchResource: The connection group probe-test-value does not exist.)"
     },
     {
       "operation": "UpdateContinuousDeploymentPolicy",
@@ -754,8 +756,8 @@
     },
     {
       "operation": "UpdateDistributionTenant",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "likely implemented (NoSuchResource: The distribution tenant probe-test-value does not exist.)"
     },
     {
       "operation": "UpdateDistributionWithStagingConfig",
@@ -829,13 +831,13 @@
     },
     {
       "operation": "UpdateVpcOrigin",
-      "status": "500_error",
-      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+      "status": "working",
+      "message": "likely implemented (NoSuchResource: The VPC origin probe-test-value does not exist.)"
     },
     {
       "operation": "VerifyDnsConfiguration",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "working",
+      "message": "OK"
     }
   ]
 }

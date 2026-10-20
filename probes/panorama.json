@@ -1,9 +1,11 @@
 {
   "service": "panorama",
+  "generated_at": "2026-10-20T08:07:42.521409+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
-    "working": 18,
+    "working": 28,
     "needs_params": 4,
-    "not_implemented": 10,
+    "not_implemented": 0,
     "500_error": 2
   },
   "operations": [
@@ -44,8 +46,8 @@
     },
     {
       "operation": "DeregisterPackageVersion",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeApplicationInstance",
@@ -64,8 +66,8 @@
     },
     {
       "operation": "DescribeDeviceJob",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeNode",
@@ -79,8 +81,8 @@
     },
     {
       "operation": "DescribePackage",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribePackageImportJob",
@@ -89,18 +91,18 @@
     },
     {
       "operation": "DescribePackageVersion",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListApplicationInstanceDependencies",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListApplicationInstanceNodeInstances",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListApplicationInstances",
@@ -114,8 +116,8 @@
     },
     {
       "operation": "ListDevicesJobs",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListNodeFromTemplateJobs",
@@ -139,8 +141,8 @@
     },
     {
       "operation": "ListTagsForResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ProvisionDevice",
@@ -149,8 +151,8 @@
     },
     {
       "operation": "RegisterPackageVersion",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "RemoveApplicationInstance",
@@ -164,8 +166,8 @@
     },
     {
       "operation": "TagResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UntagResource",

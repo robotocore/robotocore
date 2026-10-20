@@ -286,6 +286,7 @@
   }
   .svc-badge.native { background: var(--native-bg); color: #7a4010; border: 1px solid var(--native-border); }
   .svc-badge.moto   { background: var(--moto-bg);   color: #2a4020; border: 1px solid var(--moto-border); }
+  .svc-badge.absent { background: #f0ede4;          color: #6a6353;  border: 1px solid #b8b2a4; }
 
   .svc-bar-wrap {
     display: flex;
@@ -535,7 +536,7 @@
   <div class="btn-group" id="filter-group">
     <button class="active" data-filter="all">All</button>
     <button data-filter="native">Native</button>
-    <button data-filter="moto">Moto-backed</button>
+    <button data-filter="moto">Absent</button>
     <button data-filter="full">100%</button>
     <button data-filter="partial">Partial</button>
     <button data-filter="none">0%</button>
@@ -586,7 +587,7 @@ const services = Object.entries(rawServices).map(([name, s]) => ({
   tested:     s.tested_count || 0,
   tests:      s.test_method_count || 0,
   native:     s.status === 'native',
-  status:     s.status || 'moto_backed',
+  status:     s.status || 'absent',
   protocol:   s.protocol || '',
   description: s.description || '',
   all_ops:    s.all_ops || [],
@@ -746,7 +747,7 @@ function renderList() {
     item.innerHTML = `
       <div class="svc-row${isOpen ? ' expanded' : ''}" data-svc="${svc.name}">
         <span class="svc-name">${svc.name}</span>
-        <span class="svc-badge ${svc.native ? 'native' : 'moto'}">${svc.native ? 'native' : 'moto'}</span>
+        <span class="svc-badge ${svc.native ? 'native' : svc.status === 'absent' ? 'absent' : 'moto'}">${svc.native ? 'native' : (svc.status === 'absent' ? 'absent' : 'moto')}</span>
         <div class="svc-bar-wrap">
           <div class="svc-bar-track">
             <div class="svc-bar-fill" style="width:${pct}%;background:${fill}"></div>
@@ -779,7 +780,7 @@ function renderList() {
             </div>
             <div class="legend-strip">
               <div class="legend-item"><div class="legend-dot" style="background:var(--native-border)"></div>Native provider</div>
-              <div class="legend-item"><div class="legend-dot" style="background:var(--moto-border)"></div>Moto-backed</div>
+              <div class="legend-item"><div class="legend-dot" style="background:var(--moto-border)"></div>Absent backend</div>
               <div class="legend-item"><div class="legend-dot" style="background:var(--border)"></div>Not implemented</div>
               <span style="margin-left:auto;font-size:11px;color:var(--muted)">Required params shown · <a href="https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/${svc.name}.html" target="_blank">AWS docs ↗</a></span>
             </div>

@@ -1,9 +1,11 @@
 {
   "service": "emr",
+  "generated_at": "2026-10-20T06:49:18.215919+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 50,
+    "working": 52,
     "needs_params": 0,
-    "not_implemented": 10,
+    "not_implemented": 8,
     "500_error": 0
   },
   "operations": [
@@ -34,8 +36,8 @@
     },
     {
       "operation": "CreatePersistentAppUI",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateSecurityConfiguration",
@@ -84,8 +86,8 @@
     },
     {
       "operation": "DescribePersistentAppUI",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
     },
     {
       "operation": "DescribeReleaseLabel",

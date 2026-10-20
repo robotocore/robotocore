@@ -1,9 +1,11 @@
 {
   "service": "transcribe",
+  "generated_at": "2026-10-20T08:08:40.483210+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
-    "working": 28,
+    "working": 38,
     "needs_params": 4,
-    "not_implemented": 11,
+    "not_implemented": 1,
     "500_error": 0
   },
   "operations": [
@@ -34,13 +36,13 @@
     },
     {
       "operation": "DeleteCallAnalyticsCategory",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The requested category couldn't be found. Check the category)"
     },
     {
       "operation": "DeleteCallAnalyticsJob",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The requested job couldn't be found. Check the job name and )"
     },
     {
       "operation": "DeleteLanguageModel",
@@ -49,8 +51,8 @@
     },
     {
       "operation": "DeleteMedicalScribeJob",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The requested job couldn't be found. Check the job name and )"
     },
     {
       "operation": "DeleteMedicalTranscriptionJob",
@@ -84,18 +86,18 @@
     },
     {
       "operation": "GetCallAnalyticsCategory",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The requested category couldn't be found. Check the category)"
     },
     {
       "operation": "GetCallAnalyticsJob",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The requested job couldn't be found. Check the job name and )"
     },
     {
       "operation": "GetMedicalScribeJob",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The requested job couldn't be found. Check the job name and )"
     },
     {
       "operation": "GetMedicalTranscriptionJob",
@@ -154,8 +156,8 @@
     },
     {
       "operation": "ListTagsForResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The requested resource couldn't be found. Check the ARN and )"
     },
     {
       "operation": "ListTranscriptionJobs",
@@ -174,13 +176,13 @@
     },
     {
       "operation": "StartCallAnalyticsJob",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartMedicalScribeJob",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartMedicalTranscriptionJob",
@@ -209,8 +211,8 @@
     },
     {
       "operation": "UpdateMedicalVocabulary",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The requested vocabulary couldn't be found. Check the vocabu)"
     },
     {
       "operation": "UpdateVocabulary",

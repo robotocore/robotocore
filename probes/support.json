@@ -1,5 +1,7 @@
 {
   "service": "support",
+  "generated_at": "2026-10-20T08:08:38.688764+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
     "working": 16,
     "needs_params": 0,

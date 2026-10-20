@@ -1,10 +1,12 @@
 {
   "service": "greengrass",
+  "generated_at": "2026-10-20T06:49:28.889126+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 61,
+    "working": 92,
     "needs_params": 0,
-    "not_implemented": 22,
-    "500_error": 9
+    "not_implemented": 0,
+    "500_error": 0
   },
   "operations": [
     {
@@ -14,53 +16,53 @@
     },
     {
       "operation": "AssociateServiceRoleToAccount",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateConnectorDefinition",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'get')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateConnectorDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That connectors definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "CreateCoreDefinition",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object is not subscriptable)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateCoreDefinitionVersion",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "CreateDeployment",
       "status": "working",
-      "message": "likely implemented (InvalidInputException: That deployment type is not valid.  Please specify one of th)"
+      "message": "likely implemented (IdNotFoundException: That group does not exist.)"
     },
     {
       "operation": "CreateDeviceDefinition",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'get')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateDeviceDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That devices definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "CreateFunctionDefinition",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'get')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateFunctionDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That lambdas does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "CreateGroup",
@@ -69,8 +71,8 @@
     },
     {
       "operation": "CreateGroupCertificateAuthority",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateGroupVersion",
@@ -79,78 +81,78 @@
     },
     {
       "operation": "CreateLoggerDefinition",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'get')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateLoggerDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That loggers definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "CreateResourceDefinition",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'get')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateResourceDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That resource definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "CreateSoftwareUpdateJob",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateSubscriptionDefinition",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object is not subscriptable)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateSubscriptionDefinitionVersion",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object is not iterable)"
+      "status": "working",
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "DeleteConnectorDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That connectors definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "DeleteCoreDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That cores definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "DeleteDeviceDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That devices definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "DeleteFunctionDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That lambdas definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "DeleteGroup",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That group definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That group does not exist.)"
     },
     {
       "operation": "DeleteLoggerDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That loggers definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "DeleteResourceDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That resources definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "DeleteSubscriptionDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That subscriptions definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "DisassociateRoleFromGroup",
@@ -159,143 +161,143 @@
     },
     {
       "operation": "DisassociateServiceRoleFromAccount",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetAssociatedRole",
       "status": "working",
-      "message": "likely implemented (404: You need to attach an IAM role to this deployment group.)"
+      "message": "likely implemented (IdNotFoundException: No role was found for the group.)"
     },
     {
       "operation": "GetBulkDeploymentStatus",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetConnectivityInfo",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetConnectorDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That Connector List Definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "GetConnectorDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That connectors definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That version does not exist: probe-test-value)"
     },
     {
       "operation": "GetCoreDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That Core List Definition does not exist)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "GetCoreDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That cores definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That version does not exist: probe-test-value)"
     },
     {
       "operation": "GetDeploymentStatus",
       "status": "working",
-      "message": "likely implemented (InvalidInputException: Deployment 'probe-test-value' does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That group does not exist.)"
     },
     {
       "operation": "GetDeviceDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That Device List Definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "GetDeviceDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That devices definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That version does not exist: probe-test-value)"
     },
     {
       "operation": "GetFunctionDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That Lambda List Definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "GetFunctionDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That lambdas definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That version does not exist: probe-test-value)"
     },
     {
       "operation": "GetGroup",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That Group Definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That group id does not exist.)"
     },
     {
       "operation": "GetGroupCertificateAuthority",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetGroupCertificateConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetGroupVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That group definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That group does not exist.)"
     },
     {
       "operation": "GetLoggerDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That Logger List Definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "GetLoggerDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That loggers definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That version does not exist: probe-test-value)"
     },
     {
       "operation": "GetResourceDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That Resource List Definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "GetResourceDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That resources definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That version does not exist: probe-test-value)"
     },
     {
       "operation": "GetServiceRoleForAccount",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetSubscriptionDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That Subscription List Definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "GetSubscriptionDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That subscriptions definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That version does not exist: probe-test-value)"
     },
     {
       "operation": "GetThingRuntimeConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListBulkDeploymentDetailedReports",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListBulkDeployments",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListConnectorDefinitionVersions",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That connectors definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "ListConnectorDefinitions",
@@ -305,7 +307,7 @@
     {
       "operation": "ListCoreDefinitionVersions",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That cores definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "ListCoreDefinitions",
@@ -315,12 +317,12 @@
     {
       "operation": "ListDeployments",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (IdNotFoundException: That group does not exist.)"
     },
     {
       "operation": "ListDeviceDefinitionVersions",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That devices definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "ListDeviceDefinitions",
@@ -330,7 +332,7 @@
     {
       "operation": "ListFunctionDefinitionVersions",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That lambdas definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "ListFunctionDefinitions",
@@ -339,13 +341,13 @@
     },
     {
       "operation": "ListGroupCertificateAuthorities",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListGroupVersions",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That group definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That group does not exist.)"
     },
     {
       "operation": "ListGroups",
@@ -355,7 +357,7 @@
     {
       "operation": "ListLoggerDefinitionVersions",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That loggers definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "ListLoggerDefinitions",
@@ -365,7 +367,7 @@
     {
       "operation": "ListResourceDefinitionVersions",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That resources definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "ListResourceDefinitions",
@@ -375,7 +377,7 @@
     {
       "operation": "ListSubscriptionDefinitionVersions",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That subscriptions definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "ListSubscriptionDefinitions",
@@ -384,88 +386,88 @@
     },
     {
       "operation": "ListTagsForResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ResetDeployments",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NotImplemented: This operation has not been implemented)"
     },
     {
       "operation": "StartBulkDeployment",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StopBulkDeployment",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NotImplemented: This operation has not been implemented)"
     },
     {
       "operation": "TagResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UntagResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateConnectivityInfo",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateConnectorDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That connectors definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "UpdateCoreDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That cores definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "UpdateDeviceDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That devices definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "UpdateFunctionDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That lambdas definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "UpdateGroup",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That group definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That group does not exist.)"
     },
     {
       "operation": "UpdateGroupCertificateConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateLoggerDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That loggers definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "UpdateResourceDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That resources definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "UpdateSubscriptionDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That subscriptions definition does not exist.)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
     },
     {
       "operation": "UpdateThingRuntimeConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     }
   ]
 }

@@ -1,10 +1,12 @@
 {
   "service": "opensearch",
+  "generated_at": "2026-10-20T08:07:40.391341+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
-    "working": 56,
+    "working": 77,
     "needs_params": 5,
-    "not_implemented": 20,
-    "500_error": 1
+    "not_implemented": 0,
+    "500_error": 0
   },
   "operations": [
     {
@@ -34,8 +36,8 @@
     },
     {
       "operation": "AssociatePackages",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "AuthorizeVpcEndpointAccess",
@@ -44,13 +46,13 @@
     },
     {
       "operation": "CancelDomainConfigChange",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CancelServiceSoftwareUpdate",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateApplication",
@@ -64,8 +66,8 @@
     },
     {
       "operation": "CreateIndex",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateOutboundConnection",
@@ -85,17 +87,17 @@
     {
       "operation": "DeleteApplication",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteDataSource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteDirectQueryDataSource",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteDomain",
@@ -109,8 +111,8 @@
     },
     {
       "operation": "DeleteIndex",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteOutboundConnection",
@@ -209,13 +211,13 @@
     },
     {
       "operation": "DissociatePackages",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetApplication",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "GetCompatibleVersions",
@@ -224,8 +226,8 @@
     },
     {
       "operation": "GetDataSource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetDefaultApplicationSetting",
@@ -244,8 +246,8 @@
     },
     {
       "operation": "GetIndex",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetPackageVersionHistory",
@@ -254,13 +256,13 @@
     },
     {
       "operation": "GetUpgradeHistory",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetUpgradeStatus",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListApplications",
@@ -269,18 +271,18 @@
     },
     {
       "operation": "ListDataSources",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListDirectQueryDataSources",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListDomainMaintenances",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "ListDomainNames",
@@ -319,8 +321,8 @@
     },
     {
       "operation": "ListVpcEndpointAccess",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListVpcEndpoints",
@@ -339,13 +341,13 @@
     },
     {
       "operation": "PutDefaultApplicationSetting",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "RejectInboundConnection",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "RemoveTags",
@@ -364,13 +366,13 @@
     },
     {
       "operation": "StartServiceSoftwareUpdate",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateApplication",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "UpdateDataSource",
@@ -384,13 +386,13 @@
     },
     {
       "operation": "UpdateDomainConfig",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateIndex",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdatePackage",
@@ -399,13 +401,13 @@
     },
     {
       "operation": "UpdatePackageScope",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateScheduledAction",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "UpdateVpcEndpoint",
@@ -414,8 +416,8 @@
     },
     {
       "operation": "UpgradeDomain",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     }
   ]
 }

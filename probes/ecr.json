@@ -1,10 +1,12 @@
 {
   "service": "ecr",
+  "generated_at": "2026-10-20T06:49:12.803127+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 38,
+    "working": 52,
     "needs_params": 6,
-    "not_implemented": 12,
-    "500_error": 2
+    "not_implemented": 0,
+    "500_error": 0
   },
   "operations": [
     {
@@ -79,13 +81,13 @@
     },
     {
       "operation": "DeleteSigningConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (InvalidAction: Could not find operation DeleteSigningConfiguration)"
     },
     {
       "operation": "DeregisterPullTimeUpdateExclusion",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (InvalidAction: Could not find operation DeregisterPullTimeUpdateExclusion)"
     },
     {
       "operation": "DescribeImageReplicationStatus",
@@ -99,8 +101,8 @@
     },
     {
       "operation": "DescribeImageSigningStatus",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeImages",
@@ -139,8 +141,8 @@
     },
     {
       "operation": "GetDownloadUrlForLayer",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (InvalidAction: Could not find operation GetDownloadUrlForLayer)"
     },
     {
       "operation": "GetLifecyclePolicy",
@@ -169,18 +171,18 @@
     },
     {
       "operation": "GetSigningConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "InitiateLayerUpload",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (InvalidAction: Could not find operation InitiateLayerUpload)"
     },
     {
       "operation": "ListImageReferrers",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (InvalidAction: Could not find operation ListImageReferrers)"
     },
     {
       "operation": "ListImages",
@@ -189,8 +191,8 @@
     },
     {
       "operation": "ListPullTimeUpdateExclusions",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (InvalidAction: Could not find operation ListPullTimeUpdateExclusions)"
     },
     {
       "operation": "ListTagsForResource",
@@ -204,8 +206,8 @@
     },
     {
       "operation": "PutImage",
-      "status": "500_error",
-      "message": "server crash (InternalError: probe-test-value is not a repository)"
+      "status": "working",
+      "message": "implemented (RepositoryNotFoundException)"
     },
     {
       "operation": "PutImageScanningConfiguration",
@@ -215,7 +217,7 @@
     {
       "operation": "PutImageTagMutability",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "implemented (RepositoryNotFoundException)"
     },
     {
       "operation": "PutLifecyclePolicy",
@@ -225,12 +227,12 @@
     {
       "operation": "PutRegistryPolicy",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "OK"
     },
     {
       "operation": "PutRegistryScanningConfiguration",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object is not iterable)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutReplicationConfiguration",
@@ -239,13 +241,13 @@
     },
     {
       "operation": "PutSigningConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (InvalidAction: Could not find operation PutSigningConfiguration)"
     },
     {
       "operation": "RegisterPullTimeUpdateExclusion",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (InvalidAction: Could not find operation RegisterPullTimeUpdateExclusion)"
     },
     {
       "operation": "SetRepositoryPolicy",
@@ -274,28 +276,28 @@
     },
     {
       "operation": "UpdateImageStorageClass",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (InvalidAction: Could not find operation UpdateImageStorageClass)"
     },
     {
       "operation": "UpdatePullThroughCacheRule",
       "status": "working",
-      "message": "likely implemented (PullThroughCacheRuleNotFoundException: The pull through cache rule with Amazon ECR repository prefi)"
+      "message": "likely implemented (PullThroughCacheRuleNotFoundException: The requested operation failed because the pull through cach)"
     },
     {
       "operation": "UpdateRepositoryCreationTemplate",
       "status": "working",
-      "message": "likely implemented (TemplateNotFoundException: The repository creation template with the prefix 'probe-test)"
+      "message": "likely implemented (TemplateNotFoundException: The requested operation failed because the template with pre)"
     },
     {
       "operation": "UploadLayerPart",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (InvalidAction: Could not find operation UploadLayerPart)"
     },
     {
       "operation": "ValidatePullThroughCacheRule",
       "status": "working",
-      "message": "likely implemented (PullThroughCacheRuleNotFoundException: The pull through cache rule with Amazon ECR repository prefi)"
+      "message": "likely implemented (PullThroughCacheRuleNotFoundException: The requested operation failed because the pull through cach)"
     }
   ]
 }

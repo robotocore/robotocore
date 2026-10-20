@@ -1,5 +1,7 @@
 {
   "service": "shield",
+  "generated_at": "2026-10-20T08:08:33.651903+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
     "working": 32,
     "needs_params": 3,

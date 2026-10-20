@@ -1,10 +1,12 @@
 {
   "service": "connect",
+  "generated_at": "2026-10-20T05:27:31.791138+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 170,
+    "working": 210,
     "needs_params": 22,
-    "not_implemented": 167,
-    "500_error": 7
+    "not_implemented": 133,
+    "500_error": 1
   },
   "operations": [
     {
@@ -84,8 +86,8 @@
     },
     {
       "operation": "AssociateRoutingProfileQueues",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'QueueConfigs')"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "AssociateSecurityKey",
@@ -189,8 +191,8 @@
     },
     {
       "operation": "CreateContactFlowModuleAlias",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateContactFlowModuleVersion",
@@ -204,18 +206,18 @@
     },
     {
       "operation": "CreateDataTable",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateDataTableAttribute",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateEmailAddress",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateEvaluationForm",
@@ -244,8 +246,8 @@
     },
     {
       "operation": "CreateNotification",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateParticipant",
@@ -259,8 +261,8 @@
     },
     {
       "operation": "CreatePredefinedAttribute",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'Values')"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreatePrompt",
@@ -304,8 +306,8 @@
     },
     {
       "operation": "CreateTestCase",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateTrafficDistributionGroup",
@@ -344,8 +346,8 @@
     },
     {
       "operation": "CreateWorkspace",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateWorkspacePage",
@@ -364,8 +366,8 @@
     },
     {
       "operation": "DeleteContactEvaluation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteContactFlow",
@@ -379,8 +381,8 @@
     },
     {
       "operation": "DeleteContactFlowModuleAlias",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteContactFlowModuleVersion",
@@ -394,18 +396,18 @@
     },
     {
       "operation": "DeleteDataTable",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteDataTableAttribute",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteEmailAddress",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteEvaluationForm",
@@ -434,8 +436,8 @@
     },
     {
       "operation": "DeleteNotification",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeletePredefinedAttribute",
@@ -479,8 +481,8 @@
     },
     {
       "operation": "DeleteTestCase",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteTrafficDistributionGroup",
@@ -519,8 +521,8 @@
     },
     {
       "operation": "DeleteWorkspace",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteWorkspaceMedia",
@@ -549,8 +551,8 @@
     },
     {
       "operation": "DescribeContactEvaluation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeContactFlow",
@@ -564,23 +566,23 @@
     },
     {
       "operation": "DescribeContactFlowModuleAlias",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeDataTable",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeDataTableAttribute",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeEmailAddress",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeEvaluationForm",
@@ -614,8 +616,8 @@
     },
     {
       "operation": "DescribeNotification",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribePhoneNumber",
@@ -659,8 +661,8 @@
     },
     {
       "operation": "DescribeTestCase",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeTrafficDistributionGroup",
@@ -694,8 +696,8 @@
     },
     {
       "operation": "DescribeWorkspace",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DisassociateAnalyticsDataSet",
@@ -759,8 +761,8 @@
     },
     {
       "operation": "DisassociateRoutingProfileQueues",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'QueueReferences')"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DisassociateSecurityKey",
@@ -924,8 +926,8 @@
     },
     {
       "operation": "ListContactFlowModuleAliases",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListContactFlowModuleVersions",
@@ -954,8 +956,8 @@
     },
     {
       "operation": "ListDataTableAttributes",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListDataTablePrimaryValues",
@@ -969,8 +971,8 @@
     },
     {
       "operation": "ListDataTables",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListDefaultVocabularies",
@@ -1039,8 +1041,8 @@
     },
     {
       "operation": "ListNotifications",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListPhoneNumbers",
@@ -1154,8 +1156,8 @@
     },
     {
       "operation": "ListTestCases",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListTrafficDistributionGroupUsers",
@@ -1214,8 +1216,8 @@
     },
     {
       "operation": "ListWorkspaces",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "MonitorContact",
@@ -1404,8 +1406,8 @@
     },
     {
       "operation": "StartContactEvaluation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "StartContactMediaProcessing",
@@ -1544,8 +1546,8 @@
     },
     {
       "operation": "UpdateContactEvaluation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateContactFlowContent",
@@ -1559,13 +1561,13 @@
     },
     {
       "operation": "UpdateContactFlowModuleAlias",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateContactFlowModuleContent",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'Content')"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateContactFlowModuleMetadata",
@@ -1589,8 +1591,8 @@
     },
     {
       "operation": "UpdateDataTableAttribute",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateDataTableMetadata",
@@ -1659,8 +1661,8 @@
     },
     {
       "operation": "UpdatePredefinedAttribute",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'Values')"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdatePrompt",
@@ -1674,8 +1676,8 @@
     },
     {
       "operation": "UpdateQueueMaxContacts",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'MaxContacts')"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateQueueName",
@@ -1749,8 +1751,8 @@
     },
     {
       "operation": "UpdateTestCase",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateTrafficDistribution",
