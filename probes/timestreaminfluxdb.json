@@ -1,11 +1,11 @@
 {
   "service": "timestreaminfluxdb",
-  "generated_at": "2026-10-20T08:10:51.867554+00:00",
-  "endpoint": "http://localhost:4599",
+  "generated_at": "2026-10-20T23:24:04.988888+00:00",
+  "endpoint": "http://localhost:4794",
   "counts": {
-    "working": 7,
+    "working": 10,
     "needs_params": 3,
-    "not_implemented": 8,
+    "not_implemented": 5,
     "500_error": 1
   },
   "operations": [
@@ -46,8 +46,8 @@
     },
     {
       "operation": "GetDbParameterGroup",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListDbClusters",
@@ -71,8 +71,8 @@
     },
     {
       "operation": "ListTagsForResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "RebootDbCluster",
@@ -86,8 +86,8 @@
     },
     {
       "operation": "TagResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UntagResource",

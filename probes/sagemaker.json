@@ -1,11 +1,11 @@
 {
   "service": "sagemaker",
-  "generated_at": "2026-10-20T08:08:24.820460+00:00",
-  "endpoint": "http://localhost:4599",
+  "generated_at": "2026-10-20T23:24:04.710002+00:00",
+  "endpoint": "http://localhost:4794",
   "counts": {
-    "working": 356,
+    "working": 357,
     "needs_params": 21,
-    "not_implemented": 3,
+    "not_implemented": 2,
     "500_error": 0
   },
   "operations": [
@@ -1376,8 +1376,8 @@
     },
     {
       "operation": "ListMonitoringAlerts",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListMonitoringExecutions",

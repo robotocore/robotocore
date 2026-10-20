@@ -1,7 +1,7 @@
 {
   "service": "cloudtrail",
-  "generated_at": "2026-10-20T05:27:11.540967+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-20T23:23:39.659911+00:00",
+  "endpoint": "http://localhost:4794",
   "counts": {
     "working": 46,
     "needs_params": 7,
