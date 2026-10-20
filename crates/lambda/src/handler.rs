@@ -840,7 +840,13 @@ impl LambdaHandler {
         // OnSuccess/OnFailure destination records and DLQ.
         if invocation_type == "Event" {
             let payload: Value = serde_json::from_slice(&req.body).unwrap_or(Value::Null);
-            crate::destinations::dispatch_async_result(&func, &payload, &res, req.account, &req.region);
+            crate::destinations::dispatch_async_result(
+                &func,
+                &payload,
+                &res,
+                req.account,
+                &req.region,
+            );
         }
         let executed_version = func.version.read().clone();
         match invocation_type {

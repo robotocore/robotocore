@@ -97,9 +97,7 @@ pub fn register(handlers: &NativeHandlers) {
             move |arn: &str, payload: &str, account: u64, region: &str| {
                 let condition = serde_json::from_str::<Value>(payload)
                     .ok()
-                    .and_then(|r| {
-                        r["requestContext"]["condition"].as_str().map(String::from)
-                    })
+                    .and_then(|r| r["requestContext"]["condition"].as_str().map(String::from))
                     .unwrap_or_default();
                 // arn:aws:events:<region>:<account>:event-bus/<name>
                 let bus_name = arn
@@ -223,9 +221,7 @@ pub fn register(handlers: &NativeHandlers) {
             let kinesis = handlers.kinesis.clone();
             move |arn: &str, payload: &str, account: u64, region: &str| {
                 // arn:aws:kinesis:<region>:<account>:stream/<name>
-                let stream_name = match arn.rsplit('/').next()
-                    .filter(|s| !s.is_empty())
-                {
+                let stream_name = match arn.rsplit('/').next().filter(|s| !s.is_empty()) {
                     Some(n) => n.to_string(),
                     None => return Err(format!("Kinesis stream ARN unparseable: {arn}")),
                 };

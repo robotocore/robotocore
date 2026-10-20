@@ -133,8 +133,11 @@ pub fn dispatch_to_dlq(
     if target_arn.is_empty() {
         return;
     }
-    let record =
-        build_dlq_record(&func.function_arn, request_payload, Some(&dlq_error_message(outcome)));
+    let record = build_dlq_record(
+        &func.function_arn,
+        request_payload,
+        Some(&dlq_error_message(outcome)),
+    );
     let payload = serde_json::to_string(&record).unwrap_or_default();
     if target_arn.contains(":sqs:") {
         sqs::bridge::deliver_to_arn(&target_arn, &payload);
@@ -168,7 +171,11 @@ pub fn dispatch_async_result(
         None
     } else {
         let msg = error_message_of(outcome);
-        Some(if msg.is_empty() { "Unhandled".to_string() } else { msg })
+        Some(if msg.is_empty() {
+            "Unhandled".to_string()
+        } else {
+            msg
+        })
     };
 
     let dest = |key: &str| -> Option<String> {
@@ -266,7 +273,10 @@ mod tests {
             &Value::Null,
             Some("Runtime.InvalidRuntime"),
         );
-        assert_eq!(with_error["responsePayload"], json!({"errorMessage": "Unknown"}));
+        assert_eq!(
+            with_error["responsePayload"],
+            json!({"errorMessage": "Unknown"})
+        );
         let no_error = build_record(
             "arn:aws:lambda:us-east-1:123456789012:function:fn",
             &json!({}),
