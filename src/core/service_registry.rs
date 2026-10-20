@@ -168,7 +168,12 @@ pub const SERVICE_REGISTRY: &[(&str, &str, &str, &str)] = &[
         "Kinesis Video Archived Media",
     ),
     ("kinesisanalyticsv2", "moto", "json", "Kinesis Analytics v2"),
-    ("kinesisvideo", "native", "rest-json", "Kinesis Video Streams"),
+    (
+        "kinesisvideo",
+        "native",
+        "rest-json",
+        "Kinesis Video Streams",
+    ),
     ("kms", "moto", "json", "Key Management Service"),
     ("lakeformation", "moto", "rest-json", "Lake Formation"),
     (
