@@ -1087,7 +1087,8 @@ pub async fn catch_all_handler(
     if let Some((api_id, stage, proxy_path)) = crate::core::apigw_exec::match_execute(uri.path()) {
         // The audit call below needs the account/region rows that are
         // computed further down; derive them early here.
-        let account = extract_account_from_request(&headers, uri.query().unwrap_or(""));
+        let account =
+            extract_account_from_request(&headers, uri.query().unwrap_or(""), &body_bytes);
         let account_id = account.to_string();
         let region_for_audit = extract_region_from_request(&headers)
             .or_else(|| extract_region_from_query(uri.query().unwrap_or("")))
@@ -1169,7 +1170,7 @@ pub async fn catch_all_handler(
     .unwrap_or_default();
 
     // Extract account from Authorization header or default
-    let account = extract_account_from_request(&headers, uri.query().unwrap_or(""));
+    let account = extract_account_from_request(&headers, uri.query().unwrap_or(""), &body_bytes);
     let region = extract_region_from_request(&headers)
         .or_else(|| extract_region_from_query(uri.query().unwrap_or("")))
         .unwrap_or_else(|| "us-east-1".to_string());
@@ -2190,7 +2191,7 @@ fn body_is_sdb(headers: &HeaderMap, body: &[u8]) -> bool {
 }
 
 /// Extract account ID from Authorization header.
-fn extract_account_from_request(headers: &HeaderMap, query_string: &str) -> u64 {
+fn extract_account_from_request(headers: &HeaderMap, query_string: &str, body: &[u8]) -> u64 {
     // Try to get account from Authorization header
     if let Some(auth) = headers.get("Authorization") {
         if let Ok(auth_str) = auth.to_str() {
@@ -2214,6 +2215,20 @@ fn extract_account_from_request(headers: &HeaderMap, query_string: &str) -> u64 
     }) {
         if let Some(access_key) = cred.split('/').next() {
             return parse_account_from_key(access_key);
+        }
+    }
+
+    // SigV2 bodies (SimpleDB is the only SigV2 service) carry the access
+    // key in the form body: AWSAccessKeyId=KEY&... moto derives the account
+    // the same way (moto/core/responses.py get_account_id_from), so the
+    // documented per-account isolation holds for sdb too.
+    if let Some(v) = String::from_utf8_lossy(body).split('&').find_map(|kv| {
+        let (k, v) = kv.split_once('=')?;
+        (k == "AWSAccessKeyId" && !v.is_empty()).then(|| v.to_string())
+    }) {
+        let key = urlencoding::decode(&v).unwrap_or_default();
+        if !key.is_empty() {
+            return parse_account_from_key(&key);
         }
     }
 
@@ -2350,7 +2365,7 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert("Authorization", "AWS4-HMAC-SHA256 Credential=123456789012/20230101/us-east-1/sts/aws4_request, SignedHeaders=host;x-amz-date, Signature=xyz".parse().unwrap());
 
-        let account = extract_account_from_request(&headers, "");
+        let account = extract_account_from_request(&headers, "", b"");
         assert_eq!(account, 123456789012);
     }
 
@@ -2358,7 +2373,20 @@ mod tests {
     fn test_extract_account_from_presigned_query() {
         // X-Amz-Credential in the query string routes to that account too
         let headers = HeaderMap::new();
-        let account = extract_account_from_request(&headers, "X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=222222222222%2F20260101%2Fus-east-1%2Fs3%2Faws4_request");
+        let account = extract_account_from_request(&headers, "X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=222222222222%2F20260101%2Fus-east-1%2Fs3%2Faws4_request", b"");
+        assert_eq!(account, 222222222222);
+    }
+
+    #[test]
+    fn test_extract_account_from_sigv2_body() {
+        // SimpleDB is SigV2: AWSAccessKeyId rides the form body (moto's
+        // get_account_id_from path), so per-account isolation holds.
+        let headers = HeaderMap::new();
+        let account = extract_account_from_request(
+            &headers,
+            "",
+            b"Action=CreateDomain&AWSAccessKeyId=222222222222&Signature=x%3D",
+        );
         assert_eq!(account, 222222222222);
     }
 
