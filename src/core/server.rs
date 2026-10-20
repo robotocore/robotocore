@@ -140,10 +140,21 @@ impl S3ServiceHandler {
         // Parse query params
         let mut query_params = std::collections::HashMap::new();
         for pair in query_string.split('&') {
+            if pair.is_empty() {
+                continue;
+            }
             if let Some((k, v)) = pair.split_once('=') {
                 query_params.insert(
                     urlencoding::decode(k).unwrap_or_default().into_owned(),
                     urlencoding::decode(v).unwrap_or_default().into_owned(),
+                );
+            } else {
+                // Value-less query param (e.g. ?session, ?x-amz-encryption) —
+                // S3 operation dispatch reads these keys from query_params,
+                // so they must survive the gateway→crate handoff.
+                query_params.insert(
+                    urlencoding::decode(pair).unwrap_or_default().into_owned(),
+                    String::new(),
                 );
             }
         }
