@@ -17,6 +17,7 @@ pub mod apigateway;
 pub mod apigatewayv2;
 pub mod apigw_management;
 pub mod appconfig;
+pub mod applicationautoscaling;
 pub mod appmesh;
 pub mod appsync;
 pub mod athena;
@@ -143,6 +144,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "apigatewaymanagementapi" => Some(apigw_management::dispatch(req)),
         "apigatewayv2" => Some(apigatewayv2::dispatch(req)),
         "appconfig" => appconfig::dispatch(req),
+        "applicationautoscaling" => applicationautoscaling::dispatch(req),
         "appmesh" => Some(appmesh::dispatch(req)),
         "appsync" => Some(appsync::dispatch(req)),
         "athena" => Some(athena::dispatch(req)),
@@ -297,6 +299,7 @@ pub fn handles_service(service: &str) -> bool {
             | "apigatewaymanagementapi"
             | "apigatewayv2"
             | "appconfig"
+            | "applicationautoscaling"
             | "appmesh"
             | "appsync"
             | "athena"
@@ -428,6 +431,7 @@ mod tests {
         // with no backend report false.
         for service in [
             "acm",
+            "applicationautoscaling",
             "connect",
             "connectcampaigns",
             "glue",

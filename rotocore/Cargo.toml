@@ -28,3 +28,7 @@ ureq = { version = "2.10", default-features = false }
 # Cross-service reads (CreateTrail's S3-bucket existence check mirrors moto's
 # `s3_backends[...].get_bucket` probe via the s3 crate's state bridge).
 s3 = { path = "../crates/s3" }
+# Cross-service reads (RegisterScalableTarget's ECS-service existence check
+# mirrors moto's `ecs_backends[...].describe_services` probe via the ecs
+# crate's state bridge).
+ecs = { path = "../crates/ecs" }

@@ -1,6 +1,7 @@
 //! Native Ecs service for robotocore.
 //! Protocol: json, Target: AmazonEC2ContainerServiceV20141113
 
+pub mod bridge;
 pub mod handler;
 pub mod models;
 pub mod protocol;

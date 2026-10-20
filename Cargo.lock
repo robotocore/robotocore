@@ -1377,6 +1377,7 @@ dependencies = [
  "base64",
  "bytes",
  "chrono",
+ "ecs",
  "hex",
  "md5",
  "once_cell",
