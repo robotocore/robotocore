@@ -1040,45 +1040,40 @@ fn recovery_point_routes(
     arn_and_suffix: &str,
     _body: &Value,
 ) -> Response {
-    // Split the recovery-point path from any suffix segment.
-    let (rp_part, suffix) = match arn_and_suffix.split_once('/') {
-        Some((rp, suffix)) => (rp, Some(suffix)),
-        None => (arn_and_suffix, None),
+    // moto's route label for rpArn is greedy: the arn may span several
+    // segments. Only a recognized terminal segment is a suffix; "index" has
+    // no moto handler and stays a faithful 501.
+    let (rp_arn, suffix) = {
+        let segs: Vec<&str> = arn_and_suffix.split('/').collect();
+        match segs.last().copied().filter(|la| {
+            matches!(
+                *la,
+                "restore-metadata" | "disassociate" | "parentAssociation" | "index"
+            )
+        }) {
+            Some(last) if segs.len() > 1 => {
+                let rp = segs[..segs.len() - 1].join("/");
+                (percent_decode(&rp), Some(last))
+            }
+            _ => (percent_decode(arn_and_suffix), None),
+        }
     };
-    let rp_arn = percent_decode(rp_part);
     let vault_missing = || not_found(format!("Backup vault {name} not found"));
+    let rp_missing = || {
+        if !st.vaults.contains_key(name) {
+            return vault_missing();
+        }
+        rp_not_found(&rp_arn)
+    };
     match (method, suffix) {
-        ("GET", Some("restore-metadata")) => {
-            if !st.vaults.contains_key(name) {
-                return vault_missing();
-            }
-            rp_not_found(&rp_arn)
+        ("GET", Some("restore-metadata")) => rp_missing(),
+        (_, Some("disassociate")) | ("DELETE", Some("parentAssociation")) => rp_missing(),
+        ("GET", Some("index")) | ("POST", Some("index")) => {
+            // GetRecoveryPointIndexDetails / UpdateRecoveryPointIndexSettings:
+            // moto has no handler — faithfully absent.
+            not_supported(req)
         }
-        (_, Some("disassociate")) | ("DELETE", Some("parentAssociation")) => {
-            if !st.vaults.contains_key(name) {
-                return vault_missing();
-            }
-            rp_not_found(&rp_arn)
-        }
-        ("GET", None) => {
-            if !st.vaults.contains_key(name) {
-                return vault_missing();
-            }
-            rp_not_found(&rp_arn)
-        }
-        ("POST", None) => {
-            // UpdateRecoveryPointLifecycle
-            if !st.vaults.contains_key(name) {
-                return vault_missing();
-            }
-            rp_not_found(&rp_arn)
-        }
-        ("DELETE", None) => {
-            if !st.vaults.contains_key(name) {
-                return vault_missing();
-            }
-            rp_not_found(&rp_arn)
-        }
+        ("GET", None) | ("POST", None) | ("DELETE", None) => rp_missing(),
         _ => not_supported(req),
     }
 }
@@ -2995,6 +2990,30 @@ mod tests {
         let body = ctx.result(&resp);
         assert_eq!(resp.status, 400);
         assert_eq!(body["message"], "Backup vault ghost not found");
+
+        // Greedy rpArn: a recovery-point arn containing slashes (as the probe
+        // filler generates) is matched whole, like moto's greedy route label.
+        let resp = ctx.call(
+            "GET",
+            "/backup-vaults/vault-1/recovery-points/arn:aws:backup:us-east-1:123456789012:thing/probe-test",
+            json!({}),
+        );
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            ctx.result(&resp)["message"],
+            "Recovery point arn:aws:backup:us-east-1:123456789012:thing/probe-test not found"
+        );
+        // ...and with a suffix riding on top of a slashed arn.
+        let resp = ctx.call(
+            "GET",
+            "/backup-vaults/vault-1/recovery-points/arn:aws:backup:us-east-1:123456789012:thing/probe-test/restore-metadata",
+            json!({}),
+        );
+        assert_eq!(resp.status, 400);
+        assert!(ctx.result(&resp)["message"]
+            .as_str()
+            .unwrap()
+            .ends_with("thing/probe-test not found"));
 
         // Report jobs: unknown plan errors, live plan starts a COMPLETED job.
         ctx.call(
