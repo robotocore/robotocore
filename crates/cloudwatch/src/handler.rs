@@ -693,6 +693,19 @@ impl CloudwatchHandler {
         )
     }
 
+    /// Error shaped for the incoming protocol: JSON-protocol requests
+    /// (`X-Amz-Target` bodies) get the JSON envelope, form-encoded
+    /// query-protocol requests get the AWS `<ErrorResponse>` XML.
+    fn error_for(req: &AwsRequest, status: u16, code: &str, message: &str) -> AwsResponse {
+        let is_query =
+            !req.body.is_empty() && String::from_utf8_lossy(req.body.as_ref()).contains("Action=");
+        if is_query {
+            AwsResponse::query_error(status, code, message)
+        } else {
+            AwsResponse::error(status, code, message)
+        }
+    }
+
     fn get_metric_statistics(&self, req: &AwsRequest) -> AwsResponse {
         let namespace = str_param(&req.params, "Namespace");
         let metric_name = str_param(&req.params, "MetricName");
@@ -708,6 +721,17 @@ impl CloudwatchHandler {
         let ext_stats = str_list(&req.params, "ExtendedStatistics");
         let unit_filter = as_str(req.params.get("Unit"));
         let filter_dims = dims_from_value(req.params.get("Dimensions"));
+
+        // moto: statistics or extended statistics must be specified (HTTP 400
+        // InvalidParameterCombination).
+        if statistics.is_empty() && ext_stats.is_empty() {
+            return Self::error_for(
+                req,
+                400,
+                "InvalidParameterCombinationException",
+                "Must specify either Statistics or ExtendedStatistics",
+            );
+        }
 
         let state = self.get_state(req.account, &req.region);
         let metrics = state.metrics.read();
@@ -728,7 +752,7 @@ impl CloudwatchHandler {
         }
         filtered.sort_by_key(|md| md.timestamp);
 
-        if filtered.is_empty() || (statistics.is_empty() && ext_stats.is_empty()) {
+        if filtered.is_empty() {
             return AwsResponse::json(
                 200,
                 json!({

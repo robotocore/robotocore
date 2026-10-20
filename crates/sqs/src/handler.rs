@@ -1703,7 +1703,22 @@ impl Default for DefaultSqsHandler {
 impl SqsHandler for DefaultSqsHandler {
     fn handle(&self, req: AwsRequest) -> AwsResponse {
         let result = self.handle_request(&req);
-        result.unwrap_or_else(|err| err.to_json_response())
+        // Error envelope follows the request protocol: query-protocol callers
+        // send the `Action=` form body and get the AWS query `<ErrorResponse>`
+        // XML; JSON-protocol callers (botocore's sqs json service model,
+        // cross-crate bridges with an empty body) get the JSON envelope.
+        let is_query_protocol =
+            !req.body.is_empty() && String::from_utf8_lossy(req.body.as_ref()).contains("Action=");
+        match result {
+            Ok(resp) => resp,
+            Err(err) => {
+                if is_query_protocol {
+                    err.to_xml_response()
+                } else {
+                    err.to_json_response()
+                }
+            }
+        }
     }
 }
 

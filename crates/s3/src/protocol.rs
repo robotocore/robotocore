@@ -90,4 +90,32 @@ impl AwsResponse {
             body: body.into_bytes(),
         }
     }
+
+    /// Bucket-scoped error (moto S3 `bucket_error` template): adds the
+    /// `<BucketName>` element that AWS S3 and moto include on bucket errors.
+    pub fn bucket_error(status: u16, code: &str, message: &str, bucket: &str) -> Self {
+        let body = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<Error>
+  <Code>{code}</Code>
+  <Message>{message}</Message>
+  <BucketName>{name}</BucketName>
+</Error>"#,
+            code = code,
+            message = message,
+            name = bucket
+        );
+        Self {
+            status,
+            headers: vec![
+                ("Content-Type".to_string(), "application/xml".to_string()),
+                (
+                    "x-amz-request-id".to_string(),
+                    uuid::Uuid::new_v4().to_string(),
+                ),
+                ("server".to_string(), "robotocore".to_string()),
+            ],
+            body: body.into_bytes(),
+        }
+    }
 }
