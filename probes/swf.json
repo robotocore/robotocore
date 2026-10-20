@@ -1,7 +1,7 @@
 {
   "service": "swf",
-  "generated_at": "2026-10-20T08:08:39.314871+00:00",
-  "endpoint": "http://localhost:4599",
+  "generated_at": "2026-10-20T21:31:18.310338+00:00",
+  "endpoint": "http://localhost:4793",
   "counts": {
     "working": 13,
     "needs_params": 0,
