@@ -73,6 +73,7 @@ pub mod ivs;
 pub mod kinesisanalyticsv2;
 pub mod kinesisvideo;
 pub mod lakeformation;
+pub mod lexv2models;
 pub mod macie2;
 pub mod managedblockchain;
 pub mod mediaconnect;
@@ -206,6 +207,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "kinesisanalyticsv2" => Some(kinesisanalyticsv2::dispatch(req)),
         "kinesisvideo" => kinesisvideo::dispatch(req),
         "lakeformation" => Some(lakeformation::dispatch(req)),
+        "lexv2models" => lexv2models::dispatch(req),
         "macie2" => Some(macie2::dispatch(req)),
         "managedblockchain" => Some(managedblockchain::dispatch(req)),
         "mediaconnect" => mediaconnect::dispatch(req),
@@ -357,6 +359,7 @@ pub fn handles_service(service: &str) -> bool {
             | "kinesisanalyticsv2"
             | "kinesisvideo"
             | "lakeformation"
+            | "lexv2models"
             | "macie2"
             | "managedblockchain"
             | "mediaconnect"
@@ -434,6 +437,7 @@ mod tests {
             "glacier",
             "elasticache",
             "codepipeline",
+            "lexv2models",
             "xray",
         ] {
             assert!(handles_service(service), "{service} should be armed");
