@@ -1,11 +1,11 @@
 {
   "service": "cognito-idp",
-  "generated_at": "2026-10-20T05:27:16.967711+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-20T23:23:41.691953+00:00",
+  "endpoint": "http://localhost:4794",
   "counts": {
-    "working": 65,
+    "working": 69,
     "needs_params": 1,
-    "not_implemented": 56,
+    "not_implemented": 52,
     "500_error": 0
   },
   "operations": [
@@ -111,8 +111,8 @@
     },
     {
       "operation": "AdminRespondToAuthChallenge",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "AdminSetUserMFAPreference",
@@ -151,8 +151,8 @@
     },
     {
       "operation": "AssociateSoftwareToken",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: )"
     },
     {
       "operation": "ChangePassword",
@@ -511,8 +511,8 @@
     },
     {
       "operation": "SetUserMFAPreference",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: probe-test-value)"
     },
     {
       "operation": "SetUserPoolMfaConfig",
@@ -611,8 +611,8 @@
     },
     {
       "operation": "VerifySoftwareToken",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: )"
     },
     {
       "operation": "VerifyUserAttribute",

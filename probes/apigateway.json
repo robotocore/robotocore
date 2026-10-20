@@ -1,11 +1,11 @@
 {
   "service": "apigateway",
-  "generated_at": "2026-10-20T05:26:54.035860+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-20T23:23:37.317828+00:00",
+  "endpoint": "http://localhost:4794",
   "counts": {
-    "working": 120,
+    "working": 121,
     "needs_params": 0,
-    "not_implemented": 3,
+    "not_implemented": 2,
     "500_error": 0
   },
   "operations": [
@@ -611,8 +611,8 @@
     },
     {
       "operation": "UpdateUsage",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateUsagePlan",

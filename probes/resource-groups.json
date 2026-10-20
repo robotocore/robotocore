@@ -1,18 +1,18 @@
 {
   "service": "resource-groups",
-  "generated_at": "2026-10-20T08:08:02.882765+00:00",
-  "endpoint": "http://localhost:4599",
+  "generated_at": "2026-10-20T23:23:53.548027+00:00",
+  "endpoint": "http://localhost:4794",
   "counts": {
-    "working": 16,
+    "working": 17,
     "needs_params": 2,
-    "not_implemented": 5,
-    "500_error": 0
+    "not_implemented": 2,
+    "500_error": 2
   },
   "operations": [
     {
       "operation": "CancelTagSyncTask",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "500_error",
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "CreateGroup",
@@ -46,8 +46,8 @@
     },
     {
       "operation": "GetTagSyncTask",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "500_error",
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "GetTags",
@@ -91,8 +91,8 @@
     },
     {
       "operation": "StartTagSyncTask",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "Tag",

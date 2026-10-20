@@ -439,14 +439,14 @@ fn route(req: &Request, st: &mut BackupStore) -> Response {
         return not_supported(req);
     }
     if parts == ["global-settings"] {
-        return match (
-            method,
-            body.get("GlobalSettings").and_then(Value::as_object),
-        ) {
-            ("GET", _) => ok(json!({ "GlobalSettings": st.global_settings.clone() })),
-            ("PUT", Some(settings)) => {
-                for (k, v) in settings {
-                    st.global_settings[k] = v.clone();
+        return match method {
+            "GET" => ok(json!({ "GlobalSettings": st.global_settings.clone() })),
+            "PUT" => {
+                // moto: params.get("GlobalSettings", {}) — an empty body is a no-op.
+                if let Some(settings) = body.get("GlobalSettings").and_then(Value::as_object) {
+                    for (k, v) in settings {
+                        st.global_settings[k] = v.clone();
+                    }
                 }
                 ok(json!({}))
             }
@@ -454,15 +454,17 @@ fn route(req: &Request, st: &mut BackupStore) -> Response {
         };
     }
     if parts == ["account-settings"] {
-        return match (
-            method,
-            body.get("ResourceTypeOptInPreference")
-                .and_then(Value::as_object),
-        ) {
-            ("GET", _) => ok(json!({ "ResourceTypeOptInPreference": st.region_settings.clone() })),
-            ("PUT", Some(settings)) => {
-                for (k, v) in settings {
-                    st.region_settings[k] = v.clone();
+        return match method {
+            "GET" => ok(json!({ "ResourceTypeOptInPreference": st.region_settings.clone() })),
+            "PUT" => {
+                // moto: a missing ResourceTypeOptInPreference is a no-op.
+                if let Some(settings) = body
+                    .get("ResourceTypeOptInPreference")
+                    .and_then(Value::as_object)
+                {
+                    for (k, v) in settings {
+                        st.region_settings[k] = v.clone();
+                    }
                 }
                 ok(json!({}))
             }
@@ -1038,45 +1040,40 @@ fn recovery_point_routes(
     arn_and_suffix: &str,
     _body: &Value,
 ) -> Response {
-    // Split the recovery-point path from any suffix segment.
-    let (rp_part, suffix) = match arn_and_suffix.split_once('/') {
-        Some((rp, suffix)) => (rp, Some(suffix)),
-        None => (arn_and_suffix, None),
+    // moto's route label for rpArn is greedy: the arn may span several
+    // segments. Only a recognized terminal segment is a suffix; "index" has
+    // no moto handler and stays a faithful 501.
+    let (rp_arn, suffix) = {
+        let segs: Vec<&str> = arn_and_suffix.split('/').collect();
+        match segs.last().copied().filter(|la| {
+            matches!(
+                *la,
+                "restore-metadata" | "disassociate" | "parentAssociation" | "index"
+            )
+        }) {
+            Some(last) if segs.len() > 1 => {
+                let rp = segs[..segs.len() - 1].join("/");
+                (percent_decode(&rp), Some(last))
+            }
+            _ => (percent_decode(arn_and_suffix), None),
+        }
     };
-    let rp_arn = percent_decode(rp_part);
     let vault_missing = || not_found(format!("Backup vault {name} not found"));
+    let rp_missing = || {
+        if !st.vaults.contains_key(name) {
+            return vault_missing();
+        }
+        rp_not_found(&rp_arn)
+    };
     match (method, suffix) {
-        ("GET", Some("restore-metadata")) => {
-            if !st.vaults.contains_key(name) {
-                return vault_missing();
-            }
-            rp_not_found(&rp_arn)
+        ("GET", Some("restore-metadata")) => rp_missing(),
+        (_, Some("disassociate")) | ("DELETE", Some("parentAssociation")) => rp_missing(),
+        ("GET", Some("index")) | ("POST", Some("index")) => {
+            // GetRecoveryPointIndexDetails / UpdateRecoveryPointIndexSettings:
+            // moto has no handler — faithfully absent.
+            not_supported(req)
         }
-        (_, Some("disassociate")) | ("DELETE", Some("parentAssociation")) => {
-            if !st.vaults.contains_key(name) {
-                return vault_missing();
-            }
-            rp_not_found(&rp_arn)
-        }
-        ("GET", None) => {
-            if !st.vaults.contains_key(name) {
-                return vault_missing();
-            }
-            rp_not_found(&rp_arn)
-        }
-        ("POST", None) => {
-            // UpdateRecoveryPointLifecycle
-            if !st.vaults.contains_key(name) {
-                return vault_missing();
-            }
-            rp_not_found(&rp_arn)
-        }
-        ("DELETE", None) => {
-            if !st.vaults.contains_key(name) {
-                return vault_missing();
-            }
-            rp_not_found(&rp_arn)
-        }
+        ("GET", None) | ("POST", None) | ("DELETE", None) => rp_missing(),
         _ => not_supported(req),
     }
 }
@@ -1632,8 +1629,27 @@ fn report_jobs_routes(
     method: &str,
     rest: &[&str],
 ) -> Response {
+    // StartReportJob is POST /audit/report-jobs/{reportPlanName}.
     match (method, rest) {
-        ("GET", []) => ok(json!({ "ReportJobs": [] })),
+        ("POST", [plan_name]) => start_report_job(st, plan_name),
+        ("GET", []) => {
+            let plan_filter = query_param(req, "reportPlanName");
+            let status = query_param(req, "status");
+            let list: Vec<Value> = st
+                .report_jobs
+                .values()
+                .filter(|j| {
+                    plan_filter
+                        .as_deref()
+                        .is_none_or(|p| j["ReportPlanArn"].as_str().unwrap_or("").ends_with(p))
+                        && status
+                            .as_deref()
+                            .is_none_or(|s| j["Status"].as_str() == Some(s))
+                })
+                .cloned()
+                .collect();
+            ok(json!({ "ReportJobs": list }))
+        }
         ("GET", [id]) => {
             let Some(job) = st.report_jobs.get(*id) else {
                 return not_found(format!("Report job {id} not found"));
@@ -1642,6 +1658,30 @@ fn report_jobs_routes(
         }
         _ => not_supported(req),
     }
+}
+
+/// moto: the job is created already COMPLETED, its destination is the plan's
+/// delivery channel as posted.
+fn start_report_job(st: &mut BackupStore, plan_name: &str) -> Response {
+    let Some(plan) = st.report_plans.get(plan_name) else {
+        return not_found(format!("Report plan {plan_name} not found"));
+    };
+    let job_id = Uuid::new_v4().to_string();
+    let arn = plan["report_plan_arn"].clone();
+    let destination = plan["report_delivery_channel"].clone();
+    st.report_jobs.insert(
+        job_id.clone(),
+        json!({
+            "ReportJobId": job_id,
+            "ReportPlanArn": arn,
+            "CreationTime": now(),
+            "CompletionTime": now(),
+            "Status": "COMPLETED",
+            "StatusMessage": "",
+            "ReportDestination": destination,
+        }),
+    );
+    ok(json!({ "ReportJobId": job_id }))
 }
 
 /// The response key for a job-summaries URL family, if recognized.
@@ -2910,6 +2950,112 @@ mod tests {
         assert_eq!(
             from_json["BackupPlan"]["Rules"].as_array().unwrap().len(),
             1
+        );
+    }
+
+    #[test]
+    fn recovery_point_ops_report_jobs_and_empty_settings() {
+        let ctx = Ctx::new("us-east-1");
+        ctx.vault();
+
+        // Recovery points never materialize (StartBackupJob leaves none), so
+        // the whole family answers vault-check-then-RP-not-found like moto.
+        let base = "/backup-vaults/vault-1/recovery-points/%61rp";
+        for (method, suffix, op) in [
+            ("GET", None, "DescribeRecoveryPoint"),
+            ("DELETE", None, "DeleteRecoveryPoint"),
+            ("POST", None, "UpdateRecoveryPointLifecycle"),
+            ("GET", Some("restore-metadata"), "GetRestoreMetadata"),
+            ("POST", Some("disassociate"), "Disassociate"),
+            ("DELETE", Some("parentAssociation"), "DissocFromParent"),
+        ] {
+            let path = match suffix {
+                Some(s) => format!("{base}/{s}"),
+                None => base.to_string(),
+            };
+            let resp = ctx.call(method, &path, json!({}));
+            assert_eq!(resp.status, 400, "{op}");
+            let body = ctx.result(&resp);
+            assert_eq!(body["__type"], "ResourceNotFoundException", "{op} body");
+            assert!(
+                body["message"]
+                    .as_str()
+                    .unwrap()
+                    .starts_with("Recovery point "),
+                "{op} message"
+            );
+        }
+        // Unknown vault wins over unknown recovery point.
+        let resp = ctx.call("GET", "/backup-vaults/ghost/recovery-points/x", json!({}));
+        let body = ctx.result(&resp);
+        assert_eq!(resp.status, 400);
+        assert_eq!(body["message"], "Backup vault ghost not found");
+
+        // Greedy rpArn: a recovery-point arn containing slashes (as the probe
+        // filler generates) is matched whole, like moto's greedy route label.
+        let resp = ctx.call(
+            "GET",
+            "/backup-vaults/vault-1/recovery-points/arn:aws:backup:us-east-1:123456789012:thing/probe-test",
+            json!({}),
+        );
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            ctx.result(&resp)["message"],
+            "Recovery point arn:aws:backup:us-east-1:123456789012:thing/probe-test not found"
+        );
+        // ...and with a suffix riding on top of a slashed arn.
+        let resp = ctx.call(
+            "GET",
+            "/backup-vaults/vault-1/recovery-points/arn:aws:backup:us-east-1:123456789012:thing/probe-test/restore-metadata",
+            json!({}),
+        );
+        assert_eq!(resp.status, 400);
+        assert!(ctx.result(&resp)["message"]
+            .as_str()
+            .unwrap()
+            .ends_with("thing/probe-test not found"));
+
+        // Report jobs: unknown plan errors, live plan starts a COMPLETED job.
+        ctx.call(
+            "POST",
+            "/audit/report-plans/",
+            json!({
+                "ReportPlanName": "rp1",
+                "ReportDeliveryChannel": {"S3BucketName": "bkt"},
+            }),
+        );
+        let resp = ctx.call("POST", "/audit/report-jobs/ghost", json!({}));
+        assert_eq!(resp.status, 400);
+        assert_eq!(ctx.result(&resp)["message"], "Report plan ghost not found");
+        let started = ctx.result(&ctx.call("POST", "/audit/report-jobs/rp1", json!({})));
+        assert!(started["ReportJobId"].as_str().unwrap().len() == 36);
+        let jobs = ctx.result(&ctx.call(
+            "GET",
+            "/audit/report-jobs?reportPlanName=rp1&status=COMPLETED",
+            json!({}),
+        ));
+        assert_eq!(jobs["ReportJobs"].as_array().unwrap().len(), 1);
+        assert_eq!(jobs["ReportJobs"][0]["Status"], "COMPLETED");
+        let none = ctx.result(&ctx.call(
+            "GET",
+            "/audit/report-jobs?reportPlanName=stranger",
+            json!({}),
+        ));
+        assert!(none["ReportJobs"].as_array().unwrap().is_empty());
+
+        // Settings PUT with an empty body is a moto no-op success.
+        assert_eq!(ctx.call("PUT", "/global-settings", json!({})).status, 200);
+        assert_eq!(ctx.call("PUT", "/account-settings", json!({})).status, 200);
+        let merged = ctx.result(&ctx.call(
+            "PUT",
+            "/global-settings",
+            json!({"GlobalSettings": {"isCrossAccountBackupEnabled": "true"}}),
+        ));
+        assert_eq!(merged, json!({}));
+        let global = ctx.result(&ctx.call("GET", "/global-settings", json!({})));
+        assert_eq!(
+            global["GlobalSettings"]["isCrossAccountBackupEnabled"],
+            "true"
         );
     }
 

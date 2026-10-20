@@ -1,11 +1,11 @@
 {
   "service": "backup",
-  "generated_at": "2026-10-20T05:27:01.324111+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-20T23:23:38.889297+00:00",
+  "endpoint": "http://localhost:4794",
   "counts": {
-    "working": 90,
+    "working": 99,
     "needs_params": 0,
-    "not_implemented": 18,
+    "not_implemented": 9,
     "500_error": 0
   },
   "operations": [
@@ -111,8 +111,8 @@
     },
     {
       "operation": "DeleteRecoveryPoint",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteReportPlan",
@@ -166,8 +166,8 @@
     },
     {
       "operation": "DescribeRecoveryPoint",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeRegionSettings",
@@ -201,13 +201,13 @@
     },
     {
       "operation": "DisassociateRecoveryPoint",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DisassociateRecoveryPointFromParent",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ExportBackupPlanTemplate",
@@ -256,8 +256,8 @@
     },
     {
       "operation": "GetRecoveryPointRestoreMetadata",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetRestoreJobMetadata",
@@ -471,8 +471,8 @@
     },
     {
       "operation": "StartReportJob",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "StartRestoreJob",
@@ -511,8 +511,8 @@
     },
     {
       "operation": "UpdateGlobalSettings",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateRecoveryPointIndexSettings",
@@ -521,13 +521,13 @@
     },
     {
       "operation": "UpdateRecoveryPointLifecycle",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateRegionSettings",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateReportPlan",

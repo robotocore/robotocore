@@ -1,11 +1,11 @@
 {
   "service": "acmpca",
-  "generated_at": "2026-10-20T08:11:11.463986+00:00",
-  "endpoint": "http://localhost:4599",
+  "generated_at": "2026-10-20T23:23:35.677716+00:00",
+  "endpoint": "http://localhost:4794",
   "counts": {
-    "working": 9,
+    "working": 16,
     "needs_params": 4,
-    "not_implemented": 10,
+    "not_implemented": 3,
     "500_error": 0
   },
   "operations": [
@@ -36,8 +36,8 @@
     },
     {
       "operation": "DeletePolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeCertificateAuthority",
@@ -51,8 +51,8 @@
     },
     {
       "operation": "GetCertificate",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetCertificateAuthorityCertificate",
@@ -66,18 +66,18 @@
     },
     {
       "operation": "GetPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ImportCertificateAuthorityCertificate",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "IssueCertificate",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListCertificateAuthorities",
@@ -96,8 +96,8 @@
     },
     {
       "operation": "PutPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "RestoreCertificateAuthority",
@@ -106,8 +106,8 @@
     },
     {
       "operation": "RevokeCertificate",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "TagCertificateAuthority",

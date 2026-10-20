@@ -42,6 +42,123 @@ struct State {
     pools: Vec<(String, Pool)>,
     /// (domain, pool id).
     domains: Vec<(String, String)>,
+    /// (session id, username, pool id) — moto's `sessions` dict, filled when
+    /// an auth flow yields a challenge and consumed by RespondToAuthChallenge.
+    sessions: Vec<(String, String, String)>,
+}
+
+const COGNITO_TOTP_MFA_SECRET: &str = "asdfasdfasdf";
+
+/// moto keeps failed-session lookups case-exact: raise with the raw value.
+fn session_not_found(value: &str) -> Response {
+    err("ResourceNotFoundException", value)
+}
+
+/// moto's `NotAuthorizedError(token)` echoes the offending token verbatim.
+fn not_authorized_token(token: &str) -> Response {
+    err("NotAuthorizedException", token)
+}
+
+fn session_register(s: &mut State, username: &str, pool_id: &str) -> String {
+    let id = uuid::Uuid::new_v4().to_string();
+    s.sessions
+        .push((id.clone(), username.to_string(), pool_id.to_string()));
+    id
+}
+
+fn session_delete(s: &mut State, session_id: &str) {
+    s.sessions.retain(|(id, _, _)| id != session_id);
+}
+
+/// (username, pool id) for a live session, if any.
+fn session_lookup(s: &State, session_id: &str) -> Option<(String, String)> {
+    s.sessions
+        .iter()
+        .find(|(id, _, _)| id == session_id)
+        .map(|(_, u, p)| (u.clone(), p.clone()))
+}
+
+/// botocore's `authtype: none` cognito-idp ops (from the service model).
+fn is_unsigned_op(op: &str) -> bool {
+    matches!(
+        op,
+        "AdminRespondToAuthChallenge"
+            | "AssociateSoftwareToken"
+            | "VerifySoftwareToken"
+            | "SetUserMFAPreference"
+            | "InitiateAuth"
+            | "RespondToAuthChallenge"
+            | "SignUp"
+            | "GetUser"
+            | "GlobalSignOut"
+            | "UpdateUserAttributes"
+            | "ChangePassword"
+            | "DeleteUserAttributes"
+            | "SetUserSettings"
+    )
+}
+
+/// moto's `RegionAgnosticBackend`: find the scope that already holds the
+/// referenced client / session / access token.
+fn find_agnostic_scope(
+    map: &std::collections::HashMap<crate::store::ScopeKey, State>,
+    op: &str,
+    p: &Value,
+) -> Option<crate::store::ScopeKey> {
+    for (key, st) in map.iter() {
+        let hit = match op {
+            "AdminRespondToAuthChallenge"
+            | "InitiateAuth"
+            | "RespondToAuthChallenge"
+            | "SignUp" => {
+                let client = params_str_local(p, "ClientId");
+                st.pools
+                    .iter()
+                    .any(|(_, pl)| pl.clients.iter().any(|(k, _)| *k == client))
+            }
+            "AssociateSoftwareToken" | "VerifySoftwareToken" => {
+                let session = p.get("Session").and_then(Value::as_str).unwrap_or("");
+                let token = p.get("AccessToken").and_then(Value::as_str).unwrap_or("");
+                (!session.is_empty() && st.sessions.iter().any(|(id, _, _)| id == session))
+                    || (!token.is_empty() && token_in_scope(st, token))
+            }
+            "SetUserMFAPreference"
+            | "GetUser"
+            | "GlobalSignOut"
+            | "UpdateUserAttributes"
+            | "ChangePassword"
+            | "DeleteUserAttributes"
+            | "SetUserSettings" => {
+                let token = p.get("AccessToken").and_then(Value::as_str).unwrap_or("");
+                token_in_scope(st, token)
+            }
+            _ => false,
+        };
+        if hit {
+            return Some(key.clone());
+        }
+    }
+    None
+}
+
+fn params_str_local(p: &Value, key: &str) -> String {
+    p.get(key)
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string()
+}
+
+/// Does this token's `sub` identify a user in this scope?
+fn token_in_scope(st: &State, token: &str) -> bool {
+    token_payload(token)
+        .and_then(|payload| payload["sub"].as_str().map(String::from))
+        .is_some_and(|sub| {
+            st.pools.iter().any(|(_, pl)| {
+                pl.users
+                    .iter()
+                    .any(|(_, u)| u["UserSub"].as_str() == Some(sub.as_str()))
+            })
+        })
 }
 
 fn state() -> store::Slot<State> {
@@ -186,8 +303,18 @@ pub fn dispatch(req: &Request) -> Option<Response> {
     let acct = req.account.to_string();
 
     let slot = state();
-    let mut st = slot.write();
-    let s = st.entry((req.account, req.region.clone())).or_default();
+    let mut map = slot.write();
+    // botocore marks the user-facing auth ops `authtype: none` — they arrive
+    // without an Authorization header, so the gateway has no account
+    // context. moto's RegionAgnosticBackend cycles through every backend
+    // looking for the referenced client/session/token; mirror that.
+    let fallback = (req.account, req.region.clone());
+    let scope = if is_unsigned_op(op) {
+        find_agnostic_scope(&map, op, &p).unwrap_or(fallback)
+    } else {
+        fallback
+    };
+    let s = map.entry(scope).or_default();
 
     match op {
         "CreateUserPool" => Some(create_user_pool(s, &p, &region, &acct)),
@@ -208,6 +335,10 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "InitiateAuth" => Some(initiate_auth(s, &p, &region)),
         "AdminInitiateAuth" => Some(admin_initiate_auth(s, &p, &region)),
         "RespondToAuthChallenge" => Some(respond_to_auth_challenge(s, &p, &region)),
+        "AdminRespondToAuthChallenge" => Some(admin_respond_to_auth_challenge(s, &p)),
+        "AssociateSoftwareToken" => Some(associate_software_token(s, &p)),
+        "VerifySoftwareToken" => Some(verify_software_token(s, &p)),
+        "SetUserMFAPreference" => Some(set_user_mfa_preference(s, &p)),
         "GetUser" => Some(get_user(s, &p)),
         "AdminGetUser" => Some(admin_get_user(s, &p)),
         "AdminCreateUser" => Some(admin_create_user(s, &p)),
@@ -716,7 +847,7 @@ fn pool_region(pool_id: &str) -> &str {
 }
 
 fn authenticate_user(
-    s: &State,
+    s: &mut State,
     pool_id: &str,
     client_id: &str,
     username: &str,
@@ -740,13 +871,16 @@ fn authenticate_user(
         return err("UserNotConfirmedException", "User is not confirmed.");
     }
     if user["UserStatus"].as_str() == Some("FORCE_CHANGE_PASSWORD") {
+        // moto stores the challenge session (models.py `self.sessions[...]`)
+        // so RespondToAuthChallenge can pick it up later.
+        let session = session_register(s, username, pool_id);
         return ok_json(&json!({
             "ChallengeName": "NEW_PASSWORD_REQUIRED",
             "ChallengeParameters": {
                 "USER_ID_FOR_SRP": username,
                 "requiredAttributes": "[]",
             },
-            "Session": uuid::Uuid::new_v4().to_string(),
+            "Session": session,
         }));
     }
     let issuer = format!(
@@ -848,6 +982,176 @@ fn respond_to_auth_challenge(s: &mut State, p: &Value, _region: &str) -> Respons
         "AuthenticationResult": issue_tokens(&issuer, &sub, &client_id, &username),
         "ChallengeParameters": {},
     }))
+}
+
+/// The admin flavour delegates to the public handler the way moto's backend
+/// does (`models.py admin_respond_to_auth_challenge -> respond_to_auth_challenge`),
+/// with the started-session bookkeeping the twin tracks.
+fn admin_respond_to_auth_challenge(s: &mut State, p: &Value) -> Response {
+    let mut session = p["Session"].as_str().unwrap_or_default().to_string();
+    let challenge_name = p["ChallengeName"].as_str().unwrap_or_default().to_string();
+    if challenge_name == "PASSWORD_VERIFIER" {
+        session = p["ChallengeResponses"]["PASSWORD_CLAIM_SECRET_BLOCK"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+    }
+    let Some((username, pool_id)) = session_lookup(s, &session) else {
+        return session_not_found(&session);
+    };
+    let client_id = p["ClientId"].as_str().unwrap_or_default().to_string();
+    let client_in_pool =
+        pool_ref(s, &pool_id).is_some_and(|pl| pl.clients.iter().any(|(k, _)| *k == client_id));
+    if !client_in_pool {
+        // moto: `raise ResourceNotFoundError(client_id)` from the session's pool.
+        return session_not_found(&client_id);
+    }
+
+    match challenge_name.as_str() {
+        "NEW_PASSWORD_REQUIRED" => {
+            let new_password = p["ChallengeResponses"]["NEW_PASSWORD"]
+                .as_str()
+                .unwrap_or_default();
+            if new_password.is_empty() {
+                return err(
+                    "InvalidPasswordException",
+                    "The provided password does not confirm to the configured password policy",
+                );
+            }
+            let issuer = format!("https://cognito-idp.us-east-1.amazonaws.com/{pool_id}");
+            let (sub, issuer) = {
+                let Some(pl) = pool_mut(s, &pool_id) else {
+                    return session_not_found(&pool_id);
+                };
+                let Some(user) = pl
+                    .users
+                    .iter_mut()
+                    .find(|(k, _)| *k == username)
+                    .map(|(_, v)| v)
+                else {
+                    return err(
+                        "UserNotFoundException",
+                        "Username/client id combination not found.",
+                    );
+                };
+                user["Password"] = json!(new_password);
+                user["UserStatus"] = json!("CONFIRMED");
+                user["LastModifiedDate"] = json!(now());
+                let sub = user["UserSub"].as_str().unwrap_or_default().to_string();
+                (sub, issuer)
+            };
+            session_delete(s, &session);
+            ok_json(&json!({
+                "AuthenticationResult": issue_tokens(&issuer, &sub, &client_id, &username),
+                "ChallengeParameters": {},
+            }))
+        }
+        // moto's root fallback for unknown challenges: `return {}`.
+        _ => ok_json(&json!({})),
+    }
+}
+
+/// moto echoes `COGNITO_TOTP_MFA_SECRET` and validates the caller the way his
+/// backend walks `user_pool.access_tokens`.
+fn associate_software_token(s: &mut State, p: &Value) -> Response {
+    let access_token = p["AccessToken"].as_str().unwrap_or_default();
+    let session = p["Session"].as_str().unwrap_or_default();
+    if !session.is_empty() {
+        if session_lookup(s, session).is_some() {
+            return ok_json(&json!({
+                "SecretCode": COGNITO_TOTP_MFA_SECRET,
+                "Session": session,
+            }));
+        }
+        return not_authorized_token(session);
+    }
+    if access_token.is_empty() {
+        return not_authorized_token(access_token);
+    }
+    let Some((user, _pool_id)) = user_from_token(s, access_token).ok() else {
+        return not_authorized_token(access_token);
+    };
+    user["LastModifiedDate"] = json!(now());
+    ok_json(&json!({ "SecretCode": COGNITO_TOTP_MFA_SECRET }))
+}
+
+/// moto verifies the session (unknown -> ResourceNotFoundError(session)),
+/// marks `token_verified`, and rotates the session on success.
+fn verify_software_token(s: &mut State, p: &Value) -> Response {
+    let access_token = p["AccessToken"].as_str().unwrap_or_default();
+    let session = p["Session"].as_str().unwrap_or_default().to_string();
+    let friendly_device_name = p["FriendlyDeviceName"].as_str().unwrap_or_default();
+    if !session.is_empty() {
+        let Some((username, pool_id)) = session_lookup(s, &session) else {
+            return session_not_found(&session);
+        };
+        if !matches!(
+            pool_ref(s, &pool_id).and_then(|pl| pl.pool["MfaConfiguration"].as_str()),
+            None | Some("OFF" | "OPTIONAL")
+        ) {
+            // get_cognito_idp_user_pool_enable_totp() gymnastics — the code
+            // check only runs when TOTP verification is requested.
+            let user_code = p["UserCode"].as_str().unwrap_or_default();
+            if user_code.is_empty() {
+                return err(
+                    "CodeMismatchException",
+                    &format!("Code mismatch ({friendly_device_name})"),
+                );
+            }
+        }
+        if let Some(pl) = pool_mut(s, &pool_id) {
+            if let Some(user) = pl
+                .users
+                .iter_mut()
+                .find(|(k, _)| *k == username)
+                .map(|(_, v)| v)
+            {
+                user["TokenVerified"] = json!(true);
+            }
+        }
+        session_delete(s, &session);
+        let new_id = session_register(s, &username, &pool_id);
+        return ok_json(&json!({ "Status": "SUCCESS", "Session": new_id }));
+    }
+    if access_token.is_empty() {
+        return not_authorized_token(access_token);
+    }
+    let Some((user, _)) = user_from_token(s, access_token).ok() else {
+        return not_authorized_token(access_token);
+    };
+    user["TokenVerified"] = json!(true);
+    ok_json(&json!({
+        "Status": "SUCCESS",
+        "Session": uuid::Uuid::new_v4().to_string(),
+    }))
+}
+
+/// moto's user-level MFA preference follows the same path as the admin op,
+/// requiring a verified software token before enabling it.
+fn set_user_mfa_preference(s: &mut State, p: &Value) -> Response {
+    let access_token = p["AccessToken"].as_str().unwrap_or_default();
+    if access_token.is_empty() {
+        return not_authorized_token(access_token);
+    }
+    let Ok((user, _pool_id)) = user_from_token(s, access_token) else {
+        return not_authorized_token(access_token);
+    };
+    if let Some(sw) = p.get("SoftwareTokenMfaSettings").filter(|v| !v.is_null()) {
+        if sw["Enabled"].as_bool().unwrap_or(false)
+            && !user["TokenVerified"].as_bool().unwrap_or(false)
+        {
+            return err(
+                "InvalidParameterException",
+                "User has not verified software token mfa",
+            );
+        }
+        user["SoftwareTokenMfaSettings"] = sw.clone();
+    }
+    if let Some(sms) = p.get("SMSMfaSettings").filter(|v| !v.is_null()) {
+        user["SMSMfaSettings"] = sms.clone();
+    }
+    user["LastModifiedDate"] = json!(now());
+    ok_json(&json!({}))
 }
 
 fn get_user(s: &State, p: &Value) -> Response {
@@ -1980,6 +2284,144 @@ mod tests {
             .to_string()
     }
 
+    #[test]
+    fn mfa_token_ops_follow_moto_errors() {
+        let acct = scope();
+        let pool_id = make_pool(acct);
+
+        // Unknown access token: moto echoes the raw token in the message.
+        let mut r = req(
+            "AssociateSoftwareToken",
+            json!({"AccessToken": "fake-token-abc"}),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "NotAuthorizedException");
+        assert_eq!(b["message"], "fake-token-abc");
+
+        // Unknown session: same echo for Associate with Session only.
+        let mut r = req(
+            "AssociateSoftwareToken",
+            json!({"Session": "session-of-forty-characters-xxxxxxxx"}),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "NotAuthorizedException");
+        assert_eq!(b["message"], "session-of-forty-characters-xxxxxxxx");
+
+        let mut r = req(
+            "VerifySoftwareToken",
+            json!({"Session": "unknown-session-of-forty-chars-xxxxxxxx", "UserCode": "123456"}),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "ResourceNotFoundException");
+        assert_eq!(b["message"], "unknown-session-of-forty-chars-xxxxxxxx");
+
+        let mut r = req(
+            "SetUserMFAPreference",
+            json!({"AccessToken": "fake-token-abc", "SoftwareTokenMfaSettings": {"Enabled": false}}),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "NotAuthorizedException");
+        assert_eq!(b["message"], "fake-token-abc");
+
+        // AdminRespondToAuthChallenge without a live session: RNFE(session).
+        let mut r = req(
+            "AdminRespondToAuthChallenge",
+            json!({
+                "UserPoolId": &pool_id,
+                "ClientId": "fake-client",
+                "ChallengeName": "SMS_MFA",
+                "Session": "session-of-forty-characters-xxxxxxxxx",
+                "ChallengeResponses": {"USERNAME": "u", "SMS_MFA_CODE": "111111"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "ResourceNotFoundException");
+        assert_eq!(b["message"], "session-of-forty-characters-xxxxxxxxx");
+    }
+
+    #[test]
+    fn auth_session_roundtrip() {
+        let acct = scope();
+        let pool_id = make_pool(acct);
+        let mut r = req(
+            "AdminCreateUser",
+            json!({
+                "UserPoolId": &pool_id, "Username": "u1",
+                "TemporaryPassword": "TempPass1!", "MessageAction": "SUPPRESS",
+            }),
+        );
+        r.account = acct;
+        assert_eq!(dispatch(&r).unwrap().status, 200);
+
+        // FORCE_CHANGE_PASSWORD login mints a session...
+        r = req(
+            "AdminInitiateAuth",
+            json!({
+                "UserPoolId": &pool_id, "ClientId": "no-client",
+                "AuthFlow": "ADMIN_USER_PASSWORD_AUTH",
+                "AuthParameters": {"USERNAME": "u1", "PASSWORD": "TempPass1!"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["ChallengeName"], "NEW_PASSWORD_REQUIRED");
+        let session = b["Session"].as_str().unwrap().to_string();
+
+        // The pool has no registered client yet: moto's client check fires.
+        r = req(
+            "AdminRespondToAuthChallenge",
+            json!({
+                "UserPoolId": &pool_id, "ClientId": "no-client",
+                "ChallengeName": "NEW_PASSWORD_REQUIRED",
+                "Session": &session,
+                "ChallengeResponses": {"USERNAME": "u1", "NEW_PASSWORD": "NewPerm1!"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "ResourceNotFoundException", "{b}");
+
+        // Register a client, respond, and finish the flow for real.
+        r = req(
+            "CreateUserPoolClient",
+            json!({"UserPoolId": &pool_id, "ClientName": "c"}),
+        );
+        r.account = acct;
+        let client_id = body(&dispatch(&r).unwrap())["UserPoolClient"]["ClientId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        r = req(
+            "AdminInitiateAuth",
+            json!({
+                "UserPoolId": &pool_id, "ClientId": &client_id,
+                "AuthFlow": "ADMIN_USER_PASSWORD_AUTH",
+                "AuthParameters": {"USERNAME": "u1", "PASSWORD": "TempPass1!"},
+            }),
+        );
+        r.account = acct;
+        let session = body(&dispatch(&r).unwrap())["Session"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        r = req(
+            "AdminRespondToAuthChallenge",
+            json!({
+                "UserPoolId": &pool_id, "ClientId": &client_id,
+                "ChallengeName": "NEW_PASSWORD_REQUIRED",
+                "Session": &session,
+                "ChallengeResponses": {"USERNAME": "u1", "NEW_PASSWORD": "NewPerm1!"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert!(b["AuthenticationResult"]["AccessToken"].is_string(), "{b}");
+    }
     #[test]
     fn pool_lifecycle() {
         let acct = scope();
