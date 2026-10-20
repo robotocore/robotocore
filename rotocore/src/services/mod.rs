@@ -117,6 +117,7 @@ pub mod s3tables;
 pub mod s3vectors;
 pub mod sagemaker;
 pub mod sagemaker_runtime;
+pub mod scheduler;
 pub mod sdb;
 pub mod securityhub;
 pub mod servicecatalog;
@@ -279,6 +280,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         // through to the model-management module.
         "sagemaker" => sagemaker_runtime::dispatch(req).or_else(|| Some(sagemaker::dispatch(req))),
         "sagemaker-runtime" => sagemaker_runtime::dispatch(req),
+        "scheduler" => scheduler::dispatch(req),
         "sdb" => sdb::dispatch(req),
         "securityhub" => Some(securityhub::dispatch(req)),
         "servicecatalog" => servicecatalogappregistry::dispatch(req)
@@ -445,6 +447,7 @@ pub fn handles_service(service: &str) -> bool {
             | "s3vectors"
             | "sagemaker"
             | "sagemaker-runtime"
+            | "scheduler"
             | "sdb"
             | "securityhub"
             | "servicecatalog"
@@ -499,6 +502,7 @@ mod tests {
             "medialive",
             "mediastore-data",
             "sagemaker-runtime",
+            "scheduler",
             "xray",
             "servicecatalogappregistry",
         ] {
