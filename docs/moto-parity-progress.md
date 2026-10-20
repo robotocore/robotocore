@@ -259,3 +259,42 @@ are parsed by `tooling/moto_port_progress.py`.
 - Infra: disk-full incidents twice (root at 100% from 12 concurrent
   worktree builds); reclaimed per the perf10 policy (merged-only
   worktree targets + main incremental).
+
+## Wave 8 (2026-10-20) — the rest of the port: lambda engine clusters + admin + services
+
+- **Lambda execution engine** (crates/lambda): nodejs executor (node
+  bootstrap with embedded unzip; `Runtime.InvalidRuntime` when node is
+  absent — behavior identical to the python twin's), custom runtimes
+  (`provided.*`/`go` bootstraps with layers + env tables; stdin/stdout
+  contract, Task.TimedOut semantics), invoke payload validation (400
+  InvalidRequestContent), remaining-time countdown in the context shim.
+  Suites: test_lambda_nodejs_compat 34/34, python edge cases 35/35,
+  custom runtime 13/13.
+- **Lambda function URLs** (`src/core/furl_exec.rs`): v2.0-style HTTP
+  invocation of /lambda-url/{id}/* with Cors overlay — 9/9. **ESM
+  trigger engine** (`src/core/esm_engine.rs`): SQS/batch + Kinesis/DDB
+  stream wiring with ReportBatchItemFailures and FilterCriteria — 8/8;
+  integrations 12/12 (VPC echo + engine env), event source 4/4. Also
+  fixed `describe_table` to emit LatestStreamArn/LatestStreamLabel.
+- **Lambda destinations + DLQ delivery** (async invoke record fan-out to
+  SNS/SQS/EventBridge + DeadLetterConfig) — agent in flight.
+- **CloudFormation mirror**: AWS::SQS::Queue properties now propagate
+  (Attributes form vs JSON protocol) — 3 cfn_e2e flows green on the
+  merged twin; organizations arm casing fixed for the three
+  AWS*ServiceAccess ops (60/60).
+- **Chaos admin API** ported from the python-era history: rules CRUD +
+  interception hook in the catch-all handler; suite restored from the
+  deleted lane file.
+- **Cross-cutting error envelopes**: SQS/CloudWatch per-protocol error
+  envelopes (XML for query, `__type` JSON for json protocol; 400
+  statuses), S3 ListObjects 404 + BucketName in NoSuchBucket paths,
+  SNS notification wiring for S3 topic targets (process-global SNS
+  state), DynamoDB CreateTable attribute-validation messages, Athena
+  tagless CreateCapacityReservation (moto normalization), iot cancel +
+  sagemaker ListMonitoringAlerts + pipes NamePrefix filter fixes, ec2
+  DescribeInstances unknown-id faults + the three VPC-endpoint suites
+  green via suite wiring fix (single-twin fixture URLs).
+- **Gateway**: value-less S3 query keys survive the crate handoff
+  (virtual-hosted directory-bucket calls no longer misroute).
+- Fill-lane effect: 160 failing tests → 29 (all in the destinations
+  cluster mid-flight at the time of scoring) with 12,844 passes.
