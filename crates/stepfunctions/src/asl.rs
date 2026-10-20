@@ -316,6 +316,54 @@ fn sub_flow_states(container: &Value) -> Result<(Map<String, Value>, String), Fl
     Ok((states, start))
 }
 
+/// Execute a `arn:aws:lambda:...` / `:function:` task resource via the lambda
+/// crate's bridge. Errors mirror the Python executor: missing functions map
+/// to `Lambda.ServiceException`, handler errors to `Lambda.Unknown`, and
+/// code-less functions echo the input like moto's simple mode.
+fn invoke_lambda_resource(
+    resource: &str,
+    event: &Value,
+    original_input: &Value,
+) -> Result<Value, FlowError> {
+    match lambda::invoke_by_arn(resource, event) {
+        Some(outcome) if outcome.function_error.is_none() => {
+            Ok(serde_json::from_str(&outcome.payload).unwrap_or(original_input.clone()))
+        }
+        Some(outcome) => Err(FlowError::new("Lambda.Unknown", outcome.payload)),
+        None => Err(FlowError::new(
+            "Lambda.ServiceException",
+            format!("Function not found: {resource}"),
+        )),
+    }
+}
+
+/// Recognise `arn:aws:states:::lambda:invoke[.waitForTaskCallback]` SDK
+/// integrations; runs the addressed function with the provided payload.
+fn lambda_sdk_invoke(resource: &str, input: &Value) -> Option<Result<Value, FlowError>> {
+    let service_resource = resource.strip_prefix("arn:aws:states:::")?;
+    let (service, action) = match service_resource.split_once(':') {
+        Some((s, a)) => (s, a.trim_end_matches(".waitForTaskCallback")),
+        None => return None,
+    };
+    if service != "lambda" || !matches!(action, "invoke") {
+        return None;
+    }
+    Some((|| {
+        let fn_arn = input
+            .get("FunctionName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        if fn_arn.is_empty() {
+            return Err(FlowError::new(
+                "Lambda.ServiceException",
+                "FunctionName is required".to_string(),
+            ));
+        }
+        let payload = input.get("Payload").unwrap_or(input);
+        invoke_lambda_resource(fn_arn, payload, payload)
+    })())
+}
+
 /// Apply OutputPath to a state output.
 fn apply_output_path(path: Option<&str>, input: Value) -> Value {
     if let Some("$") = path {
@@ -475,11 +523,32 @@ pub fn run_flow(
                 current = next_state.unwrap();
             }
             "Task" => {
-                // No service integrations in the Rust twin yet: treat the task
-                // as completed with the current input (honouring ResultPath).
-                let raw_out = match obj.get("Result") {
-                    Some(r) => r.clone(),
-                    None => input.clone(),
+                // Lambda integrations run the function synchronously (the
+                // execution already runs on a detached thread); other
+                // resources complete with the current input like before.
+                let resource = obj
+                    .get("Resource")
+                    .and_then(|r| r.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let raw_out = if !resource.ends_with(".waitForTaskCallback")
+                    && (resource.starts_with("arn:aws:lambda:") || resource.contains(":function:"))
+                {
+                    // Ground truth (python asl.py::_dispatch_task): dict
+                    // input is the event; scalars are wrapped under "input".
+                    let event = if input.is_object() {
+                        input.clone()
+                    } else {
+                        json!({ "input": input })
+                    };
+                    invoke_lambda_resource(&resource, &event, &input)?
+                } else if let Some(sdk_fn) = lambda_sdk_invoke(&resource, &input) {
+                    sdk_fn?
+                } else {
+                    match obj.get("Result") {
+                        Some(r) => r.clone(),
+                        None => input.clone(),
+                    }
                 };
                 let merged = apply_result_path(
                     obj.get("ResultPath").and_then(|p| p.as_str()),

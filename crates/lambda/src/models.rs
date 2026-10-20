@@ -80,6 +80,9 @@ pub struct LambdaFunction {
     pub code_or_config_updated: RwLock<bool>,
     #[serde(with = "crate::snapshot::rw")]
     pub event_invoke_config: RwLock<Option<Value>>,
+    /// DeadLetterConfig (`{"TargetArn": ...}`) for failed async invocations.
+    #[serde(with = "crate::snapshot::rw")]
+    pub dead_letter_config: RwLock<Option<Value>>,
     #[serde(with = "crate::snapshot::rw")]
     pub code_signing_config_arn: RwLock<Option<String>>,
     /// Runtime management config (UpdateRuntimeOn / RuntimeVersionArn).
@@ -120,6 +123,7 @@ impl LambdaFunction {
             reserved_concurrency: RwLock::new(None),
             code_or_config_updated: RwLock::new(false),
             event_invoke_config: RwLock::new(None),
+            dead_letter_config: RwLock::new(None),
             code_signing_config_arn: RwLock::new(None),
             runtime_mgmt_config: RwLock::new(None),
             recursion_config: RwLock::new("Terminate".to_string()),
@@ -153,6 +157,7 @@ impl LambdaFunction {
             reserved_concurrency: RwLock::new(*self.reserved_concurrency.read()),
             code_or_config_updated: RwLock::new(false),
             event_invoke_config: RwLock::new(self.event_invoke_config.read().clone()),
+            dead_letter_config: RwLock::new(self.dead_letter_config.read().clone()),
             code_signing_config_arn: RwLock::new(cl(&self.code_signing_config_arn)),
             runtime_mgmt_config: RwLock::new(self.runtime_mgmt_config.read().clone()),
             recursion_config: RwLock::new(cl(&self.recursion_config)),

@@ -961,11 +961,13 @@ dependencies = [
  "base64",
  "bytes",
  "chrono",
+ "events",
  "parking_lot",
  "s3",
  "serde",
  "serde_json",
  "sha2",
+ "sqs",
  "uuid",
  "zip",
 ]
@@ -1461,7 +1463,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "sns",
  "sqs",
  "thiserror",
  "urlencoding",
@@ -1660,6 +1661,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "chrono",
+ "lambda",
  "parking_lot",
  "regex",
  "serde",
@@ -1736,6 +1738,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "chrono",
+ "lambda",
  "parking_lot",
  "serde",
  "serde_json",

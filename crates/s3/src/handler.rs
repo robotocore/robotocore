@@ -3212,24 +3212,18 @@ impl S3Handler {
                 sqs::bridge::deliver_to_arn(&target.arn, &message);
             }
         }
-        // Topic targets publish to SNS, whose fan-out builds the standard SNS
-        // envelope and delivers to SQS subscribers. The ad-hoc SNS handler
-        // shares SNS's process-global topic state (moto's in-process backend
-        // semantics). Lambda targets are not wired cross-crate in the Rust port.
+        // Topic targets publish through the SNS provider's registered hook
+        // (its own queue/lambda subscribers receive the notification); Lambda
+        // targets invoke through the gateway-registered lambda hook.
         for target in config.topics.iter() {
-            if event_matches(event_name, target, key) {
-                let sns = sns::DefaultSnsHandler::new();
-                let _ = sns.handle(sns::AwsRequest {
-                    service: "sns".to_string(),
-                    operation: "Publish".to_string(),
-                    account: req.account,
-                    region: req.region.clone(),
-                    params: json!({
-                        "TopicArn": target.arn.clone(),
-                        "Message": message,
-                    }),
-                    body: bytes::Bytes::new(),
-                });
+            if event_matches(event_name, target, key) && target.arn.contains(":sns:") {
+                // Fire-and-forget, like the Python engine's S3 topic delivery.
+                let _ = events::hook("sns", &target.arn, &message, req.account, &req.region);
+            }
+        }
+        for target in config.lambdas.iter() {
+            if event_matches(event_name, target, key) && target.arn.contains(":lambda:") {
+                let _ = events::hook("lambda", &target.arn, &message, req.account, &req.region);
             }
         }
 
@@ -3269,22 +3263,18 @@ impl S3Handler {
                 config.topics.push(t);
             }
         }
-        for section in xml_sections(body, "LambdaFunctionConfiguration") {
-            let arn = xml_text(&section, "LambdaFunctionArn")
-                .or_else(|| xml_text(&section, "CloudFunction"))
-                .unwrap_or_default();
-            if arn.is_empty() {
-                continue;
+        // boto3 emits LambdaFunctionConfiguration for the modern shape and
+        // CloudFunctionConfiguration (legacy <CloudFunction> element) for
+        // the v1 shape — both carry the same ARN/events/filter members.
+        for section in xml_sections(body, "LambdaFunctionConfiguration")
+            .into_iter()
+            .chain(xml_sections(body, "CloudFunctionConfiguration"))
+        {
+            let t = parse_target_section(&section, "LambdaFunctionArn")
+                .or_else(|| parse_target_section(&section, "CloudFunction"));
+            if let Some(t) = t {
+                config.lambdas.push(t);
             }
-            config.lambdas.push(TargetConfig {
-                arn,
-                events: xml_sections(&section, "Event")
-                    .iter()
-                    .map(|s| xml_unescape(s))
-                    .collect(),
-                prefix: None,
-                suffix: None,
-            });
         }
         if body.contains("EventBridgeConfiguration") {
             config.eventbridge = true;

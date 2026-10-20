@@ -14,5 +14,7 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 parking_lot = "0.12"
 regex = "1.10"
-# Cross-service delivery: SNS publishes into SQS queues in-process.
+# Cross-service delivery: SNS publishes into SQS queues in-process, and
+# invokes lambda subscribers (via the lambda crate's state bridge).
 sqs = { path = "../sqs" }
+lambda = { path = "../lambda" }

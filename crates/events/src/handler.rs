@@ -22,6 +22,29 @@ fn global_state(account: u64, region: &str) -> EventsState {
         .clone()
 }
 
+/// Service kind of a target ARN for hook dispatch ("lambda", "sns", ...)
+/// using the ARN's service segment. SQS and events-bus ARNs are handled
+/// natively before this runs.
+fn arn_service_kind(arn: &str) -> &'static str {
+    match arn.split(':').nth(2).unwrap_or_default() {
+        "states" => "stepfunctions",
+        "lambda" => "lambda",
+        "sns" => "sns",
+        "kinesis" => "kinesis",
+        "firehose" => "firehose",
+        "logs" => "cloudwatch-logs",
+        "ecs" => "ecs",
+        "batch" => "batch",
+        "ssm" => "ssm",
+        "redshift" => "redshift",
+        "sagemaker" => "sagemaker",
+        "inspector" => "inspector",
+        "codebuild" => "codebuild",
+        "codepipeline" => "codepipeline",
+        _ => "unknown",
+    }
+}
+
 fn now_f() -> f64 {
     (chrono::Utc::now().timestamp_millis() as f64) / 1000.0
 }
@@ -31,33 +54,26 @@ fn now_rfc3339() -> String {
 }
 
 /// Routing target ARN supported for delivery.
-const SQS_ARN_PREFIX: &str = "arn:aws:sqs:";
-
 /// Route a pre-built event through EventBridge rule matching and deliver it
-/// to matching rules' SQS targets, using the shared pattern matcher.
+/// to matching rules' targets, using the shared pattern matcher. Mirrors the
+/// Python provider's `publish_event_to_bus` (S3 and friends publish here).
 pub fn publish_event_to_bus(event: &Value, account: u64, region: &str) {
     let state = global_state(account, region);
-    let rules = state.rules.read();
-    for rule in rules.values() {
-        if *rule.state.read() != "ENABLED" {
-            continue;
-        }
-        let pattern: Value = serde_json::from_str(&rule.event_pattern).unwrap_or(json!({}));
-        if matches_pattern(&pattern, event) {
-            for target in rule.targets.read().iter() {
-                let arn = target
-                    .get("Arn")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-                if arn.starts_with(SQS_ARN_PREFIX) {
-                    sqs::bridge::deliver_to_arn(
-                        &arn,
-                        &serde_json::to_string(event).unwrap_or_default(),
-                    );
-                }
-            }
-        }
+    let matching: Vec<Arc<Rule>> = {
+        let rules = state.rules.read();
+        rules
+            .values()
+            .filter(|rule| *rule.state.read() == "ENABLED")
+            .filter(|rule| {
+                serde_json::from_str::<Value>(&rule.event_pattern)
+                    .map(|pattern| matches_pattern(&pattern, event))
+                    .unwrap_or(false)
+            })
+            .cloned()
+            .collect()
+    };
+    for rule in matching {
+        EventsHandler::dispatch_to_targets(&rule, event, account, region);
     }
 }
 
@@ -331,9 +347,26 @@ impl EventsHandler {
                 .and_then(|t| t.as_str())
                 .unwrap_or_default()
                 .to_string();
+            // JSON templates: values are substituted as JSON literals — strings
+            // are quoted, numbers/booleans/null kept verbatim — so a template
+            // like `{"a": <key>}` yields a parseable object (mirrors the
+            // Python provider's `_apply_input_transformer`).
+            let stripped = template.trim();
+            let quoted = template.replace('<', "\"__PH_").replace('>', "__PH\"");
+            let is_json_template = serde_json::from_str::<Value>(&quoted).is_ok()
+                || (stripped.starts_with('{') && stripped.ends_with('}'));
             let mut out = template;
             for (key, value) in &resolved {
-                out = out.replace(format!("<{key}>").as_str(), value);
+                let substitution = if is_json_template {
+                    match serde_json::from_str::<Value>(value) {
+                        // Already a JSON literal — keep as-is.
+                        Ok(_) => value.clone(),
+                        Err(_) => serde_json::to_string(value).unwrap_or_else(|_| "\"\"".into()),
+                    }
+                } else {
+                    value.clone()
+                };
+                out = out.replace(format!("<{key}>").as_str(), &substitution);
             }
             return out;
         }
@@ -343,7 +376,7 @@ impl EventsHandler {
         event.to_string()
     }
 
-    fn dispatch_to_targets(rule: &Arc<Rule>, event: &Value) {
+    fn dispatch_to_targets(rule: &Arc<Rule>, event: &Value, account: u64, region: &str) {
         let targets = rule.targets.read().clone();
         for target in targets {
             let arn = target
@@ -354,10 +387,90 @@ impl EventsHandler {
                 continue;
             }
             let payload = Self::build_target_input(&target, event);
-            if arn.contains(":sqs:") {
-                sqs::bridge::deliver_to_arn(arn, &payload);
+            if let Err(err) = Self::invoke_target(arn, &payload, event, account, region) {
+                Self::send_to_dlq(&target, rule.name.as_str(), event, arn, &err);
             }
         }
+    }
+
+    /// Invoke one target. SQS and bus-forward targets are native; everything
+    /// else goes through the gateway-registered foreign-target hooks.
+    fn invoke_target(
+        arn: &str,
+        payload: &str,
+        event: &Value,
+        account: u64,
+        region: &str,
+    ) -> Result<(), String> {
+        if arn.contains(":sqs:") {
+            sqs::bridge::deliver_to_arn(arn, payload);
+            return Ok(());
+        }
+        if arn.contains(":events:") {
+            // Cross-bus forwarding: match the payload (full event JSON) against
+            // every rule of the destination bus and dispatch recursively.
+            let bus_name = arn.rsplit('/').next().unwrap_or("default").to_string();
+            let bus_account = event
+                .get("account")
+                .and_then(|v| v.as_str())
+                .and_then(|a| a.parse::<u64>().ok())
+                .unwrap_or(account);
+            let bus_region = event
+                .get("region")
+                .and_then(|v| v.as_str())
+                .unwrap_or(region);
+            let state = global_state(bus_account, bus_region);
+            let event_value =
+                serde_json::from_str::<Value>(payload).unwrap_or_else(|_| event.clone());
+            let matching: Vec<Arc<Rule>> = state
+                .rules
+                .read()
+                .values()
+                .filter(|r| r.bus_name == bus_name)
+                .filter(|r| r.state.read().as_str() == "ENABLED")
+                .filter(|r| {
+                    serde_json::from_str::<Value>(&r.event_pattern)
+                        .map(|p| matches_pattern(&p, &event_value))
+                        .unwrap_or(false)
+                })
+                .cloned()
+                .collect();
+            for rule in matching {
+                Self::dispatch_to_targets(&rule, &event_value, bus_account, bus_region);
+            }
+            return Ok(());
+        }
+        match crate::bridge::hook(arn_service_kind(arn), arn, payload, account, region) {
+            Some(result) => result,
+            // No dispatch implementation registered: simulated/target-unwired
+            // no-op (the Python provider logs these invocations only).
+            None => Ok(()),
+        }
+    }
+
+    /// Route a failed target invocation to its dead-letter queue when the
+    /// target carries a `DeadLetterConfig` with an SQS ARN.
+    fn send_to_dlq(target: &Value, rule_name: &str, event: &Value, arn: &str, error: &str) {
+        let Some(dlq_arn) = target
+            .get("DeadLetterConfig")
+            .and_then(|c| c.get("Arn"))
+            .and_then(|a| a.as_str())
+            .filter(|a| a.contains(":sqs:"))
+        else {
+            return;
+        };
+        let target_id = target
+            .get("Id")
+            .and_then(|i| i.as_str())
+            .unwrap_or_default();
+        let body = json!({
+            "event": event,
+            "rule": rule_name,
+            "target": target_id,
+            "targetArn": arn,
+            "error": error,
+        });
+        sqs::bridge::deliver_to_arn(dlq_arn, &serde_json::to_string(&body).unwrap_or_default());
     }
 
     fn put_events(&self, req: &AwsRequest) -> AwsResponse {
@@ -434,7 +547,7 @@ impl EventsHandler {
                 .cloned()
                 .collect();
             for rule in matching {
-                Self::dispatch_to_targets(&rule, &event);
+                Self::dispatch_to_targets(&rule, &event, req.account, &req.region);
             }
             results.push(json!({ "EventId": event["id"] }));
         }

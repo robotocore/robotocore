@@ -19,5 +19,6 @@ hex = "0.4"
 parking_lot = "0.12"
 urlencoding = "2.1"
 sqs = { path = "../sqs" }
-sns = { path = "../sns" }
+# SNS topic targets publish through the events crate's hook registry (the
+# gateway binds it to the SNS handler), keeping s3 and sns crates acyclic.
 events = { path = "../events" }

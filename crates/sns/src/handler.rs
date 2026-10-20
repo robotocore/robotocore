@@ -511,8 +511,8 @@ impl SnsHandler {
         AwsResponse::query_success("PublishBatch", body)
     }
 
-    /// Deliver a notification to one subscription (SQS only; other protocols are no-ops
-    /// in-process like the Python truth).
+    /// Deliver a notification to one subscription (SQS, Lambda; other
+    /// protocols are no-ops in-process like the Python truth).
     #[allow(clippy::too_many_arguments)]
     fn deliver(
         &self,
@@ -524,6 +524,42 @@ impl SnsHandler {
         topic_arn: &str,
         region: &str,
     ) {
+        if sub.protocol == "lambda" {
+            // Endpoint is a function ARN; invoke it with the SNS event
+            // envelope (ground truth: sns/provider.py::_deliver_to_lambda).
+            let timestamp = chrono::Utc::now()
+                .format("%Y-%m-%dT%H:%M:%S%.6fZ")
+                .to_string();
+            let event = json!({
+                "Records": [{
+                    "EventSource": "aws:sns",
+                    "EventVersion": "1.0",
+                    "EventSubscriptionArn": sub.subscription_arn,
+                    "Sns": {
+                        "Type": "Notification",
+                        "MessageId": message_id,
+                        "TopicArn": topic_arn,
+                        "Subject": subject.unwrap_or(""),
+                        "Message": message,
+                        "Timestamp": timestamp,
+                        "SignatureVersion": "1",
+                        "Signature": "EXAMPLE",
+                        "SigningCertUrl": format!(
+                            "https://sns.{}.amazonaws.com/SimpleNotificationService.pem",
+                            region
+                        ),
+                        "UnsubscribeUrl": format!(
+                            "https://sns.{}.amazonaws.com/?Action=Unsubscribe&SubscriptionArn={}",
+                            region, sub.subscription_arn
+                        ),
+                        "MessageAttributes": message_attributes,
+                    },
+                }],
+            });
+            // Fire-and-forget semantics: handler errors are not redelivered.
+            let _ = lambda::invoke_by_arn(&sub.endpoint, &event);
+            return;
+        }
         if sub.protocol != "sqs" {
             return;
         }

@@ -48,6 +48,10 @@ async fn main() {
     // invokes mapped Lambda functions in-process.
     robotocore_rust::core::esm_engine::start(std::sync::Arc::new(native_handlers.clone()));
 
+    // Cross-service dispatch hooks (EventBridge targets, S3 → Lambda/SNS
+    // notifications, Lambda destination records) — process-wide registry.
+    robotocore_rust::core::cross_service::register(&native_handlers);
+
     let snapshots = std::sync::Arc::new(SnapshotRegistry::new(&native_handlers));
 
     // Build the Axum app — every serviced request is answered by the
