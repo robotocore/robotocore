@@ -70,6 +70,7 @@ pub mod inspector2;
 pub mod iot;
 pub mod iot_data;
 pub mod ivs;
+pub mod kinesis_video_archived_media;
 pub mod kinesisanalyticsv2;
 pub mod kinesisvideo;
 pub mod lakeformation;
@@ -204,7 +205,14 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "kafka" => Some(kafka::dispatch(req)),
 
         "kinesisanalyticsv2" => Some(kinesisanalyticsv2::dispatch(req)),
-        "kinesisvideo" => kinesisvideo::dispatch(req),
+        // kinesis-video-archived-media signs with the same `kinesisvideo`
+        // credential scope as the control plane, so the gateway labels
+        // those requests `kinesisvideo`. The URI families are disjoint;
+        // the archived-media backend declines first and the control
+        // plane keeps everything else.
+        "kinesis-video-archived-media" | "kinesisvideo" => {
+            kinesis_video_archived_media::dispatch(req).or_else(|| kinesisvideo::dispatch(req))
+        }
         "lakeformation" => Some(lakeformation::dispatch(req)),
         "macie2" => Some(macie2::dispatch(req)),
         "managedblockchain" => Some(managedblockchain::dispatch(req)),
@@ -354,6 +362,7 @@ pub fn handles_service(service: &str) -> bool {
             | "iotdata"
             | "ivs"
             | "kafka"
+            | "kinesis-video-archived-media"
             | "kinesisanalyticsv2"
             | "kinesisvideo"
             | "lakeformation"
@@ -433,6 +442,8 @@ mod tests {
             "glue",
             "glacier",
             "elasticache",
+            "kinesisvideo",
+            "kinesis-video-archived-media",
             "codepipeline",
             "xray",
         ] {

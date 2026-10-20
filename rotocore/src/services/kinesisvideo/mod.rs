@@ -434,6 +434,26 @@ fn find_channel_by_arn(b: &State, channel_arn: Option<&str>) -> Option<usize> {
         .position(|c| Some(c.arn.as_str()) == channel_arn)
 }
 
+/// Data endpoint for a sibling plane consumer: the archived-media backend
+/// (`moto.kinesisvideoarchivedmedia`) reads the same streams from the
+/// shared `kinesisvideo` backend. Resolves the stream exactly like moto's
+/// `_get_stream` (name wins, then ARN) and reports what
+/// `Stream.get_data_endpoint(api_name)` would return; `None` means the
+/// stream is missing and the caller answers ResourceNotFoundException.
+pub(crate) fn stream_data_endpoint(
+    account: u64,
+    region: &str,
+    stream_name: &str,
+    stream_arn: &str,
+    api_name: &str,
+) -> Option<String> {
+    let slot = state();
+    let st = slot.read();
+    let b = st.get(&(account, region.to_string()))?;
+    let index = find_stream_idx(b, stream_name, stream_arn)?;
+    Some(b.streams[index].data_endpoint(region, Some(api_name)))
+}
+
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
