@@ -3032,7 +3032,8 @@ impl S3Handler {
             return self.list_buckets(req);
         }
         let (state, _bucket_name) = (self.get_state(req.account, &req.region), ());
-        if let Some(bucket) = state.get_bucket(Self::bucket_param(req).as_deref().unwrap_or_default())
+        if let Some(bucket) =
+            state.get_bucket(Self::bucket_param(req).as_deref().unwrap_or_default())
         {
             if !bucket.directory {
                 return AwsResponse::error(
