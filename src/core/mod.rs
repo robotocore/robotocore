@@ -10,6 +10,7 @@
 
 pub mod account;
 pub mod apigw_exec;
+pub mod chaos;
 pub mod introspection;
 pub mod protocol;
 pub mod runtime_config;

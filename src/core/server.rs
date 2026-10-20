@@ -6,7 +6,7 @@ use axum::{
     extract::State,
     http::{HeaderMap, Method, StatusCode, Uri},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{delete, get, post},
     Router,
 };
 use http_body_util::BodyExt;
@@ -1177,6 +1177,32 @@ pub async fn catch_all_handler(
     let account_id = account.to_string();
     let region_for_audit = region.clone();
 
+    // Chaos fault injection runs where the python twin's handler chain ran
+    // it — right after context population, before service dispatch.
+    if let Some(injected) = crate::core::chaos::intercept(
+        &service,
+        &operation,
+        &method,
+        uri.path(),
+        &query_string,
+        &region_for_audit,
+    )
+    .await
+    {
+        audit_out(
+            Some(&service),
+            opt_op(&injected.operation),
+            &req_method,
+            &req_path,
+            injected.response.status().as_u16(),
+            req_start,
+            &account_id,
+            &region_for_audit,
+            Some(format!("Injected by chaos rule {}", injected.rule_id)),
+        );
+        return injected.response;
+    }
+
     // Parse request parameters based on protocol
     let content_type = headers
         .get("content-type")
@@ -1691,6 +1717,20 @@ pub fn build_router(
         )
         .route("/_robotocore/state/export", get(state_export_handler))
         .route("/_robotocore/state/import", post(state_import_handler))
+        // Chaos engineering fault-injection admin API
+        // (python-era `/_robotocore/chaos/*` port)
+        .route(
+            "/_robotocore/chaos/rules",
+            get(crate::core::chaos::chaos_list_rules).post(crate::core::chaos::chaos_add_rule),
+        )
+        .route(
+            "/_robotocore/chaos/rules/clear",
+            post(crate::core::chaos::chaos_clear_rules),
+        )
+        .route(
+            "/_robotocore/chaos/rules/:rule_id",
+            delete(crate::core::chaos::chaos_delete_rule),
+        )
         .fallback(catch_all_handler)
         .with_state(state)
 }
