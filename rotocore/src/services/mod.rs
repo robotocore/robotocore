@@ -110,6 +110,7 @@ pub mod sagemaker;
 pub mod sdb;
 pub mod securityhub;
 pub mod servicecatalog;
+pub mod servicediscovery;
 pub mod servicequotas;
 pub mod ses;
 pub mod sesv2;
@@ -245,6 +246,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "sdb" => sdb::dispatch(req),
         "securityhub" => Some(securityhub::dispatch(req)),
         "servicecatalog" => servicecatalog::dispatch(req),
+        "servicediscovery" => servicediscovery::dispatch(req),
         "servicequotas" | "service-quotas" => servicequotas::dispatch(req),
         "ses" => ses::dispatch(req),
         "sesv2" => Some(sesv2::dispatch(req)),
@@ -394,6 +396,7 @@ pub fn handles_service(service: &str) -> bool {
             | "sdb"
             | "securityhub"
             | "servicecatalog"
+            | "servicediscovery"
             | "service-quotas"
             | "servicequotas"
             | "ses"
@@ -434,6 +437,7 @@ mod tests {
             "glacier",
             "elasticache",
             "codepipeline",
+            "servicediscovery",
             "xray",
         ] {
             assert!(handles_service(service), "{service} should be armed");
