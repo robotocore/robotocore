@@ -3,7 +3,7 @@
 use chrono::Utc;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -54,6 +54,13 @@ pub struct Table {
     pub stream_enabled: RwLock<bool>,
     #[serde(with = "crate::snapshot::rw")]
     pub stream_view_type: RwLock<Option<String>>,
+    /// Stream label (moto's `latest_stream_label`) set when the stream is
+    /// enabled; drives the LatestStreamArn (`{table_arn}/stream/{label}`).
+    #[serde(with = "crate::snapshot::rw")]
+    pub stream_label: RwLock<Option<String>>,
+    /// The single stream shard carrying captured mutation records.
+    #[serde(with = "crate::snapshot::rw")]
+    pub stream_shard: RwLock<Option<StreamShard>>,
     #[serde(with = "crate::snapshot::rw")]
     pub tags: RwLock<HashMap<String, String>>,
     #[serde(with = "crate::snapshot::rw")]
@@ -100,6 +107,8 @@ impl Table {
             local_secondary_indexes: RwLock::new(Vec::new()),
             stream_enabled: RwLock::new(false),
             stream_view_type: RwLock::new(None),
+            stream_label: RwLock::new(None),
+            stream_shard: RwLock::new(None),
             tags: RwLock::new(HashMap::new()),
             ttl_enabled: RwLock::new(false),
             ttl_attribute: RwLock::new(String::new()),
@@ -134,6 +143,46 @@ pub struct KinesisDestination {
     pub status: String,
     #[serde(default)]
     pub precision: Option<String>,
+}
+
+/// The single per-table stream shard (mirrors moto's `StreamShard`).
+///
+/// Records are stored as wire-ready JSON objects so the dynamodbstreams
+/// backend can serve them verbatim, moto-style.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StreamShard {
+    pub shard_id: String,
+    /// Kept as moto's string literal: the 22-digit constant exceeds u64 and
+    /// botocore requires SequenceNumber strings of at least 21 chars.
+    pub starting_sequence_number: String,
+    #[serde(with = "crate::snapshot::rw")]
+    pub records: RwLock<Vec<Value>>,
+}
+
+impl StreamShard {
+    pub fn new() -> Self {
+        Self {
+            shard_id: crate::streaming::SHARD_ID.to_string(),
+            starting_sequence_number: crate::streaming::STARTING_SEQUENCE_NUMBER.to_string(),
+            records: RwLock::new(Vec::new()),
+        }
+    }
+
+    /// Moto's `StreamShard.to_json()` shape.
+    pub fn to_json(&self) -> Value {
+        json!({
+            "ShardId": self.shard_id,
+            "SequenceNumberRange": {
+                "StartingSequenceNumber": self.starting_sequence_number.clone(),
+            },
+        })
+    }
+}
+
+impl Default for StreamShard {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// A stored backup of a table.
