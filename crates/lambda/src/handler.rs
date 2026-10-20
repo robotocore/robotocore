@@ -1252,8 +1252,8 @@ impl LambdaHandler {
             "LastModified": e.last_modified,
             "FunctionResponseTypes": e.function_response_types.clone().unwrap_or_default(),
             "FilterCriteria": e.filter_criteria.clone().unwrap_or(Value::Null),
-            "BisectBatchOnFunctionError": false,
-            "MaximumRetryAttempts": -1,
+            "BisectBatchOnFunctionError": e.bisect_batch_on_function_error,
+            "MaximumRetryAttempts": e.maximum_retry_attempts,
         })
     }
 
@@ -1298,6 +1298,16 @@ impl LambdaHandler {
                         .collect::<Vec<String>>()
                 })
                 .filter(|t: &Vec<String>| !t.is_empty()),
+            bisect_batch_on_function_error: req
+                .params
+                .get("BisectBatchOnFunctionError")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            maximum_retry_attempts: req
+                .params
+                .get("MaximumRetryAttempts")
+                .and_then(Value::as_i64)
+                .unwrap_or(-1),
         });
         state
             .event_source_mappings
@@ -1369,6 +1379,16 @@ impl LambdaHandler {
                 })
                 .filter(|t: &Vec<String>| !t.is_empty())
                 .or_else(|| em.function_response_types.clone()),
+            bisect_batch_on_function_error: req
+                .params
+                .get("BisectBatchOnFunctionError")
+                .and_then(Value::as_bool)
+                .unwrap_or(em.bisect_batch_on_function_error),
+            maximum_retry_attempts: req
+                .params
+                .get("MaximumRetryAttempts")
+                .and_then(Value::as_i64)
+                .unwrap_or(em.maximum_retry_attempts),
         });
         state
             .event_source_mappings

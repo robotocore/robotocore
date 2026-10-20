@@ -213,6 +213,12 @@ pub struct EventSourceMapping {
     /// Non-empty only with `FunctionResponseTypes` (e.g. ReportBatchItemFailures).
     #[serde(default)]
     pub function_response_types: Option<Vec<String>>,
+    /// Retry each half of a failed batch once (bool; default false).
+    #[serde(default)]
+    pub bisect_batch_on_function_error: bool,
+    /// Python-truth default `-1` (unconfigured; 0..=2 valid).
+    #[serde(default)]
+    pub maximum_retry_attempts: i64,
 }
 
 /// One stored ESM as seen by the gateway's engine thread, tagged with the
