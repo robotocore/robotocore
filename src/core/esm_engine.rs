@@ -295,20 +295,6 @@ impl Engine {
         let mapping = &entry.mapping;
         let key = (entry.account, entry.region.clone(), mapping.uuid.clone());
         let last = self.ddb_last_seq.get(&key).cloned();
-        if last.is_none() && Self::starting_position(mapping) != "TRIM_HORIZON" {
-            // LATEST: skip everything recorded before now.
-            if let Some(records) =
-                native
-                    .dynamodb
-                    .stream_records_after(entry.account, &entry.region, table_name, None)
-            {
-                if let Some(max_seq) = records.iter().filter_map(seq_of).max_by_key(|s| seq_num(s))
-                {
-                    self.ddb_last_seq.insert(key, max_seq);
-                }
-            }
-            return;
-        }
         let Some(records) = native.dynamodb.stream_records_after(
             entry.account,
             &entry.region,
@@ -454,6 +440,44 @@ fn poll_sqs(
                 }
             }
         }
+    }
+
+    if !succeeded && mapping.bisect_batch_on_function_error && matched.len() > 1 {
+        // BisectBatchOnFunctionError: split the failed batch in half and
+        // retry each half once; a half that succeeds deletes its messages,
+        // a failed half returns to the queue at visibility 0 so further
+        // bisection can continue on the next poll.
+        let mid = matched.len() / 2;
+        for (start, end) in [(0, mid), (mid, matched.len())] {
+            let half = &matched[start..end];
+            let half_event = json!({
+                "Records": half
+                    .iter()
+                    .map(|msg| sqs_record(mapping, msg, queue_arn, &region))
+                    .collect::<Vec<Value>>(),
+            });
+            let half_result = native.lambda.invoke_engine_event(
+                entry.account,
+                &entry.region,
+                &mapping.function_arn,
+                &half_event,
+            );
+            for msg in half {
+                if half_result.function_error.is_none() {
+                    delete_sqs_message(native, account, &region, &queue_url, msg);
+                } else {
+                    change_sqs_visibility(
+                        native,
+                        account,
+                        &region,
+                        &queue_url,
+                        msg["ReceiptHandle"].as_str().unwrap_or_default(),
+                        0,
+                    );
+                }
+            }
+        }
+        return;
     }
 
     for msg in &matched {

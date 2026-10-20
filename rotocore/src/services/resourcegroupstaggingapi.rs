@@ -258,7 +258,8 @@ fn get_resources(req: &Request) -> Response {
     }
 
     // moto walks the tagged resources of every backend it can reach; here
-    // the search space is this service's own ARN tag store, filtered by
+    // the search space is this service's own ARN tag store **plus** live
+    // SQS queue tags (moto iterates `sqs_backends` queues), filtered by
     // TagFilters and ResourceTypeFilters.
     let (page, token_value): (Vec<Value>, Value) = with_state(req, |s| {
         let mut all: Vec<Value> = s
@@ -271,6 +272,19 @@ fn get_resources(req: &Request) -> Response {
             })
             .map(|(arn, tags)| json!({ "ResourceARN": arn, "Tags": tags }))
             .collect();
+        // SQS queues carry their tags in the sqs store (create-with-tags);
+        // surfaced when not filtered out by resource type.
+        if resource_type_filters.is_empty()
+            || resource_type_filters
+                .iter()
+                .any(|f| f == "sqs" || f == "sqs:queue")
+        {
+            for (arn, tags) in sqs::bridge::tagged_queues() {
+                if tags_match_filters(&tags, &filters) {
+                    all.push(json!({ "ResourceARN": arn, "Tags": tags }));
+                }
+            }
+        }
         // moto's page cut: stop once the resource limit is reached, with the
         // token table holding the generator for the remainder. The compat
         // suite never crosses a page boundary, so a single cut + fresh token
@@ -306,14 +320,35 @@ fn resource_type_matches(arn: &str, filters: &[String]) -> bool {
 }
 
 fn get_tag_keys(req: &Request) -> Response {
-    let keys = with_state(req, |s| s.tag_keys());
+    let mut keys = with_state(req, |s| s.tag_keys());
+    // Walk live SQS tags like moto's backend walker (no filters at this op).
+    for (_, tags) in sqs::bridge::tagged_queues() {
+        for tag in tags {
+            if let Some(k) = tag.get("Key").and_then(|k| k.as_str()) {
+                keys.push(k.to_string());
+            }
+        }
+    }
+    keys.sort();
+    keys.dedup();
     Response::json_status(200, &json!({ "TagKeys": keys, "PaginationToken": "" }))
 }
 
 fn get_tag_values(req: &Request) -> Response {
     let body = parse_json_body(&req.body);
     let key = body.get("Key").and_then(|k| k.as_str()).unwrap_or_default();
-    let values = with_state(req, |s| s.tag_values(key));
+    let mut values = with_state(req, |s| s.tag_values(key));
+    for (_, tags) in sqs::bridge::tagged_queues() {
+        for tag in tags {
+            if tag.get("Key").and_then(|k| k.as_str()) == Some(key) {
+                if let Some(v) = tag.get("Value").and_then(|v| v.as_str()) {
+                    values.push(v.to_string());
+                }
+            }
+        }
+    }
+    values.sort();
+    values.dedup();
     Response::json_status(200, &json!({ "TagValues": values, "PaginationToken": "" }))
 }
 

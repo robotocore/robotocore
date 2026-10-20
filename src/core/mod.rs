@@ -11,6 +11,7 @@
 pub mod account;
 pub mod apigw_exec;
 pub mod chaos;
+pub mod cross_service;
 pub mod esm_engine;
 pub mod furl_exec;
 pub mod introspection;

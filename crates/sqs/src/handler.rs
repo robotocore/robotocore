@@ -27,6 +27,16 @@ fn global_stores() -> StoreMap {
         .clone()
 }
 
+/// (account, region, store) for every process-global store, for the
+/// cross-service bridge (Resource Groups Tagging API walks live queue tags).
+pub(crate) fn bridge_stores() -> Vec<(u64, String, Arc<SqsStore>)> {
+    global_stores()
+        .read()
+        .iter()
+        .map(|((a, r), s)| (*a, r.clone(), s.clone()))
+        .collect()
+}
+
 /// Outcome of preparing a standard/FIFO send.
 enum PreparedMessage {
     /// Message accepted; carries the message to enqueue.
@@ -194,6 +204,15 @@ impl DefaultSqsHandler {
                 .write()
                 .attributes
                 .apply(params.get("Attributes").unwrap_or(&Value::Null));
+            // moto re-applies tags on idempotent create; boto3's SQS json
+            // protocol serializes create-queue tags lower-case, the query
+            // protocol uses `Tags`.
+            let create_tags = Self::create_tags_of(params);
+            let queue_lock = existing.write();
+            let mut stored = queue_lock.tags.write();
+            for (k, v) in create_tags {
+                stored.insert(k, v);
+            }
             // Return the existing queue URL (idempotent, like Python _create_queue)
             let url = Self::queue_url_for(queue_name, account, region);
             let body = json!({
@@ -226,10 +245,13 @@ impl DefaultSqsHandler {
             .attributes
             .apply(params.get("Attributes").unwrap_or(&Value::Null));
 
-        if let Some(tags) = params.get("Tags").and_then(|v| v.as_object()) {
+        // boto3's SQS json protocol serializes create-queue tags lower-case;
+        // the query protocol uses `Tags`.
+        let create_tags = Self::create_tags_of(params);
+        {
             let mut stored = queue.tags.write();
-            for (k, v) in tags {
-                stored.insert(k.clone(), v.as_str().unwrap_or("").to_string());
+            for (k, v) in create_tags {
+                stored.insert(k, v);
             }
         }
 
@@ -245,6 +267,21 @@ impl DefaultSqsHandler {
             headers: Self::json_headers(),
             body,
         })
+    }
+
+    /// boto3's SQS json protocol serializes create-queue tags lower-case;
+    /// the query protocol uses `Tags`. Both land as string maps here.
+    fn create_tags_of(params: &Value) -> Vec<(String, String)> {
+        params
+            .get("tags")
+            .or_else(|| params.get("Tags"))
+            .and_then(|v| v.as_object())
+            .map(|m| {
+                m.iter()
+                    .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// Prepare a message for sending on `queue`, applying FIFO dedup, group id,

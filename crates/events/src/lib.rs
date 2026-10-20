@@ -2,12 +2,14 @@
 //!
 //! JSON protocol (x-amz-json-1.0) with target prefix "AWSEvents".
 
+pub mod bridge;
 pub mod handler;
 pub mod models;
 pub mod pattern;
 pub mod protocol;
 pub mod snapshot;
 
+pub use bridge::{hook, register_hook};
 pub use handler::publish_event_to_bus;
 pub use protocol::{AwsRequest, AwsResponse};
 

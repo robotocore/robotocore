@@ -37,10 +37,15 @@ impl LambdaHandler {
 
     pub(crate) fn state_for(&self, account: u64, region: &str) -> LambdaState {
         let mut states = self.state.write();
-        states
+        let state = states
             .entry((account, region.to_string()))
             .or_default()
-            .clone()
+            .clone();
+        // Cross-service bridge keeps a live handle so other services (SNS,
+        // Step Functions, EventBridge targets, destination records) can reach
+        // this state.
+        crate::bridge::register_state(account, region, &state);
+        state
     }
 
     pub fn handle(&self, req: AwsRequest) -> AwsResponse {
@@ -408,6 +413,10 @@ impl LambdaHandler {
                 cfg["Environment"] = json!({"Variables": vars});
             }
         }
+        // DeadLetterConfig echoes back when configured (Python twin).
+        if let Some(dlq) = f.dead_letter_config.read().as_ref() {
+            cfg["DeadLetterConfig"] = dlq.clone();
+        }
         cfg
     }
 
@@ -510,6 +519,11 @@ impl LambdaHandler {
         }
         if let Some(rc) = req.param_i64("ReservedConcurrentExecutions") {
             *func.reserved_concurrency.write() = Some(rc);
+        }
+        if let Some(dlq) = req.params.get("DeadLetterConfig") {
+            if dlq.get("TargetArn").and_then(Value::as_str).is_some() {
+                *func.dead_letter_config.write() = Some(dlq.clone());
+            }
         }
         state.functions.write().insert(
             name.clone(),
@@ -668,6 +682,16 @@ impl LambdaHandler {
         if let Some(t) = req.param_u64("Timeout") {
             *func.timeout.write() = t as u32;
         }
+        if let Some(dlq) = req.params.get("DeadLetterConfig") {
+            // Matches the Python twin: TargetArn present stores the config;
+            // an empty TargetArn clears it.
+            let target = dlq.get("TargetArn").and_then(Value::as_str).unwrap_or("");
+            if target.is_empty() {
+                *func.dead_letter_config.write() = None;
+            } else {
+                *func.dead_letter_config.write() = Some(dlq.clone());
+            }
+        }
         if let Some(env) = req
             .params
             .get("Environment")
@@ -812,6 +836,18 @@ impl LambdaHandler {
         let invocation_type = req
             .header("x-amz-invocation-type")
             .unwrap_or("RequestResponse");
+        // Async (Event) invocations fan out results to the configured
+        // OnSuccess/OnFailure destination records and DLQ.
+        if invocation_type == "Event" {
+            let payload: Value = serde_json::from_slice(&req.body).unwrap_or(Value::Null);
+            crate::destinations::dispatch_async_result(
+                &func,
+                &payload,
+                &res,
+                req.account,
+                &req.region,
+            );
+        }
         let executed_version = func.version.read().clone();
         match invocation_type {
             "Event" => AwsResponse::raw_with_headers(
@@ -845,10 +881,19 @@ impl LambdaHandler {
 
     fn invoke_async(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
         let name = req.path_fn_name();
-        match resolve_fn(state, req, &name) {
-            Ok(_) => AwsResponse::raw(202, "application/json", json!({"Status": 202}).to_string()),
-            Err(resp) => resp,
-        }
+        let func = match resolve_fn(state, req, &name) {
+            Ok(f) => f,
+            Err(resp) => return resp,
+        };
+        let res = match Self::execute(state, req, &func) {
+            Ok(r) => r,
+            Err(resp) => return resp,
+        };
+        // The legacy InvokeAsync op is always asynchronous: deliver the
+        // result to the configured destination/DLQ like an Event invocation.
+        let payload: Value = serde_json::from_slice(&req.body).unwrap_or(Value::Null);
+        crate::destinations::dispatch_async_result(&func, &payload, &res, req.account, &req.region);
+        AwsResponse::raw(202, "application/json", json!({"Status": 202}).to_string())
     }
 
     fn invoke_with_response_stream(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
@@ -1207,8 +1252,8 @@ impl LambdaHandler {
             "LastModified": e.last_modified,
             "FunctionResponseTypes": e.function_response_types.clone().unwrap_or_default(),
             "FilterCriteria": e.filter_criteria.clone().unwrap_or(Value::Null),
-            "BisectBatchOnFunctionError": false,
-            "MaximumRetryAttempts": -1,
+            "BisectBatchOnFunctionError": e.bisect_batch_on_function_error,
+            "MaximumRetryAttempts": e.maximum_retry_attempts,
         })
     }
 
@@ -1253,6 +1298,16 @@ impl LambdaHandler {
                         .collect::<Vec<String>>()
                 })
                 .filter(|t: &Vec<String>| !t.is_empty()),
+            bisect_batch_on_function_error: req
+                .params
+                .get("BisectBatchOnFunctionError")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            maximum_retry_attempts: req
+                .params
+                .get("MaximumRetryAttempts")
+                .and_then(Value::as_i64)
+                .unwrap_or(-1),
         });
         state
             .event_source_mappings
@@ -1324,6 +1379,16 @@ impl LambdaHandler {
                 })
                 .filter(|t: &Vec<String>| !t.is_empty())
                 .or_else(|| em.function_response_types.clone()),
+            bisect_batch_on_function_error: req
+                .params
+                .get("BisectBatchOnFunctionError")
+                .and_then(Value::as_bool)
+                .unwrap_or(em.bisect_batch_on_function_error),
+            maximum_retry_attempts: req
+                .params
+                .get("MaximumRetryAttempts")
+                .and_then(Value::as_i64)
+                .unwrap_or(em.maximum_retry_attempts),
         });
         state
             .event_source_mappings

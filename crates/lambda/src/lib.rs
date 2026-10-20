@@ -2,12 +2,15 @@
 //!
 //! rest-json protocol — functions, aliases, event source mappings, layers.
 
+pub mod bridge;
+pub mod destinations;
 pub mod handler;
 pub mod models;
 pub mod protocol;
 pub mod runtime;
 pub mod snapshot;
 
+pub use bridge::{invoke_by_arn, register_state};
 pub use protocol::{AwsRequest, AwsResponse};
 
 pub struct DefaultLambdaHandler {

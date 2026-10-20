@@ -15,3 +15,7 @@ base64 = "0.22"
 sha2 = "0.10"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 s3 = { path = "../s3" }
+# Async-invocation destination delivery: SQS records and SNS publishes through
+# the events crate's hook registry.
+sqs = { path = "../sqs" }
+events = { path = "../events" }
