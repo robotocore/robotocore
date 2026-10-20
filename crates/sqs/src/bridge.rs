@@ -106,3 +106,30 @@ pub fn clear_pending(account: u64, region: &str, queue_name: &str) {
         .write()
         .retain(|p| !(p.account == account && p.region == region && p.queue_name == queue_name));
 }
+
+/// (queue ARN, tag key/value pairs) for every tagged queue in every
+/// process-global store, sorted for stable snapshots — the Resource Groups
+/// Tagging API walker reads this (moto iterates `sqs_backends` queues).
+pub fn tagged_queues() -> Vec<(String, Vec<serde_json::Value>)> {
+    let mut out = Vec::new();
+    for (_, _, store) in crate::handler::bridge_stores() {
+        let queues = store.queues.read();
+        for queue in queues.values() {
+            let q = queue.read();
+            let tags = q.tags.read().clone();
+            if tags.is_empty() {
+                continue;
+            }
+            let mut pairs: Vec<(String, String)> = tags.into_iter().collect();
+            pairs.sort();
+            out.push((
+                q.arn.clone(),
+                pairs
+                    .into_iter()
+                    .map(|(k, v)| serde_json::json!({ "Key": k, "Value": v }))
+                    .collect(),
+            ));
+        }
+    }
+    out
+}

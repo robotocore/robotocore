@@ -1411,6 +1411,7 @@ dependencies = [
  "serde_yaml",
  "sha1",
  "sha2",
+ "sqs",
  "ureq",
  "urlencoding",
  "uuid",
