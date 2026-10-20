@@ -78,6 +78,7 @@ pub mod managedblockchain;
 pub mod mediaconnect;
 pub mod mediapackage;
 pub mod mediastore;
+pub mod mediastore_data;
 pub mod memorydb;
 pub mod mq;
 pub mod networkfirewall;
@@ -210,7 +211,13 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "managedblockchain" => Some(managedblockchain::dispatch(req)),
         "mediaconnect" => mediaconnect::dispatch(req),
         "mediapackage" => mediapackage::dispatch(req),
-        "mediastore" => mediastore::dispatch(req),
+        // The `mediastore` signing scope covers both the MediaStore control
+        // plane and the rest-json mediastore-data data plane. Control-plane
+        // requests always carry X-Amz-Target (json protocol); data-plane
+        // requests are raw object paths, so let the data plane take
+        // targetless requests first (the python router's step-1 catch).
+        "mediastore" => mediastore_data::dispatch(req).or_else(|| mediastore::dispatch(req)),
+        "mediastore-data" => mediastore_data::dispatch(req),
         "memorydb" => memorydb::dispatch(req),
         "mq" => mq::dispatch(req),
         "networkfirewall" => networkfirewall::dispatch(req),
@@ -362,6 +369,7 @@ pub fn handles_service(service: &str) -> bool {
             | "mediaconnect"
             | "mediapackage"
             | "mediastore"
+            | "mediastore-data"
             | "memorydb"
             | "mq"
             | "networkfirewall"
@@ -434,6 +442,7 @@ mod tests {
             "glacier",
             "elasticache",
             "codepipeline",
+            "mediastore-data",
             "xray",
         ] {
             assert!(handles_service(service), "{service} should be armed");

@@ -196,7 +196,7 @@ pub const SERVICE_REGISTRY: &[(&str, &str, &str, &str)] = &[
     ("mediapackage", "moto", "rest-json", "MediaPackage"),
     ("mediapackagev2", "moto", "rest-json", "MediaPackage v2"),
     ("mediastore", "native", "json", "MediaStore"),
-    ("mediastore-data", "moto", "rest-json", "Mediastore Data"),
+    ("mediastore-data", "native", "rest-json", "Mediastore Data"),
     ("memorydb", "native", "json", "MemoryDB for Redis"),
     ("mq", "native", "rest-json", "Amazon MQ Message Brokers"),
     ("networkfirewall", "moto", "json", "Network Firewall"),
