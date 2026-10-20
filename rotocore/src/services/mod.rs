@@ -107,6 +107,7 @@ pub mod s3control;
 pub mod s3tables;
 pub mod s3vectors;
 pub mod sagemaker;
+pub mod sagemaker_runtime;
 pub mod sdb;
 pub mod securityhub;
 pub mod servicecatalog;
@@ -241,7 +242,13 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "s3control" => s3control::dispatch(req),
         "s3tables" => s3tables::dispatch(req),
         "s3vectors" => s3vectors::dispatch(req),
-        "sagemaker" => Some(sagemaker::dispatch(req)),
+        // SageMaker Runtime shares the `sagemaker` signing scope (botocore's
+        // signingName), so runtime requests arrive labeled `sagemaker` and
+        // hit this chain first — the runtime answers its `/endpoints/…`
+        // requestUris there and target-carrying control-plane traffic falls
+        // through to the model-management module.
+        "sagemaker" => sagemaker_runtime::dispatch(req).or_else(|| Some(sagemaker::dispatch(req))),
+        "sagemaker-runtime" => sagemaker_runtime::dispatch(req),
         "sdb" => sdb::dispatch(req),
         "securityhub" => Some(securityhub::dispatch(req)),
         "servicecatalog" => servicecatalog::dispatch(req),
@@ -391,6 +398,7 @@ pub fn handles_service(service: &str) -> bool {
             | "s3tables"
             | "s3vectors"
             | "sagemaker"
+            | "sagemaker-runtime"
             | "sdb"
             | "securityhub"
             | "servicecatalog"
@@ -434,6 +442,7 @@ mod tests {
             "glacier",
             "elasticache",
             "codepipeline",
+            "sagemaker-runtime",
             "xray",
         ] {
             assert!(handles_service(service), "{service} should be armed");

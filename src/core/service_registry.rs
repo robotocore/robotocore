@@ -245,7 +245,7 @@ pub const SERVICE_REGISTRY: &[(&str, &str, &str, &str)] = &[
     ("sagemaker", "moto", "json", "SageMaker ML Platform"),
     (
         "sagemaker-runtime",
-        "moto",
+        "native",
         "rest-json",
         "Sagemaker Runtime",
     ),
