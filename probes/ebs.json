@@ -1,0 +1,43 @@
+{
+  "service": "ebs",
+  "generated_at": "2026-10-20T05:27:40.287095+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 6,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "CompleteSnapshot",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSnapshotBlock",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListChangedBlocks",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListSnapshotBlocks",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutSnapshotBlock",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartSnapshot",
+      "status": "working",
+      "message": "OK"
+    }
+  ]
+}

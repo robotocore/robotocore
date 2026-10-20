@@ -1,9 +1,11 @@
 {
   "service": "elbv2",
+  "generated_at": "2026-10-20T06:49:17.466030+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 36,
+    "working": 50,
     "needs_params": 1,
-    "not_implemented": 14,
+    "not_implemented": 0,
     "500_error": 0
   },
   "operations": [
@@ -19,8 +21,8 @@
     },
     {
       "operation": "AddTrustStoreRevocations",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (TrustStoreNotFound: The specified trust store does not exist.)"
     },
     {
       "operation": "CreateListener",
@@ -44,8 +46,8 @@
     },
     {
       "operation": "CreateTrustStore",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteListener",
@@ -64,8 +66,8 @@
     },
     {
       "operation": "DeleteSharedTrustStoreAssociation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (TrustStoreNotFound: The specified trust store does not exist.)"
     },
     {
       "operation": "DeleteTargetGroup",
@@ -74,8 +76,8 @@
     },
     {
       "operation": "DeleteTrustStore",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeregisterTargets",
@@ -149,43 +151,43 @@
     },
     {
       "operation": "DescribeTrustStoreAssociations",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (TrustStoreNotFound: The specified trust store does not exist.)"
     },
     {
       "operation": "DescribeTrustStoreRevocations",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (TrustStoreNotFound: The specified trust store does not exist.)"
     },
     {
       "operation": "DescribeTrustStores",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetResourcePolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetTrustStoreCaCertificatesBundle",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (TrustStoreNotFound: The specified trust store does not exist.)"
     },
     {
       "operation": "GetTrustStoreRevocationContent",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (TrustStoreNotFound: The specified trust store does not exist.)"
     },
     {
       "operation": "ModifyCapacityReservation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ModifyIpPools",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ModifyListener",
@@ -219,8 +221,8 @@
     },
     {
       "operation": "ModifyTrustStore",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (TrustStoreNotFound: The specified trust store does not exist.)"
     },
     {
       "operation": "RegisterTargets",
@@ -239,8 +241,8 @@
     },
     {
       "operation": "RemoveTrustStoreRevocations",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (TrustStoreNotFound: The specified trust store does not exist.)"
     },
     {
       "operation": "SetIpAddressType",
@@ -260,7 +262,7 @@
     {
       "operation": "SetSubnets",
       "status": "working",
-      "message": "likely implemented (LoadBalancerNotFound: The specified load balancer does not exist.)"
+      "message": "likely implemented (SubnetNotFound: The specified subnet does not exist.)"
     }
   ]
 }

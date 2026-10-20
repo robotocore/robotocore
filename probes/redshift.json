@@ -1,5 +1,7 @@
 {
   "service": "redshift",
+  "generated_at": "2026-10-20T08:08:00.453317+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
     "working": 127,
     "needs_params": 2,
@@ -35,12 +37,12 @@
     {
       "operation": "AuthorizeEndpointAccess",
       "status": "working",
-      "message": "likely implemented (ClusterNotFound: Cluster None not found.)"
+      "message": "likely implemented (ClusterNotFound: Cluster  not found.)"
     },
     {
       "operation": "AuthorizeSnapshotAccess",
       "status": "working",
-      "message": "likely implemented (ClusterSnapshotNotFound: Snapshot None not found.)"
+      "message": "likely implemented (ClusterSnapshotNotFound: Snapshot  not found.)"
     },
     {
       "operation": "BatchDeleteClusterSnapshots",
@@ -100,7 +102,7 @@
     {
       "operation": "CreateEndpointAccess",
       "status": "working",
-      "message": "likely implemented (ClusterNotFound: Cluster None not found.)"
+      "message": "likely implemented (ClusterNotFound: Cluster  not found.)"
     },
     {
       "operation": "CreateEventSubscription",
@@ -495,7 +497,7 @@
     {
       "operation": "GetClusterCredentials",
       "status": "working",
-      "message": "likely implemented (ClusterNotFound: Cluster None not found.)"
+      "message": "likely implemented (ClusterNotFound: Cluster  not found.)"
     },
     {
       "operation": "GetClusterCredentialsWithIAM",
@@ -610,7 +612,7 @@
     {
       "operation": "ModifyScheduledAction",
       "status": "working",
-      "message": "likely implemented (ScheduledActionNotFound: Scheduled Action probe-test-value not found.)"
+      "message": "likely implemented (ScheduledActionNotFoundFault: Scheduled Action probe-test-value not found.)"
     },
     {
       "operation": "ModifySnapshotCopyRetentionPeriod",
@@ -670,7 +672,7 @@
     {
       "operation": "RestoreFromClusterSnapshot",
       "status": "working",
-      "message": "likely implemented (ClusterAlreadyExists: Cluster already exists)"
+      "message": "likely implemented (ClusterSnapshotNotFound: Snapshot  not found.)"
     },
     {
       "operation": "RestoreTableFromClusterSnapshot",
@@ -695,7 +697,7 @@
     {
       "operation": "RevokeSnapshotAccess",
       "status": "working",
-      "message": "likely implemented (ClusterSnapshotNotFound: Snapshot None not found.)"
+      "message": "likely implemented (ClusterSnapshotNotFound: Snapshot  not found.)"
     },
     {
       "operation": "RotateEncryptionKey",

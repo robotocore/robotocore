@@ -1,21 +1,23 @@
 {
   "service": "sns",
+  "generated_at": "2026-10-20T08:08:34.470736+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
-    "working": 36,
+    "working": 41,
     "needs_params": 0,
-    "not_implemented": 5,
+    "not_implemented": 0,
     "500_error": 0
   },
   "operations": [
     {
       "operation": "AddPermission",
       "status": "working",
-      "message": "likely implemented (NotFound: Topic does not exist)"
+      "message": "likely implemented (NotFound: Topic arn:aws:sns:us-east-1:123456789012:thing/probe-test no)"
     },
     {
       "operation": "CheckIfPhoneNumberIsOptedOut",
       "status": "working",
-      "message": "implemented (InvalidParameter)"
+      "message": "OK"
     },
     {
       "operation": "ConfirmSubscription",
@@ -34,8 +36,8 @@
     },
     {
       "operation": "CreateSMSSandboxPhoneNumber",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateTopic",
@@ -54,23 +56,23 @@
     },
     {
       "operation": "DeleteSMSSandboxPhoneNumber",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetDataProtectionPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NotFound: Topic arn:aws:sns:us-east-1:123456789012:thing/probe-test no)"
     },
     {
       "operation": "GetEndpointAttributes",
       "status": "working",
-      "message": "likely implemented (NotFound: Endpoint arn:aws:sns:us-east-1:123456789012:thing/probe-test)"
+      "message": "implemented (InvalidParameter)"
     },
     {
       "operation": "GetPlatformApplicationAttributes",
       "status": "working",
-      "message": "likely implemented (NotFound: Platform application arn:aws:sns:us-east-1:123456789012:thin)"
+      "message": "likely implemented (NotFound: Topic arn:aws:sns:us-east-1:123456789012:thing/probe-test no)"
     },
     {
       "operation": "GetSMSAttributes",
@@ -95,7 +97,7 @@
     {
       "operation": "ListEndpointsByPlatformApplication",
       "status": "working",
-      "message": "likely implemented (NotFound: Platform application arn:aws:sns:us-east-1:123456789012:thin)"
+      "message": "likely implemented (NotFound: Topic arn:aws:sns:us-east-1:123456789012:thing/probe-test no)"
     },
     {
       "operation": "ListOriginationNumbers",
@@ -125,12 +127,12 @@
     {
       "operation": "ListSubscriptionsByTopic",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (NotFound: Topic arn:aws:sns:us-east-1:123456789012:thing/probe-test no)"
     },
     {
       "operation": "ListTagsForResource",
       "status": "working",
-      "message": "likely implemented (ResourceNotFound: Resource arn:aws:sns:us-east-1:123456789012:thing/probe-test)"
+      "message": "likely implemented (NotFound: Topic arn:aws:sns:us-east-1:123456789012:thing/probe-test no)"
     },
     {
       "operation": "ListTopics",
@@ -154,23 +156,23 @@
     },
     {
       "operation": "PutDataProtectionPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NotFound: Topic arn:aws:sns:us-east-1:123456789012:thing/probe-test no)"
     },
     {
       "operation": "RemovePermission",
       "status": "working",
-      "message": "likely implemented (NotFound: Topic does not exist)"
+      "message": "likely implemented (NotFound: Topic arn:aws:sns:us-east-1:123456789012:thing/probe-test no)"
     },
     {
       "operation": "SetEndpointAttributes",
       "status": "working",
-      "message": "likely implemented (NotFound: Endpoint arn:aws:sns:us-east-1:123456789012:thing/probe-test)"
+      "message": "OK"
     },
     {
       "operation": "SetPlatformApplicationAttributes",
       "status": "working",
-      "message": "likely implemented (NotFound: Platform application arn:aws:sns:us-east-1:123456789012:thin)"
+      "message": "OK"
     },
     {
       "operation": "SetSMSAttributes",
@@ -195,7 +197,7 @@
     {
       "operation": "TagResource",
       "status": "working",
-      "message": "likely implemented (ResourceNotFound: Resource arn:aws:sns:us-east-1:123456789012:thing/probe-test)"
+      "message": "likely implemented (NotFound: Topic arn:aws:sns:us-east-1:123456789012:thing/probe-test no)"
     },
     {
       "operation": "Unsubscribe",
@@ -205,12 +207,12 @@
     {
       "operation": "UntagResource",
       "status": "working",
-      "message": "likely implemented (ResourceNotFound: Resource arn:aws:sns:us-east-1:123456789012:thing/probe-test)"
+      "message": "likely implemented (NotFound: Topic arn:aws:sns:us-east-1:123456789012:thing/probe-test no)"
     },
     {
       "operation": "VerifySMSSandboxPhoneNumber",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Could not find service sandbox phone number registered with )"
     }
   ]
 }

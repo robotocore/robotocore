@@ -1,0 +1,83 @@
+{
+  "service": "applicationautoscaling",
+  "generated_at": "2026-10-20T08:11:11.628137+00:00",
+  "endpoint": "http://localhost:4599",
+  "counts": {
+    "working": 9,
+    "needs_params": 0,
+    "not_implemented": 5,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "DeleteScalingPolicy",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DeleteScheduledAction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeregisterScalableTarget",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeScalableTargets",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeScalingActivities",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeScalingPolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeScheduledActions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetPredictiveScalingForecast",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PutScalingPolicy",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "PutScheduledAction",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RegisterScalableTarget",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

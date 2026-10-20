@@ -1,26 +1,28 @@
 {
   "service": "ec2",
+  "generated_at": "2026-10-20T06:49:12.019875+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 449,
+    "working": 187,
     "needs_params": 6,
-    "not_implemented": 278,
-    "500_error": 19
+    "not_implemented": 236,
+    "500_error": 323
   },
   "operations": [
     {
       "operation": "AcceptAddressTransfer",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "AcceptCapacityReservationBillingOwnership",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "AcceptReservedInstancesExchangeQuote",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "AcceptTransitGatewayMulticastDomainAssociations",
@@ -29,68 +31,68 @@
     },
     {
       "operation": "AcceptTransitGatewayPeeringAttachment",
-      "status": "working",
-      "message": "likely implemented (InvalidTransitGatewayAttachmentID.NotFound: The transitGatewayAttachment ID 'probe-test-value' does not )"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "AcceptTransitGatewayVpcAttachment",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "AcceptVpcEndpointConnections",
       "status": "working",
-      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'probe-test-value' does not exist)"
+      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-ed8b2b3d' does not exist)"
     },
     {
       "operation": "AcceptVpcPeeringConnection",
-      "status": "working",
-      "message": "likely implemented (InvalidVpcPeeringConnectionId.NotFound: VpcPeeringConnectionID probe-test-value does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "AdvertiseByoipCidr",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
-    },
-    {
-      "operation": "AllocateAddress",
       "status": "working",
       "message": "OK"
     },
     {
+      "operation": "AllocateAddress",
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+    },
+    {
       "operation": "AllocateHosts",
       "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object cannot be interpreted as an integer)"
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "AllocateIpamPoolCidr",
       "status": "500_error",
-      "message": "server crash (InternalError: cannot import name 'InvalidIpamPoolIdError' from 'moto.ec2.e)"
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ApplySecurityGroupsToClientVpnTargetNetwork",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "AssignIpv6Addresses",
-      "status": "working",
-      "message": "likely implemented (InvalidNetworkInterfaceID.NotFound: The networkInterface ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "AssignPrivateIpAddresses",
-      "status": "working",
-      "message": "likely implemented (InvalidNetworkInterfaceID.NotFound: The networkInterface ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "AssignPrivateNatGatewayAddress",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "AssociateAddress",
-      "status": "working",
-      "message": "implemented (MissingParameter)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "AssociateCapacityReservationBillingOwner",
@@ -99,28 +101,28 @@
     },
     {
       "operation": "AssociateClientVpnTargetNetwork",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "AssociateDhcpOptions",
-      "status": "working",
-      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "AssociateEnclaveCertificateIamRole",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "AssociateIamInstanceProfile",
-      "status": "working",
-      "message": "likely implemented (InvalidInstanceID.NotFound: The instance ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "AssociateInstanceEventWindow",
       "status": "working",
-      "message": "likely implemented (InvalidInstanceEventWindowId.NotFound: The instance event window ID 'probe-test-value' does not exi)"
+      "message": "OK"
     },
     {
       "operation": "AssociateIpamByoasn",
@@ -129,13 +131,13 @@
     },
     {
       "operation": "AssociateIpamResourceDiscovery",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "AssociateNatGatewayAddress",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "AssociateRouteServer",
@@ -144,33 +146,33 @@
     },
     {
       "operation": "AssociateRouteTable",
-      "status": "working",
-      "message": "likely implemented (InvalidRouteTableID.NotFound: The routeTable ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "AssociateSecurityGroupVpc",
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+    },
+    {
+      "operation": "AssociateSubnetCidrBlock",
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+    },
+    {
+      "operation": "AssociateTransitGatewayMulticastDomain",
       "status": "working",
       "message": "OK"
     },
     {
-      "operation": "AssociateSubnetCidrBlock",
-      "status": "working",
-      "message": "likely implemented (InvalidSubnetID.NotFound: The subnet ID 'probe-test-value' does not exist)"
-    },
-    {
-      "operation": "AssociateTransitGatewayMulticastDomain",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
-    },
-    {
       "operation": "AssociateTransitGatewayPolicyTable",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "AssociateTransitGatewayRouteTable",
-      "status": "working",
-      "message": "likely implemented (InvalidTransitGatewayAttachmentID.NotFound: The transitGatewayAttachment ID 'probe-test-value' does not )"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "AssociateTrunkInterface",
@@ -179,38 +181,38 @@
     },
     {
       "operation": "AssociateVpcCidrBlock",
-      "status": "working",
-      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "AttachClassicLinkVpc",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "AttachInternetGateway",
-      "status": "working",
-      "message": "likely implemented (InvalidInternetGatewayID.NotFound: InternetGatewayID probe-test-value does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "AttachNetworkInterface",
-      "status": "working",
-      "message": "likely implemented (InvalidNetworkInterfaceID.NotFound: The networkInterface ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "AttachVerifiedAccessTrustProvider",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "AttachVolume",
-      "status": "working",
-      "message": "likely implemented (InvalidVolume.NotFound: The volume 'probe-test-value' does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "AttachVpnGateway",
-      "status": "working",
-      "message": "likely implemented (InvalidVpnGatewayID.NotFound: The virtual private gateway ID 'probe-test-value' does not e)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "AuthorizeClientVpnIngress",
@@ -219,38 +221,38 @@
     },
     {
       "operation": "AuthorizeSecurityGroupEgress",
-      "status": "working",
-      "message": "likely implemented (InvalidGroup.NotFound: The security group 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "AuthorizeSecurityGroupIngress",
-      "status": "working",
-      "message": "likely implemented (InvalidGroup.NotFound: The security group 'None' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "BundleInstance",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
-    },
-    {
-      "operation": "CancelBundleTask",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
-    },
-    {
-      "operation": "CancelCapacityReservation",
-      "status": "working",
-      "message": "likely implemented (InvalidCapacityReservationId.NotFound: The capacity reservation ID 'probe-test-value' does not exis)"
-    },
-    {
-      "operation": "CancelCapacityReservationFleets",
       "status": "working",
       "message": "OK"
     },
     {
+      "operation": "CancelBundleTask",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CancelCapacityReservation",
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+    },
+    {
+      "operation": "CancelCapacityReservationFleets",
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+    },
+    {
       "operation": "CancelConversionTask",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CancelDeclarativePoliciesReport",
@@ -259,13 +261,13 @@
     },
     {
       "operation": "CancelExportTask",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CancelImageLaunchPermission",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CancelImportTask",
@@ -274,18 +276,18 @@
     },
     {
       "operation": "CancelReservedInstancesListing",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CancelSpotFleetRequests",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CancelSpotInstanceRequests",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ConfirmProductInstance",
@@ -294,18 +296,18 @@
     },
     {
       "operation": "CopyFpgaImage",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CopyImage",
-      "status": "working",
-      "message": "likely implemented (InvalidAMIID.Malformed: Invalid id: \"probe-test-value\" (expecting \"ami-...\"))"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CopySnapshot",
-      "status": "working",
-      "message": "likely implemented (InvalidSnapshot.NotFound: )"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CopyVolumes",
@@ -319,58 +321,58 @@
     },
     {
       "operation": "CreateCapacityReservation",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateCapacityReservationBySplitting",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateCapacityReservationFleet",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateCarrierGateway",
-      "status": "working",
-      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateClientVpnEndpoint",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateClientVpnRoute",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateCoipCidr",
       "status": "working",
-      "message": "likely implemented (InvalidCoipPoolId.NotFound: The coip pool ID 'probe-test-value' does not exist)"
+      "message": "OK"
     },
     {
       "operation": "CreateCoipPool",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateCustomerGateway",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateDefaultSubnet",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateDefaultVpc",
-      "status": "working",
-      "message": "likely implemented (DefaultVpcAlreadyExists: A Default VPC already exists for this account in this region)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateDelegateMacVolumeOwnershipTask",
@@ -379,33 +381,33 @@
     },
     {
       "operation": "CreateDhcpOptions",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateEgressOnlyInternetGateway",
-      "status": "working",
-      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateFleet",
       "status": "500_error",
-      "message": "server crash (InternalError: list index out of range)"
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateFlowLogs",
-      "status": "working",
-      "message": "implemented (MissingParameter)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateFpgaImage",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateImage",
-      "status": "working",
-      "message": "likely implemented (InvalidInstanceID.NotFound: The instance ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateImageUsageReport",
@@ -414,23 +416,23 @@
     },
     {
       "operation": "CreateInstanceConnectEndpoint",
-      "status": "working",
-      "message": "likely implemented (InvalidSubnetID.NotFound: The subnet ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateInstanceEventWindow",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateInstanceExportTask",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateInternetGateway",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateInterruptibleCapacityReservationAllocation",
@@ -439,13 +441,13 @@
     },
     {
       "operation": "CreateIpam",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateIpamExternalResourceVerificationToken",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateIpamPolicy",
@@ -454,8 +456,8 @@
     },
     {
       "operation": "CreateIpamPool",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateIpamPrefixListResolver",
@@ -469,48 +471,48 @@
     },
     {
       "operation": "CreateIpamResourceDiscovery",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateIpamScope",
-      "status": "working",
-      "message": "likely implemented (InvalidIpamId.NotFound: The IPAM ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateKeyPair",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateLaunchTemplate",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateLaunchTemplateVersion",
       "status": "500_error",
-      "message": "server crash (InternalError: cannot access local variable 'template' where it is not asso)"
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateLocalGatewayRoute",
-      "status": "working",
-      "message": "likely implemented (InvalidLocalGatewayRouteTableId.NotFound: The local gateway route table ID 'probe-test-value' does not)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateLocalGatewayRouteTable",
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+    },
+    {
+      "operation": "CreateLocalGatewayRouteTableVirtualInterfaceGroupAssociation",
       "status": "working",
       "message": "OK"
     },
     {
-      "operation": "CreateLocalGatewayRouteTableVirtualInterfaceGroupAssociation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
-    },
-    {
       "operation": "CreateLocalGatewayRouteTableVpcAssociation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateLocalGatewayVirtualInterface",
@@ -529,53 +531,53 @@
     },
     {
       "operation": "CreateManagedPrefixList",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateNatGateway",
-      "status": "working",
-      "message": "likely implemented (InvalidSubnetID.NotFound: The subnet ID 'None' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateNetworkAcl",
-      "status": "working",
-      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateNetworkAclEntry",
-      "status": "working",
-      "message": "likely implemented (InvalidNetworkAclID.NotFound: The network acl ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateNetworkInsightsAccessScope",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateNetworkInsightsPath",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateNetworkInterface",
-      "status": "working",
-      "message": "likely implemented (InvalidSubnetID.NotFound: The subnet ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateNetworkInterfacePermission",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreatePlacementGroup",
-      "status": "working",
-      "message": "implemented (MissingParameter)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreatePublicIpv4Pool",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateReplaceRootVolumeTask",
@@ -584,18 +586,18 @@
     },
     {
       "operation": "CreateReservedInstancesListing",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateRestoreImageTask",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateRoute",
-      "status": "working",
-      "message": "likely implemented (InvalidRouteTableID.NotFound: The routeTable ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateRouteServer",
@@ -614,8 +616,8 @@
     },
     {
       "operation": "CreateRouteTable",
-      "status": "working",
-      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateSecondaryNetwork",
@@ -629,18 +631,18 @@
     },
     {
       "operation": "CreateSecurityGroup",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateSnapshot",
-      "status": "working",
-      "message": "likely implemented (InvalidVolume.NotFound: The volume 'probe-test-value' does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateSnapshots",
-      "status": "working",
-      "message": "likely implemented (InvalidInstanceID.NotFound: The instance ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateSpotDatafeedSubscription",
@@ -654,53 +656,53 @@
     },
     {
       "operation": "CreateSubnet",
-      "status": "working",
-      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateSubnetCidrReservation",
-      "status": "working",
-      "message": "implemented (InvalidParameterValue)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateTags",
-      "status": "working",
-      "message": "implemented (MissingParameter)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateTrafficMirrorFilter",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateTrafficMirrorFilterRule",
-      "status": "working",
-      "message": "likely implemented (InvalidTrafficMirrorFilterId.NotFound: The traffic mirror filter ID 'probe-test-value' does not exi)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateTrafficMirrorSession",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateTrafficMirrorTarget",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateTransitGateway",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateTransitGatewayConnect",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateTransitGatewayConnectPeer",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateTransitGatewayMeteringPolicy",
@@ -714,33 +716,33 @@
     },
     {
       "operation": "CreateTransitGatewayMulticastDomain",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateTransitGatewayPeeringAttachment",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateTransitGatewayPolicyTable",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateTransitGatewayPrefixListReference",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateTransitGatewayRoute",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateTransitGatewayRouteTable",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateTransitGatewayRouteTableAnnouncement",
@@ -749,38 +751,38 @@
     },
     {
       "operation": "CreateTransitGatewayVpcAttachment",
-      "status": "working",
-      "message": "likely implemented (InvalidTransitGatewayID.NotFound: Transit Gateway probe-test-value was deleted or does not exi)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateVerifiedAccessEndpoint",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateVerifiedAccessGroup",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateVerifiedAccessInstance",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateVerifiedAccessTrustProvider",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateVolume",
-      "status": "working",
-      "message": "implemented (MissingParameter)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateVpc",
       "status": "working",
-      "message": "implemented (InvalidParameterValue)"
+      "message": "implemented (MissingParameter)"
     },
     {
       "operation": "CreateVpcBlockPublicAccessExclusion",
@@ -794,8 +796,8 @@
     },
     {
       "operation": "CreateVpcEndpoint",
-      "status": "working",
-      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateVpcEndpointConnectionNotification",
@@ -804,13 +806,13 @@
     },
     {
       "operation": "CreateVpcEndpointServiceConfiguration",
-      "status": "working",
-      "message": "implemented (InvalidParameter)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateVpcPeeringConnection",
-      "status": "working",
-      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateVpnConcentrator",
@@ -819,8 +821,8 @@
     },
     {
       "operation": "CreateVpnConnection",
-      "status": "working",
-      "message": "likely implemented (InvalidCustomerGatewayID.NotFound: The customerGateway ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "CreateVpnConnectionRoute",
@@ -829,8 +831,8 @@
     },
     {
       "operation": "CreateVpnGateway",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteCapacityManagerDataExport",
@@ -839,13 +841,13 @@
     },
     {
       "operation": "DeleteCarrierGateway",
-      "status": "working",
-      "message": "likely implemented (InvalidCarrierGatewayID.NotFound: The CarrierGateway ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteClientVpnEndpoint",
-      "status": "working",
-      "message": "likely implemented (InvalidClientVpnEndpointId.NotFound: The Client VPN endpoint ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteClientVpnRoute",
@@ -855,37 +857,37 @@
     {
       "operation": "DeleteCoipCidr",
       "status": "working",
-      "message": "likely implemented (InvalidCoipPoolId.NotFound: The coip pool ID 'probe-test-value' does not exist)"
+      "message": "OK"
     },
     {
       "operation": "DeleteCoipPool",
-      "status": "working",
-      "message": "likely implemented (InvalidCoipPoolId.NotFound: The coip pool ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteCustomerGateway",
-      "status": "working",
-      "message": "likely implemented (InvalidCustomerGatewayID.NotFound: The customerGateway ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteDhcpOptions",
-      "status": "working",
-      "message": "likely implemented (InvalidDhcpOptionsId.Malformed: Invalid id: \"probe-test-value\" (expecting \"dopt-...\"))"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteEgressOnlyInternetGateway",
-      "status": "working",
-      "message": "likely implemented (InvalidGatewayID.NotFound: The eigw ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteFleets",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteFlowLogs",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteFpgaImage",
@@ -899,23 +901,23 @@
     },
     {
       "operation": "DeleteInstanceConnectEndpoint",
-      "status": "working",
-      "message": "likely implemented (InvalidInstanceConnectEndpointId.NotFound: The instance connect endpoint ID 'probe-test-value' does not)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteInstanceEventWindow",
-      "status": "working",
-      "message": "likely implemented (InvalidInstanceEventWindowId.NotFound: The instance event window ID 'probe-test-value' does not exi)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteInternetGateway",
-      "status": "working",
-      "message": "likely implemented (InvalidInternetGatewayID.NotFound: InternetGatewayID probe-test-value does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteIpam",
-      "status": "working",
-      "message": "likely implemented (InvalidIpamId.NotFound: The IPAM ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteIpamExternalResourceVerificationToken",
@@ -930,7 +932,7 @@
     {
       "operation": "DeleteIpamPool",
       "status": "500_error",
-      "message": "server crash (InternalError: cannot import name 'InvalidIpamPoolIdError' from 'moto.ec2.e)"
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteIpamPrefixListResolver",
@@ -944,38 +946,38 @@
     },
     {
       "operation": "DeleteIpamResourceDiscovery",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteIpamScope",
-      "status": "working",
-      "message": "likely implemented (InvalidIpamScopeId.NotFound: The IPAM scope ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteKeyPair",
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+    },
+    {
+      "operation": "DeleteLaunchTemplate",
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
+    },
+    {
+      "operation": "DeleteLaunchTemplateVersions",
       "status": "working",
       "message": "OK"
     },
     {
-      "operation": "DeleteLaunchTemplate",
-      "status": "working",
-      "message": "implemented (MissingParameter)"
-    },
-    {
-      "operation": "DeleteLaunchTemplateVersions",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
-    },
-    {
       "operation": "DeleteLocalGatewayRoute",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteLocalGatewayRouteTable",
-      "status": "working",
-      "message": "likely implemented (InvalidLocalGatewayRouteTableId.NotFound: The local gateway route table ID 'probe-test-value' does not)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteLocalGatewayRouteTableVirtualInterfaceGroupAssociation",
@@ -999,28 +1001,28 @@
     },
     {
       "operation": "DeleteManagedPrefixList",
-      "status": "working",
-      "message": "likely implemented (InvalidPrefixListID.NotFound: The prefix list ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteNatGateway",
-      "status": "working",
-      "message": "likely implemented (NatGatewayNotFound: The natGateway ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteNetworkAcl",
-      "status": "working",
-      "message": "likely implemented (InvalidNetworkAclID.NotFound: The network acl ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteNetworkAclEntry",
-      "status": "working",
-      "message": "likely implemented (InvalidNetworkAclID.NotFound: The network acl ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteNetworkInsightsAccessScope",
-      "status": "working",
-      "message": "likely implemented (InvalidNetworkInsightsAccessScopeId.NotFound: The network insights access scope ID 'probe-test-value' does)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteNetworkInsightsAccessScopeAnalysis",
@@ -1034,13 +1036,13 @@
     },
     {
       "operation": "DeleteNetworkInsightsPath",
-      "status": "working",
-      "message": "likely implemented (InvalidNetworkInsightsPathId.NotFound: The network insights path ID 'probe-test-value' does not exi)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteNetworkInterface",
-      "status": "working",
-      "message": "likely implemented (InvalidNetworkInterfaceID.NotFound: The networkInterface ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteNetworkInterfacePermission",
@@ -1049,13 +1051,13 @@
     },
     {
       "operation": "DeletePlacementGroup",
-      "status": "not_implemented",
-      "message": "not implemented (InvalidPlacementGroup.Unknown)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeletePublicIpv4Pool",
-      "status": "working",
-      "message": "likely implemented (InvalidPublicIpv4PoolID.NotFound: The public IPv4 pool ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteQueuedReservedInstances",
@@ -1064,8 +1066,8 @@
     },
     {
       "operation": "DeleteRoute",
-      "status": "working",
-      "message": "likely implemented (InvalidRouteTableID.NotFound: The routeTable ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteRouteServer",
@@ -1084,8 +1086,8 @@
     },
     {
       "operation": "DeleteRouteTable",
-      "status": "working",
-      "message": "likely implemented (InvalidRouteTableID.NotFound: The routeTable ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteSecondaryNetwork",
@@ -1099,8 +1101,8 @@
     },
     {
       "operation": "DeleteSnapshot",
-      "status": "working",
-      "message": "likely implemented (InvalidSnapshot.NotFound: )"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteSpotDatafeedSubscription",
@@ -1109,48 +1111,48 @@
     },
     {
       "operation": "DeleteSubnetCidrReservation",
-      "status": "working",
-      "message": "likely implemented (InvalidSubnetCidrReservationID.NotFound: The subnet-cidr-reservation ID 'probe-test-value' does not e)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteTags",
-      "status": "working",
-      "message": "implemented (MissingParameter)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteTrafficMirrorFilter",
-      "status": "working",
-      "message": "likely implemented (InvalidTrafficMirrorFilterId.NotFound: The traffic mirror filter ID 'probe-test-value' does not exi)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteTrafficMirrorFilterRule",
-      "status": "working",
-      "message": "likely implemented (InvalidTrafficMirrorFilterRuleId.NotFound: The traffic mirror filter rule ID 'probe-test-value' does no)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteTrafficMirrorSession",
-      "status": "working",
-      "message": "likely implemented (InvalidTrafficMirrorSessionId.NotFound: The traffic mirror session ID 'probe-test-value' does not ex)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteTrafficMirrorTarget",
-      "status": "working",
-      "message": "likely implemented (InvalidTrafficMirrorTargetId.NotFound: The traffic mirror target ID 'probe-test-value' does not exi)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteTransitGateway",
-      "status": "working",
-      "message": "likely implemented (InvalidTransitGatewayID.NotFound: The transitGateway ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteTransitGatewayConnect",
-      "status": "working",
-      "message": "likely implemented (InvalidTransitGatewayAttachmentID.NotFound: The transitGatewayAttachment ID 'probe-test-value' does not )"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteTransitGatewayConnectPeer",
-      "status": "working",
-      "message": "likely implemented (InvalidTransitGatewayConnectPeerId.NotFound: The transitGatewayConnectPeer ID 'probe-test-value' does not)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteTransitGatewayMeteringPolicy",
@@ -1169,8 +1171,8 @@
     },
     {
       "operation": "DeleteTransitGatewayPeeringAttachment",
-      "status": "working",
-      "message": "likely implemented (InvalidTransitGatewayAttachmentID.NotFound: The transitGatewayAttachment ID 'probe-test-value' does not )"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteTransitGatewayPolicyTable",
@@ -1179,18 +1181,18 @@
     },
     {
       "operation": "DeleteTransitGatewayPrefixListReference",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteTransitGatewayRoute",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteTransitGatewayRouteTable",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteTransitGatewayRouteTableAnnouncement",
@@ -1199,38 +1201,38 @@
     },
     {
       "operation": "DeleteTransitGatewayVpcAttachment",
-      "status": "working",
-      "message": "likely implemented (InvalidTransitGatewayAttachmentID.NotFound: The transitGatewayAttachment ID 'probe-test-value' does not )"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteVerifiedAccessEndpoint",
-      "status": "working",
-      "message": "likely implemented (InvalidVerifiedAccessEndpointId.NotFound: The verified access endpoint ID 'probe-test-value' does not )"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteVerifiedAccessGroup",
-      "status": "working",
-      "message": "likely implemented (InvalidVerifiedAccessGroupId.NotFound: The verified access group ID 'probe-test-value' does not exi)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteVerifiedAccessInstance",
-      "status": "working",
-      "message": "likely implemented (InvalidVerifiedAccessInstanceId.NotFound: The verified access instance ID 'probe-test-value' does not )"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteVerifiedAccessTrustProvider",
-      "status": "working",
-      "message": "likely implemented (InvalidVerifiedAccessTrustProviderId.NotFound: The verified access trust provider ID 'probe-test-value' doe)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteVolume",
-      "status": "working",
-      "message": "likely implemented (InvalidVolume.NotFound: The volume 'probe-test-value' does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteVpcBlockPublicAccessExclusion",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (InvalidVpcBlockPublicAccessExclusionId.NotFound: The VPC Block Public Access exclusion ID does not exist.)"
     },
     {
       "operation": "DeleteVpcEncryptionControl",
@@ -1244,18 +1246,18 @@
     },
     {
       "operation": "DeleteVpcEndpointServiceConfigurations",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteVpcEndpoints",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteVpcPeeringConnection",
-      "status": "working",
-      "message": "likely implemented (InvalidVpcPeeringConnectionId.NotFound: VpcPeeringConnectionID probe-test-value does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteVpnConcentrator",
@@ -1264,8 +1266,8 @@
     },
     {
       "operation": "DeleteVpnConnection",
-      "status": "working",
-      "message": "likely implemented (InvalidVpnConnectionID.NotFound: The vpnConnection ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeleteVpnConnectionRoute",
@@ -1274,8 +1276,8 @@
     },
     {
       "operation": "DeleteVpnGateway",
-      "status": "working",
-      "message": "likely implemented (InvalidVpnGatewayID.NotFound: The virtual private gateway ID 'probe-test-value' does not e)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeprovisionByoipCidr",
@@ -1290,17 +1292,17 @@
     {
       "operation": "DeprovisionIpamPoolCidr",
       "status": "500_error",
-      "message": "server crash (InternalError: cannot import name 'InvalidIpamPoolIdError' from 'moto.ec2.e)"
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeprovisionPublicIpv4PoolCidr",
-      "status": "working",
-      "message": "likely implemented (InvalidPublicIpv4PoolID.NotFound: The public IPv4 pool ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeregisterImage",
-      "status": "working",
-      "message": "likely implemented (InvalidAMIID.NotFound: The image id '[probe-test-value]' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeregisterInstanceEventNotificationAttributes",
@@ -1309,13 +1311,13 @@
     },
     {
       "operation": "DeregisterTransitGatewayMulticastGroupMembers",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DeregisterTransitGatewayMulticastGroupSources",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeAccountAttributes",
@@ -1329,8 +1331,8 @@
     },
     {
       "operation": "DescribeAddresses",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeAddressesAttribute",
@@ -1399,8 +1401,8 @@
     },
     {
       "operation": "DescribeCapacityReservationFleets",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeCapacityReservationTopology",
@@ -1409,13 +1411,13 @@
     },
     {
       "operation": "DescribeCapacityReservations",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeCarrierGateways",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeClassicLinkInstances",
@@ -1434,8 +1436,8 @@
     },
     {
       "operation": "DescribeClientVpnEndpoints",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeClientVpnRoutes",
@@ -1449,8 +1451,8 @@
     },
     {
       "operation": "DescribeCoipPools",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeConversionTasks",
@@ -1459,8 +1461,8 @@
     },
     {
       "operation": "DescribeCustomerGateways",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeDeclarativePoliciesReports",
@@ -1469,13 +1471,13 @@
     },
     {
       "operation": "DescribeDhcpOptions",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeEgressOnlyInternetGateways",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeElasticGpus",
@@ -1494,8 +1496,8 @@
     },
     {
       "operation": "DescribeFastLaunchImages",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeFastSnapshotRestores",
@@ -1504,23 +1506,23 @@
     },
     {
       "operation": "DescribeFleetHistory",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeFleetInstances",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeFleets",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeFlowLogs",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeFpgaImageAttribute",
@@ -1544,13 +1546,13 @@
     },
     {
       "operation": "DescribeHosts",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeIamInstanceProfileAssociations",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeIdFormat",
@@ -1564,8 +1566,8 @@
     },
     {
       "operation": "DescribeImageAttribute",
-      "status": "working",
-      "message": "likely implemented (InvalidRequest: The request received was invalid)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeImageReferences",
@@ -1584,8 +1586,8 @@
     },
     {
       "operation": "DescribeImages",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeImportImageTasks",
@@ -1599,13 +1601,13 @@
     },
     {
       "operation": "DescribeInstanceAttribute",
-      "status": "working",
-      "message": "implemented (InvalidParameterValue)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeInstanceConnectEndpoints",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeInstanceCreditSpecifications",
@@ -1619,8 +1621,8 @@
     },
     {
       "operation": "DescribeInstanceEventWindows",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeInstanceImageMetadata",
@@ -1639,8 +1641,8 @@
     },
     {
       "operation": "DescribeInstanceStatus",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeInstanceTopology",
@@ -1659,13 +1661,13 @@
     },
     {
       "operation": "DescribeInstances",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeInternetGateways",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeIpamByoasn",
@@ -1684,8 +1686,8 @@
     },
     {
       "operation": "DescribeIpamPools",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeIpamPrefixListResolverTargets",
@@ -1699,8 +1701,8 @@
     },
     {
       "operation": "DescribeIpamResourceDiscoveries",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeIpamResourceDiscoveryAssociations",
@@ -1709,13 +1711,13 @@
     },
     {
       "operation": "DescribeIpamScopes",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeIpams",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeIpv6Pools",
@@ -1724,18 +1726,18 @@
     },
     {
       "operation": "DescribeKeyPairs",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeLaunchTemplateVersions",
-      "status": "working",
-      "message": "implemented (MissingParameter)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeLaunchTemplates",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeLocalGatewayRouteTableVirtualInterfaceGroupAssociations",
@@ -1749,8 +1751,8 @@
     },
     {
       "operation": "DescribeLocalGatewayRouteTables",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeLocalGatewayVirtualInterfaceGroups",
@@ -1784,8 +1786,8 @@
     },
     {
       "operation": "DescribeManagedPrefixLists",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeMovingAddresses",
@@ -1794,38 +1796,38 @@
     },
     {
       "operation": "DescribeNatGateways",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeNetworkAcls",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeNetworkInsightsAccessScopeAnalyses",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeNetworkInsightsAccessScopes",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeNetworkInsightsAnalyses",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeNetworkInsightsPaths",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeNetworkInterfaceAttribute",
-      "status": "working",
-      "message": "likely implemented (InvalidNetworkInterfaceID.NotFound: The networkInterface ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeNetworkInterfacePermissions",
@@ -1834,8 +1836,8 @@
     },
     {
       "operation": "DescribeNetworkInterfaces",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeOutpostLags",
@@ -1844,8 +1846,8 @@
     },
     {
       "operation": "DescribePlacementGroups",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribePrefixLists",
@@ -1859,8 +1861,8 @@
     },
     {
       "operation": "DescribePublicIpv4Pools",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeRegions",
@@ -1909,8 +1911,8 @@
     },
     {
       "operation": "DescribeRouteTables",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeScheduledInstanceAvailability",
@@ -1944,18 +1946,18 @@
     },
     {
       "operation": "DescribeSecurityGroupRules",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeSecurityGroupVpcAssociations",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeSecurityGroups",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeServiceLinkVirtualInterfaces",
@@ -1964,8 +1966,8 @@
     },
     {
       "operation": "DescribeSnapshotAttribute",
-      "status": "working",
-      "message": "likely implemented (InvalidSnapshot.NotFound: )"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeSnapshotTierStatus",
@@ -1974,8 +1976,8 @@
     },
     {
       "operation": "DescribeSnapshots",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeSpotDatafeedSubscription",
@@ -1984,8 +1986,8 @@
     },
     {
       "operation": "DescribeSpotFleetInstances",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeSpotFleetRequestHistory",
@@ -1994,13 +1996,13 @@
     },
     {
       "operation": "DescribeSpotFleetRequests",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeSpotInstanceRequests",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeSpotPriceHistory",
@@ -2019,33 +2021,33 @@
     },
     {
       "operation": "DescribeSubnets",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeTags",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeTrafficMirrorFilterRules",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeTrafficMirrorFilters",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeTrafficMirrorSessions",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeTrafficMirrorTargets",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeTransitGatewayAttachments",
@@ -2054,13 +2056,13 @@
     },
     {
       "operation": "DescribeTransitGatewayConnectPeers",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeTransitGatewayConnects",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeTransitGatewayMeteringPolicies",
@@ -2074,8 +2076,8 @@
     },
     {
       "operation": "DescribeTransitGatewayPeeringAttachments",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeTransitGatewayPolicyTables",
@@ -2089,18 +2091,18 @@
     },
     {
       "operation": "DescribeTransitGatewayRouteTables",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeTransitGatewayVpcAttachments",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeTransitGateways",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeTrunkInterfaceAssociations",
@@ -2109,13 +2111,13 @@
     },
     {
       "operation": "DescribeVerifiedAccessEndpoints",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeVerifiedAccessGroups",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeVerifiedAccessInstanceLoggingConfigurations",
@@ -2124,38 +2126,38 @@
     },
     {
       "operation": "DescribeVerifiedAccessInstances",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeVerifiedAccessTrustProviders",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeVolumeAttribute",
-      "status": "working",
-      "message": "likely implemented (InvalidVolume.NotFound: The volume 'probe-test-value' does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeVolumeStatus",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeVolumes",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeVolumesModifications",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeVpcAttribute",
-      "status": "working",
-      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeVpcBlockPublicAccessExclusions",
@@ -2169,8 +2171,8 @@
     },
     {
       "operation": "DescribeVpcClassicLink",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeVpcClassicLinkDnsSupport",
@@ -2199,13 +2201,13 @@
     },
     {
       "operation": "DescribeVpcEndpointServiceConfigurations",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeVpcEndpointServicePermissions",
       "status": "working",
-      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'probe-test-value' does not exist)"
+      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-4f839a35' does not exist)"
     },
     {
       "operation": "DescribeVpcEndpointServices",
@@ -2214,18 +2216,18 @@
     },
     {
       "operation": "DescribeVpcEndpoints",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeVpcPeeringConnections",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeVpcs",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeVpnConcentrators",
@@ -2234,13 +2236,13 @@
     },
     {
       "operation": "DescribeVpnConnections",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DescribeVpnGateways",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DetachClassicLinkVpc",
@@ -2249,13 +2251,13 @@
     },
     {
       "operation": "DetachInternetGateway",
-      "status": "working",
-      "message": "likely implemented (InvalidInternetGatewayID.NotFound: InternetGatewayID probe-test-value does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DetachNetworkInterface",
-      "status": "working",
-      "message": "likely implemented (InvalidAttachmentID.NotFound: The network interface attachment ID 'probe-test-value' does )"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DetachVerifiedAccessTrustProvider",
@@ -2265,12 +2267,12 @@
     {
       "operation": "DetachVolume",
       "status": "500_error",
-      "message": "server crash (InternalError: InvalidVolume.NotFound: The volume 'probe-test-value' does n)"
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DetachVpnGateway",
-      "status": "working",
-      "message": "likely implemented (InvalidVpnGatewayID.NotFound: The virtual private gateway ID 'probe-test-value' does not e)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DisableAddressTransfer",
@@ -2294,13 +2296,13 @@
     },
     {
       "operation": "DisableEbsEncryptionByDefault",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DisableFastLaunch",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DisableFastSnapshotRestores",
@@ -2349,8 +2351,8 @@
     },
     {
       "operation": "DisableSerialConsoleAccess",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DisableSnapshotBlockPublicAccess",
@@ -2359,8 +2361,8 @@
     },
     {
       "operation": "DisableTransitGatewayRouteTablePropagation",
-      "status": "working",
-      "message": "likely implemented (InvalidTransitGatewayAttachmentID.NotFound: The transitGatewayAttachment ID 'None' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DisableVgwRoutePropagation",
@@ -2369,18 +2371,18 @@
     },
     {
       "operation": "DisableVpcClassicLink",
-      "status": "working",
-      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DisableVpcClassicLinkDnsSupport",
-      "status": "working",
-      "message": "likely implemented (InvalidVpcID.NotFound: VpcID None does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DisassociateAddress",
-      "status": "working",
-      "message": "implemented (MissingParameter)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DisassociateCapacityReservationBillingOwner",
@@ -2399,13 +2401,13 @@
     },
     {
       "operation": "DisassociateIamInstanceProfile",
-      "status": "working",
-      "message": "likely implemented (InvalidAssociationID.NotFound: An invalid association-id of 'probe-test-value' was given)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DisassociateInstanceEventWindow",
       "status": "working",
-      "message": "likely implemented (InvalidInstanceEventWindowId.NotFound: The instance event window ID 'probe-test-value' does not exi)"
+      "message": "OK"
     },
     {
       "operation": "DisassociateIpamByoasn",
@@ -2429,18 +2431,18 @@
     },
     {
       "operation": "DisassociateRouteTable",
-      "status": "working",
-      "message": "likely implemented (InvalidAssociationID.NotFound: Association ID 'probe-test-value' not found.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DisassociateSecurityGroupVpc",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DisassociateSubnetCidrBlock",
-      "status": "working",
-      "message": "likely implemented (InvalidSubnetCidrBlockAssociationID.NotFound: The subnet CIDR block with association ID 'probe-test-value')"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DisassociateTransitGatewayMulticastDomain",
@@ -2454,8 +2456,8 @@
     },
     {
       "operation": "DisassociateTransitGatewayRouteTable",
-      "status": "working",
-      "message": "likely implemented (InvalidTransitGatewayAttachmentID.NotFound: The transitGatewayAttachment ID 'probe-test-value' does not )"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "DisassociateTrunkInterface",
@@ -2464,8 +2466,8 @@
     },
     {
       "operation": "DisassociateVpcCidrBlock",
-      "status": "working",
-      "message": "likely implemented (InvalidVpcCidrBlockAssociationIdError.NotFound: The vpc CIDR block association ID 'probe-test-value' does no)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "EnableAddressTransfer",
@@ -2489,13 +2491,13 @@
     },
     {
       "operation": "EnableEbsEncryptionByDefault",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "EnableFastLaunch",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "EnableFastSnapshotRestores",
@@ -2549,8 +2551,8 @@
     },
     {
       "operation": "EnableSerialConsoleAccess",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "EnableSnapshotBlockPublicAccess",
@@ -2559,8 +2561,8 @@
     },
     {
       "operation": "EnableTransitGatewayRouteTablePropagation",
-      "status": "working",
-      "message": "likely implemented (InvalidTransitGatewayAttachmentID.NotFound: The transitGatewayAttachment ID 'None' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "EnableVgwRoutePropagation",
@@ -2574,13 +2576,13 @@
     },
     {
       "operation": "EnableVpcClassicLink",
-      "status": "working",
-      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "EnableVpcClassicLinkDnsSupport",
-      "status": "working",
-      "message": "likely implemented (InvalidVpcID.NotFound: VpcID None does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ExportClientVpnClientCertificateRevocationList",
@@ -2659,8 +2661,8 @@
     },
     {
       "operation": "GetConsoleOutput",
-      "status": "working",
-      "message": "likely implemented (InvalidInstanceID.NotFound: The instance ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "GetConsoleScreenshot",
@@ -2684,8 +2686,8 @@
     },
     {
       "operation": "GetEbsEncryptionByDefault",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "GetEnabledIpamPolicy",
@@ -2734,8 +2736,8 @@
     },
     {
       "operation": "GetInstanceUefiData",
-      "status": "working",
-      "message": "likely implemented (InvalidInstanceID.NotFound: The instance ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "GetIpamAddressHistory",
@@ -2770,12 +2772,12 @@
     {
       "operation": "GetIpamPoolAllocations",
       "status": "500_error",
-      "message": "server crash (InternalError: cannot import name 'InvalidIpamPoolIdError' from 'moto.ec2.e)"
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "GetIpamPoolCidrs",
       "status": "500_error",
-      "message": "server crash (InternalError: cannot import name 'InvalidIpamPoolIdError' from 'moto.ec2.e)"
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "GetIpamPrefixListResolverRules",
@@ -2794,13 +2796,13 @@
     },
     {
       "operation": "GetIpamResourceCidrs",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "GetLaunchTemplateData",
-      "status": "working",
-      "message": "likely implemented (InvalidInstanceID.NotFound: The instance ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "GetManagedPrefixListAssociations",
@@ -2809,8 +2811,8 @@
     },
     {
       "operation": "GetManagedPrefixListEntries",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "GetNetworkInsightsAccessScopeAnalysisFindings",
@@ -2824,8 +2826,8 @@
     },
     {
       "operation": "GetPasswordData",
-      "status": "working",
-      "message": "likely implemented (InvalidInstanceID.NotFound: The instance ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "GetReservedInstancesExchangeQuote",
@@ -2854,8 +2856,8 @@
     },
     {
       "operation": "GetSerialConsoleAccessStatus",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "GetSnapshotBlockPublicAccessState",
@@ -2869,8 +2871,8 @@
     },
     {
       "operation": "GetSubnetCidrReservations",
-      "status": "working",
-      "message": "likely implemented (InvalidSubnetID.NotFound: The subnet ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "GetTransitGatewayAttachmentPropagations",
@@ -2899,18 +2901,18 @@
     },
     {
       "operation": "GetTransitGatewayPrefixListReferences",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "GetTransitGatewayRouteTableAssociations",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "GetTransitGatewayRouteTablePropagations",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "GetVerifiedAccessEndpointPolicy",
@@ -2964,8 +2966,8 @@
     },
     {
       "operation": "ImportKeyPair",
-      "status": "working",
-      "message": "likely implemented (InvalidKeyPair.Duplicate: The keypair 'probe-test-value' already exists.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ImportSnapshot",
@@ -3010,17 +3012,17 @@
     {
       "operation": "ModifyCapacityReservation",
       "status": "working",
-      "message": "likely implemented (InvalidCapacityReservationId.NotFound: The capacity reservation ID 'probe-test-value' does not exis)"
+      "message": "OK"
     },
     {
       "operation": "ModifyCapacityReservationFleet",
-      "status": "working",
-      "message": "likely implemented (InvalidCapacityReservationFleetId.NotFound: The capacity reservation fleet ID 'probe-test-value' does no)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ModifyClientVpnEndpoint",
-      "status": "working",
-      "message": "likely implemented (InvalidClientVpnEndpointId.NotFound: The Client VPN endpoint ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ModifyDefaultCreditSpecification",
@@ -3029,13 +3031,13 @@
     },
     {
       "operation": "ModifyEbsDefaultKmsKeyId",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ModifyFleet",
-      "status": "working",
-      "message": "likely implemented (InvalidFleetId.NotFound: The fleet ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ModifyFpgaImageAttribute",
@@ -3044,8 +3046,8 @@
     },
     {
       "operation": "ModifyHosts",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ModifyIdFormat",
@@ -3059,13 +3061,13 @@
     },
     {
       "operation": "ModifyImageAttribute",
-      "status": "working",
-      "message": "likely implemented (InvalidAMIID.Malformed: Invalid id: \"probe-test-value\" (expecting \"ami-...\"))"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ModifyInstanceAttribute",
-      "status": "working",
-      "message": "likely implemented (InvalidInstanceID.NotFound: The instance ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ModifyInstanceCapacityReservationAttributes",
@@ -3095,7 +3097,7 @@
     {
       "operation": "ModifyInstanceEventWindow",
       "status": "working",
-      "message": "likely implemented (InvalidInstanceEventWindowId.NotFound: The instance event window ID 'probe-test-value' does not exi)"
+      "message": "OK"
     },
     {
       "operation": "ModifyInstanceMaintenanceOptions",
@@ -3109,8 +3111,8 @@
     },
     {
       "operation": "ModifyInstanceMetadataOptions",
-      "status": "working",
-      "message": "likely implemented (InvalidInstanceID.NotFound: The instance ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ModifyInstanceNetworkPerformanceOptions",
@@ -3124,8 +3126,8 @@
     },
     {
       "operation": "ModifyIpam",
-      "status": "working",
-      "message": "likely implemented (InvalidIpamId.NotFound: The IPAM ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ModifyIpamPolicyAllocationRules",
@@ -3135,7 +3137,7 @@
     {
       "operation": "ModifyIpamPool",
       "status": "500_error",
-      "message": "server crash (InternalError: cannot import name 'InvalidIpamPoolIdError' from 'moto.ec2.e)"
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ModifyIpamPrefixListResolver",
@@ -3154,8 +3156,8 @@
     },
     {
       "operation": "ModifyIpamResourceDiscovery",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ModifyIpamScope",
@@ -3164,8 +3166,8 @@
     },
     {
       "operation": "ModifyLaunchTemplate",
-      "status": "working",
-      "message": "implemented (MissingParameter)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ModifyLocalGatewayRoute",
@@ -3174,13 +3176,13 @@
     },
     {
       "operation": "ModifyManagedPrefixList",
-      "status": "working",
-      "message": "likely implemented (InvalidPrefixListID.NotFound: The prefix list ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ModifyNetworkInterfaceAttribute",
-      "status": "working",
-      "message": "likely implemented (InvalidNetworkInterfaceID.NotFound: The networkInterface ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ModifyPrivateDnsNameOptions",
@@ -3204,13 +3206,13 @@
     },
     {
       "operation": "ModifySecurityGroupRules",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ModifySnapshotAttribute",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ModifySnapshotTier",
@@ -3220,12 +3222,12 @@
     {
       "operation": "ModifySpotFleetRequest",
       "status": "500_error",
-      "message": "server crash (InternalError: '<' not supported between instances of 'NoneType' and 'int')"
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ModifySubnetAttribute",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ModifyTrafficMirrorFilterNetworkServices",
@@ -3244,8 +3246,8 @@
     },
     {
       "operation": "ModifyTransitGateway",
-      "status": "working",
-      "message": "likely implemented (InvalidTransitGatewayID.NotFound: The transitGateway ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ModifyTransitGatewayMeteringPolicy",
@@ -3259,8 +3261,8 @@
     },
     {
       "operation": "ModifyTransitGatewayVpcAttachment",
-      "status": "working",
-      "message": "likely implemented (InvalidTransitGatewayAttachmentID.NotFound: The transitGatewayAttachment ID 'probe-test-value' does not )"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ModifyVerifiedAccessEndpoint",
@@ -3299,18 +3301,18 @@
     },
     {
       "operation": "ModifyVolume",
-      "status": "working",
-      "message": "likely implemented (InvalidVolume.NotFound: The volume 'probe-test-value' does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ModifyVolumeAttribute",
       "status": "working",
-      "message": "likely implemented (InvalidVolume.NotFound: The volume 'probe-test-value' does not exist.)"
+      "message": "OK"
     },
     {
       "operation": "ModifyVpcAttribute",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ModifyVpcBlockPublicAccessExclusion",
@@ -3329,8 +3331,8 @@
     },
     {
       "operation": "ModifyVpcEndpoint",
-      "status": "working",
-      "message": "likely implemented (InvalidVpcEndpointId.NotFound: The VpcEndPoint ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ModifyVpcEndpointConnectionNotification",
@@ -3340,7 +3342,7 @@
     {
       "operation": "ModifyVpcEndpointServiceConfiguration",
       "status": "working",
-      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'probe-test-value' does not exist)"
+      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-50d2a9fe' does not exist)"
     },
     {
       "operation": "ModifyVpcEndpointServicePayerResponsibility",
@@ -3350,17 +3352,17 @@
     {
       "operation": "ModifyVpcEndpointServicePermissions",
       "status": "working",
-      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'probe-test-value' does not exist)"
+      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-c9867d84' does not exist)"
     },
     {
       "operation": "ModifyVpcPeeringConnectionOptions",
       "status": "working",
-      "message": "likely implemented (InvalidVpcPeeringConnectionId.NotFound: VpcPeeringConnectionID probe-test-value does not exist.)"
+      "message": "OK"
     },
     {
       "operation": "ModifyVpcTenancy",
       "status": "working",
-      "message": "likely implemented (InvalidVpcID.NotFound: VpcID probe-test-value does not exist.)"
+      "message": "OK"
     },
     {
       "operation": "ModifyVpnConnection",
@@ -3384,8 +3386,8 @@
     },
     {
       "operation": "MonitorInstances",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "MoveAddressToVpc",
@@ -3415,12 +3417,12 @@
     {
       "operation": "ProvisionIpamPoolCidr",
       "status": "500_error",
-      "message": "server crash (InternalError: cannot import name 'InvalidIpamPoolIdError' from 'moto.ec2.e)"
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ProvisionPublicIpv4PoolCidr",
-      "status": "working",
-      "message": "likely implemented (InvalidPublicIpv4PoolID.NotFound: The public IPv4 pool ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "PurchaseCapacityBlock",
@@ -3454,8 +3456,8 @@
     },
     {
       "operation": "RegisterImage",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "RegisterInstanceEventNotificationAttributes",
@@ -3479,13 +3481,13 @@
     },
     {
       "operation": "RejectTransitGatewayMulticastDomainAssociations",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "RejectTransitGatewayPeeringAttachment",
-      "status": "working",
-      "message": "likely implemented (InvalidTransitGatewayAttachmentID.NotFound: The transitGatewayAttachment ID 'probe-test-value' does not )"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "RejectTransitGatewayVpcAttachment",
@@ -3495,32 +3497,32 @@
     {
       "operation": "RejectVpcEndpointConnections",
       "status": "working",
-      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'probe-test-value' does not exist)"
+      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-fb78f8d2' does not exist)"
     },
     {
       "operation": "RejectVpcPeeringConnection",
-      "status": "working",
-      "message": "likely implemented (InvalidVpcPeeringConnectionId.NotFound: VpcPeeringConnectionID probe-test-value does not exist.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ReleaseAddress",
-      "status": "working",
-      "message": "implemented (MissingParameter)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ReleaseHosts",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ReleaseIpamPoolAllocation",
       "status": "500_error",
-      "message": "server crash (InternalError: cannot import name 'InvalidIpamPoolIdError' from 'moto.ec2.e)"
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ReplaceIamInstanceProfileAssociation",
-      "status": "working",
-      "message": "likely implemented (InvalidAssociationID.NotFound: An invalid association-id of 'probe-test-value' was given)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ReplaceImageCriteriaInAllowedImagesSettings",
@@ -3529,23 +3531,23 @@
     },
     {
       "operation": "ReplaceNetworkAclAssociation",
-      "status": "working",
-      "message": "likely implemented (InvalidAssociationID.NotFound: Association ID 'probe-test-value' not found.)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ReplaceNetworkAclEntry",
-      "status": "working",
-      "message": "likely implemented (InvalidNetworkAclID.NotFound: The network acl ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ReplaceRoute",
-      "status": "working",
-      "message": "likely implemented (InvalidRouteTableID.NotFound: The routeTable ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ReplaceRouteTableAssociation",
-      "status": "working",
-      "message": "likely implemented (InvalidRouteTableID.NotFound: The routeTable ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ReplaceTransitGatewayRoute",
@@ -3565,12 +3567,12 @@
     {
       "operation": "RequestSpotFleet",
       "status": "500_error",
-      "message": "server crash (InternalError: list index out of range)"
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "RequestSpotInstances",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "ResetAddressAttribute",
@@ -3644,18 +3646,18 @@
     },
     {
       "operation": "RevokeSecurityGroupEgress",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "RevokeSecurityGroupIngress",
-      "status": "working",
-      "message": "likely implemented (InvalidGroup.NotFound: The security group 'None' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "RunInstances",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "RunScheduledInstances",
@@ -3664,8 +3666,8 @@
     },
     {
       "operation": "SearchLocalGatewayRoutes",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "SearchTransitGatewayMulticastGroups",
@@ -3674,8 +3676,8 @@
     },
     {
       "operation": "SearchTransitGatewayRoutes",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "SendDiagnosticInterrupt",
@@ -3689,18 +3691,18 @@
     },
     {
       "operation": "StartInstances",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "StartNetworkInsightsAccessScopeAnalysis",
-      "status": "working",
-      "message": "likely implemented (InvalidNetworkInsightsAccessScopeId.NotFound: The network insights access scope ID 'probe-test-value' does)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "StartNetworkInsightsAnalysis",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "StartVpcEndpointServicePrivateDnsVerification",
@@ -3709,8 +3711,8 @@
     },
     {
       "operation": "StopInstances",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "TerminateClientVpnConnections",
@@ -3719,13 +3721,13 @@
     },
     {
       "operation": "UnassignIpv6Addresses",
-      "status": "working",
-      "message": "likely implemented (InvalidNetworkInterfaceID.NotFound: The networkInterface ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "UnassignPrivateIpAddresses",
-      "status": "working",
-      "message": "likely implemented (InvalidNetworkInterfaceID.NotFound: The networkInterface ID 'probe-test-value' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "UnassignPrivateNatGatewayAddress",
@@ -3739,8 +3741,8 @@
     },
     {
       "operation": "UnmonitorInstances",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "UpdateCapacityManagerOrganizationsAccess",
@@ -3754,13 +3756,13 @@
     },
     {
       "operation": "UpdateSecurityGroupRuleDescriptionsEgress",
-      "status": "working",
-      "message": "likely implemented (InvalidGroup.NotFound: The security group 'None' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "UpdateSecurityGroupRuleDescriptionsIngress",
-      "status": "working",
-      "message": "likely implemented (InvalidGroup.NotFound: The security group 'None' does not exist)"
+      "status": "500_error",
+      "message": "exception: Read timeout on endpoint URL: \"http://localhost:4566/\""
     },
     {
       "operation": "WithdrawByoipCidr",

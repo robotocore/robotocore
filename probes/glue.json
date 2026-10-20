@@ -1,10 +1,12 @@
 {
   "service": "glue",
+  "generated_at": "2026-10-20T06:49:27.656749+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 213,
+    "working": 251,
     "needs_params": 13,
-    "not_implemented": 34,
-    "500_error": 4
+    "not_implemented": 0,
+    "500_error": 0
   },
   "operations": [
     {
@@ -25,7 +27,7 @@
     {
       "operation": "BatchDeleteTable",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (EntityNotFoundException: Database probe-test-value not found.)"
     },
     {
       "operation": "BatchDeleteTableVersion",
@@ -69,8 +71,8 @@
     },
     {
       "operation": "BatchGetTableOptimizer",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchGetTriggers",
@@ -109,8 +111,8 @@
     },
     {
       "operation": "CancelMLTaskRun",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: ML Task probe-test-value not found.)"
     },
     {
       "operation": "CancelStatement",
@@ -135,7 +137,7 @@
     {
       "operation": "CreateClassifier",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidInputException: One of the classifier types is required.)"
     },
     {
       "operation": "CreateColumnStatisticsTaskSettings",
@@ -174,8 +176,8 @@
     },
     {
       "operation": "CreateGlueIdentityCenterConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateIntegration",
@@ -224,8 +226,8 @@
     },
     {
       "operation": "CreateScript",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateSecurityConfiguration",
@@ -244,8 +246,8 @@
     },
     {
       "operation": "CreateTableOptimizer",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateTrigger",
@@ -280,7 +282,7 @@
     {
       "operation": "DeleteClassifier",
       "status": "working",
-      "message": "likely implemented (EntityNotFoundException: Classifier probe-test-value not found.)"
+      "message": "likely implemented (EntityNotFoundException: Classifier probe-test-value is not found.)"
     },
     {
       "operation": "DeleteColumnStatisticsForPartition",
@@ -295,7 +297,7 @@
     {
       "operation": "DeleteColumnStatisticsTaskSettings",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (EntityNotFoundException: ColumnStatisticsTaskSettings for probe-test-value:probe-test)"
     },
     {
       "operation": "DeleteConnection",
@@ -304,8 +306,8 @@
     },
     {
       "operation": "DeleteConnectionType",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Connection type probe-test-value not found.)"
     },
     {
       "operation": "DeleteCrawler",
@@ -334,13 +336,13 @@
     },
     {
       "operation": "DeleteGlueIdentityCenterConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteIntegration",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'IntegrationArn')"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Integration  not found.)"
     },
     {
       "operation": "DeleteIntegrationResourceProperty",
@@ -360,7 +362,7 @@
     {
       "operation": "DeleteMLTransform",
       "status": "working",
-      "message": "likely implemented (EntityNotFoundException: MLTransform probe-test-value not found.)"
+      "message": "likely implemented (EntityNotFoundException: ML Task probe-test-value not found.)"
     },
     {
       "operation": "DeletePartition",
@@ -375,7 +377,7 @@
     {
       "operation": "DeleteRegistry",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (EntityNotFoundException: Registry is not found. RegistryName: default-registry)"
     },
     {
       "operation": "DeleteResourcePolicy",
@@ -404,13 +406,13 @@
     },
     {
       "operation": "DeleteTableOptimizer",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteTableVersion",
       "status": "working",
-      "message": "likely implemented (EntityNotFoundException: Database probe-test-value not found.)"
+      "message": "likely implemented (InvalidInputException: invalid literal for int() with base 10: 'probe-test-value')"
     },
     {
       "operation": "DeleteTrigger",
@@ -434,13 +436,13 @@
     },
     {
       "operation": "DescribeConnectionType",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Connection type probe-test-value not found.)"
     },
     {
       "operation": "DescribeEntity",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Connection probe-test-value not found.)"
     },
     {
       "operation": "DescribeInboundIntegrations",
@@ -485,7 +487,7 @@
     {
       "operation": "GetClassifier",
       "status": "working",
-      "message": "likely implemented (EntityNotFoundException: Classifier probe-test-value not found.)"
+      "message": "likely implemented (EntityNotFoundException: Classifier probe-test-value is not found.)"
     },
     {
       "operation": "GetClassifiers",
@@ -515,7 +517,7 @@
     {
       "operation": "GetColumnStatisticsTaskSettings",
       "status": "working",
-      "message": "likely implemented (EntityNotFoundException: ColumnStatisticsTaskSettings for probe-test-value/probe-test)"
+      "message": "likely implemented (EntityNotFoundException: ColumnStatisticsTaskSettings for probe-test-value:probe-test)"
     },
     {
       "operation": "GetConnection",
@@ -560,7 +562,7 @@
     {
       "operation": "GetDataQualityModelResult",
       "status": "working",
-      "message": "likely implemented (EntityNotFoundException: DataQualityModelResult for profile probe-test-value not foun)"
+      "message": "likely implemented (EntityNotFoundException: DataQualityModel for profile probe-test-value not found.)"
     },
     {
       "operation": "GetDataQualityResult",
@@ -575,7 +577,7 @@
     {
       "operation": "GetDataQualityRuleset",
       "status": "working",
-      "message": "likely implemented (EntityNotFoundException: DataQualityRuleset probe-test-value not found.)"
+      "message": "likely implemented (EntityNotFoundException: Ruleset probe-test-value not found.)"
     },
     {
       "operation": "GetDataQualityRulesetEvaluationRun",
@@ -594,8 +596,8 @@
     },
     {
       "operation": "GetDataflowGraph",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetDevEndpoint",
@@ -614,8 +616,8 @@
     },
     {
       "operation": "GetGlueIdentityCenterConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Glue Identity Center configuration not found.)"
     },
     {
       "operation": "GetIntegrationResourceProperty",
@@ -655,17 +657,17 @@
     {
       "operation": "GetMLTaskRun",
       "status": "working",
-      "message": "likely implemented (EntityNotFoundException: MLTransform probe-test-value not found.)"
+      "message": "likely implemented (EntityNotFoundException: ML Task probe-test-value not found.)"
     },
     {
       "operation": "GetMLTaskRuns",
       "status": "working",
-      "message": "likely implemented (EntityNotFoundException: MLTransform probe-test-value not found.)"
+      "message": "likely implemented (EntityNotFoundException: ML Task probe-test-value not found.)"
     },
     {
       "operation": "GetMLTransform",
       "status": "working",
-      "message": "likely implemented (EntityNotFoundException: MLTransform probe-test-value not found.)"
+      "message": "likely implemented (EntityNotFoundException: ML Task probe-test-value not found.)"
     },
     {
       "operation": "GetMLTransforms",
@@ -679,8 +681,8 @@
     },
     {
       "operation": "GetMaterializedViewRefreshTaskRun",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Materialized view refresh task run probe-test-value not foun)"
     },
     {
       "operation": "GetPartition",
@@ -699,8 +701,8 @@
     },
     {
       "operation": "GetPlan",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetRegistry",
@@ -715,7 +717,7 @@
     {
       "operation": "GetResourcePolicy",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (EntityNotFoundException: Policy does not exist)"
     },
     {
       "operation": "GetSchema",
@@ -734,8 +736,8 @@
     },
     {
       "operation": "GetSchemaVersionsDiff",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (InvalidInputException: At least one of (registryName and schemaName) or schemaArn h)"
     },
     {
       "operation": "GetSecurityConfiguration",
@@ -764,13 +766,13 @@
     },
     {
       "operation": "GetTableOptimizer",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Table optimizer not found for CatalogId: probe-test-value, D)"
     },
     {
       "operation": "GetTableVersion",
       "status": "working",
-      "message": "likely implemented (EntityNotFoundException: Database probe-test-value not found.)"
+      "message": "likely implemented (InvalidInputException: invalid literal for int() with base 10: '')"
     },
     {
       "operation": "GetTableVersions",
@@ -824,8 +826,8 @@
     },
     {
       "operation": "GetUserDefinedFunctions",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'DatabaseName')"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Database  not found.)"
     },
     {
       "operation": "GetWorkflow",
@@ -864,8 +866,8 @@
     },
     {
       "operation": "ListConnectionTypes",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListCrawlers",
@@ -919,13 +921,13 @@
     },
     {
       "operation": "ListEntities",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Connection  not found.)"
     },
     {
       "operation": "ListIntegrationResourceProperties",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'ResourceArn')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListJobs",
@@ -939,8 +941,8 @@
     },
     {
       "operation": "ListMaterializedViewRefreshTaskRuns",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListRegistries",
@@ -969,8 +971,8 @@
     },
     {
       "operation": "ListTableOptimizerRuns",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Table optimizer not found for CatalogId: probe-test-value, D)"
     },
     {
       "operation": "ListTriggers",
@@ -1010,7 +1012,7 @@
     {
       "operation": "PutSchemaVersionMetadata",
       "status": "working",
-      "message": "likely implemented (InvalidInputException: The parameter value contains one or more characters that are)"
+      "message": "likely implemented (InvalidInputException: At least one of (registryName and schemaName) or schemaArn h)"
     },
     {
       "operation": "PutWorkflowRunProperties",
@@ -1019,13 +1021,13 @@
     },
     {
       "operation": "QuerySchemaVersionMetadata",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (InvalidInputException: At least one of (registryName and schemaName) or schemaArn h)"
     },
     {
       "operation": "RegisterConnectionType",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "RegisterSchemaVersion",
@@ -1034,8 +1036,8 @@
     },
     {
       "operation": "RemoveSchemaVersionMetadata",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (InvalidInputException: At least one of (registryName and schemaName) or schemaArn h)"
     },
     {
       "operation": "ResetJobBookmark",
@@ -1094,13 +1096,13 @@
     },
     {
       "operation": "StartExportLabelsTaskRun",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: ML Task probe-test-value not found.)"
     },
     {
       "operation": "StartImportLabelsTaskRun",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: ML Task probe-test-value not found.)"
     },
     {
       "operation": "StartJobRun",
@@ -1109,18 +1111,18 @@
     },
     {
       "operation": "StartMLEvaluationTaskRun",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: ML Task probe-test-value not found.)"
     },
     {
       "operation": "StartMLLabelingSetGenerationTaskRun",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: ML Task probe-test-value not found.)"
     },
     {
       "operation": "StartMaterializedViewRefreshTaskRun",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Database probe-test-value not found.)"
     },
     {
       "operation": "StartTrigger",
@@ -1154,8 +1156,8 @@
     },
     {
       "operation": "StopMaterializedViewRefreshTaskRun",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StopSession",
@@ -1179,8 +1181,8 @@
     },
     {
       "operation": "TestConnection",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UntagResource",
@@ -1200,7 +1202,7 @@
     {
       "operation": "UpdateClassifier",
       "status": "working",
-      "message": "likely implemented (InvalidInputException: No classifier provided)"
+      "message": "likely implemented (InvalidInputException: One of the classifier types is required.)"
     },
     {
       "operation": "UpdateColumnStatisticsForPartition",
@@ -1215,7 +1217,7 @@
     {
       "operation": "UpdateColumnStatisticsTaskSettings",
       "status": "working",
-      "message": "likely implemented (EntityNotFoundException: ColumnStatisticsTaskSettings for probe-test-value/probe-test)"
+      "message": "likely implemented (EntityNotFoundException: ColumnStatisticsTaskSettings for probe-test-value:probe-test)"
     },
     {
       "operation": "UpdateConnection",
@@ -1235,7 +1237,7 @@
     {
       "operation": "UpdateDataQualityRuleset",
       "status": "working",
-      "message": "likely implemented (EntityNotFoundException: DataQualityRuleset probe-test-value not found.)"
+      "message": "likely implemented (EntityNotFoundException: Ruleset probe-test-value not found.)"
     },
     {
       "operation": "UpdateDatabase",
@@ -1249,8 +1251,8 @@
     },
     {
       "operation": "UpdateGlueIdentityCenterConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Glue Identity Center configuration not found.)"
     },
     {
       "operation": "UpdateIntegrationResourceProperty",
@@ -1269,13 +1271,13 @@
     },
     {
       "operation": "UpdateJobFromSourceControl",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateMLTransform",
       "status": "working",
-      "message": "likely implemented (EntityNotFoundException: MLTransform probe-test-value not found.)"
+      "message": "likely implemented (EntityNotFoundException: ML Task probe-test-value not found.)"
     },
     {
       "operation": "UpdatePartition",
@@ -1284,8 +1286,8 @@
     },
     {
       "operation": "UpdateRegistry",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'default-registry')"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Registry is not found. RegistryName: default-registry)"
     },
     {
       "operation": "UpdateSchema",
@@ -1294,8 +1296,8 @@
     },
     {
       "operation": "UpdateSourceControlFromJob",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateTable",
@@ -1304,8 +1306,8 @@
     },
     {
       "operation": "UpdateTableOptimizer",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Table optimizer not found for CatalogId: probe-test-value, D)"
     },
     {
       "operation": "UpdateTrigger",

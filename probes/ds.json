@@ -1,10 +1,12 @@
 {
   "service": "ds",
+  "generated_at": "2026-10-20T05:27:38.715006+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 72,
+    "working": 75,
     "needs_params": 1,
-    "not_implemented": 5,
-    "500_error": 2
+    "not_implemented": 4,
+    "500_error": 0
   },
   "operations": [
     {
@@ -34,8 +36,8 @@
     },
     {
       "operation": "ConnectDirectory",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'CustomerDnsIps')"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "CreateAlias",
@@ -354,8 +356,8 @@
     },
     {
       "operation": "StartADAssessment",
-      "status": "500_error",
-      "message": "server crash (InternalError: expected string or bytes-like object, got 'NoneType')"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "StartSchemaExtension",
@@ -404,8 +406,8 @@
     },
     {
       "operation": "VerifyTrust",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityDoesNotExistException: Trust probe-test-value does not exist)"
     }
   ]
 }

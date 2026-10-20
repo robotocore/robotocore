@@ -1,9 +1,11 @@
 {
   "service": "kinesisvideo",
+  "generated_at": "2026-10-20T06:49:44.658736+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 13,
+    "working": 21,
     "needs_params": 3,
-    "not_implemented": 16,
+    "not_implemented": 8,
     "500_error": 0
   },
   "operations": [
@@ -39,23 +41,23 @@
     },
     {
       "operation": "DescribeImageGenerationConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeMappedResourceConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeMediaStorageConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeNotificationConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeSignalingChannel",
@@ -69,8 +71,8 @@
     },
     {
       "operation": "DescribeStreamStorageConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetDataEndpoint",
@@ -79,8 +81,8 @@
     },
     {
       "operation": "GetSignalingChannelEndpoint",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListEdgeAgentConfigurations",
@@ -104,8 +106,8 @@
     },
     {
       "operation": "ListTagsForStream",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "StartEdgeConfigurationUpdate",
@@ -134,8 +136,8 @@
     },
     {
       "operation": "UpdateDataRetention",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateImageGenerationConfiguration",

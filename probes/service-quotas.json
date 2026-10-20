@@ -1,0 +1,143 @@
+{
+  "service": "service-quotas",
+  "generated_at": "2026-10-20T08:08:28.700805+00:00",
+  "endpoint": "http://localhost:4599",
+  "counts": {
+    "working": 2,
+    "needs_params": 3,
+    "not_implemented": 21,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AssociateServiceQuotaTemplate",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateSupportCase",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteServiceQuotaIncreaseRequestFromTemplate",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisassociateServiceQuotaTemplate",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetAWSDefaultServiceQuota",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetAssociationForServiceQuotaTemplate",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetAutoManagementConfiguration",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetQuotaUtilizationReport",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetRequestedServiceQuotaChange",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetServiceQuota",
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )"
+    },
+    {
+      "operation": "GetServiceQuotaIncreaseRequestFromTemplate",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListAWSDefaultServiceQuotas",
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )"
+    },
+    {
+      "operation": "ListRequestedServiceQuotaChangeHistory",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListRequestedServiceQuotaChangeHistoryByQuota",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListServiceQuotaIncreaseRequestsInTemplate",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListServiceQuotas",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListServices",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PutServiceQuotaIncreaseRequestIntoTemplate",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "RequestServiceQuotaIncrease",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "StartAutoManagement",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartQuotaUtilizationReport",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StopAutoManagement",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateAutoManagement",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

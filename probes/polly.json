@@ -1,10 +1,12 @@
 {
   "service": "polly",
+  "generated_at": "2026-10-20T08:07:46.088624+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
     "working": 6,
     "needs_params": 0,
     "not_implemented": 3,
-    "500_error": 0
+    "500_error": 1
   },
   "operations": [
     {
@@ -41,6 +43,11 @@
       "operation": "PutLexicon",
       "status": "working",
       "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "StartSpeechSynthesisStream",
+      "status": "500_error",
+      "message": "exception: 'Polly' object has no attribute 'start_speech_synthesis_stre"
     },
     {
       "operation": "StartSpeechSynthesisTask",

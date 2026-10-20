@@ -1,10 +1,12 @@
 {
   "service": "cloudformation",
+  "generated_at": "2026-10-20T05:27:07.367163+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 82,
+    "working": 84,
     "needs_params": 1,
-    "not_implemented": 5,
-    "500_error": 1
+    "not_implemented": 4,
+    "500_error": 0
   },
   "operations": [
     {
@@ -24,8 +26,8 @@
     },
     {
       "operation": "CancelUpdateStack",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "ContinueUpdateRollback",
@@ -134,8 +136,8 @@
     },
     {
       "operation": "DescribeResourceScan",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "DescribeStackDriftDetectionStatus",
@@ -150,12 +152,12 @@
     {
       "operation": "DescribeStackInstance",
       "status": "working",
-      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
+      "message": "likely implemented (StackInstanceNotFoundException: StackInstance probe-test-value/probe-test-value not found)"
     },
     {
       "operation": "DescribeStackRefactor",
-      "status": "working",
-      "message": "OK"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "DescribeStackResource",
@@ -249,8 +251,8 @@
     },
     {
       "operation": "GetTemplateSummary",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'read')"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "ImportStacksToStackSet",
@@ -305,7 +307,7 @@
     {
       "operation": "ListStackInstances",
       "status": "working",
-      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
+      "message": "OK"
     },
     {
       "operation": "ListStackRefactorActions",
@@ -330,12 +332,12 @@
     {
       "operation": "ListStackSetOperationResults",
       "status": "working",
-      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
+      "message": "OK"
     },
     {
       "operation": "ListStackSetOperations",
       "status": "working",
-      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
+      "message": "OK"
     },
     {
       "operation": "ListStackSets",

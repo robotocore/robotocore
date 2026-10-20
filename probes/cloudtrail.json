@@ -1,10 +1,12 @@
 {
   "service": "cloudtrail",
+  "generated_at": "2026-10-20T05:27:11.540967+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 30,
+    "working": 46,
     "needs_params": 7,
-    "not_implemented": 19,
-    "500_error": 4
+    "not_implemented": 7,
+    "500_error": 0
   },
   "operations": [
     {
@@ -24,8 +26,8 @@
     },
     {
       "operation": "CreateDashboard",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateEventDataStore",
@@ -44,8 +46,8 @@
     },
     {
       "operation": "DeleteDashboard",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteEventDataStore",
@@ -54,8 +56,8 @@
     },
     {
       "operation": "DeleteResourcePolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteTrail",
@@ -70,7 +72,7 @@
     {
       "operation": "DescribeQuery",
       "status": "working",
-      "message": "likely implemented (QueryIdNotFoundException: The query ID None was not found.)"
+      "message": "likely implemented (QueryIdNotFoundException: The query ID  was not found.)"
     },
     {
       "operation": "DescribeTrails",
@@ -124,8 +126,8 @@
     },
     {
       "operation": "GetInsightSelectors",
-      "status": "500_error",
-      "message": "server crash (InternalError: object of type 'NoneType' has no len())"
+      "status": "not_implemented",
+      "message": "not implemented (TrailNotFoundException)"
     },
     {
       "operation": "GetQueryResults",
@@ -154,8 +156,8 @@
     },
     {
       "operation": "ListDashboards",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListEventDataStores",
@@ -174,18 +176,18 @@
     },
     {
       "operation": "ListInsightsData",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListInsightsMetricData",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListPublicKeys",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListQueries",
@@ -204,13 +206,13 @@
     },
     {
       "operation": "LookupEvents",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutEventConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutEventSelectors",
@@ -219,8 +221,8 @@
     },
     {
       "operation": "PutInsightSelectors",
-      "status": "500_error",
-      "message": "server crash (InternalError: object of type 'NoneType' has no len())"
+      "status": "not_implemented",
+      "message": "not implemented (TrailNotFoundException)"
     },
     {
       "operation": "PutResourcePolicy",
@@ -244,18 +246,18 @@
     },
     {
       "operation": "SearchSampleQueries",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartDashboardRefresh",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "StartEventDataStoreIngestion",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EventDataStoreNotFoundException: The event data store probe-test-value was not found.)"
     },
     {
       "operation": "StartImport",
@@ -264,8 +266,8 @@
     },
     {
       "operation": "StartLogging",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartQuery",
@@ -274,8 +276,8 @@
     },
     {
       "operation": "StopEventDataStoreIngestion",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EventDataStoreNotFoundException: The event data store probe-test-value was not found.)"
     },
     {
       "operation": "StopImport",
@@ -284,8 +286,8 @@
     },
     {
       "operation": "StopLogging",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateChannel",
@@ -294,8 +296,8 @@
     },
     {
       "operation": "UpdateDashboard",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateEventDataStore",

@@ -1,0 +1,418 @@
+{
+  "service": "macie2",
+  "generated_at": "2026-10-20T06:49:50.188434+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 81,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AcceptInvitation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchGetCustomDataIdentifiers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchUpdateAutomatedDiscoveryAccounts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateAllowList",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateClassificationJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateCustomDataIdentifier",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateFindingsFilter",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateInvitations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateMember",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateSampleFindings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeclineInvitations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAllowList",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteCustomDataIdentifier",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteFindingsFilter",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteInvitations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteMember",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeBuckets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeClassificationJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeOrganizationConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisableMacie",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisableOrganizationAdminAccount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateFromAdministratorAccount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateFromMasterAccount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisassociateMember",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "EnableMacie",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EnableOrganizationAdminAccount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAdministratorAccount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAllowList",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetAutomatedDiscoveryConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetBucketStatistics",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetClassificationExportConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetClassificationScope",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetCustomDataIdentifier",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetFindingStatistics",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetFindings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetFindingsFilter",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetFindingsPublicationConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetInvitationsCount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetMacieSession",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetMasterAccount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetMember",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetResourceProfile",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetRevealConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSensitiveDataOccurrences",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSensitiveDataOccurrencesAvailability",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSensitivityInspectionTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetUsageStatistics",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetUsageTotals",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAllowLists",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAutomatedDiscoveryAccounts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListClassificationJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListClassificationScopes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCustomDataIdentifiers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFindings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFindingsFilters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListInvitations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListManagedDataIdentifiers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMembers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListOrganizationAdminAccounts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResourceProfileArtifacts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResourceProfileDetections",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSensitivityInspectionTemplates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutClassificationExportConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutFindingsPublicationConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SearchResources",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TestCustomDataIdentifier",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateAllowList",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateAutomatedDiscoveryConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateClassificationJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateClassificationScope",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateFindingsFilter",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateMacieSession",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateMemberSession",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateOrganizationConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateResourceProfile",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateResourceProfileDetections",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateRevealConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateSensitivityInspectionTemplate",
+      "status": "working",
+      "message": "OK"
+    }
+  ]
+}

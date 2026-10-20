@@ -1,10 +1,12 @@
 {
   "service": "s3tables",
+  "generated_at": "2026-10-20T08:08:10.056707+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
-    "working": 43,
+    "working": 45,
     "needs_params": 3,
     "not_implemented": 0,
-    "500_error": 2
+    "500_error": 0
   },
   "operations": [
     {
@@ -69,8 +71,8 @@
     },
     {
       "operation": "GetTable",
-      "status": "500_error",
-      "message": "server crash (InternalError: argument of type 'NoneType' is not iterable)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "GetTableBucket",
@@ -219,8 +221,8 @@
     },
     {
       "operation": "PutTableRecordExpirationConfiguration",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'tableArn')"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "PutTableReplication",

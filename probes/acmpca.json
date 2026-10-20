@@ -1,0 +1,128 @@
+{
+  "service": "acmpca",
+  "generated_at": "2026-10-20T08:11:11.463986+00:00",
+  "endpoint": "http://localhost:4599",
+  "counts": {
+    "working": 9,
+    "needs_params": 4,
+    "not_implemented": 10,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "CreateCertificateAuthority",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateCertificateAuthorityAuditReport",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePermission",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "DeleteCertificateAuthority",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeletePermission",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeletePolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeCertificateAuthority",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeCertificateAuthorityAuditReport",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetCertificate",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetCertificateAuthorityCertificate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetCertificateAuthorityCsr",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ImportCertificateAuthorityCertificate",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "IssueCertificate",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListCertificateAuthorities",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPermissions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutPolicy",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RestoreCertificateAuthority",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RevokeCertificate",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "TagCertificateAuthority",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UntagCertificateAuthority",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateCertificateAuthority",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    }
+  ]
+}

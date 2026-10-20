@@ -1,9 +1,11 @@
 {
   "service": "acm",
+  "generated_at": "2026-10-20T05:26:51.727598+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 12,
+    "working": 14,
     "needs_params": 2,
-    "not_implemented": 2,
+    "not_implemented": 0,
     "500_error": 0
   },
   "operations": [
@@ -40,7 +42,7 @@
     {
       "operation": "ImportCertificate",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "ListCertificates",
@@ -64,8 +66,8 @@
     },
     {
       "operation": "RenewCertificate",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "RequestCertificate",
@@ -79,13 +81,13 @@
     },
     {
       "operation": "RevokeCertificate",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateCertificateOptions",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     }
   ]
 }

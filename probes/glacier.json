@@ -1,5 +1,7 @@
 {
   "service": "glacier",
+  "generated_at": "2026-10-20T06:49:21.472042+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 33,
     "needs_params": 0,
@@ -15,7 +17,7 @@
     {
       "operation": "AbortVaultLock",
       "status": "working",
-      "message": "likely implemented (VaultNotFound: Vault not found)"
+      "message": "OK"
     },
     {
       "operation": "AddTagsToVault",
@@ -50,12 +52,12 @@
     {
       "operation": "DeleteVaultAccessPolicy",
       "status": "working",
-      "message": "likely implemented (VaultNotFound: Vault not found)"
+      "message": "OK"
     },
     {
       "operation": "DeleteVaultNotifications",
       "status": "working",
-      "message": "likely implemented (VaultNotFound: Vault not found)"
+      "message": "OK"
     },
     {
       "operation": "DescribeJob",
@@ -80,7 +82,7 @@
     {
       "operation": "GetVaultAccessPolicy",
       "status": "working",
-      "message": "likely implemented (VaultNotFound: Vault not found)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetVaultLock",
@@ -90,7 +92,7 @@
     {
       "operation": "GetVaultNotifications",
       "status": "working",
-      "message": "likely implemented (VaultNotFound: Vault not found)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "InitiateJob",

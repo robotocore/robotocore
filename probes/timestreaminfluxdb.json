@@ -1,0 +1,108 @@
+{
+  "service": "timestreaminfluxdb",
+  "generated_at": "2026-10-20T08:10:51.867554+00:00",
+  "endpoint": "http://localhost:4599",
+  "counts": {
+    "working": 7,
+    "needs_params": 3,
+    "not_implemented": 8,
+    "500_error": 1
+  },
+  "operations": [
+    {
+      "operation": "CreateDbCluster",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateDbInstance",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateDbParameterGroup",
+      "status": "500_error",
+      "message": "exception: Invalid service response: Parameters must have one and only "
+    },
+    {
+      "operation": "DeleteDbCluster",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteDbInstance",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetDbCluster",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetDbInstance",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetDbParameterGroup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListDbClusters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDbInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDbInstancesForCluster",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListDbParameterGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RebootDbCluster",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RebootDbInstance",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "UpdateDbCluster",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateDbInstance",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

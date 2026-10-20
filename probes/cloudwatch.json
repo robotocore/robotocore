@@ -1,16 +1,18 @@
 {
   "service": "cloudwatch",
+  "generated_at": "2026-10-20T05:27:12.040352+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 31,
+    "working": 43,
     "needs_params": 0,
-    "not_implemented": 12,
+    "not_implemented": 0,
     "500_error": 0
   },
   "operations": [
     {
       "operation": "DeleteAlarmMuteRule",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteAlarms",
@@ -34,13 +36,13 @@
     },
     {
       "operation": "DeleteMetricStream",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeAlarmContributors",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeAlarmHistory",
@@ -89,8 +91,8 @@
     },
     {
       "operation": "GetAlarmMuteRule",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetDashboard",
@@ -99,8 +101,8 @@
     },
     {
       "operation": "GetInsightRuleReport",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetMetricData",
@@ -110,17 +112,17 @@
     {
       "operation": "GetMetricStatistics",
       "status": "working",
-      "message": "likely implemented (InvalidParameterCombination: Must specify either Statistics or ExtendedStatistics)"
+      "message": "OK"
     },
     {
       "operation": "GetMetricStream",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetMetricWidgetImage",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListAlarmMuteRules",
@@ -154,8 +156,8 @@
     },
     {
       "operation": "PutAlarmMuteRule",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutAnomalyDetector",
@@ -165,12 +167,12 @@
     {
       "operation": "PutCompositeAlarm",
       "status": "working",
-      "message": "implemented (InvalidParameterValue)"
+      "message": "OK"
     },
     {
       "operation": "PutDashboard",
       "status": "working",
-      "message": "likely implemented (InvalidParameterInput: Invalid JSON in DashboardBody: Expecting value: line 1 colum)"
+      "message": "implemented (InvalidParameterValue)"
     },
     {
       "operation": "PutInsightRule",
@@ -179,8 +181,8 @@
     },
     {
       "operation": "PutManagedInsightRules",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutMetricAlarm",
@@ -194,8 +196,8 @@
     },
     {
       "operation": "PutMetricStream",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "SetAlarmState",
@@ -204,23 +206,23 @@
     },
     {
       "operation": "StartMetricStreams",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StopMetricStreams",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "TagResource",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "UntagResource",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     }
   ]
 }

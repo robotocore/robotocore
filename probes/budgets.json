@@ -1,5 +1,7 @@
 {
   "service": "budgets",
+  "generated_at": "2026-10-20T05:27:04.199015+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 13,
     "needs_params": 13,
@@ -10,7 +12,7 @@
     {
       "operation": "CreateBudget",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "OK"
     },
     {
       "operation": "CreateBudgetAction",
@@ -30,7 +32,7 @@
     {
       "operation": "DeleteBudget",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteBudgetAction",
@@ -70,7 +72,7 @@
     {
       "operation": "DescribeBudgetActionsForBudget",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeBudgetNotificationsForAccount",
@@ -80,7 +82,7 @@
     {
       "operation": "DescribeBudgetPerformanceHistory",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeBudgets",

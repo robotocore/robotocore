@@ -1,9 +1,11 @@
 {
   "service": "networkmanager",
+  "generated_at": "2026-10-20T08:07:39.132725+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
-    "working": 93,
+    "working": 95,
     "needs_params": 0,
-    "not_implemented": 2,
+    "not_implemented": 0,
     "500_error": 0
   },
   "operations": [
@@ -129,8 +131,8 @@
     },
     {
       "operation": "DeleteCoreNetworkPrefixListAssociation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DeleteDevice",
@@ -414,8 +416,8 @@
     },
     {
       "operation": "RestoreCoreNetworkPolicyVersion",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "StartOrganizationServiceAccessUpdate",

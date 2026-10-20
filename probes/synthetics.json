@@ -1,9 +1,11 @@
 {
   "service": "synthetics",
+  "generated_at": "2026-10-20T08:08:39.592404+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
-    "working": 20,
+    "working": 21,
     "needs_params": 1,
-    "not_implemented": 1,
+    "not_implemented": 0,
     "500_error": 0
   },
   "operations": [
@@ -69,8 +71,8 @@
     },
     {
       "operation": "ListAssociatedGroups",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListGroupResources",

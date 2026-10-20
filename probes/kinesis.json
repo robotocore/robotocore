@@ -1,10 +1,12 @@
 {
   "service": "kinesis",
+  "generated_at": "2026-10-20T06:49:43.860210+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 27,
+    "working": 33,
     "needs_params": 6,
-    "not_implemented": 5,
-    "500_error": 1
+    "not_implemented": 0,
+    "500_error": 0
   },
   "operations": [
     {
@@ -109,8 +111,8 @@
     },
     {
       "operation": "ListTagsForResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListTagsForStream",
@@ -164,13 +166,13 @@
     },
     {
       "operation": "SubscribeToShard",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "TagResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UntagResource",
@@ -179,8 +181,8 @@
     },
     {
       "operation": "UpdateAccountSettings",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateMaxRecordSize",
@@ -194,13 +196,13 @@
     },
     {
       "operation": "UpdateStreamMode",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'stream_mode' and no __di)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateStreamWarmThroughput",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     }
   ]
 }

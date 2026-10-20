@@ -1,10 +1,12 @@
 {
   "service": "elb",
+  "generated_at": "2026-10-20T06:49:16.808295+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 7,
+    "working": 16,
     "needs_params": 4,
-    "not_implemented": 2,
-    "500_error": 16
+    "not_implemented": 0,
+    "500_error": 9
   },
   "operations": [
     {
@@ -15,7 +17,7 @@
     {
       "operation": "ApplySecurityGroupsToLoadBalancer",
       "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'security_groups' and no )"
+      "message": "server crash (InternalError: 'NoneType' object has no attribute 'security_groups')"
     },
     {
       "operation": "AttachLoadBalancerToSubnets",
@@ -29,13 +31,13 @@
     },
     {
       "operation": "CreateAppCookieStickinessPolicy",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'policies')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateLBCookieStickinessPolicy",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'policies')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateLoadBalancer",
@@ -59,23 +61,23 @@
     },
     {
       "operation": "DeleteLoadBalancerListeners",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'listeners' and no __dict)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteLoadBalancerPolicy",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'policies')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeregisterInstancesFromLoadBalancer",
       "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'instance_sparse_ids')"
+      "message": "server crash (InternalError: 'NoneType' object has no attribute 'instance_ids')"
     },
     {
       "operation": "DescribeAccountLimits",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeInstanceHealth",
@@ -89,13 +91,13 @@
     },
     {
       "operation": "DescribeLoadBalancerPolicies",
-      "status": "working",
-      "message": "likely implemented (LoadBalancerNotFound: The specified load balancer does not exist: None)"
+      "status": "500_error",
+      "message": "server crash (InternalError: 'NoneType' object has no attribute 'policies')"
     },
     {
       "operation": "DescribeLoadBalancerPolicyTypes",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeLoadBalancers",
@@ -114,23 +116,23 @@
     },
     {
       "operation": "DisableAvailabilityZonesForLoadBalancer",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'availability_zones')"
+      "status": "working",
+      "message": "likely implemented (LoadBalancerNotFound: The specified load balancer does not exist: probe-test-value)"
     },
     {
       "operation": "EnableAvailabilityZonesForLoadBalancer",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'availability_zones')"
+      "status": "working",
+      "message": "likely implemented (LoadBalancerNotFound: The specified load balancer does not exist: probe-test-value)"
     },
     {
       "operation": "ModifyLoadBalancerAttributes",
       "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'name')"
+      "message": "server crash (InternalError: 'NoneType' object has no attribute 'attributes')"
     },
     {
       "operation": "RegisterInstancesWithLoadBalancer",
       "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'instance_sparse_ids')"
+      "message": "server crash (InternalError: 'NoneType' object has no attribute 'instance_ids')"
     },
     {
       "operation": "RemoveTags",
@@ -144,13 +146,13 @@
     },
     {
       "operation": "SetLoadBalancerPoliciesForBackendServer",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'backends')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "SetLoadBalancerPoliciesOfListener",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'listeners')"
+      "status": "working",
+      "message": "OK"
     }
   ]
 }

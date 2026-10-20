@@ -1,9 +1,11 @@
 {
   "service": "quicksight",
+  "generated_at": "2026-10-20T08:07:53.784445+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
-    "working": 210,
+    "working": 214,
     "needs_params": 15,
-    "not_implemented": 4,
+    "not_implemented": 0,
     "500_error": 0
   },
   "operations": [
@@ -99,8 +101,8 @@
     },
     {
       "operation": "CreateNamespace",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (AccessDeniedException)"
     },
     {
       "operation": "CreateRefreshSchedule",
@@ -404,8 +406,8 @@
     },
     {
       "operation": "DescribeDashboardSnapshotJobResult",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeDashboardsQAConfiguration",
@@ -454,8 +456,8 @@
     },
     {
       "operation": "DescribeFolderResolvedPermissions",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeGroup",
@@ -689,8 +691,8 @@
     },
     {
       "operation": "ListFoldersForResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListGroupMemberships",

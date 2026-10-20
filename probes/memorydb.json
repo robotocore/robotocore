@@ -1,5 +1,7 @@
 {
   "service": "memorydb",
+  "generated_at": "2026-10-20T08:13:39.788432+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
     "working": 28,
     "needs_params": 0,
@@ -45,7 +47,7 @@
     {
       "operation": "CreateSubnetGroup",
       "status": "working",
-      "message": "likely implemented (InvalidSubnetError: Subnet [] not found.)"
+      "message": "likely implemented (InvalidSubnetError: Subnet [''] not found.)"
     },
     {
       "operation": "CreateUser",

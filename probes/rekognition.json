@@ -1,9 +1,11 @@
 {
   "service": "rekognition",
+  "generated_at": "2026-10-20T08:08:01.611691+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
-    "working": 55,
+    "working": 61,
     "needs_params": 6,
-    "not_implemented": 14,
+    "not_implemented": 8,
     "500_error": 0
   },
   "operations": [
@@ -54,8 +56,8 @@
     },
     {
       "operation": "CreateUser",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteCollection",
@@ -94,8 +96,8 @@
     },
     {
       "operation": "DeleteUser",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeCollection",
@@ -264,8 +266,8 @@
     },
     {
       "operation": "ListUsers",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutProjectPolicy",
@@ -289,13 +291,13 @@
     },
     {
       "operation": "SearchUsers",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "SearchUsersByImage",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "StartCelebrityRecognition",
@@ -379,8 +381,8 @@
     },
     {
       "operation": "UpdateStreamProcessor",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     }
   ]
 }

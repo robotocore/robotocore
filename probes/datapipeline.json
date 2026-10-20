@@ -1,21 +1,23 @@
 {
   "service": "datapipeline",
+  "generated_at": "2026-10-20T05:27:32.829508+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 8,
+    "working": 19,
     "needs_params": 0,
     "not_implemented": 0,
-    "500_error": 11
+    "500_error": 0
   },
   "operations": [
     {
       "operation": "ActivatePipeline",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Missing Pipeline probe-test-value)"
     },
     {
       "operation": "AddTags",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Missing Pipeline probe-test-value)"
     },
     {
       "operation": "CreatePipeline",
@@ -24,8 +26,8 @@
     },
     {
       "operation": "DeactivatePipeline",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Missing Pipeline probe-test-value)"
     },
     {
       "operation": "DeletePipeline",
@@ -34,8 +36,8 @@
     },
     {
       "operation": "DescribeObjects",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Missing Pipeline probe-test-value)"
     },
     {
       "operation": "DescribePipelines",
@@ -44,13 +46,13 @@
     },
     {
       "operation": "EvaluateExpression",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Missing Pipeline probe-test-value)"
     },
     {
       "operation": "GetPipelineDefinition",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Missing Pipeline probe-test-value)"
     },
     {
       "operation": "ListPipelines",
@@ -64,18 +66,18 @@
     },
     {
       "operation": "PutPipelineDefinition",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Missing Pipeline probe-test-value)"
     },
     {
       "operation": "QueryObjects",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Missing Pipeline probe-test-value)"
     },
     {
       "operation": "RemoveTags",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Missing Pipeline probe-test-value)"
     },
     {
       "operation": "ReportTaskProgress",
@@ -89,8 +91,8 @@
     },
     {
       "operation": "SetStatus",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Missing Pipeline probe-test-value)"
     },
     {
       "operation": "SetTaskStatus",
@@ -99,8 +101,8 @@
     },
     {
       "operation": "ValidatePipelineDefinition",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Missing Pipeline probe-test-value)"
     }
   ]
 }

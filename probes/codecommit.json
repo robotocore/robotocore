@@ -1,0 +1,408 @@
+{
+  "service": "codecommit",
+  "generated_at": "2026-10-20T05:27:13.856794+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 79,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "AssociateApprovalRuleTemplateWithRepository",
+      "status": "working",
+      "message": "likely implemented (ApprovalRuleTemplateDoesNotExistException: Approval rule template named probe-test-value does not exist)"
+    },
+    {
+      "operation": "BatchAssociateApprovalRuleTemplateWithRepositories",
+      "status": "working",
+      "message": "likely implemented (ApprovalRuleTemplateDoesNotExistException: Approval rule template named probe-test-value does not exist)"
+    },
+    {
+      "operation": "BatchDescribeMergeConflicts",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "BatchDisassociateApprovalRuleTemplateFromRepositories",
+      "status": "working",
+      "message": "likely implemented (ApprovalRuleTemplateDoesNotExistException: Approval rule template named probe-test-value does not exist)"
+    },
+    {
+      "operation": "BatchGetCommits",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "BatchGetRepositories",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateApprovalRuleTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateBranch",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "CreateCommit",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "CreatePullRequest",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePullRequestApprovalRule",
+      "status": "working",
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+    },
+    {
+      "operation": "CreateRepository",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateUnreferencedMergeCommit",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteApprovalRuleTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteBranch",
+      "status": "working",
+      "message": "likely implemented (BranchDoesNotExistException: Branch named probe-test-value does not exist)"
+    },
+    {
+      "operation": "DeleteCommentContent",
+      "status": "working",
+      "message": "likely implemented (CommentDoesNotExistException: Comment probe-test-value does not exist)"
+    },
+    {
+      "operation": "DeleteFile",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeletePullRequestApprovalRule",
+      "status": "working",
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+    },
+    {
+      "operation": "DeleteRepository",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeMergeConflicts",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "DescribePullRequestEvents",
+      "status": "working",
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+    },
+    {
+      "operation": "DisassociateApprovalRuleTemplateFromRepository",
+      "status": "working",
+      "message": "likely implemented (ApprovalRuleTemplateDoesNotExistException: Approval rule template named probe-test-value does not exist)"
+    },
+    {
+      "operation": "EvaluatePullRequestApprovalRules",
+      "status": "working",
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+    },
+    {
+      "operation": "GetApprovalRuleTemplate",
+      "status": "working",
+      "message": "likely implemented (ApprovalRuleTemplateDoesNotExistException: Approval rule template named probe-test-value does not exist)"
+    },
+    {
+      "operation": "GetBlob",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "GetBranch",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException:  does not exist)"
+    },
+    {
+      "operation": "GetComment",
+      "status": "working",
+      "message": "likely implemented (CommentDoesNotExistException: Comment probe-test-value does not exist)"
+    },
+    {
+      "operation": "GetCommentReactions",
+      "status": "working",
+      "message": "likely implemented (CommentDoesNotExistException: Comment probe-test-value does not exist)"
+    },
+    {
+      "operation": "GetCommentsForComparedCommit",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "GetCommentsForPullRequest",
+      "status": "working",
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+    },
+    {
+      "operation": "GetCommit",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "GetDifferences",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "GetFile",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "GetFolder",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "GetMergeCommit",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "GetMergeConflicts",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "GetMergeOptions",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "GetPullRequest",
+      "status": "working",
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+    },
+    {
+      "operation": "GetPullRequestApprovalStates",
+      "status": "working",
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+    },
+    {
+      "operation": "GetPullRequestOverrideState",
+      "status": "working",
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+    },
+    {
+      "operation": "GetRepository",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "GetRepositoryTriggers",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "ListApprovalRuleTemplates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAssociatedApprovalRuleTemplatesForRepository",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "ListBranches",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "ListFileCommitHistory",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "ListPullRequests",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "ListRepositories",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListRepositoriesForApprovalRuleTemplate",
+      "status": "working",
+      "message": "likely implemented (ApprovalRuleTemplateDoesNotExistException: Approval rule template named probe-test-value does not exist)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "MergeBranchesByFastForward",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "MergeBranchesBySquash",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "MergeBranchesByThreeWay",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "MergePullRequestByFastForward",
+      "status": "working",
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+    },
+    {
+      "operation": "MergePullRequestBySquash",
+      "status": "working",
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+    },
+    {
+      "operation": "MergePullRequestByThreeWay",
+      "status": "working",
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+    },
+    {
+      "operation": "OverridePullRequestApprovalRules",
+      "status": "working",
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+    },
+    {
+      "operation": "PostCommentForComparedCommit",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "PostCommentForPullRequest",
+      "status": "working",
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+    },
+    {
+      "operation": "PostCommentReply",
+      "status": "working",
+      "message": "likely implemented (CommentDoesNotExistException: Comment probe-test-value does not exist)"
+    },
+    {
+      "operation": "PutCommentReaction",
+      "status": "working",
+      "message": "likely implemented (CommentDoesNotExistException: Comment probe-test-value does not exist)"
+    },
+    {
+      "operation": "PutFile",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "PutRepositoryTriggers",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TestRepositoryTriggers",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateApprovalRuleTemplateContent",
+      "status": "working",
+      "message": "likely implemented (ApprovalRuleTemplateDoesNotExistException: Approval rule template named probe-test-value does not exist)"
+    },
+    {
+      "operation": "UpdateApprovalRuleTemplateDescription",
+      "status": "working",
+      "message": "likely implemented (ApprovalRuleTemplateDoesNotExistException: Approval rule template named probe-test-value does not exist)"
+    },
+    {
+      "operation": "UpdateApprovalRuleTemplateName",
+      "status": "working",
+      "message": "likely implemented (ApprovalRuleTemplateDoesNotExistException: Approval rule template named probe-test-value does not exist)"
+    },
+    {
+      "operation": "UpdateComment",
+      "status": "working",
+      "message": "likely implemented (CommentDoesNotExistException: Comment probe-test-value does not exist)"
+    },
+    {
+      "operation": "UpdateDefaultBranch",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "UpdatePullRequestApprovalRuleContent",
+      "status": "working",
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+    },
+    {
+      "operation": "UpdatePullRequestApprovalState",
+      "status": "working",
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+    },
+    {
+      "operation": "UpdatePullRequestDescription",
+      "status": "working",
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+    },
+    {
+      "operation": "UpdatePullRequestStatus",
+      "status": "working",
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+    },
+    {
+      "operation": "UpdatePullRequestTitle",
+      "status": "working",
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+    },
+    {
+      "operation": "UpdateRepositoryDescription",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "UpdateRepositoryEncryptionKey",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    },
+    {
+      "operation": "UpdateRepositoryName",
+      "status": "working",
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
+    }
+  ]
+}

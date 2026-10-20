@@ -1,10 +1,12 @@
 {
   "service": "sagemaker",
+  "generated_at": "2026-10-20T08:08:24.820460+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
-    "working": 351,
+    "working": 356,
     "needs_params": 21,
-    "not_implemented": 0,
-    "500_error": 6
+    "not_implemented": 3,
+    "500_error": 0
   },
   "operations": [
     {
@@ -14,13 +16,13 @@
     },
     {
       "operation": "AddTags",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'get')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "AssociateTrialComponent",
       "status": "working",
-      "message": "likely implemented (ResourceNotFound: Trial 'arn:aws:sagemaker:us-east-1:123456789012:experiment-t)"
+      "message": "OK"
     },
     {
       "operation": "AttachClusterNodeVolume",
@@ -89,8 +91,8 @@
     },
     {
       "operation": "CreateCluster",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object is not iterable)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateClusterSchedulerConfig",
@@ -105,7 +107,7 @@
     {
       "operation": "CreateCompilationJob",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "CreateComputeQuota",
@@ -150,7 +152,7 @@
     {
       "operation": "CreateEndpoint",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "CreateEndpointConfig",
@@ -265,7 +267,7 @@
     {
       "operation": "CreateModelPackage",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "CreateModelPackageGroup",
@@ -285,7 +287,7 @@
     {
       "operation": "CreateNotebookInstance",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "CreateNotebookInstanceLifecycleConfig",
@@ -354,8 +356,8 @@
     },
     {
       "operation": "CreateTrainingJob",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object does not support item assignment)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateTrainingPlan",
@@ -435,7 +437,7 @@
     {
       "operation": "DeleteCompilationJob",
       "status": "working",
-      "message": "likely implemented (ResourceNotFound: Could not find compilation job 'probe-test-value'.)"
+      "message": "OK"
     },
     {
       "operation": "DeleteComputeQuota",
@@ -450,7 +452,7 @@
     {
       "operation": "DeleteDataQualityJobDefinition",
       "status": "working",
-      "message": "likely implemented (ResourceNotFound: Job definition probe-test-value not found)"
+      "message": "OK"
     },
     {
       "operation": "DeleteDeviceFleet",
@@ -460,7 +462,7 @@
     {
       "operation": "DeleteDomain",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteEdgeDeploymentPlan",
@@ -475,12 +477,12 @@
     {
       "operation": "DeleteEndpoint",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteEndpointConfig",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteExperiment",
@@ -560,7 +562,7 @@
     {
       "operation": "DeleteModelBiasJobDefinition",
       "status": "working",
-      "message": "likely implemented (ResourceNotFound: Job definition probe-test-value not found)"
+      "message": "OK"
     },
     {
       "operation": "DeleteModelCard",
@@ -570,7 +572,7 @@
     {
       "operation": "DeleteModelExplainabilityJobDefinition",
       "status": "working",
-      "message": "likely implemented (ResourceNotFound: Could not find model explainability job definition with name)"
+      "message": "OK"
     },
     {
       "operation": "DeleteModelPackage",
@@ -590,7 +592,7 @@
     {
       "operation": "DeleteModelQualityJobDefinition",
       "status": "working",
-      "message": "likely implemented (ResourceNotFound: Could not find model quality job definition 'probe-test-valu)"
+      "message": "OK"
     },
     {
       "operation": "DeleteMonitoringSchedule",
@@ -600,7 +602,7 @@
     {
       "operation": "DeleteNotebookInstance",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteNotebookInstanceLifecycleConfig",
@@ -715,12 +717,12 @@
     {
       "operation": "DescribeAutoMLJobV2",
       "status": "working",
-      "message": "likely implemented (ResourceNotFound: Could not find AutoML job with name probe-test-value.)"
+      "message": "likely implemented (ResourceNotFound: Could not find AutoML job probe-test-value)"
     },
     {
       "operation": "DescribeCluster",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeClusterEvent",
@@ -730,7 +732,7 @@
     {
       "operation": "DescribeClusterNode",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeClusterSchedulerConfig",
@@ -745,7 +747,7 @@
     {
       "operation": "DescribeCompilationJob",
       "status": "working",
-      "message": "likely implemented (ResourceNotFound: Could not find compilation job 'probe-test-value'.)"
+      "message": "likely implemented (ResourceNotFound: Could not find compilation job probe-test-value)"
     },
     {
       "operation": "DescribeComputeQuota",
@@ -760,7 +762,7 @@
     {
       "operation": "DescribeDataQualityJobDefinition",
       "status": "working",
-      "message": "likely implemented (ResourceNotFound: Job definition probe-test-value not found)"
+      "message": "likely implemented (ResourceNotFound: Could not find data quality job definition with name 'probe-)"
     },
     {
       "operation": "DescribeDevice",
@@ -799,13 +801,13 @@
     },
     {
       "operation": "DescribeExperiment",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "DescribeFeatureGroup",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'arn:aws:sagemaker:us-east-1:123456789012:feature-group/prob)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "DescribeFeatureMetadata",
@@ -835,7 +837,7 @@
     {
       "operation": "DescribeHyperParameterTuningJob",
       "status": "working",
-      "message": "likely implemented (ResourceNotFound: Could not find hyper parameter tuning job 'probe-test-value')"
+      "message": "likely implemented (ResourceNotFound: Could not find hyper parameter tuning job probe-test-value)"
     },
     {
       "operation": "DescribeImage",
@@ -915,7 +917,7 @@
     {
       "operation": "DescribeModelPackageGroup",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "DescribeModelQualityJobDefinition",
@@ -965,7 +967,7 @@
     {
       "operation": "DescribeProcessingJob",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "DescribeProject",
@@ -1003,6 +1005,11 @@
       "message": "OK"
     },
     {
+      "operation": "DescribeTrainingPlanExtensionHistory",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
       "operation": "DescribeTransformJob",
       "status": "working",
       "message": "OK"
@@ -1025,7 +1032,7 @@
     {
       "operation": "DescribeWorkforce",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeWorkteam",
@@ -1051,6 +1058,11 @@
       "operation": "EnableSagemakerServicecatalogPortfolio",
       "status": "working",
       "message": "OK"
+    },
+    {
+      "operation": "ExtendTrainingPlan",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "GetDeviceFleetReport",
@@ -1140,7 +1152,7 @@
     {
       "operation": "ListClusterNodes",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "ListClusterSchedulerConfigs",
@@ -1364,8 +1376,8 @@
     },
     {
       "operation": "ListMonitoringAlerts",
-      "status": "working",
-      "message": "OK"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "ListMonitoringExecutions",
@@ -1405,12 +1417,12 @@
     {
       "operation": "ListPipelineExecutions",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "ListPipelineParametersForExecution",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "ListPipelineVersions",
@@ -1459,8 +1471,8 @@
     },
     {
       "operation": "ListTags",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'get')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListTrainingJobs",
@@ -1540,7 +1552,7 @@
     {
       "operation": "Search",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "SearchTrainingPlanOfferings",
@@ -1595,7 +1607,7 @@
     {
       "operation": "StopAutoMLJob",
       "status": "working",
-      "message": "likely implemented (ResourceNotFound: Could not find AutoML job with name probe-test-value.)"
+      "message": "likely implemented (ResourceNotFound: Could not find AutoML job probe-test-value)"
     },
     {
       "operation": "StopCompilationJob",
@@ -1645,7 +1657,7 @@
     {
       "operation": "StopNotebookInstance",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "StopOptimizationJob",
@@ -1845,7 +1857,7 @@
     {
       "operation": "UpdatePipeline",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "UpdatePipelineExecution",
@@ -1880,7 +1892,7 @@
     {
       "operation": "UpdateTrialComponent",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "UpdateUserProfile",
@@ -1890,7 +1902,7 @@
     {
       "operation": "UpdateWorkforce",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "UpdateWorkteam",

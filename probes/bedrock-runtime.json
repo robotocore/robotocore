@@ -1,0 +1,63 @@
+{
+  "service": "bedrock-runtime",
+  "generated_at": "2026-10-20T05:27:03.859936+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 0,
+    "needs_params": 2,
+    "not_implemented": 6,
+    "500_error": 2
+  },
+  "operations": [
+    {
+      "operation": "ApplyGuardrail",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "Converse",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ConverseStream",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CountTokens",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "GetAsyncInvoke",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "InvokeModel",
+      "status": "500_error",
+      "message": "server crash (InternalError: EOF while parsing a value at line 1 column 0)"
+    },
+    {
+      "operation": "InvokeModelWithBidirectionalStream",
+      "status": "500_error",
+      "message": "exception: 'BedrockRuntime' object has no attribute 'invoke_model_with_"
+    },
+    {
+      "operation": "InvokeModelWithResponseStream",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListAsyncInvokes",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartAsyncInvoke",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    }
+  ]
+}

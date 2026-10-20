@@ -1,0 +1,208 @@
+{
+  "service": "swf",
+  "generated_at": "2026-10-20T08:08:39.314871+00:00",
+  "endpoint": "http://localhost:4599",
+  "counts": {
+    "working": 13,
+    "needs_params": 0,
+    "not_implemented": 26,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "CountClosedWorkflowExecutions",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "CountOpenWorkflowExecutions",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "CountPendingActivityTasks",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "CountPendingDecisionTasks",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "DeleteActivityType",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "DeleteWorkflowType",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "DeprecateActivityType",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "DeprecateDomain",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "DeprecateWorkflowType",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "DescribeActivityType",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "DescribeDomain",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "DescribeWorkflowExecution",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "DescribeWorkflowType",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "GetWorkflowExecutionHistory",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "ListActivityTypes",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "ListClosedWorkflowExecutions",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "ListDomains",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListOpenWorkflowExecutions",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "ListWorkflowTypes",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "PollForActivityTask",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "PollForDecisionTask",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "RecordActivityTaskHeartbeat",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "RegisterActivityType",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "RegisterDomain",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RegisterWorkflowType",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RequestCancelWorkflowExecution",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "RespondActivityTaskCanceled",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "RespondActivityTaskCompleted",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "RespondActivityTaskFailed",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "RespondDecisionTaskCompleted",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "SignalWorkflowExecution",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "StartWorkflowExecution",
+      "status": "working",
+      "message": "likely implemented (DefaultUndefinedFault: executionStartToCloseTimeout)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "TerminateWorkflowExecution",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "UndeprecateActivityType",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    },
+    {
+      "operation": "UndeprecateDomain",
+      "status": "working",
+      "message": "likely implemented (DomainAlreadyExistsFault: probe-test-value)"
+    },
+    {
+      "operation": "UndeprecateWorkflowType",
+      "status": "working",
+      "message": "likely implemented (TypeAlreadyExistsFault: WorkflowType=[name=probe-test-value, version=probe-test-valu)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "not_implemented",
+      "message": "not implemented (UnknownResourceFault)"
+    }
+  ]
+}

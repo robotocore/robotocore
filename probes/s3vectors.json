@@ -1,5 +1,7 @@
 {
   "service": "s3vectors",
+  "generated_at": "2026-10-20T08:08:10.367852+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
     "working": 12,
     "needs_params": 4,
@@ -25,7 +27,7 @@
     {
       "operation": "DeleteVectorBucket",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DeleteVectorBucketPolicy",

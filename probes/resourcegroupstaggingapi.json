@@ -1,9 +1,11 @@
 {
   "service": "resourcegroupstaggingapi",
+  "generated_at": "2026-10-20T08:08:02.996377+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
-    "working": 6,
+    "working": 7,
     "needs_params": 2,
-    "not_implemented": 1,
+    "not_implemented": 0,
     "500_error": 0
   },
   "operations": [
@@ -39,8 +41,8 @@
     },
     {
       "operation": "StartReportCreation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "TagResources",

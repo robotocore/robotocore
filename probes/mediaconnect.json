@@ -1,10 +1,12 @@
 {
   "service": "mediaconnect",
+  "generated_at": "2026-10-20T06:49:51.696509+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 12,
+    "working": 13,
     "needs_params": 6,
     "not_implemented": 63,
-    "500_error": 1
+    "500_error": 0
   },
   "operations": [
     {
@@ -59,8 +61,8 @@
     },
     {
       "operation": "CreateFlow",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object is not iterable)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateGateway",

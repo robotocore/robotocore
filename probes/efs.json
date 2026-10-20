@@ -1,16 +1,18 @@
 {
   "service": "efs",
+  "generated_at": "2026-10-20T06:49:14.173129+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 22,
+    "working": 29,
     "needs_params": 2,
-    "not_implemented": 4,
-    "500_error": 3
+    "not_implemented": 0,
+    "500_error": 0
   },
   "operations": [
     {
       "operation": "CreateAccessPoint",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
     },
     {
       "operation": "CreateFileSystem",
@@ -20,17 +22,17 @@
     {
       "operation": "CreateMountTarget",
       "status": "working",
-      "message": "likely implemented (SubnetNotFound: The subnet ID 'probe-test-value' does not exist)"
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
     },
     {
       "operation": "CreateReplicationConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
     },
     {
       "operation": "CreateTags",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
     },
     {
       "operation": "DeleteAccessPoint",
@@ -54,8 +56,8 @@
     },
     {
       "operation": "DeleteReplicationConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
     },
     {
       "operation": "DeleteTags",
@@ -74,13 +76,13 @@
     },
     {
       "operation": "DescribeBackupPolicy",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
     },
     {
       "operation": "DescribeFileSystemPolicy",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
     },
     {
       "operation": "DescribeFileSystems",
@@ -134,8 +136,8 @@
     },
     {
       "operation": "PutFileSystemPolicy",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
     },
     {
       "operation": "PutLifecycleConfiguration",
@@ -159,8 +161,8 @@
     },
     {
       "operation": "UpdateFileSystemProtection",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
     }
   ]
 }

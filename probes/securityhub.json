@@ -1,5 +1,7 @@
 {
   "service": "securityhub",
+  "generated_at": "2026-10-20T08:08:28.360580+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
     "working": 93,
     "needs_params": 14,
@@ -185,7 +187,7 @@
     {
       "operation": "DescribeHub",
       "status": "working",
-      "message": "likely implemented (InvalidAccessException: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+      "message": "likely implemented (InvalidAccessException: Account is not subscribed to AWS Security Hub)"
     },
     {
       "operation": "DescribeOrganizationConfiguration",
@@ -205,7 +207,7 @@
     {
       "operation": "DescribeSecurityHubV2",
       "status": "working",
-      "message": "likely implemented (InvalidAccessException: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+      "message": "likely implemented (InvalidAccessException: Account is not subscribed to AWS Security Hub V2)"
     },
     {
       "operation": "DescribeStandards",
@@ -225,12 +227,12 @@
     {
       "operation": "DisableOrganizationAdminAccount",
       "status": "working",
-      "message": "likely implemented (AWSOrganizationsNotInUseException: Your account is not a member of an organization.)"
+      "message": "likely implemented (AWSOrganizationsNotInUseException: AWS Organizations is not in use.)"
     },
     {
       "operation": "DisableSecurityHub",
       "status": "working",
-      "message": "likely implemented (InvalidAccessException: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+      "message": "likely implemented (InvalidAccessException: Account is not subscribed to AWS Security Hub)"
     },
     {
       "operation": "DisableSecurityHubV2",
@@ -260,7 +262,7 @@
     {
       "operation": "EnableOrganizationAdminAccount",
       "status": "working",
-      "message": "likely implemented (AWSOrganizationsNotInUseException: Your account is not a member of an organization.)"
+      "message": "likely implemented (AWSOrganizationsNotInUseException: AWS Organizations is not in use.)"
     },
     {
       "operation": "EnableSecurityHub",

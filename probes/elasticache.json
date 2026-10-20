@@ -1,9 +1,11 @@
 {
   "service": "elasticache",
+  "generated_at": "2026-10-20T06:49:15.990733+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 61,
+    "working": 74,
     "needs_params": 0,
-    "not_implemented": 13,
+    "not_implemented": 0,
     "500_error": 0
   },
   "operations": [
@@ -14,8 +16,8 @@
     },
     {
       "operation": "AuthorizeCacheSecurityGroupIngress",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (CacheSecurityGroupNotFound: Cache security group probe-test-value not found.)"
     },
     {
       "operation": "BatchApplyUpdateAction",
@@ -34,8 +36,8 @@
     },
     {
       "operation": "CopyServerlessCacheSnapshot",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CopySnapshot",
@@ -45,7 +47,7 @@
     {
       "operation": "CreateCacheCluster",
       "status": "working",
-      "message": "implemented (InvalidParameterValue)"
+      "message": "OK"
     },
     {
       "operation": "CreateCacheParameterGroup",
@@ -85,12 +87,12 @@
     {
       "operation": "CreateSnapshot",
       "status": "working",
-      "message": "implemented (InvalidParameterValue)"
+      "message": "likely implemented (ReplicationGroupNotFoundFault: Replication group  not found.)"
     },
     {
       "operation": "CreateUser",
       "status": "working",
-      "message": "implemented (InvalidParameterValue)"
+      "message": "OK"
     },
     {
       "operation": "CreateUserGroup",
@@ -99,8 +101,8 @@
     },
     {
       "operation": "DecreaseNodeGroupsInGlobalReplicationGroup",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (InvalidAction: The action DecreaseNodeGroupsInGlobalReplicationGroup is not)"
     },
     {
       "operation": "DecreaseReplicaCount",
@@ -150,7 +152,7 @@
     {
       "operation": "DeleteUser",
       "status": "working",
-      "message": "likely implemented (UserNotFound: User probe-test-value not found.)"
+      "message": "OK"
     },
     {
       "operation": "DeleteUserGroup",
@@ -175,7 +177,7 @@
     {
       "operation": "DescribeCacheParameters",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (CacheParameterGroupNotFoundFault: CacheParameterGroup probe-test-value is not found.)"
     },
     {
       "operation": "DescribeCacheSecurityGroups",
@@ -189,8 +191,8 @@
     },
     {
       "operation": "DescribeEngineDefaultParameters",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeEvents",
@@ -209,13 +211,13 @@
     },
     {
       "operation": "DescribeReservedCacheNodes",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeReservedCacheNodesOfferings",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeServerlessCacheSnapshots",
@@ -259,8 +261,8 @@
     },
     {
       "operation": "ExportServerlessCacheSnapshot",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "FailoverGlobalReplicationGroup",
@@ -269,38 +271,38 @@
     },
     {
       "operation": "IncreaseNodeGroupsInGlobalReplicationGroup",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (InvalidAction: The action IncreaseNodeGroupsInGlobalReplicationGroup is not)"
     },
     {
       "operation": "IncreaseReplicaCount",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ReplicationGroupNotFoundFault: Replication group probe-test-value not found.)"
     },
     {
       "operation": "ListAllowedNodeTypeModifications",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListTagsForResource",
       "status": "working",
-      "message": "likely implemented (InvalidARN: ARN probe-test-value is invalid.)"
+      "message": "OK"
     },
     {
       "operation": "ModifyCacheCluster",
       "status": "working",
-      "message": "likely implemented (CacheClusterNotFound: Cache cluster probe-test-value not found.)"
+      "message": "OK"
     },
     {
       "operation": "ModifyCacheParameterGroup",
       "status": "working",
-      "message": "likely implemented (CacheParameterGroupNotFound: Cache parameter group probe-test-value not found.)"
+      "message": "likely implemented (CacheParameterGroupNotFoundFault: CacheParameterGroup probe-test-value is not found.)"
     },
     {
       "operation": "ModifyCacheSubnetGroup",
       "status": "working",
-      "message": "likely implemented (CacheSubnetGroupNotFoundFault: CacheSubnetGroup probe-test-value not found.)"
+      "message": "OK"
     },
     {
       "operation": "ModifyGlobalReplicationGroup",
@@ -310,17 +312,17 @@
     {
       "operation": "ModifyReplicationGroup",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ReplicationGroupNotFoundFault: Replication group probe-test-value not found.)"
     },
     {
       "operation": "ModifyReplicationGroupShardConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ReplicationGroupNotFoundFault: Replication group probe-test-value not found.)"
     },
     {
       "operation": "ModifyServerlessCache",
       "status": "working",
-      "message": "likely implemented (ServerlessCacheNotFoundFault: Serverless cache probe-test-value not found.)"
+      "message": "likely implemented (ServerlessCacheNotFoundFault: ServerlessCache probe-test-value not found.)"
     },
     {
       "operation": "ModifyUser",
@@ -330,12 +332,12 @@
     {
       "operation": "ModifyUserGroup",
       "status": "working",
-      "message": "likely implemented (UserGroupNotFound: User group probe-test-value not found.)"
+      "message": "likely implemented (UserGroupNotFoundFault: UserGroup probe-test-value not found.)"
     },
     {
       "operation": "PurchaseReservedCacheNodesOffering",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "RebalanceSlotsInGlobalReplicationGroup",
@@ -344,8 +346,8 @@
     },
     {
       "operation": "RebootCacheCluster",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "RemoveTagsFromResource",
@@ -355,7 +357,7 @@
     {
       "operation": "ResetCacheParameterGroup",
       "status": "working",
-      "message": "likely implemented (CacheParameterGroupNotFound: Cache parameter group probe-test-value not found.)"
+      "message": "likely implemented (CacheParameterGroupNotFoundFault: CacheParameterGroup probe-test-value is not found.)"
     },
     {
       "operation": "RevokeCacheSecurityGroupIngress",
@@ -364,18 +366,18 @@
     },
     {
       "operation": "StartMigration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ReplicationGroupNotFoundFault: Replication group probe-test-value not found.)"
     },
     {
       "operation": "TestFailover",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ReplicationGroupNotFoundFault: Replication group probe-test-value not found.)"
     },
     {
       "operation": "TestMigration",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ReplicationGroupNotFoundFault: Replication group probe-test-value not found.)"
     }
   ]
 }

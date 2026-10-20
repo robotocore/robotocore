@@ -1,0 +1,28 @@
+{
+  "service": "sagemaker-runtime",
+  "generated_at": "2026-10-20T08:08:25.081274+00:00",
+  "endpoint": "http://localhost:4599",
+  "counts": {
+    "working": 2,
+    "needs_params": 0,
+    "not_implemented": 1,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "InvokeEndpoint",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "InvokeEndpointAsync",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "InvokeEndpointWithResponseStream",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

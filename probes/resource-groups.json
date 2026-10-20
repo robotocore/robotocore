@@ -1,0 +1,128 @@
+{
+  "service": "resource-groups",
+  "generated_at": "2026-10-20T08:08:02.882765+00:00",
+  "endpoint": "http://localhost:4599",
+  "counts": {
+    "working": 16,
+    "needs_params": 2,
+    "not_implemented": 5,
+    "500_error": 0
+  },
+  "operations": [
+    {
+      "operation": "CancelTagSyncTask",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteGroup",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetAccountSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetGroup",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetGroupConfiguration",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetGroupQuery",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetTagSyncTask",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetTags",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GroupResources",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "ListGroupResources",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListGroupingStatuses",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagSyncTasks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutGroupConfiguration",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "SearchResources",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartTagSyncTask",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "Tag",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UngroupResources",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "Untag",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateAccountSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateGroup",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateGroupQuery",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    }
+  ]
+}

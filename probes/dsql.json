@@ -1,9 +1,11 @@
 {
   "service": "dsql",
+  "generated_at": "2026-10-20T05:27:38.836452+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 4,
+    "working": 11,
     "needs_params": 0,
-    "not_implemented": 7,
+    "not_implemented": 0,
     "500_error": 0
   },
   "operations": [
@@ -14,8 +16,8 @@
     },
     {
       "operation": "DeleteClusterPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetCluster",
@@ -24,8 +26,8 @@
     },
     {
       "operation": "GetClusterPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetVpcEndpointServiceName",
@@ -34,8 +36,8 @@
     },
     {
       "operation": "ListClusters",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListTagsForResource",
@@ -44,23 +46,23 @@
     },
     {
       "operation": "PutClusterPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "TagResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UntagResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateCluster",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     }
   ]
 }

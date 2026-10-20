@@ -1,10 +1,12 @@
 {
   "service": "stepfunctions",
+  "generated_at": "2026-10-20T08:08:38.359444+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
-    "working": 27,
+    "working": 34,
     "needs_params": 1,
-    "not_implemented": 6,
-    "500_error": 3
+    "not_implemented": 0,
+    "500_error": 2
   },
   "operations": [
     {
@@ -14,8 +16,8 @@
     },
     {
       "operation": "CreateStateMachine",
-      "status": "500_error",
-      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateStateMachineAlias",
@@ -25,17 +27,17 @@
     {
       "operation": "DeleteActivity",
       "status": "working",
-      "message": "likely implemented (InvalidArn: Invalid Activity Arn: 'arn:aws:stepfunctions:us-east-1:12345)"
+      "message": "likely implemented (ActivityDoesNotExist: Activity arn:aws:stepfunctions:us-east-1:123456789012:thing/)"
     },
     {
       "operation": "DeleteStateMachine",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (StateMachineDoesNotExist: State machine arn:aws:stepfunctions:us-east-1:123456789012:t)"
     },
     {
       "operation": "DeleteStateMachineAlias",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteStateMachineVersion",
@@ -45,27 +47,27 @@
     {
       "operation": "DescribeActivity",
       "status": "working",
-      "message": "likely implemented (InvalidArn: Invalid Activity Arn: 'arn:aws:stepfunctions:us-east-1:12345)"
+      "message": "likely implemented (ActivityDoesNotExist: Activity arn:aws:stepfunctions:us-east-1:123456789012:thing/)"
     },
     {
       "operation": "DescribeExecution",
       "status": "working",
-      "message": "likely implemented (ExecutionDoesNotExist: Execution not found: arn:aws:stepfunctions:us-east-1:1234567)"
+      "message": "likely implemented (ExecutionDoesNotExist: Execution arn:aws:stepfunctions:us-east-1:123456789012:thing)"
     },
     {
       "operation": "DescribeMapRun",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ExecutionDoesNotExist: arn:aws:stepfunctions:us-east-1:123456789012:thing/probe-tes)"
     },
     {
       "operation": "DescribeStateMachine",
       "status": "working",
-      "message": "likely implemented (StateMachineDoesNotExist: State machine not found: arn:aws:stepfunctions:us-east-1:123)"
+      "message": "likely implemented (StateMachineDoesNotExist: State machine arn:aws:stepfunctions:us-east-1:123456789012:t)"
     },
     {
       "operation": "DescribeStateMachineAlias",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Resource not found: 'arn:aws:stepfunctions:us-east-1:1234567)"
     },
     {
       "operation": "DescribeStateMachineForExecution",
@@ -74,13 +76,13 @@
     },
     {
       "operation": "GetActivityTask",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ActivityDoesNotExist: Activity arn:aws:stepfunctions:us-east-1:123456789012:thing/)"
     },
     {
       "operation": "GetExecutionHistory",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ExecutionDoesNotExist: Execution arn:aws:stepfunctions:us-east-1:123456789012:thing)"
     },
     {
       "operation": "ListActivities",
@@ -99,13 +101,13 @@
     },
     {
       "operation": "ListStateMachineAliases",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListStateMachineVersions",
       "status": "working",
-      "message": "likely implemented (StateMachineDoesNotExist: State machine not found: arn:aws:stepfunctions:us-east-1:123)"
+      "message": "OK"
     },
     {
       "operation": "ListStateMachines",
@@ -120,12 +122,12 @@
     {
       "operation": "PublishStateMachineVersion",
       "status": "working",
-      "message": "likely implemented (StateMachineDoesNotExist: State machine not found: arn:aws:stepfunctions:us-east-1:123)"
+      "message": "likely implemented (StateMachineDoesNotExist: State machine arn:aws:stepfunctions:us-east-1:123456789012:t)"
     },
     {
       "operation": "RedriveExecution",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ExecutionDoesNotExist: Execution arn:aws:stepfunctions:us-east-1:123456789012:thing)"
     },
     {
       "operation": "SendTaskFailure",
@@ -145,7 +147,7 @@
     {
       "operation": "StartExecution",
       "status": "working",
-      "message": "likely implemented (StateMachineDoesNotExist: State machine not found: arn:aws:stepfunctions:us-east-1:123)"
+      "message": "likely implemented (StateMachineDoesNotExist: State machine arn:aws:stepfunctions:us-east-1:123456789012:t)"
     },
     {
       "operation": "StartSyncExecution",
@@ -155,12 +157,12 @@
     {
       "operation": "StopExecution",
       "status": "working",
-      "message": "likely implemented (ExecutionDoesNotExist: Execution not found: arn:aws:stepfunctions:us-east-1:1234567)"
+      "message": "likely implemented (ExecutionDoesNotExist: Execution arn:aws:stepfunctions:us-east-1:123456789012:thing)"
     },
     {
       "operation": "TagResource",
       "status": "working",
-      "message": "likely implemented (ResourceNotFound: Resource not found: arn:aws:stepfunctions:us-east-1:12345678)"
+      "message": "OK"
     },
     {
       "operation": "TestState",
@@ -170,7 +172,7 @@
     {
       "operation": "UntagResource",
       "status": "working",
-      "message": "likely implemented (ResourceNotFound: Resource not found: arn:aws:stepfunctions:us-east-1:12345678)"
+      "message": "OK"
     },
     {
       "operation": "UpdateMapRun",
@@ -180,12 +182,12 @@
     {
       "operation": "UpdateStateMachine",
       "status": "working",
-      "message": "likely implemented (StateMachineDoesNotExist: State machine not found: arn:aws:stepfunctions:us-east-1:123)"
+      "message": "likely implemented (StateMachineDoesNotExist: State machine arn:aws:stepfunctions:us-east-1:123456789012:t)"
     },
     {
       "operation": "UpdateStateMachineAlias",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Resource not found: 'arn:aws:stepfunctions:us-east-1:1234567)"
     },
     {
       "operation": "ValidateStateMachineDefinition",

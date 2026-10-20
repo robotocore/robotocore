@@ -1,16 +1,18 @@
 {
   "service": "route53",
+  "generated_at": "2026-10-20T08:08:04.111614+00:00",
+  "endpoint": "http://localhost:4599",
   "counts": {
-    "working": 43,
+    "working": 68,
     "needs_params": 3,
-    "not_implemented": 21,
-    "500_error": 4
+    "not_implemented": 0,
+    "500_error": 0
   },
   "operations": [
     {
       "operation": "ActivateKeySigningKey",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchKeySigningKey: No key signing key found with name probe-test-value in zone )"
     },
     {
       "operation": "AssociateVPCWithHostedZone",
@@ -29,8 +31,8 @@
     },
     {
       "operation": "ChangeTagsForResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (InvalidInput)"
     },
     {
       "operation": "CreateCidrCollection",
@@ -49,8 +51,8 @@
     },
     {
       "operation": "CreateKeySigningKey",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateQueryLoggingConfig",
@@ -64,28 +66,28 @@
     },
     {
       "operation": "CreateTrafficPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateTrafficPolicyInstance",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateTrafficPolicyVersion",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchTrafficPolicy: No traffic policy found with ID probe-test-value)"
     },
     {
       "operation": "CreateVPCAssociationAuthorization",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object is not subscriptable)"
+      "status": "working",
+      "message": "implemented (NoSuchHostedZone)"
     },
     {
       "operation": "DeactivateKeySigningKey",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteCidrCollection",
@@ -104,8 +106,8 @@
     },
     {
       "operation": "DeleteKeySigningKey",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteQueryLoggingConfig",
@@ -115,27 +117,27 @@
     {
       "operation": "DeleteReusableDelegationSet",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (NoSuchDelegationSet: probe-test-value)"
     },
     {
       "operation": "DeleteTrafficPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchTrafficPolicy: No traffic policy found with ID probe-test-value)"
     },
     {
       "operation": "DeleteTrafficPolicyInstance",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchTrafficPolicyInstance: No traffic policy instance found with ID probe-test-value)"
     },
     {
       "operation": "DeleteVPCAssociationAuthorization",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object is not subscriptable)"
+      "status": "working",
+      "message": "implemented (NoSuchHostedZone)"
     },
     {
       "operation": "DisableHostedZoneDNSSEC",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NoSuchHostedZone)"
     },
     {
       "operation": "DisassociateVPCFromHostedZone",
@@ -144,8 +146,8 @@
     },
     {
       "operation": "EnableHostedZoneDNSSEC",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NoSuchHostedZone)"
     },
     {
       "operation": "GetAccountLimit",
@@ -224,13 +226,13 @@
     },
     {
       "operation": "GetTrafficPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchTrafficPolicy: No traffic policy found with ID probe-test-value)"
     },
     {
       "operation": "GetTrafficPolicyInstance",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchTrafficPolicyInstance: No traffic policy instance found with ID probe-test-value)"
     },
     {
       "operation": "GetTrafficPolicyInstanceCount",
@@ -294,8 +296,8 @@
     },
     {
       "operation": "ListTagsForResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListTagsForResources",
@@ -314,18 +316,18 @@
     },
     {
       "operation": "ListTrafficPolicyInstancesByHostedZone",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListTrafficPolicyInstancesByPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListTrafficPolicyVersions",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchTrafficPolicy: No traffic policy found with ID probe-test-value)"
     },
     {
       "operation": "ListVPCAssociationAuthorizations",
@@ -339,28 +341,28 @@
     },
     {
       "operation": "UpdateHealthCheck",
-      "status": "500_error",
-      "message": "server crash (InternalError: no element found: line 1, column 0)"
+      "status": "working",
+      "message": "implemented (InvalidInput)"
     },
     {
       "operation": "UpdateHostedZoneComment",
-      "status": "500_error",
-      "message": "server crash (InternalError: no element found: line 1, column 0)"
+      "status": "working",
+      "message": "implemented (NoSuchHostedZone)"
     },
     {
       "operation": "UpdateHostedZoneFeatures",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NoSuchHostedZone)"
     },
     {
       "operation": "UpdateTrafficPolicyComment",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchTrafficPolicy: No traffic policy found with ID probe-test-value)"
     },
     {
       "operation": "UpdateTrafficPolicyInstance",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchTrafficPolicyInstance: No traffic policy instance found with ID probe-test-value)"
     }
   ]
 }

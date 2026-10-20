@@ -1,9 +1,11 @@
 {
   "service": "mediapackage",
+  "generated_at": "2026-10-20T06:49:54.590053+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 9,
+    "working": 13,
     "needs_params": 0,
-    "not_implemented": 10,
+    "not_implemented": 6,
     "500_error": 0
   },
   "operations": [
@@ -19,8 +21,8 @@
     },
     {
       "operation": "CreateHarvestJob",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "CreateOriginEndpoint",
@@ -44,8 +46,8 @@
     },
     {
       "operation": "DescribeHarvestJob",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DescribeOriginEndpoint",
@@ -59,8 +61,8 @@
     },
     {
       "operation": "ListHarvestJobs",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListOriginEndpoints",
@@ -94,8 +96,8 @@
     },
     {
       "operation": "UpdateChannel",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateOriginEndpoint",
