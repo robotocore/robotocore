@@ -22,7 +22,12 @@ pub const SERVICE_REGISTRY: &[(&str, &str, &str, &str)] = &[
         "API Gateway V2 (HTTP APIs + WebSocket)",
     ),
     ("appconfig", "native", "rest-json", "AppConfig"),
-    ("applicationautoscaling", "native", "json", "Application Auto Scaling"),
+    (
+        "applicationautoscaling",
+        "native",
+        "json",
+        "Application Auto Scaling",
+    ),
     ("appmesh", "moto", "rest-json", "App Mesh"),
     ("appsync", "native", "rest-json", "AppSync GraphQL"),
     ("athena", "moto", "json", "Athena SQL Analytics"),
