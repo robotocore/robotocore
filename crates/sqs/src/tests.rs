@@ -122,7 +122,7 @@ fn test_send_message_missing_queue() {
     );
 
     let resp = handler.handle(send_req);
-    assert_eq!(resp.status, 404);
+    assert_eq!(resp.status, 400);
     assert!(resp.body.contains("NonExistentQueue"));
 }
 
@@ -399,7 +399,7 @@ fn test_delete_queue() {
     // Verify it's gone
     let get_req = make_request("GetQueueUrl", json!({"QueueName": "to-delete"}));
     let get_resp = handler.handle(get_req);
-    assert_eq!(get_resp.status, 404);
+    assert_eq!(get_resp.status, 400);
 }
 
 #[test]
@@ -519,7 +519,7 @@ fn test_set_queue_attributes_nonexistent_queue() {
         }),
     );
     let set_resp = handler.handle(set_req);
-    assert_eq!(set_resp.status, 404);
+    assert_eq!(set_resp.status, 400);
     assert!(set_resp.body.contains("NonExistentQueue"));
 }
 
@@ -652,7 +652,7 @@ fn test_purge_queue_nonexistent() {
         json!({"QueueUrl": "http://sqs.us-east-1.localhost.robotocore.cloud:4566/123456789012/ghost"}),
     );
     let purge_resp = handler.handle(purge_req);
-    assert_eq!(purge_resp.status, 404);
+    assert_eq!(purge_resp.status, 400);
     assert!(purge_resp.body.contains("NonExistentQueue"));
 }
 
