@@ -1382,6 +1382,7 @@ dependencies = [
  "once_cell",
  "parking_lot",
  "quick-xml",
+ "regex",
  "s3",
  "serde",
  "serde_json",
