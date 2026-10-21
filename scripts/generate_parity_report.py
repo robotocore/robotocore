@@ -226,7 +226,13 @@ def build_report(probes_dir: Path, endpoint: str) -> dict:
         protocol = info.get("protocol", "")
         description = info.get("description", "")
 
-        counts = {"working": 0, "needs_params": 0, "not_implemented": 0, "500_error": 0}
+        counts = {
+            "working": 0,
+            "needs_params": 0,
+            "not_implemented": 0,
+            "500_error": 0,
+            "timeout": 0,
+        }
         all_ops: list[str] = []
         implemented_ops: list[str] = []
         probe = read_probe(probes_dir / f"{svc_name}.json")
@@ -236,6 +242,7 @@ def build_report(probes_dir: Path, endpoint: str) -> dict:
                 "needs_params": probe["counts"].get("needs_params", 0),
                 "not_implemented": probe["counts"].get("not_implemented", 0),
                 "500_error": probe["counts"].get("500_error", 0),
+                "timeout": probe["counts"].get("timeout", 0),
             }
             all_ops = [op["operation"] for op in probe["operations"]]
             implemented_ops = [

@@ -386,6 +386,7 @@ print(m['RunInstances'], m['CreateImage'])
 | `needs_params` | Parameters could not be auto-filled; unknown, not absent |
 | `not_implemented` | Server returned 501 |
 | `500_error` | Server crashed — a bug worth filing |
+| `timeout` | The server never answered within the probe's read timeout (a hanging handler; distinct from a crash) |
 
 Destructive operations are excluded from probe runs, so absence from the file is not a gap. `TerminateInstances`, `DeleteBucket`, `DeleteVpc` and others are in the script's skip list and work fine. See `docs/coverage.html` for the browsable per-service view.
 

@@ -15,6 +15,7 @@ Classifies operations as:
   - needs_params: couldn't auto-fill params, client-side validation blocked
   - not_implemented: server returned 501 or "not implemented"
   - 500_error: server crashed
+  - timeout: the server never answered within the read timeout
 
 Per AGENTS.md only HTTP 501 means "genuinely absent" — a ClientError with a
 4xx code means the handler ran and the probe params were just wrong.
@@ -33,6 +34,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import boto3
+import socket
 import botocore.exceptions
 import botocore.loaders
 from botocore.config import Config
@@ -112,7 +114,7 @@ def probe_operation(
     """Try to call an operation.
 
     Returns (status, message) where status is one of:
-      working, needs_params, not_implemented, 500_error
+      working, needs_params, not_implemented, 500_error, timeout
     """
     try:
         method = getattr(client, _to_snake_case(operation_name))
@@ -149,6 +151,15 @@ def probe_operation(
 
     except botocore.exceptions.ParamValidationError:
         return "needs_params", "client-side validation (never contacted server)"
+    except (botocore.exceptions.ReadTimeoutError,
+            botocore.exceptions.ConnectReadTimeoutError,
+            socket.timeout) as e:
+        # A hanging/timing-out handler is a distinct artifact: the twin
+        # never answered. Contract labels 500_error as "server crashed",
+        # which a timeout is not — bucket it separately.
+        return "timeout", f"read timeout ({type(e).__name__})"
+    except botocore.exceptions.EndpointConnectionError as e:
+        return "timeout", f"endpoint unreachable ({str(e)[:60]})"
     except Exception as e:
         return "500_error", f"exception: {str(e)[:60]}"
 
@@ -231,6 +242,7 @@ def probe_service(
         "needs_params": 0,
         "not_implemented": 0,
         "500_error": 0,
+        "timeout": 0,
     }
     results = []
     deadline = time.monotonic() + budget if budget > 0 else None
@@ -293,10 +305,10 @@ def _run_all_services(args) -> int:
         n_ops = sum(result["counts"].values())
         cases = ", ".join(f"{k}={v}" for k, v in result["counts"].items() if v)
         print(f"[{i}/{len(endpoints)}] {svc}: {n_ops} ops — {cases}", flush=True)
-        total_500 += result["counts"]["500_error"]
+        total_500 += result["counts"]["500_error"] + result["counts"]["timeout"]
 
     print(
-        f"\nWrote {written} probe files to {out_dir}; fleet-wide 500_errors: {total_500}",
+        f"\nWrote {written} probe files to {out_dir}; fleet-wide 500_errors+timeouts: {total_500}",
         flush=True,
     )
     return 0 if total_500 == 0 else 1

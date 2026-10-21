@@ -1334,6 +1334,7 @@ pub async fn catch_all_handler(
             let dispatch_result =
                 tokio::task::spawn_blocking(move || rotocore::dispatch(&rot_req)).await;
             if let Ok(Some(resp)) = dispatch_result {
+                let note = audit_error_note(resp.status, &resp.body);
                 audit_out(
                     Some(&service),
                     opt_op(&parsed_req.operation),
@@ -1343,7 +1344,7 @@ pub async fn catch_all_handler(
                     req_start,
                     &account_id,
                     &region_for_audit,
-                    None,
+                    note,
                 );
                 let status =
                     StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
@@ -1396,6 +1397,15 @@ pub async fn catch_all_handler(
 
     match result {
         Ok(Ok(Ok((resp, op)))) => {
+            // Error snapshots: the wire body lands in raw_bytes (binary/xml)
+            // or `raw` (pre-serialized strings); JSON-protocol envelopes put
+            // the envelope in `body` only. Reconstruct whichever exists.
+            let wire_body: Vec<u8> = match (&resp.raw_bytes, &resp.raw) {
+                (Some(b), _) => b.clone(),
+                (None, Some(r)) => r.clone().into_bytes(),
+                (None, None) => serde_json::to_vec(&resp.body).unwrap_or_default(),
+            };
+            let note = audit_error_note(resp.status.as_u16(), &wire_body);
             audit_out(
                 Some(&service),
                 opt_op(&op),
@@ -1405,7 +1415,7 @@ pub async fn catch_all_handler(
                 req_start,
                 &account_id,
                 &region_for_audit,
-                None,
+                note,
             );
             response_from_parsed(resp, &service, &op)
         }
@@ -1459,6 +1469,38 @@ pub async fn catch_all_handler(
             error_response(StatusCode::GATEWAY_TIMEOUT, "Request timed out")
         }
     }
+}
+
+/// A short error snapshot for the audit row of a >=400 response: prefer the
+/// JSON envelope's "message", else the trimmed raw text. Bounded so
+/// pathological bodies can't bloat the audit ring.
+fn audit_error_note(status: u16, body: &[u8]) -> Option<String> {
+    if status < 400 || body.is_empty() {
+        return None;
+    }
+    const LIMIT: usize = 256;
+    let text = String::from_utf8_lossy(body);
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let preferred = if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
+        v.get("message")
+            .and_then(serde_json::Value::as_str)
+            .map(String::from)
+            .unwrap_or_else(|| trimmed.to_string())
+    } else {
+        trimmed.to_string()
+    };
+    if preferred.len() <= LIMIT {
+        return Some(preferred);
+    }
+    // Manual char-boundary safe cut.
+    let mut cut = LIMIT;
+    while !preferred.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    Some(format!("{}…", &preferred[..cut]))
 }
 
 /// Build an audit record for a completed request (Python audit-log shape).
@@ -2618,6 +2660,22 @@ mod tests {
         let method = Method::POST;
         let service = extract_service(&method, &uri, &headers, b"Action=NotARealOp").unwrap();
         assert_eq!(service, "sts");
+    }
+
+    #[test]
+    fn test_audit_error_note_extracts_message() {
+        let body = br#"{"__type":"NotImplemented","message":"Service x not implemented"}"#;
+        assert_eq!(
+            audit_error_note(501, body).as_deref(),
+            Some("Service x not implemented")
+        );
+        // XML falls back to the trimmed raw text, bounded.
+        let xml = b"<?xml version=\"1.0\"?><ErrorResponse><Error><Code>NotFound</Code></Error></ErrorResponse>";
+        let note = audit_error_note(404, xml).expect("note");
+        assert!(note.starts_with("<?xml"));
+        assert!(audit_error_note(200, body).is_none());
+        assert!(audit_error_note(500, b"").is_none());
+        assert!(audit_error_note(500, b"  \n\t ").is_none());
     }
 
     #[test]
