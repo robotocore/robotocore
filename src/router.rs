@@ -211,7 +211,6 @@ fn path_patterns() -> Vec<(Regex, &'static str)> {
         (Regex::new(r"^/2015-01-01/es/").unwrap(), "es"),
         (Regex::new(r"^/2013-04-01/").unwrap(), "route53"),
         (Regex::new(r"^/2014-11-13/").unwrap(), "logs"),
-        (Regex::new(r"^/tags$").unwrap(), "resourcegroupstaggingapi"),
         (Regex::new(r"^/prod/v\d+/").unwrap(), "kafka"),
         (Regex::new(r"^/prod/").unwrap(), "medialive"),
         (Regex::new(r"^/v1/pipes").unwrap(), "pipes"),
@@ -350,6 +349,20 @@ pub fn route_to_service(request: &AwsRequest) -> Option<String> {
         return Some("apigatewayv2".to_string());
     }
 
+    // An exact `POST /tags` is IoT's TagResource wire surface — the caller's
+    // signed scope decides (`iot` → IoT; nothing else serves this path, since
+    // RGTA's operations ride POST / with X-Amz-Target). Unscoped form posts
+    // fall back to resourcegroupstaggingapi's legacy `/tags` surface.
+    if path == "/tags" {
+        let authz = request.header("authorization").unwrap_or("");
+        if let Some(scope) = auth_service(authz) {
+            if scope.eq("iot") {
+                return Some("iot".to_string());
+            }
+        }
+        // Unscoped /tags keeps the legacy resourcegroupstaggingapi surface.
+        return Some("resourcegroupstaggingapi".to_string());
+    }
     for (pattern, service) in PATH_PATTERNS.iter() {
         if pattern.is_match(path) {
             // /v1/tags and /v1/untag are shared by Batch, AppSync, Kafka, MQ, and Pinpoint
@@ -692,11 +705,28 @@ mod tests {
 
     #[test]
     fn path_tags_tagging_api() {
+        // Unscoped GET /tags keeps the legacy resourcegroupstaggingapi
+        // surface (a tagged caller with scope iot takes the IoT TagResource
+        // route instead — see the /tags scope check above).
         let r = req("GET", "/tags", "", &[]);
         assert_eq!(
             route_to_service(&r).as_deref(),
             Some("resourcegroupstaggingapi")
         );
+    }
+
+    #[test]
+    fn path_tags_iot_scope() {
+        let r = req(
+            "POST",
+            "/tags",
+            "",
+            &[(
+                "Authorization",
+                "AWS4-HMAC-SHA256 Credential=123456789012/20260101/us-east-1/iot/aws4_request, SignedHeaders=host, Signature=abc",
+            )],
+        );
+        assert_eq!(route_to_service(&r).as_deref(), Some("iot"));
     }
 
     #[test]

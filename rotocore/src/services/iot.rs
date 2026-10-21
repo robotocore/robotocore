@@ -5667,7 +5667,11 @@ fn untag_resource(s: &mut State, body: &Value) -> Result<Response, Response> {
 
 fn resource_arn_exists(s: &State, arn: &str) -> bool {
     [
-        s.things.iter().any(|t| t["arn"] == json!(arn)),
+        // Things key their ARN as `thingArn` (stored at create) — matching
+        // the wire's DescribeThing echo.
+        s.things
+            .iter()
+            .any(|t| t.get("thingArn") == Some(&json!(arn)) || t["arn"] == json!(arn)),
         s.thing_types
             .iter()
             .any(|t| t["thingTypeArn"] == json!(arn)),
@@ -5675,8 +5679,12 @@ fn resource_arn_exists(s: &State, arn: &str) -> bool {
         s.billing_groups
             .iter()
             .any(|g| g["billingGroupArn"] == json!(arn)),
-        s.policies.iter().any(|p| p["arn"] == json!(arn)),
-        s.rules.iter().any(|r| r["arn"] == json!(arn)),
+        s.policies
+            .iter()
+            .any(|p| p.get("policyArn") == Some(&json!(arn)) || p["arn"] == json!(arn)),
+        s.rules
+            .iter()
+            .any(|r| r.get("ruleArn") == Some(&json!(arn)) || r["arn"] == json!(arn)),
         s.role_aliases.iter().any(|r| r["arn"] == json!(arn)),
         s.domain_configurations
             .iter()
