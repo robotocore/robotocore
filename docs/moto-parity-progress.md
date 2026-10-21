@@ -298,3 +298,53 @@ are parsed by `tooling/moto_port_progress.py`.
   (virtual-hosted directory-bucket calls no longer misroute).
 - Fill-lane effect: 160 failing tests → 29 (all in the destinations
   cluster mid-flight at the time of scoring) with 12,844 passes.
+
+## Wave 9 (2026-10-21) — review-driven engine hardening + moto-surface backlog + EC2 crash sweep
+
+- Wave-8/9 adversarial review verdicts folded (no blockers): two majors
+  fixed — ESM redelivery bounded (per-mapping consecutive-failure budget
+  of 5, fingerprint-keyed, unparks on new records or mapping update; a
+  permanently-failing mapping delivered exactly 5 check-ins then went
+  dead silent, verified live) and the bisect frontier now deepens to
+  batch size 1 (failed halves held in memory instead of re-queued as
+  the whole batch; live drop pattern [4,2,2,1,1,1,1]); furl OPTIONS
+  preflights hit options_response instead of invoking.
+- EC2 crash cluster swept (297 probe 500_errors → 0 live): root cause
+  was a nested RwLock deadlock — CopyImage/CopySnapshot/CreateVolume
+  reacquired the shared EC2 map read-lock inside the with_state write
+  lease, hanging every later EC2 request (one such call wedged the
+  probe twin's EC2 fleet-wide). Also 4 modeled-NotFound statuses
+  corrected 404→400 and the DeleteDhcpOptions typo'd message no longer
+  trips the prober's substring classifier. Live twin restarted on the
+  fix and verified un-wedged. Triage artifact:
+  tooling/ec2-crash-triage.json (129 moto-crash-faithful rows remain —
+  moto 5.2.4 itself 500s on those auto-filled requests via its werkzeug
+  page; oracle still at :4799).
+- Moto-surface backlog (computed from the fresh probe corpus: 143 ops
+  the fork implements that the twin 501s): mediaconnect was one
+  percent-encoding binding bug (motorcords match raw segments;
+  split_path now binds on the raw segment — 63 ops flipped, probes
+  clean); ssoadmin +14 real ops (inline policies, managed policy
+  attach/detach incl. moto's embedded aws_managed_policies dataset,
+  provisioning records, UpdateInstance — 47 *genuinely* absent ops stay
+  501); swf's 26 flagged rows were prober misclassification
+  (UnknownResourceFault substring) — no gap; misc services: backup
+  StartReportJob wiring + greedy recovery-point ARN paths (99 working),
+  apigateway UpdateUsage on its real wire path + GetAccount null-body
+  bug, acmpca policy/cert ops, cognito-idp auth/MFA ops,
+  resource-groups tag-sync, timestreaminfluxdb, cfn
+  DescribeStackRefactor; connect DeleteIntegrationAssociation proven
+  501-faithful (fork never mounts it).
+- Prober artifact truth: 500_error fleet-wide class now 0 (was 381),
+  cloudtrail/config sink rows corrected as substring artifacts.
+- Ledger addendum (correcting the wave-8 stale bullets): the prober is
+  BACK (scripts/probe_service.py + scripts/lib/param_filler.py, budget
+  + artifact envelope), all 158 probes regenerated, site rebuilt at
+  79.表/10268 ops; parity promoted at wave-8 close; the old "prober
+  gone / coverage stale" known-gap bullet is superseded by this row.
+- Known artifact quirks (recorded, not fixed): the prober counts a
+  ReadTimeout on a slow handler as 500_error (contract says crashed —
+  consider a distinct timeout bucket); audit_out still records no error
+  bodies (made the 400-flood diagnosis slower than it needed to be).
+- Wave-9 gates: fmt clean, clippy silent, 1,605 workspace lib tests,
+  full compat lane green (12,873+ passes), promotion exit 0.
