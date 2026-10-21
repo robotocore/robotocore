@@ -348,3 +348,45 @@ are parsed by `tooling/moto_port_progress.py`.
   bodies (made the 400-flood diagnosis slower than it needed to be).
 - Wave-9 gates: fmt clean, clippy silent, 1,605 workspace lib tests,
   full compat lane green (12,873+ passes), promotion exit 0.
+
+## Wave 10 (2026-10-21) — the rest of the port: IaC lanes, shipped images, bindings
+
+- **IaC lanes 181/220 → 220/220 (+1 nested-stack regression = 221)**.
+  Root cause of all 37 original failures: the CFN engine minted
+  placeholder ids without materializing. The CFN mirror now really
+  creates resources: EC2 VPC family, S3 website/versioning/policy,
+  Cognito UserPool/Client (real-AWS shapes; moto has no CFN hooks),
+  CloudWatch alarms, API Gateway rest-api trees with integrations,
+  Lambda inline ZipFile (real zips), nested stacks via S3 templates
+  with outputs + cascade delete, true rollback semantics
+  (unknown types fail the deploy ROLLBACK_COMPLETE).
+- **Wave-10 adversarial review folded** (3 majors + minors): nested
+  stacks unwind during parent rollback (child records reach
+  DELETE_COMPLETE, child exports swept from ListExports like the
+  parent's), mid-deploy child failures leave no recordless orphans,
+  child-export importers are considered on delete-block, S3 mirror
+  sub-PUT failures unwind loudly, IPv6 routes delete, InstanceTenancy
+  forwards, Cognito ProviderName/ClientSecret GetAtt-coverable, GetAtt
+  misses now fail loud like real CFN (no lane relied on the silent
+  paths), moto's cfnresponse.py embedded in inline zips (stdlib urllib3
+  fallback documented), furl host-form validates the region label (404
+  on mismatch); regression test
+  TestRollback.test_parent_rollback_deletes_nested_stack added.
+- **Shipped images validated on the tip**: distroless main image
+  (114MB, 23 layers, healthy, healthy smoke: SQS/S3 round-trip, 158
+  services native, no shell/python) and the extension image (142MB,
+  endpoints + proxy verified, python-free). No Dockerfile changes.
+- **Language bindings fleshed out** (ts/go/rust now real; python
+  unchanged): each a thin SDK helper (endpoint/account/session) with a
+  runnable smoke against the twin — @aws-sdk v3 (ts, npm scripts),
+  aws-sdk-clients pinned (rust standalone crate + examples/smoke.rs),
+  aws-sdk-go-v2 (go test + env-gated live smoke). All live-verified SSH
+  against the fleet at rest.
+- **Cosmetics**: metadata.json + changelog now say 158 services;
+  /_robotocore/config's specifications_dir answers "embedded" instead
+  of a dead mac-homebrew path.
+- **Repo hygiene**: stale wave worktrees pruned (106 → 2; branches
+  retained; dirty content archived under /tmp/wt-backup).
+- Wave-10 gates: fmt clean, clippy silent, 1,608 workspace lib tests,
+  full compat lane green (12,873 passes), IaC battery 119/119 on the
+  cfn/serverless/sam slices + 101 across cdk/pulumi/terraform.
