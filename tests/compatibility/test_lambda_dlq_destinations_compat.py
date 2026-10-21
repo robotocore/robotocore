@@ -7,6 +7,7 @@ Tests async invocation flows:
 
 import io
 import json
+import os
 import time
 import uuid
 import zipfile
@@ -14,6 +15,11 @@ import zipfile
 import pytest
 
 from tests.compatibility.conftest import make_client
+
+# Lambda code reaches the twin under test over the wire; honor
+# ENDPOINT_URL so scratch-port twins stay testable (same contract as
+# test_lambda_esm_trigger_compat.py).
+TWIN_URL = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
 
 REGION = "us-east-1"
 ACCOUNT_ID = "123456789012"
@@ -380,6 +386,9 @@ class TestLambdaDestinations:
             Role=role,
             Handler="lambda_function.handler",
             Code={"ZipFile": _make_zip(code_b)},
+            Environment={
+                "Variables": {"ROBOTOCORE_ENDPOINT": TWIN_URL}
+            },
         )
 
         # Source function A: succeeds
