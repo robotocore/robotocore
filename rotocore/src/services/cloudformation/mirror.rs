@@ -670,13 +670,16 @@ fn versioning_xml(props: &Value) -> Option<String> {
         .and_then(|v| v.get("Status"))
         .and_then(Value::as_str)?;
     Some(format!(
-        "<VersioningConfiguration xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Status>{status}</Status></VersioningConfiguration>"
+        "<VersioningConfiguration xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Status>{}</Status></VersioningConfiguration>",
+        xml_escape(status)
     ))
 }
 
 /// Create the bucket, then apply website configuration and versioning that
 /// ride in on AWS::S3::Bucket Properties (moto's Bucket::create cloudformation
-/// path passes the whole property bag to its S3 backend).
+/// path passes the whole property bag to its S3 backend). A rejected config
+/// (e.g. an invalid WebsiteConfiguration) fails the deploy loudly: unwind
+/// the bucket and return false so the stack rolls back.
 pub fn create_s3_bucket_full(props: &Value, name: &str, account: &str, region: &str) -> bool {
     if !create_s3_bucket(name, account, region) {
         return false;
@@ -697,7 +700,11 @@ pub fn create_s3_bucket_full(props: &Value, name: &str, account: &str, region: &
             client().put(&format!("{}/{}?{query}", callback_base(), name)),
             &headers,
         );
-        send(req, xml.as_bytes());
+        let resp = send(req, xml.as_bytes());
+        if !resp.ok() {
+            delete_s3_bucket(name, account, region);
+            return false;
+        }
     }
     true
 }
@@ -1032,54 +1039,82 @@ fn is_zip_b64(s: &str) -> bool {
     false
 }
 
-/// Build a stored (uncompressed) zip with one `index.py` member, mirroring
-/// moto's CFN inline-code path: `zipfile.ZipFile(...).writestr("index.py", code)`.
+/// Build a stored (uncompressed) zip, mirroring moto's CFN inline-code path
+/// (`zipfile.ZipFile(...).writestr("index.py", code)`), and like moto also
+/// embed the cfnresponse.py module so `AWS::CloudFormation::CustomResource`
+/// handlers can `import cfnresponse` (moto/awslambda/models.py
+/// `_create_zipfile_from_plaintext_code`).
 fn zip_from_plaintext(code: &[u8]) -> Vec<u8> {
-    let crc = crc32(code);
-    let name = b"index.py";
-    let mut out = Vec::with_capacity(code.len() + 160);
-    // Local file header
-    out.extend_from_slice(&0x04034b50u32.to_le_bytes());
-    out.extend_from_slice(&20u16.to_le_bytes()); // version needed
-    out.extend_from_slice(&0u16.to_le_bytes()); // flags
-    out.extend_from_slice(&0u16.to_le_bytes()); // method: stored
-    out.extend_from_slice(&0u16.to_le_bytes()); // mod time
-    out.extend_from_slice(&0x21u16.to_le_bytes()); // mod date (1980-01-01)
-    out.extend_from_slice(&crc.to_le_bytes());
-    out.extend_from_slice(&(code.len() as u32).to_le_bytes());
-    out.extend_from_slice(&(code.len() as u32).to_le_bytes());
-    out.extend_from_slice(&(name.len() as u16).to_le_bytes());
-    out.extend_from_slice(&0u16.to_le_bytes()); // extra len
-    out.extend_from_slice(name);
-    out.extend_from_slice(code);
-    let local_offset = 0u32;
+    zip_members(&[
+        (b"index.py" as &[u8], code),
+        (b"cfnresponse.py" as &[u8], CFNRESPONSE_PY.as_bytes()),
+    ])
+}
+
+/// Vendored from moto's bundled cfnresponse shim (moto/packages/cfnresponse/
+/// cfnresponse.py) — the AWS-distributed CloudFormation response module
+/// (origin: AWS docs, SPDX MIT-0), with a stdlib fallback for urllib3 (the
+/// file notes its own deviation). Injected into inline-code zips so
+/// CustomResource handlers work like real lambda images.
+const CFNRESPONSE_PY: &str = include_str!("cfnresponse.py");
+
+/// Assemble a stored (uncompressed) zip from `(name, contents)` members —
+/// the hand-rolled zipfile writer behind the CFN inline-code path. All
+/// local records come first, then the central directory, then the EOCD
+/// (a valid zip layout for N members, exactly like the single-member
+/// version this generalizes).
+fn zip_members(members: &[(&[u8], &[u8])]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut records: Vec<(u32, u32, u32)> = Vec::new(); // (crc, size, local_offset)
+    for (name, contents) in members {
+        let crc = crc32(contents);
+        let local_offset = out.len() as u32;
+        // Local file header
+        out.extend_from_slice(&0x04034b50u32.to_le_bytes());
+        out.extend_from_slice(&20u16.to_le_bytes()); // version needed
+        out.extend_from_slice(&0u16.to_le_bytes()); // flags
+        out.extend_from_slice(&0u16.to_le_bytes()); // method: stored
+        out.extend_from_slice(&0u16.to_le_bytes()); // mod time
+        out.extend_from_slice(&0x21u16.to_le_bytes()); // mod date (1980-01-01)
+        out.extend_from_slice(&crc.to_le_bytes());
+        out.extend_from_slice(&(contents.len() as u32).to_le_bytes());
+        out.extend_from_slice(&(contents.len() as u32).to_le_bytes());
+        out.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        out.extend_from_slice(&0u16.to_le_bytes()); // extra len
+        out.extend_from_slice(name);
+        out.extend_from_slice(contents);
+        records.push((crc, contents.len() as u32, local_offset));
+    }
     let cd_offset = out.len() as u32;
-    // Central directory record
-    out.extend_from_slice(&0x02014b50u32.to_le_bytes());
-    out.extend_from_slice(&20u16.to_le_bytes()); // version made by
-    out.extend_from_slice(&20u16.to_le_bytes()); // version needed
-    out.extend_from_slice(&0u16.to_le_bytes()); // flags
-    out.extend_from_slice(&0u16.to_le_bytes()); // method
-    out.extend_from_slice(&0u16.to_le_bytes()); // mod time
-    out.extend_from_slice(&0x21u16.to_le_bytes()); // mod date
-    out.extend_from_slice(&crc.to_le_bytes());
-    out.extend_from_slice(&(code.len() as u32).to_le_bytes());
-    out.extend_from_slice(&(code.len() as u32).to_le_bytes());
-    out.extend_from_slice(&(name.len() as u16).to_le_bytes());
-    out.extend_from_slice(&0u16.to_le_bytes()); // extra len
-    out.extend_from_slice(&0u16.to_le_bytes()); // comment len
-    out.extend_from_slice(&0u16.to_le_bytes()); // disk number
-    out.extend_from_slice(&0u16.to_le_bytes()); // internal attrs
-    out.extend_from_slice(&0u32.to_le_bytes()); // external attrs
-    out.extend_from_slice(&local_offset.to_le_bytes());
-    out.extend_from_slice(name);
+    // Central directory records (all entries, contiguous).
+    for (member, (crc, size, local_offset)) in members.iter().zip(&records) {
+        let name = member.0;
+        out.extend_from_slice(&0x02014b50u32.to_le_bytes());
+        out.extend_from_slice(&20u16.to_le_bytes()); // version made by
+        out.extend_from_slice(&20u16.to_le_bytes()); // version needed
+        out.extend_from_slice(&0u16.to_le_bytes()); // flags
+        out.extend_from_slice(&0u16.to_le_bytes()); // method
+        out.extend_from_slice(&0u16.to_le_bytes()); // mod time
+        out.extend_from_slice(&0x21u16.to_le_bytes()); // mod date
+        out.extend_from_slice(&crc.to_le_bytes());
+        out.extend_from_slice(&size.to_le_bytes());
+        out.extend_from_slice(&size.to_le_bytes());
+        out.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        out.extend_from_slice(&0u16.to_le_bytes()); // extra len
+        out.extend_from_slice(&0u16.to_le_bytes()); // comment len
+        out.extend_from_slice(&0u16.to_le_bytes()); // disk number
+        out.extend_from_slice(&0u16.to_le_bytes()); // internal attrs
+        out.extend_from_slice(&0u32.to_le_bytes()); // external attrs
+        out.extend_from_slice(&local_offset.to_le_bytes());
+        out.extend_from_slice(name);
+    }
     let cd_size = out.len() as u32 - cd_offset;
     // End of central directory
     out.extend_from_slice(&0x06054b50u32.to_le_bytes());
     out.extend_from_slice(&0u16.to_le_bytes()); // disk
     out.extend_from_slice(&0u16.to_le_bytes()); // cd disk
-    out.extend_from_slice(&1u16.to_le_bytes()); // entries on disk
-    out.extend_from_slice(&1u16.to_le_bytes()); // total entries
+    out.extend_from_slice(&(members.len() as u16).to_le_bytes()); // entries
+    out.extend_from_slice(&(members.len() as u16).to_le_bytes()); // total
     out.extend_from_slice(&cd_size.to_le_bytes());
     out.extend_from_slice(&cd_offset.to_le_bytes());
     out.extend_from_slice(&0u16.to_le_bytes()); // comment len
@@ -1398,12 +1433,15 @@ fn ec2_add_tags(props: &Value, resource_id: &str, account: &str, region: &str) {
 
 pub fn create_ec2_vpc(props: &Value, account: &str, region: &str) -> Option<(String, Value)> {
     let cidr = props.get("CidrBlock").and_then(Value::as_str).unwrap_or("");
-    let resp = ec2_form(
-        "CreateVpc",
-        &[("CidrBlock", cidr.to_string())],
-        account,
-        region,
-    );
+    let mut params: Vec<(&str, String)> = vec![("CidrBlock", cidr.to_string())];
+    // moto honors InstanceTenancy (moto/ec2/models/vpcs.py); pass the two
+    // valid values through to the twin's CreateVpc shape.
+    if let Some(tenancy) = props.get("InstanceTenancy").and_then(Value::as_str) {
+        if tenancy == "default" || tenancy == "dedicated" {
+            params.push(("InstanceTenancy", tenancy.to_string()));
+        }
+    }
+    let resp = ec2_form("CreateVpc", &params, account, region);
     let vpc_id = text(&resp.body, "vpcId")?;
     ec2_add_tags(props, &vpc_id, account, region);
     Some((vpc_id.clone(), json!({"VpcId": vpc_id, "CidrBlock": cidr})))
@@ -1419,17 +1457,31 @@ pub fn delete_ec2_vpc(vpc_id: &str, account: &str, region: &str) {
 }
 
 pub fn create_ec2_subnet(props: &Value, account: &str, region: &str) -> Option<(String, Value)> {
-    let mut params: Vec<(&str, String)> = vec![
-        ("VpcId", value_str(props, "VpcId")),
-        ("CidrBlock", value_str(props, "CidrBlock")),
-    ];
-    if let Some(az) = props.get("AvailabilityZone").and_then(Value::as_str) {
+    let vpc_id = value_str(props, "VpcId");
+    let cidr = value_str(props, "CidrBlock");
+    let az = props.get("AvailabilityZone").and_then(Value::as_str);
+    let mut params: Vec<(&str, String)> =
+        vec![("VpcId", vpc_id.clone()), ("CidrBlock", cidr.clone())];
+    if let Some(az) = az {
         params.push(("AvailabilityZone", az.to_string()));
     }
     let resp = ec2_form("CreateSubnet", &params, account, region);
     let subnet_id = text(&resp.body, "subnetId")?;
+    // GetAtt coverage: prefer the CreateSubnet response values, falling back
+    // to the resolved properties.
+    let resp_az = text(&resp.body, "availabilityZone").unwrap_or_default();
+    let resp_vpc = text(&resp.body, "vpcId").unwrap_or_default();
+    let resp_cidr = text(&resp.body, "cidrBlock").unwrap_or_default();
     ec2_add_tags(props, &subnet_id, account, region);
-    Some((subnet_id.clone(), json!({"SubnetId": subnet_id})))
+    Some((
+        subnet_id.clone(),
+        json!({
+            "SubnetId": subnet_id,
+            "VpcId": if resp_vpc.is_empty() { vpc_id } else { resp_vpc },
+            "CidrBlock": if resp_cidr.is_empty() { cidr } else { resp_cidr },
+            "AvailabilityZone": if resp_az.is_empty() { az.map(String::from).unwrap_or_default() } else { resp_az },
+        }),
+    ))
 }
 
 pub fn delete_ec2_subnet(subnet_id: &str, account: &str, region: &str) {
@@ -1552,16 +1604,35 @@ pub fn delete_ec2_route(props: &Value, account: &str, region: &str) {
     if rt_id.is_empty() {
         return;
     }
-    let cidr = value_str(props, "DestinationCidrBlock");
-    if cidr.is_empty() {
+    // Routes can be keyed by either destination CIDR family (matching
+    // create_ec2_route's accepted destinations).
+    let (cidr_v4, cidr_v6) = (
+        value_str(props, "DestinationCidrBlock"),
+        value_str(props, "DestinationIpv6CidrBlock"),
+    );
+    if !cidr_v4.is_empty() {
+        let _ = ec2_form(
+            "DeleteRoute",
+            &[
+                ("RouteTableId", rt_id.clone()),
+                ("DestinationCidrBlock", cidr_v4),
+            ],
+            account,
+            region,
+        );
         return;
     }
-    let _ = ec2_form(
-        "DeleteRoute",
-        &[("RouteTableId", rt_id), ("DestinationCidrBlock", cidr)],
-        account,
-        region,
-    );
+    if !cidr_v6.is_empty() {
+        let _ = ec2_form(
+            "DeleteRoute",
+            &[
+                ("RouteTableId", rt_id),
+                ("DestinationIpv6CidrBlock", cidr_v6),
+            ],
+            account,
+            region,
+        );
+    }
 }
 
 pub fn create_ec2_subnet_rtb_association(
@@ -1603,7 +1674,7 @@ pub fn create_ec2_security_group(
         ("GroupDescription", value_str(props, "GroupDescription")),
     ];
     if !vpc_id.is_empty() {
-        params.push(("VpcId", vpc_id));
+        params.push(("VpcId", vpc_id.clone()));
     }
     let resp = ec2_form("CreateSecurityGroup", &params, account, region);
     let sg_id = text(&resp.body, "groupId")?;
@@ -1642,7 +1713,8 @@ pub fn create_ec2_security_group(
             pairs.iter().map(|(k, v)| (k.as_str(), v.clone())).collect();
         let _ = ec2_form("AuthorizeSecurityGroupIngress", &refs, account, region);
     }
-    Some((sg_id.clone(), json!({"GroupId": sg_id})))
+    // GetAtt coverage for VpcId.
+    Some((sg_id.clone(), json!({"GroupId": sg_id, "VpcId": vpc_id})))
 }
 
 pub fn delete_ec2_security_group(sg_id: &str, account: &str, region: &str) {
@@ -1720,9 +1792,18 @@ pub fn create_cognito_user_pool(
         .and_then(Value::as_str)
         .map(String::from)
         .unwrap_or_default();
+    // GetAtt coverage: real AWS reports the Cognito provider endpoint for
+    // the pool (`cognito-idp.{region}.amazonaws.com/{pool_id}`).
+    let provider = format!("cognito-idp.{region}.amazonaws.com/{pool_id}");
     Some((
         pool_id.clone(),
-        json!({"Id": pool_id, "Arn": arn, "Name": name}),
+        json!({
+            "Id": pool_id,
+            "Arn": arn,
+            "Name": name,
+            "ProviderName": provider.clone(),
+            "ProviderURL": format!("https://{}", provider),
+        }),
     ))
 }
 
@@ -1749,20 +1830,32 @@ pub fn create_cognito_user_pool_client(
         .get("ClientName")
         .and_then(Value::as_str)
         .unwrap_or(fallback);
-    let mut body = json!({"UserPoolId": pool_id, "ClientName": name});
+    let mut body = json!({"UserPoolId": pool_id.clone(), "ClientName": name});
     if let Some(flows) = props.get("ExplicitAuthFlows").filter(|v| !v.is_null()) {
         body.as_object_mut()
             .unwrap()
             .insert("ExplicitAuthFlows".to_string(), flows.clone());
     }
+    // GenerateSecret: the twin's CreateUserPoolClient mints a ClientSecret
+    // into the response record only when asked (real-AWS semantics).
+    if props.get("GenerateSecret").and_then(Value::as_bool) == Some(true) {
+        body.as_object_mut()
+            .unwrap()
+            .insert("GenerateSecret".to_string(), Value::Bool(true));
+    }
     let resp = cognito_json("CreateUserPoolClient", body, account, region);
     let parsed: Value = serde_json::from_str(&resp.body).unwrap_or(json!({}));
     let client = parsed.get("UserPoolClient")?;
     let client_id = client.get("ClientId").and_then(Value::as_str)?.to_string();
-    Some((
-        client_id.clone(),
-        json!({"ClientId": client_id, "ClientName": name, "UserPoolId": pool_id}),
-    ))
+    let mut attrs = json!({"ClientId": client_id, "ClientName": name, "UserPoolId": pool_id});
+    // GetAtt coverage for the secret the backend minted.
+    if let Some(secret) = client.get("ClientSecret").and_then(Value::as_str) {
+        attrs.as_object_mut().unwrap().insert(
+            "ClientSecret".to_string(),
+            Value::String(secret.to_string()),
+        );
+    }
+    Some((client_id, attrs))
 }
 
 pub fn delete_cognito_user_pool_client(

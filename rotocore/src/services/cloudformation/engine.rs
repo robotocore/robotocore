@@ -332,10 +332,15 @@ fn resolve_getatt(fn_value: &Value, ctx: &ResolveCtx) -> ResolveResult {
     }
     if res.resource_type == "AWS::CloudFormation::Stack" && attr_name.starts_with("Outputs.") {
         let output_key = attr_name.trim_start_matches("Outputs.").to_string();
-        let fallback = Value::String(format!("{logical_id}-{output_key}"));
-        return Ok(res.attributes.get(&output_key).cloned().unwrap_or(fallback));
+        if let Some(v) = res.attributes.get(&output_key) {
+            return Ok(v.clone());
+        }
     }
-    Ok(Value::String(String::new()))
+    // Real CFN fails the deploy on an unresolvable attribute instead of
+    // silently fabricating an empty/fake member string.
+    Err(format!(
+        "Template error: instance of Fn::GetAtt references unknown attribute '{attr_name}' of resource '{logical_id}'"
+    ))
 }
 
 fn resolve_join(join: &Value, ctx: &ResolveCtx, depth: usize) -> ResolveResult {

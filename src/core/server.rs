@@ -1160,6 +1160,7 @@ pub async fn catch_all_handler(
         crate::core::furl_exec::match_url_host(host).map(|t| crate::core::furl_exec::FurlTarget {
             url_id: t.url_id,
             sub_path: String::new(),
+            host_region: Some(t.region),
         })
     });
     if let Some(target) = furl_target {

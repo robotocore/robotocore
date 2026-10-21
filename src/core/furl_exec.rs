@@ -16,6 +16,9 @@ pub struct FurlTarget {
     pub url_id: String,
     /// Path after the url-id ("" for `/lambda-url/{id}/`).
     pub sub_path: String,
+    /// Region carried in the host name for host-form URLs
+    /// (`{url-id}.lambda-url.{region}.on.aws`); none for the path form.
+    pub host_region: Option<String>,
 }
 
 /// A parsed host-form function URL: `{url-id}.lambda-url.{region}.on.aws`.
@@ -47,6 +50,17 @@ pub fn match_url_host(authority: &str) -> Option<FurlHostTarget> {
     })
 }
 
+/// Host-region routing check: real AWS serves a function-URL host name only
+/// from the region it minted into the hostname, so a host-form request whose
+/// region differs from the function's home region is unknown (→ 404).
+/// Path-form requests carry no host region and always route.
+fn host_region_mismatch(host_region: Option<&str>, function_region: &str) -> bool {
+    match host_region {
+        Some(region) => !region.is_empty() && region != function_region,
+        None => false,
+    }
+}
+
 pub fn match_url(path: &str) -> Option<FurlTarget> {
     let rest = path.strip_prefix("/lambda-url/")?;
     let (url_id, sub) = match rest.split_once('/') {
@@ -60,6 +74,7 @@ pub fn match_url(path: &str) -> Option<FurlTarget> {
     Some(FurlTarget {
         url_id: url_id.to_string(),
         sub_path: sub.to_string(),
+        host_region: None,
     })
 }
 
@@ -85,6 +100,17 @@ pub fn execute(
         )
             .into_response();
     };
+    // Real AWS serves a host-form function URL only from the region it minted
+    // into the hostname; a host-form request naming another region is unknown.
+    if host_region_mismatch(target.host_region.as_deref(), &func_region) {
+        return (
+            StatusCode::NOT_FOUND,
+            axum::Json(
+                json!({"message": format!("function url {} does not exist", target.url_id)}),
+            ),
+        )
+            .into_response();
+    }
     let Some(function_name) = config
         .get("FunctionArn")
         .and_then(Value::as_str)
@@ -420,6 +446,20 @@ mod tests {
         assert_eq!(t.region, "us-east-1");
         assert!(match_url_host("abc123.lambda-url.on.aws").is_none());
         assert!(match_url_host("abc.lambda-url.us-east-1.amazonaws.com").is_none());
+    }
+
+    #[test]
+    fn test_host_region_mismatch() {
+        // Path form carries no host region and always routes.
+        assert!(!host_region_mismatch(None, "us-east-1"));
+        // Host form routes only from the minted region.
+        assert!(!host_region_mismatch(Some("us-east-1"), "us-east-1"));
+        assert!(host_region_mismatch(Some("eu-west-1"), "us-east-1"));
+        // A multi-label region parses into the host target and checks out.
+        let t = match_url_host("abc123.lambda-url.us-gov-west-1.on.aws").expect("host target");
+        assert_eq!(t.region, "us-gov-west-1");
+        assert!(host_region_mismatch(Some(&t.region), "us-east-1"));
+        assert!(!host_region_mismatch(Some(&t.region), "us-gov-west-1"));
     }
 
     #[test]

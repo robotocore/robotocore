@@ -1103,7 +1103,12 @@ fn deploy_stack(
         }
 
         add_event(stack, &logical_id, rtype, "", "CREATE_IN_PROGRESS", None);
-        let (physical, attrs) = create_resource(&logical_id, rtype, &resolved, account, region)?;
+        let (physical, attrs) = create_resource(&logical_id, rtype, &resolved, account, region)
+            .map_err(|e| {
+                // StatusReason-shaped like the real service (the inner text
+                // keeps the mirror detail for debugging).
+                format!("The following resource(s) failed to create: [{logical_id}]: {e}")
+            })?;
         let phys_str = physical.clone().unwrap_or_default();
         add_event(
             stack,
@@ -1188,42 +1193,119 @@ fn deploy_nested_stack(
             child.parameters.push((k.clone(), value));
         }
     }
-    deploy_stack(
+    add_stack_event(&mut child, "CREATE_IN_PROGRESS", None);
+    let deploy_result = deploy_stack(
         store,
         &mut child,
         &mut child_template,
         region,
         account,
         account_num,
-    )
-    .map_err(|e| format!("Nested stack ({logical_id}) failed: {e}"))?;
-    // Publish the child's outputs as attributes and keep the child record so
-    // descriptions and deletions can reach it.
-    let mut out = json!({"stack_name": child_name, "stack_id": child_id});
+    );
+    // Deploy on the local record (deploy_stack holds the store); the child
+    // row joins the store on BOTH exits — a mid-deploy failure must leave a
+    // record behind, or the mirror-created resources (queues, buckets, VPCs)
+    // exist with no stack record to unwind them through the cascade.
+    let mut failed: Option<String> = None;
+    match deploy_result {
+        Ok(()) => {
+            add_stack_event(&mut child, "CREATE_COMPLETE", None);
+            child.status = "CREATE_COMPLETE".to_string();
+        }
+        Err(fail) => {
+            let why = format!("Nested stack ({logical_id}) failed: {fail}");
+            add_stack_event(&mut child, "ROLLBACK_IN_PROGRESS", None);
+            child.status = "ROLLBACK_COMPLETE".to_string();
+            child.status_reason = why.clone();
+            failed = Some(why);
+        }
+    }
+    // Publish the child's outputs as attributes so descriptions, ref curls
+    // and deletions can reach them.
+    let mut out = json!({"stack_name": child_name.clone(), "stack_id": child_id.clone()});
     for (k, v) in &child.outputs {
         if let Some(val) = v.get("OutputValue").and_then(Value::as_str) {
             out.as_object_mut().unwrap().insert(k.clone(), json!(val));
         }
     }
     store.stacks.push(child);
+    if let Some(why) = failed {
+        // Unwind what the child created through the same cascade helper the
+        // delete path uses; the parent keeps its own rollback semantics.
+        cascade_delete_nested_stack(
+            store,
+            &child_name,
+            account,
+            region,
+            "ROLLBACK_COMPLETE",
+            Some(&why),
+        );
+        return Err(why);
+    }
     Ok(out)
 }
 
-/// Delete a nested stack: unwind the child's resources, then tombstone the
-/// child record (mirrors a parent-stack delete cascading to children).
-fn delete_nested_stack(store: &mut store::CfnStore, child_name: &str, account: &str, region: &str) {
-    let Some(pos) = store.stacks.iter().position(|s| s.stack_name == child_name) else {
-        return;
-    };
+/// Unwind one stack's own resources: delete in reverse creation order
+/// (honoring DeletionPolicy: Retain), cascade into its AWS::CloudFormation::Stack
+/// children, drop its registered exports, and clear the resources. The
+/// record stays (tombstoning is the caller's terminal-status choice).
+fn unwind_stack_resources(store: &mut store::CfnStore, pos: usize, account: &str, region: &str) {
     let snapshot: Vec<CfnResource> = store.stacks[pos].resources.clone();
     for resource in snapshot.iter().rev() {
         if resource.deletion_policy == "Retain" {
             continue;
         }
+        // Nested stack: cascade the delete into the child stack.
+        if resource.resource_type == "AWS::CloudFormation::Stack" {
+            if let Some(child_name) = resource.physical_id.clone().filter(|s| !s.is_empty()) {
+                cascade_delete_nested_stack(
+                    store,
+                    &child_name,
+                    account,
+                    region,
+                    "DELETE_COMPLETE",
+                    None,
+                );
+            }
+            continue;
+        }
         delete_resource(resource, account, region);
     }
-    store.stacks[pos].status = "DELETE_COMPLETE".to_string();
+    let export_names: Vec<String> = store.stacks[pos]
+        .exports
+        .iter()
+        .map(|(k, _)| k.clone())
+        .collect();
+    for export_name in export_names {
+        store.exports.retain(|(k, _)| k != &export_name);
+    }
     store.stacks[pos].resources.clear();
+}
+
+/// Cascade-delete a nested stack after unwinding it: unrecorded children
+/// cannot leak, so this is the single entry the delete path, the create
+/// rollback loop, and a failed nested deploy all share. The child record
+/// ends at `terminal` (DELETE_COMPLETE after a delete cascade,
+/// ROLLBACK_COMPLETE after a failed create) with its status reason set and
+/// its own stack event recorded.
+fn cascade_delete_nested_stack(
+    store: &mut store::CfnStore,
+    child_name: &str,
+    account: &str,
+    region: &str,
+    terminal: &str,
+    reason: Option<&str>,
+) {
+    let Some(pos) = store.stacks.iter().position(|s| s.stack_name == child_name) else {
+        return;
+    };
+    unwind_stack_resources(store, pos, account, region);
+    let child = &mut store.stacks[pos];
+    child.status = terminal.to_string();
+    if let Some(r) = reason {
+        child.status_reason = r.to_string();
+    }
+    add_stack_event(child, terminal, reason.map(String::from));
 }
 
 /// Resolve outputs (`Value` + optional `Export`), honoring `Condition`.
@@ -1397,24 +1479,45 @@ fn create_stack(params: &HashMap<String, String>, region: &str, account: &str) -
                 );
             }
             Err(reason) => {
-                // Rollback: delete what was created (reverse order).
+                // Rollback: delete what was created (reverse order). Nested
+                // stacks unwind through the shared cascade helper, so a
+                // failing resource after a nested deploy cannot orphan the
+                // child's resources (real CFN deletes nested stacks during
+                // rollback).
                 let created: Vec<CfnResource> = stack.resources.clone();
                 stack.resources.clear();
                 for resource in created.iter().rev() {
+                    let phys = resource.physical_id.clone().unwrap_or_default();
                     add_event(
                         &mut stack,
                         &resource.logical_id,
                         &resource.resource_type,
-                        &resource.physical_id.clone().unwrap_or_default(),
+                        &phys,
                         "DELETE_IN_PROGRESS",
                         None,
                     );
-                    delete_resource(resource, account, region);
+                    // Nested stack: cascade the delete into the child stack.
+                    if resource.resource_type == "AWS::CloudFormation::Stack" {
+                        if let Some(child_name) =
+                            resource.physical_id.clone().filter(|s| !s.is_empty())
+                        {
+                            cascade_delete_nested_stack(
+                                store,
+                                &child_name,
+                                account,
+                                region,
+                                "DELETE_COMPLETE",
+                                None,
+                            );
+                        }
+                    } else {
+                        delete_resource(resource, account, region);
+                    }
                     add_event(
                         &mut stack,
                         &resource.logical_id,
                         &resource.resource_type,
-                        &resource.physical_id.clone().unwrap_or_default(),
+                        &phys,
                         "DELETE_COMPLETE",
                         None,
                     );
@@ -1622,34 +1725,31 @@ fn delete_stack_action(params: &HashMap<String, String>, region: &str, account: 
             // Python provider: deleting an unknown stack is a no-op.
             return Ok(xml::empty("DeleteStackResponse"));
         };
-        // Snapshot the resources before taking the stack (delete side).
-        let snapshot: Vec<CfnResource> = store.stacks[pos].resources.clone();
-        let stack_exports: Vec<(String, String)> = store.stacks[pos].exports.clone();
-        let stack_name = store.stacks[pos].stack_name.clone();
 
-        // Block deletion when other live stacks import these exports.
+        // Block deletion when other live stacks import these exports — the
+        // parent's own and its nested stacks' children alike.
         check_import_references(store, &store.stacks[pos])?;
+        let child_names: Vec<String> = store.stacks[pos]
+            .resources
+            .iter()
+            .filter(|r| r.resource_type == "AWS::CloudFormation::Stack")
+            .filter_map(|r| r.physical_id.clone().filter(|s| !s.is_empty()))
+            .collect();
+        for child_name in &child_names {
+            if let Some(cpos) = store
+                .stacks
+                .iter()
+                .position(|s| s.stack_name == *child_name)
+            {
+                check_import_references(store, &store.stacks[cpos])?;
+            }
+        }
 
-        for resource in snapshot.iter().rev() {
-            if resource.deletion_policy == "Retain" {
-                continue;
-            }
-            // Nested stack: cascade the delete into the child stack.
-            if resource.resource_type == "AWS::CloudFormation::Stack" {
-                if let Some(child_name) = resource.physical_id.clone().filter(|s| !s.is_empty()) {
-                    delete_nested_stack(store, &child_name, account, region);
-                }
-                continue;
-            }
-            delete_resource(resource, account, region);
-        }
-        let export_names: Vec<String> = stack_exports.iter().map(|(k, _)| k.clone()).collect();
-        for export_name in export_names {
-            store.exports.retain(|(k, _)| k != &export_name);
-        }
-        let _ = stack_name;
+        // Unwind through the shared cascade core: reverse-order resource
+        // deletes, nested children cascaded, the stack's own exports
+        // removed, resources cleared. Then tombstone the record.
+        unwind_stack_resources(store, pos, account, region);
         store.stacks[pos].status = "DELETE_COMPLETE".to_string();
-        store.stacks[pos].resources.clear();
         Ok(xml::empty("DeleteStackResponse"))
     })
 }
