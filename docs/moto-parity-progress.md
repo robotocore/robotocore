@@ -390,3 +390,19 @@ are parsed by `tooling/moto_port_progress.py`.
 - Wave-10 gates: fmt clean, clippy silent, 1,608 workspace lib tests,
   full compat lane green (12,873 passes), IaC battery 119/119 on the
   cfn/serverless/sam slices + 101 across cdk/pulumi/terraform.
+
+## Perf profile (2026-10-21) — robotocore vs moto 5.2.4 (python)
+
+A/B profiler landed in `tooling/perf-ab-2026-10-21/` (harness + raw
+results). Same host, one harness process, boto3-only client timing,
+400/200 ops per cell, then a 4-thread mixed cycle. Rust's serial p50
+floor (~0.41 ms) is the boto3 client itself; the twin's own audit
+`duration_ms` sits at 0.03–0.11 ms server-side for the same cells.
+Throughput: rust holds 941 wire ops/s under 4 threads vs moto's 467
+(2.0x), with moto's GC/serialization tails dominating at the slow end
+(sqs.receive p95 12.9 ms vs 0.47; ec2.describe_instances p50 6.27 ms
+vs 0.41, a 15x gap). RSS: 27.7 MB rust vs 220 MB moto under load —
+~1/8 the memory. Only real regression the profiler surfaced: none —
+`dynamodb.scan Limit=10` is the smallest win (2.4x) and would be a
+candidate for the same collect_listing fix the standing perf agents
+proposed (`crates/s3` list path analog on the dynamodb scan path).
