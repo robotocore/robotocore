@@ -486,7 +486,7 @@ fn modify_route(req: &Request, op: &str, params: &P) -> Response {
             }
             if !found {
                 return ec2_error(
-                    404,
+                    400,
                     "InvalidClientVpnEndpointId.NotFound",
                     &format!(
                         "The Client VPN endpoint ID '{}' does not exist",
@@ -600,7 +600,7 @@ fn modify_route(req: &Request, op: &str, params: &P) -> Response {
             .unwrap_or(false)
         {
             return ec2_error(
-                404,
+                400,
                 "InvalidCapacityReservationFleetId.NotFound",
                 &format!(
                     "The capacity reservation fleet ID '{}' does not exist",

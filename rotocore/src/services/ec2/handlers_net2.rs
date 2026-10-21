@@ -1301,7 +1301,7 @@ fn accept_peering(req: &Request, params: &P) -> Response {
             }
             None => {
                 return ec2_error(
-                    404,
+                    400,
                     "InvalidVpcPeeringConnectionId.NotFound",
                     &format!(
                         "The vpc peering connection '{}' does not exist",
@@ -1331,7 +1331,7 @@ fn reject_peering(req: &Request, params: &P) -> Response {
             }
             None => {
                 return ec2_error(
-                    404,
+                    400,
                     "InvalidVpcPeeringConnectionId.NotFound",
                     &format!(
                         "The vpc peering connection '{}' does not exist",

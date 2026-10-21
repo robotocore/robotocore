@@ -235,3 +235,137 @@ fn shapes_lookup_smoke() {
     let s = super::shapes::shape_of("CreateIpam");
     assert!(s.is_some(), "shapes.json must carry CreateIpam");
 }
+
+// --- nested-lock regression guard -------------------------------------------
+//
+// Cross-partition lookups (CopyImage / CopySnapshot with a SourceRegion,
+// CreateVolume with a SnapshotId from another region's partition) must run
+// under a READ lease before `with_state` takes its WRITE lease. An inner
+// `shared().read()` under the outer write guard silently deadlocks on
+// parking_lot and wedges the whole EC2 backend for every later request.
+
+fn dispatch_off_thread(op: &str, body: &str, secs: u64) -> crate::Response {
+    let r = req(op, body);
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let resp = super::dispatch(&r);
+        let _ = tx.send(resp);
+    });
+    rx.recv_timeout(std::time::Duration::from_secs(secs)).unwrap_or_else(|_| {
+        panic!("{op}: no response within {secs}s — nested-lock deadlock regression")
+    })
+}
+
+#[test]
+fn copy_image_cross_region_answers_without_deadlock() {
+    let resp = dispatch_off_thread(
+        "CopyImage",
+        "Action=CopyImage&SourceImageId=ami-0999deadbeef&SourceRegion=eu-west-2",
+        10,
+    );
+    assert_eq!(resp.status, 400, "absent source image must be 400");
+    let text = String::from_utf8(resp.body).unwrap();
+    assert!(text.contains("InvalidAMIID.NotFound"), "{text}");
+}
+
+#[test]
+fn copy_snapshot_cross_region_answers_without_deadlock() {
+    let resp = dispatch_off_thread(
+        "CopySnapshot",
+        "Action=CopySnapshot&SourceSnapshotId=snap-0999deadbeef&SourceRegion=eu-west-2",
+        10,
+    );
+    assert_eq!(resp.status, 400, "absent source snapshot must be 400");
+    let text = String::from_utf8(resp.body).unwrap();
+    assert!(text.contains("InvalidSnapshot.NotFound"), "{text}");
+}
+
+#[test]
+fn create_volume_foreign_snapshot_answers_without_deadlock() {
+    let resp = dispatch_off_thread(
+        "CreateVolume",
+        "Action=CreateVolume&Zone=us-east-1a&Size=1&SnapshotId=snap-0999deadbeef",
+        10,
+    );
+    assert_eq!(resp.status, 400, "absent snapshot must be 400");
+    let text = String::from_utf8(resp.body).unwrap();
+    assert!(text.contains("InvalidSnapshot.NotFound"), "{text}");
+}
+
+#[test]
+fn modeled_notfound_errors_use_400_not_404() {
+    // EC2 id-NotFound modeled errors ship HTTP 400 on AWS and moto; the twin
+    // had a few stragglers answering 404 with the same XML body.
+    for (op, params) in [
+        ("DeletePlacementGroup", "Action=DeletePlacementGroup&PlacementGroup=probe-test-value"),
+        ("AcceptVpcPeeringConnection", "Action=AcceptVpcPeeringConnection&VpcPeeringConnectionId=pcx-0999deadbeef"),
+        ("RejectVpcPeeringConnection", "Action=RejectVpcPeeringConnection&VpcPeeringConnectionId=pcx-0999deadbeef"),
+        ("ModifyCapacityReservationFleet", "Action=ModifyCapacityReservationFleet&CapacityReservationFleetId=crf-0999deadbeef&TargetCapacity=1"),
+        ("ModifyClientVpnEndpoint", "Action=ModifyClientVpnEndpoint&ClientVpnEndpointId=cvpn-endpoint-0999deadbeef&ServerCertificateArn=arn:aws:acm:us-east-1:123456789012:certificate/probe-test"),
+    ] {
+        let r = req(op, params);
+        let resp = super::dispatch(&r);
+        let text = String::from_utf8(resp.body.clone()).unwrap();
+        let got = resp.status;
+        assert_eq!(
+            got, 400,
+            "{op} must answer 400 (NotFound modeled error), got {got}: {text}"
+        );
+        assert!(text.contains("NotFound"), "{op}: {text}");
+    }
+}
+
+#[test]
+fn cross_region_copy_snapshot_finds_source_partition() {
+    // A snapshot created in another region must be visible to CopySnapshot
+    // with SourceRegion (read lease before the write lease).
+    let vol_body =
+        "Action=CreateVolume&Zone=eu-west-2a&Size=1&Action=CreateVolume";
+    let vol = crate::Request {
+        region: "eu-west-2".into(),
+        ..req("CreateVolume", vol_body)
+    };
+    let vtext = String::from_utf8(super::dispatch(&vol).body).unwrap();
+    let volume_id = vtext
+        .split("<volumeId>")
+        .nth(1)
+        .unwrap_or("")
+        .split("</volumeId>")
+        .next()
+        .unwrap_or("")
+        .to_string();
+    assert!(volume_id.starts_with("vol-"), "seed volume: {vtext}");
+
+    let mk = req(
+        "CreateSnapshot",
+        &format!("Action=CreateSnapshot&VolumeId={volume_id}&Description=seed"),
+    );
+    let in_eu = crate::Request { region: "eu-west-2".into(), ..mk };
+    let created = String::from_utf8(super::dispatch(&in_eu).body).unwrap();
+    let src_id = created
+        .split("<snapshotId>")
+        .nth(1)
+        .unwrap_or("")
+        .split("</snapshotId>")
+        .next()
+        .unwrap_or("")
+        .to_string();
+    assert!(src_id.starts_with("snap-"), "seed snapshot: {created}");
+
+    let resp = dispatch_off_thread(
+        "CopySnapshot",
+        &format!(
+            "Action=CopySnapshot&SourceSnapshotId={src_id}&SourceRegion=eu-west-2"
+        ),
+        10,
+    );
+    assert_eq!(resp.status, 200, "cross-region copy must find the source");
+    let text = String::from_utf8(resp.body).unwrap();
+    assert!(text.contains("<snapshotId>snap-"), "{text}");
+
+    // and the local partition must not be left wedged: a normal call after
+    // the above answers immediately.
+    let resp = dispatch_off_thread("DescribeKeyPairs", "Action=DescribeKeyPairs", 10);
+    assert_eq!(resp.status, 200);
+}
+

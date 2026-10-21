@@ -1421,41 +1421,26 @@ fn copy_image(req: &Request, params: &P) -> Response {
         .unwrap_or_else(|| req.region.clone());
     let name = params.get("Name").map(|s| s.to_string());
     let description = params.get("Description").map(|s| s.to_string());
+
+    // Resolve the source image under a read lease BEFORE taking the write
+    // lease: a cross-region lookup reads another partition of the very same
+    // shared map, and parking_lot's RwLock is not re-entrant — reading it
+    // while this scope holds the write guard deadlocks the EC2 backend.
+    let roster_src = |region: &str| {
+        amis::roster(region)
+            .iter()
+            .find(|a| a.get("ami_id").and_then(|v| v.as_str()) == Some(source.as_str()))
+            .map(amis::parse)
+    };
+    let src = {
+        let slot = super::state::shared();
+        let states = slot.read();
+        states
+            .get(&(req.account, source_region.clone()))
+            .and_then(|st| st.images.iter().find(|i| i.id == source).cloned())
+            .or_else(|| roster_src(&source_region))
+    };
     with_state(req, move |state| {
-        // cross-region copy: source image comes from the other region's partition
-        let src = if source_region == req.region {
-            state
-                .images
-                .iter()
-                .find(|i| i.id == source)
-                .cloned()
-                .or_else(|| {
-                    amis::roster(&req.region)
-                        .iter()
-                        .find(|a| a.get("ami_id").and_then(|v| v.as_str()) == Some(source.as_str()))
-                        .map(amis::parse)
-                })
-        } else {
-            // other region partition (source account) — moto reads the other region's backend
-            let slot = super::state::shared();
-            let other = slot.read();
-            match other.get(&(req.account, source_region.clone())) {
-                Some(other_state) => other_state
-                    .images
-                    .iter()
-                    .find(|i| i.id == source)
-                    .cloned()
-                    .or_else(|| {
-                        amis::roster(&source_region)
-                            .iter()
-                            .find(|a| {
-                                a.get("ami_id").and_then(|v| v.as_str()) == Some(source.as_str())
-                            })
-                            .map(amis::parse)
-                    }),
-                None => None,
-            }
-        };
         let src = match src {
             Some(a) => a,
             None => {
@@ -1700,25 +1685,30 @@ fn create_volume(req: &Request, params: &P) -> Response {
     let iops = params.i64("Iops");
     let throughput = params.i64("Throughput");
     let encrypted = params.bool("Encrypted").unwrap_or(false);
+
+    // Read-lease pre-pass: moto springs volumes from snapshots anywhere in
+    // the account; checking other partitions must happen before this scope
+    // takes the write lease (see CopyImage — same re-entrancy rule).
+    let found_elsewhere = if !snapshot_id.is_empty() {
+        let slot = super::state::shared();
+        let states = slot.read();
+        let found = states
+            .values()
+            .any(|st| st.snapshots.iter().any(|s| s.id == snapshot_id));
+        found
+    } else {
+        false
+    };
     with_state(req, move |state| {
-        if !snapshot_id.is_empty() && state.snapshots.iter().all(|s| s.id != snapshot_id) {
-            // moto springs volumes from snapshots anywhere in the account
-            let slot = super::state::shared();
-            let other = slot.read();
-            let found = other
-                .values()
-                .any(|st| st.snapshots.iter().any(|s| s.id == snapshot_id));
-            drop(other);
-            if !found {
-                return ec2_error(
-                    400,
-                    "InvalidSnapshot.NotFound",
-                    &format!(
-                        "The snapshot '{}' does not exist.",
-                        xml_escape(&snapshot_id)
-                    ),
-                );
-            }
+        if !snapshot_id.is_empty() && state.snapshots.iter().all(|s| s.id != snapshot_id) && !found_elsewhere {
+            return ec2_error(
+                400,
+                "InvalidSnapshot.NotFound",
+                &format!(
+                    "The snapshot '{}' does not exist.",
+                    xml_escape(&snapshot_id)
+                ),
+            );
         }
         let id = state.next_id("vol");
         let mut tags = wire_tags(params);
@@ -2158,16 +2148,16 @@ fn copy_snapshot(req: &Request, params: &P) -> Response {
         .map(|s| s.to_string())
         .unwrap_or_else(|| req.region.clone());
     let description = params.get("Description").map(|s| s.to_string());
+
+    // Read-lease pre-pass: same re-entrancy rule as CopyImage.
+    let src = {
+        let slot = super::state::shared();
+        let states = slot.read();
+        states
+            .get(&(req.account, sour_region.clone()))
+            .and_then(|st| st.snapshots.iter().find(|s| s.id == source_id).cloned())
+    };
     with_state(req, move |state| {
-        let src = if sour_region == req.region {
-            state.snapshots.iter().find(|s| s.id == source_id).cloned()
-        } else {
-            let slot = super::state::shared();
-            let other = slot.read();
-            other
-                .get(&(req.account, sour_region.clone()))
-                .and_then(|st| st.snapshots.iter().find(|s| s.id == source_id).cloned())
-        };
         let src = match src {
             Some(a) => a,
             None => {
@@ -3050,7 +3040,7 @@ fn delete_placement_group(req: &Request, params: &P) -> Response {
                 ok_xml("DeletePlacementGroupResponse")
             }
             None => ec2_error(
-                404,
+                400,
                 "InvalidGroup.NotFound",
                 &format!("The placement group '{}' was not found", xml_escape(&name)),
             ),
