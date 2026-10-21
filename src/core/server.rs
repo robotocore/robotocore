@@ -1143,7 +1143,26 @@ pub async fn catch_all_handler(
 
     // Lambda function URL HTTP surface: /lambda-url/{url-id}/{path…}
     // (served by its own executor like the deployed-API bridge above).
-    if let Some(target) = crate::core::furl_exec::match_url(uri.path()) {
+    // Host form `{url-id}.lambda-url.{region}.on.aws` matches first unless
+    // the request looks like an S3 virtual-host (an S3 bucket named
+    // "lambda-url" would otherwise shadow into this executor).
+    let furl_target = crate::core::furl_exec::match_url(uri.path()).or_else(|| {
+        // The signed Host header carries the function-URL vhost; the connect
+        // host (uri.host()) is 127.0.0.1 on single-port twins and never
+        // matches the pattern.
+        let host = headers
+            .get("host")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or_else(|| uri.host().unwrap_or_default());
+        if looks_like_s3_host(host) {
+            return None;
+        }
+        crate::core::furl_exec::match_url_host(host).map(|t| crate::core::furl_exec::FurlTarget {
+            url_id: t.url_id,
+            sub_path: String::new(),
+        })
+    });
+    if let Some(target) = furl_target {
         let account =
             extract_account_from_request(&headers, uri.query().unwrap_or(""), &body_bytes);
         let account_id = account.to_string();
@@ -2277,6 +2296,14 @@ fn body_is_sdb(headers: &HeaderMap, body: &[u8]) -> bool {
         && std::str::from_utf8(body)
             .map(|b| b.contains("Version=2009-04-15"))
             .unwrap_or(false)
+}
+
+/// Host-header shorthand that names an S3 bucket (path or explicit
+/// s3-style hosts); used to keep an S3 bucket literally named
+/// "lambda-url" from shadowing into the function-URL executor.
+fn looks_like_s3_host(host: &str) -> bool {
+    let host = host.split(':').next().unwrap_or(host);
+    host.contains(".s3.") || host.starts_with("s3.") || host.starts_with("s3-")
 }
 
 /// Extract account ID from Authorization header.

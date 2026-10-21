@@ -10,14 +10,44 @@
 use axum::http::{Method, StatusCode};
 use serde_json::{json, Map, Value};
 
-/// A parsed `/lambda-url/{url_id}/{path…}` request target.
-pub struct FurlTarget<'a> {
-    pub url_id: &'a str,
+/// A parsed `/lambda-url/{url_id}/{path…}` request target. `url_id` is
+/// owned so the path form and the host form produce the same type.
+pub struct FurlTarget {
+    pub url_id: String,
     /// Path after the url-id ("" for `/lambda-url/{id}/`).
-    pub sub_path: &'a str,
+    pub sub_path: String,
 }
 
-pub fn match_url(path: &str) -> Option<FurlTarget<'_>> {
+/// A parsed host-form function URL: `{url-id}.lambda-url.{region}.on.aws`.
+pub struct FurlHostTarget {
+    pub url_id: String,
+    pub region: String,
+}
+
+/// Host-form function URLs: the python twin also served
+/// `{url-id}.lambda-url.{region}.on.aws` (the gateway's
+/// `_parse_function_url_host`). The url-id lookup scans states by url-id,
+/// and the invocation targets the root resource path for host-form.
+pub fn match_url_host(authority: &str) -> Option<FurlHostTarget> {
+    let host = authority.split(':').next()?;
+    let labels: Vec<&str> = host.split('.').collect();
+    if labels.len() < 5 || labels[1].ne("lambda-url") || labels[0].is_empty() {
+        return None;
+    }
+    if labels[labels.len() - 2].ne("on") || labels[labels.len() - 1].ne("aws") {
+        return None;
+    }
+    let region = labels[2..labels.len() - 2].join(".");
+    if region.is_empty() {
+        return None;
+    }
+    Some(FurlHostTarget {
+        url_id: labels[0].to_string(),
+        region,
+    })
+}
+
+pub fn match_url(path: &str) -> Option<FurlTarget> {
     let rest = path.strip_prefix("/lambda-url/")?;
     let (url_id, sub) = match rest.split_once('/') {
         Some((id, sub)) => (id, sub),
@@ -28,8 +58,8 @@ pub fn match_url(path: &str) -> Option<FurlTarget<'_>> {
         return None;
     }
     Some(FurlTarget {
-        url_id,
-        sub_path: sub,
+        url_id: url_id.to_string(),
+        sub_path: sub.to_string(),
     })
 }
 
@@ -37,7 +67,7 @@ pub fn match_url(path: &str) -> Option<FurlTarget<'_>> {
 pub fn execute(
     lambda: &crate::core::server::NativeHandlers,
     method: &Method,
-    target: FurlTarget<'_>,
+    target: FurlTarget,
     account: u64,
     body_bytes: &[u8],
     headers: &std::collections::HashMap<String, String>,
@@ -45,7 +75,7 @@ pub fn execute(
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
 
-    let Some((func_account, func_region, config)) = lambda.lambda.find_url_config(target.url_id)
+    let Some((func_account, func_region, config)) = lambda.lambda.find_url_config(&target.url_id)
     else {
         return (
             StatusCode::NOT_FOUND,
@@ -325,9 +355,9 @@ fn single_value_query(query_string: &str) -> Option<Map<String, Value>> {
         if key.is_empty() {
             continue;
         }
-        // First value wins for repeated keys (AWS v2.0 events use
-        // singleValue versions; any value choice is unasserted).
-        out.entry(key).or_insert(json!(query_decode(v)));
+        // Last value wins for repeated keys (both the python twin and the
+        // AWS v2.0 event contract resolve duplicates to the final value).
+        out.insert(key.clone(), json!(query_decode(v)));
     }
     Some(out)
 }
@@ -375,6 +405,21 @@ mod tests {
         assert_eq!(params["foo"], json!("bar"));
         assert_eq!(params["baz"], json!("123"));
         assert!(single_value_query("").is_none());
+    }
+
+    #[test]
+    fn test_query_repeated_key_last_wins() {
+        let params = single_value_query("foo=first&foo=second").expect("params");
+        assert_eq!(params["foo"], json!("second"));
+    }
+
+    #[test]
+    fn test_host_form_url_match() {
+        let t = match_url_host("abc123.lambda-url.us-east-1.on.aws:443").expect("host target");
+        assert_eq!(t.url_id, "abc123");
+        assert_eq!(t.region, "us-east-1");
+        assert!(match_url_host("abc123.lambda-url.on.aws").is_none());
+        assert!(match_url_host("abc.lambda-url.us-east-1.amazonaws.com").is_none());
     }
 
     #[test]
