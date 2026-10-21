@@ -1,12 +1,13 @@
 {
   "service": "transcribe",
-  "generated_at": "2026-10-20T08:08:40.483210+00:00",
-  "endpoint": "http://localhost:4599",
+  "generated_at": "2026-10-21T07:08:34.517088+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 38,
     "needs_params": 4,
     "not_implemented": 1,
-    "500_error": 0
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {

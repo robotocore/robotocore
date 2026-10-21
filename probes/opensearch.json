@@ -1,12 +1,13 @@
 {
   "service": "opensearch",
-  "generated_at": "2026-10-20T08:07:40.391341+00:00",
-  "endpoint": "http://localhost:4599",
+  "generated_at": "2026-10-21T07:07:41.929622+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 77,
     "needs_params": 5,
     "not_implemented": 0,
-    "500_error": 0
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {

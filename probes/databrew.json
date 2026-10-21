@@ -1,12 +1,13 @@
 {
   "service": "databrew",
-  "generated_at": "2026-10-20T05:27:32.633449+00:00",
+  "generated_at": "2026-10-21T07:06:11.980085+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 32,
     "needs_params": 4,
     "not_implemented": 8,
-    "500_error": 0
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {

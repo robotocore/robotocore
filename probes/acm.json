@@ -1,12 +1,13 @@
 {
   "service": "acm",
-  "generated_at": "2026-10-20T05:26:51.727598+00:00",
+  "generated_at": "2026-10-21T07:05:32.775917+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 14,
     "needs_params": 2,
     "not_implemented": 0,
-    "500_error": 0
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {

@@ -1,12 +1,13 @@
 {
   "service": "iot",
-  "generated_at": "2026-10-20T06:49:42.209804+00:00",
+  "generated_at": "2026-10-21T07:07:22.572540+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 248,
+    "working": 249,
     "needs_params": 21,
-    "not_implemented": 3,
-    "500_error": 0
+    "not_implemented": 2,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -56,8 +57,8 @@
     },
     {
       "operation": "CancelAuditMitigationActionsTask",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CancelAuditTask",

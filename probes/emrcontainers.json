@@ -1,12 +1,13 @@
 {
   "service": "emrcontainers",
-  "generated_at": "2026-10-20T08:11:13.199454+00:00",
-  "endpoint": "http://localhost:4599",
+  "generated_at": "2026-10-21T07:07:00.611040+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 10,
     "needs_params": 0,
     "not_implemented": 12,
-    "500_error": 1
+    "500_error": 1,
+    "timeout": 0
   },
   "operations": [
     {

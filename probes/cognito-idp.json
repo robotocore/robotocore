@@ -1,12 +1,13 @@
 {
   "service": "cognito-idp",
-  "generated_at": "2026-10-20T23:23:41.691953+00:00",
-  "endpoint": "http://localhost:4794",
+  "generated_at": "2026-10-21T07:05:57.699030+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 69,
     "needs_params": 1,
     "not_implemented": 52,
-    "500_error": 0
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {

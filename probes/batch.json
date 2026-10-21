@@ -1,12 +1,13 @@
 {
   "service": "batch",
-  "generated_at": "2026-10-20T05:27:01.977011+00:00",
+  "generated_at": "2026-10-21T07:05:42.280561+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 38,
     "needs_params": 1,
     "not_implemented": 6,
-    "500_error": 0
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {

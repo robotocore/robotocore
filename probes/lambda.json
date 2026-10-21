@@ -1,12 +1,13 @@
 {
   "service": "lambda",
-  "generated_at": "2026-10-20T06:49:47.312851+00:00",
+  "generated_at": "2026-10-21T07:07:27.864553+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 69,
     "needs_params": 2,
     "not_implemented": 13,
-    "500_error": 0
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -222,7 +223,7 @@
     {
       "operation": "InvokeAsync",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidRequestContent: The request payload is not valid JSON.)"
     },
     {
       "operation": "InvokeWithResponseStream",

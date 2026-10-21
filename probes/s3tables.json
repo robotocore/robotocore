@@ -1,12 +1,13 @@
 {
   "service": "s3tables",
-  "generated_at": "2026-10-20T08:08:10.056707+00:00",
-  "endpoint": "http://localhost:4599",
+  "generated_at": "2026-10-21T07:08:08.240503+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 45,
     "needs_params": 3,
     "not_implemented": 0,
-    "500_error": 0
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {

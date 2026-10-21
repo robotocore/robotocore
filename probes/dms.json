@@ -1,12 +1,13 @@
 {
   "service": "dms",
-  "generated_at": "2026-10-20T05:27:37.566334+00:00",
+  "generated_at": "2026-10-21T07:06:15.669044+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 116,
     "needs_params": 2,
     "not_implemented": 0,
-    "500_error": 1
+    "500_error": 1,
+    "timeout": 0
   },
   "operations": [
     {
@@ -42,7 +43,7 @@
     {
       "operation": "CreateDataMigration",
       "status": "working",
-      "message": "likely implemented (ResourceAlreadyExistsFault: The resource you are attempting to create already exists.)"
+      "message": "OK"
     },
     {
       "operation": "CreateDataProvider",

@@ -1,12 +1,13 @@
 {
   "service": "sns",
-  "generated_at": "2026-10-20T08:08:34.470736+00:00",
-  "endpoint": "http://localhost:4599",
+  "generated_at": "2026-10-21T07:08:27.793058+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 41,
     "needs_params": 0,
     "not_implemented": 0,
-    "500_error": 0
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {

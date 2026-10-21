@@ -1,12 +1,13 @@
 {
   "service": "rdsdata",
-  "generated_at": "2026-10-20T08:10:50.291640+00:00",
-  "endpoint": "http://localhost:4599",
+  "generated_at": "2026-10-21T07:07:57.212875+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 1,
     "needs_params": 0,
     "not_implemented": 5,
-    "500_error": 0
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {

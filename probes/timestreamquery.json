@@ -1,12 +1,13 @@
 {
   "service": "timestreamquery",
-  "generated_at": "2026-10-20T08:10:52.067213+00:00",
-  "endpoint": "http://localhost:4599",
+  "generated_at": "2026-10-21T07:08:33.808946+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 5,
     "needs_params": 0,
     "not_implemented": 10,
-    "500_error": 0
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {

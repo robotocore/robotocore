@@ -1,12 +1,13 @@
 {
   "service": "emr",
-  "generated_at": "2026-10-20T06:49:18.215919+00:00",
+  "generated_at": "2026-10-21T07:07:00.357664+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 52,
+    "working": 59,
     "needs_params": 0,
-    "not_implemented": 8,
-    "500_error": 0
+    "not_implemented": 1,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -121,8 +122,8 @@
     },
     {
       "operation": "GetClusterSessionCredentials",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetManagedScalingPolicy",
@@ -131,13 +132,13 @@
     },
     {
       "operation": "GetOnClusterAppUIPresignedURL",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetPersistentAppUIPresignedURL",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
     },
     {
       "operation": "GetStudioSessionMapping",
@@ -191,8 +192,8 @@
     },
     {
       "operation": "ListStudioSessionMappings",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListStudios",
@@ -266,8 +267,8 @@
     },
     {
       "operation": "SetKeepJobFlowAliveWhenNoSteps",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "SetTerminationProtection",
@@ -276,8 +277,8 @@
     },
     {
       "operation": "SetUnhealthyNodeReplacement",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "SetVisibleToAllUsers",
@@ -286,8 +287,8 @@
     },
     {
       "operation": "StartNotebookExecution",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StopNotebookExecution",

@@ -1,12 +1,13 @@
 {
   "service": "ec2",
-  "generated_at": "2026-10-21T00:25:36.177266+00:00",
-  "endpoint": "http://127.0.0.1:4796",
+  "generated_at": "2026-10-21T07:06:53.880437+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 510,
     "needs_params": 6,
     "not_implemented": 236,
-    "500_error": 0
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -42,7 +43,7 @@
     {
       "operation": "AcceptVpcEndpointConnections",
       "status": "working",
-      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-0db17bad' does not exist)"
+      "message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-5f94e315' does not exist)"
     },
     {
       "operation": "AcceptVpcPeeringConnection",

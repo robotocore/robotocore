@@ -1,12 +1,13 @@
 {
   "service": "workspacesweb",
-  "generated_at": "2026-10-20T08:10:54.154494+00:00",
-  "endpoint": "http://localhost:4599",
+  "generated_at": "2026-10-21T07:08:39.185527+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 31,
     "needs_params": 7,
     "not_implemented": 37,
-    "500_error": 0
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
