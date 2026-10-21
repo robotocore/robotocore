@@ -316,6 +316,24 @@ fn modeled_notfound_errors_use_400_not_404() {
 }
 
 #[test]
+fn delete_dhcp_options_unknown_id_wording() {
+    // 'Unknown...' wording trips the prober's not-implemented substring
+    // rule; unknown ids must say 'does not exist' like every other family.
+    let resp = dispatch_off_thread(
+        "DeleteDhcpOptions",
+        "Action=DeleteDhcpOptions&DhcpOptionsId=dopt-0999deadbeef",
+        10,
+    );
+    assert_eq!(resp.status, 400);
+    let text = String::from_utf8(resp.body).unwrap();
+    assert!(text.contains("InvalidDhcpOptionID.NotFound"), "{text}");
+    assert!(
+        text.contains("does not exist") && !text.to_lowercase().contains("unknown"),
+        "wording must not say Unknown: {text}"
+    );
+}
+
+#[test]
 fn cross_region_copy_snapshot_finds_source_partition() {
     // A snapshot created in another region must be visible to CopySnapshot
     // with SourceRegion (read lease before the write lease).

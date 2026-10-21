@@ -1102,7 +1102,10 @@ fn delete_dhcp_options(req: &Request, params: &P) -> Response {
                 return ec2_error(
                     400,
                     "InvalidDhcpOptionID.NotFound",
-                    &format!("Unknowndhcp options set: {}", crate::proto::xml_escape(&id)),
+                    &format!(
+                        "The dhcp options set '{}' does not exist",
+                        crate::proto::xml_escape(&id)
+                    ),
                 )
             }
         };
@@ -1144,7 +1147,7 @@ fn associate_dhcp_options(req: &Request, params: &P) -> Response {
                 400,
                 "InvalidDhcpOptionID.NotFound",
                 &format!(
-                    "Unknown dhcp options set: {}",
+                    "The dhcp options set '{}' does not exist",
                     crate::proto::xml_escape(&dopt_id)
                 ),
             );
