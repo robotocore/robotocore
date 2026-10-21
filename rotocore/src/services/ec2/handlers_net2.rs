@@ -10,8 +10,8 @@
 )]
 #![allow(unused_variables)]
 
-use super::handlers::{filter_passes, ok_xml, tag_candidates, wire_tags};
-use super::state::{Eni, EniAttachment, NaclEntry};
+use super::handlers::{filter_passes, filters, ok_xml, tag_candidates, wire_tags};
+use super::state::{Eni, EniAttachment, NaclEntry, NetworkAcl};
 use super::{ec2_error, ec2_xml, now_iso, tags_xml, with_state, Params};
 use crate::proto::xml_escape;
 use crate::{Request, Response};
@@ -740,7 +740,7 @@ fn create_network_acl(req: &Request, params: &P) -> Response {
         ec2_xml(
             "CreateNetworkAclResponse",
             &format!(
-                "<networkAcl><networkAclId>{}</networkAclId><vpcId>{}</vpcId><isDefault>false</isDefault><entrySet/><associationSet/>{}</networkAcl>",
+                "<networkAcl><networkAclId>{}</networkAclId><vpcId>{}</vpcId><default>false</default><entrySet/><associationSet/>{}</networkAcl>",
                 crate::proto::xml_escape(&id),
                 crate::proto::xml_escape(&vpc_id),
                 ""
@@ -777,17 +777,44 @@ fn delete_network_acl(req: &Request, params: &P) -> Response {
     })
 }
 
+fn network_acl_cand(a: &NetworkAcl, f: &str) -> Vec<String> {
+    match f {
+        "network-acl-id" | "id" => vec![a.id.clone()],
+        "vpc-id" => vec![a.vpc_id.clone()],
+        "default" => vec![if a.is_default {
+            "true".to_string()
+        } else {
+            "false".to_string()
+        }],
+        "association.subnet-id" => a
+            .associations
+            .iter()
+            .map(|(_, subnet_id)| subnet_id.clone())
+            .collect(),
+        "association.association-id" => a
+            .associations
+            .iter()
+            .map(|(assoc_id, _)| assoc_id.clone())
+            .collect(),
+        t => tag_candidates(&a.tags, t),
+    }
+}
+
 fn describe_network_acls(req: &Request, params: &P) -> Response {
     let ids: Vec<String> = params
         .list("NetworkAclId")
         .iter()
         .map(|s| s.to_string())
         .collect();
+    let fs = filters(params);
     with_state(req, move |state| {
         let ids = ids.clone();
         let mut items = String::new();
         for a in &state.network_acls {
             if !ids.is_empty() && !ids.contains(&a.id) {
+                continue;
+            }
+            if !filter_passes(&fs, move |f| network_acl_cand(a, f)) {
                 continue;
             }
             let mut entries = String::new();
@@ -814,7 +841,7 @@ fn describe_network_acls(req: &Request, params: &P) -> Response {
             }
             let _ = write!(
                 items,
-                "<item><networkAclId>{}</networkAclId><vpcId>{}</vpcId><isDefault>{}</isDefault><entrySet>{}</entrySet><associationSet>{}</associationSet>{}</item>",
+                "<item><networkAclId>{}</networkAclId><vpcId>{}</vpcId><default>{}</default><entrySet>{}</entrySet><associationSet>{}</associationSet>{}</item>",
                 crate::proto::xml_escape(&a.id),
                 crate::proto::xml_escape(&a.vpc_id),
                 a.is_default,

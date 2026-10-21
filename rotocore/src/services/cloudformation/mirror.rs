@@ -14,6 +14,12 @@
 
 use serde_json::{json, Value};
 use std::sync::OnceLock;
+use uuid::Uuid;
+
+/// Short uuid suffix for synthetic physical ids (matches ops::uuid_head).
+fn uuid_head() -> String {
+    String::from(&Uuid::new_v4().to_string()[..8])
+}
 
 #[derive(Debug)]
 pub struct MirrorCall {
@@ -621,6 +627,90 @@ pub fn create_s3_bucket(name: &str, account: &str, region: &str) -> bool {
     s3_call("PUT", name, account, region).ok()
 }
 
+/// Parse the CFN `WebsiteConfiguration` property into the S3 REST XML body.
+/// Accepts the string short-form (`IndexDocument: index.html`) and the
+/// object form (`IndexDocument: {Suffix: index.html}`).
+fn website_configuration_xml(props: &Value) -> Option<String> {
+    let cfg = props.get("WebsiteConfiguration").filter(|v| !v.is_null())?;
+    let mut out =
+        String::from("<WebsiteConfiguration xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">");
+    for (key, child) in [("IndexDocument", "Suffix"), ("ErrorDocument", "Key")] {
+        match cfg.get(key) {
+            Some(Value::String(s)) => {
+                out.push_str(&format!(
+                    "<{key}><{child}>{}</{child}></{key}>",
+                    xml_escape(s)
+                ));
+            }
+            Some(obj @ Value::Object(_)) => {
+                if let Some(v) = obj.get(child).and_then(Value::as_str) {
+                    out.push_str(&format!(
+                        "<{key}><{child}>{}</{child}></{key}>",
+                        xml_escape(v)
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+    out.push_str("</WebsiteConfiguration>");
+    Some(out)
+}
+
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+/// `VersioningConfiguration` → S3 REST XML for ?versioning.
+fn versioning_xml(props: &Value) -> Option<String> {
+    let status = props
+        .get("VersioningConfiguration")
+        .and_then(|v| v.get("Status"))
+        .and_then(Value::as_str)?;
+    Some(format!(
+        "<VersioningConfiguration xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Status>{status}</Status></VersioningConfiguration>"
+    ))
+}
+
+/// Create the bucket, then apply website configuration and versioning that
+/// ride in on AWS::S3::Bucket Properties (moto's Bucket::create cloudformation
+/// path passes the whole property bag to its S3 backend).
+pub fn create_s3_bucket_full(props: &Value, name: &str, account: &str, region: &str) -> bool {
+    if !create_s3_bucket(name, account, region) {
+        return false;
+    }
+    for (query, xml) in [
+        ("website", website_configuration_xml(props)),
+        ("versioning", versioning_xml(props)),
+    ] {
+        let Some(xml) = xml else {
+            continue;
+        };
+        let headers = {
+            let mut h = base_headers(account, region, "s3");
+            h.push(("Content-Type".to_string(), "application/xml".to_string()));
+            h
+        };
+        let req = with_headers(
+            client().put(&format!("{}/{}?{query}", callback_base(), name)),
+            &headers,
+        );
+        send(req, xml.as_bytes());
+    }
+    true
+}
+
+pub fn delete_s3_bucket_policy(name: &str, account: &str, region: &str) {
+    let headers = base_headers(account, region, "s3");
+    let req = with_headers(
+        client().delete(&format!("{}/{}?policy", callback_base(), name)),
+        &headers,
+    );
+    send(req, b"");
+}
+
 pub fn delete_s3_bucket(name: &str, account: &str, region: &str) {
     let _ = s3_call("DELETE", name, account, region);
 }
@@ -917,15 +1007,16 @@ pub fn delete_lambda_function(name: &str, account: &str, region: &str) {
 }
 
 /// Inline source handling: if the value is already base64 of a zip (PK
-/// header), keep it; else base64 the raw source (the native lambda store
-/// records it, matching the inline-code path verified on the lane).
+/// header), keep it; otherwise wrap the plaintext source in a real zip
+/// archive with the module the CFN `Handler` points at, exactly as moto's
+/// `_create_zipfile_from_plaintext_code` does (moto/awslambda/models.py).
 fn zip_source(zip: &Value) -> String {
     match zip {
         Value::String(s) => {
             if is_zip_b64(s) {
                 s.clone()
             } else {
-                b64_encode(s.as_bytes())
+                b64_encode(&zip_from_plaintext(s.as_bytes()))
             }
         }
         other => other.to_string(),
@@ -939,6 +1030,85 @@ fn is_zip_b64(s: &str) -> bool {
         return true;
     }
     false
+}
+
+/// Build a stored (uncompressed) zip with one `index.py` member, mirroring
+/// moto's CFN inline-code path: `zipfile.ZipFile(...).writestr("index.py", code)`.
+fn zip_from_plaintext(code: &[u8]) -> Vec<u8> {
+    let crc = crc32(code);
+    let name = b"index.py";
+    let mut out = Vec::with_capacity(code.len() + 160);
+    // Local file header
+    out.extend_from_slice(&0x04034b50u32.to_le_bytes());
+    out.extend_from_slice(&20u16.to_le_bytes()); // version needed
+    out.extend_from_slice(&0u16.to_le_bytes()); // flags
+    out.extend_from_slice(&0u16.to_le_bytes()); // method: stored
+    out.extend_from_slice(&0u16.to_le_bytes()); // mod time
+    out.extend_from_slice(&0x21u16.to_le_bytes()); // mod date (1980-01-01)
+    out.extend_from_slice(&crc.to_le_bytes());
+    out.extend_from_slice(&(code.len() as u32).to_le_bytes());
+    out.extend_from_slice(&(code.len() as u32).to_le_bytes());
+    out.extend_from_slice(&(name.len() as u16).to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes()); // extra len
+    out.extend_from_slice(name);
+    out.extend_from_slice(code);
+    let local_offset = 0u32;
+    let cd_offset = out.len() as u32;
+    // Central directory record
+    out.extend_from_slice(&0x02014b50u32.to_le_bytes());
+    out.extend_from_slice(&20u16.to_le_bytes()); // version made by
+    out.extend_from_slice(&20u16.to_le_bytes()); // version needed
+    out.extend_from_slice(&0u16.to_le_bytes()); // flags
+    out.extend_from_slice(&0u16.to_le_bytes()); // method
+    out.extend_from_slice(&0u16.to_le_bytes()); // mod time
+    out.extend_from_slice(&0x21u16.to_le_bytes()); // mod date
+    out.extend_from_slice(&crc.to_le_bytes());
+    out.extend_from_slice(&(code.len() as u32).to_le_bytes());
+    out.extend_from_slice(&(code.len() as u32).to_le_bytes());
+    out.extend_from_slice(&(name.len() as u16).to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes()); // extra len
+    out.extend_from_slice(&0u16.to_le_bytes()); // comment len
+    out.extend_from_slice(&0u16.to_le_bytes()); // disk number
+    out.extend_from_slice(&0u16.to_le_bytes()); // internal attrs
+    out.extend_from_slice(&0u32.to_le_bytes()); // external attrs
+    out.extend_from_slice(&local_offset.to_le_bytes());
+    out.extend_from_slice(name);
+    let cd_size = out.len() as u32 - cd_offset;
+    // End of central directory
+    out.extend_from_slice(&0x06054b50u32.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes()); // disk
+    out.extend_from_slice(&0u16.to_le_bytes()); // cd disk
+    out.extend_from_slice(&1u16.to_le_bytes()); // entries on disk
+    out.extend_from_slice(&1u16.to_le_bytes()); // total entries
+    out.extend_from_slice(&cd_size.to_le_bytes());
+    out.extend_from_slice(&cd_offset.to_le_bytes());
+    out.extend_from_slice(&0u16.to_le_bytes()); // comment len
+    out
+}
+
+/// CRC-32 (IEEE) for zip records — the checksummed byte range zipfile uses.
+fn crc32(data: &[u8]) -> u32 {
+    static TABLE: std::sync::OnceLock<[u32; 256]> = std::sync::OnceLock::new();
+    let table = TABLE.get_or_init(|| {
+        let mut t = [0u32; 256];
+        for (i, slot) in t.iter_mut().enumerate() {
+            let mut c = i as u32;
+            for _ in 0..8 {
+                c = if c & 1 != 0 {
+                    0xEDB88320 ^ (c >> 1)
+                } else {
+                    c >> 1
+                };
+            }
+            *slot = c;
+        }
+        t
+    });
+    let mut crc = 0xFFFF_FFFFu32;
+    for b in data {
+        crc = table[((crc ^ *b as u32) & 0xff) as usize] ^ (crc >> 8);
+    }
+    crc ^ 0xFFFF_FFFF
 }
 
 /// Kept for parity with the Python provider's helper naming.
@@ -1186,4 +1356,795 @@ pub fn put_user_policy(user: &str, policy_name: &str, doc: &Value, account: &str
         "global",
     )
     .ok()
+}
+
+// ---------------------------------------------------------------------------
+// EC2 VPC family. moto's `create_from_cloudformation_json` calls the EC2
+// backend directly with the template properties and applies tags after the
+// create (`moto/ec2/models/vpcs.py`, `subnets.py`, `security_groups.py`);
+// the mirror drives the same handler chain over loopback HTTP.
+// ---------------------------------------------------------------------------
+
+/// One legacy-query call to the EC2 service.
+fn ec2_form(action: &str, params: &[(&str, String)], account: &str, region: &str) -> MirrorCall {
+    form_call("ec2", action, "2016-11-15", params, account, region)
+}
+
+/// CFN `Tags: [{Key, Value}]` → a CreateTags form body fragment.
+fn tags_pairs(props: &Value, resource_id: &str) -> Vec<(String, String)> {
+    let mut out = vec![("ResourceId.1".to_string(), resource_id.to_string())];
+    if let Some(tags) = props.get("Tags").and_then(Value::as_array) {
+        for (i, tag) in tags.iter().enumerate() {
+            let n = i + 1;
+            if let Some(k) = tag.get("Key").and_then(Value::as_str) {
+                out.push((format!("Tag.{n}.Key"), k.to_string()));
+            }
+            if let Some(v) = tag.get("Value").and_then(Value::as_str) {
+                out.push((format!("Tag.{n}.Value"), v.to_string()));
+            }
+        }
+    }
+    out
+}
+
+fn ec2_add_tags(props: &Value, resource_id: &str, account: &str, region: &str) {
+    let pairs = tags_pairs(props, resource_id);
+    if pairs.len() <= 1 {
+        return;
+    }
+    let refs: Vec<(&str, String)> = pairs.iter().map(|(k, v)| (k.as_str(), v.clone())).collect();
+    let _ = ec2_form("CreateTags", &refs, account, region);
+}
+
+pub fn create_ec2_vpc(props: &Value, account: &str, region: &str) -> Option<(String, Value)> {
+    let cidr = props.get("CidrBlock").and_then(Value::as_str).unwrap_or("");
+    let resp = ec2_form(
+        "CreateVpc",
+        &[("CidrBlock", cidr.to_string())],
+        account,
+        region,
+    );
+    let vpc_id = text(&resp.body, "vpcId")?;
+    ec2_add_tags(props, &vpc_id, account, region);
+    Some((vpc_id.clone(), json!({"VpcId": vpc_id, "CidrBlock": cidr})))
+}
+
+pub fn delete_ec2_vpc(vpc_id: &str, account: &str, region: &str) {
+    let _ = ec2_form(
+        "DeleteVpc",
+        &[("VpcId", vpc_id.to_string())],
+        account,
+        region,
+    );
+}
+
+pub fn create_ec2_subnet(props: &Value, account: &str, region: &str) -> Option<(String, Value)> {
+    let mut params: Vec<(&str, String)> = vec![
+        ("VpcId", value_str(props, "VpcId")),
+        ("CidrBlock", value_str(props, "CidrBlock")),
+    ];
+    if let Some(az) = props.get("AvailabilityZone").and_then(Value::as_str) {
+        params.push(("AvailabilityZone", az.to_string()));
+    }
+    let resp = ec2_form("CreateSubnet", &params, account, region);
+    let subnet_id = text(&resp.body, "subnetId")?;
+    ec2_add_tags(props, &subnet_id, account, region);
+    Some((subnet_id.clone(), json!({"SubnetId": subnet_id})))
+}
+
+pub fn delete_ec2_subnet(subnet_id: &str, account: &str, region: &str) {
+    let _ = ec2_form(
+        "DeleteSubnet",
+        &[("SubnetId", subnet_id.to_string())],
+        account,
+        region,
+    );
+}
+
+pub fn create_ec2_internet_gateway(
+    props: &Value,
+    account: &str,
+    region: &str,
+) -> Option<(String, Value)> {
+    let resp = ec2_form("CreateInternetGateway", &[], account, region);
+    let igw_id = text(&resp.body, "internetGatewayId")?;
+    ec2_add_tags(props, &igw_id, account, region);
+    Some((igw_id.clone(), json!({"InternetGatewayId": igw_id})))
+}
+
+pub fn delete_ec2_internet_gateway(igw_id: &str, account: &str, region: &str) {
+    let _ = ec2_form(
+        "DeleteInternetGateway",
+        &[("InternetGatewayId", igw_id.to_string())],
+        account,
+        region,
+    );
+}
+
+/// AWS::EC2::VPCGatewayAttachment — attach the gateway to the VPC.
+pub fn create_ec2_vpc_gateway_attachment(
+    props: &Value,
+    account: &str,
+    region: &str,
+) -> Option<(String, Value)> {
+    let vpc_id = value_str(props, "VpcId");
+    let igw_id = value_str(props, "InternetGatewayId");
+    if igw_id.is_empty() {
+        // VGW attachments are out of mirror scope for the lanes.
+        return None;
+    }
+    let resp = ec2_form(
+        "AttachInternetGateway",
+        &[("InternetGatewayId", igw_id), ("VpcId", vpc_id)],
+        account,
+        region,
+    );
+    if !resp.ok() {
+        return None;
+    }
+    let attach_id =
+        text(&resp.body, "attachmentId").unwrap_or_else(|| format!("igw-attach-{}", uuid_head()));
+    Some((attach_id, json!({})))
+}
+
+pub fn delete_ec2_vpc_gateway_attachment(props: &Value, account: &str, region: &str) {
+    let vpc_id = value_str(props, "VpcId");
+    let igw_id = value_str(props, "InternetGatewayId");
+    if igw_id.is_empty() {
+        return;
+    }
+    let _ = ec2_form(
+        "DetachInternetGateway",
+        &[("InternetGatewayId", igw_id), ("VpcId", vpc_id)],
+        account,
+        region,
+    );
+}
+
+pub fn create_ec2_route_table(
+    props: &Value,
+    account: &str,
+    region: &str,
+) -> Option<(String, Value)> {
+    let resp = ec2_form(
+        "CreateRouteTable",
+        &[("VpcId", value_str(props, "VpcId"))],
+        account,
+        region,
+    );
+    let rt_id = text(&resp.body, "routeTableId")?;
+    ec2_add_tags(props, &rt_id, account, region);
+    Some((rt_id.clone(), json!({"RouteTableId": rt_id})))
+}
+
+pub fn delete_ec2_route_table(rt_id: &str, account: &str, region: &str) {
+    let _ = ec2_form(
+        "DeleteRouteTable",
+        &[("RouteTableId", rt_id.to_string())],
+        account,
+        region,
+    );
+}
+
+pub fn create_ec2_route(props: &Value, account: &str, region: &str) -> Option<(String, Value)> {
+    let mut params: Vec<(&str, String)> = vec![("RouteTableId", value_str(props, "RouteTableId"))];
+    for (prop_key, form_key) in [
+        ("DestinationCidrBlock", "DestinationCidrBlock"),
+        ("DestinationIpv6CidrBlock", "DestinationIpv6CidrBlock"),
+        ("GatewayId", "GatewayId"),
+        ("NatGatewayId", "NatGatewayId"),
+        ("TransitGatewayId", "TransitGatewayId"),
+    ] {
+        let v = value_str(props, prop_key);
+        if !v.is_empty() {
+            params.push((form_key, v));
+        }
+    }
+    let resp = ec2_form("CreateRoute", &params, account, region);
+    if !resp.ok() {
+        return None;
+    }
+    Some((format!("route-{}", uuid_head()), json!({})))
+}
+
+pub fn delete_ec2_route(props: &Value, account: &str, region: &str) {
+    let rt_id = value_str(props, "RouteTableId");
+    if rt_id.is_empty() {
+        return;
+    }
+    let cidr = value_str(props, "DestinationCidrBlock");
+    if cidr.is_empty() {
+        return;
+    }
+    let _ = ec2_form(
+        "DeleteRoute",
+        &[("RouteTableId", rt_id), ("DestinationCidrBlock", cidr)],
+        account,
+        region,
+    );
+}
+
+pub fn create_ec2_subnet_rtb_association(
+    props: &Value,
+    account: &str,
+    region: &str,
+) -> Option<(String, Value)> {
+    let resp = ec2_form(
+        "AssociateRouteTable",
+        &[
+            ("RouteTableId", value_str(props, "RouteTableId")),
+            ("SubnetId", value_str(props, "SubnetId")),
+        ],
+        account,
+        region,
+    );
+    let assoc_id = text(&resp.body, "associationId")?;
+    Some((assoc_id.clone(), json!({"AssociationId": assoc_id})))
+}
+
+pub fn delete_ec2_subnet_rtb_association(assoc_id: &str, account: &str, region: &str) {
+    let _ = ec2_form(
+        "DisassociateRouteTable",
+        &[("AssociationId", assoc_id.to_string())],
+        account,
+        region,
+    );
+}
+
+pub fn create_ec2_security_group(
+    props: &Value,
+    name: &str,
+    account: &str,
+    region: &str,
+) -> Option<(String, Value)> {
+    let vpc_id = value_str(props, "VpcId");
+    let mut params: Vec<(&str, String)> = vec![
+        ("GroupName", name.to_string()),
+        ("GroupDescription", value_str(props, "GroupDescription")),
+    ];
+    if !vpc_id.is_empty() {
+        params.push(("VpcId", vpc_id));
+    }
+    let resp = ec2_form("CreateSecurityGroup", &params, account, region);
+    let sg_id = text(&resp.body, "groupId")?;
+    ec2_add_tags(props, &sg_id, account, region);
+    for (i, rule) in props
+        .get("SecurityGroupIngress")
+        .and_then(Value::as_array)
+        .unwrap_or(&Vec::new())
+        .iter()
+        .enumerate()
+    {
+        let mut pairs: Vec<(String, String)> = vec![("GroupId".to_string(), sg_id.clone())];
+        for (prop_key, form_key) in [
+            ("IpProtocol", "IpProtocol"),
+            ("FromPort", "FromPort"),
+            ("ToPort", "ToPort"),
+        ] {
+            let v = value_str(rule, prop_key);
+            if !v.is_empty() {
+                pairs.push((format!("IpPermissions.{}.{}", i + 1, form_key), v));
+            }
+        }
+        if let Some(cidr) = rule.get("CidrIp").and_then(Value::as_str) {
+            pairs.push((
+                format!("IpPermissions.{}.IpRanges.1.CidrIp", i + 1),
+                cidr.to_string(),
+            ));
+        }
+        if let Some(sg_ref) = rule.get("SourceSecurityGroupId").and_then(Value::as_str) {
+            pairs.push((
+                format!("IpPermissions.{}.UserIdGroupPairs.1.GroupId", i + 1),
+                sg_ref.to_string(),
+            ));
+        }
+        let refs: Vec<(&str, String)> =
+            pairs.iter().map(|(k, v)| (k.as_str(), v.clone())).collect();
+        let _ = ec2_form("AuthorizeSecurityGroupIngress", &refs, account, region);
+    }
+    Some((sg_id.clone(), json!({"GroupId": sg_id})))
+}
+
+pub fn delete_ec2_security_group(sg_id: &str, account: &str, region: &str) {
+    let _ = ec2_form(
+        "DeleteSecurityGroup",
+        &[("GroupId", sg_id.to_string())],
+        account,
+        region,
+    );
+}
+
+/// Read a scalar property as a string (numbers/bools stringify).
+pub fn value_str(props: &Value, key: &str) -> String {
+    match props.get(key) {
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Number(n)) => n.to_string(),
+        Some(Value::Bool(b)) => b.to_string(),
+        _ => String::new(),
+    }
+}
+
+/// Fetch one S3 object over the loopback mirror (nested-stack templates).
+pub fn s3_get_object(bucket: &str, key: &str, account: &str, region: &str) -> Option<String> {
+    let headers = base_headers(account, region, "s3");
+    let url = format!("{}/{}/{}", callback_base(), bucket, key);
+    let req = with_headers(client().get(&url), &headers);
+    match send(req, b"") {
+        r if (200..300).contains(&r.status) && r.status != 0 && !r.body.is_empty() => Some(r.body),
+        _ => None,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Cognito User Pools. moto has no CFN hooks for cognitoidp (the fork skips
+// these types), so follow real AWS semantics through the native JSON API.
+// ---------------------------------------------------------------------------
+
+fn cognito_json(target: &str, body: Value, account: &str, region: &str) -> MirrorCall {
+    json_call(
+        &format!("AWSCognitoIdentityProviderService.{target}"),
+        "cognito-idp",
+        "/",
+        body,
+        account,
+        region,
+    )
+}
+
+pub fn create_cognito_user_pool(
+    props: &Value,
+    name: &str,
+    account: &str,
+    region: &str,
+) -> Option<(String, Value)> {
+    let mut body = json!({ "PoolName": name });
+    let obj = props.as_object();
+    for key in [
+        "AutoVerifiedAttributes",
+        "Policies",
+        "UsernameAttributes",
+        "MfaConfiguration",
+    ] {
+        if let Some(v) = obj.and_then(|o| o.get(key)).filter(|v| !v.is_null()) {
+            body.as_object_mut()
+                .unwrap()
+                .insert(key.to_string(), v.clone());
+        }
+    }
+    let resp = cognito_json("CreateUserPool", body, account, region);
+    let parsed: Value = serde_json::from_str(&resp.body).unwrap_or(json!({}));
+    let pool = parsed.get("UserPool")?;
+    let pool_id = pool.get("Id").and_then(Value::as_str)?.to_string();
+    let arn = pool
+        .get("Arn")
+        .and_then(Value::as_str)
+        .map(String::from)
+        .unwrap_or_default();
+    Some((
+        pool_id.clone(),
+        json!({"Id": pool_id, "Arn": arn, "Name": name}),
+    ))
+}
+
+pub fn delete_cognito_user_pool(pool_id: &str, account: &str, region: &str) {
+    let _ = cognito_json(
+        "DeleteUserPool",
+        json!({"UserPoolId": pool_id}),
+        account,
+        region,
+    );
+}
+
+pub fn create_cognito_user_pool_client(
+    props: &Value,
+    fallback: &str,
+    account: &str,
+    region: &str,
+) -> Option<(String, Value)> {
+    let pool_id = value_str(props, "UserPoolId");
+    if pool_id.is_empty() {
+        return None;
+    }
+    let name = props
+        .get("ClientName")
+        .and_then(Value::as_str)
+        .unwrap_or(fallback);
+    let mut body = json!({"UserPoolId": pool_id, "ClientName": name});
+    if let Some(flows) = props.get("ExplicitAuthFlows").filter(|v| !v.is_null()) {
+        body.as_object_mut()
+            .unwrap()
+            .insert("ExplicitAuthFlows".to_string(), flows.clone());
+    }
+    let resp = cognito_json("CreateUserPoolClient", body, account, region);
+    let parsed: Value = serde_json::from_str(&resp.body).unwrap_or(json!({}));
+    let client = parsed.get("UserPoolClient")?;
+    let client_id = client.get("ClientId").and_then(Value::as_str)?.to_string();
+    Some((
+        client_id.clone(),
+        json!({"ClientId": client_id, "ClientName": name, "UserPoolId": pool_id}),
+    ))
+}
+
+pub fn delete_cognito_user_pool_client(
+    client_id: &str,
+    pool_id: &str,
+    account: &str,
+    region: &str,
+) {
+    let _ = cognito_json(
+        "DeleteUserPoolClient",
+        json!({"UserPoolId": pool_id, "ClientId": client_id}),
+        account,
+        region,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// CloudWatch Alarms (JSON protocol; real SDK target prefix is
+// GraniteServiceVersion20100801 — see src/router.rs TARGET_PREFIX_MAP).
+// ---------------------------------------------------------------------------
+
+fn cloudwatch_json(target: &str, body: Value, account: &str, region: &str) -> MirrorCall {
+    json_call(
+        &format!("GraniteServiceVersion20100801.{target}"),
+        "cloudwatch",
+        "/",
+        body,
+        account,
+        region,
+    )
+}
+
+pub fn create_cloudwatch_alarm(
+    props: &Value,
+    name: &str,
+    account: &str,
+    region: &str,
+) -> Option<(String, Value)> {
+    let mut body = json!({"AlarmName": name});
+    for key in [
+        "AlarmDescription",
+        "Namespace",
+        "MetricName",
+        "Statistic",
+        "ExtendedStatistic",
+        "Period",
+        "EvaluationPeriods",
+        "DatapointsToAlarm",
+        "Threshold",
+        "ComparisonOperator",
+        "TreatMissingData",
+        "Unit",
+        "AlarmActions",
+        "OKActions",
+        "InsufficientDataActions",
+        "Dimensions",
+    ] {
+        if let Some(v) = props.get(key).filter(|v| !v.is_null()) {
+            body.as_object_mut()
+                .unwrap()
+                .insert(key.to_string(), v.clone());
+        }
+    }
+    let resp = cloudwatch_json("PutMetricAlarm", body, account, region);
+    if !resp.ok() {
+        return None;
+    }
+    Some((
+        name.to_string(),
+        json!({"AlarmName": name, "AlarmArn": format!("arn:aws:cloudwatch:{region}:{account}:alarm:{name}")}),
+    ))
+}
+
+pub fn delete_cloudwatch_alarm(name: &str, account: &str, region: &str) {
+    let _ = cloudwatch_json(
+        "DeleteAlarms",
+        json!({"AlarmNames": [name]}),
+        account,
+        region,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// API Gateway REST API family (rest-json over path routing; the twin's
+// apigateway backend serves `/restapis/...`). moto's apigateway CFN hooks
+// call the same backend methods (`moto/apigateway/models.py`).
+// ---------------------------------------------------------------------------
+
+fn apigw_rest(method: &str, path: &str, body: Value, account: &str, region: &str) -> MirrorCall {
+    let mut headers = base_headers(account, region, "apigateway");
+    headers.push(("Content-Type".to_string(), "application/json".to_string()));
+    let path = if path.is_empty() { "/restapis" } else { path };
+    let req = match method {
+        "DELETE" => client().delete(&format!("{}{path}", callback_base())),
+        "PUT" => client().put(&format!("{}{path}", callback_base())),
+        _ => client().post(&format!("{}{path}", callback_base())),
+    };
+    with_send(req, &headers, body.to_string().as_bytes())
+}
+
+fn with_send(req: ureq::Request, headers: &[(String, String)], body: &[u8]) -> MirrorCall {
+    send(with_headers(req, headers), body)
+}
+
+pub fn create_apigw_rest_api(
+    props: &Value,
+    name: &str,
+    account: &str,
+    region: &str,
+) -> Option<(String, Value)> {
+    let mut body = json!({"name": name});
+    if let Some(desc) = props.get("Description").and_then(Value::as_str) {
+        body.as_object_mut()
+            .unwrap()
+            .insert("description".to_string(), json!(desc));
+    }
+    let resp = apigw_rest("POST", "", body, account, region);
+    let parsed: Value = serde_json::from_str(&resp.body).unwrap_or(json!({}));
+    let api_id = parsed.get("id").and_then(Value::as_str)?.to_string();
+    let root = parsed
+        .get("rootResourceId")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let attrs = json!({"RootResourceId": root, "ApiId": api_id, "Name": name});
+    Some((api_id, attrs))
+}
+
+pub fn delete_apigw_rest_api(api_id: &str, account: &str, region: &str) {
+    let _ = apigw_rest(
+        "DELETE",
+        &format!("/restapis/{api_id}"),
+        json!({}),
+        account,
+        region,
+    );
+}
+
+pub fn create_apigw_resource(
+    props: &Value,
+    account: &str,
+    region: &str,
+) -> Option<(String, Value)> {
+    let api_id = value_str(props, "RestApiId");
+    let parent = value_str(props, "ParentId");
+    let path_part = value_str(props, "PathPart");
+    if api_id.is_empty() || parent.is_empty() || path_part.is_empty() {
+        return None;
+    }
+    let resp = apigw_rest(
+        "POST",
+        &format!("/restapis/{api_id}/resources/{parent}"),
+        json!({"pathPart": path_part}),
+        account,
+        region,
+    );
+    let parsed: Value = serde_json::from_str(&resp.body).unwrap_or(json!({}));
+    let id = parsed.get("id").and_then(Value::as_str)?.to_string();
+    Some((
+        id.clone(),
+        json!({"ResourceId": id, "PathPart": path_part, "Path": parsed.get("path").and_then(Value::as_str).unwrap_or("")}),
+    ))
+}
+
+pub fn delete_apigw_resource(api_id: &str, resource_id: &str, account: &str, region: &str) {
+    let _ = apigw_rest(
+        "DELETE",
+        &format!("/restapis/{api_id}/resources/{resource_id}"),
+        json!({}),
+        account,
+        region,
+    );
+}
+
+pub fn create_apigw_method(props: &Value, account: &str, region: &str) -> Option<(String, Value)> {
+    let api_id = value_str(props, "RestApiId");
+    let resource_id = value_str(props, "ResourceId");
+    let http_method = value_str(props, "HttpMethod").to_uppercase();
+    if api_id.is_empty() || resource_id.is_empty() || http_method.is_empty() {
+        return None;
+    }
+    let mut body = json!({});
+    if let Some(auth) = props.get("AuthorizationType").and_then(Value::as_str) {
+        body.as_object_mut()
+            .unwrap()
+            .insert("authorizationType".to_string(), json!(auth));
+    }
+    if let Some(req_params) = props.get("RequestParameters").filter(|v| !v.is_null()) {
+        body.as_object_mut()
+            .unwrap()
+            .insert("requestParameters".to_string(), req_params.clone());
+    }
+    let resp = apigw_rest(
+        "PUT",
+        &format!("/restapis/{api_id}/resources/{resource_id}/methods/{http_method}"),
+        body,
+        account,
+        region,
+    );
+    if !resp.ok() {
+        return None;
+    }
+    // An inline `Integration` property deploys with the method (the CFN
+    // AWS::ApiGateway::Method Integration semantics the templates use).
+    // CFN property names are PascalCase; the backend's wire fields are
+    // camelCase, so translate before the PUT.
+    if let Some(integration) = props.get("Integration").filter(|v| !v.is_null()) {
+        let mut int_body = integration.clone();
+        if let Some(obj) = int_body.as_object_mut() {
+            for (cfn_key, wire_key) in [
+                ("Type", "type"),
+                ("IntegrationHttpMethod", "httpMethod"),
+                ("Uri", "uri"),
+                ("PassthroughBehavior", "passthroughBehavior"),
+                ("TimeoutInMillis", "timeoutInMillis"),
+                ("ConnectionType", "connectionType"),
+                ("Credentials", "credentials"),
+                ("CacheNamespace", "cacheNamespace"),
+                ("CacheKeyParameters", "cacheKeyParameters"),
+                ("RequestTemplates", "requestTemplates"),
+                ("RequestParameters", "requestParameters"),
+            ] {
+                if let Some(v) = obj.remove(cfn_key) {
+                    obj.insert(wire_key.to_string(), v);
+                }
+            }
+        }
+        let int_resp = apigw_rest(
+            "PUT",
+            &format!(
+                "/restapis/{api_id}/resources/{resource_id}/methods/{http_method}/integration"
+            ),
+            int_body,
+            account,
+            region,
+        );
+        if !int_resp.ok() {
+            return None;
+        }
+    }
+    Some((
+        format!("{resource_id}-{http_method}"),
+        json!({"HttpMethod": http_method}),
+    ))
+}
+
+pub fn delete_apigw_method(
+    api_id: &str,
+    resource_id: &str,
+    http_method: &str,
+    account: &str,
+    region: &str,
+) {
+    let _ = apigw_rest(
+        "DELETE",
+        &format!("/restapis/{api_id}/resources/{resource_id}/methods/{http_method}"),
+        json!({}),
+        account,
+        region,
+    );
+}
+
+pub fn create_apigw_deployment(
+    props: &Value,
+    account: &str,
+    region: &str,
+) -> Option<(String, Value)> {
+    let api_id = value_str(props, "RestApiId");
+    if api_id.is_empty() {
+        return None;
+    }
+    let mut body = json!({});
+    if let Some(desc) = props.get("Description").and_then(Value::as_str) {
+        body.as_object_mut()
+            .unwrap()
+            .insert("description".to_string(), json!(desc));
+    }
+    let resp = apigw_rest(
+        "POST",
+        &format!("/restapis/{api_id}/deployments"),
+        body,
+        account,
+        region,
+    );
+    let parsed: Value = serde_json::from_str(&resp.body).unwrap_or(json!({}));
+    let id = parsed.get("id").and_then(Value::as_str)?.to_string();
+    Some((id.clone(), json!({"DeploymentId": id})))
+}
+
+pub fn delete_apigw_deployment(api_id: &str, deployment_id: &str, account: &str, region: &str) {
+    let _ = apigw_rest(
+        "DELETE",
+        &format!("/restapis/{api_id}/deployments/{deployment_id}"),
+        json!({}),
+        account,
+        region,
+    );
+}
+
+pub fn create_apigw_stage(props: &Value, account: &str, region: &str) -> Option<(String, Value)> {
+    let api_id = value_str(props, "RestApiId");
+    let stage_name = value_str(props, "StageName");
+    if api_id.is_empty() || stage_name.is_empty() {
+        return None;
+    }
+    let mut body =
+        json!({"stageName": stage_name, "deploymentId": value_str(props, "DeploymentId")});
+    if let Some(desc) = props.get("Description").and_then(Value::as_str) {
+        body.as_object_mut()
+            .unwrap()
+            .insert("description".to_string(), json!(desc));
+    }
+    let resp = apigw_rest(
+        "POST",
+        &format!("/restapis/{api_id}/stages"),
+        body,
+        account,
+        region,
+    );
+    if !resp.ok() {
+        return None;
+    }
+    Some((stage_name.clone(), json!({"StageName": stage_name})))
+}
+
+pub fn delete_apigw_stage(api_id: &str, stage_name: &str, account: &str, region: &str) {
+    let _ = apigw_rest(
+        "DELETE",
+        &format!("/restapis/{api_id}/stages/{stage_name}"),
+        json!({}),
+        account,
+        region,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Lambda EventSourceMapping (REST: POST /2015-03-31/event-source-mappings).
+// ---------------------------------------------------------------------------
+
+pub fn create_lambda_esm(props: &Value, account: &str, region: &str) -> Option<(String, Value)> {
+    let mut body = json!({
+        "EventSourceArn": value_str(props, "EventSourceArn"),
+        "FunctionName": value_str(props, "FunctionName"),
+        "BatchSize": props.get("BatchSize").and_then(Value::as_u64).unwrap_or(10),
+    });
+    if let Some(sp) = props.get("StartingPosition").and_then(Value::as_str) {
+        body.as_object_mut()
+            .unwrap()
+            .insert("StartingPosition".to_string(), json!(sp));
+    }
+    if let Some(enabled) = props.get("Enabled").and_then(Value::as_bool) {
+        body.as_object_mut()
+            .unwrap()
+            .insert("Enabled".to_string(), json!(enabled));
+    }
+    let mut headers = base_headers(account, region, "lambda");
+    headers.push((
+        "Content-Type".to_string(),
+        "application/x-amz-json-1.1".to_string(),
+    ));
+    let req = client().post(&format!(
+        "{}/2015-03-31/event-source-mappings",
+        callback_base()
+    ));
+    let resp = send(with_headers(req, &headers), body.to_string().as_bytes());
+    if !resp.ok() {
+        return None;
+    }
+    let parsed: Value = serde_json::from_str(&resp.body).unwrap_or(json!({}));
+    let uuid = parsed.get("UUID").and_then(Value::as_str)?.to_string();
+    Some((uuid.clone(), json!({"UUID": uuid})))
+}
+
+pub fn delete_lambda_esm(uuid: &str, account: &str, region: &str) {
+    if uuid.is_empty() {
+        return;
+    }
+    let _ = apigw_rest(
+        "DELETE",
+        &format!("/2015-03-31/event-source-mappings/{uuid}"),
+        json!({}),
+        account,
+        region,
+    );
 }

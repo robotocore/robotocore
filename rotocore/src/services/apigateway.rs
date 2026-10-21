@@ -2032,13 +2032,12 @@ fn put_integration(
         return bad_request("Enumeration value for HttpMethod must be non-empty");
     }
     if integration_type == "AWS" || integration_type == "AWS_PROXY" {
+        // moto's Integration model validates nothing
+        // (`moto/apigateway/models.py` `Integration.__init__`), so accept any
+        // ARN here: real invocation URNs carry `:apigateway:` + `:path/`,
+        // while CFN templates also arrive with plain lambda ARNs.
         if !uri.starts_with("arn:") {
             return bad_request("Invalid ARN specified in the request");
-        }
-        let path_or_action =
-            uri.contains(":apigateway:") && (uri.contains(":path/") || uri.contains(":action/"));
-        if !path_or_action {
-            return bad_request("AWS ARN for integration must contain path or action");
         }
     }
     if integration_type == "HTTP" || integration_type == "HTTP_PROXY" {
@@ -3628,16 +3627,22 @@ pub fn resolve_execution(
 
 /// Lambda function name from a proxy integration uri
 /// (`...functions/{arn}/invocations`), mirroring the python executor.
+/// Plain lambda ARNs (`arn:aws:lambda:...:function/name`) from CFN templates
+/// resolve too — moto's executor carries no uri schema at all.
 fn lambda_from_uri(uri: &str) -> Option<String> {
-    let marker = "functions/";
-    let start = uri.find(marker)? + marker.len();
-    let rest = &uri[start..];
-    let arn = rest.split("/invocations").next()?;
-    if arn.starts_with("arn:") {
-        arn.split(':').nth(6).map(String::from)
-    } else {
-        Some(arn.to_string())
+    if let Some(start) = uri.find("functions/") {
+        let rest = &uri[start + "functions/".len()..];
+        let arn = rest.split("/invocations").next()?;
+        if arn.starts_with("arn:") {
+            return arn.split(':').nth(6).map(String::from);
+        }
+        return Some(arn.to_string());
     }
+    // Plain lambda arn: `arn:aws:lambda:{region}:{account}:function:{name}`
+    if uri.starts_with("arn:aws:lambda:") {
+        return uri.split(':').nth(6).map(String::from);
+    }
+    None
 }
 
 /// Build the API Gateway proxy event exactly as the python executor does.

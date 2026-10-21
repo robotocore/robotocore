@@ -609,7 +609,7 @@ fn create_resource(
                 .and_then(Value::as_str)
                 .map(String::from)
                 .unwrap_or_else(|| fallback_name_lower(logical_id));
-            if !mirror::create_s3_bucket(&name, account, region) {
+            if !mirror::create_s3_bucket_full(props, &name, account, region) {
                 return Err("s3 mirror failed".into());
             }
             let attrs = json_obj(&json!({
@@ -691,10 +691,137 @@ fn create_resource(
                 mirror::create_ecs_cluster(&name, account, region).ok_or("ecs mirror failed")?;
             (Some(name.clone()), json_obj(&attrs))
         }
+        "AWS::EC2::VPC" => {
+            let (vpc_id, attrs) =
+                mirror::create_ec2_vpc(props, account, region).ok_or("ec2 vpc mirror failed")?;
+            (Some(vpc_id), json_obj(&attrs))
+        }
+        "AWS::EC2::Subnet" => {
+            let (subnet_id, attrs) = mirror::create_ec2_subnet(props, account, region)
+                .ok_or("ec2 subnet mirror failed")?;
+            (Some(subnet_id), json_obj(&attrs))
+        }
+        "AWS::EC2::InternetGateway" => {
+            let (igw_id, attrs) = mirror::create_ec2_internet_gateway(props, account, region)
+                .ok_or("ec2 igw mirror failed")?;
+            (Some(igw_id), json_obj(&attrs))
+        }
+        "AWS::EC2::VPCGatewayAttachment" => {
+            let (attach_id, attrs) =
+                mirror::create_ec2_vpc_gateway_attachment(props, account, region)
+                    .ok_or("ec2 attachment mirror failed")?;
+            (Some(attach_id), json_obj(&attrs))
+        }
+        "AWS::EC2::RouteTable" => {
+            let (rt_id, attrs) = mirror::create_ec2_route_table(props, account, region)
+                .ok_or("ec2 route table mirror failed")?;
+            (Some(rt_id), json_obj(&attrs))
+        }
+        "AWS::EC2::Route" => {
+            let (phys, attrs) = mirror::create_ec2_route(props, account, region)
+                .ok_or("ec2 route mirror failed")?;
+            (Some(phys), json_obj(&attrs))
+        }
+        "AWS::EC2::SubnetRouteTableAssociation" => {
+            let (assoc_id, attrs) =
+                mirror::create_ec2_subnet_rtb_association(props, account, region)
+                    .ok_or("ec2 subnet-rtb association mirror failed")?;
+            (Some(assoc_id), json_obj(&attrs))
+        }
+        "AWS::EC2::SecurityGroup" => {
+            // moto passes the GroupName property (or the generated physical
+            // name) as the security group name.
+            let name = mirror::value_str(props, "GroupName");
+            let name = if name.is_empty() {
+                fallback_name(logical_id)
+            } else {
+                name
+            };
+            let (sg_id, attrs) = mirror::create_ec2_security_group(props, &name, account, region)
+                .ok_or("ec2 security group mirror failed")?;
+            (Some(sg_id), json_obj(&attrs))
+        }
+        "AWS::Cognito::UserPool" => {
+            let name = mirror::value_str(props, "UserPoolName");
+            let name = if name.is_empty() {
+                fallback_name(logical_id)
+            } else {
+                name
+            };
+            let (pool_id, attrs) = mirror::create_cognito_user_pool(props, &name, account, region)
+                .ok_or("cognito user pool mirror failed")?;
+            (Some(pool_id), json_obj(&attrs))
+        }
+        "AWS::Cognito::UserPoolClient" => {
+            let fallback = fallback_name(logical_id);
+            let (client_id, attrs) =
+                mirror::create_cognito_user_pool_client(props, &fallback, account, region)
+                    .ok_or("cognito user pool client mirror failed")?;
+            (Some(client_id), json_obj(&attrs))
+        }
+        "AWS::CloudWatch::Alarm" => {
+            let name = mirror::value_str(props, "AlarmName");
+            let name = if name.is_empty() {
+                fallback_name(logical_id)
+            } else {
+                name
+            };
+            let (phys, attrs) = mirror::create_cloudwatch_alarm(props, &name, account, region)
+                .ok_or("cloudwatch alarm mirror failed")?;
+            (Some(phys), json_obj(&attrs))
+        }
+        "AWS::S3::BucketPolicy" => {
+            let name = mirror::value_str(props, "Bucket");
+            if name.is_empty() {
+                return Err("bucket policy mirror failed".into());
+            }
+            let Some(policy) = props.get("PolicyDocument").filter(|p| !p.is_null()) else {
+                return Err("bucket policy mirror failed".into());
+            };
+            if !mirror::put_s3_bucket_policy(&name, policy, account, region) {
+                return Err("s3 mirror failed".into());
+            }
+            let attrs = json_obj(&json!({}));
+            (Some(name), attrs)
+        }
+        "AWS::Lambda::EventSourceMapping" => {
+            let (uuid, attrs) = mirror::create_lambda_esm(props, account, region)
+                .ok_or("lambda event source mapping mirror failed")?;
+            (Some(uuid), json_obj(&attrs))
+        }
+        "AWS::ApiGateway::RestApi" => {
+            let name = mirror::value_str(props, "Name");
+            let name = if name.is_empty() {
+                fallback_name(logical_id)
+            } else {
+                name
+            };
+            let (api_id, attrs) = mirror::create_apigw_rest_api(props, &name, account, region)
+                .ok_or("apigateway rest api mirror failed")?;
+            (Some(api_id), json_obj(&attrs))
+        }
+        "AWS::ApiGateway::Resource" => {
+            let (resource_id, attrs) = mirror::create_apigw_resource(props, account, region)
+                .ok_or("apigateway resource mirror failed")?;
+            (Some(resource_id), json_obj(&attrs))
+        }
+        "AWS::ApiGateway::Method" => {
+            let (phys, attrs) = mirror::create_apigw_method(props, account, region)
+                .ok_or("apigateway method mirror failed")?;
+            (Some(phys), json_obj(&attrs))
+        }
+        "AWS::ApiGateway::Deployment" => {
+            let (phys, attrs) = mirror::create_apigw_deployment(props, account, region)
+                .ok_or("apigateway deployment mirror failed")?;
+            (Some(phys), json_obj(&attrs))
+        }
+        "AWS::ApiGateway::Stage" => {
+            let (phys, attrs) = mirror::create_apigw_stage(props, account, region)
+                .ok_or("apigateway stage mirror failed")?;
+            (Some(phys), json_obj(&attrs))
+        }
         _ => {
-            // Unmirrored type: the sidecar served these from its own memory;
-            // record a placeholder identity so stack listing flows the same.
-            (Some(fallback_name(logical_id)), HashMap::new())
+            return Err(format!("unsupported resource type: {rtype}"));
         }
     };
     Ok((physical, attrs))
@@ -808,6 +935,48 @@ fn delete_resource(resource: &CfnResource, account: &str, region: &str) {
         "AWS::ECS::Cluster" if !phys.is_empty() => {
             mirror::delete_ecs_cluster(&phys, account, region);
         }
+        "AWS::EC2::VPC" if !phys.is_empty() => mirror::delete_ec2_vpc(&phys, account, region),
+        "AWS::EC2::Subnet" if !phys.is_empty() => mirror::delete_ec2_subnet(&phys, account, region),
+        "AWS::EC2::InternetGateway" if !phys.is_empty() => {
+            mirror::delete_ec2_internet_gateway(&phys, account, region)
+        }
+        "AWS::EC2::VPCGatewayAttachment" => {
+            mirror::delete_ec2_vpc_gateway_attachment(props, account, region)
+        }
+        "AWS::EC2::RouteTable" if !phys.is_empty() => {
+            mirror::delete_ec2_route_table(&phys, account, region)
+        }
+        "AWS::EC2::Route" => mirror::delete_ec2_route(props, account, region),
+        "AWS::EC2::SubnetRouteTableAssociation" => {
+            let assoc_id = get("AssociationId").unwrap_or_else(|| phys.clone());
+            if !assoc_id.is_empty() {
+                mirror::delete_ec2_subnet_rtb_association(&assoc_id, account, region);
+            }
+        }
+        "AWS::EC2::SecurityGroup" if !phys.is_empty() => {
+            mirror::delete_ec2_security_group(&phys, account, region)
+        }
+        "AWS::Cognito::UserPool" if !phys.is_empty() => {
+            mirror::delete_cognito_user_pool(&phys, account, region)
+        }
+        "AWS::Cognito::UserPoolClient" => mirror::delete_cognito_user_pool_client(
+            &phys,
+            &get("UserPoolId").unwrap_or_default(),
+            account,
+            region,
+        ),
+        "AWS::CloudWatch::Alarm" if !phys.is_empty() => {
+            mirror::delete_cloudwatch_alarm(&phys, account, region)
+        }
+        "AWS::S3::BucketPolicy" => {
+            let bucket = get("Bucket").unwrap_or_else(|| phys.clone());
+            if !bucket.is_empty() {
+                mirror::delete_s3_bucket_policy(&bucket, account, region);
+            }
+        }
+        "AWS::Lambda::EventSourceMapping" if !phys.is_empty() => {
+            mirror::delete_lambda_esm(&phys, account, region);
+        }
         _ => {
             // Placeholder types have no side effects to unwind.
         }
@@ -884,6 +1053,55 @@ fn deploy_stack(
             .unwrap_or("Delete")
             .to_string();
 
+        // AWS::CloudFormation::Stack: fetch the child template over the S3
+        // mirror, deploy it as its own stack record, and surface its outputs
+        // as attributes (moto's Stack create_from_cloudformation_json embeds
+        // the child through the CFN backend).
+        if rtype == "AWS::CloudFormation::Stack" {
+            add_event(stack, &logical_id, rtype, "", "CREATE_IN_PROGRESS", None);
+            let child_body = deploy_nested_stack(
+                store,
+                stack,
+                &logical_id,
+                &resolved,
+                region,
+                account,
+                account_num,
+            )?;
+            let attrs = json_obj(&child_body);
+            let phys_str = child_body
+                .get("stack_name")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            add_event(
+                stack,
+                &logical_id,
+                rtype,
+                &phys_str,
+                "CREATE_COMPLETE",
+                None,
+            );
+            stack.resources.push(CfnResource {
+                logical_id: logical_id.clone(),
+                resource_type: rtype.to_string(),
+                properties: resolved.clone(),
+                physical_id: Some(phys_str.clone()),
+                attributes: attrs.clone(),
+                status: "CREATE_COMPLETE".to_string(),
+                deletion_policy,
+            });
+            ctx.resources.insert(
+                logical_id.clone(),
+                engine::ResourceInfo {
+                    resource_type: rtype.to_string(),
+                    physical_id: phys_str,
+                    attributes: attrs,
+                },
+            );
+            continue;
+        }
+
         add_event(stack, &logical_id, rtype, "", "CREATE_IN_PROGRESS", None);
         let (physical, attrs) = create_resource(&logical_id, rtype, &resolved, account, region)?;
         let phys_str = physical.clone().unwrap_or_default();
@@ -917,6 +1135,95 @@ fn deploy_stack(
     resolve_outputs(store, stack, template, &ctx, region);
     let _ = account_num;
     Ok(())
+}
+
+/// Parse a CFN TemplateURL into (bucket, key) — mirrors moto's
+/// `get_stack_from_s3_url` parsing rules (bucket in path for localhost /
+/// s3.amazon URLs, bucket in host otherwise).
+fn template_url_bucket_key(url: &str) -> Option<(String, String)> {
+    let without_scheme = url.split_once("://")?.1;
+    let (host, path) = without_scheme.split_once('/')?;
+    if host.contains("localhost")
+        || host.starts_with("127.0.0.1")
+        || (host.starts_with("s3.") && host.ends_with("amazonaws.com"))
+        || (host.starts_with("s3-") && host.ends_with(".amazonaws.com"))
+    {
+        let (bucket, key) = path.split_once('/')?;
+        Some((bucket.to_string(), key.to_string()))
+    } else {
+        let bucket = host.split('.').next()?;
+        Some((bucket.to_string(), path.to_string()))
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn deploy_nested_stack(
+    store: &mut store::CfnStore,
+    stack: &mut CfnStack,
+    logical_id: &str,
+    props: &Value,
+    region: &str,
+    account: &str,
+    account_num: u64,
+) -> Result<Value, String> {
+    let url = props
+        .get("TemplateURL")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let (bucket, key) = template_url_bucket_key(url).ok_or_else(|| {
+        format!("Nested stack ({logical_id}): TemplateURL '{url}' is not an S3 URL")
+    })?;
+    let body = mirror::s3_get_object(&bucket, &key, account, region).ok_or_else(|| {
+        format!("Nested stack ({logical_id}): template s3://{bucket}/{key} could not be fetched")
+    })?;
+    let mut child_template = engine::parse_template(&body)
+        .map_err(|e| format!("Nested stack ({logical_id}): child template invalid: {e}"))?;
+    let child_name = format!("{}-{}-{}", stack.stack_name, logical_id, uuid_head());
+    let child_id = store::new_stack_id(&child_name, region, account);
+    let mut child = CfnStack::new(child_id.clone(), child_name.clone(), body.clone());
+    if let Some(params) = props.get("Parameters").and_then(Value::as_object) {
+        for (k, v) in params {
+            let value = scalar_text(v);
+            child.parameters.retain(|(ek, _)| ek != k);
+            child.parameters.push((k.clone(), value));
+        }
+    }
+    deploy_stack(
+        store,
+        &mut child,
+        &mut child_template,
+        region,
+        account,
+        account_num,
+    )
+    .map_err(|e| format!("Nested stack ({logical_id}) failed: {e}"))?;
+    // Publish the child's outputs as attributes and keep the child record so
+    // descriptions and deletions can reach it.
+    let mut out = json!({"stack_name": child_name, "stack_id": child_id});
+    for (k, v) in &child.outputs {
+        if let Some(val) = v.get("OutputValue").and_then(Value::as_str) {
+            out.as_object_mut().unwrap().insert(k.clone(), json!(val));
+        }
+    }
+    store.stacks.push(child);
+    Ok(out)
+}
+
+/// Delete a nested stack: unwind the child's resources, then tombstone the
+/// child record (mirrors a parent-stack delete cascading to children).
+fn delete_nested_stack(store: &mut store::CfnStore, child_name: &str, account: &str, region: &str) {
+    let Some(pos) = store.stacks.iter().position(|s| s.stack_name == child_name) else {
+        return;
+    };
+    let snapshot: Vec<CfnResource> = store.stacks[pos].resources.clone();
+    for resource in snapshot.iter().rev() {
+        if resource.deletion_policy == "Retain" {
+            continue;
+        }
+        delete_resource(resource, account, region);
+    }
+    store.stacks[pos].status = "DELETE_COMPLETE".to_string();
+    store.stacks[pos].resources.clear();
 }
 
 /// Resolve outputs (`Value` + optional `Export`), honoring `Condition`.
@@ -1325,6 +1632,13 @@ fn delete_stack_action(params: &HashMap<String, String>, region: &str, account: 
 
         for resource in snapshot.iter().rev() {
             if resource.deletion_policy == "Retain" {
+                continue;
+            }
+            // Nested stack: cascade the delete into the child stack.
+            if resource.resource_type == "AWS::CloudFormation::Stack" {
+                if let Some(child_name) = resource.physical_id.clone().filter(|s| !s.is_empty()) {
+                    delete_nested_stack(store, &child_name, account, region);
+                }
                 continue;
             }
             delete_resource(resource, account, region);
