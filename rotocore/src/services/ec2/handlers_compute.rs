@@ -1700,7 +1700,10 @@ fn create_volume(req: &Request, params: &P) -> Response {
         false
     };
     with_state(req, move |state| {
-        if !snapshot_id.is_empty() && state.snapshots.iter().all(|s| s.id != snapshot_id) && !found_elsewhere {
+        if !snapshot_id.is_empty()
+            && state.snapshots.iter().all(|s| s.id != snapshot_id)
+            && !found_elsewhere
+        {
             return ec2_error(
                 400,
                 "InvalidSnapshot.NotFound",

@@ -251,9 +251,10 @@ fn dispatch_off_thread(op: &str, body: &str, secs: u64) -> crate::Response {
         let resp = super::dispatch(&r);
         let _ = tx.send(resp);
     });
-    rx.recv_timeout(std::time::Duration::from_secs(secs)).unwrap_or_else(|_| {
-        panic!("{op}: no response within {secs}s — nested-lock deadlock regression")
-    })
+    rx.recv_timeout(std::time::Duration::from_secs(secs))
+        .unwrap_or_else(|_| {
+            panic!("{op}: no response within {secs}s — nested-lock deadlock regression")
+        })
 }
 
 #[test]
@@ -337,8 +338,7 @@ fn delete_dhcp_options_unknown_id_wording() {
 fn cross_region_copy_snapshot_finds_source_partition() {
     // A snapshot created in another region must be visible to CopySnapshot
     // with SourceRegion (read lease before the write lease).
-    let vol_body =
-        "Action=CreateVolume&Zone=eu-west-2a&Size=1&Action=CreateVolume";
+    let vol_body = "Action=CreateVolume&Zone=eu-west-2a&Size=1&Action=CreateVolume";
     let vol = crate::Request {
         region: "eu-west-2".into(),
         ..req("CreateVolume", vol_body)
@@ -358,7 +358,10 @@ fn cross_region_copy_snapshot_finds_source_partition() {
         "CreateSnapshot",
         &format!("Action=CreateSnapshot&VolumeId={volume_id}&Description=seed"),
     );
-    let in_eu = crate::Request { region: "eu-west-2".into(), ..mk };
+    let in_eu = crate::Request {
+        region: "eu-west-2".into(),
+        ..mk
+    };
     let created = String::from_utf8(super::dispatch(&in_eu).body).unwrap();
     let src_id = created
         .split("<snapshotId>")
@@ -372,9 +375,7 @@ fn cross_region_copy_snapshot_finds_source_partition() {
 
     let resp = dispatch_off_thread(
         "CopySnapshot",
-        &format!(
-            "Action=CopySnapshot&SourceSnapshotId={src_id}&SourceRegion=eu-west-2"
-        ),
+        &format!("Action=CopySnapshot&SourceSnapshotId={src_id}&SourceRegion=eu-west-2"),
         10,
     );
     assert_eq!(resp.status, 200, "cross-region copy must find the source");
@@ -386,4 +387,3 @@ fn cross_region_copy_snapshot_finds_source_partition() {
     let resp = dispatch_off_thread("DescribeKeyPairs", "Action=DescribeKeyPairs", 10);
     assert_eq!(resp.status, 200);
 }
-
