@@ -1,0 +1,27 @@
+{
+  "name": "robotocore-bindings",
+  "version": "0.1.0",
+  "description": "Thin AWS SDK v3 wrapper for robotocore: endpoint/account wiring plus a smoke test.",
+  "type": "module",
+  "main": "robotocore.ts",
+  "files": [
+    "robotocore.ts",
+    "smoke.ts"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "smoke": "tsx smoke.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.0.0",
+    "@aws-sdk/client-sqs": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}
