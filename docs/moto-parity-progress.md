@@ -406,3 +406,15 @@ vs 0.41, a 15x gap). RSS: 27.7 MB rust vs 220 MB moto under load —
 `dynamodb.scan Limit=10` is the smallest win (2.4x) and would be a
 candidate for the same collect_listing fix the standing perf agents
 proposed (`crates/s3` list path analog on the dynamodb scan path).
+
+## Wave 10 addendum (2026-10-21) — language bindings landed
+
+The three SDK-helper bindings (ts / go / rust — writes under
+bindings/{typescript,go,rust}/) were re-verified and merged to rust
+after the perf sweep: typescript (robotocore.ts +
+`npm run typecheck`/smoke), go module (`go vet` clean, skippable
+live smoke), rust standalone crate (cargo build green on the merged
+tree). Live-verified against the twin on their own scratch twins at
+their creation; mirrors the python client's shape. That completes the
+goal contract's bindings clause in full: python sits alongside
+typescript, go, and rust — each a real, runnable client.
