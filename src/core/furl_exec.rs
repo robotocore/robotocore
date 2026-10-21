@@ -67,6 +67,19 @@ pub fn execute(
             .into_response();
     };
 
+    // OPTIONS preflight answers with the CORS headers only (no invocation).
+    if method == Method::OPTIONS {
+        return options_response(&config, headers).unwrap_or_else(|| {
+            // No matching CORS config: preflight is rejected without
+            // invoking the function.
+            (
+                StatusCode::FORBIDDEN,
+                axum::Json(json!({"message": "No Access-Control-Allow-Origin header set. Should match allowed origins set on function URL."})),
+            )
+                .into_response()
+        });
+    }
+
     // The Function-URL v2.0 event (the recorded echo suite reads method,
     // rawPath, rawQueryString, headers, queryStringParameters, body,
     // isBase64Encoded and version).
@@ -372,5 +385,42 @@ mod tests {
         let t = match_url("/lambda-url/abc123/api/items/1").expect("target");
         assert_eq!(t.sub_path, "api/items/1");
         assert!(match_url("/restapis/foo").is_none());
+    }
+
+    #[test]
+    fn test_options_preflight_no_invocation() {
+        // A CORS-configured URL answers its preflight with the CORS headers
+        // and no function invocation.
+        let config = json!({
+            "Cors": {
+                "AllowOrigins": ["https://example.com"],
+                "AllowMethods": ["GET", "POST"],
+                "AllowHeaders": ["X-Custom-Header"],
+                "MaxAge": 3600,
+            }
+        });
+        let headers: std::collections::HashMap<String, String> =
+            [("origin", "https://example.com")]
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect();
+        let resp = options_response(&config, &headers).expect("preflight response");
+        assert_eq!(resp.status(), StatusCode::OK);
+        let origin = resp
+            .headers()
+            .get("access-control-allow-origin")
+            .and_then(|v| v.to_str().ok())
+            .expect("allow-origin header");
+        assert_eq!(origin, "https://example.com");
+        assert!(
+            resp.headers().contains_key("access-control-allow-methods"),
+            "preflight carries the allowed methods"
+        );
+
+        // Without a matching CORS config there is nothing to answer — the
+        // route layer must reject instead of invoking the function.
+        assert!(options_response(&json!({}), &headers).is_none());
+        let no_origin: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        assert!(options_response(&config, &no_origin).is_none());
     }
 }
