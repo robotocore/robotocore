@@ -236,7 +236,7 @@ First GA release. Robotocore is an MIT-licensed, open-source AWS emulator built 
 ### Service Coverage
 
 - **147 registered services** (38 native + 109 Moto-backed)
-- **147 services with automated compat tests** (100% coverage)
+- **158 services with automated compat tests** (100% of the fleet-gated surface)
 - **94/94 smoke tests passing**
 - **5195+ total tests** (2520 unit + 2675 compat + 42 integration), 0 failures
 

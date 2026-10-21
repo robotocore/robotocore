@@ -1606,7 +1606,11 @@ pub async fn config_handler() -> impl IntoResponse {
     let config = json!({
         "version": env!("CARGO_PKG_VERSION"),
         "debug": false,
-        "specifications_dir": std::env::var("ROBOTOCORE_SPECS_DIR").unwrap_or_else(|_| "/opt/homebrew/lib/python3.14/site-packages/botocore/data".to_string())
+        // The twin's botocore data is embedded at build time (chunks/);
+        // the python-era specifications_dir only mattered when the old
+        // product read botocore from a live python install.
+        "specifications_dir": std::env::var("ROBOTOCORE_SPECS_DIR")
+            .unwrap_or_else(|_| "embedded".to_string())
     });
 
     (StatusCode::OK, axum::Json(config))
