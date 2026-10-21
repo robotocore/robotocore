@@ -1,11 +1,11 @@
 {
   "service": "swf",
-  "generated_at": "2026-10-21T07:08:33.065558+00:00",
+  "generated_at": "2026-10-21T07:27:14.918256+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 13,
+    "working": 39,
     "needs_params": 0,
-    "not_implemented": 26,
+    "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
   },
@@ -17,73 +17,73 @@
     },
     {
       "operation": "CountOpenWorkflowExecutions",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CountPendingActivityTasks",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CountPendingDecisionTasks",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteActivityType",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown type: ActivityType=[name=probe-test-value, version=p)"
     },
     {
       "operation": "DeleteWorkflowType",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "DeprecateActivityType",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown type: ActivityType=[name=probe-test-value, version=p)"
     },
     {
       "operation": "DeprecateDomain",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeprecateWorkflowType",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeActivityType",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown type: ActivityType=[name=probe-test-value, version=p)"
     },
     {
       "operation": "DescribeDomain",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeWorkflowExecution",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown execution: WorkflowExecution=[workflowId=probe-test-)"
     },
     {
       "operation": "DescribeWorkflowType",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetWorkflowExecutionHistory",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown execution: WorkflowExecution=[workflowId=probe-test-)"
     },
     {
       "operation": "ListActivityTypes",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListClosedWorkflowExecutions",
@@ -97,28 +97,28 @@
     },
     {
       "operation": "ListOpenWorkflowExecutions",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "likely implemented (DomainDeprecatedFault: probe-test-value)"
     },
     {
       "operation": "ListTagsForResource",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown domain: arn:aws:swf:us-east-1:123456789012:thing/pro)"
     },
     {
       "operation": "ListWorkflowTypes",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PollForActivityTask",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PollForDecisionTask",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "RecordActivityTaskHeartbeat",
@@ -127,23 +127,23 @@
     },
     {
       "operation": "RegisterActivityType",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "RegisterDomain",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (DomainAlreadyExistsFault: probe-test-value)"
     },
     {
       "operation": "RegisterWorkflowType",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (TypeAlreadyExistsFault: WorkflowType=[name=probe-test-value, version=probe-test-valu)"
     },
     {
       "operation": "RequestCancelWorkflowExecution",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown execution, workflowId = probe-test-value)"
     },
     {
       "operation": "RespondActivityTaskCanceled",
@@ -167,43 +167,43 @@
     },
     {
       "operation": "SignalWorkflowExecution",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown execution, workflowId = probe-test-value)"
     },
     {
       "operation": "StartWorkflowExecution",
       "status": "working",
-      "message": "likely implemented (DefaultUndefinedFault: executionStartToCloseTimeout)"
+      "message": "likely implemented (TypeDeprecatedFault: WorkflowType=[name=probe-test-value, version=probe-test-valu)"
     },
     {
       "operation": "TagResource",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown domain: arn:aws:swf:us-east-1:123456789012:thing/pro)"
     },
     {
       "operation": "TerminateWorkflowExecution",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown execution, workflowId = probe-test-value)"
     },
     {
       "operation": "UndeprecateActivityType",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "likely implemented (TypeAlreadyExistsFault: ActivityType=[name=probe-test-value, version=probe-test-valu)"
     },
     {
       "operation": "UndeprecateDomain",
       "status": "working",
-      "message": "likely implemented (DomainAlreadyExistsFault: probe-test-value)"
+      "message": "OK"
     },
     {
       "operation": "UndeprecateWorkflowType",
       "status": "working",
-      "message": "likely implemented (TypeAlreadyExistsFault: WorkflowType=[name=probe-test-value, version=probe-test-valu)"
+      "message": "OK"
     },
     {
       "operation": "UntagResource",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownResourceFault)"
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown domain: arn:aws:swf:us-east-1:123456789012:thing/pro)"
     }
   ]
 }

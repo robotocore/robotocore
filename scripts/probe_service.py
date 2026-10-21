@@ -143,10 +143,14 @@ def probe_operation(
         if status_code == 501:
             return "not_implemented", "not implemented (501)"
 
-        if msg and ("not implemented" in msg.lower() or "unknown" in msg.lower()):
+        # Only a literal "not implemented" (from a moto-modeled 501-style
+        # message at a non-501 status) means absence. Modeled
+        # ResourceNotFound/Unknown* faults say "unknown" and prove the
+        # server answer came from a real handler — bucket them as working.
+        if msg and "not implemented" in msg.lower():
             return "not_implemented", f"not implemented ({code})"
 
-        # Other 4xx errors generally mean it IS implemented
+        # Other 4xx errors generally mean it IS implemented.
         return "working", f"likely implemented ({code}: {(msg or '')[:60]})"
 
     except botocore.exceptions.ParamValidationError:

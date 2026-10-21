@@ -1,6 +1,6 @@
 {
   "service": "iot",
-  "generated_at": "2026-10-21T07:07:22.572540+00:00",
+  "generated_at": "2026-10-21T07:27:14.201219+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 249,
@@ -188,7 +188,7 @@
     {
       "operation": "CreatePolicy",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceAlreadyExistsException: Policy cannot be created - name already exists (name=probe-t)"
     },
     {
       "operation": "CreatePolicyVersion",
@@ -453,7 +453,7 @@
     {
       "operation": "DescribeAuditMitigationActionsTask",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeAuditSuppression",
@@ -1093,12 +1093,12 @@
     {
       "operation": "RegisterCACertificate",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceAlreadyExistsException: The certificate is already provisioned or registered)"
     },
     {
       "operation": "RegisterCertificate",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceAlreadyExistsException: The certificate is already provisioned or registered)"
     },
     {
       "operation": "RegisterCertificateWithoutCA",

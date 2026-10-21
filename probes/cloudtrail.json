@@ -1,11 +1,11 @@
 {
   "service": "cloudtrail",
-  "generated_at": "2026-10-21T07:05:52.132526+00:00",
+  "generated_at": "2026-10-21T07:26:57.784507+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 46,
+    "working": 53,
     "needs_params": 7,
-    "not_implemented": 7,
+    "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
   },
@@ -58,7 +58,7 @@
     {
       "operation": "DeleteResourcePolicy",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteTrail",
@@ -117,8 +117,8 @@
     },
     {
       "operation": "GetEventSelectors",
-      "status": "not_implemented",
-      "message": "not implemented (TrailNotFoundException)"
+      "status": "working",
+      "message": "likely implemented (TrailNotFoundException: Unknown trail: probe-test-value for the user: 123456789012)"
     },
     {
       "operation": "GetImport",
@@ -127,8 +127,8 @@
     },
     {
       "operation": "GetInsightSelectors",
-      "status": "not_implemented",
-      "message": "not implemented (TrailNotFoundException)"
+      "status": "working",
+      "message": "likely implemented (TrailNotFoundException: Unknown trail:  for the user: 123456789012)"
     },
     {
       "operation": "GetQueryResults",
@@ -142,13 +142,13 @@
     },
     {
       "operation": "GetTrail",
-      "status": "not_implemented",
-      "message": "not implemented (TrailNotFoundException)"
+      "status": "working",
+      "message": "likely implemented (TrailNotFoundException: Unknown trail: probe-test-value for the user: 123456789012)"
     },
     {
       "operation": "GetTrailStatus",
-      "status": "not_implemented",
-      "message": "not implemented (TrailNotFoundException)"
+      "status": "working",
+      "message": "likely implemented (TrailNotFoundException: Unknown trail: arn:aws:cloudtrail:us-east-1:123456789012:tra)"
     },
     {
       "operation": "ListChannels",
@@ -217,13 +217,13 @@
     },
     {
       "operation": "PutEventSelectors",
-      "status": "not_implemented",
-      "message": "not implemented (TrailNotFoundException)"
+      "status": "working",
+      "message": "likely implemented (TrailNotFoundException: Unknown trail: probe-test-value for the user: 123456789012)"
     },
     {
       "operation": "PutInsightSelectors",
-      "status": "not_implemented",
-      "message": "not implemented (TrailNotFoundException)"
+      "status": "working",
+      "message": "likely implemented (TrailNotFoundException: Unknown trail:  for the user: 123456789012)"
     },
     {
       "operation": "PutResourcePolicy",
@@ -307,8 +307,8 @@
     },
     {
       "operation": "UpdateTrail",
-      "status": "not_implemented",
-      "message": "not implemented (TrailNotFoundException)"
+      "status": "working",
+      "message": "likely implemented (TrailNotFoundException: Unknown trail: probe-test-value for the user: 123456789012)"
     }
   ]
 }

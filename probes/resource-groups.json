@@ -1,6 +1,6 @@
 {
   "service": "resource-groups",
-  "generated_at": "2026-10-21T07:08:01.810376+00:00",
+  "generated_at": "2026-10-21T07:27:14.459668+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 17,
@@ -18,7 +18,7 @@
     {
       "operation": "CreateGroup",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (BadRequestException: Cannot create group: group already exists)"
     },
     {
       "operation": "DeleteGroup",
