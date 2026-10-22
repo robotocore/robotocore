@@ -418,3 +418,17 @@ tree). Live-verified against the twin on their own scratch twins at
 their creation; mirrors the python client's shape. That completes the
 goal contract's bindings clause in full: python sits alongside
 typescript, go, and rust — each a real, runnable client.
+
+## Design (2026-10-22) — the botocore-surface plan (100% coverage + exercise tiers)
+
+`docs/botocore-surface-plan.md` is the committed contract for taking the
+fleet from moto parity (complete) to 100% botocore-surface coverage:
+10,268 modeled ops today = 8,396 working / 649 needs_params /
+1,163 moto-absent-not_implemented / 60 crash-faithful. Four machines
+define it: coverage.py (the per-op surface artifact), probe filler
+gen-2 (needs_params → 0), a botocore response-shape validator as the
+wire-tier conformation gate, and an absence manifest that makes every
+remaining deny a recorded decision. Exercise is defined as four screens
+(probe conformance / unit / caller / system), with CI budget ratchets
+wired through `make parity` and the parked workflow. Execution: ~8–15
+waves of the established fleet pattern.
