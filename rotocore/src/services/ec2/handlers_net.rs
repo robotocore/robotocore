@@ -1606,10 +1606,19 @@ pub fn route_table_item(state: &Ec2State, account: u64, rt: &RouteTable) -> Stri
             main
         );
     }
+    let mut propagations = String::new();
+    for gw in &rt.propagations {
+        let _ = write!(
+            propagations,
+            "<item><gatewayId>{}</gatewayId></item>",
+            xml_escape(gw)
+        );
+    }
     format!(
-        "<item><ownerId>{}</ownerId><associationSet>{}</associationSet><propagatingVgwSet/><routeTableId>{}</routeTableId><routeSet>{}</routeSet>{}<tagSet/><vpcId>{}</vpcId></item>",
+        "<item><ownerId>{}</ownerId><associationSet>{}</associationSet><propagatingVgwSet>{}</propagatingVgwSet><routeTableId>{}</routeTableId><routeSet>{}</routeSet>{}<tagSet/><vpcId>{}</vpcId></item>",
         account,
         associations,
+        propagations,
         xml_escape(&rt.id),
         routes,
         "",

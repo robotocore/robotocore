@@ -105,6 +105,15 @@ pub fn snapshot_fields(s: &Snapshot) -> String {
     if let Some(k) = &s.kms_key_id {
         let _ = write!(out, "<kmsKeyId>{}</kmsKeyId>", xml_escape(k));
     }
+    if s.storage_tier.is_empty() {
+        out.push_str("<storageTier>standard</storageTier>");
+    } else {
+        let _ = write!(
+            out,
+            "<storageTier>{}</storageTier>",
+            xml_escape(&s.storage_tier)
+        );
+    }
     out.push_str(&tags_xml(&s.tags));
     out
 }

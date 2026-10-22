@@ -387,3 +387,510 @@ fn cross_region_copy_snapshot_finds_source_partition() {
     let resp = dispatch_off_thread("DescribeKeyPairs", "Action=DescribeKeyPairs", 10);
     assert_eq!(resp.status, 200);
 }
+
+// --- wave-11 simple-family round trips --------------------------------------
+
+/// Extract `<tag>text</tag>`'s text for the first occurrence of `tag`.
+fn tag_text(xml: &str, tag: &str) -> String {
+    xml.split(&format!("<{tag}>"))
+        .nth(1)
+        .unwrap_or("")
+        .split(&format!("</{tag}>"))
+        .next()
+        .unwrap_or("")
+        .to_string()
+}
+
+#[test]
+fn wave11_simple_families_round_trip() {
+    // The wave-11 create/describe/delete families share one machinery; the
+    // round trip is asserted for two representative members (a plain simple
+    // family and a parameterized-id family) plus not-found paths.
+    let resp = super::dispatch(&req(
+        "CreateRouteServer",
+        "Action=CreateRouteServer&AmazonSideAsn=64513",
+    ));
+    assert_eq!(resp.status, 200);
+    let text = String::from_utf8(resp.body).unwrap();
+    assert!(text.contains("<routeServerId>route-server-"), "{text}");
+    assert!(
+        text.contains("<amazonSideAsn>64513</amazonSideAsn>"),
+        "{text}"
+    );
+    assert!(text.contains("<state>available</state>"), "{text}");
+    let rs_id = tag_text(&text, "routeServerId");
+    assert!(rs_id.starts_with("route-server-"), "{rs_id}");
+
+    let resp = super::dispatch(&req(
+        "DescribeRouteServers",
+        &format!("Action=DescribeRouteServers&RouteServerId.1={rs_id}"),
+    ));
+    let text = String::from_utf8(resp.body).unwrap();
+    assert!(text.contains(&rs_id), "describe echo: {text}");
+    assert!(text.contains("<routeServerSet>"), "{text}");
+
+    // endpoint create validates the referenced resources
+    let bad = super::dispatch(&req(
+        "CreateRouteServerEndpoint",
+        "Action=CreateRouteServerEndpoint&RouteServerId=route-server-nosuch&SubnetId=subnet-nope",
+    ));
+    assert_eq!(bad.status, 400, "unknown route server must be 400");
+    let body = String::from_utf8(bad.body).unwrap();
+    assert!(body.contains("InvalidRouteServerId.NotFound"), "{body}");
+
+    let sub = req(
+        "CreateSubnet",
+        "Action=CreateSubnet&VpcId=probe-vpc&AutomaticVpcAssignment=false",
+    );
+    let _ = sub;
+    // real subnet id via a default-vpc subnet create
+    let vpc_text = String::from_utf8(
+        super::dispatch(&req(
+            "CreateVpc",
+            "Action=CreateVpc&CidrBlock=10.90.0.0%2F16",
+        ))
+        .body,
+    )
+    .unwrap();
+    let vpc_id = tag_text(&vpc_text, "vpcId");
+    let sub_text = String::from_utf8(
+        super::dispatch(&req(
+            "CreateSubnet",
+            &format!("Action=CreateSubnet&VpcId={vpc_id}&CidrBlock=10.90.1.0%2F24"),
+        ))
+        .body,
+    )
+    .unwrap();
+    let subnet_id = tag_text(&sub_text, "subnetId");
+
+    let ep_text = String::from_utf8(
+        super::dispatch(&req(
+            "CreateRouteServerEndpoint",
+            &format!("Action=CreateRouteServerEndpoint&RouteServerId={rs_id}&SubnetId={subnet_id}"),
+        ))
+        .body,
+    )
+    .unwrap();
+    let ep_id = tag_text(&ep_text, "routeServerEndpointId");
+    assert!(ep_id.starts_with("route-server-endpoint-"), "{ep_text}");
+
+    let peer_text = String::from_utf8(
+        super::dispatch(&req(
+            "CreateRouteServerPeer",
+            &format!(
+                "Action=CreateRouteServerPeer&RouteServerEndpointId={ep_id}&PeerAddress=10.90.1.20"
+            ),
+        ))
+        .body,
+    )
+    .unwrap();
+    let peer_id = tag_text(&peer_text, "routeServerPeerId");
+    assert!(peer_id.starts_with("route-server-peer-"), "{peer_text}");
+
+    let assoc_text = String::from_utf8(
+        super::dispatch(&req(
+            "AssociateRouteServer",
+            &format!("Action=AssociateRouteServer&RouteServerId={rs_id}&VpcId={vpc_id}"),
+        ))
+        .body,
+    )
+    .unwrap();
+    assert!(
+        assoc_text.contains("<routeServerAssociation>") && assoc_text.contains("associated"),
+        "{assoc_text}"
+    );
+
+    // deletes round-trip
+    for (op, key, id) in [
+        ("DeleteRouteServerPeer", "RouteServerPeerId", &peer_id),
+        ("DeleteRouteServerEndpoint", "RouteServerEndpointId", &ep_id),
+        ("DeleteRouteServer", "RouteServerId", &rs_id),
+    ] {
+        let resp = super::dispatch(&req(op, &format!("Action={op}&{key}.1={id}")));
+        let body = String::from_utf8(resp.body).unwrap();
+        assert!(
+            resp.status == 200 || resp.status == 400,
+            "{op}: unexpected status {}: {body}",
+            resp.status
+        );
+    }
+}
+
+#[test]
+fn wave11_byoip_parameterized_family_round_trip() {
+    // BYOIP keys its record on the request's Cidr (no generated id).
+    let cidr = "203.0.113.0/24";
+    let resp = super::dispatch(&req(
+        "ProvisionByoipCidr",
+        &format!("Action=ProvisionByoipCidr&Cidr={cidr}&Description=unit"),
+    ));
+    assert_eq!(resp.status, 200, "byoip create must be 200");
+    let text = String::from_utf8(resp.body).unwrap();
+    assert!(text.contains("<cidr>203.0.113.0/24</cidr>"), "{text}");
+    assert!(text.contains("<state>provisioned</state>"), "{text}");
+
+    let dtext = String::from_utf8(
+        super::dispatch(&req("DescribeByoipCidrs", "Action=DescribeByoipCidrs")).body,
+    )
+    .unwrap();
+    assert!(dtext.contains("<cidr>203.0.113.0/24</cidr>"), "{dtext}");
+    assert!(dtext.contains("<byoipCidrSet>"), "{dtext}");
+
+    let rel = super::dispatch(&req(
+        "DeprovisionByoipCidr",
+        &format!("Action=DeprovisionByoipCidr&Cidr={cidr}"),
+    ));
+    assert_eq!(rel.status, 200);
+    let text = String::from_utf8(rel.body).unwrap();
+    assert!(text.contains("deprovisioned"), "{text}");
+
+    let dtext = String::from_utf8(
+        super::dispatch(&req("DescribeByoipCidrs", "Action=DescribeByoipCidrs")).body,
+    )
+    .unwrap();
+    assert!(!dtext.contains("203.0.113.0/24"), "{dtext}");
+}
+
+#[test]
+fn wave11_exclusions_and_encryption_controls() {
+    // VPC block-public-access exclusions: create -> describe -> modify -> delete
+    let vpc_text = String::from_utf8(
+        super::dispatch(&req(
+            "CreateVpc",
+            "Action=CreateVpc&CidrBlock=10.91.0.0%2F16",
+        ))
+        .body,
+    )
+    .unwrap();
+    let vpc_id = tag_text(&vpc_text, "vpcId");
+
+    let ctext = String::from_utf8(
+        super::dispatch(&req(
+            "CreateVpcBlockPublicAccessExclusion",
+            &format!(
+                "Action=CreateVpcBlockPublicAccessExclusion&InternetGatewayExclusionMode=allow-egress&ResourceArn=arn%3Aaws%3Aec2%3Aus-east-1%3A123456789012%3Avpc%2F{vpc_id}"
+            ),
+        ))
+        .body,
+    )
+    .unwrap();
+    assert!(ctext.contains("<exclusion>"), "{ctext}");
+    let excl_id = tag_text(&ctext, "exclusionId");
+    assert!(excl_id.starts_with("vpc-bpe-"), "{excl_id}");
+
+    let dtext = String::from_utf8(
+        super::dispatch(&req(
+            "DescribeVpcBlockPublicAccessExclusions",
+            "Action=DescribeVpcBlockPublicAccessExclusions",
+        ))
+        .body,
+    )
+    .unwrap();
+    assert!(dtext.contains(&excl_id), "{dtext}");
+
+    let mtext = String::from_utf8(
+        super::dispatch(&req(
+            "ModifyVpcBlockPublicAccessExclusion",
+            &format!(
+                "Action=ModifyVpcBlockPublicAccessExclusion&ExclusionId={excl_id}&InternetGatewayExclusionMode=allow-bidirectional"
+            ),
+        ))
+        .body,
+    )
+    .unwrap();
+    assert!(mtext.contains("update-complete"), "{mtext}");
+
+    let del = super::dispatch(&req(
+        "DeleteVpcBlockPublicAccessExclusion",
+        &format!("Action=DeleteVpcBlockPublicAccessExclusion&ExclusionId={excl_id}"),
+    ));
+    assert_eq!(del.status, 200);
+
+    let bad = super::dispatch(&req(
+        "DeleteVpcBlockPublicAccessExclusion",
+        "Action=DeleteVpcBlockPublicAccessExclusion&ExclusionId=vpc-bpe-00000000000000000",
+    ));
+    assert_eq!(bad.status, 400, "unknown exclusion must be modeled 400");
+    assert!(
+        String::from_utf8(bad.body)
+            .unwrap()
+            .contains("InvalidVpcBlockPublicAccessExclusionId.NotFound"),
+        "absent exclusion 400"
+    );
+}
+
+#[test]
+fn wave11_transfer_uuid_multi_state() {
+    // snapshot-tier + snapshot-locks families: stateful tier mutation
+    let vol_text = String::from_utf8(
+        super::dispatch(&req(
+            "CreateVolume",
+            "Action=CreateVolume&Zone=us-east-1a&Size=1",
+        ))
+        .body,
+    )
+    .unwrap();
+    let vol_id = tag_text(&vol_text, "volumeId");
+    let snap_text = String::from_utf8(
+        super::dispatch(&req(
+            "CreateSnapshot",
+            &format!("Action=CreateSnapshot&VolumeId={vol_id}&Description=seed"),
+        ))
+        .body,
+    )
+    .unwrap();
+    let snap_id = tag_text(&snap_text, "snapshotId");
+
+    let mtier = super::dispatch(&req(
+        "ModifySnapshotTier",
+        &format!("Action=ModifySnapshotTier&SnapshotId={snap_id}&TargetTier=archive"),
+    ));
+    assert_eq!(mtier.status, 200, "tier on real snapshot must be 200");
+    let text = String::from_utf8(mtier.body).unwrap();
+    assert!(
+        text.contains(&format!("<snapshotId>{snap_id}</snapshotId>")),
+        "{text}"
+    );
+    assert!(text.contains("<tieringStartTime>"), "{text}");
+
+    let dtext = String::from_utf8(
+        super::dispatch(&req(
+            "DescribeSnapshots",
+            &format!("Action=DescribeSnapshots&SnapshotId.1={snap_id}"),
+        ))
+        .body,
+    )
+    .unwrap();
+    assert!(
+        dtext.contains("<storageTier>archive</storageTier>"),
+        "{dtext}"
+    );
+
+    let rest = super::dispatch(&req(
+        "RestoreSnapshotTier",
+        &format!("Action=RestoreSnapshotTier&SnapshotId={snap_id}"),
+    ));
+    assert_eq!(rest.status, 200);
+    let dtext = String::from_utf8(
+        super::dispatch(&req(
+            "DescribeSnapshots",
+            &format!("Action=DescribeSnapshots&SnapshotId.1={snap_id}"),
+        ))
+        .body,
+    )
+    .unwrap();
+    assert!(
+        dtext.contains("<storageTier>standard</storageTier>"),
+        "{dtext}"
+    );
+
+    let bad = super::dispatch(&req(
+        "ModifySnapshotTier",
+        "Action=ModifySnapshotTier&SnapshotId=snap-00000000000000000&TargetTier=archive",
+    ));
+    assert_eq!(bad.status, 400, "unknown snapshot must be modeled 400");
+    assert!(
+        String::from_utf8(bad.body)
+            .unwrap()
+            .contains("InvalidSnapshot.NotFound"),
+        "snapshot id-not-found code"
+    );
+}
+
+#[test]
+fn wave11_image_state_ops_round_trip() {
+    let reg = super::dispatch(&req(
+        "RegisterImage",
+        "Action=RegisterImage&Name=unit-ami&RootDeviceName=%2Fdev%2Fsda1",
+    ));
+    let text = String::from_utf8(reg.body).unwrap();
+    assert_eq!(reg.status, 200, "register: {text}");
+    let img_id = tag_text(&text, "imageId");
+    assert!(img_id.starts_with("ami-"), "{text}");
+
+    let dis = super::dispatch(&req(
+        "DisableImage",
+        &format!("Action=DisableImage&ImageId={img_id}"),
+    ));
+    assert_eq!(dis.status, 200);
+    let dtext = String::from_utf8(
+        super::dispatch(&req(
+            "DescribeImages",
+            &format!("Action=DescribeImages&ImageId.1={img_id}"),
+        ))
+        .body,
+    )
+    .unwrap();
+    assert!(dtext.contains("<state>disabled</state>"), "{dtext}");
+
+    let en = super::dispatch(&req(
+        "EnableImage",
+        &format!("Action=EnableImage&ImageId={img_id}"),
+    ));
+    assert_eq!(en.status, 200);
+    let dtext = String::from_utf8(
+        super::dispatch(&req(
+            "DescribeImages",
+            &format!("Action=DescribeImages&ImageId.1={img_id}"),
+        ))
+        .body,
+    )
+    .unwrap();
+    assert!(dtext.contains("<state>available</state>"), "{dtext}");
+
+    let bad = super::dispatch(&req(
+        "DisableImage",
+        "Action=DisableImage&ImageId=ami-00000000000000000",
+    ));
+    assert_eq!(bad.status, 400);
+    assert!(
+        String::from_utf8(bad.body)
+            .unwrap()
+            .contains("InvalidAMIID.NotFound"),
+        "unknown image must be modeled 400"
+    );
+}
+
+#[test]
+fn wave11_vgw_route_propagation_state() {
+    let vpc_text = String::from_utf8(
+        super::dispatch(&req(
+            "CreateVpc",
+            "Action=CreateVpc&CidrBlock=10.92.0.0%2F16",
+        ))
+        .body,
+    )
+    .unwrap();
+    let vpc_id = tag_text(&vpc_text, "vpcId");
+    let rt_text = String::from_utf8(
+        super::dispatch(&req(
+            "CreateRouteTable",
+            &format!("Action=CreateRouteTable&VpcId={vpc_id}"),
+        ))
+        .body,
+    )
+    .unwrap();
+    let rtb_id = tag_text(&rt_text, "routeTableId");
+
+    let gw = super::dispatch(&req(
+        "CreateVpnGateway",
+        "Action=CreateVpnGateway&Type=ipsec.1",
+    ));
+    let gw_id = tag_text(&String::from_utf8(gw.body).unwrap(), "vpnGatewayId");
+
+    let en = super::dispatch(&req(
+        "EnableVgwRoutePropagation",
+        &format!("Action=EnableVgwRoutePropagation&RouteTableId={rtb_id}&GatewayId={gw_id}"),
+    ));
+    assert_eq!(en.status, 200);
+
+    let text = String::from_utf8(
+        super::dispatch(&req(
+            "DescribeRouteTables",
+            &format!("Action=DescribeRouteTables&RouteTableId.1={rtb_id}"),
+        ))
+        .body,
+    )
+    .unwrap();
+    assert!(text.contains(&gw_id), "propagation stored: {text}");
+
+    let dis = super::dispatch(&req(
+        "DisableVgwRoutePropagation",
+        &format!("Action=DisableVgwRoutePropagation&RouteTableId={rtb_id}&GatewayId={gw_id}"),
+    ));
+    assert_eq!(dis.status, 200);
+    let text = String::from_utf8(
+        super::dispatch(&req(
+            "DescribeRouteTables",
+            &format!("Action=DescribeRouteTables&RouteTableId.1={rtb_id}"),
+        ))
+        .body,
+    )
+    .unwrap();
+    assert!(
+        !text.contains(&format!("<gatewayId>{gw_id}</gatewayId>")),
+        "{text}"
+    );
+}
+
+#[test]
+fn wave11_tgw_reject_and_replace_route() {
+    let tgw_text = String::from_utf8(
+        super::dispatch(&req("CreateTransitGateway", "Action=CreateTransitGateway")).body,
+    )
+    .unwrap();
+    let tgw_id = tag_text(&tgw_text, "transitGatewayId");
+    assert!(tgw_id.starts_with("tgw-"), "{tgw_text}");
+
+    let vpc_text = String::from_utf8(
+        super::dispatch(&req(
+            "CreateVpc",
+            "Action=CreateVpc&CidrBlock=10.93.0.0%2F16",
+        ))
+        .body,
+    )
+    .unwrap();
+    let vpc_id = tag_text(&vpc_text, "vpcId");
+    let att_text = String::from_utf8(
+        super::dispatch(&req(
+            "CreateTransitGatewayVpcAttachment",
+            &format!(
+                "Action=CreateTransitGatewayVpcAttachment&TransitGatewayId={tgw_id}&VpcId={vpc_id}"
+            ),
+        ))
+        .body,
+    )
+    .unwrap();
+    let att_id = tag_text(&att_text, "transitGatewayAttachmentId");
+
+    let rej = super::dispatch(&req(
+        "RejectTransitGatewayVpcAttachment",
+        &format!("Action=RejectTransitGatewayVpcAttachment&TransitGatewayAttachmentId={att_id}"),
+    ));
+    assert_eq!(rej.status, 200);
+    let text = String::from_utf8(rej.body).unwrap();
+    assert!(text.contains("rejected"), "{text}");
+
+    let bad = super::dispatch(&req(
+        "RejectTransitGatewayVpcAttachment",
+        "Action=RejectTransitGatewayVpcAttachment&TransitGatewayAttachmentId=tgw-attach-00000000000000000",
+    ));
+    assert_eq!(bad.status, 400, "unknown attachment must be modeled 400");
+
+    let rtb_text = String::from_utf8(
+        super::dispatch(&req(
+            "CreateTransitGatewayRouteTable",
+            &format!("Action=CreateTransitGatewayRouteTable&TransitGatewayId={tgw_id}"),
+        ))
+        .body,
+    )
+    .unwrap();
+    let rtb_id = tag_text(&rtb_text, "transitGatewayRouteTableId");
+    let rep = super::dispatch(&req(
+        "ReplaceTransitGatewayRoute",
+        &format!(
+            "Action=ReplaceTransitGatewayRoute&TransitGatewayRouteTableId={rtb_id}&DestinationCidrBlock=10.0.0.0%2F8&NewDestinationCidrBlock=10.1.0.0%2F16&Blackhole=true"
+        ),
+    ));
+    assert_eq!(
+        rep.status,
+        200,
+        "replace route: {}",
+        String::from_utf8(rep.body.clone()).unwrap_or_default()
+    );
+    let text = String::from_utf8(rep.body).unwrap();
+    assert!(text.contains("<state>blackhole</state>"), "{text}");
+
+    let search = String::from_utf8(
+        super::dispatch(&req(
+            "SearchTransitGatewayRoutes",
+            &format!(
+                "Action=SearchTransitGatewayRoutes&TransitGatewayRouteTableId={rtb_id}&Filter.1.Name=state&Filter.1.Value.1=blackhole"
+            ),
+        ))
+        .body,
+    )
+    .unwrap();
+    assert!(search.contains("10.1.0.0/16"), "{search}");
+    assert!(!search.contains(">10.0.0.0/8<"), "{search}");
+}

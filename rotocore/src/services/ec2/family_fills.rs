@@ -598,6 +598,369 @@ pub fn create_fills(
             }
             f.insert("HostIds".to_string(), Fill::X(items));
         }
+        // --- wave-11 families: create + delete fills -------------------------
+        "route-server" => {
+            f.insert("RouteServerId".to_string(), Fill::S(id.to_string()));
+            f.insert(
+                "AmazonSideAsn".to_string(),
+                Fill::S(match params.get("AmazonSideAsn") {
+                    Some(a) if !a.is_empty() => a.to_string(),
+                    _ => "64512".to_string(),
+                }),
+            );
+            f.insert(
+                "State".to_string(),
+                Fill::S(if deleting { "deleting" } else { "available" }.into()),
+            );
+            f.insert(
+                "PersistRoutesState".to_string(),
+                Fill::S(
+                    match params.get("PersistRoutes") {
+                        Some("enable") => "enabled",
+                        _ => "disabled",
+                    }
+                    .into(),
+                ),
+            );
+            f.insert(
+                "PersistRoutesDuration".to_string(),
+                Fill::S(
+                    params
+                        .get("PersistRoutesDuration")
+                        .unwrap_or("")
+                        .to_string(),
+                ),
+            );
+            f.insert(
+                "SnsNotificationsEnabled".to_string(),
+                Fill::S(
+                    if params.bool("SnsNotificationsEnabled").unwrap_or(false) {
+                        "true"
+                    } else {
+                        "false"
+                    }
+                    .into(),
+                ),
+            );
+            f.insert(
+                "SnsTopicArn".to_string(),
+                Fill::S(params.str("SnsTopicArn")),
+            );
+            if !tags_xml.is_empty() {
+                f.insert("Tags".to_string(), Fill::X(tags_xml.to_string()));
+            }
+        }
+        "route-server-endpoint" => {
+            f.insert("RouteServerEndpointId".to_string(), Fill::S(id.to_string()));
+            f.insert(
+                "RouteServerId".to_string(),
+                Fill::S(params.str("RouteServerId")),
+            );
+            f.insert("SubnetId".to_string(), Fill::S(params.str("SubnetId")));
+            f.insert("VpcId".to_string(), Fill::S(params.str("VpcId")));
+            f.insert("EniAddress".to_string(), Fill::S("10.0.0.5".into()));
+            f.insert(
+                "State".to_string(),
+                Fill::S(if deleting { "deleting" } else { "available" }.into()),
+            );
+            if !tags_xml.is_empty() {
+                f.insert("Tags".to_string(), Fill::X(tags_xml.to_string()));
+            }
+        }
+        "route-server-peer" => {
+            f.insert("RouteServerPeerId".to_string(), Fill::S(id.to_string()));
+            f.insert(
+                "RouteServerEndpointId".to_string(),
+                Fill::S(params.str("RouteServerEndpointId")),
+            );
+            f.insert(
+                "PeerAddress".to_string(),
+                Fill::S(params.str("PeerAddress")),
+            );
+            f.insert(
+                "State".to_string(),
+                Fill::S(if deleting { "deleting" } else { "available" }.into()),
+            );
+            if !tags_xml.is_empty() {
+                f.insert("Tags".to_string(), Fill::X(tags_xml.to_string()));
+            }
+        }
+        "vpn-concentrator" => {
+            f.insert("VpnConcentratorId".to_string(), Fill::S(id.to_string()));
+            f.insert(
+                "Type".to_string(),
+                Fill::S(match params.str("Type").as_str() {
+                    "" => "generic".to_string(),
+                    t => t.to_string(),
+                }),
+            );
+            f.insert(
+                "State".to_string(),
+                Fill::S(if deleting { "deleting" } else { "available" }.into()),
+            );
+            f.insert(
+                "TransitGatewayId".to_string(),
+                Fill::S(params.str("TransitGatewayId")),
+            );
+            if !tags_xml.is_empty() {
+                f.insert("Tags".to_string(), Fill::X(tags_xml.to_string()));
+            }
+        }
+        "secondary-network" | "secondary-subnet" => {
+            if fam_id_is(kind, "secondary-network") {
+                f.insert("SecondaryNetworkId".to_string(), Fill::S(id.to_string()));
+            } else {
+                f.insert("SecondarySubnetId".to_string(), Fill::S(id.to_string()));
+                f.insert(
+                    "SecondaryNetworkId".to_string(),
+                    Fill::S(params.str("SecondaryNetworkId")),
+                );
+            }
+            let net_kind = if fam_id_is(kind, "secondary-network") {
+                "secondary-network"
+            } else {
+                "secondary-subnet"
+            };
+            f.insert("OwnerId".to_string(), Fill::S(account.to_string()));
+            if fam_id_is(kind, "secondary-network") {
+                f.insert("Type".to_string(), Fill::S("rdma".into()));
+            }
+            f.insert(
+                "State".to_string(),
+                Fill::S(
+                    if deleting {
+                        "delete-in-progress"
+                    } else {
+                        "create-complete"
+                    }
+                    .into(),
+                ),
+            );
+            let cidr = params.str("Ipv4CidrBlock");
+            if !cidr.is_empty() {
+                f.insert(
+                    "Ipv4CidrBlockAssociations".to_string(),
+                    Fill::X(format!(
+                        "<item><associationId>{}</associationId><cidrBlock>{}</cidrBlock><state>associated</state><stateReason></stateReason></item>",
+                        super::state::idhex::hex17(),
+                        xml_escape(&cidr)
+                    )),
+                );
+            }
+            if !tags_xml.is_empty() {
+                f.insert("Tags".to_string(), Fill::X(tags_xml.to_string()));
+            }
+            let _ = net_kind;
+        }
+        "capacity-manager-data-export" => {
+            f.insert(
+                "CapacityManagerDataExportId".to_string(),
+                Fill::S(id.to_string()),
+            );
+        }
+        "transit-gateway-metering-policy" => {
+            f.insert(
+                "TransitGatewayMeteringPolicyId".to_string(),
+                Fill::S(id.to_string()),
+            );
+            f.insert(
+                "TransitGatewayId".to_string(),
+                Fill::S(params.str("TransitGatewayId")),
+            );
+            f.insert(
+                "State".to_string(),
+                Fill::S(if deleting { "deleting" } else { "active" }.into()),
+            );
+            if !tags_xml.is_empty() {
+                f.insert("Tags".to_string(), Fill::X(tags_xml.to_string()));
+            }
+        }
+        "ipam-policy" => {
+            f.insert("IpamPolicyId".to_string(), Fill::S(id.to_string()));
+            f.insert("OwnerId".to_string(), Fill::S(account.to_string()));
+            f.insert("IpamPolicyArn".to_string(), Fill::S(arn_of("ipam-policy")));
+            f.insert(
+                "State".to_string(),
+                Fill::S(
+                    if deleting {
+                        "delete-in-progress"
+                    } else {
+                        "create-complete"
+                    }
+                    .into(),
+                ),
+            );
+            if !tags_xml.is_empty() {
+                f.insert("Tags".to_string(), Fill::X(tags_xml.to_string()));
+            }
+        }
+        "ipam-prefix-list-resolver" => {
+            f.insert(
+                "IpamPrefixListResolverId".to_string(),
+                Fill::S(id.to_string()),
+            );
+            f.insert(
+                "IpamPrefixListResolverArn".to_string(),
+                Fill::S(arn_of("ipam-prefix-list-resolver")),
+            );
+            f.insert("OwnerId".to_string(), Fill::S(account.to_string()));
+            f.insert(
+                "AddressFamily".to_string(),
+                Fill::S(params.str("AddressFamily")),
+            );
+            f.insert(
+                "State".to_string(),
+                Fill::S(
+                    if deleting {
+                        "delete-in-progress"
+                    } else {
+                        "create-complete"
+                    }
+                    .into(),
+                ),
+            );
+            if !tags_xml.is_empty() {
+                f.insert("Tags".to_string(), Fill::X(tags_xml.to_string()));
+            }
+        }
+        "ipam-prefix-list-resolver-target" => {
+            f.insert(
+                "IpamPrefixListResolverTargetId".to_string(),
+                Fill::S(id.to_string()),
+            );
+            f.insert(
+                "IpamPrefixListResolverTargetArn".to_string(),
+                Fill::S(arn_of("ipam-prefix-list-resolver-target")),
+            );
+            f.insert(
+                "IpamPrefixListResolverId".to_string(),
+                Fill::S(params.str("IpamPrefixListResolverId")),
+            );
+            f.insert("OwnerId".to_string(), Fill::S(account.to_string()));
+            f.insert(
+                "PrefixListId".to_string(),
+                Fill::S(params.str("PrefixListId")),
+            );
+            f.insert(
+                "PrefixListRegion".to_string(),
+                Fill::S(params.str("PrefixListRegion")),
+            );
+            f.insert("TrackLatestVersion".to_string(), Fill::S("false".into()));
+            f.insert(
+                "State".to_string(),
+                Fill::S(if deleting { "deleting" } else { "created" }.into()),
+            );
+            if !tags_xml.is_empty() {
+                f.insert("Tags".to_string(), Fill::X(tags_xml.to_string()));
+            }
+        }
+        "vpc-endpoint-connection-notification" => {
+            f.insert(
+                "ConnectionNotificationId".to_string(),
+                Fill::S(id.to_string()),
+            );
+            f.insert(
+                "ConnectionNotificationType".to_string(),
+                Fill::S("SNS".into()),
+            );
+            f.insert(
+                "ConnectionNotificationArn".to_string(),
+                Fill::S(params.str("ConnectionNotificationArn")),
+            );
+            let events: Vec<String> = params
+                .list("ConnectionEvent")
+                .iter()
+                .map(|s| xml_escape(s))
+                .collect();
+            if !events.is_empty() {
+                f.insert("ConnectionEvents".to_string(), Fill::X(events.concat()));
+            }
+            f.insert(
+                "ConnectionNotificationState".to_string(),
+                Fill::S("Enabled".into()),
+            );
+        }
+        "vpc-encryption-control" => {
+            f.insert(
+                "VpcEncryptionControlId".to_string(),
+                Fill::S(id.to_string()),
+            );
+            f.insert("VpcId".to_string(), Fill::S(params.str("VpcId")));
+            f.insert("Mode".to_string(), Fill::S("enforce".into()));
+            f.insert(
+                "State".to_string(),
+                Fill::S(if deleting { "deleting" } else { "available" }.into()),
+            );
+        }
+        "image-usage-report" => {
+            f.insert("ReportId".to_string(), Fill::S(id.to_string()));
+        }
+        "tgw-route-table-announcement" => {
+            f.insert(
+                "TransitGatewayRouteTableAnnouncementId".to_string(),
+                Fill::S(id.to_string()),
+            );
+            f.insert(
+                "TransitGatewayRouteTableId".to_string(),
+                Fill::S(params.str("TransitGatewayRouteTableId")),
+            );
+            f.insert(
+                "AnnouncementDirection".to_string(),
+                Fill::S(params.str("AnnouncementDirection")),
+            );
+            f.insert(
+                "State".to_string(),
+                Fill::S(if deleting { "deleting" } else { "active" }.into()),
+            );
+            f.insert("CreationTime".to_string(), Fill::S(super::now_iso()));
+            if !tags_xml.is_empty() {
+                f.insert("Tags".to_string(), Fill::X(tags_xml.to_string()));
+            }
+        }
+        "byoip-cidr" => {
+            f.insert("Cidr".to_string(), Fill::S(params.str("Cidr")));
+            f.insert(
+                "Description".to_string(),
+                Fill::S(params.str("Description")),
+            );
+            f.insert(
+                "State".to_string(),
+                Fill::S(
+                    if deleting {
+                        "deprovisioned"
+                    } else {
+                        "provisioned"
+                    }
+                    .into(),
+                ),
+            );
+        }
+        "ipam-byoasn" => {
+            f.insert(
+                "Asn".to_string(),
+                Fill::S(
+                    params
+                        .list("Asns")
+                        .first()
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| params.str("Asn")),
+                ),
+            );
+            f.insert("IpamId".to_string(), Fill::S(params.str("IpamId")));
+            f.insert(
+                "State".to_string(),
+                Fill::S(if deleting { "inactive" } else { "active" }.into()),
+            );
+        }
+        "mac-modification-task" => {
+            f.insert("MacModificationTaskId".to_string(), Fill::S(id.to_string()));
+            f.insert("InstanceId".to_string(), Fill::S(params.str("InstanceId")));
+            f.insert("Status".to_string(), Fill::S("succeeded".into()));
+            f.insert("StartTime".to_string(), Fill::S(super::now_iso()));
+            if !tags_xml.is_empty() {
+                f.insert("Tags".to_string(), Fill::X(tags_xml.to_string()));
+            }
+        }
         _ => {
             f.insert("Id".to_string(), Fill::S(id.to_string()));
         }
@@ -606,4 +969,9 @@ pub fn create_fills(
         f.insert("Return".to_string(), Fill::S("true".into()));
     }
     f
+}
+
+/// kind comparison used inside the shared secondary-network/subnet builder.
+fn fam_id_is(kind: &str, want: &str) -> bool {
+    kind == want
 }
