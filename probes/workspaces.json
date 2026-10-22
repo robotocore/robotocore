@@ -1,12 +1,12 @@
 {
   "service": "workspaces",
-  "generated_at": "2026-10-21T07:08:38.245542+00:00",
+  "generated_at": "2026-10-22T04:32:00.833520+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 75,
-    "needs_params": 12,
+    "working": 84,
+    "needs_params": 4,
     "not_implemented": 0,
-    "500_error": 4,
+    "500_error": 3,
     "timeout": 0
   },
   "operations": [
@@ -87,8 +87,8 @@
     },
     {
       "operation": "CreateWorkspaces",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "CreateWorkspacesPool",
@@ -102,8 +102,8 @@
     },
     {
       "operation": "DeleteClientBranding",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteConnectClientAddIn",
@@ -142,8 +142,8 @@
     },
     {
       "operation": "DeregisterWorkspaceDirectory",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeAccount",
@@ -177,8 +177,8 @@
     },
     {
       "operation": "DescribeClientProperties",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeConnectClientAddIns",
@@ -228,7 +228,7 @@
     {
       "operation": "DescribeWorkspaceDirectories",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "DescribeWorkspaceImagePermissions",
@@ -248,7 +248,7 @@
     {
       "operation": "DescribeWorkspaces",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidParameterValuesException: An invalid number of parameters provided with DescribeWorksp)"
     },
     {
       "operation": "DescribeWorkspacesConnectionStatus",
@@ -328,7 +328,7 @@
     {
       "operation": "ModifyClientProperties",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "message": "server crash (InternalError: 'probe-resource-id-id')"
     },
     {
       "operation": "ModifyEndpointEncryptionMode",
@@ -343,7 +343,7 @@
     {
       "operation": "ModifySelfservicePermissions",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "message": "server crash (InternalError: 'probe-resource-id-id')"
     },
     {
       "operation": "ModifyStreamingProperties",
@@ -372,13 +372,13 @@
     },
     {
       "operation": "RebootWorkspaces",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "RebuildWorkspaces",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "RegisterWorkspaceDirectory",
@@ -402,8 +402,8 @@
     },
     {
       "operation": "StartWorkspaces",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartWorkspacesPool",
@@ -412,8 +412,8 @@
     },
     {
       "operation": "StopWorkspaces",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StopWorkspacesPool",
@@ -422,8 +422,8 @@
     },
     {
       "operation": "TerminateWorkspaces",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "TerminateWorkspacesPool",
@@ -458,7 +458,7 @@
     {
       "operation": "UpdateWorkspaceImagePermission",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "message": "server crash (InternalError: 'probe-image-id-id')"
     },
     {
       "operation": "UpdateWorkspacesPool",

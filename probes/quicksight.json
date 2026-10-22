@@ -1,10 +1,10 @@
 {
   "service": "quicksight",
-  "generated_at": "2026-10-21T07:07:53.904796+00:00",
+  "generated_at": "2026-10-22T04:31:02.499050+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 214,
-    "needs_params": 15,
+    "working": 224,
+    "needs_params": 5,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -13,17 +13,17 @@
     {
       "operation": "BatchCreateTopicReviewedAnswer",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "BatchDeleteTopicReviewedAnswer",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "CancelIngestion",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "CreateAccountCustomization",
@@ -43,12 +43,12 @@
     {
       "operation": "CreateAnalysis",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceExistsException: Analysis probe-analysis-id-id already exists)"
     },
     {
       "operation": "CreateBrand",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreateCustomPermissions",
@@ -68,7 +68,7 @@
     {
       "operation": "CreateDataSource",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreateFolder",
@@ -837,23 +837,23 @@
     },
     {
       "operation": "SearchAnalyses",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "SearchDashboards",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "SearchDataSets",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "SearchDataSources",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "SearchFlows",
@@ -867,28 +867,28 @@
     },
     {
       "operation": "SearchGroups",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
-    },
-    {
-      "operation": "SearchTopics",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
-    },
-    {
-      "operation": "StartAssetBundleExportJob",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
-    },
-    {
-      "operation": "StartAssetBundleImportJob",
       "status": "working",
       "message": "OK"
     },
     {
+      "operation": "SearchTopics",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartAssetBundleExportJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartAssetBundleImportJob",
+      "status": "working",
+      "message": "OK (required-only fill)"
+    },
+    {
       "operation": "StartDashboardSnapshotJob",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartDashboardSnapshotJobSchedule",
@@ -897,13 +897,13 @@
     },
     {
       "operation": "TagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateAccountCustomPermission",
@@ -948,7 +948,7 @@
     {
       "operation": "UpdateBrand",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "UpdateBrandAssignment",
@@ -1003,7 +1003,7 @@
     {
       "operation": "UpdateDataSource",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateDataSourcePermissions",
@@ -1143,12 +1143,12 @@
     {
       "operation": "UpdateUser",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "UpdateUserCustomPermission",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "UpdateVPCConnection",

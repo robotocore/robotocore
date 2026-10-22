@@ -1,6 +1,6 @@
 {
   "service": "appmesh",
-  "generated_at": "2026-10-21T07:05:37.672514+00:00",
+  "generated_at": "2026-10-22T04:28:36.841562+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 38,
@@ -13,7 +13,7 @@
     {
       "operation": "CreateGatewayRoute",
       "status": "working",
-      "message": "likely implemented (MeshNotFound: There are no meshes with the name probe-test-value.)"
+      "message": "implemented via required-only (MeshNotFound)"
     },
     {
       "operation": "CreateMesh",
@@ -23,7 +23,7 @@
     {
       "operation": "CreateRoute",
       "status": "working",
-      "message": "likely implemented (VirtualRouterNotFound: The mesh probe-test-value does not have a virtual router wit)"
+      "message": "implemented via required-only (VirtualRouterNotFound)"
     },
     {
       "operation": "CreateVirtualGateway",
@@ -43,7 +43,7 @@
     {
       "operation": "CreateVirtualService",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "DeleteGatewayRoute",
@@ -158,7 +158,7 @@
     {
       "operation": "TagResource",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceNotFound: There are no mesh resources with the arn arn:aws:appmesh:us-)"
     },
     {
       "operation": "UntagResource",
@@ -168,7 +168,7 @@
     {
       "operation": "UpdateGatewayRoute",
       "status": "working",
-      "message": "likely implemented (MeshNotFound: There are no meshes with the name probe-test-value.)"
+      "message": "implemented via required-only (MeshNotFound)"
     },
     {
       "operation": "UpdateMesh",
@@ -178,7 +178,7 @@
     {
       "operation": "UpdateRoute",
       "status": "working",
-      "message": "likely implemented (MeshNotFound: There are no meshes with the name probe-test-value.)"
+      "message": "implemented via required-only (MeshNotFound)"
     },
     {
       "operation": "UpdateVirtualGateway",
@@ -198,7 +198,7 @@
     {
       "operation": "UpdateVirtualService",
       "status": "working",
-      "message": "likely implemented (MeshNotFound: There are no meshes with the name probe-test-value.)"
+      "message": "implemented via required-only (MeshNotFound)"
     }
   ]
 }

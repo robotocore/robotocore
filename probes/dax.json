@@ -1,6 +1,6 @@
 {
   "service": "dax",
-  "generated_at": "2026-10-21T07:06:13.038208+00:00",
+  "generated_at": "2026-10-22T04:29:22.657041+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 20,
@@ -43,7 +43,7 @@
     {
       "operation": "DescribeClusters",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
     },
     {
       "operation": "DescribeDefaultParameters",
@@ -58,7 +58,7 @@
     {
       "operation": "DescribeParameterGroups",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ParameterGroupNotFoundFault: ParameterGroup probe-test-value not found.)"
     },
     {
       "operation": "DescribeParameters",
@@ -68,7 +68,7 @@
     {
       "operation": "DescribeSubnetGroups",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (SubnetGroupNotFoundFault: SubnetGroup probe-test-value not found.)"
     },
     {
       "operation": "IncreaseReplicationFactor",
@@ -83,7 +83,7 @@
     {
       "operation": "RebootNode",
       "status": "working",
-      "message": "likely implemented (NodeNotFoundFault: Node probe-test-value not found.)"
+      "message": "likely implemented (NodeNotFoundFault: Node probe-node-id-id not found.)"
     },
     {
       "operation": "TagResource",
@@ -98,7 +98,7 @@
     {
       "operation": "UpdateCluster",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ParameterGroupNotFoundFault: ParameterGroup probe-test-value not found.)"
     },
     {
       "operation": "UpdateParameterGroup",

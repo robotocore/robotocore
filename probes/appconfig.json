@@ -1,10 +1,10 @@
 {
   "service": "appconfig",
-  "generated_at": "2026-10-21T07:05:37.056217+00:00",
+  "generated_at": "2026-10-22T04:28:35.992204+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 44,
-    "needs_params": 1,
+    "working": 45,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -22,8 +22,8 @@
     },
     {
       "operation": "CreateDeploymentStrategy",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateEnvironment",

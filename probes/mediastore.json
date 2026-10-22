@@ -1,10 +1,10 @@
 {
   "service": "mediastore",
-  "generated_at": "2026-10-21T07:07:36.973739+00:00",
+  "generated_at": "2026-10-22T04:30:40.368783+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 19,
-    "needs_params": 2,
+    "working": 21,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -82,8 +82,8 @@
     },
     {
       "operation": "PutCorsPolicy",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ContainerNotFoundException: The specified container does not exist)"
     },
     {
       "operation": "PutLifecyclePolicy",
@@ -107,8 +107,8 @@
     },
     {
       "operation": "TagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ContainerNotFoundException: The specified container does not exist)"
     },
     {
       "operation": "UntagResource",

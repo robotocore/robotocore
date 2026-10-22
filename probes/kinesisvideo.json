@@ -1,10 +1,10 @@
 {
   "service": "kinesisvideo",
-  "generated_at": "2026-10-21T07:07:25.231443+00:00",
+  "generated_at": "2026-10-22T04:30:25.121170+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 21,
-    "needs_params": 3,
+    "working": 24,
+    "needs_params": 0,
     "not_implemented": 8,
     "500_error": 0,
     "timeout": 0
@@ -13,12 +13,12 @@
     {
       "operation": "CreateSignalingChannel",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceInUseException: The signaling channel probe-test-value already exists.)"
     },
     {
       "operation": "CreateStream",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceInUseException: The stream probe-test-value already exists.)"
     },
     {
       "operation": "DeleteEdgeConfiguration",
@@ -43,12 +43,12 @@
     {
       "operation": "DescribeImageGenerationConfiguration",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeMappedResourceConfiguration",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeMediaStorageConfiguration",
@@ -58,27 +58,27 @@
     {
       "operation": "DescribeNotificationConfiguration",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeSignalingChannel",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeStream",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeStreamStorageConfiguration",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "GetDataEndpoint",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "GetSignalingChannelEndpoint",
@@ -108,7 +108,7 @@
     {
       "operation": "ListTagsForStream",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "StartEdgeConfigurationUpdate",
@@ -117,28 +117,28 @@
     },
     {
       "operation": "TagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "TagStream",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UntagStream",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateDataRetention",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "likely implemented (ClientLimitExceededException: The stream version does not match the current version.)"
     },
     {
       "operation": "UpdateImageGenerationConfiguration",
@@ -163,7 +163,7 @@
     {
       "operation": "UpdateStream",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "likely implemented (ClientLimitExceededException: The stream version does not match the current version.)"
     },
     {
       "operation": "UpdateStreamStorageConfiguration",

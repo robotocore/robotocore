@@ -1,6 +1,6 @@
 {
   "service": "scheduler",
-  "generated_at": "2026-10-21T07:08:20.446597+00:00",
+  "generated_at": "2026-10-22T04:31:36.060113+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 12,
@@ -13,7 +13,7 @@
     {
       "operation": "CreateSchedule",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateScheduleGroup",
@@ -23,7 +23,7 @@
     {
       "operation": "DeleteSchedule",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteScheduleGroup",
@@ -43,12 +43,12 @@
     {
       "operation": "ListScheduleGroups",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
     },
     {
       "operation": "ListSchedules",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
     },
     {
       "operation": "ListTagsForResource",

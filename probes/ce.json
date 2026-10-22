@@ -1,10 +1,10 @@
 {
   "service": "ce",
-  "generated_at": "2026-10-21T07:05:46.077298+00:00",
+  "generated_at": "2026-10-22T04:28:47.557885+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 41,
-    "needs_params": 6,
+    "working": 44,
+    "needs_params": 3,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -22,8 +22,8 @@
     },
     {
       "operation": "CreateCostCategoryDefinition",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteAnomalyMonitor",
@@ -43,7 +43,7 @@
     {
       "operation": "DescribeCostCategoryDefinition",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "GetAnomalies",
@@ -53,12 +53,12 @@
     {
       "operation": "GetAnomalyMonitors",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetAnomalySubscriptions",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetApproximateUsageRecords",
@@ -163,7 +163,7 @@
     {
       "operation": "ListCommitmentPurchaseAnalyses",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "ListCostAllocationTagBackfillHistory",
@@ -178,7 +178,7 @@
     {
       "operation": "ListCostCategoryDefinitions",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "ListCostCategoryResourceAssociations",
@@ -188,7 +188,7 @@
     {
       "operation": "ListSavingsPlansPurchaseRecommendationGeneration",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "ListTagsForResource",
@@ -203,7 +203,7 @@
     {
       "operation": "StartCommitmentPurchaseAnalysis",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "StartCostAllocationTagBackfill",
@@ -237,13 +237,13 @@
     },
     {
       "operation": "UpdateCostAllocationTagsStatus",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateCostCategoryDefinition",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     }
   ]
 }

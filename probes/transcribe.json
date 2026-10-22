@@ -1,10 +1,10 @@
 {
   "service": "transcribe",
-  "generated_at": "2026-10-21T07:08:34.517088+00:00",
+  "generated_at": "2026-10-22T04:31:54.900764+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 38,
-    "needs_params": 4,
+    "working": 40,
+    "needs_params": 2,
     "not_implemented": 1,
     "500_error": 0,
     "timeout": 0
@@ -33,7 +33,7 @@
     {
       "operation": "CreateVocabularyFilter",
       "status": "working",
-      "message": "likely implemented (BadRequestException: Either Words or VocabularyFilterFileUri field should be prov)"
+      "message": "OK"
     },
     {
       "operation": "DeleteCallAnalyticsCategory",
@@ -43,7 +43,7 @@
     {
       "operation": "DeleteCallAnalyticsJob",
       "status": "working",
-      "message": "likely implemented (BadRequestException: The requested job couldn't be found. Check the job name and )"
+      "message": "OK"
     },
     {
       "operation": "DeleteLanguageModel",
@@ -53,12 +53,12 @@
     {
       "operation": "DeleteMedicalScribeJob",
       "status": "working",
-      "message": "likely implemented (BadRequestException: The requested job couldn't be found. Check the job name and )"
+      "message": "OK"
     },
     {
       "operation": "DeleteMedicalTranscriptionJob",
       "status": "working",
-      "message": "likely implemented (BadRequestException: The requested job couldn't be found. Check the job name and )"
+      "message": "OK"
     },
     {
       "operation": "DeleteMedicalVocabulary",
@@ -68,7 +68,7 @@
     {
       "operation": "DeleteTranscriptionJob",
       "status": "working",
-      "message": "likely implemented (BadRequestException: The requested job couldn't be found. Check the job name and )"
+      "message": "OK"
     },
     {
       "operation": "DeleteVocabulary",
@@ -78,7 +78,7 @@
     {
       "operation": "DeleteVocabularyFilter",
       "status": "working",
-      "message": "likely implemented (BadRequestException: The requested vocabulary filter couldn't be found. Check the)"
+      "message": "OK"
     },
     {
       "operation": "DescribeLanguageModel",
@@ -178,32 +178,32 @@
     {
       "operation": "StartCallAnalyticsJob",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "StartMedicalScribeJob",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "StartMedicalTranscriptionJob",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (BadRequestException: The requested vocabulary couldn't be found. Check the vocabu)"
     },
     {
       "operation": "StartTranscriptionJob",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (BadRequestException: The requested vocabulary couldn't be found. Check the vocabu)"
     },
     {
       "operation": "TagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The requested resource couldn't be found. Check the ARN and )"
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The requested resource couldn't be found. Check the ARN and )"
     },
     {
       "operation": "UpdateCallAnalyticsCategory",

@@ -1,6 +1,6 @@
 {
   "service": "codecommit",
-  "generated_at": "2026-10-21T07:05:54.489830+00:00",
+  "generated_at": "2026-10-22T04:28:57.166515+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 79,
@@ -63,7 +63,7 @@
     {
       "operation": "CreatePullRequestApprovalRule",
       "status": "working",
-      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-pull-request-id-id does not exist)"
     },
     {
       "operation": "CreateRepository",
@@ -88,7 +88,7 @@
     {
       "operation": "DeleteCommentContent",
       "status": "working",
-      "message": "likely implemented (CommentDoesNotExistException: Comment probe-test-value does not exist)"
+      "message": "likely implemented (CommentDoesNotExistException: Comment probe-comment-id-id does not exist)"
     },
     {
       "operation": "DeleteFile",
@@ -98,7 +98,7 @@
     {
       "operation": "DeletePullRequestApprovalRule",
       "status": "working",
-      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-pull-request-id-id does not exist)"
     },
     {
       "operation": "DeleteRepository",
@@ -113,7 +113,7 @@
     {
       "operation": "DescribePullRequestEvents",
       "status": "working",
-      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-pull-request-id-id does not exist)"
     },
     {
       "operation": "DisassociateApprovalRuleTemplateFromRepository",
@@ -123,7 +123,7 @@
     {
       "operation": "EvaluatePullRequestApprovalRules",
       "status": "working",
-      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-pull-request-id-id does not exist)"
     },
     {
       "operation": "GetApprovalRuleTemplate",
@@ -138,17 +138,17 @@
     {
       "operation": "GetBranch",
       "status": "working",
-      "message": "likely implemented (RepositoryDoesNotExistException:  does not exist)"
+      "message": "likely implemented (RepositoryDoesNotExistException: probe-test-value does not exist)"
     },
     {
       "operation": "GetComment",
       "status": "working",
-      "message": "likely implemented (CommentDoesNotExistException: Comment probe-test-value does not exist)"
+      "message": "likely implemented (CommentDoesNotExistException: Comment probe-comment-id-id does not exist)"
     },
     {
       "operation": "GetCommentReactions",
       "status": "working",
-      "message": "likely implemented (CommentDoesNotExistException: Comment probe-test-value does not exist)"
+      "message": "likely implemented (CommentDoesNotExistException: Comment probe-comment-id-id does not exist)"
     },
     {
       "operation": "GetCommentsForComparedCommit",
@@ -158,7 +158,7 @@
     {
       "operation": "GetCommentsForPullRequest",
       "status": "working",
-      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-pull-request-id-id does not exist)"
     },
     {
       "operation": "GetCommit",
@@ -198,17 +198,17 @@
     {
       "operation": "GetPullRequest",
       "status": "working",
-      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-pull-request-id-id does not exist)"
     },
     {
       "operation": "GetPullRequestApprovalStates",
       "status": "working",
-      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-pull-request-id-id does not exist)"
     },
     {
       "operation": "GetPullRequestOverrideState",
       "status": "working",
-      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-pull-request-id-id does not exist)"
     },
     {
       "operation": "GetRepository",
@@ -278,22 +278,22 @@
     {
       "operation": "MergePullRequestByFastForward",
       "status": "working",
-      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-pull-request-id-id does not exist)"
     },
     {
       "operation": "MergePullRequestBySquash",
       "status": "working",
-      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-pull-request-id-id does not exist)"
     },
     {
       "operation": "MergePullRequestByThreeWay",
       "status": "working",
-      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-pull-request-id-id does not exist)"
     },
     {
       "operation": "OverridePullRequestApprovalRules",
       "status": "working",
-      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-pull-request-id-id does not exist)"
     },
     {
       "operation": "PostCommentForComparedCommit",
@@ -303,7 +303,7 @@
     {
       "operation": "PostCommentForPullRequest",
       "status": "working",
-      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-pull-request-id-id does not exist)"
     },
     {
       "operation": "PostCommentReply",
@@ -313,7 +313,7 @@
     {
       "operation": "PutCommentReaction",
       "status": "working",
-      "message": "likely implemented (CommentDoesNotExistException: Comment probe-test-value does not exist)"
+      "message": "likely implemented (CommentDoesNotExistException: Comment probe-comment-id-id does not exist)"
     },
     {
       "operation": "PutFile",
@@ -358,7 +358,7 @@
     {
       "operation": "UpdateComment",
       "status": "working",
-      "message": "likely implemented (CommentDoesNotExistException: Comment probe-test-value does not exist)"
+      "message": "likely implemented (CommentDoesNotExistException: Comment probe-comment-id-id does not exist)"
     },
     {
       "operation": "UpdateDefaultBranch",
@@ -368,27 +368,27 @@
     {
       "operation": "UpdatePullRequestApprovalRuleContent",
       "status": "working",
-      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-pull-request-id-id does not exist)"
     },
     {
       "operation": "UpdatePullRequestApprovalState",
       "status": "working",
-      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-pull-request-id-id does not exist)"
     },
     {
       "operation": "UpdatePullRequestDescription",
       "status": "working",
-      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-pull-request-id-id does not exist)"
     },
     {
       "operation": "UpdatePullRequestStatus",
       "status": "working",
-      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-pull-request-id-id does not exist)"
     },
     {
       "operation": "UpdatePullRequestTitle",
       "status": "working",
-      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-test-value does not exist)"
+      "message": "likely implemented (PullRequestDoesNotExistException: Pull request probe-pull-request-id-id does not exist)"
     },
     {
       "operation": "UpdateRepositoryDescription",

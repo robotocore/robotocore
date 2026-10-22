@@ -1,11 +1,11 @@
 {
   "service": "resource-groups",
-  "generated_at": "2026-10-21T07:27:14.459668+00:00",
+  "generated_at": "2026-10-22T04:31:12.247195+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 17,
-    "needs_params": 2,
-    "not_implemented": 2,
+    "needs_params": 0,
+    "not_implemented": 4,
     "500_error": 2,
     "timeout": 0
   },
@@ -18,12 +18,12 @@
     {
       "operation": "CreateGroup",
       "status": "working",
-      "message": "likely implemented (BadRequestException: Cannot create group: group already exists)"
+      "message": "OK"
     },
     {
       "operation": "DeleteGroup",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "GetAccountSettings",
@@ -57,8 +57,8 @@
     },
     {
       "operation": "GroupResources",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "ListGroupResources",
@@ -93,7 +93,7 @@
     {
       "operation": "StartTagSyncTask",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (BadRequestException: To define a task, you can use TagKey and TagValue with non-n)"
     },
     {
       "operation": "Tag",
@@ -102,8 +102,8 @@
     },
     {
       "operation": "UngroupResources",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "Untag",

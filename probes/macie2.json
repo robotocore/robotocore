@@ -1,6 +1,6 @@
 {
   "service": "macie2",
-  "generated_at": "2026-10-21T07:07:31.918135+00:00",
+  "generated_at": "2026-10-22T04:30:33.831902+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 81,
@@ -88,7 +88,7 @@
     {
       "operation": "DeleteMember",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeBuckets",

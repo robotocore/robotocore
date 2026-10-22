@@ -1,11 +1,11 @@
 {
   "service": "bedrockagent",
-  "generated_at": "2026-10-21T07:05:45.142948+00:00",
+  "generated_at": "2026-10-22T04:28:45.887396+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 11,
-    "needs_params": 5,
-    "not_implemented": 56,
+    "needs_params": 0,
+    "not_implemented": 61,
     "500_error": 0,
     "timeout": 0
   },
@@ -23,7 +23,7 @@
     {
       "operation": "CreateAgent",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreateAgentActionGroup",
@@ -47,8 +47,8 @@
     },
     {
       "operation": "CreateFlowAlias",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "CreateFlowVersion",
@@ -117,8 +117,8 @@
     },
     {
       "operation": "DeleteKnowledgeBaseDocuments",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "DeletePrompt",
@@ -197,8 +197,8 @@
     },
     {
       "operation": "GetKnowledgeBaseDocuments",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "GetPrompt",
@@ -207,8 +207,8 @@
     },
     {
       "operation": "IngestKnowledgeBaseDocuments",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "ListAgentActionGroups",
@@ -238,7 +238,7 @@
     {
       "operation": "ListAgents",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
     },
     {
       "operation": "ListDataSources",
@@ -273,7 +273,7 @@
     {
       "operation": "ListKnowledgeBases",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
     },
     {
       "operation": "ListPrompts",
@@ -352,8 +352,8 @@
     },
     {
       "operation": "UpdateFlowAlias",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "UpdateKnowledgeBase",

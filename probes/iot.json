@@ -1,11 +1,11 @@
 {
   "service": "iot",
-  "generated_at": "2026-10-21T07:27:14.201219+00:00",
+  "generated_at": "2026-10-22T04:30:21.956081+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 249,
-    "needs_params": 21,
-    "not_implemented": 2,
+    "working": 261,
+    "needs_params": 11,
+    "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
   },
@@ -18,22 +18,22 @@
     {
       "operation": "AddThingToBillingGroup",
       "status": "working",
-      "message": "implemented (InvalidRequestException)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "AddThingToThingGroup",
       "status": "working",
-      "message": "implemented (InvalidRequestException)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "AssociateSbomWithPackageVersion",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "AssociateTargetsWithJob",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "AttachPolicy",
@@ -98,7 +98,7 @@
     {
       "operation": "CreateAuditSuppression",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreateAuthorizer",
@@ -117,8 +117,8 @@
     },
     {
       "operation": "CreateCertificateProvider",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreateCommand",
@@ -132,8 +132,8 @@
     },
     {
       "operation": "CreateDimension",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateDomainConfiguration",
@@ -147,18 +147,18 @@
     },
     {
       "operation": "CreateFleetMetric",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateJob",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreateJobTemplate",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreateKeysAndCertificate",
@@ -172,18 +172,18 @@
     },
     {
       "operation": "CreateOTAUpdate",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreatePackage",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreatePackageVersion",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreatePolicy",
@@ -193,7 +193,7 @@
     {
       "operation": "CreatePolicyVersion",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (VersionsLimitExceededException: The policy probe-test-value already has the maximum number o)"
     },
     {
       "operation": "CreateProvisioningClaim",
@@ -227,18 +227,18 @@
     },
     {
       "operation": "CreateStream",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateThing",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateThingGroup",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceAlreadyExistsException: Thing Group probe-test-value already exists in current accou)"
     },
     {
       "operation": "CreateThingType",
@@ -263,7 +263,7 @@
     {
       "operation": "DeleteAuditSuppression",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "DeleteAuthorizer",
@@ -288,7 +288,7 @@
     {
       "operation": "DeleteCertificateProvider",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteCommand",
@@ -308,7 +308,7 @@
     {
       "operation": "DeleteDimension",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteDomainConfiguration",
@@ -323,12 +323,12 @@
     {
       "operation": "DeleteFleetMetric",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteJob",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteJobExecution",
@@ -348,17 +348,17 @@
     {
       "operation": "DeleteOTAUpdate",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeletePackage",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "DeletePackageVersion",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "DeletePolicy",
@@ -403,17 +403,17 @@
     {
       "operation": "DeleteStream",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteThing",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteThingGroup",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (InvalidRequestException)"
     },
     {
       "operation": "DeleteThingType",
@@ -458,7 +458,7 @@
     {
       "operation": "DescribeAuditSuppression",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeAuditTask",
@@ -503,7 +503,7 @@
     {
       "operation": "DescribeDetectMitigationActionsTask",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeDimension",
@@ -523,7 +523,7 @@
     {
       "operation": "DescribeEndpoint",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (InvalidRequestException)"
     },
     {
       "operation": "DescribeEventConfigurations",
@@ -603,7 +603,7 @@
     {
       "operation": "DescribeThingGroup",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeThingRegistrationTask",
@@ -643,7 +643,7 @@
     {
       "operation": "DisassociateSbomFromPackageVersion",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "EnableTopicRule",
@@ -773,7 +773,7 @@
     {
       "operation": "ListAuditFindings",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "ListAuditMitigationActionsExecutions",
@@ -788,7 +788,7 @@
     {
       "operation": "ListAuditSuppressions",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "ListAuditTasks",
@@ -1002,8 +1002,8 @@
     },
     {
       "operation": "ListTagsForResource",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownOperationException)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListTargetsForPolicy",
@@ -1063,7 +1063,7 @@
     {
       "operation": "ListThingsInThingGroup",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "ListTopicRuleDestinations",
@@ -1118,12 +1118,12 @@
     {
       "operation": "RemoveThingFromBillingGroup",
       "status": "working",
-      "message": "implemented (InvalidRequestException)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "RemoveThingFromThingGroup",
       "status": "working",
-      "message": "implemented (InvalidRequestException)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ReplaceTopicRule",
@@ -1167,8 +1167,8 @@
     },
     {
       "operation": "StartDetectMitigationActionsTask",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartOnDemandAuditTask",
@@ -1187,13 +1187,13 @@
     },
     {
       "operation": "TagResource",
-      "status": "not_implemented",
-      "message": "not implemented (UnknownOperationException)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "TestAuthorization",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "TestInvokeAuthorizer",
@@ -1218,7 +1218,7 @@
     {
       "operation": "UpdateAuditSuppression",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateAuthorizer",
@@ -1257,8 +1257,8 @@
     },
     {
       "operation": "UpdateDimension",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateDomainConfiguration",
@@ -1293,7 +1293,7 @@
     {
       "operation": "UpdateJob",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateMitigationAction",
@@ -1303,17 +1303,17 @@
     {
       "operation": "UpdatePackage",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "UpdatePackageConfiguration",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "UpdatePackageVersion",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateProvisioningTemplate",
@@ -1348,12 +1348,12 @@
     {
       "operation": "UpdateThingGroup",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "likely implemented (VersionConflictException: The version for thing probe-test-value does not match the ex)"
     },
     {
       "operation": "UpdateThingGroupsForThing",
       "status": "working",
-      "message": "implemented (InvalidRequestException)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateThingType",

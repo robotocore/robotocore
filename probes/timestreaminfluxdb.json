@@ -1,12 +1,13 @@
 {
   "service": "timestreaminfluxdb",
-  "generated_at": "2026-10-20T23:24:04.988888+00:00",
-  "endpoint": "http://localhost:4794",
+  "generated_at": "2026-10-22T04:07:23.137572+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 10,
-    "needs_params": 3,
-    "not_implemented": 5,
-    "500_error": 1
+    "needs_params": 5,
+    "not_implemented": 4,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -21,8 +22,8 @@
     },
     {
       "operation": "CreateDbParameterGroup",
-      "status": "500_error",
-      "message": "exception: Invalid service response: Parameters must have one and only "
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
     },
     {
       "operation": "DeleteDbCluster",
@@ -91,18 +92,18 @@
     },
     {
       "operation": "UntagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateDbCluster",
       "status": "needs_params",
       "message": "client-side validation (never contacted server)"
     },
     {
-      "operation": "UpdateDbCluster",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
-    },
-    {
       "operation": "UpdateDbInstance",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
     }
   ]
 }

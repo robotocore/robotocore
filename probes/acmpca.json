@@ -1,11 +1,11 @@
 {
   "service": "acmpca",
-  "generated_at": "2026-10-21T07:05:33.027133+00:00",
+  "generated_at": "2026-10-22T04:28:31.644480+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 16,
-    "needs_params": 4,
-    "not_implemented": 3,
+    "working": 18,
+    "needs_params": 1,
+    "not_implemented": 4,
     "500_error": 0,
     "timeout": 0
   },
@@ -22,8 +22,8 @@
     },
     {
       "operation": "CreatePermission",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "DeleteCertificateAuthority",
@@ -112,13 +112,13 @@
     },
     {
       "operation": "TagCertificateAuthority",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UntagCertificateAuthority",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateCertificateAuthority",

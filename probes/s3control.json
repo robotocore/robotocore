@@ -1,12 +1,12 @@
 {
   "service": "s3control",
-  "generated_at": "2026-10-21T07:08:07.700706+00:00",
+  "generated_at": "2026-10-22T04:31:19.228489+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 83,
+    "working": 84,
     "needs_params": 0,
     "not_implemented": 11,
-    "500_error": 2,
+    "500_error": 1,
     "timeout": 0
   },
   "operations": [
@@ -48,7 +48,7 @@
     {
       "operation": "CreateJob",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreateMultiRegionAccessPoint",
@@ -63,7 +63,7 @@
     {
       "operation": "DeleteAccessGrant",
       "status": "working",
-      "message": "likely implemented (NoSuchAccessGrant: The specified access grant does not exist: probe-test-value)"
+      "message": "likely implemented (NoSuchAccessGrant: The specified access grant does not exist: probe-access-gran)"
     },
     {
       "operation": "DeleteAccessGrantsInstance",
@@ -78,7 +78,7 @@
     {
       "operation": "DeleteAccessGrantsLocation",
       "status": "working",
-      "message": "likely implemented (NoSuchAccessGrantsLocation: The specified access grants location does not exist: probe-t)"
+      "message": "likely implemented (NoSuchAccessGrantsLocation: The specified access grants location does not exist: probe-a)"
     },
     {
       "operation": "DeleteAccessPoint",
@@ -128,7 +128,7 @@
     {
       "operation": "DeleteJobTagging",
       "status": "working",
-      "message": "likely implemented (NoSuchJob: The specified job does not exist: probe-test-value)"
+      "message": "likely implemented (NoSuchJob: The specified job does not exist: probe-job-id-id)"
     },
     {
       "operation": "DeleteMultiRegionAccessPoint",
@@ -158,7 +158,7 @@
     {
       "operation": "DescribeJob",
       "status": "working",
-      "message": "likely implemented (NoSuchJob: The specified job does not exist: probe-test-value)"
+      "message": "likely implemented (NoSuchJob: The specified job does not exist: probe-job-id-id)"
     },
     {
       "operation": "DescribeMultiRegionAccessPointOperation",
@@ -173,7 +173,7 @@
     {
       "operation": "GetAccessGrant",
       "status": "working",
-      "message": "likely implemented (NoSuchAccessGrant: The specified access grant does not exist: probe-test-value)"
+      "message": "likely implemented (NoSuchAccessGrant: The specified access grant does not exist: probe-access-gran)"
     },
     {
       "operation": "GetAccessGrantsInstance",
@@ -193,7 +193,7 @@
     {
       "operation": "GetAccessGrantsLocation",
       "status": "working",
-      "message": "likely implemented (NoSuchAccessGrantsLocation: The specified access grants location does not exist: probe-t)"
+      "message": "likely implemented (NoSuchAccessGrantsLocation: The specified access grants location does not exist: probe-a)"
     },
     {
       "operation": "GetAccessPoint",
@@ -273,7 +273,7 @@
     {
       "operation": "GetJobTagging",
       "status": "working",
-      "message": "likely implemented (NoSuchJob: The specified job does not exist: probe-test-value)"
+      "message": "likely implemented (NoSuchJob: The specified job does not exist: probe-job-id-id)"
     },
     {
       "operation": "GetMultiRegionAccessPoint",
@@ -303,7 +303,7 @@
     {
       "operation": "GetStorageLensConfiguration",
       "status": "working",
-      "message": "likely implemented (NoSuchConfiguration: The specified configuration does not exist: probe-test-value)"
+      "message": "likely implemented (NoSuchConfiguration: The specified configuration does not exist: probe-config-id-)"
     },
     {
       "operation": "GetStorageLensConfigurationTagging",
@@ -407,8 +407,8 @@
     },
     {
       "operation": "PutBucketLifecycleConfiguration",
-      "status": "500_error",
-      "message": "server crash (InternalError: no element found)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutBucketPolicy",
@@ -433,7 +433,7 @@
     {
       "operation": "PutJobTagging",
       "status": "working",
-      "message": "likely implemented (NoSuchJob: The specified job does not exist: probe-test-value)"
+      "message": "likely implemented (NoSuchJob: The specified job does not exist: probe-job-id-id)"
     },
     {
       "operation": "PutMultiRegionAccessPointPolicy",
@@ -473,17 +473,17 @@
     {
       "operation": "UpdateAccessGrantsLocation",
       "status": "working",
-      "message": "likely implemented (NoSuchAccessGrantsLocation: The specified access grants location does not exist: probe-t)"
+      "message": "likely implemented (NoSuchAccessGrantsLocation: The specified access grants location does not exist: probe-a)"
     },
     {
       "operation": "UpdateJobPriority",
       "status": "working",
-      "message": "likely implemented (NoSuchJob: The specified job does not exist: probe-test-value)"
+      "message": "likely implemented (NoSuchJob: The specified job does not exist: probe-job-id-id)"
     },
     {
       "operation": "UpdateJobStatus",
       "status": "working",
-      "message": "likely implemented (NoSuchJob: The specified job does not exist: probe-test-value)"
+      "message": "likely implemented (NoSuchJob: The specified job does not exist: probe-job-id-id)"
     },
     {
       "operation": "UpdateStorageLensGroup",

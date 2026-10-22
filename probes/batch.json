@@ -1,10 +1,10 @@
 {
   "service": "batch",
-  "generated_at": "2026-10-21T07:05:42.280561+00:00",
+  "generated_at": "2026-10-22T04:28:42.277194+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 38,
-    "needs_params": 1,
+    "working": 39,
+    "needs_params": 0,
     "not_implemented": 6,
     "500_error": 0,
     "timeout": 0
@@ -13,7 +13,7 @@
     {
       "operation": "CancelJob",
       "status": "working",
-      "message": "likely implemented (ClientException: Job probe-test-value not found.)"
+      "message": "likely implemented (ClientException: Job probe-job-id-id not found.)"
     },
     {
       "operation": "CreateComputeEnvironment",
@@ -78,7 +78,7 @@
     {
       "operation": "DeregisterJobDefinition",
       "status": "working",
-      "message": "likely implemented (ClientException: Job definition probe-test-value not found.)"
+      "message": "OK"
     },
     {
       "operation": "DescribeComputeEnvironments",
@@ -188,7 +188,7 @@
     {
       "operation": "TerminateJob",
       "status": "working",
-      "message": "likely implemented (ClientException: Job probe-test-value not found.)"
+      "message": "likely implemented (ClientException: Job probe-job-id-id not found.)"
     },
     {
       "operation": "TerminateServiceJob",
@@ -197,8 +197,8 @@
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ClientException: Resource not found: arn:aws:batch:us-east-1:123456789012:thi)"
     },
     {
       "operation": "UpdateComputeEnvironment",

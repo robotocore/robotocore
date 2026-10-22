@@ -1,6 +1,6 @@
 {
   "service": "greengrass",
-  "generated_at": "2026-10-21T07:07:11.641621+00:00",
+  "generated_at": "2026-10-22T04:30:06.090537+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 92,
@@ -28,7 +28,7 @@
     {
       "operation": "CreateConnectorDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-connector-definition-i)"
     },
     {
       "operation": "CreateCoreDefinition",
@@ -38,7 +38,7 @@
     {
       "operation": "CreateCoreDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-core-definition-id-id)"
     },
     {
       "operation": "CreateDeployment",
@@ -53,7 +53,7 @@
     {
       "operation": "CreateDeviceDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-device-definition-id-i)"
     },
     {
       "operation": "CreateFunctionDefinition",
@@ -63,7 +63,7 @@
     {
       "operation": "CreateFunctionDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-function-definition-id)"
     },
     {
       "operation": "CreateGroup",
@@ -88,7 +88,7 @@
     {
       "operation": "CreateLoggerDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-logger-definition-id-i)"
     },
     {
       "operation": "CreateResourceDefinition",
@@ -98,7 +98,7 @@
     {
       "operation": "CreateResourceDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-resource-definition-id)"
     },
     {
       "operation": "CreateSoftwareUpdateJob",
@@ -113,27 +113,27 @@
     {
       "operation": "CreateSubscriptionDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-subscription-definitio)"
     },
     {
       "operation": "DeleteConnectorDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-connector-definition-i)"
     },
     {
       "operation": "DeleteCoreDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-core-definition-id-id)"
     },
     {
       "operation": "DeleteDeviceDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-device-definition-id-i)"
     },
     {
       "operation": "DeleteFunctionDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-function-definition-id)"
     },
     {
       "operation": "DeleteGroup",
@@ -143,17 +143,17 @@
     {
       "operation": "DeleteLoggerDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-logger-definition-id-i)"
     },
     {
       "operation": "DeleteResourceDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-resource-definition-id)"
     },
     {
       "operation": "DeleteSubscriptionDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-subscription-definitio)"
     },
     {
       "operation": "DisassociateRoleFromGroup",
@@ -183,22 +183,22 @@
     {
       "operation": "GetConnectorDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-connector-definition-i)"
     },
     {
       "operation": "GetConnectorDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That version does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That version does not exist: probe-connector-definition-vers)"
     },
     {
       "operation": "GetCoreDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-core-definition-id-id)"
     },
     {
       "operation": "GetCoreDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That version does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That version does not exist: probe-core-definition-version-i)"
     },
     {
       "operation": "GetDeploymentStatus",
@@ -208,22 +208,22 @@
     {
       "operation": "GetDeviceDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-device-definition-id-i)"
     },
     {
       "operation": "GetDeviceDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That version does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That version does not exist: probe-device-definition-version)"
     },
     {
       "operation": "GetFunctionDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-function-definition-id)"
     },
     {
       "operation": "GetFunctionDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That version does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That version does not exist: probe-function-definition-versi)"
     },
     {
       "operation": "GetGroup",
@@ -248,22 +248,22 @@
     {
       "operation": "GetLoggerDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-logger-definition-id-i)"
     },
     {
       "operation": "GetLoggerDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That version does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That version does not exist: probe-logger-definition-version)"
     },
     {
       "operation": "GetResourceDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-resource-definition-id)"
     },
     {
       "operation": "GetResourceDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That version does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That version does not exist: probe-resource-definition-versi)"
     },
     {
       "operation": "GetServiceRoleForAccount",
@@ -273,12 +273,12 @@
     {
       "operation": "GetSubscriptionDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-subscription-definitio)"
     },
     {
       "operation": "GetSubscriptionDefinitionVersion",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That version does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That version does not exist: probe-subscription-definition-v)"
     },
     {
       "operation": "GetThingRuntimeConfiguration",
@@ -298,7 +298,7 @@
     {
       "operation": "ListConnectorDefinitionVersions",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-connector-definition-i)"
     },
     {
       "operation": "ListConnectorDefinitions",
@@ -308,7 +308,7 @@
     {
       "operation": "ListCoreDefinitionVersions",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-core-definition-id-id)"
     },
     {
       "operation": "ListCoreDefinitions",
@@ -323,7 +323,7 @@
     {
       "operation": "ListDeviceDefinitionVersions",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-device-definition-id-i)"
     },
     {
       "operation": "ListDeviceDefinitions",
@@ -333,7 +333,7 @@
     {
       "operation": "ListFunctionDefinitionVersions",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-function-definition-id)"
     },
     {
       "operation": "ListFunctionDefinitions",
@@ -358,7 +358,7 @@
     {
       "operation": "ListLoggerDefinitionVersions",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-logger-definition-id-i)"
     },
     {
       "operation": "ListLoggerDefinitions",
@@ -368,7 +368,7 @@
     {
       "operation": "ListResourceDefinitionVersions",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-resource-definition-id)"
     },
     {
       "operation": "ListResourceDefinitions",
@@ -378,7 +378,7 @@
     {
       "operation": "ListSubscriptionDefinitionVersions",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-subscription-definitio)"
     },
     {
       "operation": "ListSubscriptionDefinitions",
@@ -423,22 +423,22 @@
     {
       "operation": "UpdateConnectorDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-connector-definition-i)"
     },
     {
       "operation": "UpdateCoreDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-core-definition-id-id)"
     },
     {
       "operation": "UpdateDeviceDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-device-definition-id-i)"
     },
     {
       "operation": "UpdateFunctionDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-function-definition-id)"
     },
     {
       "operation": "UpdateGroup",
@@ -453,17 +453,17 @@
     {
       "operation": "UpdateLoggerDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-logger-definition-id-i)"
     },
     {
       "operation": "UpdateResourceDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-resource-definition-id)"
     },
     {
       "operation": "UpdateSubscriptionDefinition",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-test-value)"
+      "message": "likely implemented (IdNotFoundException: That definition does not exist: probe-subscription-definitio)"
     },
     {
       "operation": "UpdateThingRuntimeConfiguration",

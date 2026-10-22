@@ -1,10 +1,10 @@
 {
   "service": "amp",
-  "generated_at": "2026-10-21T07:05:33.516332+00:00",
+  "generated_at": "2026-10-22T04:28:32.229114+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 38,
-    "needs_params": 6,
+    "working": 41,
+    "needs_params": 3,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -27,8 +27,8 @@
     },
     {
       "operation": "CreateQueryLoggingConfiguration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateRuleGroupsNamespace",
@@ -207,8 +207,8 @@
     },
     {
       "operation": "UpdateQueryLoggingConfiguration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateScraper",
@@ -217,8 +217,8 @@
     },
     {
       "operation": "UpdateScraperLoggingConfiguration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateWorkspaceAlias",

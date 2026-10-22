@@ -1,6 +1,6 @@
 {
   "service": "swf",
-  "generated_at": "2026-10-21T07:27:14.918256+00:00",
+  "generated_at": "2026-10-22T04:31:53.011047+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 39,
@@ -18,7 +18,7 @@
     {
       "operation": "CountOpenWorkflowExecutions",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "CountPendingActivityTasks",
@@ -33,7 +33,7 @@
     {
       "operation": "DeleteActivityType",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown type: ActivityType=[name=probe-test-value, version=p)"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "DeleteWorkflowType",
@@ -43,7 +43,7 @@
     {
       "operation": "DeprecateActivityType",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown type: ActivityType=[name=probe-test-value, version=p)"
+      "message": "OK"
     },
     {
       "operation": "DeprecateDomain",
@@ -58,7 +58,7 @@
     {
       "operation": "DescribeActivityType",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown type: ActivityType=[name=probe-test-value, version=p)"
+      "message": "OK"
     },
     {
       "operation": "DescribeDomain",
@@ -68,7 +68,7 @@
     {
       "operation": "DescribeWorkflowExecution",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown execution: WorkflowExecution=[workflowId=probe-test-)"
+      "message": "likely implemented (UnknownResourceFault: Unknown execution: WorkflowExecution=[workflowId=probe-workf)"
     },
     {
       "operation": "DescribeWorkflowType",
@@ -78,7 +78,7 @@
     {
       "operation": "GetWorkflowExecutionHistory",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown execution: WorkflowExecution=[workflowId=probe-test-)"
+      "message": "likely implemented (UnknownResourceFault: Unknown execution: WorkflowExecution=[workflowId=probe-workf)"
     },
     {
       "operation": "ListActivityTypes",
@@ -98,7 +98,7 @@
     {
       "operation": "ListOpenWorkflowExecutions",
       "status": "working",
-      "message": "likely implemented (DomainDeprecatedFault: probe-test-value)"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "ListTagsForResource",
@@ -128,7 +128,7 @@
     {
       "operation": "RegisterActivityType",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (TypeAlreadyExistsFault: ActivityType=[name=probe-test-value, version=probe-test-valu)"
     },
     {
       "operation": "RegisterDomain",
@@ -143,7 +143,7 @@
     {
       "operation": "RequestCancelWorkflowExecution",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown execution, workflowId = probe-test-value)"
+      "message": "likely implemented (UnknownResourceFault: Unknown execution: WorkflowExecution=[workflowId=probe-workf)"
     },
     {
       "operation": "RespondActivityTaskCanceled",
@@ -168,7 +168,7 @@
     {
       "operation": "SignalWorkflowExecution",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown execution, workflowId = probe-test-value)"
+      "message": "likely implemented (UnknownResourceFault: Unknown execution: WorkflowExecution=[workflowId=probe-workf)"
     },
     {
       "operation": "StartWorkflowExecution",
@@ -183,12 +183,12 @@
     {
       "operation": "TerminateWorkflowExecution",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown execution, workflowId = probe-test-value)"
+      "message": "likely implemented (UnknownResourceFault: Unknown execution: WorkflowExecution=[workflowId=probe-workf)"
     },
     {
       "operation": "UndeprecateActivityType",
       "status": "working",
-      "message": "likely implemented (TypeAlreadyExistsFault: ActivityType=[name=probe-test-value, version=probe-test-valu)"
+      "message": "OK"
     },
     {
       "operation": "UndeprecateDomain",

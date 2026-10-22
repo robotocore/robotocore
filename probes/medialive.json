@@ -1,10 +1,10 @@
 {
   "service": "medialive",
-  "generated_at": "2026-10-21T07:07:36.151598+00:00",
+  "generated_at": "2026-10-22T04:30:39.367906+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 121,
-    "needs_params": 1,
+    "working": 122,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -57,8 +57,8 @@
     },
     {
       "operation": "CreateCloudWatchAlarmTemplate",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "CreateCloudWatchAlarmTemplateGroup",
@@ -343,17 +343,17 @@
     {
       "operation": "ListChannels",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
     },
     {
       "operation": "ListCloudWatchAlarmTemplateGroups",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
     },
     {
       "operation": "ListCloudWatchAlarmTemplates",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
     },
     {
       "operation": "ListClusterAlerts",
@@ -363,17 +363,17 @@
     {
       "operation": "ListClusters",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
     },
     {
       "operation": "ListEventBridgeRuleTemplateGroups",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
     },
     {
       "operation": "ListEventBridgeRuleTemplates",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
     },
     {
       "operation": "ListInputDeviceTransfers",
@@ -388,12 +388,12 @@
     {
       "operation": "ListInputSecurityGroups",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
     },
     {
       "operation": "ListInputs",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
     },
     {
       "operation": "ListMultiplexAlerts",
@@ -408,12 +408,12 @@
     {
       "operation": "ListMultiplexes",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
     },
     {
       "operation": "ListNetworks",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
     },
     {
       "operation": "ListNodes",
@@ -433,12 +433,12 @@
     {
       "operation": "ListSdiSources",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
     },
     {
       "operation": "ListSignalMaps",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
     },
     {
       "operation": "ListTagsForResource",

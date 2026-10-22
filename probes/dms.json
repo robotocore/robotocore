@@ -1,12 +1,12 @@
 {
   "service": "dms",
-  "generated_at": "2026-10-21T07:06:15.669044+00:00",
+  "generated_at": "2026-10-22T04:29:25.944515+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 116,
-    "needs_params": 2,
+    "working": 114,
+    "needs_params": 1,
     "not_implemented": 0,
-    "500_error": 1,
+    "500_error": 4,
     "timeout": 0
   },
   "operations": [
@@ -53,7 +53,7 @@
     {
       "operation": "CreateEndpoint",
       "status": "working",
-      "message": "implemented (ValidationError)"
+      "message": "OK"
     },
     {
       "operation": "CreateEventSubscription",
@@ -78,12 +78,12 @@
     {
       "operation": "CreateReplicationConfig",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceAlreadyExistsFault: The resource you are attempting to create already exists.)"
     },
     {
       "operation": "CreateReplicationInstance",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceAlreadyExistsFault: The resource you are attempting to create already exists.)"
     },
     {
       "operation": "CreateReplicationSubnetGroup",
@@ -93,7 +93,7 @@
     {
       "operation": "CreateReplicationTask",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceAlreadyExistsFault: The resource you are attempting to create already exists.)"
     },
     {
       "operation": "DeleteCertificate",
@@ -108,7 +108,7 @@
     {
       "operation": "DeleteDataMigration",
       "status": "working",
-      "message": "implemented (ResourceNotFoundFault)"
+      "message": "OK"
     },
     {
       "operation": "DeleteDataProvider",
@@ -138,12 +138,12 @@
     {
       "operation": "DeleteInstanceProfile",
       "status": "working",
-      "message": "implemented (ResourceNotFoundFault)"
+      "message": "OK"
     },
     {
       "operation": "DeleteMigrationProject",
       "status": "working",
-      "message": "implemented (ResourceNotFoundFault)"
+      "message": "OK"
     },
     {
       "operation": "DeleteReplicationConfig",
@@ -187,8 +187,8 @@
     },
     {
       "operation": "DescribeConnections",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "server crash (InternalError: Invalid filter name: probe-test-value)"
     },
     {
       "operation": "DescribeConversionConfiguration",
@@ -217,8 +217,8 @@
     },
     {
       "operation": "DescribeEndpoints",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "server crash (InternalError: Invalid filter name: probe-test-value)"
     },
     {
       "operation": "DescribeEngineVersions",
@@ -233,7 +233,7 @@
     {
       "operation": "DescribeEventSubscriptions",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundFault)"
     },
     {
       "operation": "DescribeEvents",
@@ -362,8 +362,8 @@
     },
     {
       "operation": "DescribeReplicationSubnetGroups",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "server crash (InternalError: Invalid filter name: probe-test-value)"
     },
     {
       "operation": "DescribeReplicationTableStatistics",
@@ -418,12 +418,12 @@
     {
       "operation": "ImportCertificate",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceAlreadyExistsFault: The resource you are attempting to create already exists.)"
     },
     {
       "operation": "ListTagsForResource",
       "status": "500_error",
-      "message": "server crash (InternalError: Either ResourceArn or ResourceArnList should be specified.)"
+      "message": "server crash (InternalError: Both ResourceArn and ResourceArnList cannot be specified.)"
     },
     {
       "operation": "ModifyConversionConfiguration",
@@ -438,7 +438,7 @@
     {
       "operation": "ModifyDataProvider",
       "status": "working",
-      "message": "implemented (ResourceNotFoundFault)"
+      "message": "implemented via required-only (ResourceNotFoundFault)"
     },
     {
       "operation": "ModifyEndpoint",
@@ -537,8 +537,8 @@
     },
     {
       "operation": "StartMetadataModelCreation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartMetadataModelExportAsScript",

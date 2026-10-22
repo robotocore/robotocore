@@ -1,12 +1,12 @@
 {
   "service": "emr",
-  "generated_at": "2026-10-21T07:07:00.357664+00:00",
+  "generated_at": "2026-10-22T04:29:51.306773+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 59,
+    "working": 56,
     "needs_params": 0,
     "not_implemented": 1,
-    "500_error": 0,
+    "500_error": 3,
     "timeout": 0
   },
   "operations": [
@@ -272,8 +272,8 @@
     },
     {
       "operation": "SetTerminationProtection",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
     },
     {
       "operation": "SetUnhealthyNodeReplacement",
@@ -282,8 +282,8 @@
     },
     {
       "operation": "SetVisibleToAllUsers",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
     },
     {
       "operation": "StartNotebookExecution",
@@ -297,8 +297,8 @@
     },
     {
       "operation": "TerminateJobFlows",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-test-value')"
     },
     {
       "operation": "UpdateStudio",

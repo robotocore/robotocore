@@ -1,10 +1,10 @@
 {
   "service": "budgets",
-  "generated_at": "2026-10-21T07:05:45.431573+00:00",
+  "generated_at": "2026-10-22T04:28:46.339304+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 13,
-    "needs_params": 13,
+    "working": 21,
+    "needs_params": 5,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -17,18 +17,18 @@
     },
     {
       "operation": "CreateBudgetAction",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateNotification",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateSubscriber",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteBudget",
@@ -42,13 +42,13 @@
     },
     {
       "operation": "DeleteNotification",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DeleteSubscriber",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DescribeBudget",
@@ -97,8 +97,8 @@
     },
     {
       "operation": "DescribeSubscribersForNotification",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "ExecuteBudgetAction",
@@ -132,13 +132,13 @@
     },
     {
       "operation": "UpdateNotification",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateSubscriber",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     }
   ]
 }

@@ -1,10 +1,10 @@
 {
   "service": "textract",
-  "generated_at": "2026-10-21T07:08:33.593316+00:00",
+  "generated_at": "2026-10-22T04:31:53.658814+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 24,
-    "needs_params": 1,
+    "working": 25,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -22,8 +22,8 @@
     },
     {
       "operation": "AnalyzeID",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateAdapter",
@@ -103,22 +103,22 @@
     {
       "operation": "StartDocumentAnalysis",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "OK"
     },
     {
       "operation": "StartDocumentTextDetection",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "OK"
     },
     {
       "operation": "StartExpenseAnalysis",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "OK"
     },
     {
       "operation": "StartLendingAnalysis",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "OK"
     },
     {
       "operation": "TagResource",

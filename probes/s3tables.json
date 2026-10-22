@@ -1,10 +1,10 @@
 {
   "service": "s3tables",
-  "generated_at": "2026-10-21T07:08:08.240503+00:00",
+  "generated_at": "2026-10-22T04:31:19.905873+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 45,
-    "needs_params": 3,
+    "working": 48,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -12,8 +12,8 @@
   "operations": [
     {
       "operation": "CreateNamespace",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "CreateTable",
@@ -23,7 +23,7 @@
     {
       "operation": "CreateTableBucket",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ConflictException)"
     },
     {
       "operation": "DeleteNamespace",
@@ -168,7 +168,7 @@
     {
       "operation": "ListTableBuckets",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (BadRequestException: The continuation token is not valid.)"
     },
     {
       "operation": "ListTables",
@@ -202,8 +202,8 @@
     },
     {
       "operation": "PutTableBucketReplication",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "PutTableBucketStorageClass",
@@ -213,7 +213,7 @@
     {
       "operation": "PutTableMaintenanceConfiguration",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "implemented via required-only (NotFoundException)"
     },
     {
       "operation": "PutTablePolicy",
@@ -227,13 +227,13 @@
     },
     {
       "operation": "PutTableReplication",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "RenameTable",
       "status": "working",
-      "message": "likely implemented (BadRequestException: Neither a new namespace name nor a new table name is specifi)"
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "TagResource",

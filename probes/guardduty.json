@@ -1,10 +1,10 @@
 {
   "service": "guardduty",
-  "generated_at": "2026-10-21T07:07:12.867587+00:00",
+  "generated_at": "2026-10-22T04:30:07.717945+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 74,
-    "needs_params": 13,
+    "working": 87,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -47,8 +47,8 @@
     },
     {
       "operation": "CreateMembers",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
     },
     {
       "operation": "CreatePublishingDestination",
@@ -77,8 +77,8 @@
     },
     {
       "operation": "DeclineInvitations",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteDetector",
@@ -97,8 +97,8 @@
     },
     {
       "operation": "DeleteInvitations",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteMalwareProtectionPlan",
@@ -107,8 +107,8 @@
     },
     {
       "operation": "DeleteMembers",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
     },
     {
       "operation": "DeletePublishingDestination",
@@ -162,8 +162,8 @@
     },
     {
       "operation": "DisassociateMembers",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
     },
     {
       "operation": "EnableOrganizationAdminAccount",
@@ -232,13 +232,13 @@
     },
     {
       "operation": "GetMemberDetectors",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
     },
     {
       "operation": "GetMembers",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
     },
     {
       "operation": "GetOrganizationStatistics",
@@ -247,8 +247,8 @@
     },
     {
       "operation": "GetRemainingFreeTrialDays",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
     },
     {
       "operation": "GetThreatEntitySet",
@@ -272,8 +272,8 @@
     },
     {
       "operation": "InviteMembers",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
     },
     {
       "operation": "ListCoverage",
@@ -362,13 +362,13 @@
     },
     {
       "operation": "StartMonitoringMembers",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
     },
     {
       "operation": "StopMonitoringMembers",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
     },
     {
       "operation": "TagResource",
@@ -382,8 +382,8 @@
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateDetector",
@@ -417,8 +417,8 @@
     },
     {
       "operation": "UpdateMemberDetectors",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (BadRequestException: The request is rejected because no detector exists for the a)"
     },
     {
       "operation": "UpdateOrganizationConfiguration",

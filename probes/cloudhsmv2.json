@@ -1,10 +1,10 @@
 {
   "service": "cloudhsmv2",
-  "generated_at": "2026-10-21T07:05:51.340421+00:00",
+  "generated_at": "2026-10-22T04:28:53.473742+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 14,
-    "needs_params": 3,
+    "working": 17,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -17,8 +17,8 @@
     },
     {
       "operation": "CreateCluster",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateHsm",
@@ -87,13 +87,13 @@
     },
     {
       "operation": "TagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     }
   ]
 }

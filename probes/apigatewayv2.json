@@ -1,6 +1,6 @@
 {
   "service": "apigatewayv2",
-  "generated_at": "2026-10-21T07:05:36.532057+00:00",
+  "generated_at": "2026-10-22T04:28:35.427440+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 102,
@@ -13,7 +13,7 @@
     {
       "operation": "CreateApi",
       "status": "working",
-      "message": "likely implemented (BadRequestException: Invalid protocol specified. Must be one of [HTTP, WEBSOCKET])"
+      "message": "OK"
     },
     {
       "operation": "CreateApiMapping",
@@ -53,7 +53,7 @@
     {
       "operation": "CreatePortal",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "implemented via required-only (NotFoundException)"
     },
     {
       "operation": "CreatePortalProduct",
@@ -483,7 +483,7 @@
     {
       "operation": "UpdatePortal",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "implemented via required-only (NotFoundException)"
     },
     {
       "operation": "UpdatePortalProduct",

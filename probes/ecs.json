@@ -1,6 +1,6 @@
 {
   "service": "ecs",
-  "generated_at": "2026-10-21T07:06:55.834887+00:00",
+  "generated_at": "2026-10-22T04:29:45.681098+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 63,
@@ -28,12 +28,12 @@
     {
       "operation": "CreateService",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ClusterNotFoundException: Cluster default not found.)"
     },
     {
       "operation": "CreateTaskSet",
       "status": "working",
-      "message": "likely implemented (ClusterNotFoundException: Cluster probe-test-value not found.)"
+      "message": "implemented (ServiceNotFoundException)"
     },
     {
       "operation": "DeleteAccountSetting",
@@ -58,7 +58,7 @@
     {
       "operation": "DeleteService",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ServiceNotFoundException)"
     },
     {
       "operation": "DeleteTaskDefinitions",
@@ -138,12 +138,12 @@
     {
       "operation": "ExecuteCommand",
       "status": "working",
-      "message": "likely implemented (ClusterNotFoundException: Cluster  not found.)"
+      "message": "implemented (InvalidParameterException)"
     },
     {
       "operation": "GetTaskProtection",
       "status": "working",
-      "message": "likely implemented (ClusterNotFoundException: Cluster probe-test-value not found.)"
+      "message": "OK"
     },
     {
       "operation": "ListAccountSettings",
@@ -168,7 +168,7 @@
     {
       "operation": "ListServiceDeployments",
       "status": "working",
-      "message": "likely implemented (ClusterNotFoundException: Cluster  not found.)"
+      "message": "implemented (ServiceNotFoundException)"
     },
     {
       "operation": "ListServices",
@@ -208,7 +208,7 @@
     {
       "operation": "PutAccountSettingDefault",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "OK"
     },
     {
       "operation": "PutAttributes",
@@ -218,7 +218,7 @@
     {
       "operation": "PutClusterCapacityProviders",
       "status": "working",
-      "message": "likely implemented (ClusterNotFoundException: Cluster probe-test-value not found.)"
+      "message": "OK"
     },
     {
       "operation": "RegisterContainerInstance",
@@ -238,7 +238,7 @@
     {
       "operation": "StartTask",
       "status": "working",
-      "message": "likely implemented (ClusterNotFoundException: Cluster  not found.)"
+      "message": "OK"
     },
     {
       "operation": "StopServiceDeployment",
@@ -283,17 +283,17 @@
     {
       "operation": "UpdateCluster",
       "status": "working",
-      "message": "likely implemented (ClusterNotFoundException: Cluster probe-test-value not found.)"
+      "message": "OK"
     },
     {
       "operation": "UpdateClusterSettings",
       "status": "working",
-      "message": "likely implemented (ClusterNotFoundException: Cluster probe-test-value not found.)"
+      "message": "OK"
     },
     {
       "operation": "UpdateContainerAgent",
       "status": "working",
-      "message": "likely implemented (ClusterNotFoundException: Cluster  not found.)"
+      "message": "implemented (InvalidParameterException)"
     },
     {
       "operation": "UpdateContainerInstancesState",
@@ -313,12 +313,12 @@
     {
       "operation": "UpdateServicePrimaryTaskSet",
       "status": "working",
-      "message": "likely implemented (ClusterNotFoundException: Cluster probe-test-value not found.)"
+      "message": "implemented (ServiceNotFoundException)"
     },
     {
       "operation": "UpdateTaskProtection",
       "status": "working",
-      "message": "likely implemented (ClusterNotFoundException: Cluster probe-test-value not found.)"
+      "message": "OK"
     },
     {
       "operation": "UpdateTaskSet",

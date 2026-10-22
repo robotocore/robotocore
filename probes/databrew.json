@@ -1,19 +1,19 @@
 {
   "service": "databrew",
-  "generated_at": "2026-10-21T07:06:11.980085+00:00",
+  "generated_at": "2026-10-22T04:29:21.378383+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 32,
-    "needs_params": 4,
-    "not_implemented": 8,
+    "working": 34,
+    "needs_params": 0,
+    "not_implemented": 10,
     "500_error": 0,
     "timeout": 0
   },
   "operations": [
     {
       "operation": "BatchDeleteRecipeVersion",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "CreateDataset",
@@ -33,7 +33,7 @@
     {
       "operation": "CreateRecipe",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ConflictException)"
     },
     {
       "operation": "CreateRecipeJob",
@@ -42,8 +42,8 @@
     },
     {
       "operation": "CreateRuleset",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateSchedule",
@@ -73,7 +73,7 @@
     {
       "operation": "DeleteRuleset",
       "status": "working",
-      "message": "likely implemented (EntityNotFoundException: Ruleset probe-test-value not found.)"
+      "message": "OK"
     },
     {
       "operation": "DeleteSchedule",
@@ -103,7 +103,7 @@
     {
       "operation": "DescribeRecipe",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "DescribeRuleset",
@@ -192,8 +192,8 @@
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "UpdateDataset",
@@ -222,8 +222,8 @@
     },
     {
       "operation": "UpdateRuleset",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Ruleset probe-test-value not found.)"
     },
     {
       "operation": "UpdateSchedule",

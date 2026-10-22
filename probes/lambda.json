@@ -1,11 +1,11 @@
 {
   "service": "lambda",
-  "generated_at": "2026-10-21T07:07:27.864553+00:00",
+  "generated_at": "2026-10-22T04:30:28.562308+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 69,
-    "needs_params": 2,
-    "not_implemented": 13,
+    "working": 84,
+    "needs_params": 0,
+    "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
   },
@@ -22,48 +22,48 @@
     },
     {
       "operation": "CheckpointDurableExecution",
-      "status": "not_implemented",
-      "message": "not implemented (InvalidRequest)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-12-01/durable-executions/arn%3Aaws%3Alam)"
     },
     {
       "operation": "CreateAlias",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "CreateCapacityProvider",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-11-30/capacity-providers)"
     },
     {
       "operation": "CreateCodeSigningConfig",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateEventSourceMapping",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "CreateFunction",
       "status": "working",
-      "message": "OK"
+      "message": "implemented via required-only (ResourceConflictException)"
     },
     {
       "operation": "CreateFunctionUrlConfig",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteAlias",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteCapacityProvider",
-      "status": "not_implemented",
-      "message": "not implemented (InvalidRequest)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-11-30/capacity-providers/probe-test-valu)"
     },
     {
       "operation": "DeleteCodeSigningConfig",
@@ -93,12 +93,12 @@
     {
       "operation": "DeleteFunctionUrlConfig",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteLayerVersion",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteProvisionedConcurrencyConfig",
@@ -117,8 +117,8 @@
     },
     {
       "operation": "GetCapacityProvider",
-      "status": "not_implemented",
-      "message": "not implemented (InvalidRequest)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-11-30/capacity-providers/probe-test-valu)"
     },
     {
       "operation": "GetCodeSigningConfig",
@@ -127,18 +127,18 @@
     },
     {
       "operation": "GetDurableExecution",
-      "status": "not_implemented",
-      "message": "not implemented (InvalidRequest)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-12-01/durable-executions/arn%3Aaws%3Alam)"
     },
     {
       "operation": "GetDurableExecutionHistory",
-      "status": "not_implemented",
-      "message": "not implemented (InvalidRequest)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-12-01/durable-executions/arn%3Aaws%3Alam)"
     },
     {
       "operation": "GetDurableExecutionState",
-      "status": "not_implemented",
-      "message": "not implemented (InvalidRequest)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-12-01/durable-executions/arn%3Aaws%3Alam)"
     },
     {
       "operation": "GetEventSourceMapping",
@@ -148,7 +148,7 @@
     {
       "operation": "GetFunction",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetFunctionCodeSigningConfig",
@@ -163,7 +163,7 @@
     {
       "operation": "GetFunctionConfiguration",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetFunctionEventInvokeConfig",
@@ -213,12 +213,12 @@
     {
       "operation": "GetRuntimeManagementConfig",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "Invoke",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "InvokeAsync",
@@ -228,7 +228,7 @@
     {
       "operation": "InvokeWithResponseStream",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListAliases",
@@ -237,8 +237,8 @@
     },
     {
       "operation": "ListCapacityProviders",
-      "status": "not_implemented",
-      "message": "not implemented (InvalidRequest)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-11-30/capacity-providers)"
     },
     {
       "operation": "ListCodeSigningConfigs",
@@ -267,8 +267,8 @@
     },
     {
       "operation": "ListFunctionVersionsByCapacityProvider",
-      "status": "not_implemented",
-      "message": "not implemented (InvalidRequest)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-11-30/capacity-providers/probe-test-valu)"
     },
     {
       "operation": "ListFunctions",
@@ -308,7 +308,7 @@
     {
       "operation": "PublishLayerVersion",
       "status": "working",
-      "message": "implemented (InvalidParameterValueException)"
+      "message": "OK"
     },
     {
       "operation": "PublishVersion",
@@ -328,12 +328,12 @@
     {
       "operation": "PutFunctionEventInvokeConfig",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutFunctionRecursionConfig",
       "status": "working",
-      "message": "implemented (InvalidParameterValueException)"
+      "message": "OK"
     },
     {
       "operation": "PutFunctionScalingConfig",
@@ -348,7 +348,7 @@
     {
       "operation": "PutRuntimeManagementConfig",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "RemoveLayerVersionPermission",
@@ -362,23 +362,23 @@
     },
     {
       "operation": "SendDurableExecutionCallbackFailure",
-      "status": "not_implemented",
-      "message": "not implemented (InvalidRequest)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-12-01/durable-execution-callbacks/probe-)"
     },
     {
       "operation": "SendDurableExecutionCallbackHeartbeat",
-      "status": "not_implemented",
-      "message": "not implemented (InvalidRequest)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-12-01/durable-execution-callbacks/probe-)"
     },
     {
       "operation": "SendDurableExecutionCallbackSuccess",
-      "status": "not_implemented",
-      "message": "not implemented (InvalidRequest)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-12-01/durable-execution-callbacks/probe-)"
     },
     {
       "operation": "StopDurableExecution",
-      "status": "not_implemented",
-      "message": "not implemented (InvalidRequest)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-12-01/durable-executions/arn%3Aaws%3Alam)"
     },
     {
       "operation": "TagResource",
@@ -397,8 +397,8 @@
     },
     {
       "operation": "UpdateCapacityProvider",
-      "status": "not_implemented",
-      "message": "not implemented (InvalidRequest)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-11-30/capacity-providers/probe-test-valu)"
     },
     {
       "operation": "UpdateCodeSigningConfig",
@@ -418,12 +418,12 @@
     {
       "operation": "UpdateFunctionConfiguration",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "UpdateFunctionEventInvokeConfig",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateFunctionUrlConfig",

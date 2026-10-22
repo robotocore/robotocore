@@ -1,19 +1,19 @@
 {
   "service": "fsx",
-  "generated_at": "2026-10-21T07:07:03.845237+00:00",
+  "generated_at": "2026-10-22T04:29:55.773487+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 26,
-    "needs_params": 9,
-    "not_implemented": 11,
-    "500_error": 2,
+    "working": 30,
+    "needs_params": 5,
+    "not_implemented": 12,
+    "500_error": 1,
     "timeout": 0
   },
   "operations": [
     {
       "operation": "AssociateFileSystemAliases",
       "status": "working",
-      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-file-system-id-id' does not exist.)"
     },
     {
       "operation": "CancelDataRepositoryTask",
@@ -38,12 +38,12 @@
     {
       "operation": "CreateBackup",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "CreateDataRepositoryAssociation",
       "status": "working",
-      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-file-system-id-id' does not exist.)"
     },
     {
       "operation": "CreateDataRepositoryTask",
@@ -57,13 +57,13 @@
     },
     {
       "operation": "CreateFileSystem",
-      "status": "500_error",
-      "message": "server crash (InternalError: Invalid FileSystemType: probe-test-value)"
+      "status": "working",
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreateFileSystemFromBackup",
       "status": "working",
-      "message": "likely implemented (BackupNotFound: Backup 'probe-test-value' does not exist.)"
+      "message": "implemented via required-only (BackupNotFound)"
     },
     {
       "operation": "CreateSnapshot",
@@ -73,7 +73,7 @@
     {
       "operation": "CreateStorageVirtualMachine",
       "status": "working",
-      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+      "message": "implemented via required-only (FileSystemNotFound)"
     },
     {
       "operation": "CreateVolume",
@@ -83,7 +83,7 @@
     {
       "operation": "CreateVolumeFromBackup",
       "status": "working",
-      "message": "likely implemented (BackupNotFound: Backup 'probe-test-value' does not exist.)"
+      "message": "likely implemented (BackupNotFound: Backup 'probe-backup-id-id' does not exist.)"
     },
     {
       "operation": "DeleteBackup",
@@ -103,17 +103,17 @@
     {
       "operation": "DeleteFileSystem",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "message": "server crash (InternalError: 'probe-file-system-id-id')"
     },
     {
       "operation": "DeleteSnapshot",
       "status": "working",
-      "message": "likely implemented (SnapshotNotFound: Snapshot 'probe-test-value' does not exist.)"
+      "message": "likely implemented (SnapshotNotFound: Snapshot 'probe-snapshot-id-id' does not exist.)"
     },
     {
       "operation": "DeleteStorageVirtualMachine",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (StorageVirtualMachineNotFound: Storage virtual machine 'probe-storage-virtual-machine-id-id)"
     },
     {
       "operation": "DeleteVolume",
@@ -123,7 +123,7 @@
     {
       "operation": "DescribeBackups",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
     },
     {
       "operation": "DescribeDataRepositoryAssociations",
@@ -143,12 +143,12 @@
     {
       "operation": "DescribeFileSystemAliases",
       "status": "working",
-      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-file-system-id-id' does not exist.)"
     },
     {
       "operation": "DescribeFileSystems",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
     },
     {
       "operation": "DescribeS3AccessPointAttachments",
@@ -163,17 +163,17 @@
     {
       "operation": "DescribeSnapshots",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (SnapshotNotFound: Snapshot 'probe-test-value' does not exist.)"
     },
     {
       "operation": "DescribeStorageVirtualMachines",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "DescribeVolumes",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "DetachAndDeleteS3AccessPoint",
@@ -183,7 +183,7 @@
     {
       "operation": "DisassociateFileSystemAliases",
       "status": "working",
-      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-file-system-id-id' does not exist.)"
     },
     {
       "operation": "ListTagsForResource",
@@ -207,13 +207,13 @@
     },
     {
       "operation": "TagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateDataRepositoryAssociation",
@@ -228,7 +228,7 @@
     {
       "operation": "UpdateFileSystem",
       "status": "working",
-      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+      "message": "implemented via required-only (FileSystemNotFound)"
     },
     {
       "operation": "UpdateSharedVpcConfiguration",
@@ -238,12 +238,12 @@
     {
       "operation": "UpdateSnapshot",
       "status": "working",
-      "message": "likely implemented (SnapshotNotFound: Snapshot 'probe-test-value' does not exist.)"
+      "message": "likely implemented (SnapshotNotFound: Snapshot 'probe-snapshot-id-id' does not exist.)"
     },
     {
       "operation": "UpdateStorageVirtualMachine",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "UpdateVolume",

@@ -1,29 +1,29 @@
 {
   "service": "lexv2models",
-  "generated_at": "2026-10-21T07:07:29.776542+00:00",
+  "generated_at": "2026-10-22T04:30:31.027311+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 16,
-    "needs_params": 16,
-    "not_implemented": 75,
+    "working": 18,
+    "needs_params": 4,
+    "not_implemented": 85,
     "500_error": 0,
     "timeout": 0
   },
   "operations": [
     {
       "operation": "BatchCreateCustomVocabularyItem",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "BatchDeleteCustomVocabularyItem",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "BatchUpdateCustomVocabularyItem",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "BuildBotLocale",
@@ -32,8 +32,8 @@
     },
     {
       "operation": "CreateBot",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateBotAlias",
@@ -42,8 +42,8 @@
     },
     {
       "operation": "CreateBotLocale",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "CreateBotReplica",
@@ -148,7 +148,7 @@
     {
       "operation": "DeleteResourcePolicy",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ConflictException)"
     },
     {
       "operation": "DeleteResourcePolicyStatement",
@@ -238,7 +238,7 @@
     {
       "operation": "DescribeResourcePolicy",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeSlot",
@@ -362,8 +362,8 @@
     },
     {
       "operation": "ListIntentMetrics",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "ListIntentPaths",
@@ -372,8 +372,8 @@
     },
     {
       "operation": "ListIntentStageMetrics",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "ListIntents",
@@ -392,8 +392,8 @@
     },
     {
       "operation": "ListSessionMetrics",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "ListSlotTypes",
@@ -437,13 +437,13 @@
     },
     {
       "operation": "ListUtteranceMetrics",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "SearchAssociatedTranscripts",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "StartBotAnalyzer",
@@ -497,8 +497,8 @@
     },
     {
       "operation": "UpdateBot",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateBotAlias",
@@ -507,8 +507,8 @@
     },
     {
       "operation": "UpdateBotLocale",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "UpdateBotRecommendation",
@@ -528,7 +528,7 @@
     {
       "operation": "UpdateResourcePolicy",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented (ConflictException)"
     },
     {
       "operation": "UpdateSlot",

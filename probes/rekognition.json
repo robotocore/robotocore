@@ -1,10 +1,10 @@
 {
   "service": "rekognition",
-  "generated_at": "2026-10-21T07:08:00.746018+00:00",
+  "generated_at": "2026-10-22T04:31:10.923426+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 61,
-    "needs_params": 6,
+    "working": 65,
+    "needs_params": 2,
     "not_implemented": 8,
     "500_error": 0,
     "timeout": 0
@@ -12,8 +12,8 @@
   "operations": [
     {
       "operation": "AssociateFaces",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CompareFaces",
@@ -43,7 +43,7 @@
     {
       "operation": "CreateProject",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceInUseException: The project probe-test-value already exists.)"
     },
     {
       "operation": "CreateProjectVersion",
@@ -72,8 +72,8 @@
     },
     {
       "operation": "DeleteFaces",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteProject",
@@ -143,7 +143,7 @@
     {
       "operation": "DetectModerationLabels",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "DetectProtectiveEquipment",
@@ -157,8 +157,8 @@
     },
     {
       "operation": "DisassociateFaces",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DistributeDatasetEntries",
@@ -342,8 +342,8 @@
     },
     {
       "operation": "StartSegmentDetection",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "StartStreamProcessor",

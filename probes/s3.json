@@ -1,11 +1,11 @@
 {
   "service": "s3",
-  "generated_at": "2026-10-21T07:08:06.182947+00:00",
+  "generated_at": "2026-10-22T04:31:17.572038+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 109,
-    "needs_params": 1,
-    "not_implemented": 0,
+    "working": 108,
+    "needs_params": 0,
+    "not_implemented": 2,
     "500_error": 0,
     "timeout": 0
   },
@@ -13,12 +13,12 @@
     {
       "operation": "AbortMultipartUpload",
       "status": "working",
-      "message": "implemented (NoSuchBucket)"
+      "message": "OK"
     },
     {
       "operation": "CompleteMultipartUpload",
       "status": "working",
-      "message": "implemented (NoSuchBucket)"
+      "message": "likely implemented (NoSuchUpload: The specified multipart upload does not exist (upload might )"
     },
     {
       "operation": "CopyObject",
@@ -128,7 +128,7 @@
     {
       "operation": "DeleteObjectTagging",
       "status": "working",
-      "message": "likely implemented (NoSuchKey: The specified key does not exist)"
+      "message": "OK"
     },
     {
       "operation": "DeleteObjects",
@@ -288,7 +288,7 @@
     {
       "operation": "GetObjectLockConfiguration",
       "status": "working",
-      "message": "likely implemented (ObjectLockConfigurationNotFoundError: Object Lock configuration does not exist for this bucket)"
+      "message": "OK"
     },
     {
       "operation": "GetObjectRetention",
@@ -458,7 +458,7 @@
     {
       "operation": "PutBucketReplication",
       "status": "working",
-      "message": "likely implemented (InvalidRequest: Versioning must be 'Enabled' on the source bucket)"
+      "message": "OK"
     },
     {
       "operation": "PutBucketRequestPayment",
@@ -487,8 +487,8 @@
     },
     {
       "operation": "PutObjectAcl",
-      "status": "working",
-      "message": "OK"
+      "status": "not_implemented",
+      "message": "not implemented (NotImplemented)"
     },
     {
       "operation": "PutObjectLegalHold",
@@ -503,7 +503,7 @@
     {
       "operation": "PutObjectRetention",
       "status": "working",
-      "message": "likely implemented (InvalidRequest: Bucket is missing Object Lock Configuration)"
+      "message": "OK"
     },
     {
       "operation": "PutObjectTagging",
@@ -528,7 +528,7 @@
     {
       "operation": "SelectObjectContent",
       "status": "working",
-      "message": "likely implemented (InvalidRequest: Only SQL expressions are supported)"
+      "message": "likely implemented (UnsupportedSQLOperation: The provided SQL expression is not supported)"
     },
     {
       "operation": "UpdateBucketMetadataInventoryTableConfiguration",
@@ -542,8 +542,8 @@
     },
     {
       "operation": "UpdateObjectEncryption",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UploadPart",
@@ -552,8 +552,8 @@
     },
     {
       "operation": "UploadPartCopy",
-      "status": "working",
-      "message": "likely implemented (NoSuchUpload: The specified multipart upload does not exist (upload might )"
+      "status": "not_implemented",
+      "message": "not implemented (NotImplemented)"
     },
     {
       "operation": "WriteGetObjectResponse",

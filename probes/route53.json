@@ -1,10 +1,10 @@
 {
   "service": "route53",
-  "generated_at": "2026-10-21T07:08:02.855133+00:00",
+  "generated_at": "2026-10-22T04:31:13.717960+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 68,
-    "needs_params": 3,
+    "working": 71,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -22,18 +22,18 @@
     },
     {
       "operation": "ChangeCidrCollection",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (NoSuchCidrCollectionException: The CIDR collection with ID probe-id-id does not exist.)"
     },
     {
       "operation": "ChangeResourceRecordSets",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (NoSuchHostedZone)"
     },
     {
       "operation": "ChangeTagsForResource",
       "status": "working",
-      "message": "implemented (InvalidInput)"
+      "message": "OK"
     },
     {
       "operation": "CreateCidrCollection",
@@ -43,7 +43,7 @@
     {
       "operation": "CreateHealthCheck",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreateHostedZone",
@@ -78,7 +78,7 @@
     {
       "operation": "CreateTrafficPolicyVersion",
       "status": "working",
-      "message": "likely implemented (NoSuchTrafficPolicy: No traffic policy found with ID probe-test-value)"
+      "message": "likely implemented (NoSuchTrafficPolicy: No traffic policy found with ID probe-id-id)"
     },
     {
       "operation": "CreateVPCAssociationAuthorization",
@@ -93,7 +93,7 @@
     {
       "operation": "DeleteCidrCollection",
       "status": "working",
-      "message": "likely implemented (NoSuchCidrCollectionException: The CIDR collection with ID probe-test-value does not exist.)"
+      "message": "likely implemented (NoSuchCidrCollectionException: The CIDR collection with ID probe-id-id does not exist.)"
     },
     {
       "operation": "DeleteHealthCheck",
@@ -118,17 +118,17 @@
     {
       "operation": "DeleteReusableDelegationSet",
       "status": "working",
-      "message": "likely implemented (NoSuchDelegationSet: probe-test-value)"
+      "message": "likely implemented (NoSuchDelegationSet: probe-id-id)"
     },
     {
       "operation": "DeleteTrafficPolicy",
       "status": "working",
-      "message": "likely implemented (NoSuchTrafficPolicy: No traffic policy found with ID probe-test-value)"
+      "message": "likely implemented (NoSuchTrafficPolicy: No traffic policy found with ID probe-id-id)"
     },
     {
       "operation": "DeleteTrafficPolicyInstance",
       "status": "working",
-      "message": "likely implemented (NoSuchTrafficPolicyInstance: No traffic policy instance found with ID probe-test-value)"
+      "message": "likely implemented (NoSuchTrafficPolicyInstance: No traffic policy instance found with ID probe-id-id)"
     },
     {
       "operation": "DeleteVPCAssociationAuthorization",
@@ -178,7 +178,7 @@
     {
       "operation": "GetHealthCheck",
       "status": "working",
-      "message": "likely implemented (NoSuchHealthCheck: A health check with id probe-test-value does not exist.)"
+      "message": "likely implemented (NoSuchHealthCheck: A health check with id probe-health-check-id-id does not exi)"
     },
     {
       "operation": "GetHealthCheckCount",
@@ -188,12 +188,12 @@
     {
       "operation": "GetHealthCheckLastFailureReason",
       "status": "working",
-      "message": "likely implemented (NoSuchHealthCheck: A health check with id probe-test-value does not exist.)"
+      "message": "likely implemented (NoSuchHealthCheck: A health check with id probe-health-check-id-id does not exi)"
     },
     {
       "operation": "GetHealthCheckStatus",
       "status": "working",
-      "message": "likely implemented (NoSuchHealthCheck: A health check with id probe-test-value does not exist.)"
+      "message": "likely implemented (NoSuchHealthCheck: A health check with id probe-health-check-id-id does not exi)"
     },
     {
       "operation": "GetHostedZone",
@@ -218,22 +218,22 @@
     {
       "operation": "GetReusableDelegationSet",
       "status": "working",
-      "message": "likely implemented (NoSuchDelegationSet: probe-test-value)"
+      "message": "likely implemented (NoSuchDelegationSet: probe-id-id)"
     },
     {
       "operation": "GetReusableDelegationSetLimit",
       "status": "working",
-      "message": "likely implemented (NoSuchDelegationSet: probe-test-value)"
+      "message": "likely implemented (NoSuchDelegationSet: probe-delegation-set-id-id)"
     },
     {
       "operation": "GetTrafficPolicy",
       "status": "working",
-      "message": "likely implemented (NoSuchTrafficPolicy: No traffic policy found with ID probe-test-value)"
+      "message": "likely implemented (NoSuchTrafficPolicy: No traffic policy found with ID probe-id-id)"
     },
     {
       "operation": "GetTrafficPolicyInstance",
       "status": "working",
-      "message": "likely implemented (NoSuchTrafficPolicyInstance: No traffic policy instance found with ID probe-test-value)"
+      "message": "likely implemented (NoSuchTrafficPolicyInstance: No traffic policy instance found with ID probe-id-id)"
     },
     {
       "operation": "GetTrafficPolicyInstanceCount",
@@ -243,7 +243,7 @@
     {
       "operation": "ListCidrBlocks",
       "status": "working",
-      "message": "likely implemented (NoSuchCidrCollectionException: The CIDR collection with ID probe-test-value does not exist.)"
+      "message": "likely implemented (NoSuchCidrCollectionException: The CIDR collection with ID probe-collection-id-id does not )"
     },
     {
       "operation": "ListCidrCollections",
@@ -253,7 +253,7 @@
     {
       "operation": "ListCidrLocations",
       "status": "working",
-      "message": "likely implemented (NoSuchCidrCollectionException: The CIDR collection with ID probe-test-value does not exist.)"
+      "message": "likely implemented (NoSuchCidrCollectionException: The CIDR collection with ID probe-collection-id-id does not )"
     },
     {
       "operation": "ListGeoLocations",
@@ -302,8 +302,8 @@
     },
     {
       "operation": "ListTagsForResources",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListTrafficPolicies",
@@ -328,7 +328,7 @@
     {
       "operation": "ListTrafficPolicyVersions",
       "status": "working",
-      "message": "likely implemented (NoSuchTrafficPolicy: No traffic policy found with ID probe-test-value)"
+      "message": "likely implemented (NoSuchTrafficPolicy: No traffic policy found with ID probe-id-id)"
     },
     {
       "operation": "ListVPCAssociationAuthorizations",
@@ -343,7 +343,7 @@
     {
       "operation": "UpdateHealthCheck",
       "status": "working",
-      "message": "implemented (InvalidInput)"
+      "message": "implemented via required-only (InvalidInput)"
     },
     {
       "operation": "UpdateHostedZoneComment",
@@ -358,12 +358,12 @@
     {
       "operation": "UpdateTrafficPolicyComment",
       "status": "working",
-      "message": "likely implemented (NoSuchTrafficPolicy: No traffic policy found with ID probe-test-value)"
+      "message": "likely implemented (NoSuchTrafficPolicy: No traffic policy found with ID probe-id-id)"
     },
     {
       "operation": "UpdateTrafficPolicyInstance",
       "status": "working",
-      "message": "likely implemented (NoSuchTrafficPolicyInstance: No traffic policy instance found with ID probe-test-value)"
+      "message": "likely implemented (NoSuchTrafficPolicyInstance: No traffic policy instance found with ID probe-id-id)"
     }
   ]
 }

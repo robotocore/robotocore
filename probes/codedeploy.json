@@ -1,6 +1,6 @@
 {
   "service": "codedeploy",
-  "generated_at": "2026-10-21T07:05:55.123817+00:00",
+  "generated_at": "2026-10-22T04:28:57.847638+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 47,
@@ -23,7 +23,7 @@
     {
       "operation": "BatchGetApplications",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ApplicationDoesNotExistException: The application probe-test-value does not exist with the use)"
     },
     {
       "operation": "BatchGetDeploymentGroups",
@@ -33,12 +33,12 @@
     {
       "operation": "BatchGetDeploymentInstances",
       "status": "working",
-      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-test-value does not exist with the user)"
+      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-deployment-id-id does not exist with th)"
     },
     {
       "operation": "BatchGetDeploymentTargets",
       "status": "working",
-      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-test-value does not exist with the user)"
+      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-deployment-id-id does not exist with th)"
     },
     {
       "operation": "BatchGetDeployments",
@@ -53,7 +53,7 @@
     {
       "operation": "ContinueDeployment",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-deployment-id-id does not exist with th)"
     },
     {
       "operation": "CreateApplication",
@@ -63,7 +63,7 @@
     {
       "operation": "CreateDeployment",
       "status": "working",
-      "message": "likely implemented (DeploymentGroupNameRequiredException: Deployment group name is required.)"
+      "message": "likely implemented (DeploymentGroupDoesNotExistException: The deployment group Deployment group name does not exist. d)"
     },
     {
       "operation": "CreateDeploymentConfig",
@@ -118,7 +118,7 @@
     {
       "operation": "GetDeployment",
       "status": "working",
-      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-test-value does not exist with the user)"
+      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-deployment-id-id does not exist with th)"
     },
     {
       "operation": "GetDeploymentConfig",
@@ -133,12 +133,12 @@
     {
       "operation": "GetDeploymentInstance",
       "status": "working",
-      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-test-value does not exist with the user)"
+      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-deployment-id-id does not exist with th)"
     },
     {
       "operation": "GetDeploymentTarget",
       "status": "working",
-      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-test-value does not exist with the user)"
+      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-deployment-id-id does not exist with th)"
     },
     {
       "operation": "GetOnPremisesInstance",
@@ -168,12 +168,12 @@
     {
       "operation": "ListDeploymentInstances",
       "status": "working",
-      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-test-value does not exist with the user)"
+      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-deployment-id-id does not exist with th)"
     },
     {
       "operation": "ListDeploymentTargets",
       "status": "working",
-      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-test-value does not exist with the user)"
+      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-deployment-id-id does not exist with th)"
     },
     {
       "operation": "ListDeployments",
@@ -198,7 +198,7 @@
     {
       "operation": "PutLifecycleEventHookExecutionStatus",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-deployment-id-id does not exist with th)"
     },
     {
       "operation": "RegisterApplicationRevision",
@@ -218,12 +218,12 @@
     {
       "operation": "SkipWaitTimeForInstanceTermination",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-deployment-id-id does not exist with th)"
     },
     {
       "operation": "StopDeployment",
       "status": "working",
-      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-test-value does not exist with the user)"
+      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-deployment-id-id does not exist with th)"
     },
     {
       "operation": "TagResource",
@@ -238,7 +238,7 @@
     {
       "operation": "UpdateApplication",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ApplicationDoesNotExistException: The application probe-test-value does not exist with the use)"
     },
     {
       "operation": "UpdateDeploymentGroup",

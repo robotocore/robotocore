@@ -1,6 +1,6 @@
 {
   "service": "route53domains",
-  "generated_at": "2026-10-21T07:08:03.238553+00:00",
+  "generated_at": "2026-10-22T04:31:14.180939+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 34,
@@ -93,12 +93,12 @@
     {
       "operation": "ListDomains",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (InvalidInput)"
     },
     {
       "operation": "ListOperations",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
     },
     {
       "operation": "ListPrices",

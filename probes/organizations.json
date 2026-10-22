@@ -1,6 +1,6 @@
 {
   "service": "organizations",
-  "generated_at": "2026-10-21T07:07:43.236196+00:00",
+  "generated_at": "2026-10-22T04:30:48.383817+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 53,
@@ -53,7 +53,7 @@
     {
       "operation": "CreatePolicy",
       "status": "working",
-      "message": "likely implemented (InvalidInputException: You specified an invalid value.)"
+      "message": "OK"
     },
     {
       "operation": "DeclineHandshake",
@@ -98,7 +98,7 @@
     {
       "operation": "DescribeEffectivePolicy",
       "status": "working",
-      "message": "likely implemented (InvalidInputException: You specified an invalid value.)"
+      "message": "OK"
     },
     {
       "operation": "DescribeHandshake",
@@ -158,7 +158,7 @@
     {
       "operation": "EnablePolicyType",
       "status": "working",
-      "message": "likely implemented (InvalidInputException: You specified an invalid value.)"
+      "message": "likely implemented (AWSOrganizationsNotInUseException: Your account is not a member of an organization.)"
     },
     {
       "operation": "InviteAccountToOrganization",
@@ -253,12 +253,12 @@
     {
       "operation": "ListPolicies",
       "status": "working",
-      "message": "likely implemented (InvalidInputException: You specified an invalid value.)"
+      "message": "OK"
     },
     {
       "operation": "ListPoliciesForTarget",
       "status": "working",
-      "message": "likely implemented (InvalidInputException: You specified an invalid value.)"
+      "message": "likely implemented (TargetNotFoundException: You specified a target that doesn't exist.)"
     },
     {
       "operation": "ListRoots",

@@ -1,6 +1,6 @@
 {
   "service": "vpclattice",
-  "generated_at": "2026-10-21T07:08:36.440440+00:00",
+  "generated_at": "2026-10-22T04:31:58.813376+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 23,
@@ -28,7 +28,7 @@
     {
       "operation": "CreateResourceConfiguration",
       "status": "working",
-      "message": "likely implemented (404: )"
+      "message": "implemented via required-only (404)"
     },
     {
       "operation": "CreateResourceGateway",
@@ -108,7 +108,7 @@
     {
       "operation": "DeleteResourcePolicy",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteRule",
@@ -238,7 +238,7 @@
     {
       "operation": "ListResourceConfigurations",
       "status": "working",
-      "message": "likely implemented (404: )"
+      "message": "implemented via required-only (404)"
     },
     {
       "operation": "ListResourceEndpointAssociations",
@@ -258,12 +258,12 @@
     {
       "operation": "ListServiceNetworkResourceAssociations",
       "status": "working",
-      "message": "likely implemented (404: )"
+      "message": "implemented via required-only (404)"
     },
     {
       "operation": "ListServiceNetworkServiceAssociations",
       "status": "working",
-      "message": "likely implemented (404: )"
+      "message": "implemented via required-only (404)"
     },
     {
       "operation": "ListServiceNetworkVpcAssociations",

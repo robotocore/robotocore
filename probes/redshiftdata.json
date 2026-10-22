@@ -1,19 +1,19 @@
 {
   "service": "redshiftdata",
-  "generated_at": "2026-10-21T07:07:59.596806+00:00",
+  "generated_at": "2026-10-22T04:31:09.569502+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 4,
-    "needs_params": 1,
-    "not_implemented": 6,
+    "needs_params": 0,
+    "not_implemented": 7,
     "500_error": 0,
     "timeout": 0
   },
   "operations": [
     {
       "operation": "BatchExecuteStatement",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "CancelStatement",

@@ -1,10 +1,10 @@
 {
   "service": "bedrock",
-  "generated_at": "2026-10-21T07:05:43.934946+00:00",
+  "generated_at": "2026-10-22T04:28:44.170147+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 87,
-    "needs_params": 11,
+    "working": 95,
+    "needs_params": 3,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -12,8 +12,8 @@
   "operations": [
     {
       "operation": "BatchDeleteEvaluationJob",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CancelAutomatedReasoningPolicyBuildWorkflow",
@@ -23,7 +23,7 @@
     {
       "operation": "CreateAutomatedReasoningPolicy",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreateAutomatedReasoningPolicyTestCase",
@@ -37,8 +37,8 @@
     },
     {
       "operation": "CreateCustomModel",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateCustomModelDeployment",
@@ -67,13 +67,13 @@
     },
     {
       "operation": "CreateInferenceProfile",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateMarketplaceModelEndpoint",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateModelCopyJob",
@@ -83,22 +83,22 @@
     {
       "operation": "CreateModelCustomizationJob",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "implemented via required-only (ResourceInUseException)"
     },
     {
       "operation": "CreateModelImportJob",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateModelInvocationJob",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreatePromptRouter",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateProvisionedModelThroughput",
@@ -123,7 +123,7 @@
     {
       "operation": "DeleteCustomModel",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteCustomModelDeployment",
@@ -148,12 +148,12 @@
     {
       "operation": "DeleteImportedModel",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteInferenceProfile",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteMarketplaceModelEndpoint",
@@ -173,7 +173,7 @@
     {
       "operation": "DeleteProvisionedModelThroughput",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeregisterMarketplaceModelEndpoint",
@@ -278,12 +278,12 @@
     {
       "operation": "GetModelImportJob",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "GetModelInvocationJob",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "GetModelInvocationLoggingConfiguration",
@@ -358,7 +358,7 @@
     {
       "operation": "ListGuardrails",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListImportedModels",
@@ -453,7 +453,7 @@
     {
       "operation": "StopModelInvocationJob",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "TagResource",
@@ -468,7 +468,7 @@
     {
       "operation": "UpdateAutomatedReasoningPolicy",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateAutomatedReasoningPolicyAnnotations",
@@ -492,8 +492,8 @@
     },
     {
       "operation": "UpdateMarketplaceModelEndpoint",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateProvisionedModelThroughput",

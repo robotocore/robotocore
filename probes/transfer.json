@@ -1,10 +1,10 @@
 {
   "service": "transfer",
-  "generated_at": "2026-10-21T07:08:35.388695+00:00",
+  "generated_at": "2026-10-22T04:31:56.684176+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 13,
-    "needs_params": 58,
+    "working": 35,
+    "needs_params": 36,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -22,13 +22,13 @@
     },
     {
       "operation": "CreateConnector",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreateProfile",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreateServer",
@@ -42,8 +42,8 @@
     },
     {
       "operation": "CreateWebApp",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateWorkflow",
@@ -62,13 +62,13 @@
     },
     {
       "operation": "DeleteCertificate",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteConnector",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteHostKey",
@@ -77,8 +77,8 @@
     },
     {
       "operation": "DeleteProfile",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteServer",
@@ -107,8 +107,8 @@
     },
     {
       "operation": "DeleteWorkflow",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeAccess",
@@ -122,13 +122,13 @@
     },
     {
       "operation": "DescribeCertificate",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeConnector",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeExecution",
@@ -142,8 +142,8 @@
     },
     {
       "operation": "DescribeProfile",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeSecurityPolicy",
@@ -172,8 +172,8 @@
     },
     {
       "operation": "DescribeWorkflow",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ImportCertificate",
@@ -212,13 +212,13 @@
     },
     {
       "operation": "ListExecutions",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListFileTransferResults",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListHostKeys",
@@ -267,23 +267,23 @@
     },
     {
       "operation": "StartDirectoryListing",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "StartFileTransfer",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "StartRemoteDelete",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "StartRemoteMove",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "StartServer",
@@ -297,13 +297,13 @@
     },
     {
       "operation": "TagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "TestConnection",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "TestIdentityProvider",
@@ -312,8 +312,8 @@
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateAccess",
@@ -327,13 +327,13 @@
     },
     {
       "operation": "UpdateCertificate",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateConnector",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateHostKey",
@@ -342,8 +342,8 @@
     },
     {
       "operation": "UpdateProfile",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateServer",

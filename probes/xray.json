@@ -1,10 +1,10 @@
 {
   "service": "xray",
-  "generated_at": "2026-10-21T07:08:39.634976+00:00",
+  "generated_at": "2026-10-22T04:32:02.684306+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 36,
-    "needs_params": 2,
+    "working": 37,
+    "needs_params": 1,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -27,8 +27,8 @@
     },
     {
       "operation": "CreateSamplingRule",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteGroup",
@@ -38,7 +38,7 @@
     {
       "operation": "DeleteResourcePolicy",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidPolicyRevisionIdException: The provided policy revision id does not match.)"
     },
     {
       "operation": "DeleteSamplingRule",
@@ -102,8 +102,8 @@
     },
     {
       "operation": "GetSamplingTargets",
-      "status": "working",
-      "message": "OK"
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
     },
     {
       "operation": "GetServiceGraph",
@@ -187,8 +187,8 @@
     },
     {
       "operation": "UpdateIndexingRule",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
     },
     {
       "operation": "UpdateSamplingRule",

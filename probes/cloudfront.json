@@ -1,10 +1,10 @@
 {
   "service": "cloudfront",
-  "generated_at": "2026-10-21T07:05:51.152015+00:00",
+  "generated_at": "2026-10-22T04:28:53.244089+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 161,
-    "needs_params": 5,
+    "working": 166,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -62,8 +62,8 @@
     },
     {
       "operation": "CreateDistribution",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (NoSuchOrigin: One or more of your origins or origin groups do not exist.)"
     },
     {
       "operation": "CreateDistributionTenant",
@@ -72,8 +72,8 @@
     },
     {
       "operation": "CreateDistributionWithTags",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (NoSuchOrigin: One or more of your origins or origin groups do not exist.)"
     },
     {
       "operation": "CreateFieldLevelEncryptionConfig",
@@ -88,7 +88,7 @@
     {
       "operation": "CreateFunction",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (FunctionAlreadyExists: A function with the same name already exists.)"
     },
     {
       "operation": "CreateInvalidation",
@@ -152,8 +152,8 @@
     },
     {
       "operation": "CreateTrustStore",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateVpcOrigin",
@@ -193,7 +193,7 @@
     {
       "operation": "DeleteDistribution",
       "status": "working",
-      "message": "likely implemented (InvalidIfMatchVersion: The If-Match version is missing or not valid for the resourc)"
+      "message": "likely implemented (NoSuchDistribution: The specified distribution does not exist.)"
     },
     {
       "operation": "DeleteDistributionTenant",
@@ -243,7 +243,7 @@
     {
       "operation": "DeleteRealtimeLogConfig",
       "status": "working",
-      "message": "likely implemented (NoSuchRealtimeLogConfig: The specified real-time log configuration does not exist.)"
+      "message": "OK"
     },
     {
       "operation": "DeleteResourcePolicy",
@@ -273,7 +273,7 @@
     {
       "operation": "DescribeConnectionFunction",
       "status": "working",
-      "message": "likely implemented (NoSuchResource: The connection function probe-test-value does not exist.)"
+      "message": "OK"
     },
     {
       "operation": "DescribeFunction",
@@ -298,7 +298,7 @@
     {
       "operation": "GetAnycastIpList",
       "status": "working",
-      "message": "likely implemented (NoSuchResource: The anycast IP list probe-test-value does not exist.)"
+      "message": "likely implemented (NoSuchResource: The anycast IP list probe-id-id does not exist.)"
     },
     {
       "operation": "GetCachePolicy",
@@ -323,7 +323,7 @@
     {
       "operation": "GetConnectionFunction",
       "status": "working",
-      "message": "likely implemented (NoSuchResource: The connection function probe-test-value does not exist.)"
+      "message": "OK"
     },
     {
       "operation": "GetConnectionGroup",
@@ -488,7 +488,7 @@
     {
       "operation": "GetVpcOrigin",
       "status": "working",
-      "message": "likely implemented (NoSuchResource: The VPC origin probe-test-value does not exist.)"
+      "message": "likely implemented (NoSuchResource: The VPC origin probe-id-id does not exist.)"
     },
     {
       "operation": "ListAnycastIpLists",
@@ -688,7 +688,7 @@
     {
       "operation": "PublishConnectionFunction",
       "status": "working",
-      "message": "likely implemented (NoSuchResource: The connection function probe-test-value does not exist.)"
+      "message": "likely implemented (NoSuchResource: The connection function probe-id-id does not exist.)"
     },
     {
       "operation": "PublishFunction",
@@ -723,7 +723,7 @@
     {
       "operation": "UpdateAnycastIpList",
       "status": "working",
-      "message": "likely implemented (NoSuchResource: The anycast IP list probe-test-value does not exist.)"
+      "message": "likely implemented (NoSuchResource: The anycast IP list probe-id-id does not exist.)"
     },
     {
       "operation": "UpdateCachePolicy",
@@ -738,12 +738,12 @@
     {
       "operation": "UpdateConnectionFunction",
       "status": "working",
-      "message": "likely implemented (NoSuchResource: The connection function probe-test-value does not exist.)"
+      "message": "likely implemented (NoSuchResource: The connection function probe-id-id does not exist.)"
     },
     {
       "operation": "UpdateConnectionGroup",
       "status": "working",
-      "message": "likely implemented (NoSuchResource: The connection group probe-test-value does not exist.)"
+      "message": "likely implemented (NoSuchResource: The connection group probe-id-id does not exist.)"
     },
     {
       "operation": "UpdateContinuousDeploymentPolicy",
@@ -752,13 +752,13 @@
     },
     {
       "operation": "UpdateDistribution",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (InvalidIfMatchVersion: The If-Match version is missing or not valid for the resourc)"
     },
     {
       "operation": "UpdateDistributionTenant",
       "status": "working",
-      "message": "likely implemented (NoSuchResource: The distribution tenant probe-test-value does not exist.)"
+      "message": "likely implemented (NoSuchResource: The distribution tenant probe-id-id does not exist.)"
     },
     {
       "operation": "UpdateDistributionWithStagingConfig",
@@ -827,13 +827,13 @@
     },
     {
       "operation": "UpdateTrustStore",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (NoSuchResource: The trust store probe-id-id does not exist.)"
     },
     {
       "operation": "UpdateVpcOrigin",
       "status": "working",
-      "message": "likely implemented (NoSuchResource: The VPC origin probe-test-value does not exist.)"
+      "message": "likely implemented (NoSuchResource: The VPC origin probe-id-id does not exist.)"
     },
     {
       "operation": "VerifyDnsConfiguration",

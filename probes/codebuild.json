@@ -1,10 +1,10 @@
 {
   "service": "codebuild",
-  "generated_at": "2026-10-21T07:05:53.411742+00:00",
+  "generated_at": "2026-10-22T04:28:56.042448+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 52,
-    "needs_params": 7,
+    "working": 59,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -12,48 +12,48 @@
   "operations": [
     {
       "operation": "BatchDeleteBuilds",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchGetBuildBatches",
       "status": "working",
-      "message": "likely implemented (InvalidInputException: Build batch IDs are required)"
+      "message": "OK"
     },
     {
       "operation": "BatchGetBuilds",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (InvalidInputException: Invalid build ID provided)"
     },
     {
       "operation": "BatchGetCommandExecutions",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchGetFleets",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchGetProjects",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchGetReportGroups",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchGetReports",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchGetSandboxes",
       "status": "working",
-      "message": "likely implemented (InvalidInputException: Sandbox IDs are required)"
+      "message": "OK"
     },
     {
       "operation": "CreateFleet",
@@ -63,12 +63,12 @@
     {
       "operation": "CreateProject",
       "status": "working",
-      "message": "likely implemented (InvalidInputException: Invalid type provided: Project source type)"
+      "message": "likely implemented (InvalidInputException: Invalid service role: Service role account ID does not match)"
     },
     {
       "operation": "CreateReportGroup",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceAlreadyExistsException: Report group already exists: probe-test-value)"
     },
     {
       "operation": "CreateWebhook",
@@ -103,7 +103,7 @@
     {
       "operation": "DeleteResourcePolicy",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteSourceCredentials",
@@ -138,7 +138,7 @@
     {
       "operation": "ImportSourceCredentials",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceAlreadyExistsException: Source credentials for type GITHUB already exist)"
     },
     {
       "operation": "InvalidateProjectCache",
@@ -153,7 +153,7 @@
     {
       "operation": "ListBuildBatchesForProject",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListBuilds",
@@ -233,12 +233,12 @@
     {
       "operation": "RetryBuild",
       "status": "working",
-      "message": "likely implemented (InvalidInputException: Build ID is required)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "RetryBuildBatch",
       "status": "working",
-      "message": "likely implemented (InvalidInputException: Build batch ID is required)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "StartBuild",
@@ -288,7 +288,7 @@
     {
       "operation": "UpdateProject",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "likely implemented (InvalidInputException: Invalid service role: Service role account ID does not match)"
     },
     {
       "operation": "UpdateProjectVisibility",

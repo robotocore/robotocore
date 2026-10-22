@@ -1,6 +1,6 @@
 {
   "service": "mediapackagev2",
-  "generated_at": "2026-10-21T07:07:36.742286+00:00",
+  "generated_at": "2026-10-22T04:30:40.112290+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 30,
@@ -33,7 +33,7 @@
     {
       "operation": "CreateOriginEndpoint",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteChannel",
@@ -93,7 +93,7 @@
     {
       "operation": "ListChannelGroups",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
     },
     {
       "operation": "ListChannels",
@@ -158,7 +158,7 @@
     {
       "operation": "UpdateOriginEndpoint",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented via required-only (ResourceNotFoundException)"
     }
   ]
 }

@@ -1,10 +1,10 @@
 {
   "service": "kinesisanalyticsv2",
-  "generated_at": "2026-10-21T07:07:24.869911+00:00",
+  "generated_at": "2026-10-22T04:30:24.704984+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 28,
-    "needs_params": 5,
+    "working": 33,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -17,8 +17,8 @@
     },
     {
       "operation": "AddApplicationInput",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "AddApplicationInputProcessingConfiguration",
@@ -32,13 +32,13 @@
     },
     {
       "operation": "AddApplicationReferenceDataSource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "AddApplicationVpcConfiguration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateApplication",
@@ -157,13 +157,13 @@
     },
     {
       "operation": "TagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateApplication",

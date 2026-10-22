@@ -1,10 +1,10 @@
 {
   "service": "dynamodb",
-  "generated_at": "2026-10-21T07:06:17.645534+00:00",
+  "generated_at": "2026-10-22T04:29:28.714866+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 51,
-    "needs_params": 5,
+    "working": 56,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -12,33 +12,33 @@
   "operations": [
     {
       "operation": "BatchExecuteStatement",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "BatchGetItem",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "BatchWriteItem",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateBackup",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "CreateGlobalTable",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (GlobalTableAlreadyExistsException: Global table with name 'probe-table-name' already exists)"
     },
     {
       "operation": "CreateTable",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceInUseException: Table already exists: probe-table-name)"
     },
     {
       "operation": "DeleteBackup",
@@ -48,7 +48,7 @@
     {
       "operation": "DeleteItem",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "DeleteResourcePolicy",
@@ -68,7 +68,7 @@
     {
       "operation": "DescribeContributorInsights",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeEndpoints",
@@ -137,8 +137,8 @@
     },
     {
       "operation": "ExecuteTransaction",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "ExportTableToPointInTime",
@@ -148,7 +148,7 @@
     {
       "operation": "GetItem",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "GetResourcePolicy",
@@ -157,8 +157,8 @@
     },
     {
       "operation": "ImportTable",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListBackups",
@@ -183,7 +183,7 @@
     {
       "operation": "ListImports",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "ListTables",
@@ -198,7 +198,7 @@
     {
       "operation": "PutItem",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "PutResourcePolicy",
@@ -218,7 +218,7 @@
     {
       "operation": "RestoreTableToPointInTime",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "likely implemented (ResourceAlreadyExistsException: Table already exists: probe-table-name)"
     },
     {
       "operation": "Scan",
@@ -232,13 +232,13 @@
     },
     {
       "operation": "TransactGetItems",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "TransactWriteItems",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "UntagResource",
@@ -253,12 +253,12 @@
     {
       "operation": "UpdateContributorInsights",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "UpdateGlobalTable",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ReplicaAlreadyExistsException: Replica already exists in region 'probe-test-value')"
     },
     {
       "operation": "UpdateGlobalTableSettings",
@@ -268,7 +268,7 @@
     {
       "operation": "UpdateItem",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "UpdateKinesisStreamingDestination",

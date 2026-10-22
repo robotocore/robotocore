@@ -1,6 +1,6 @@
 {
   "service": "sagemaker-runtime",
-  "generated_at": "2026-10-21T07:08:20.306740+00:00",
+  "generated_at": "2026-10-22T04:31:35.848992+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 2,

@@ -1,12 +1,12 @@
 {
   "service": "connect",
-  "generated_at": "2026-10-21T07:27:08.726108+00:00",
+  "generated_at": "2026-10-22T04:29:20.236862+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 210,
-    "needs_params": 22,
-    "not_implemented": 133,
-    "500_error": 1,
+    "working": 215,
+    "needs_params": 3,
+    "not_implemented": 148,
+    "500_error": 0,
     "timeout": 0
   },
   "operations": [
@@ -77,13 +77,13 @@
     },
     {
       "operation": "AssociateQueueEmailAddresses",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "AssociateQueueQuickConnects",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "AssociateRoutingProfileQueues",
@@ -97,8 +97,8 @@
     },
     {
       "operation": "AssociateSecurityProfiles",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "AssociateTrafficDistributionGroupUser",
@@ -112,8 +112,8 @@
     },
     {
       "operation": "AssociateWorkspace",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "BatchAssociateAnalyticsDataSet",
@@ -122,8 +122,8 @@
     },
     {
       "operation": "BatchCreateDataTableValue",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "BatchDeleteDataTableValue",
@@ -142,23 +142,23 @@
     },
     {
       "operation": "BatchGetAttachedFileMetadata",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "BatchGetFlowAssociation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "BatchPutContact",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "BatchUpdateDataTableValue",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "ClaimPhoneNumber",
@@ -222,8 +222,8 @@
     },
     {
       "operation": "CreateEvaluationForm",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
     },
     {
       "operation": "CreateHoursOfOperation",
@@ -322,8 +322,8 @@
     },
     {
       "operation": "CreateUser",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateUserHierarchyGroup",
@@ -727,8 +727,8 @@
     },
     {
       "operation": "DisassociateHoursOfOperations",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "DisassociateInstanceStorageConfig",
@@ -752,13 +752,13 @@
     },
     {
       "operation": "DisassociateQueueEmailAddresses",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "DisassociateQueueQuickConnects",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DisassociateRoutingProfileQueues",
@@ -772,8 +772,8 @@
     },
     {
       "operation": "DisassociateSecurityProfiles",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "DisassociateTrafficDistributionGroupUser",
@@ -787,8 +787,8 @@
     },
     {
       "operation": "DisassociateWorkspace",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "DismissUserContact",
@@ -812,8 +812,8 @@
     },
     {
       "operation": "GetContactMetrics",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "GetCurrentMetricData",
@@ -847,8 +847,8 @@
     },
     {
       "operation": "GetMetricDataV2",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "GetPromptFile",
@@ -1023,7 +1023,7 @@
     {
       "operation": "ListInstances",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid token)"
     },
     {
       "operation": "ListIntegrationAssociations",
@@ -1262,8 +1262,8 @@
     },
     {
       "operation": "SearchAvailablePhoneNumbers",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'TargetArn')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "SearchContactEvaluations",
@@ -1517,13 +1517,13 @@
     },
     {
       "operation": "UntagContact",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateAgentStatus",
@@ -1548,7 +1548,7 @@
     {
       "operation": "UpdateContactEvaluation",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateContactFlowContent",
@@ -1612,8 +1612,8 @@
     },
     {
       "operation": "UpdateEvaluationForm",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
     },
     {
       "operation": "UpdateHoursOfOperation",
@@ -1732,8 +1732,8 @@
     },
     {
       "operation": "UpdateRoutingProfileQueues",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateRule",
@@ -1807,8 +1807,8 @@
     },
     {
       "operation": "UpdateUserSecurityProfiles",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateViewContent",

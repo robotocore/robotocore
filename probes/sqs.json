@@ -1,6 +1,6 @@
 {
   "service": "sqs",
-  "generated_at": "2026-10-21T07:08:28.017313+00:00",
+  "generated_at": "2026-10-22T04:31:46.487883+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 21,
@@ -28,7 +28,7 @@
     {
       "operation": "ChangeMessageVisibilityBatch",
       "status": "working",
-      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/probe does not exist)"
+      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/123456789012/probe-queue does no)"
     },
     {
       "operation": "CreateQueue",
@@ -38,17 +38,17 @@
     {
       "operation": "DeleteMessage",
       "status": "working",
-      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/probe does not exist)"
+      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/123456789012/probe-queue does no)"
     },
     {
       "operation": "DeleteMessageBatch",
       "status": "working",
-      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/probe does not exist)"
+      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/123456789012/probe-queue does no)"
     },
     {
       "operation": "GetQueueAttributes",
       "status": "working",
-      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/probe does not exist)"
+      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/123456789012/probe-queue does no)"
     },
     {
       "operation": "GetQueueUrl",
@@ -78,7 +78,7 @@
     {
       "operation": "ReceiveMessage",
       "status": "working",
-      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/probe does not exist)"
+      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/123456789012/probe-queue does no)"
     },
     {
       "operation": "RemovePermission",
@@ -88,12 +88,12 @@
     {
       "operation": "SendMessage",
       "status": "working",
-      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/probe does not exist)"
+      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/123456789012/probe-queue does no)"
     },
     {
       "operation": "SendMessageBatch",
       "status": "working",
-      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/probe does not exist)"
+      "message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/123456789012/probe-queue does no)"
     },
     {
       "operation": "SetQueueAttributes",

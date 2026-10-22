@@ -106,6 +106,7 @@ IMPLEMENTED_ERROR_CODES = {
 # Keep private aliases for backward compatibility with any callers
 _to_snake_case = to_snake_case
 _auto_fill_params = auto_fill_params
+from scripts.lib.param_filler import get_required_params  # noqa: E402
 
 
 def probe_operation(
@@ -116,6 +117,10 @@ def probe_operation(
     Returns (status, message) where status is one of:
       working, needs_params, not_implemented, 500_error, timeout
     """
+    if not params:
+        # No full-shape fill produced a valuable input; required-only is
+        # the stage-2 fallback (smaller surface, simpler values).
+        params = get_required_params(service_name, operation_name) or params
     try:
         method = getattr(client, _to_snake_case(operation_name))
         method(**params)
@@ -154,6 +159,41 @@ def probe_operation(
         return "working", f"likely implemented ({code}: {(msg or '')[:60]})"
 
     except botocore.exceptions.ParamValidationError:
+        # The full-shape fill produced values botocore's own validator
+        # rejected (pattern/policy constraints). Retry once with the
+        # required-only synthesis (smaller surface, fewer patterns to
+        # violate) before conceding. botocore validates client-side, so
+        # the twin was never contacted by either attempt.
+        try:
+            req_params = get_required_params(service_name, operation_name)
+        except Exception:
+            req_params = None
+        if req_params is not None:
+            try:
+                method = getattr(client, _to_snake_case(operation_name))
+                method(**req_params)
+                return "working", "OK (required-only fill)"
+            except client.exceptions.ClientError as e:
+                # de-facto: the required-only call contacted the server;
+                # fall through to the modeled ClientError analysis above.
+                code = e.response["Error"]["Code"]
+                msg2 = e.response["Error"]["Message"]
+                sc = e.response["ResponseMetadata"]["HTTPStatusCode"]
+                if sc in (400, 403, 404, 405, 409, 410):
+                    return "working", f"implemented via required-only ({code})"
+                if sc == 501:
+                    return "not_implemented", "not implemented (501)"
+                if msg2 and "not implemented" in msg2.lower():
+                    return "not_implemented", f"not implemented ({code})"
+                return "500_error", f"server crash via required-only ({code})"
+            except botocore.exceptions.ParamValidationError:
+                return "needs_params", "client-side validation (never contacted server)"
+            except (botocore.exceptions.ReadTimeoutError,
+                    botocore.exceptions.ConnectReadTimeoutError,
+                    socket.timeout):
+                return "timeout", "read timeout (required-only retry)"
+            except botocore.exceptions.EndpointConnectionError:
+                return "timeout", "endpoint unreachable (required-only retry)"
         return "needs_params", "client-side validation (never contacted server)"
     except (botocore.exceptions.ReadTimeoutError,
             botocore.exceptions.ConnectReadTimeoutError,

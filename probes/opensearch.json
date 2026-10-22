@@ -1,10 +1,10 @@
 {
   "service": "opensearch",
-  "generated_at": "2026-10-21T07:07:41.929622+00:00",
+  "generated_at": "2026-10-22T04:30:46.411271+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 77,
-    "needs_params": 5,
+    "working": 80,
+    "needs_params": 2,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -17,8 +17,8 @@
     },
     {
       "operation": "AddDataSource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "AddDirectQueryDataSource",
@@ -143,7 +143,7 @@
     {
       "operation": "DescribeDomainChangeProgress",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeDomainConfig",
@@ -168,7 +168,7 @@
     {
       "operation": "DescribeDryRunProgress",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeInboundConnections",
@@ -198,7 +198,7 @@
     {
       "operation": "DescribeReservedInstances",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "DescribeVpcEndpoints",
@@ -337,8 +337,8 @@
     },
     {
       "operation": "PurchaseReservedInstanceOffering",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutDefaultApplicationSetting",
@@ -377,8 +377,8 @@
     },
     {
       "operation": "UpdateDataSource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateDirectQueryDataSource",

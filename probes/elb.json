@@ -1,19 +1,19 @@
 {
   "service": "elb",
-  "generated_at": "2026-10-21T07:06:58.906152+00:00",
+  "generated_at": "2026-10-22T04:29:49.430198+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 16,
-    "needs_params": 4,
+    "working": 21,
+    "needs_params": 0,
     "not_implemented": 0,
-    "500_error": 9,
+    "500_error": 8,
     "timeout": 0
   },
   "operations": [
     {
       "operation": "AddTags",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (LoadBalancerNotFound: The specified load balancer does not exist: probe-test-value)"
     },
     {
       "operation": "ApplySecurityGroupsToLoadBalancer",
@@ -27,8 +27,8 @@
     },
     {
       "operation": "ConfigureHealthCheck",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "CreateAppCookieStickinessPolicy",
@@ -43,7 +43,7 @@
     {
       "operation": "CreateLoadBalancer",
       "status": "working",
-      "message": "implemented (ValidationError)"
+      "message": "OK"
     },
     {
       "operation": "CreateLoadBalancerListeners",
@@ -52,8 +52,8 @@
     },
     {
       "operation": "CreateLoadBalancerPolicy",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'policies')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteLoadBalancer",
@@ -103,12 +103,12 @@
     {
       "operation": "DescribeLoadBalancers",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (LoadBalancerNotFound: The specified load balancer does not exist: probe-test-value)"
     },
     {
       "operation": "DescribeTags",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (LoadBalancerNotFound: The specified load balancer does not exist: probe-test-value)"
     },
     {
       "operation": "DetachLoadBalancerFromSubnets",
@@ -137,8 +137,8 @@
     },
     {
       "operation": "RemoveTags",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (LoadBalancerNotFound: The specified load balancer does not exist: probe-test-value)"
     },
     {
       "operation": "SetLoadBalancerListenerSSLCertificate",

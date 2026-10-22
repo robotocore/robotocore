@@ -1,10 +1,10 @@
 {
   "service": "securityhub",
-  "generated_at": "2026-10-21T07:08:23.286456+00:00",
+  "generated_at": "2026-10-22T04:31:40.711364+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 93,
-    "needs_params": 14,
+    "working": 102,
+    "needs_params": 5,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -22,28 +22,28 @@
     },
     {
       "operation": "BatchDeleteAutomationRules",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchDisableStandards",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "BatchEnableStandards",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchGetAutomationRules",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchGetConfigurationPolicyAssociations",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "BatchGetSecurityControls",
@@ -57,13 +57,13 @@
     },
     {
       "operation": "BatchImportFindings",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchUpdateAutomationRules",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchUpdateFindings",
@@ -83,7 +83,7 @@
     {
       "operation": "CreateActionTarget",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceConflictException: The action target arn:aws:securityhub:us-east-1:123456789012)"
     },
     {
       "operation": "CreateAggregatorV2",
@@ -92,8 +92,8 @@
     },
     {
       "operation": "CreateAutomationRule",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateAutomationRuleV2",
@@ -122,8 +122,8 @@
     },
     {
       "operation": "CreateMembers",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateTicketV2",
@@ -183,12 +183,12 @@
     {
       "operation": "DescribeActionTargets",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeHub",
       "status": "working",
-      "message": "likely implemented (InvalidAccessException: Account is not subscribed to AWS Security Hub)"
+      "message": "OK"
     },
     {
       "operation": "DescribeOrganizationConfiguration",
@@ -208,7 +208,7 @@
     {
       "operation": "DescribeSecurityHubV2",
       "status": "working",
-      "message": "likely implemented (InvalidAccessException: Account is not subscribed to AWS Security Hub V2)"
+      "message": "OK"
     },
     {
       "operation": "DescribeStandards",
@@ -233,7 +233,7 @@
     {
       "operation": "DisableSecurityHub",
       "status": "working",
-      "message": "likely implemented (InvalidAccessException: Account is not subscribed to AWS Security Hub)"
+      "message": "OK"
     },
     {
       "operation": "DisableSecurityHubV2",
@@ -258,7 +258,7 @@
     {
       "operation": "EnableImportFindingsForProduct",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceConflictException: The product subscription for arn:aws:securityhub:us-east-1:1)"
     },
     {
       "operation": "EnableOrganizationAdminAccount",
@@ -473,7 +473,7 @@
     {
       "operation": "StartConfigurationPolicyDisassociation",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "TagResource",
@@ -482,8 +482,8 @@
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateActionTarget",
@@ -508,7 +508,7 @@
     {
       "operation": "UpdateConnectorV2",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateFindingAggregator",
@@ -533,7 +533,7 @@
     {
       "operation": "UpdateSecurityControl",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "UpdateSecurityHubConfiguration",

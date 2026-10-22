@@ -1,10 +1,10 @@
 {
   "service": "panorama",
-  "generated_at": "2026-10-21T07:07:43.879776+00:00",
+  "generated_at": "2026-10-22T04:30:49.159424+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 28,
-    "needs_params": 4,
+    "working": 32,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 2,
     "timeout": 0
@@ -12,13 +12,13 @@
   "operations": [
     {
       "operation": "CreateApplicationInstance",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "CreateJobForDevices",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "CreateNodeFromTemplateJob",
@@ -38,7 +38,7 @@
     {
       "operation": "DeleteDevice",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "message": "server crash (InternalError: 'probe-device-id-id')"
     },
     {
       "operation": "DeletePackage",
@@ -48,7 +48,7 @@
     {
       "operation": "DeregisterPackageVersion",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeApplicationInstance",
@@ -118,7 +118,7 @@
     {
       "operation": "ListDevicesJobs",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
     },
     {
       "operation": "ListNodeFromTemplateJobs",
@@ -162,8 +162,8 @@
     },
     {
       "operation": "SignalApplicationInstanceNodeInstances",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "TagResource",
@@ -172,13 +172,13 @@
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateDeviceMetadata",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "message": "server crash (InternalError: 'probe-device-id-id')"
     }
   ]
 }

@@ -1,10 +1,10 @@
 {
   "service": "mediaconnect",
-  "generated_at": "2026-10-21T07:07:33.487375+00:00",
+  "generated_at": "2026-10-22T04:30:36.026184+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 76,
-    "needs_params": 6,
+    "working": 79,
+    "needs_params": 3,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -28,12 +28,12 @@
     {
       "operation": "AddFlowOutputs",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "implemented via required-only (NotFoundException)"
     },
     {
       "operation": "AddFlowSources",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "implemented via required-only (NotFoundException)"
     },
     {
       "operation": "AddFlowVpcInterfaces",
@@ -42,18 +42,18 @@
     },
     {
       "operation": "BatchGetRouterInput",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchGetRouterNetworkInterface",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchGetRouterOutput",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateBridge",
@@ -63,7 +63,7 @@
     {
       "operation": "CreateFlow",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreateGateway",
@@ -228,27 +228,27 @@
     {
       "operation": "ListRouterInputs",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "ListRouterNetworkInterfaces",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "ListRouterOutputs",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "ListTagsForGlobalResource",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "ListTagsForResource",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "PurchaseOffering",
@@ -393,12 +393,12 @@
     {
       "operation": "UpdateFlowOutput",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "implemented via required-only (NotFoundException)"
     },
     {
       "operation": "UpdateFlowSource",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "implemented via required-only (NotFoundException)"
     },
     {
       "operation": "UpdateGatewayInstance",
@@ -408,17 +408,17 @@
     {
       "operation": "UpdateRouterInput",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "implemented via required-only (NotFoundException)"
     },
     {
       "operation": "UpdateRouterNetworkInterface",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "implemented via required-only (NotFoundException)"
     },
     {
       "operation": "UpdateRouterOutput",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "implemented via required-only (NotFoundException)"
     }
   ]
 }

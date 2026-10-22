@@ -1,10 +1,10 @@
 {
   "service": "networkfirewall",
-  "generated_at": "2026-10-21T07:07:39.461623+00:00",
+  "generated_at": "2026-10-22T04:30:43.363745+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 14,
-    "needs_params": 4,
+    "working": 16,
+    "needs_params": 2,
     "not_implemented": 61,
     "500_error": 0,
     "timeout": 0
@@ -317,13 +317,13 @@
     },
     {
       "operation": "TagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateAvailabilityZoneChangeProtection",

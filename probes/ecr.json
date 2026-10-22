@@ -1,10 +1,10 @@
 {
   "service": "ecr",
-  "generated_at": "2026-10-21T07:06:54.742047+00:00",
+  "generated_at": "2026-10-22T04:29:44.508716+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 52,
-    "needs_params": 6,
+    "working": 57,
+    "needs_params": 1,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -12,28 +12,28 @@
   "operations": [
     {
       "operation": "BatchCheckLayerAvailability",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchDeleteImage",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (RepositoryNotFoundException)"
     },
     {
       "operation": "BatchGetImage",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (RepositoryNotFoundException)"
     },
     {
       "operation": "BatchGetRepositoryScanningConfiguration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CompleteLayerUpload",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (InvalidAction: Could not find operation CompleteLayerUpload)"
     },
     {
       "operation": "CreatePullThroughCacheRule",
@@ -63,7 +63,7 @@
     {
       "operation": "DeleteRegistryPolicy",
       "status": "working",
-      "message": "likely implemented (RegistryPolicyNotFoundException: Registry policy does not exist in the registry with id '1234)"
+      "message": "OK"
     },
     {
       "operation": "DeleteRepository",
@@ -123,7 +123,7 @@
     {
       "operation": "DescribeRepositories",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (RepositoryNotFoundException)"
     },
     {
       "operation": "DescribeRepositoryCreationTemplates",
@@ -263,7 +263,7 @@
     {
       "operation": "StartLifecyclePolicyPreview",
       "status": "working",
-      "message": "implemented (RepositoryNotFoundException)"
+      "message": "implemented via required-only (RepositoryNotFoundException)"
     },
     {
       "operation": "TagResource",
