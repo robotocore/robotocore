@@ -436,8 +436,8 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
             if let Some(v) = p.get("EncryptionConfiguration") {
                 rg["EncryptionConfiguration"] = v.clone();
             }
-            if group_body.is_some() {
-                rg["rule_group_body"] = group_body.unwrap().clone();
+            if let Some(group) = group_body {
+                rg["rule_group_body"] = group.clone();
             } else if !rules_string.is_empty() {
                 rg["rules_string"] = json!(rules_string);
                 rg["rule_group_body"] = Value::Null;
@@ -1670,7 +1670,7 @@ fn find_proxy_rule_mut<'a>(group: &'a mut Value, name: &str) -> Option<&'a mut V
     };
     let rules = group.get_mut("Rules")?;
     let list = rules.get_mut(phase).and_then(Value::as_array_mut)?;
-    Some(list.get_mut(item)?)
+    list.get_mut(item)
 }
 
 fn tag_keys(p: &Value) -> Vec<String> {
