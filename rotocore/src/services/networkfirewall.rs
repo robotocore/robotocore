@@ -115,15 +115,13 @@ fn uuid_id() -> String {
 impl State {
     fn find_rule_group(&self, arn: &str, name: &str) -> Option<&Value> {
         self.rule_groups.iter().find(|rg| {
-            rg["RuleGroupArn"].as_str() == Some(arn)
-                || rg["RuleGroupName"].as_str() == Some(name)
+            rg["RuleGroupArn"].as_str() == Some(arn) || rg["RuleGroupName"].as_str() == Some(name)
         })
     }
 
     fn find_rule_group_mut(&mut self, arn: &str, name: &str) -> Option<&mut Value> {
         self.rule_groups.iter_mut().find(|rg| {
-            rg["RuleGroupArn"].as_str() == Some(arn)
-                || rg["RuleGroupName"].as_str() == Some(name)
+            rg["RuleGroupArn"].as_str() == Some(arn) || rg["RuleGroupName"].as_str() == Some(name)
         })
     }
 
@@ -192,15 +190,16 @@ impl State {
     }
 
     fn find_flow_operation(&self, arn: &str, op_id: &str) -> Option<&Value> {
-        self.flow_operations
-            .iter()
-            .find(|v| v["FirewallArn"].as_str() == Some(arn) && v["FlowOperationId"].as_str() == Some(op_id))
+        self.flow_operations.iter().find(|v| {
+            v["FirewallArn"].as_str() == Some(arn) && v["FlowOperationId"].as_str() == Some(op_id)
+        })
     }
 
     fn find_report(&self, arn: &str, report_id: &str) -> Option<&Value> {
-        self.analysis_reports
-            .iter()
-            .find(|v| v["FirewallArn"].as_str() == Some(arn) && v["AnalysisReportId"].as_str() == Some(report_id))
+        self.analysis_reports.iter().find(|v| {
+            v["FirewallArn"].as_str() == Some(arn)
+                && v["AnalysisReportId"].as_str() == Some(report_id)
+        })
     }
 }
 
@@ -376,7 +375,9 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
                 .unwrap_or("")
                 .to_string();
             let rules_string = p.get("Rules").and_then(Value::as_str).unwrap_or("");
-            let group_body = p.get("RuleGroup").filter(|v| v.is_object() && !v.as_object().unwrap().is_empty());
+            let group_body = p
+                .get("RuleGroup")
+                .filter(|v| v.is_object() && !v.as_object().unwrap().is_empty());
             if group_body.is_some() == !rules_string.is_empty() {
                 return invalid_request("Please specify one of: Rules or RuleGroup");
             }
@@ -401,7 +402,9 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
                 store_tags(st, &arn, tags);
             }
             st.rule_groups.push(rg.clone());
-            ok(&json!({"UpdateToken": UPDATE_TOKEN, "RuleGroupResponse": rule_group_response(&rg, st)}))
+            ok(
+                &json!({"UpdateToken": UPDATE_TOKEN, "RuleGroupResponse": rule_group_response(&rg, st)}),
+            )
         }
         "DescribeRuleGroup" => {
             let Some(rg) = st.find_rule_group(&rule_arn(p), &rule_name(p)) else {
@@ -419,7 +422,9 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
         }
         "UpdateRuleGroup" => {
             let rules_string = p.get("Rules").and_then(Value::as_str).unwrap_or("");
-            let group_body = p.get("RuleGroup").filter(|v| v.is_object() && !v.as_object().unwrap().is_empty());
+            let group_body = p
+                .get("RuleGroup")
+                .filter(|v| v.is_object() && !v.as_object().unwrap().is_empty());
             if group_body.is_some() && !rules_string.is_empty() {
                 return invalid_request("Please specify one of: Rules or RuleGroup");
             }
@@ -466,9 +471,7 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
             let groups: Vec<Value> = st
                 .rule_groups
                 .iter()
-                .filter(|rg| {
-                    want_type.is_empty() || rg["Type"].as_str() == Some(want_type)
-                })
+                .filter(|rg| want_type.is_empty() || rg["Type"].as_str() == Some(want_type))
                 .map(|rg| {
                     json!({
                         "Name": rg["RuleGroupName"],
@@ -534,7 +537,9 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
                 store_tags(st, &arn, tags);
             }
             st.tls_configs.push(record.clone());
-            ok(&json!({"UpdateToken": UPDATE_TOKEN, "TLSInspectionConfigurationResponse": tls_response(&record, st)}))
+            ok(
+                &json!({"UpdateToken": UPDATE_TOKEN, "TLSInspectionConfigurationResponse": tls_response(&record, st)}),
+            )
         }
         "DescribeTLSInspectionConfiguration" => {
             let (arn, nm) = (tls_arn(p), tls_name(p));
@@ -565,7 +570,9 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
                     t["LastModifiedTime"] = json!(now_epoch());
                     let updated = t.clone();
                     let rendered = tls_response(&updated, st);
-                    ok(&json!({"UpdateToken": UPDATE_TOKEN, "TLSInspectionConfigurationResponse": rendered}))
+                    ok(
+                        &json!({"UpdateToken": UPDATE_TOKEN, "TLSInspectionConfigurationResponse": rendered}),
+                    )
                 }
                 None => not_found(&format!(
                     "TLSInspectionConfiguration with name {nm} or Arn {arn} could not be found"
@@ -603,7 +610,11 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
         // ------------------------------------------------------------------
         "CreateVpcEndpointAssociation" => {
             let fire_arn = p.get("FirewallArn").and_then(Value::as_str).unwrap_or("");
-            if st.firewalls.iter().all(|f| f["FirewallArn"].as_str() != Some(fire_arn)) {
+            if st
+                .firewalls
+                .iter()
+                .all(|f| f["FirewallArn"].as_str() != Some(fire_arn))
+            {
                 return not_found(&format!("Firewall {fire_arn} could not be found"));
             }
             let id = format!("vpcea-{}", short_id());
@@ -629,14 +640,20 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
             }))
         }
         "DescribeVpcEndpointAssociation" => {
-            match st.find_vpc_assoc(p.get("VpcEndpointAssociationArn").and_then(Value::as_str).unwrap_or("")) {
+            match st.find_vpc_assoc(
+                p.get("VpcEndpointAssociationArn")
+                    .and_then(Value::as_str)
+                    .unwrap_or(""),
+            ) {
                 Some(a) => ok(&json!({
                     "VpcEndpointAssociation": stored_vpc_assoc(a, st),
                     "VpcEndpointAssociationStatus": { "Status": "READY" },
                 })),
                 None => not_found(&format!(
                     "VpcEndpointAssociation with Arn {} could not be found",
-                    p.get("VpcEndpointAssociationArn").and_then(Value::as_str).unwrap_or("")
+                    p.get("VpcEndpointAssociationArn")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
                 )),
             }
         }
@@ -676,7 +693,10 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
         "CreateProxy" => {
             let pn = p.get("ProxyName").and_then(Value::as_str).unwrap_or("");
             let nat = p.get("NatGatewayId").and_then(Value::as_str).unwrap_or("");
-            let arn = format!("arn:aws:network-firewall:{region}:{account}:proxy/{pn}|{}", short_id());
+            let arn = format!(
+                "arn:aws:network-firewall:{region}:{account}:proxy/{pn}|{}",
+                short_id()
+            );
             let proxy = json!({
                 "ProxyName": pn,
                 "ProxyArn": arn,
@@ -741,7 +761,8 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
                 "ProxyArn": px["ProxyArn"].clone(),
             });
             st.proxies.retain(|v| v != &px);
-            st.tags.retain(|(ka, _)| ka != px.get("ProxyArn").and_then(Value::as_str).unwrap_or(""));
+            st.tags
+                .retain(|(ka, _)| ka != px.get("ProxyArn").and_then(Value::as_str).unwrap_or(""));
             ok(&out)
         }
         "ListProxies" => ok(&json!({
@@ -749,8 +770,14 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
             "NextToken": next_token_of(p),
         })),
         "CreateProxyConfiguration" => {
-            let name = p.get("ProxyConfigurationName").and_then(Value::as_str).unwrap_or("");
-            let arn = format!("arn:aws:network-firewall:{region}:{account}:proxy-configuration/{name}|{}", short_id());
+            let name = p
+                .get("ProxyConfigurationName")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let arn = format!(
+                "arn:aws:network-firewall:{region}:{account}:proxy-configuration/{name}|{}",
+                short_id()
+            );
             let mut rows = Vec::new();
             let mut priority = 1;
             for name_key in ["RuleGroupNames", "RuleGroupArns"] {
@@ -786,7 +813,9 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
         "DescribeProxyConfiguration" => {
             let (arn, nm) = (pc_arn(p), pc_name(p));
             match st.find_proxy_config(&arn, &nm) {
-                Some(c) => ok(&json!({ "ProxyConfiguration": c.clone(), "UpdateToken": UPDATE_TOKEN })),
+                Some(c) => {
+                    ok(&json!({ "ProxyConfiguration": c.clone(), "UpdateToken": UPDATE_TOKEN }))
+                }
                 None => not_found(&format!("Proxy configuration {nm} not found")),
             }
         }
@@ -812,7 +841,10 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
                 "ProxyConfigurationArn": c["ProxyConfigurationArn"].clone(),
             });
             st.proxy_configurations.retain(|v| v != &c);
-            let dead_arn = c.get("ProxyConfigurationArn").and_then(Value::as_str).unwrap_or("");
+            let dead_arn = c
+                .get("ProxyConfigurationArn")
+                .and_then(Value::as_str)
+                .unwrap_or("");
             st.tags.retain(|(ka, _)| ka.as_str() != dead_arn);
             ok(&out)
         }
@@ -821,8 +853,14 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
             "NextToken": next_token_of(p),
         })),
         "CreateProxyRuleGroup" => {
-            let nm = p.get("ProxyRuleGroupName").and_then(Value::as_str).unwrap_or("");
-            let arn = format!("arn:aws:network-firewall:{region}:{account}:proxy-rule-group/{nm}|{}", short_id());
+            let nm = p
+                .get("ProxyRuleGroupName")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let arn = format!(
+                "arn:aws:network-firewall:{region}:{account}:proxy-rule-group/{nm}|{}",
+                short_id()
+            );
             let rgrg = json!({
                 "ProxyRuleGroupName": nm,
                 "ProxyRuleGroupArn": arn,
@@ -852,14 +890,19 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
                 "ProxyRuleGroupName": g["ProxyRuleGroupName"].clone(),
                 "ProxyRuleGroupArn": g["ProxyRuleGroupArn"].clone(),
             });
-            let dead_arn = g.get("ProxyRuleGroupArn").and_then(Value::as_str).unwrap_or("").to_string();
+            let dead_arn = g
+                .get("ProxyRuleGroupArn")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
             st.proxy_rule_groups.retain(|v| v != &g);
             st.tags.retain(|(ka, _)| ka.as_str() != dead_arn);
             // Attachments hand out this arn; drop dead references too.
             for c in st.proxy_configurations.iter_mut() {
                 if let Some(list) = c["RuleGroups"].as_array_mut() {
                     list.retain(|row| {
-                        row.get("ProxyRuleGroupArn").and_then(Value::as_str) != Some(dead_arn.as_str())
+                        row.get("ProxyRuleGroupArn").and_then(Value::as_str)
+                            != Some(dead_arn.as_str())
                     });
                 }
             }
@@ -887,7 +930,9 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
                             rule
                         })
                         .collect();
-                    if let Some(target) = group["Rules"].get_mut(phase).and_then(Value::as_array_mut) {
+                    if let Some(target) =
+                        group["Rules"].get_mut(phase).and_then(Value::as_array_mut)
+                    {
                         let positions: Vec<i64> = list
                             .iter()
                             .map(|r| r.get("InsertPosition").and_then(Value::as_i64).unwrap_or(0))
@@ -913,7 +958,12 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
             let drops: Vec<String> = p
                 .get("Rules")
                 .and_then(Value::as_array)
-                .map(|a| a.iter().filter_map(Value::as_str).map(String::from).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(Value::as_str)
+                        .map(String::from)
+                        .collect()
+                })
                 .unwrap_or_default();
             let Some(group) = st.find_proxy_rule_group_mut(&arn, &nm) else {
                 return not_found(&format!("Proxy rule group {nm} not found"));
@@ -933,7 +983,9 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
             let rule_name = p.get("ProxyRuleName").and_then(Value::as_str).unwrap_or("");
             match st.find_proxy_rule_group(&garn, &gnm) {
                 Some(g) => match find_proxy_rule(g, rule_name) {
-                    Some(rule) => ok(&json!({ "ProxyRule": rule.clone(), "UpdateToken": UPDATE_TOKEN })),
+                    Some(rule) => {
+                        ok(&json!({ "ProxyRule": rule.clone(), "UpdateToken": UPDATE_TOKEN }))
+                    }
                     None => not_found(&format!("Proxy rule {rule_name} not found")),
                 },
                 None => not_found(&format!("Proxy rule group {gnm} not found")),
@@ -985,8 +1037,12 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
             let wanted = p.get("RuleGroups").cloned().unwrap_or(json!([]));
             if let Some(rows) = cfg["RuleGroups"].as_array_mut() {
                 for want in wanted.as_array().unwrap_or(&vec![]) {
-                    let want_name = want.get("ProxyRuleGroupName").and_then(Value::as_str).unwrap_or("");
-                    let new_position = want.get("NewPosition").and_then(Value::as_i64).unwrap_or(0) as usize;
+                    let want_name = want
+                        .get("ProxyRuleGroupName")
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    let new_position =
+                        want.get("NewPosition").and_then(Value::as_i64).unwrap_or(0) as usize;
                     if let Some(i) = rows.iter().position(|row| {
                         row.get("ProxyRuleGroupName").and_then(Value::as_str) == Some(want_name)
                     }) {
@@ -1022,12 +1078,19 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
             let Some(group) = st.find_proxy_rule_group_mut(&arn, &nm) else {
                 return not_found(&format!("Proxy rule group {nm} not found"));
             };
-            let phase = p.get("RuleGroupRequestPhase").and_then(Value::as_str).unwrap_or("");
+            let phase = p
+                .get("RuleGroupRequestPhase")
+                .and_then(Value::as_str)
+                .unwrap_or("");
             let wanted = p.get("Rules").cloned().unwrap_or(json!([]));
             if let Some(rows) = group["Rules"].get_mut(phase).and_then(Value::as_array_mut) {
                 for want in wanted.as_array().unwrap_or(&vec![]) {
-                    let want_name = want.get("ProxyRuleName").and_then(Value::as_str).unwrap_or("");
-                    let new_position = want.get("NewPosition").and_then(Value::as_i64).unwrap_or(0) as usize;
+                    let want_name = want
+                        .get("ProxyRuleName")
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    let new_position =
+                        want.get("NewPosition").and_then(Value::as_i64).unwrap_or(0) as usize;
                     if let Some(i) = rows.iter().position(|row| {
                         row.get("ProxyRuleName").and_then(Value::as_str) == Some(want_name)
                     }) {
@@ -1055,8 +1118,10 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
             // Validate every referenced rule group first so a bad name fails
             // the whole call (modeled RFNF).
             for want in &wanted {
-                let want_name =
-                want.get("ProxyRuleGroupName").and_then(Value::as_str).unwrap_or("");
+                let want_name = want
+                    .get("ProxyRuleGroupName")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
                 if st.find_proxy_rule_group("", want_name).is_none() {
                     return not_found(&format!("Proxy rule group {want_name} not found"));
                 }
@@ -1071,7 +1136,10 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
                     .unwrap_or(0)
             });
             for want in &wanted {
-                let want_name = want.get("ProxyRuleGroupName").and_then(Value::as_str).unwrap_or("");
+                let want_name = want
+                    .get("ProxyRuleGroupName")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
                 let Some(rg) = st.find_proxy_rule_group("", want_name) else {
                     continue;
                 };
@@ -1101,17 +1169,33 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
             let drop_names: Vec<String> = p
                 .get("RuleGroupNames")
                 .and_then(Value::as_array)
-                .map(|a| a.iter().filter_map(Value::as_str).map(String::from).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(Value::as_str)
+                        .map(String::from)
+                        .collect()
+                })
                 .unwrap_or_default();
             let drop_arns: Vec<String> = p
                 .get("RuleGroupArns")
                 .and_then(Value::as_array)
-                .map(|a| a.iter().filter_map(Value::as_str).map(String::from).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(Value::as_str)
+                        .map(String::from)
+                        .collect()
+                })
                 .unwrap_or_default();
             if let Some(rows) = cfg["RuleGroups"].as_array_mut() {
                 rows.retain(|row| {
-                    let name = row.get("ProxyRuleGroupName").and_then(Value::as_str).unwrap_or("");
-                    let row_arn = row.get("ProxyRuleGroupArn").and_then(Value::as_str).unwrap_or("");
+                    let name = row
+                        .get("ProxyRuleGroupName")
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    let row_arn = row
+                        .get("ProxyRuleGroupArn")
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
                     !drop_names.iter().any(|d| d == name) && !drop_arns.iter().any(|d| d == row_arn)
                 });
             }
@@ -1129,8 +1213,15 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
         // firewall mutations (modeled per botocore).
         // ------------------------------------------------------------------
         "AssociateFirewallPolicy" => {
-            let policy_arn = p.get("FirewallPolicyArn").and_then(Value::as_str).unwrap_or("");
-            if st.policies.iter().all(|pl| pl["FirewallPolicyArn"].as_str() != Some(policy_arn)) {
+            let policy_arn = p
+                .get("FirewallPolicyArn")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            if st
+                .policies
+                .iter()
+                .all(|pl| pl["FirewallPolicyArn"].as_str() != Some(policy_arn))
+            {
                 return not_found(&format!("FirewallPolicy {policy_arn} not found"));
             }
             match st.find_mut(arn_param, name) {
@@ -1156,7 +1247,12 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
                 let drop: Vec<String> = p
                     .get("SubnetIds")
                     .and_then(Value::as_array)
-                    .map(|a| a.iter().filter_map(Value::as_str).map(String::from).collect())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(Value::as_str)
+                            .map(String::from)
+                            .collect()
+                    })
                     .unwrap_or_default();
                 if let Some(list) = fw["SubnetMappings"].as_array_mut() {
                     list.retain(|m| {
@@ -1177,8 +1273,10 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
                 return not_found(&format!("Firewall {name} not found"));
             };
             if req.operation == "AssociateAvailabilityZones" {
-                fw["AvailabilityZoneMappings"] =
-                    p.get("AvailabilityZoneMappings").cloned().unwrap_or(json!([]));
+                fw["AvailabilityZoneMappings"] = p
+                    .get("AvailabilityZoneMappings")
+                    .cloned()
+                    .unwrap_or(json!([]));
             } else {
                 let drop: Vec<String> = p
                     .get("AvailabilityZoneMappings")
@@ -1192,7 +1290,10 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
                     .unwrap_or_default();
                 if let Some(list) = fw["AvailabilityZoneMappings"].as_array_mut() {
                     list.retain(|m| {
-                        let az = m.get("AvailabilityZone").and_then(Value::as_str).unwrap_or("");
+                        let az = m
+                            .get("AvailabilityZone")
+                            .and_then(Value::as_str)
+                            .unwrap_or("");
                         !drop.iter().any(|d| d == az)
                     });
                 }
@@ -1204,107 +1305,105 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
                 "UpdateToken": UPDATE_TOKEN,
             }))
         }
-        "UpdateAvailabilityZoneChangeProtection" => {
-            match st.find_mut(arn_param, name) {
-                Some(fw) => {
-                    if let Some(v) = p.get("AvailabilityZoneChangeProtection") {
-                        fw["AvailabilityZoneChangeProtection"] = v.clone();
-                    }
-                    ok(&json!({
-                        "FirewallArn": fw["FirewallArn"],
-                        "FirewallName": fw["FirewallName"],
-                        "AvailabilityZoneChangeProtection": fw["AvailabilityZoneChangeProtection"].clone(),
-                        "UpdateToken": UPDATE_TOKEN,
-                    }))
+        "UpdateAvailabilityZoneChangeProtection" => match st.find_mut(arn_param, name) {
+            Some(fw) => {
+                if let Some(v) = p.get("AvailabilityZoneChangeProtection") {
+                    fw["AvailabilityZoneChangeProtection"] = v.clone();
                 }
-                None => not_found(&format!("Firewall {name} not found")),
+                ok(&json!({
+                    "FirewallArn": fw["FirewallArn"],
+                    "FirewallName": fw["FirewallName"],
+                    "AvailabilityZoneChangeProtection": fw["AvailabilityZoneChangeProtection"].clone(),
+                    "UpdateToken": UPDATE_TOKEN,
+                }))
             }
-        }
-        "UpdateFirewallDescription" => {
-            match st.find_mut(arn_param, name) {
-                Some(fw) => {
-                    if let Some(v) = p.get("Description") {
-                        fw["Description"] = v.clone();
-                    }
-                    ok(&json!({
-                        "FirewallArn": fw["FirewallArn"],
-                        "FirewallName": fw["FirewallName"],
-                        "Description": fw["Description"].clone(),
-                        "UpdateToken": UPDATE_TOKEN,
-                    }))
+            None => not_found(&format!("Firewall {name} not found")),
+        },
+        "UpdateFirewallDescription" => match st.find_mut(arn_param, name) {
+            Some(fw) => {
+                if let Some(v) = p.get("Description") {
+                    fw["Description"] = v.clone();
                 }
-                None => not_found(&format!("Firewall {name} not found")),
+                ok(&json!({
+                    "FirewallArn": fw["FirewallArn"],
+                    "FirewallName": fw["FirewallName"],
+                    "Description": fw["Description"].clone(),
+                    "UpdateToken": UPDATE_TOKEN,
+                }))
             }
-        }
-        "UpdateFirewallEncryptionConfiguration" => {
-            match st.find_mut(arn_param, name) {
-                Some(fw) => {
-                    if let Some(v) = p.get("EncryptionConfiguration") {
-                        fw["EncryptionConfiguration"] = v.clone();
-                    }
-                    ok(&json!({
-                        "FirewallArn": fw["FirewallArn"],
-                        "FirewallName": fw["FirewallName"],
-                        "EncryptionConfiguration": fw["EncryptionConfiguration"].clone(),
-                        "UpdateToken": UPDATE_TOKEN,
-                    }))
+            None => not_found(&format!("Firewall {name} not found")),
+        },
+        "UpdateFirewallEncryptionConfiguration" => match st.find_mut(arn_param, name) {
+            Some(fw) => {
+                if let Some(v) = p.get("EncryptionConfiguration") {
+                    fw["EncryptionConfiguration"] = v.clone();
                 }
-                None => not_found(&format!("Firewall {name} not found")),
+                ok(&json!({
+                    "FirewallArn": fw["FirewallArn"],
+                    "FirewallName": fw["FirewallName"],
+                    "EncryptionConfiguration": fw["EncryptionConfiguration"].clone(),
+                    "UpdateToken": UPDATE_TOKEN,
+                }))
             }
-        }
-        "UpdateFirewallAnalysisSettings" => {
-            match st.find_mut(arn_param, name) {
-                Some(fw) => {
-                    if let Some(v) = p.get("EnabledAnalysisTypes") {
-                        fw["EnabledAnalysisTypes"] = v.clone();
-                    }
-                    ok(&json!({
-                        "FirewallArn": fw["FirewallArn"],
-                        "FirewallName": fw["FirewallName"],
-                        "EnabledAnalysisTypes": fw["EnabledAnalysisTypes"].clone(),
-                        "UpdateToken": UPDATE_TOKEN,
-                    }))
+            None => not_found(&format!("Firewall {name} not found")),
+        },
+        "UpdateFirewallAnalysisSettings" => match st.find_mut(arn_param, name) {
+            Some(fw) => {
+                if let Some(v) = p.get("EnabledAnalysisTypes") {
+                    fw["EnabledAnalysisTypes"] = v.clone();
                 }
-                None => not_found(&format!("Firewall {name} not found")),
+                ok(&json!({
+                    "FirewallArn": fw["FirewallArn"],
+                    "FirewallName": fw["FirewallName"],
+                    "EnabledAnalysisTypes": fw["EnabledAnalysisTypes"].clone(),
+                    "UpdateToken": UPDATE_TOKEN,
+                }))
             }
-        }
-        "DescribeFirewallMetadata" => {
-            match st.find(arn_param, name) {
-                Some(fw) => {
-                    let mut zones = serde_json::Map::new();
-                    if let Some(rows) = fw["AvailabilityZoneMappings"].as_array() {
-                        for m in rows {
-                            if let Some(az) = m.get("AvailabilityZone").and_then(Value::as_str) {
-                                zones.insert(az.to_string(), json!({}));
-                            }
+            None => not_found(&format!("Firewall {name} not found")),
+        },
+        "DescribeFirewallMetadata" => match st.find(arn_param, name) {
+            Some(fw) => {
+                let mut zones = serde_json::Map::new();
+                if let Some(rows) = fw["AvailabilityZoneMappings"].as_array() {
+                    for m in rows {
+                        if let Some(az) = m.get("AvailabilityZone").and_then(Value::as_str) {
+                            zones.insert(az.to_string(), json!({}));
                         }
                     }
-                    let mut out = json!({
-                        "FirewallArn": fw["FirewallArn"],
-                        "FirewallPolicyArn": fw["FirewallPolicyArn"],
-                        "Description": fw["Description"],
-                        "Status": "READY",
-                        "SupportedAvailabilityZones": zones,
-                    });
-                    if let Some(tg) = fw.get("TransitGatewayId") {
-                        if !tg.is_null() {
-                            out["TransitGatewayAttachmentId"] = tg.clone();
-                        }
-                    }
-                    ok(&out)
                 }
-                None => not_found(&format!("Firewall {name} not found")),
+                let mut out = json!({
+                    "FirewallArn": fw["FirewallArn"],
+                    "FirewallPolicyArn": fw["FirewallPolicyArn"],
+                    "Description": fw["Description"],
+                    "Status": "READY",
+                    "SupportedAvailabilityZones": zones,
+                });
+                if let Some(tg) = fw.get("TransitGatewayId") {
+                    if !tg.is_null() {
+                        out["TransitGatewayAttachmentId"] = tg.clone();
+                    }
+                }
+                ok(&out)
             }
-        }
+            None => not_found(&format!("Firewall {name} not found")),
+        },
         // ------------------------------------------------------------------
         // Flow operations and analysis reports (modeled per botocore).
         // ------------------------------------------------------------------
         "StartFlowCapture" | "StartFlowFlush" => {
             let fire_arn = p.get("FirewallArn").and_then(Value::as_str).unwrap_or("");
-            if st.firewalls.iter().all(|f| f["FirewallArn"].as_str() != Some(fire_arn)) {
+            if st
+                .firewalls
+                .iter()
+                .all(|f| f["FirewallArn"].as_str() != Some(fire_arn))
+            {
                 return not_found(&format!("Firewall {fire_arn} not found"));
             }
-            let op_type = if req.operation == "StartFlowCapture" { "FLOW_CAPTURE" } else { "FLOW_FLUSH" };
+            let op_type = if req.operation == "StartFlowCapture" {
+                "FLOW_CAPTURE"
+            } else {
+                "FLOW_FLUSH"
+            };
             let op_id = uuid_id();
             let rec = json!({
                 "FirewallArn": fire_arn,
@@ -1327,7 +1426,10 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
         }
         "DescribeFlowOperation" => {
             let fire_arn = p.get("FirewallArn").and_then(Value::as_str).unwrap_or("");
-            let op_id = p.get("FlowOperationId").and_then(Value::as_str).unwrap_or("");
+            let op_id = p
+                .get("FlowOperationId")
+                .and_then(Value::as_str)
+                .unwrap_or("");
             match st.find_flow_operation(fire_arn, op_id) {
                 Some(r) => ok(r),
                 None => not_found(&format!("FlowOperation {op_id} not found")),
@@ -1335,7 +1437,11 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
         }
         "ListFlowOperations" => {
             let fire_arn = p.get("FirewallArn").and_then(Value::as_str).unwrap_or("");
-            if st.firewalls.iter().all(|f| f["FirewallArn"].as_str() != Some(fire_arn)) {
+            if st
+                .firewalls
+                .iter()
+                .all(|f| f["FirewallArn"].as_str() != Some(fire_arn))
+            {
                 return not_found(&format!("Firewall {fire_arn} not found"));
             }
             let ops: Vec<Value> = st
@@ -1355,7 +1461,10 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
         }
         "ListFlowOperationResults" => {
             let fire_arn = p.get("FirewallArn").and_then(Value::as_str).unwrap_or("");
-            let op_id = p.get("FlowOperationId").and_then(Value::as_str).unwrap_or("");
+            let op_id = p
+                .get("FlowOperationId")
+                .and_then(Value::as_str)
+                .unwrap_or("");
             match st.find_flow_operation(fire_arn, op_id) {
                 Some(r) => ok(&json!({
                     "FirewallArn": r["FirewallArn"],
@@ -1377,7 +1486,10 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
                 None => return not_found(&format!("Firewall {name} not found")),
             };
             let fire_arn = fw.get("FirewallArn").cloned().unwrap_or(Value::Null);
-            let analysis_type = p.get("AnalysisType").and_then(Value::as_str).unwrap_or("TLS_SNI");
+            let analysis_type = p
+                .get("AnalysisType")
+                .and_then(Value::as_str)
+                .unwrap_or("TLS_SNI");
             let report_id = uuid_id();
             let rec = json!({
                 "FirewallArn": fire_arn,
@@ -1392,7 +1504,10 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
         }
         "GetAnalysisReportResults" => {
             let (fire_arn, found) = fw_arn_for_reports(p, st);
-            let report_id = p.get("AnalysisReportId").and_then(Value::as_str).unwrap_or("");
+            let report_id = p
+                .get("AnalysisReportId")
+                .and_then(Value::as_str)
+                .unwrap_or("");
             if !found {
                 return not_found(&format!("Firewall with Arn {fire_arn} could not be found"));
             }
@@ -1443,7 +1558,9 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
             let policy = p.get("Policy").and_then(Value::as_str).unwrap_or_default();
             match st.resource_policies.iter_mut().find(|(a, _)| a == arn) {
                 Some((_, stored)) => *stored = policy.to_string(),
-                None => st.resource_policies.push((arn.to_string(), policy.to_string())),
+                None => st
+                    .resource_policies
+                    .push((arn.to_string(), policy.to_string())),
             }
             ok(&json!({}))
         }
@@ -1511,59 +1628,98 @@ fn last_logging(st: &State, arn: &str) -> Value {
 // ---------------------------------------------------------------------------
 
 fn rule_name(p: &Value) -> String {
-    p.get("RuleGroupName").and_then(Value::as_str).unwrap_or("").to_string()
+    p.get("RuleGroupName")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
 }
 
 fn rule_arn(p: &Value) -> String {
-    p.get("RuleGroupArn").and_then(Value::as_str).unwrap_or("").to_string()
+    p.get("RuleGroupArn")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
 }
 
 fn tls_arn(p: &Value) -> String {
-    p.get("TLSInspectionConfigurationArn").and_then(Value::as_str).unwrap_or("").to_string()
+    p.get("TLSInspectionConfigurationArn")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
 }
 
 fn tls_name(p: &Value) -> String {
-    p.get("TLSInspectionConfigurationName").and_then(Value::as_str).unwrap_or("").to_string()
+    p.get("TLSInspectionConfigurationName")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
 }
 
 fn proxy_arn(p: &Value) -> String {
-    p.get("ProxyArn").and_then(Value::as_str).unwrap_or("").to_string()
+    p.get("ProxyArn")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
 }
 
 fn proxy_name(p: &Value) -> String {
-    p.get("ProxyName").and_then(Value::as_str).unwrap_or("").to_string()
+    p.get("ProxyName")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
 }
 
 fn nat_id(p: &Value) -> String {
-    p.get("NatGatewayId").and_then(Value::as_str).unwrap_or("").to_string()
+    p.get("NatGatewayId")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
 }
 
 fn pc_arn(p: &Value) -> String {
-    p.get("ProxyConfigurationArn").and_then(Value::as_str).unwrap_or("").to_string()
+    p.get("ProxyConfigurationArn")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
 }
 
 fn pc_name(p: &Value) -> String {
-    p.get("ProxyConfigurationName").and_then(Value::as_str).unwrap_or("").to_string()
+    p.get("ProxyConfigurationName")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
 }
 
 fn prg_arn(p: &Value) -> String {
-    p.get("ProxyRuleGroupArn").and_then(Value::as_str).unwrap_or("").to_string()
+    p.get("ProxyRuleGroupArn")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
 }
 
 fn prg_name(p: &Value) -> String {
-    p.get("ProxyRuleGroupName").and_then(Value::as_str).unwrap_or("").to_string()
+    p.get("ProxyRuleGroupName")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
 }
 
 fn fw_arn_for_reports(p: &Value, st: &State) -> (String, bool) {
     let arn = p.get("FirewallArn").and_then(Value::as_str).unwrap_or("");
     if !arn.is_empty() {
-        let exists = st.firewalls.iter().any(|f| f["FirewallArn"].as_str() == Some(arn));
+        let exists = st
+            .firewalls
+            .iter()
+            .any(|f| f["FirewallArn"].as_str() == Some(arn));
         return (arn.to_string(), exists);
     }
     let name = p.get("FirewallName").and_then(Value::as_str).unwrap_or("");
     match st.find("", name) {
         Some(fw) => (
-            fw.get("FirewallArn").and_then(Value::as_str).unwrap_or("").to_string(),
+            fw.get("FirewallArn")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
             true,
         ),
         None => (String::new(), false),
@@ -1604,7 +1760,10 @@ fn rule_group_body(rg: &Value) -> Value {
 
 /// The response slice of a stored TLS inspection configuration.
 fn tls_response(t: &Value, st: &State) -> Value {
-    let arn = t.get("TLSInspectionConfigurationArn").and_then(Value::as_str).unwrap_or("");
+    let arn = t
+        .get("TLSInspectionConfigurationArn")
+        .and_then(Value::as_str)
+        .unwrap_or("");
     json!({
         "TLSInspectionConfigurationArn": t["TLSInspectionConfigurationArn"].clone(),
         "TLSInspectionConfigurationName": t["TLSInspectionConfigurationName"].clone(),
@@ -1816,7 +1975,10 @@ mod tests {
             }),
         );
         assert_eq!(status, 200);
-        let arn = v["RuleGroupResponse"]["RuleGroupArn"].as_str().unwrap().to_string();
+        let arn = v["RuleGroupResponse"]["RuleGroupArn"]
+            .as_str()
+            .unwrap()
+            .to_string();
         assert_eq!(v["RuleGroupResponse"]["RuleGroupName"], "rg-crud");
         assert_eq!(v["RuleGroupResponse"]["RuleGroupStatus"], "ACTIVE");
         assert!(arn.contains("rulegroup/rg-crud"));
@@ -1855,10 +2017,18 @@ mod tests {
         let (_, v) = call(b, "ListRuleGroups", json!({"Type": "STATELESS"}));
         assert_eq!(v["RuleGroups"].as_array().unwrap().len(), 0);
 
-        let (_, v) = call(b, "DescribeRuleGroupMetadata", json!({"RuleGroupName": "rg-crud"}));
+        let (_, v) = call(
+            b,
+            "DescribeRuleGroupMetadata",
+            json!({"RuleGroupName": "rg-crud"}),
+        );
         assert_eq!(v["Type"], "STATEFUL");
         assert_eq!(v["Capacity"], 10);
-        let (_, v) = call(b, "DescribeRuleGroupSummary", json!({"RuleGroupName": "rg-crud"}));
+        let (_, v) = call(
+            b,
+            "DescribeRuleGroupSummary",
+            json!({"RuleGroupName": "rg-crud"}),
+        );
         assert!(v["Summary"]["RuleSummaries"].is_array());
 
         let (status, v) = call(b, "DeleteRuleGroup", json!({"RuleGroupName": "rg-crud"}));
@@ -1945,7 +2115,10 @@ mod tests {
         assert_eq!(status, 200);
 
         let (_, v) = call(b, "ListTLSInspectionConfigurations", json!({}));
-        assert_eq!(v["TLSInspectionConfigurations"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            v["TLSInspectionConfigurations"].as_array().unwrap().len(),
+            1
+        );
 
         let (_, v) = call(
             b,
@@ -2010,7 +2183,11 @@ mod tests {
         );
         assert_eq!(status, 400);
 
-        let (_, v) = call(b, "ListVpcEndpointAssociations", json!({"FirewallArn": fire_arn}));
+        let (_, v) = call(
+            b,
+            "ListVpcEndpointAssociations",
+            json!({"FirewallArn": fire_arn}),
+        );
         assert_eq!(v["VpcEndpointAssociations"].as_array().unwrap().len(), 1);
 
         let (_, v) = call(
@@ -2068,7 +2245,10 @@ mod tests {
             }),
         );
         assert_eq!(status, 200);
-        assert_eq!(v["Proxy"]["ListenerProperties"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            v["Proxy"]["ListenerProperties"].as_array().unwrap().len(),
+            2
+        );
 
         let (_, v) = call(b, "ListProxies", json!({}));
         assert_eq!(v["Proxies"].as_array().unwrap().len(), 1);
@@ -2095,7 +2275,10 @@ mod tests {
             }),
         );
         assert_eq!(g1["ProxyRuleGroup"]["ProxyRuleGroupName"], "prg-a");
-        let g_arn = g1["ProxyRuleGroup"]["ProxyRuleGroupArn"].as_str().unwrap().to_string();
+        let g_arn = g1["ProxyRuleGroup"]["ProxyRuleGroupArn"]
+            .as_str()
+            .unwrap()
+            .to_string();
 
         let (status, _) = call(
             b,
@@ -2106,8 +2289,18 @@ mod tests {
             }),
         );
         assert_eq!(status, 200);
-        let (_, v) = call(b, "DescribeProxyRuleGroup", json!({"ProxyRuleGroupName": "prg-a"}));
-        assert_eq!(v["ProxyRuleGroup"]["Rules"]["PreDNS"].as_array().unwrap().len(), 2);
+        let (_, v) = call(
+            b,
+            "DescribeProxyRuleGroup",
+            json!({"ProxyRuleGroupName": "prg-a"}),
+        );
+        assert_eq!(
+            v["ProxyRuleGroup"]["Rules"]["PreDNS"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
 
         let (status, v) = call(
             b,
@@ -2138,7 +2331,13 @@ mod tests {
                 "DefaultRulePhaseActions": {"PreDNS": "ALLOW"},
             }),
         );
-        assert_eq!(c["ProxyConfiguration"]["RuleGroups"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            c["ProxyConfiguration"]["RuleGroups"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
         let c_arn = c["ProxyConfiguration"]["ProxyConfigurationArn"]
             .as_str()
             .unwrap()
@@ -2175,7 +2374,11 @@ mod tests {
         assert_eq!(v["ProxyRule"]["Action"], "ALERT");
         assert_eq!(v["ProxyRule"]["Conditions"].as_array().unwrap().len(), 1);
 
-        let (_, g2) = call(b, "CreateProxyRuleGroup", json!({"ProxyRuleGroupName": "prg-b"}));
+        let (_, g2) = call(
+            b,
+            "CreateProxyRuleGroup",
+            json!({"ProxyRuleGroupName": "prg-b"}),
+        );
         assert_eq!(g2["ProxyRuleGroup"]["ProxyRuleGroupName"], "prg-b");
         let (status, _) = call(
             b,
@@ -2208,7 +2411,10 @@ mod tests {
             }),
         );
         assert_eq!(status, 200);
-        assert_eq!(v["ProxyRuleGroups"].as_array().unwrap()[0]["ProxyRuleGroupName"], "prg-b");
+        assert_eq!(
+            v["ProxyRuleGroups"].as_array().unwrap()[0]["ProxyRuleGroupName"],
+            "prg-b"
+        );
 
         let (status, _) = call(
             b,
@@ -2220,7 +2426,11 @@ mod tests {
             }),
         );
         assert_eq!(status, 200);
-        let (_, v) = call(b, "DescribeProxyConfiguration", json!({"ProxyConfigurationArn": c_arn}));
+        let (_, v) = call(
+            b,
+            "DescribeProxyConfiguration",
+            json!({"ProxyConfigurationArn": c_arn}),
+        );
         let rows = v["ProxyConfiguration"]["RuleGroups"].as_array().unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0]["ProxyRuleGroupName"], "prg-b");
@@ -2243,14 +2453,36 @@ mod tests {
             json!({"ProxyRuleGroupArn": g_arn.clone(), "Rules": ["r2"]}),
         );
         assert_eq!(status, 200);
-        let (_, v) = call(b, "DescribeProxyRuleGroup", json!({"ProxyRuleGroupArn": g_arn}));
-        assert_eq!(v["ProxyRuleGroup"]["Rules"]["PreDNS"].as_array().unwrap().len(), 1);
+        let (_, v) = call(
+            b,
+            "DescribeProxyRuleGroup",
+            json!({"ProxyRuleGroupArn": g_arn}),
+        );
+        assert_eq!(
+            v["ProxyRuleGroup"]["Rules"]["PreDNS"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
 
-        let (status, _) = call(b, "DeleteProxyRuleGroup", json!({"ProxyRuleGroupName": "prg-a"}));
+        let (status, _) = call(
+            b,
+            "DeleteProxyRuleGroup",
+            json!({"ProxyRuleGroupName": "prg-a"}),
+        );
         assert_eq!(status, 200);
-        let (status, _) = call(b, "DeleteProxyConfiguration", json!({"ProxyConfigurationName": "pc-1"}));
+        let (status, _) = call(
+            b,
+            "DeleteProxyConfiguration",
+            json!({"ProxyConfigurationName": "pc-1"}),
+        );
         assert_eq!(status, 200);
-        let (status, _) = call(b, "DescribeProxyConfiguration", json!({"ProxyConfigurationName": "pc-1"}));
+        let (status, _) = call(
+            b,
+            "DescribeProxyConfiguration",
+            json!({"ProxyConfigurationName": "pc-1"}),
+        );
         assert_eq!(status, 400);
     }
 
@@ -2340,7 +2572,13 @@ mod tests {
         assert_eq!(status, 200);
         // Associate replaces the AZ mapping set (mirrors AssociateSubnets).
         let (_, v) = call(b, "DescribeFirewall", json!({"FirewallName": "fw-assoc"}));
-        assert_eq!(v["Firewall"]["AvailabilityZoneMappings"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            v["Firewall"]["AvailabilityZoneMappings"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
         let (status, _) = call(
             b,
             "DisassociateAvailabilityZones",
@@ -2381,10 +2619,23 @@ mod tests {
         let (_, v) = call(b, "DescribeFirewall", json!({"FirewallName": "fw-assoc"}));
         assert_eq!(v["Firewall"]["AvailabilityZoneChangeProtection"], true);
         assert_eq!(v["Firewall"]["Description"], "new text");
-        assert_eq!(v["Firewall"]["EnabledAnalysisTypes"].as_array().unwrap().len(), 1);
-        assert_eq!(v["Firewall"]["EncryptionConfiguration"]["Type"], "AWS_OWNED_KMS_KEY");
+        assert_eq!(
+            v["Firewall"]["EnabledAnalysisTypes"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            v["Firewall"]["EncryptionConfiguration"]["Type"],
+            "AWS_OWNED_KMS_KEY"
+        );
 
-        let (_, v) = call(b, "DescribeFirewallMetadata", json!({"FirewallName": "fw-assoc"}));
+        let (_, v) = call(
+            b,
+            "DescribeFirewallMetadata",
+            json!({"FirewallName": "fw-assoc"}),
+        );
         assert_eq!(v["Status"], "READY");
         assert!(v["SupportedAvailabilityZones"].is_object());
 
@@ -2428,13 +2679,25 @@ mod tests {
             json!({"FirewallArn": fire_arn.clone(), "FlowOperationId": op_id.clone()}),
         );
         assert_eq!(status, 200);
-        let (status, _) = call(b, "ListFlowOperations", json!({"FirewallArn": fire_arn.clone()}));
+        let (status, _) = call(
+            b,
+            "ListFlowOperations",
+            json!({"FirewallArn": fire_arn.clone()}),
+        );
         assert_eq!(status, 200);
-        let (status, _) = call(b, "ListFlowOperationResults", json!({
-            "FirewallArn": fire_arn.clone(), "FlowOperationId": op_id.clone(),
-        }));
+        let (status, _) = call(
+            b,
+            "ListFlowOperationResults",
+            json!({
+                "FirewallArn": fire_arn.clone(), "FlowOperationId": op_id.clone(),
+            }),
+        );
         assert_eq!(status, 200);
-        let (_, v) = call(b, "ListFlowOperations", json!({"FirewallArn": fire_arn.clone()}));
+        let (_, v) = call(
+            b,
+            "ListFlowOperations",
+            json!({"FirewallArn": fire_arn.clone()}),
+        );
         assert_eq!(v["FlowOperations"].as_array().unwrap().len(), 1);
         let (_, v) = call(
             b,
@@ -2487,8 +2750,10 @@ mod tests {
             json!({"TransitGatewayAttachmentId": "tg-attach-1234"}),
         );
         assert_eq!(status, 400);
-        b.transit_gateways
-            .push(("tg-attach-1234".to_string(), "PENDING_ACCEPTANCE".to_string()));
+        b.transit_gateways.push((
+            "tg-attach-1234".to_string(),
+            "PENDING_ACCEPTANCE".to_string(),
+        ));
         let (status, v) = call(
             b,
             "AcceptNetworkFirewallTransitGatewayAttachment",
