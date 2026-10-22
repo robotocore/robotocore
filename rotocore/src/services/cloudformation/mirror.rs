@@ -1056,7 +1056,7 @@ fn zip_from_plaintext(code: &[u8]) -> Vec<u8> {
 /// (origin: AWS docs, SPDX MIT-0), with a stdlib fallback for urllib3 (the
 /// file notes its own deviation). Injected into inline-code zips so
 /// CustomResource handlers work like real lambda images.
-const CFNRESPONSE_PY: &str = include_str!("cfnresponse.py");
+const CFNRESPONSE_PY: &str = include_str!("cfnresponse.py.txt");
 
 /// Assemble a stored (uncompressed) zip from `(name, contents)` members —
 /// the hand-rolled zipfile writer behind the CFN inline-code path. All

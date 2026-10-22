@@ -16,7 +16,7 @@ description = "Rust reimplementation of robotocore AWS API mock server"
 
 [lib]
 name = "robotocore_rust"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [features]
 default = []
