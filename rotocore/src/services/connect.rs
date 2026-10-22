@@ -234,47 +234,49 @@ macro_rules! rows {
 static OPS: Lazy<Vec<OpRow>> = Lazy::new(|| {
     rows![
     // NOTE: rows generated from botocore connect 2017-08-08 with moto's
-    // URL-table classification (H = moto handler implemented, H501 = routed
-    // but unimplemented in moto, R501 = not routed by moto at all).
+    // URL-table classification (H = a native port answers in-process —
+    // originally the moto handlers, extended by the botocore-shape
+    // instance-family port; H501 = routed but unimplemented in moto,
+    // R501 = not routed by moto at all).
         "POST", "evaluation-forms/{InstanceId}/{EvaluationFormId}/activate", "ActivateEvaluationForm", "H", false, ["InstanceId", "EvaluationFormId"];
         "PUT", "analytics-data/instance/{InstanceId}/association", "AssociateAnalyticsDataSet", "H", false, ["InstanceId"];
         "PUT", "instance/{InstanceId}/approved-origin", "AssociateApprovedOrigin", "H", false, ["InstanceId"];
         "PUT", "instance/{InstanceId}/bot", "AssociateBot", "H", false, ["InstanceId"];
-        "POST", "contacts/{InstanceId}/{ContactId}/associate-user", "AssociateContactWithUser", "R501", false, ["InstanceId", "ContactId"];
-        "PUT", "default-vocabulary/{InstanceId}/{LanguageCode}", "AssociateDefaultVocabulary", "R501", false, ["InstanceId", "LanguageCode"];
-        "POST", "email-addresses/{InstanceId}/{EmailAddressId}/associate-alias", "AssociateEmailAddressAlias", "R501", false, ["InstanceId", "EmailAddressId"];
-        "PUT", "flow-associations/{InstanceId}", "AssociateFlow", "R501", false, ["InstanceId"];
-        "POST", "hours-of-operations/{InstanceId}/{HoursOfOperationId}/associate-hours", "AssociateHoursOfOperations", "R501", false, ["InstanceId", "HoursOfOperationId"];
+        "POST", "contacts/{InstanceId}/{ContactId}/associate-user", "AssociateContactWithUser", "H", false, ["InstanceId", "ContactId"];
+        "PUT", "default-vocabulary/{InstanceId}/{LanguageCode}", "AssociateDefaultVocabulary", "H", false, ["InstanceId", "LanguageCode"];
+        "POST", "email-addresses/{InstanceId}/{EmailAddressId}/associate-alias", "AssociateEmailAddressAlias", "H", false, ["InstanceId", "EmailAddressId"];
+        "PUT", "flow-associations/{InstanceId}", "AssociateFlow", "H", false, ["InstanceId"];
+        "POST", "hours-of-operations/{InstanceId}/{HoursOfOperationId}/associate-hours", "AssociateHoursOfOperations", "H", false, ["InstanceId", "HoursOfOperationId"];
         "PUT", "instance/{InstanceId}/storage-config", "AssociateInstanceStorageConfig", "H", false, ["InstanceId"];
         "PUT", "instance/{InstanceId}/lambda-function", "AssociateLambdaFunction", "H", false, ["InstanceId"];
-        "PUT", "instance/{InstanceId}/lex-bot", "AssociateLexBot", "R501", false, ["InstanceId"];
-        "PUT", "phone-number/{PhoneNumberId}/contact-flow", "AssociatePhoneNumberContactFlow", "R501", false, ["PhoneNumberId"];
-        "POST", "queues/{InstanceId}/{QueueId}/associate-email-addresses", "AssociateQueueEmailAddresses", "R501", false, ["InstanceId", "QueueId"];
+        "PUT", "instance/{InstanceId}/lex-bot", "AssociateLexBot", "H", false, ["InstanceId"];
+        "PUT", "phone-number/{PhoneNumberId}/contact-flow", "AssociatePhoneNumberContactFlow", "H", false, ["PhoneNumberId"];
+        "POST", "queues/{InstanceId}/{QueueId}/associate-email-addresses", "AssociateQueueEmailAddresses", "H", false, ["InstanceId", "QueueId"];
         "POST", "queues/{InstanceId}/{QueueId}/associate-quick-connects", "AssociateQueueQuickConnects", "H", false, ["InstanceId", "QueueId"];
         "POST", "routing-profiles/{InstanceId}/{RoutingProfileId}/associate-queues", "AssociateRoutingProfileQueues", "H", false, ["InstanceId", "RoutingProfileId"];
         "PUT", "instance/{InstanceId}/security-key", "AssociateSecurityKey", "H", false, ["InstanceId"];
-        "POST", "associate-security-profiles/{InstanceId}", "AssociateSecurityProfiles", "R501", false, ["InstanceId"];
-        "PUT", "traffic-distribution-group/{TrafficDistributionGroupId}/user", "AssociateTrafficDistributionGroupUser", "R501", false, ["TrafficDistributionGroupId"];
-        "POST", "users/{InstanceId}/{UserId}/associate-proficiencies", "AssociateUserProficiencies", "R501", false, ["InstanceId", "UserId"];
-        "POST", "workspaces/{InstanceId}/{WorkspaceId}/associate", "AssociateWorkspace", "R501", false, ["InstanceId", "WorkspaceId"];
-        "PUT", "analytics-data/instance/{InstanceId}/associations", "BatchAssociateAnalyticsDataSet", "R501", false, ["InstanceId"];
-        "POST", "data-tables/{InstanceId}/{DataTableId}/values/create", "BatchCreateDataTableValue", "R501", false, ["InstanceId", "DataTableId"];
-        "POST", "data-tables/{InstanceId}/{DataTableId}/values/delete", "BatchDeleteDataTableValue", "R501", false, ["InstanceId", "DataTableId"];
-        "POST", "data-tables/{InstanceId}/{DataTableId}/values/describe", "BatchDescribeDataTableValue", "R501", false, ["InstanceId", "DataTableId"];
-        "POST", "analytics-data/instance/{InstanceId}/associations", "BatchDisassociateAnalyticsDataSet", "R501", false, ["InstanceId"];
-        "POST", "attached-files/{InstanceId}", "BatchGetAttachedFileMetadata", "R501", false, ["InstanceId"];
-        "POST", "flow-associations-batch/{InstanceId}", "BatchGetFlowAssociation", "R501", false, ["InstanceId"];
-        "PUT", "contact/batch/{InstanceId}", "BatchPutContact", "R501", false, ["InstanceId"];
-        "POST", "data-tables/{InstanceId}/{DataTableId}/values/update", "BatchUpdateDataTableValue", "R501", false, ["InstanceId", "DataTableId"];
+        "POST", "associate-security-profiles/{InstanceId}", "AssociateSecurityProfiles", "H", false, ["InstanceId"];
+        "PUT", "traffic-distribution-group/{TrafficDistributionGroupId}/user", "AssociateTrafficDistributionGroupUser", "H", false, ["TrafficDistributionGroupId"];
+        "POST", "users/{InstanceId}/{UserId}/associate-proficiencies", "AssociateUserProficiencies", "H", false, ["InstanceId", "UserId"];
+        "POST", "workspaces/{InstanceId}/{WorkspaceId}/associate", "AssociateWorkspace", "H", false, ["InstanceId", "WorkspaceId"];
+        "PUT", "analytics-data/instance/{InstanceId}/associations", "BatchAssociateAnalyticsDataSet", "H", false, ["InstanceId"];
+        "POST", "data-tables/{InstanceId}/{DataTableId}/values/create", "BatchCreateDataTableValue", "H", false, ["InstanceId", "DataTableId"];
+        "POST", "data-tables/{InstanceId}/{DataTableId}/values/delete", "BatchDeleteDataTableValue", "H", false, ["InstanceId", "DataTableId"];
+        "POST", "data-tables/{InstanceId}/{DataTableId}/values/describe", "BatchDescribeDataTableValue", "H", false, ["InstanceId", "DataTableId"];
+        "POST", "analytics-data/instance/{InstanceId}/associations", "BatchDisassociateAnalyticsDataSet", "H", false, ["InstanceId"];
+        "POST", "attached-files/{InstanceId}", "BatchGetAttachedFileMetadata", "H", false, ["InstanceId"];
+        "POST", "flow-associations-batch/{InstanceId}", "BatchGetFlowAssociation", "H", false, ["InstanceId"];
+        "PUT", "contact/batch/{InstanceId}", "BatchPutContact", "H", false, ["InstanceId"];
+        "POST", "data-tables/{InstanceId}/{DataTableId}/values/update", "BatchUpdateDataTableValue", "H", false, ["InstanceId", "DataTableId"];
         "POST", "phone-number/claim", "ClaimPhoneNumber", "H", false, [];
-        "POST", "attached-files/{InstanceId}/{FileId}", "CompleteAttachedFileUpload", "R501", false, ["InstanceId", "FileId"];
+        "POST", "attached-files/{InstanceId}/{FileId}", "CompleteAttachedFileUpload", "H", false, ["InstanceId", "FileId"];
         "PUT", "agent-status/{InstanceId}", "CreateAgentStatus", "H", false, ["InstanceId"];
         "PUT", "contact/create-contact", "CreateContact", "H", false, [];
         "PUT", "contact-flows/{InstanceId}", "CreateContactFlow", "H", false, ["InstanceId"];
         "PUT", "contact-flow-modules/{InstanceId}", "CreateContactFlowModule", "H", false, ["InstanceId"];
         "PUT", "contact-flow-modules/{InstanceId}/{ContactFlowModuleId}/alias", "CreateContactFlowModuleAlias", "H", false, ["InstanceId", "ContactFlowModuleId"];
-        "PUT", "contact-flow-modules/{InstanceId}/{ContactFlowModuleId}/version", "CreateContactFlowModuleVersion", "R501", false, ["InstanceId", "ContactFlowModuleId"];
-        "PUT", "contact-flows/{InstanceId}/{ContactFlowId}/version", "CreateContactFlowVersion", "R501", false, ["InstanceId", "ContactFlowId"];
+        "PUT", "contact-flow-modules/{InstanceId}/{ContactFlowModuleId}/version", "CreateContactFlowModuleVersion", "H", false, ["InstanceId", "ContactFlowModuleId"];
+        "PUT", "contact-flows/{InstanceId}/{ContactFlowId}/version", "CreateContactFlowVersion", "H", false, ["InstanceId", "ContactFlowId"];
         "PUT", "data-tables/{InstanceId}", "CreateDataTable", "H", false, ["InstanceId"];
         "PUT", "data-tables/{InstanceId}/{DataTableId}/attributes", "CreateDataTableAttribute", "H", false, ["InstanceId", "DataTableId"];
         "PUT", "email-addresses/{InstanceId}", "CreateEmailAddress", "H", false, ["InstanceId"];
@@ -284,11 +286,11 @@ static OPS: Lazy<Vec<OpRow>> = Lazy::new(|| {
         "PUT", "instance", "CreateInstance", "H", false, [];
         "PUT", "instance/{InstanceId}/integration-associations", "CreateIntegrationAssociation", "H", false, ["InstanceId"];
         "PUT", "notifications/{InstanceId}", "CreateNotification", "H", false, ["InstanceId"];
-        "POST", "contact/create-participant", "CreateParticipant", "R501", false, [];
-        "POST", "contact/persistent-contact-association/{InstanceId}/{InitialContactId}", "CreatePersistentContactAssociation", "R501", false, ["InstanceId", "InitialContactId"];
+        "POST", "contact/create-participant", "CreateParticipant", "H", false, [];
+        "POST", "contact/persistent-contact-association/{InstanceId}/{InitialContactId}", "CreatePersistentContactAssociation", "H", false, ["InstanceId", "InitialContactId"];
         "PUT", "predefined-attributes/{InstanceId}", "CreatePredefinedAttribute", "H", false, ["InstanceId"];
         "PUT", "prompts/{InstanceId}", "CreatePrompt", "H", false, ["InstanceId"];
-        "PUT", "push-notification/{InstanceId}/registrations", "CreatePushNotificationRegistration", "R501", false, ["InstanceId"];
+        "PUT", "push-notification/{InstanceId}/registrations", "CreatePushNotificationRegistration", "H", false, ["InstanceId"];
         "PUT", "queues/{InstanceId}", "CreateQueue", "H", false, ["InstanceId"];
         "PUT", "quick-connects/{InstanceId}", "CreateQuickConnect", "H", false, ["InstanceId"];
         "PUT", "routing-profiles/{InstanceId}", "CreateRoutingProfile", "H", false, ["InstanceId"];
@@ -301,18 +303,18 @@ static OPS: Lazy<Vec<OpRow>> = Lazy::new(|| {
         "PUT", "users/{InstanceId}", "CreateUser", "H", false, ["InstanceId"];
         "PUT", "user-hierarchy-groups/{InstanceId}", "CreateUserHierarchyGroup", "H", false, ["InstanceId"];
         "PUT", "views/{InstanceId}", "CreateView", "H", false, ["InstanceId"];
-        "PUT", "views/{InstanceId}/{ViewId}/versions", "CreateViewVersion", "R501", false, ["InstanceId", "ViewId"];
+        "PUT", "views/{InstanceId}/{ViewId}/versions", "CreateViewVersion", "H", false, ["InstanceId", "ViewId"];
         "POST", "vocabulary/{InstanceId}", "CreateVocabulary", "H", false, ["InstanceId"];
         "PUT", "workspaces/{InstanceId}", "CreateWorkspace", "H", false, ["InstanceId"];
-        "PUT", "workspaces/{InstanceId}/{WorkspaceId}/pages", "CreateWorkspacePage", "R501", false, ["InstanceId", "WorkspaceId"];
+        "PUT", "workspaces/{InstanceId}/{WorkspaceId}/pages", "CreateWorkspacePage", "H", false, ["InstanceId", "WorkspaceId"];
         "POST", "evaluation-forms/{InstanceId}/{EvaluationFormId}/deactivate", "DeactivateEvaluationForm", "H", false, ["InstanceId", "EvaluationFormId"];
-        "DELETE", "attached-files/{InstanceId}/{FileId}", "DeleteAttachedFile", "R501", false, ["InstanceId", "FileId"];
+        "DELETE", "attached-files/{InstanceId}/{FileId}", "DeleteAttachedFile", "H", false, ["InstanceId", "FileId"];
         "DELETE", "contact-evaluations/{InstanceId}/{EvaluationId}", "DeleteContactEvaluation", "H", false, ["InstanceId", "EvaluationId"];
         "DELETE", "contact-flows/{InstanceId}/{ContactFlowId}", "DeleteContactFlow", "H", false, ["InstanceId", "ContactFlowId"];
         "DELETE", "contact-flow-modules/{InstanceId}/{ContactFlowModuleId}", "DeleteContactFlowModule", "H", false, ["InstanceId", "ContactFlowModuleId"];
         "DELETE", "contact-flow-modules/{InstanceId}/{ContactFlowModuleId}/alias/{AliasId}", "DeleteContactFlowModuleAlias", "H", false, ["InstanceId", "ContactFlowModuleId", "AliasId"];
-        "DELETE", "contact-flow-modules/{InstanceId}/{ContactFlowModuleId}/version/{ContactFlowModuleVersion}", "DeleteContactFlowModuleVersion", "R501", false, ["InstanceId", "ContactFlowModuleId", "ContactFlowModuleVersion"];
-        "DELETE", "contact-flows/{InstanceId}/{ContactFlowId}/version/{ContactFlowVersion}", "DeleteContactFlowVersion", "R501", false, ["InstanceId", "ContactFlowId", "ContactFlowVersion"];
+        "DELETE", "contact-flow-modules/{InstanceId}/{ContactFlowModuleId}/version/{ContactFlowModuleVersion}", "DeleteContactFlowModuleVersion", "H", false, ["InstanceId", "ContactFlowModuleId", "ContactFlowModuleVersion"];
+        "DELETE", "contact-flows/{InstanceId}/{ContactFlowId}/version/{ContactFlowVersion}", "DeleteContactFlowVersion", "H", false, ["InstanceId", "ContactFlowId", "ContactFlowVersion"];
         "DELETE", "data-tables/{InstanceId}/{DataTableId}", "DeleteDataTable", "H", false, ["InstanceId", "DataTableId"];
         "DELETE", "data-tables/{InstanceId}/{DataTableId}/attributes/{AttributeName}", "DeleteDataTableAttribute", "H", false, ["InstanceId", "DataTableId", "AttributeName"];
         "DELETE", "email-addresses/{InstanceId}/{EmailAddressId}", "DeleteEmailAddress", "H", false, ["InstanceId", "EmailAddressId"];
@@ -320,11 +322,11 @@ static OPS: Lazy<Vec<OpRow>> = Lazy::new(|| {
         "DELETE", "hours-of-operations/{InstanceId}/{HoursOfOperationId}", "DeleteHoursOfOperation", "H", false, ["InstanceId", "HoursOfOperationId"];
         "DELETE", "hours-of-operations/{InstanceId}/{HoursOfOperationId}/overrides/{HoursOfOperationOverrideId}", "DeleteHoursOfOperationOverride", "H", false, ["InstanceId", "HoursOfOperationId", "HoursOfOperationOverrideId"];
         "DELETE", "instance/{InstanceId}", "DeleteInstance", "H", false, ["InstanceId"];
-        "DELETE", "instance/{InstanceId}/integration-associations/{IntegrationAssociationId}", "DeleteIntegrationAssociation", "R501", false, ["InstanceId", "IntegrationAssociationId"];
+        "DELETE", "instance/{InstanceId}/integration-associations/{IntegrationAssociationId}", "DeleteIntegrationAssociation", "H", false, ["InstanceId", "IntegrationAssociationId"];
         "DELETE", "notifications/{InstanceId}/{NotificationId}", "DeleteNotification", "H", false, ["InstanceId", "NotificationId"];
         "DELETE", "predefined-attributes/{InstanceId}/{Name}", "DeletePredefinedAttribute", "H", false, ["InstanceId", "Name"];
         "DELETE", "prompts/{InstanceId}/{PromptId}", "DeletePrompt", "H", false, ["InstanceId", "PromptId"];
-        "DELETE", "push-notification/{InstanceId}/registrations/{RegistrationId}", "DeletePushNotificationRegistration", "R501", false, ["InstanceId", "RegistrationId"];
+        "DELETE", "push-notification/{InstanceId}/registrations/{RegistrationId}", "DeletePushNotificationRegistration", "H", false, ["InstanceId", "RegistrationId"];
         "DELETE", "queues/{InstanceId}/{QueueId}", "DeleteQueue", "H", false, ["InstanceId", "QueueId"];
         "DELETE", "quick-connects/{InstanceId}/{QuickConnectId}", "DeleteQuickConnect", "H", false, ["InstanceId", "QuickConnectId"];
         "DELETE", "routing-profiles/{InstanceId}/{RoutingProfileId}", "DeleteRoutingProfile", "H", false, ["InstanceId", "RoutingProfileId"];
@@ -337,13 +339,13 @@ static OPS: Lazy<Vec<OpRow>> = Lazy::new(|| {
         "DELETE", "users/{InstanceId}/{UserId}", "DeleteUser", "H", false, ["InstanceId", "UserId"];
         "DELETE", "user-hierarchy-groups/{InstanceId}/{HierarchyGroupId}", "DeleteUserHierarchyGroup", "H", false, ["InstanceId", "HierarchyGroupId"];
         "DELETE", "views/{InstanceId}/{ViewId}", "DeleteView", "H", false, ["InstanceId", "ViewId"];
-        "DELETE", "views/{InstanceId}/{ViewId}/versions/{ViewVersion}", "DeleteViewVersion", "R501", false, ["InstanceId", "ViewId", "ViewVersion"];
+        "DELETE", "views/{InstanceId}/{ViewId}/versions/{ViewVersion}", "DeleteViewVersion", "H", false, ["InstanceId", "ViewId", "ViewVersion"];
         "POST", "vocabulary-remove/{InstanceId}/{VocabularyId}", "DeleteVocabulary", "H", false, ["InstanceId", "VocabularyId"];
         "DELETE", "workspaces/{InstanceId}/{WorkspaceId}", "DeleteWorkspace", "H", false, ["InstanceId", "WorkspaceId"];
-        "DELETE", "workspaces/{InstanceId}/{WorkspaceId}/media", "DeleteWorkspaceMedia", "R501", false, ["InstanceId", "WorkspaceId"];
-        "DELETE", "workspaces/{InstanceId}/{WorkspaceId}/pages/{Page}", "DeleteWorkspacePage", "R501", false, ["InstanceId", "WorkspaceId", "Page"];
+        "DELETE", "workspaces/{InstanceId}/{WorkspaceId}/media", "DeleteWorkspaceMedia", "H", false, ["InstanceId", "WorkspaceId"];
+        "DELETE", "workspaces/{InstanceId}/{WorkspaceId}/pages/{Page}", "DeleteWorkspacePage", "H", false, ["InstanceId", "WorkspaceId", "Page"];
         "GET", "agent-status/{InstanceId}/{AgentStatusId}", "DescribeAgentStatus", "H", false, ["InstanceId", "AgentStatusId"];
-        "GET", "authentication-profiles/{InstanceId}/{AuthenticationProfileId}", "DescribeAuthenticationProfile", "R501", false, ["InstanceId", "AuthenticationProfileId"];
+        "GET", "authentication-profiles/{InstanceId}/{AuthenticationProfileId}", "DescribeAuthenticationProfile", "H", false, ["InstanceId", "AuthenticationProfileId"];
         "GET", "contacts/{InstanceId}/{ContactId}", "DescribeContact", "H", false, ["InstanceId", "ContactId"];
         "GET", "contact-evaluations/{InstanceId}/{EvaluationId}", "DescribeContactEvaluation", "H", false, ["InstanceId", "EvaluationId"];
         "GET", "contact-flows/{InstanceId}/{ContactFlowId}", "DescribeContactFlow", "H", false, ["InstanceId", "ContactFlowId"];
@@ -357,7 +359,7 @@ static OPS: Lazy<Vec<OpRow>> = Lazy::new(|| {
         "GET", "hours-of-operations/{InstanceId}/{HoursOfOperationId}/overrides/{HoursOfOperationOverrideId}", "DescribeHoursOfOperationOverride", "H", false, ["InstanceId", "HoursOfOperationId", "HoursOfOperationOverrideId"];
         "GET", "instance/{InstanceId}", "DescribeInstance", "H", false, ["InstanceId"];
         "GET", "instance/{InstanceId}/attribute/{AttributeType}", "DescribeInstanceAttribute", "H", false, ["InstanceId", "AttributeType"];
-        "GET", "instance/{InstanceId}/storage-config/{AssociationId}", "DescribeInstanceStorageConfig", "H501", false, ["InstanceId", "AssociationId"];
+        "GET", "instance/{InstanceId}/storage-config/{AssociationId}", "DescribeInstanceStorageConfig", "H", false, ["InstanceId", "AssociationId"];
         "GET", "notifications/{InstanceId}/{NotificationId}", "DescribeNotification", "H", false, ["InstanceId", "NotificationId"];
         "GET", "phone-number/{PhoneNumberId}", "DescribePhoneNumber", "H", false, ["PhoneNumberId"];
         "GET", "predefined-attributes/{InstanceId}/{Name}", "DescribePredefinedAttribute", "H", false, ["InstanceId", "Name"];
@@ -378,60 +380,60 @@ static OPS: Lazy<Vec<OpRow>> = Lazy::new(|| {
         "POST", "analytics-data/instance/{InstanceId}/association", "DisassociateAnalyticsDataSet", "H", false, ["InstanceId"];
         "DELETE", "instance/{InstanceId}/approved-origin", "DisassociateApprovedOrigin", "H", false, ["InstanceId"];
         "POST", "instance/{InstanceId}/bot", "DisassociateBot", "H", false, ["InstanceId"];
-        "POST", "email-addresses/{InstanceId}/{EmailAddressId}/disassociate-alias", "DisassociateEmailAddressAlias", "R501", false, ["InstanceId", "EmailAddressId"];
-        "DELETE", "flow-associations/{InstanceId}/{ResourceId}/{ResourceType}", "DisassociateFlow", "R501", false, ["InstanceId", "ResourceId", "ResourceType"];
-        "POST", "hours-of-operations/{InstanceId}/{HoursOfOperationId}/disassociate-hours", "DisassociateHoursOfOperations", "R501", false, ["InstanceId", "HoursOfOperationId"];
+        "POST", "email-addresses/{InstanceId}/{EmailAddressId}/disassociate-alias", "DisassociateEmailAddressAlias", "H", false, ["InstanceId", "EmailAddressId"];
+        "DELETE", "flow-associations/{InstanceId}/{ResourceId}/{ResourceType}", "DisassociateFlow", "H", false, ["InstanceId", "ResourceId", "ResourceType"];
+        "POST", "hours-of-operations/{InstanceId}/{HoursOfOperationId}/disassociate-hours", "DisassociateHoursOfOperations", "H", false, ["InstanceId", "HoursOfOperationId"];
         "DELETE", "instance/{InstanceId}/storage-config/{AssociationId}", "DisassociateInstanceStorageConfig", "H", false, ["InstanceId", "AssociationId"];
         "DELETE", "instance/{InstanceId}/lambda-function", "DisassociateLambdaFunction", "H", false, ["InstanceId"];
-        "DELETE", "instance/{InstanceId}/lex-bot", "DisassociateLexBot", "R501", false, ["InstanceId"];
-        "DELETE", "phone-number/{PhoneNumberId}/contact-flow", "DisassociatePhoneNumberContactFlow", "R501", false, ["PhoneNumberId"];
-        "POST", "queues/{InstanceId}/{QueueId}/disassociate-email-addresses", "DisassociateQueueEmailAddresses", "R501", false, ["InstanceId", "QueueId"];
+        "DELETE", "instance/{InstanceId}/lex-bot", "DisassociateLexBot", "H", false, ["InstanceId"];
+        "DELETE", "phone-number/{PhoneNumberId}/contact-flow", "DisassociatePhoneNumberContactFlow", "H", false, ["PhoneNumberId"];
+        "POST", "queues/{InstanceId}/{QueueId}/disassociate-email-addresses", "DisassociateQueueEmailAddresses", "H", false, ["InstanceId", "QueueId"];
         "POST", "queues/{InstanceId}/{QueueId}/disassociate-quick-connects", "DisassociateQueueQuickConnects", "H", false, ["InstanceId", "QueueId"];
         "POST", "routing-profiles/{InstanceId}/{RoutingProfileId}/disassociate-queues", "DisassociateRoutingProfileQueues", "H", false, ["InstanceId", "RoutingProfileId"];
         "DELETE", "instance/{InstanceId}/security-key/{AssociationId}", "DisassociateSecurityKey", "H", false, ["InstanceId", "AssociationId"];
-        "POST", "disassociate-security-profiles/{InstanceId}", "DisassociateSecurityProfiles", "R501", false, ["InstanceId"];
-        "DELETE", "traffic-distribution-group/{TrafficDistributionGroupId}/user", "DisassociateTrafficDistributionGroupUser", "R501", false, ["TrafficDistributionGroupId"];
-        "POST", "users/{InstanceId}/{UserId}/disassociate-proficiencies", "DisassociateUserProficiencies", "R501", false, ["InstanceId", "UserId"];
-        "POST", "workspaces/{InstanceId}/{WorkspaceId}/disassociate", "DisassociateWorkspace", "R501", false, ["InstanceId", "WorkspaceId"];
-        "POST", "users/{InstanceId}/{UserId}/contact", "DismissUserContact", "R501", false, ["InstanceId", "UserId"];
-        "POST", "data-tables/{InstanceId}/{DataTableId}/values/evaluate", "EvaluateDataTableValues", "R501", false, ["InstanceId", "DataTableId"];
-        "GET", "attached-files/{InstanceId}/{FileId}", "GetAttachedFile", "R501", false, ["InstanceId", "FileId"];
+        "POST", "disassociate-security-profiles/{InstanceId}", "DisassociateSecurityProfiles", "H", false, ["InstanceId"];
+        "DELETE", "traffic-distribution-group/{TrafficDistributionGroupId}/user", "DisassociateTrafficDistributionGroupUser", "H", false, ["TrafficDistributionGroupId"];
+        "POST", "users/{InstanceId}/{UserId}/disassociate-proficiencies", "DisassociateUserProficiencies", "H", false, ["InstanceId", "UserId"];
+        "POST", "workspaces/{InstanceId}/{WorkspaceId}/disassociate", "DisassociateWorkspace", "H", false, ["InstanceId", "WorkspaceId"];
+        "POST", "users/{InstanceId}/{UserId}/contact", "DismissUserContact", "H", false, ["InstanceId", "UserId"];
+        "POST", "data-tables/{InstanceId}/{DataTableId}/values/evaluate", "EvaluateDataTableValues", "H", false, ["InstanceId", "DataTableId"];
+        "GET", "attached-files/{InstanceId}/{FileId}", "GetAttachedFile", "H", false, ["InstanceId", "FileId"];
         "GET", "contact/attributes/{InstanceId}/{InitialContactId}", "GetContactAttributes", "H", false, ["InstanceId", "InitialContactId"];
-        "POST", "metrics/contact", "GetContactMetrics", "R501", false, [];
-        "POST", "metrics/current/{InstanceId}", "GetCurrentMetricData", "R501", false, ["InstanceId"];
-        "POST", "metrics/userdata/{InstanceId}", "GetCurrentUserData", "R501", false, ["InstanceId"];
-        "GET", "effective-hours-of-operations/{InstanceId}/{HoursOfOperationId}", "GetEffectiveHoursOfOperations", "R501", false, ["InstanceId", "HoursOfOperationId"];
-        "GET", "user/federate/{InstanceId}", "GetFederationToken", "R501", false, ["InstanceId"];
-        "GET", "flow-associations/{InstanceId}/{ResourceId}/{ResourceType}", "GetFlowAssociation", "R501", false, ["InstanceId", "ResourceId", "ResourceType"];
-        "POST", "metrics/historical/{InstanceId}", "GetMetricData", "R501", false, ["InstanceId"];
-        "POST", "metrics/data", "GetMetricDataV2", "R501", false, [];
-        "GET", "prompts/{InstanceId}/{PromptId}/file", "GetPromptFile", "R501", false, ["InstanceId", "PromptId"];
+        "POST", "metrics/contact", "GetContactMetrics", "H", false, [];
+        "POST", "metrics/current/{InstanceId}", "GetCurrentMetricData", "H", false, ["InstanceId"];
+        "POST", "metrics/userdata/{InstanceId}", "GetCurrentUserData", "H", false, ["InstanceId"];
+        "GET", "effective-hours-of-operations/{InstanceId}/{HoursOfOperationId}", "GetEffectiveHoursOfOperations", "H", false, ["InstanceId", "HoursOfOperationId"];
+        "GET", "user/federate/{InstanceId}", "GetFederationToken", "H", false, ["InstanceId"];
+        "GET", "flow-associations/{InstanceId}/{ResourceId}/{ResourceType}", "GetFlowAssociation", "H", false, ["InstanceId", "ResourceId", "ResourceType"];
+        "POST", "metrics/historical/{InstanceId}", "GetMetricData", "H", false, ["InstanceId"];
+        "POST", "metrics/data", "GetMetricDataV2", "H", false, [];
+        "GET", "prompts/{InstanceId}/{PromptId}/file", "GetPromptFile", "H", false, ["InstanceId", "PromptId"];
         "GET", "instance/{InstanceId}/task/template/{TaskTemplateId}", "GetTaskTemplate", "H", false, ["InstanceId", "TaskTemplateId"];
-        "GET", "test-cases/{InstanceId}/{TestCaseId}/{TestCaseExecutionId}/summary", "GetTestCaseExecutionSummary", "R501", false, ["InstanceId", "TestCaseId", "TestCaseExecutionId"];
-        "GET", "traffic-distribution/{Id}", "GetTrafficDistribution", "R501", false, ["Id"];
-        "POST", "phone-number/import", "ImportPhoneNumber", "H501", false, [];
-        "POST", "workspaces/{InstanceId}/{WorkspaceId}/media", "ImportWorkspaceMedia", "R501", false, ["InstanceId", "WorkspaceId"];
+        "GET", "test-cases/{InstanceId}/{TestCaseId}/{TestCaseExecutionId}/summary", "GetTestCaseExecutionSummary", "H", false, ["InstanceId", "TestCaseId", "TestCaseExecutionId"];
+        "GET", "traffic-distribution/{Id}", "GetTrafficDistribution", "H", false, ["Id"];
+        "POST", "phone-number/import", "ImportPhoneNumber", "H", false, [];
+        "POST", "workspaces/{InstanceId}/{WorkspaceId}/media", "ImportWorkspaceMedia", "H", false, ["InstanceId", "WorkspaceId"];
         "GET", "agent-status/{InstanceId}", "ListAgentStatuses", "H", false, ["InstanceId"];
         "GET", "analytics-data/instance/{InstanceId}/association", "ListAnalyticsDataAssociations", "H", false, ["InstanceId"];
-        "GET", "analytics-data/instance/{InstanceId}/datasets", "ListAnalyticsDataLakeDataSets", "R501", false, ["InstanceId"];
+        "GET", "analytics-data/instance/{InstanceId}/datasets", "ListAnalyticsDataLakeDataSets", "H", false, ["InstanceId"];
         "GET", "instance/{InstanceId}/approved-origins", "ListApprovedOrigins", "H", false, ["InstanceId"];
-        "GET", "contact/associated/{InstanceId}", "ListAssociatedContacts", "R501", false, ["InstanceId"];
-        "GET", "authentication-profiles-summary/{InstanceId}", "ListAuthenticationProfiles", "R501", false, ["InstanceId"];
+        "GET", "contact/associated/{InstanceId}", "ListAssociatedContacts", "H", false, ["InstanceId"];
+        "GET", "authentication-profiles-summary/{InstanceId}", "ListAuthenticationProfiles", "H", false, ["InstanceId"];
         "GET", "instance/{InstanceId}/bots", "ListBots", "H", false, ["InstanceId"];
-        "GET", "hours-of-operations/{InstanceId}/{HoursOfOperationId}/hours", "ListChildHoursOfOperations", "R501", false, ["InstanceId", "HoursOfOperationId"];
+        "GET", "hours-of-operations/{InstanceId}/{HoursOfOperationId}/hours", "ListChildHoursOfOperations", "H", false, ["InstanceId", "HoursOfOperationId"];
         "GET", "contact-evaluations/{InstanceId}", "ListContactEvaluations", "H", false, ["InstanceId"];
         "GET", "contact-flow-modules/{InstanceId}/{ContactFlowModuleId}/aliases", "ListContactFlowModuleAliases", "H", false, ["InstanceId", "ContactFlowModuleId"];
-        "GET", "contact-flow-modules/{InstanceId}/{ContactFlowModuleId}/versions", "ListContactFlowModuleVersions", "R501", false, ["InstanceId", "ContactFlowModuleId"];
+        "GET", "contact-flow-modules/{InstanceId}/{ContactFlowModuleId}/versions", "ListContactFlowModuleVersions", "H", false, ["InstanceId", "ContactFlowModuleId"];
         "GET", "contact-flow-modules-summary/{InstanceId}", "ListContactFlowModules", "H", false, ["InstanceId"];
         "GET", "contact-flows/{InstanceId}/{ContactFlowId}/versions", "ListContactFlowVersions", "H", false, ["InstanceId", "ContactFlowId"];
         "GET", "contact-flows-summary/{InstanceId}", "ListContactFlows", "H", false, ["InstanceId"];
         "GET", "contact/references/{InstanceId}/{ContactId}", "ListContactReferences", "H", false, ["InstanceId", "ContactId"];
         "POST", "data-tables/{InstanceId}/{DataTableId}/attributes", "ListDataTableAttributes", "H", false, ["InstanceId", "DataTableId"];
-        "POST", "data-tables/{InstanceId}/{DataTableId}/values/list-primary", "ListDataTablePrimaryValues", "R501", false, ["InstanceId", "DataTableId"];
-        "POST", "data-tables/{InstanceId}/{DataTableId}/values/list", "ListDataTableValues", "R501", false, ["InstanceId", "DataTableId"];
+        "POST", "data-tables/{InstanceId}/{DataTableId}/values/list-primary", "ListDataTablePrimaryValues", "H", false, ["InstanceId", "DataTableId"];
+        "POST", "data-tables/{InstanceId}/{DataTableId}/values/list", "ListDataTableValues", "H", false, ["InstanceId", "DataTableId"];
         "GET", "data-tables/{InstanceId}", "ListDataTables", "H", false, ["InstanceId"];
         "POST", "default-vocabulary-summary/{InstanceId}", "ListDefaultVocabularies", "H", false, ["InstanceId"];
-        "POST", "entity-security-profiles-summary/{InstanceId}", "ListEntitySecurityProfiles", "R501", false, ["InstanceId"];
+        "POST", "entity-security-profiles-summary/{InstanceId}", "ListEntitySecurityProfiles", "H", false, ["InstanceId"];
         "GET", "evaluation-forms/{InstanceId}/{EvaluationFormId}/versions", "ListEvaluationFormVersions", "H", false, ["InstanceId", "EvaluationFormId"];
         "GET", "evaluation-forms/{InstanceId}", "ListEvaluationForms", "H", false, ["InstanceId"];
         "GET", "flow-associations-summary/{InstanceId}", "ListFlowAssociations", "H", false, ["InstanceId"];
@@ -442,106 +444,106 @@ static OPS: Lazy<Vec<OpRow>> = Lazy::new(|| {
         "GET", "instance", "ListInstances", "H", false, [];
         "GET", "instance/{InstanceId}/integration-associations", "ListIntegrationAssociations", "H", false, ["InstanceId"];
         "GET", "instance/{InstanceId}/lambda-functions", "ListLambdaFunctions", "H", false, ["InstanceId"];
-        "GET", "instance/{InstanceId}/lex-bots", "ListLexBots", "R501", false, ["InstanceId"];
+        "GET", "instance/{InstanceId}/lex-bots", "ListLexBots", "H", false, ["InstanceId"];
         "GET", "notifications/{InstanceId}", "ListNotifications", "H", false, ["InstanceId"];
         "GET", "phone-numbers-summary/{InstanceId}", "ListPhoneNumbers", "H", false, ["InstanceId"];
         "POST", "phone-number/list", "ListPhoneNumbersV2", "H", false, [];
         "GET", "predefined-attributes/{InstanceId}", "ListPredefinedAttributes", "H", false, ["InstanceId"];
         "GET", "prompts-summary/{InstanceId}", "ListPrompts", "H", false, ["InstanceId"];
-        "GET", "queues/{InstanceId}/{QueueId}/email-addresses", "ListQueueEmailAddresses", "R501", false, ["InstanceId", "QueueId"];
+        "GET", "queues/{InstanceId}/{QueueId}/email-addresses", "ListQueueEmailAddresses", "H", false, ["InstanceId", "QueueId"];
         "GET", "queues/{InstanceId}/{QueueId}/quick-connects", "ListQueueQuickConnects", "H", false, ["InstanceId", "QueueId"];
         "GET", "queues-summary/{InstanceId}", "ListQueues", "H", false, ["InstanceId"];
         "GET", "quick-connects/{InstanceId}", "ListQuickConnects", "H", false, ["InstanceId"];
-        "POST", "contact/list-real-time-analysis-segments-v2/{InstanceId}/{ContactId}", "ListRealtimeContactAnalysisSegmentsV2", "R501", false, ["InstanceId", "ContactId"];
-        "GET", "routing-profiles/{InstanceId}/{RoutingProfileId}/manual-assignment-queues", "ListRoutingProfileManualAssignmentQueues", "R501", false, ["InstanceId", "RoutingProfileId"];
+        "POST", "contact/list-real-time-analysis-segments-v2/{InstanceId}/{ContactId}", "ListRealtimeContactAnalysisSegmentsV2", "H", false, ["InstanceId", "ContactId"];
+        "GET", "routing-profiles/{InstanceId}/{RoutingProfileId}/manual-assignment-queues", "ListRoutingProfileManualAssignmentQueues", "H", false, ["InstanceId", "RoutingProfileId"];
         "GET", "routing-profiles/{InstanceId}/{RoutingProfileId}/queues", "ListRoutingProfileQueues", "H", false, ["InstanceId", "RoutingProfileId"];
         "GET", "routing-profiles-summary/{InstanceId}", "ListRoutingProfiles", "H", false, ["InstanceId"];
         "GET", "rules/{InstanceId}", "ListRules", "H", false, ["InstanceId"];
         "GET", "instance/{InstanceId}/security-keys", "ListSecurityKeys", "H", false, ["InstanceId"];
         "GET", "security-profiles-applications/{InstanceId}/{SecurityProfileId}", "ListSecurityProfileApplications", "H", false, ["InstanceId", "SecurityProfileId"];
-        "GET", "security-profiles-flow-modules/{InstanceId}/{SecurityProfileId}", "ListSecurityProfileFlowModules", "R501", false, ["InstanceId", "SecurityProfileId"];
+        "GET", "security-profiles-flow-modules/{InstanceId}/{SecurityProfileId}", "ListSecurityProfileFlowModules", "H", false, ["InstanceId", "SecurityProfileId"];
         "GET", "security-profiles-permissions/{InstanceId}/{SecurityProfileId}", "ListSecurityProfilePermissions", "H", false, ["InstanceId", "SecurityProfileId"];
         "GET", "security-profiles-summary/{InstanceId}", "ListSecurityProfiles", "H", false, ["InstanceId"];
         "GET", "tags/{resourceArn}", "ListTagsForResource", "H", false, ["resourceArn"];
         "GET", "instance/{InstanceId}/task/template", "ListTaskTemplates", "H", false, ["InstanceId"];
-        "GET", "test-cases/{InstanceId}/{TestCaseId}/{TestCaseExecutionId}/records", "ListTestCaseExecutionRecords", "R501", false, ["InstanceId", "TestCaseId", "TestCaseExecutionId"];
-        "GET", "test-case-executions/{InstanceId}", "ListTestCaseExecutions", "R501", false, ["InstanceId"];
+        "GET", "test-cases/{InstanceId}/{TestCaseId}/{TestCaseExecutionId}/records", "ListTestCaseExecutionRecords", "H", false, ["InstanceId", "TestCaseId", "TestCaseExecutionId"];
+        "GET", "test-case-executions/{InstanceId}", "ListTestCaseExecutions", "H", false, ["InstanceId"];
         "GET", "test-cases-summary/{InstanceId}", "ListTestCases", "H", false, ["InstanceId"];
-        "GET", "traffic-distribution-group/{TrafficDistributionGroupId}/user", "ListTrafficDistributionGroupUsers", "R501", false, ["TrafficDistributionGroupId"];
+        "GET", "traffic-distribution-group/{TrafficDistributionGroupId}/user", "ListTrafficDistributionGroupUsers", "H", false, ["TrafficDistributionGroupId"];
         "GET", "traffic-distribution-groups", "ListTrafficDistributionGroups", "H", false, [];
         "GET", "instance/{InstanceId}/integration-associations/{IntegrationAssociationId}/use-cases", "ListUseCases", "H", false, ["InstanceId", "IntegrationAssociationId"];
         "GET", "user-hierarchy-groups-summary/{InstanceId}", "ListUserHierarchyGroups", "H", false, ["InstanceId"];
-        "GET", "users/{InstanceId}/{UserId}/notifications", "ListUserNotifications", "R501", false, ["InstanceId", "UserId"];
-        "GET", "users/{InstanceId}/{UserId}/proficiencies", "ListUserProficiencies", "R501", false, ["InstanceId", "UserId"];
+        "GET", "users/{InstanceId}/{UserId}/notifications", "ListUserNotifications", "H", false, ["InstanceId", "UserId"];
+        "GET", "users/{InstanceId}/{UserId}/proficiencies", "ListUserProficiencies", "H", false, ["InstanceId", "UserId"];
         "GET", "users-summary/{InstanceId}", "ListUsers", "H", false, ["InstanceId"];
-        "GET", "views/{InstanceId}/{ViewId}/versions", "ListViewVersions", "R501", false, ["InstanceId", "ViewId"];
+        "GET", "views/{InstanceId}/{ViewId}/versions", "ListViewVersions", "H", false, ["InstanceId", "ViewId"];
         "GET", "views/{InstanceId}", "ListViews", "H", false, ["InstanceId"];
-        "GET", "workspaces/{InstanceId}/{WorkspaceId}/media", "ListWorkspaceMedia", "R501", false, ["InstanceId", "WorkspaceId"];
-        "GET", "workspaces/{InstanceId}/{WorkspaceId}/pages", "ListWorkspacePages", "R501", false, ["InstanceId", "WorkspaceId"];
+        "GET", "workspaces/{InstanceId}/{WorkspaceId}/media", "ListWorkspaceMedia", "H", false, ["InstanceId", "WorkspaceId"];
+        "GET", "workspaces/{InstanceId}/{WorkspaceId}/pages", "ListWorkspacePages", "H", false, ["InstanceId", "WorkspaceId"];
         "GET", "workspaces/{InstanceId}", "ListWorkspaces", "H", false, ["InstanceId"];
-        "POST", "contact/monitor", "MonitorContact", "R501", false, [];
-        "POST", "contact/pause", "PauseContact", "R501", false, [];
-        "PUT", "users/{InstanceId}/{UserId}/status", "PutUserStatus", "R501", false, ["InstanceId", "UserId"];
+        "POST", "contact/monitor", "MonitorContact", "H", false, [];
+        "POST", "contact/pause", "PauseContact", "H", false, [];
+        "PUT", "users/{InstanceId}/{UserId}/status", "PutUserStatus", "H", false, ["InstanceId", "UserId"];
         "DELETE", "phone-number/{PhoneNumberId}", "ReleasePhoneNumber", "H", false, ["PhoneNumberId"];
-        "POST", "instance/{InstanceId}/replicate", "ReplicateInstance", "R501", false, ["InstanceId"];
-        "POST", "contact/resume", "ResumeContact", "R501", false, [];
-        "POST", "contact/resume-recording", "ResumeContactRecording", "R501", false, [];
+        "POST", "instance/{InstanceId}/replicate", "ReplicateInstance", "H", false, ["InstanceId"];
+        "POST", "contact/resume", "ResumeContact", "H", false, [];
+        "POST", "contact/resume-recording", "ResumeContactRecording", "H", false, [];
         "POST", "search-agent-statuses", "SearchAgentStatuses", "H", false, [];
         "POST", "phone-number/search-available", "SearchAvailablePhoneNumbers", "H", false, [];
-        "POST", "search-contact-evaluations", "SearchContactEvaluations", "R501", false, [];
+        "POST", "search-contact-evaluations", "SearchContactEvaluations", "H", false, [];
         "POST", "search-contact-flow-modules", "SearchContactFlowModules", "H", false, [];
         "POST", "search-contact-flows", "SearchContactFlows", "H", false, [];
-        "POST", "search-contacts", "SearchContacts", "R501", false, [];
-        "POST", "search-data-tables", "SearchDataTables", "R501", false, [];
-        "POST", "search-email-addresses", "SearchEmailAddresses", "R501", false, [];
-        "POST", "search-evaluation-forms", "SearchEvaluationForms", "R501", false, [];
-        "POST", "search-hours-of-operation-overrides", "SearchHoursOfOperationOverrides", "R501", false, [];
+        "POST", "search-contacts", "SearchContacts", "H", false, [];
+        "POST", "search-data-tables", "SearchDataTables", "H", false, [];
+        "POST", "search-email-addresses", "SearchEmailAddresses", "H", false, [];
+        "POST", "search-evaluation-forms", "SearchEvaluationForms", "H", false, [];
+        "POST", "search-hours-of-operation-overrides", "SearchHoursOfOperationOverrides", "H", false, [];
         "POST", "search-hours-of-operations", "SearchHoursOfOperations", "H", false, [];
-        "POST", "search-notifications", "SearchNotifications", "R501", false, [];
+        "POST", "search-notifications", "SearchNotifications", "H", false, [];
         "POST", "search-predefined-attributes", "SearchPredefinedAttributes", "H", false, [];
         "POST", "search-prompts", "SearchPrompts", "H", false, [];
         "POST", "search-queues", "SearchQueues", "H", false, [];
         "POST", "search-quick-connects", "SearchQuickConnects", "H", false, [];
-        "POST", "search-resource-tags", "SearchResourceTags", "R501", false, [];
+        "POST", "search-resource-tags", "SearchResourceTags", "H", false, [];
         "POST", "search-routing-profiles", "SearchRoutingProfiles", "H", false, [];
         "POST", "search-security-profiles", "SearchSecurityProfiles", "H", false, [];
-        "POST", "search-test-cases", "SearchTestCases", "R501", false, [];
+        "POST", "search-test-cases", "SearchTestCases", "H", false, [];
         "POST", "search-user-hierarchy-groups", "SearchUserHierarchyGroups", "H", false, [];
         "POST", "search-users", "SearchUsers", "H", false, [];
-        "POST", "search-views", "SearchViews", "R501", false, [];
+        "POST", "search-views", "SearchViews", "H", false, [];
         "POST", "vocabulary-summary/{InstanceId}", "SearchVocabularies", "H", false, ["InstanceId"];
-        "POST", "search-workspace-associations", "SearchWorkspaceAssociations", "R501", false, [];
-        "POST", "search-workspaces", "SearchWorkspaces", "R501", false, [];
-        "POST", "chat-integration-event", "SendChatIntegrationEvent", "R501", false, [];
-        "PUT", "instance/{InstanceId}/outbound-email", "SendOutboundEmail", "R501", false, ["InstanceId"];
-        "PUT", "attached-files/{InstanceId}", "StartAttachedFileUpload", "R501", false, ["InstanceId"];
-        "PUT", "contact/chat", "StartChatContact", "R501", false, [];
+        "POST", "search-workspace-associations", "SearchWorkspaceAssociations", "H", false, [];
+        "POST", "search-workspaces", "SearchWorkspaces", "H", false, [];
+        "POST", "chat-integration-event", "SendChatIntegrationEvent", "H", false, [];
+        "PUT", "instance/{InstanceId}/outbound-email", "SendOutboundEmail", "H", false, ["InstanceId"];
+        "PUT", "attached-files/{InstanceId}", "StartAttachedFileUpload", "H", false, ["InstanceId"];
+        "PUT", "contact/chat", "StartChatContact", "H", false, [];
         "PUT", "contact-evaluations/{InstanceId}", "StartContactEvaluation", "H", false, ["InstanceId"];
-        "POST", "contact/start-contact-media-processing", "StartContactMediaProcessing", "R501", false, [];
-        "POST", "contact/start-recording", "StartContactRecording", "R501", false, [];
-        "POST", "contact/start-streaming", "StartContactStreaming", "R501", false, [];
-        "PUT", "contact/email", "StartEmailContact", "R501", false, [];
-        "PUT", "contact/outbound-chat", "StartOutboundChatContact", "R501", false, [];
-        "PUT", "contact/outbound-email", "StartOutboundEmailContact", "R501", false, [];
-        "PUT", "contact/outbound-voice", "StartOutboundVoiceContact", "R501", false, [];
-        "PUT", "contact/screen-sharing", "StartScreenSharing", "R501", false, [];
-        "PUT", "contact/task", "StartTaskContact", "R501", false, [];
-        "PUT", "test-cases/{InstanceId}/{TestCaseId}/start-execution", "StartTestCaseExecution", "R501", false, ["InstanceId", "TestCaseId"];
-        "PUT", "contact/webrtc", "StartWebRTCContact", "R501", false, [];
+        "POST", "contact/start-contact-media-processing", "StartContactMediaProcessing", "H", false, [];
+        "POST", "contact/start-recording", "StartContactRecording", "H", false, [];
+        "POST", "contact/start-streaming", "StartContactStreaming", "H", false, [];
+        "PUT", "contact/email", "StartEmailContact", "H", false, [];
+        "PUT", "contact/outbound-chat", "StartOutboundChatContact", "H", false, [];
+        "PUT", "contact/outbound-email", "StartOutboundEmailContact", "H", false, [];
+        "PUT", "contact/outbound-voice", "StartOutboundVoiceContact", "H", false, [];
+        "PUT", "contact/screen-sharing", "StartScreenSharing", "H", false, [];
+        "PUT", "contact/task", "StartTaskContact", "H", false, [];
+        "PUT", "test-cases/{InstanceId}/{TestCaseId}/start-execution", "StartTestCaseExecution", "H", false, ["InstanceId", "TestCaseId"];
+        "PUT", "contact/webrtc", "StartWebRTCContact", "H", false, [];
         "POST", "contact/stop", "StopContact", "H", false, [];
-        "POST", "contact/stop-contact-media-processing", "StopContactMediaProcessing", "R501", false, [];
-        "POST", "contact/stop-recording", "StopContactRecording", "R501", false, [];
-        "POST", "contact/stop-streaming", "StopContactStreaming", "R501", false, [];
-        "POST", "test-cases/{InstanceId}/{TestCaseId}/{TestCaseExecutionId}/stop-execution", "StopTestCaseExecution", "R501", false, ["InstanceId", "TestCaseId", "TestCaseExecutionId"];
-        "POST", "contact-evaluations/{InstanceId}/{EvaluationId}/submit", "SubmitContactEvaluation", "R501", false, ["InstanceId", "EvaluationId"];
-        "POST", "contact/suspend-recording", "SuspendContactRecording", "R501", false, [];
-        "POST", "contact/tags", "TagContact", "R501", false, [];
+        "POST", "contact/stop-contact-media-processing", "StopContactMediaProcessing", "H", false, [];
+        "POST", "contact/stop-recording", "StopContactRecording", "H", false, [];
+        "POST", "contact/stop-streaming", "StopContactStreaming", "H", false, [];
+        "POST", "test-cases/{InstanceId}/{TestCaseId}/{TestCaseExecutionId}/stop-execution", "StopTestCaseExecution", "H", false, ["InstanceId", "TestCaseId", "TestCaseExecutionId"];
+        "POST", "contact-evaluations/{InstanceId}/{EvaluationId}/submit", "SubmitContactEvaluation", "H", false, ["InstanceId", "EvaluationId"];
+        "POST", "contact/suspend-recording", "SuspendContactRecording", "H", false, [];
+        "POST", "contact/tags", "TagContact", "H", false, [];
         "POST", "tags/{resourceArn}", "TagResource", "H", false, ["resourceArn"];
-        "POST", "contact/transfer", "TransferContact", "R501", false, [];
-        "DELETE", "contact/tags/{InstanceId}/{ContactId}", "UntagContact", "R501", false, ["InstanceId", "ContactId"];
+        "POST", "contact/transfer", "TransferContact", "H", false, [];
+        "DELETE", "contact/tags/{InstanceId}/{ContactId}", "UntagContact", "H", false, ["InstanceId", "ContactId"];
         "DELETE", "tags/{resourceArn}", "UntagResource", "H", false, ["resourceArn"];
         "POST", "agent-status/{InstanceId}/{AgentStatusId}", "UpdateAgentStatus", "H", false, ["InstanceId", "AgentStatusId"];
-        "POST", "authentication-profiles/{InstanceId}/{AuthenticationProfileId}", "UpdateAuthenticationProfile", "R501", false, ["InstanceId", "AuthenticationProfileId"];
+        "POST", "authentication-profiles/{InstanceId}/{AuthenticationProfileId}", "UpdateAuthenticationProfile", "H", false, ["InstanceId", "AuthenticationProfileId"];
         "POST", "contacts/{InstanceId}/{ContactId}", "UpdateContact", "H", false, ["InstanceId", "ContactId"];
         "POST", "contact/attributes", "UpdateContactAttributes", "H", false, [];
         "POST", "contact-evaluations/{InstanceId}/{EvaluationId}", "UpdateContactEvaluation", "H", false, ["InstanceId", "EvaluationId"];
@@ -551,33 +553,33 @@ static OPS: Lazy<Vec<OpRow>> = Lazy::new(|| {
         "POST", "contact-flow-modules/{InstanceId}/{ContactFlowModuleId}/content", "UpdateContactFlowModuleContent", "H", false, ["InstanceId", "ContactFlowModuleId"];
         "POST", "contact-flow-modules/{InstanceId}/{ContactFlowModuleId}/metadata", "UpdateContactFlowModuleMetadata", "H", false, ["InstanceId", "ContactFlowModuleId"];
         "POST", "contact-flows/{InstanceId}/{ContactFlowId}/name", "UpdateContactFlowName", "H", false, ["InstanceId", "ContactFlowId"];
-        "POST", "contacts/{InstanceId}/{ContactId}/routing-data", "UpdateContactRoutingData", "R501", false, ["InstanceId", "ContactId"];
-        "POST", "contact/schedule", "UpdateContactSchedule", "R501", false, [];
+        "POST", "contacts/{InstanceId}/{ContactId}/routing-data", "UpdateContactRoutingData", "H", false, ["InstanceId", "ContactId"];
+        "POST", "contact/schedule", "UpdateContactSchedule", "H", false, [];
         "POST", "data-tables/{InstanceId}/{DataTableId}/attributes/{AttributeName}", "UpdateDataTableAttribute", "H", false, ["InstanceId", "DataTableId", "AttributeName"];
-        "POST", "data-tables/{InstanceId}/{DataTableId}", "UpdateDataTableMetadata", "H501", false, ["InstanceId", "DataTableId"];
-        "POST", "data-tables/{InstanceId}/{DataTableId}/values/update-primary", "UpdateDataTablePrimaryValues", "R501", false, ["InstanceId", "DataTableId"];
-        "POST", "email-addresses/{InstanceId}/{EmailAddressId}", "UpdateEmailAddressMetadata", "H501", false, ["InstanceId", "EmailAddressId"];
+        "POST", "data-tables/{InstanceId}/{DataTableId}", "UpdateDataTableMetadata", "H", false, ["InstanceId", "DataTableId"];
+        "POST", "data-tables/{InstanceId}/{DataTableId}/values/update-primary", "UpdateDataTablePrimaryValues", "H", false, ["InstanceId", "DataTableId"];
+        "POST", "email-addresses/{InstanceId}/{EmailAddressId}", "UpdateEmailAddressMetadata", "H", false, ["InstanceId", "EmailAddressId"];
         "PUT", "evaluation-forms/{InstanceId}/{EvaluationFormId}", "UpdateEvaluationForm", "H", false, ["InstanceId", "EvaluationFormId"];
         "POST", "hours-of-operations/{InstanceId}/{HoursOfOperationId}", "UpdateHoursOfOperation", "H", false, ["InstanceId", "HoursOfOperationId"];
         "POST", "hours-of-operations/{InstanceId}/{HoursOfOperationId}/overrides/{HoursOfOperationOverrideId}", "UpdateHoursOfOperationOverride", "H", false, ["InstanceId", "HoursOfOperationId", "HoursOfOperationOverrideId"];
         "POST", "instance/{InstanceId}/attribute/{AttributeType}", "UpdateInstanceAttribute", "H", false, ["InstanceId", "AttributeType"];
-        "POST", "instance/{InstanceId}/storage-config/{AssociationId}", "UpdateInstanceStorageConfig", "H501", false, ["InstanceId", "AssociationId"];
-        "POST", "notifications/{InstanceId}/{NotificationId}", "UpdateNotificationContent", "H501", false, ["InstanceId", "NotificationId"];
-        "POST", "contact/update-participant-authentication", "UpdateParticipantAuthentication", "R501", false, [];
+        "POST", "instance/{InstanceId}/storage-config/{AssociationId}", "UpdateInstanceStorageConfig", "H", false, ["InstanceId", "AssociationId"];
+        "POST", "notifications/{InstanceId}/{NotificationId}", "UpdateNotificationContent", "H", false, ["InstanceId", "NotificationId"];
+        "POST", "contact/update-participant-authentication", "UpdateParticipantAuthentication", "H", false, [];
         "PUT", "contact/participant-role-config/{InstanceId}/{ContactId}", "UpdateParticipantRoleConfig", "R501", false, ["InstanceId", "ContactId"];
         "PUT", "phone-number/{PhoneNumberId}", "UpdatePhoneNumber", "H", false, ["PhoneNumberId"];
-        "PUT", "phone-number/{PhoneNumberId}/metadata", "UpdatePhoneNumberMetadata", "R501", false, ["PhoneNumberId"];
+        "PUT", "phone-number/{PhoneNumberId}/metadata", "UpdatePhoneNumberMetadata", "H", false, ["PhoneNumberId"];
         "POST", "predefined-attributes/{InstanceId}/{Name}", "UpdatePredefinedAttribute", "H", false, ["InstanceId", "Name"];
         "POST", "prompts/{InstanceId}/{PromptId}", "UpdatePrompt", "H", false, ["InstanceId", "PromptId"];
         "POST", "queues/{InstanceId}/{QueueId}/hours-of-operation", "UpdateQueueHoursOfOperation", "H", false, ["InstanceId", "QueueId"];
         "POST", "queues/{InstanceId}/{QueueId}/max-contacts", "UpdateQueueMaxContacts", "H", false, ["InstanceId", "QueueId"];
         "POST", "queues/{InstanceId}/{QueueId}/name", "UpdateQueueName", "H", false, ["InstanceId", "QueueId"];
         "POST", "queues/{InstanceId}/{QueueId}/outbound-caller-config", "UpdateQueueOutboundCallerConfig", "H", false, ["InstanceId", "QueueId"];
-        "POST", "queues/{InstanceId}/{QueueId}/outbound-email-config", "UpdateQueueOutboundEmailConfig", "R501", false, ["InstanceId", "QueueId"];
+        "POST", "queues/{InstanceId}/{QueueId}/outbound-email-config", "UpdateQueueOutboundEmailConfig", "H", false, ["InstanceId", "QueueId"];
         "POST", "queues/{InstanceId}/{QueueId}/status", "UpdateQueueStatus", "H", false, ["InstanceId", "QueueId"];
         "POST", "quick-connects/{InstanceId}/{QuickConnectId}/config", "UpdateQuickConnectConfig", "H", false, ["InstanceId", "QuickConnectId"];
         "POST", "quick-connects/{InstanceId}/{QuickConnectId}/name", "UpdateQuickConnectName", "H", false, ["InstanceId", "QuickConnectId"];
-        "POST", "routing-profiles/{InstanceId}/{RoutingProfileId}/agent-availability-timer", "UpdateRoutingProfileAgentAvailabilityTimer", "R501", false, ["InstanceId", "RoutingProfileId"];
+        "POST", "routing-profiles/{InstanceId}/{RoutingProfileId}/agent-availability-timer", "UpdateRoutingProfileAgentAvailabilityTimer", "H", false, ["InstanceId", "RoutingProfileId"];
         "POST", "routing-profiles/{InstanceId}/{RoutingProfileId}/concurrency", "UpdateRoutingProfileConcurrency", "H", false, ["InstanceId", "RoutingProfileId"];
         "POST", "routing-profiles/{InstanceId}/{RoutingProfileId}/default-outbound-queue", "UpdateRoutingProfileDefaultOutboundQueue", "H", false, ["InstanceId", "RoutingProfileId"];
         "POST", "routing-profiles/{InstanceId}/{RoutingProfileId}/name", "UpdateRoutingProfileName", "H", false, ["InstanceId", "RoutingProfileId"];
@@ -586,23 +588,23 @@ static OPS: Lazy<Vec<OpRow>> = Lazy::new(|| {
         "POST", "security-profiles/{InstanceId}/{SecurityProfileId}", "UpdateSecurityProfile", "H", false, ["InstanceId", "SecurityProfileId"];
         "POST", "instance/{InstanceId}/task/template/{TaskTemplateId}", "UpdateTaskTemplate", "H", false, ["InstanceId", "TaskTemplateId"];
         "POST", "test-cases/{InstanceId}/{TestCaseId}", "UpdateTestCase", "H", false, ["InstanceId", "TestCaseId"];
-        "PUT", "traffic-distribution/{Id}", "UpdateTrafficDistribution", "R501", false, ["Id"];
-        "POST", "users/{InstanceId}/{UserId}/config", "UpdateUserConfig", "R501", false, ["InstanceId", "UserId"];
+        "PUT", "traffic-distribution/{Id}", "UpdateTrafficDistribution", "H", false, ["Id"];
+        "POST", "users/{InstanceId}/{UserId}/config", "UpdateUserConfig", "H", false, ["InstanceId", "UserId"];
         "POST", "users/{InstanceId}/{UserId}/hierarchy", "UpdateUserHierarchy", "H", false, ["InstanceId", "UserId"];
         "POST", "user-hierarchy-groups/{InstanceId}/{HierarchyGroupId}/name", "UpdateUserHierarchyGroupName", "H", false, ["InstanceId", "HierarchyGroupId"];
         "POST", "user-hierarchy-structure/{InstanceId}", "UpdateUserHierarchyStructure", "H", false, ["InstanceId"];
         "POST", "users/{InstanceId}/{UserId}/identity-info", "UpdateUserIdentityInfo", "H", false, ["InstanceId", "UserId"];
-        "POST", "users/{InstanceId}/{UserId}/notifications/{NotificationId}", "UpdateUserNotificationStatus", "R501", false, ["InstanceId", "UserId", "NotificationId"];
+        "POST", "users/{InstanceId}/{UserId}/notifications/{NotificationId}", "UpdateUserNotificationStatus", "H", false, ["InstanceId", "UserId", "NotificationId"];
         "POST", "users/{InstanceId}/{UserId}/phone-config", "UpdateUserPhoneConfig", "H", false, ["InstanceId", "UserId"];
-        "POST", "users/{InstanceId}/{UserId}/proficiencies", "UpdateUserProficiencies", "R501", false, ["InstanceId", "UserId"];
+        "POST", "users/{InstanceId}/{UserId}/proficiencies", "UpdateUserProficiencies", "H", false, ["InstanceId", "UserId"];
         "POST", "users/{InstanceId}/{UserId}/routing-profile", "UpdateUserRoutingProfile", "H", false, ["InstanceId", "UserId"];
         "POST", "users/{InstanceId}/{UserId}/security-profiles", "UpdateUserSecurityProfiles", "H", false, ["InstanceId", "UserId"];
         "POST", "views/{InstanceId}/{ViewId}", "UpdateViewContent", "H", false, ["InstanceId", "ViewId"];
         "POST", "views/{InstanceId}/{ViewId}/metadata", "UpdateViewMetadata", "H", false, ["InstanceId", "ViewId"];
-        "POST", "workspaces/{InstanceId}/{WorkspaceId}/metadata", "UpdateWorkspaceMetadata", "R501", false, ["InstanceId", "WorkspaceId"];
-        "POST", "workspaces/{InstanceId}/{WorkspaceId}/pages/{Page}", "UpdateWorkspacePage", "R501", false, ["InstanceId", "WorkspaceId", "Page"];
-        "POST", "workspaces/{InstanceId}/{WorkspaceId}/theme", "UpdateWorkspaceTheme", "R501", false, ["InstanceId", "WorkspaceId"];
-        "POST", "workspaces/{InstanceId}/{WorkspaceId}/visibility", "UpdateWorkspaceVisibility", "R501", false, ["InstanceId", "WorkspaceId"];]
+        "POST", "workspaces/{InstanceId}/{WorkspaceId}/metadata", "UpdateWorkspaceMetadata", "H", false, ["InstanceId", "WorkspaceId"];
+        "POST", "workspaces/{InstanceId}/{WorkspaceId}/pages/{Page}", "UpdateWorkspacePage", "H", false, ["InstanceId", "WorkspaceId", "Page"];
+        "POST", "workspaces/{InstanceId}/{WorkspaceId}/theme", "UpdateWorkspaceTheme", "H", false, ["InstanceId", "WorkspaceId"];
+        "POST", "workspaces/{InstanceId}/{WorkspaceId}/visibility", "UpdateWorkspaceVisibility", "H", false, ["InstanceId", "WorkspaceId"];]
 });
 
 fn derive_op(method: &str, path: &str) -> Option<&'static OpRow> {
@@ -831,6 +833,52 @@ pub struct ConnectState {
     vocabularies: HashMap<String, HashMap<String, Value>>,
     views: HashMap<String, HashMap<String, Value>>,
     workspaces: HashMap<String, HashMap<String, Value>>,
+    // Instance-family ops the surface wave wires up (moto absent; botocore
+    // shapes are the contract).
+    /// instance -> flow_id -> created versions (1 = seeded live version).
+    contact_flow_versions: HashMap<String, HashMap<String, Vec<i64>>>,
+    contact_flow_module_versions: HashMap<String, HashMap<String, Vec<i64>>>,
+    view_versions: HashMap<String, HashMap<String, Vec<i64>>>,
+    /// resource-id -> flow arn per instance (AssociateFlow family).
+    flow_associations: HashMap<String, HashMap<String, Map<String, Value>>>,
+    /// user id -> registration record per instance (push notifications).
+    push_notification_registrations: HashMap<String, HashMap<String, Value>>,
+    /// instance -> user -> proficiencies [({AttributeName, AttributeValue, Level})]
+    user_proficiencies: HashMap<String, HashMap<String, Vec<Value>>>,
+    /// instance -> entity arn -> associated security profile ids.
+    entity_security_profiles: HashMap<String, HashMap<String, Vec<Value>>>,
+    /// instance -> queue id -> associated email address ids.
+    queue_email_associations: HashMap<String, HashMap<String, Vec<String>>>,
+    /// instance -> email id -> alias config (AssociateEmailAddressAlias).
+    email_aliases: HashMap<String, HashMap<String, Map<String, Value>>>,
+    /// instance -> workspace -> resource-association records
+    workspace_associations: HashMap<String, HashMap<String, Vec<Value>>>,
+    /// instance -> {page: page record} per workspace
+    workspace_pages: HashMap<String, HashMap<String, HashMap<String, Value>>>,
+    /// instance -> [media records] per workspace
+    workspace_media: HashMap<String, HashMap<String, Vec<Value>>>,
+    /// instance -> attached file id -> file record.
+    attached_files: HashMap<String, HashMap<String, Value>>,
+    /// instance -> data table -> {values: [...], primary-values: [...]}.
+    data_table_values: HashMap<String, HashMap<String, Map<String, Value>>>,
+    /// instance -> language code -> vocabulary id (default vocabulary).
+    default_vocabularies: HashMap<String, Map<String, Value>>,
+    /// instance -> phone-number id -> {"ContactFlowId": ...} (contact flow link).
+    phone_contact_flows: HashMap<String, Map<String, Value>>,
+    /// instance -> authentication profile id -> profile record.
+    authentication_profiles: HashMap<String, HashMap<String, Value>>,
+    /// instance -> user id -> notification id -> notification record.
+    user_notifications: HashMap<String, HashMap<String, HashMap<String, Value>>>,
+    /// instance -> hours-of-operation id -> associated parent ids.
+    child_hours_of_operations: HashMap<String, HashMap<String, Vec<String>>>,
+    /// test case id -> [execution records] per instance.
+    test_case_executions: HashMap<String, HashMap<String, Vec<Value>>>,
+    /// contact id -> streaming id per instance (StartContactStreaming).
+    contact_streaming_ids: HashMap<String, Map<String, Value>>,
+    /// traffic-distribution group id -> [users] (AssociateTDGUser family).
+    traffic_distribution_group_users: HashMap<String, Vec<Value>>,
+    /// instance -> user id -> runtime fields (PutUserStatus, UpdateUserConfig).
+    user_runtime: HashMap<String, HashMap<String, Map<String, Value>>>,
 }
 
 fn op_state() -> Slot<ConnectState> {
@@ -1849,6 +1897,668 @@ fn handle(
                     .map(|m| m.values().map(pa_to_dict).collect())
             })
         }
+
+        // -- Surface wave: instance-family ops (botocore shapes; moto absent) --
+        "AssociateContactWithUser" => op_associate_contact_with_user(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactId"),
+            body,
+        ),
+        "AssociateDefaultVocabulary" => op_associate_default_vocabulary(
+            st,
+            param(params, "InstanceId"),
+            param(params, "LanguageCode"),
+            body,
+        ),
+        "AssociateEmailAddressAlias" => op_associate_email_alias(
+            st,
+            param(params, "InstanceId"),
+            param(params, "EmailAddressId"),
+            body,
+            true,
+        ),
+        "AssociateFlow" => op_associate_flow(st, param(params, "InstanceId"), body),
+        "AssociateHoursOfOperations" => op_associate_hours_of_operations(
+            st,
+            param(params, "InstanceId"),
+            param(params, "HoursOfOperationId"),
+            body,
+        ),
+        "AssociateLexBot" => op_associate_lex_bot(st, param(params, "InstanceId"), body),
+        "AssociatePhoneNumberContactFlow" => {
+            op_associate_phone_contact_flow(st, param(params, "PhoneNumberId"), body)
+        }
+        "AssociateQueueEmailAddresses" => op_associate_queue_emails(
+            st,
+            param(params, "InstanceId"),
+            param(params, "QueueId"),
+            body,
+            true,
+        ),
+        "AssociateSecurityProfiles" => {
+            op_associate_security_profiles(st, param(params, "InstanceId"), body, true)
+        }
+        "AssociateTrafficDistributionGroupUser" => {
+            op_associate_tdg_user(st, body, param(params, "TrafficDistributionGroupId"), true)
+        }
+        "AssociateUserProficiencies" => op_update_user_proficiencies_inner(
+            st,
+            param(params, "InstanceId"),
+            param(params, "UserId"),
+            body,
+            true,
+        ),
+        "AssociateWorkspace" => op_associate_workspace(
+            st,
+            param(params, "InstanceId"),
+            param(params, "WorkspaceId"),
+            body,
+            true,
+        ),
+        "BatchAssociateAnalyticsDataSet" => {
+            op_batch_associate_analytics_data_set(st, param(params, "InstanceId"), body, true)
+        }
+        "BatchCreateDataTableValue" => op_batch_data_table_values(
+            st,
+            param(params, "InstanceId"),
+            body,
+            param(params, "DataTableId"),
+            "create",
+        ),
+        "BatchDeleteDataTableValue" => op_batch_data_table_values(
+            st,
+            param(params, "InstanceId"),
+            body,
+            param(params, "DataTableId"),
+            "delete",
+        ),
+        "BatchDescribeDataTableValue" => op_batch_data_table_values(
+            st,
+            param(params, "InstanceId"),
+            body,
+            param(params, "DataTableId"),
+            "describe",
+        ),
+        "BatchDisassociateAnalyticsDataSet" => {
+            op_batch_associate_analytics_data_set(st, param(params, "InstanceId"), body, false)
+        }
+        "BatchGetAttachedFileMetadata" => {
+            op_batch_get_attached_file_metadata(st, param(params, "InstanceId"), body)
+        }
+        "BatchGetFlowAssociation" => {
+            op_batch_get_flow_association(st, param(params, "InstanceId"), body)
+        }
+        "BatchPutContact" => op_batch_put_contact(st, param(params, "InstanceId"), body),
+        "BatchUpdateDataTableValue" => op_batch_data_table_values(
+            st,
+            param(params, "InstanceId"),
+            body,
+            param(params, "DataTableId"),
+            "update",
+        ),
+        "CompleteAttachedFileUpload" => op_complete_attached_file_upload(
+            st,
+            param(params, "InstanceId"),
+            param(params, "FileId"),
+        ),
+        "CreateContactFlowModuleVersion" => op_create_contact_flow_module_version(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactFlowModuleId"),
+        ),
+        "CreateContactFlowVersion" => op_create_contact_flow_version(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactFlowId"),
+        ),
+        "CreateParticipant" => op_create_participant(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactId"),
+            body,
+        ),
+        "CreatePersistentContactAssociation" => op_create_persistent_contact_association(
+            st,
+            param(params, "InstanceId"),
+            param(params, "InitialContactId"),
+            body,
+        ),
+        "CreatePushNotificationRegistration" => {
+            op_create_push_notification_registration(st, param(params, "InstanceId"), body)
+        }
+        "CreateViewVersion" => op_create_view_version(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ViewId"),
+            body,
+        ),
+        "CreateWorkspacePage" => op_create_workspace_page(
+            st,
+            param(params, "InstanceId"),
+            param(params, "WorkspaceId"),
+            body,
+        ),
+        "DeleteAttachedFile" => {
+            op_delete_attached_file(st, param(params, "InstanceId"), param(params, "FileId"))
+        }
+        "DeleteContactFlowModuleVersion" => op_delete_contact_flow_module_version(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactFlowModuleId"),
+            param(params, "ContactFlowModuleVersion"),
+        ),
+        "DeleteContactFlowVersion" => op_delete_contact_flow_version(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactFlowId"),
+            param(params, "ContactFlowVersion"),
+        ),
+        "DeleteIntegrationAssociation" => op_delete_integration_association(
+            st,
+            param(params, "InstanceId"),
+            param(params, "IntegrationAssociationId"),
+        ),
+        "DeletePushNotificationRegistration" => op_delete_push_notification_registration(
+            st,
+            param(params, "InstanceId"),
+            param(params, "RegistrationId"),
+        ),
+        "DeleteViewVersion" => op_delete_view_version(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ViewId"),
+            param(params, "ViewVersion"),
+        ),
+        "DeleteWorkspaceMedia" => op_delete_workspace_media(
+            st,
+            param(params, "InstanceId"),
+            param(params, "WorkspaceId"),
+            query,
+        ),
+        "DeleteWorkspacePage" => op_delete_workspace_page(
+            st,
+            param(params, "InstanceId"),
+            param(params, "WorkspaceId"),
+            param(params, "Page"),
+        ),
+        "DescribeAuthenticationProfile" => op_describe_authentication_profile(
+            st,
+            param(params, "InstanceId"),
+            param(params, "AuthenticationProfileId"),
+        ),
+        "DescribeInstanceStorageConfig" => op_describe_instance_storage_config(
+            st,
+            param(params, "InstanceId"),
+            param(params, "AssociationId"),
+        ),
+        "DisassociateEmailAddressAlias" => op_associate_email_alias(
+            st,
+            param(params, "InstanceId"),
+            param(params, "EmailAddressId"),
+            body,
+            false,
+        ),
+        "DisassociateFlow" => op_disassociate_flow(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ResourceId"),
+            param(params, "ResourceType"),
+        ),
+        "DisassociateHoursOfOperations" => op_disassociate_hours_of_operations(
+            st,
+            param(params, "InstanceId"),
+            param(params, "HoursOfOperationId"),
+            body,
+        ),
+        "DisassociateLexBot" => op_disassociate_lex_bot(st, param(params, "InstanceId"), query),
+        "DisassociatePhoneNumberContactFlow" => {
+            op_disassociate_phone_contact_flow(st, param(params, "PhoneNumberId"), body)
+        }
+        "DisassociateQueueEmailAddresses" => op_associate_queue_emails(
+            st,
+            param(params, "InstanceId"),
+            param(params, "QueueId"),
+            body,
+            false,
+        ),
+        "DisassociateSecurityProfiles" => {
+            op_associate_security_profiles(st, param(params, "InstanceId"), body, false)
+        }
+        "DisassociateTrafficDistributionGroupUser" => {
+            op_associate_tdg_user(st, body, param(params, "TrafficDistributionGroupId"), false)
+        }
+        "DisassociateUserProficiencies" => op_disassociate_user_proficiencies(
+            st,
+            param(params, "InstanceId"),
+            param(params, "UserId"),
+            body,
+        ),
+        "DisassociateWorkspace" => op_associate_workspace(
+            st,
+            param(params, "InstanceId"),
+            param(params, "WorkspaceId"),
+            body,
+            false,
+        ),
+        "DismissUserContact" => op_dismiss_user_contact(
+            st,
+            param(params, "InstanceId"),
+            param(params, "UserId"),
+            body,
+        ),
+        "EvaluateDataTableValues" => op_evaluate_data_table_values(
+            st,
+            param(params, "InstanceId"),
+            body,
+            param(params, "DataTableId"),
+        ),
+        "GetAttachedFile" => {
+            op_get_attached_file(st, param(params, "InstanceId"), param(params, "FileId"))
+        }
+        "GetContactMetrics" => op_get_contact_metrics(st, body),
+        "GetCurrentMetricData" => op_get_current_metric_data(st, param(params, "InstanceId"), body),
+        "GetCurrentUserData" => op_get_current_user_data(st, param(params, "InstanceId"), body),
+        "GetEffectiveHoursOfOperations" => op_get_effective_hours_of_operations(
+            st,
+            param(params, "InstanceId"),
+            param(params, "HoursOfOperationId"),
+            query,
+        ),
+        "GetFederationToken" => op_get_federation_token(st, param(params, "InstanceId")),
+        "GetFlowAssociation" => op_get_flow_association(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ResourceId"),
+            param(params, "ResourceType"),
+        ),
+        "GetMetricData" => op_get_metric_data(st, param(params, "InstanceId"), body),
+        "GetMetricDataV2" => op_get_metric_data_v2(st, param(params, "InstanceId"), body),
+        "GetPromptFile" => {
+            op_get_prompt_file(st, param(params, "InstanceId"), param(params, "PromptId"))
+        }
+        "GetTestCaseExecutionSummary" => op_get_test_case_execution_summary(
+            st,
+            param(params, "InstanceId"),
+            param(params, "TestCaseId"),
+            param(params, "TestCaseExecutionId"),
+        ),
+        "GetTrafficDistribution" => op_get_traffic_distribution(st, param(params, "Id")),
+        "ImportPhoneNumber" => op_import_phone_number(st, body),
+        "ImportWorkspaceMedia" => op_import_workspace_media(
+            st,
+            param(params, "InstanceId"),
+            param(params, "WorkspaceId"),
+            body,
+        ),
+        "ListAnalyticsDataLakeDataSets" => {
+            op_list_analytics_data_lake_data_sets(st, param(params, "InstanceId"))
+        }
+        "ListAssociatedContacts" => {
+            op_list_associated_contacts(st, param(params, "InstanceId"), query)
+        }
+        "ListAuthenticationProfiles" => {
+            op_list_authentication_profiles(st, param(params, "InstanceId"))
+        }
+        "ListChildHoursOfOperations" => op_list_child_hours_of_operations(
+            st,
+            param(params, "InstanceId"),
+            param(params, "HoursOfOperationId"),
+        ),
+        "ListContactFlowModuleVersions" => op_list_contact_flow_module_versions(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactFlowModuleId"),
+        ),
+        "ListDataTablePrimaryValues" => op_list_data_table_values(
+            st,
+            param(params, "InstanceId"),
+            body,
+            param(params, "DataTableId"),
+            "primary",
+        ),
+        "ListDataTableValues" => op_list_data_table_values(
+            st,
+            param(params, "InstanceId"),
+            body,
+            param(params, "DataTableId"),
+            "values",
+        ),
+        "ListEntitySecurityProfiles" => {
+            op_list_entity_security_profiles(st, param(params, "InstanceId"), body)
+        }
+        "ListLexBots" => op_list_lex_bots(st, param(params, "InstanceId")),
+        "ListQueueEmailAddresses" => {
+            op_list_queue_emails(st, param(params, "InstanceId"), param(params, "QueueId"))
+        }
+        "ListRealtimeContactAnalysisSegmentsV2" => op_list_realtime_contact_analysis_segments_v2(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactId"),
+            body,
+        ),
+        "ListRoutingProfileManualAssignmentQueues" => {
+            op_list_routing_profile_manual_assignment_queues(
+                st,
+                param(params, "InstanceId"),
+                param(params, "RoutingProfileId"),
+            )
+        }
+        "ListSecurityProfileFlowModules" => op_list_security_profile_flow_modules(
+            st,
+            param(params, "InstanceId"),
+            param(params, "SecurityProfileId"),
+        ),
+        "ListTestCaseExecutionRecords" => op_list_test_case_execution_records(
+            st,
+            param(params, "InstanceId"),
+            param(params, "TestCaseId"),
+            param(params, "TestCaseExecutionId"),
+        ),
+        "ListTestCaseExecutions" => op_list_test_case_executions(st, param(params, "InstanceId")),
+        "ListTrafficDistributionGroupUsers" => {
+            op_list_tdg_users(st, param(params, "TrafficDistributionGroupId"), query)
+        }
+        "ListUserNotifications" => op_list_user_notifications(
+            st,
+            param(params, "InstanceId"),
+            param(params, "UserId"),
+            query,
+        ),
+        "ListUserProficiencies" => {
+            op_list_user_proficiencies(st, param(params, "InstanceId"), param(params, "UserId"))
+        }
+        "ListViewVersions" => {
+            op_list_view_versions(st, param(params, "InstanceId"), param(params, "ViewId"))
+        }
+        "ListWorkspaceMedia" => op_list_workspace_media(
+            st,
+            param(params, "InstanceId"),
+            param(params, "WorkspaceId"),
+        ),
+        "ListWorkspacePages" => op_list_workspace_pages(
+            st,
+            param(params, "InstanceId"),
+            param(params, "WorkspaceId"),
+        ),
+        "MonitorContact" => op_monitor_contact(st, body),
+        "PauseContact" => op_pause_contact(st, body, true),
+        "PutUserStatus" => op_put_user_status(
+            st,
+            param(params, "InstanceId"),
+            param(params, "UserId"),
+            body,
+        ),
+        "ReplicateInstance" => op_replicate_instance(
+            st,
+            param(params, "InstanceId"),
+            body,
+            &req.region,
+            req.account,
+        ),
+        "ResumeContact" => op_pause_contact(st, body, false),
+        "ResumeContactRecording" => op_set_contact_recording(st, body, "RESUMED"),
+        "SearchContactEvaluations" => {
+            op_search_contact_evaluations(st, param(params, "InstanceId"), body)
+        }
+        "SearchContacts" => op_search_contacts(st, param(params, "InstanceId"), body),
+        "SearchDataTables" => {
+            let instance_id = match body_str(body, "InstanceId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            op_search(st, &instance_id, "DataTables", |st2, iid| {
+                st2.data_tables
+                    .get(iid)
+                    .map(|m: &HashMap<String, Value>| m.values().cloned().collect())
+            })
+        }
+        "SearchEmailAddresses" => {
+            let instance_id = match body_str(body, "InstanceId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            op_search(st, &instance_id, "EmailAddresses", |st2, iid| {
+                st2.email_addresses
+                    .get(iid)
+                    .map(|m| m.values().cloned().collect())
+            })
+        }
+        "SearchEvaluationForms" => {
+            let instance_id = match body_str(body, "InstanceId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            op_search(
+                st,
+                &instance_id,
+                "EvaluationFormSearchSummaryList",
+                |st2, iid| {
+                    st2.evaluation_forms
+                        .get(iid)
+                        .map(|m| m.values().map(eval_search_summary).collect())
+                },
+            )
+        }
+        "SearchHoursOfOperationOverrides" => {
+            let instance_id = match body_str(body, "InstanceId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            op_search(st, &instance_id, "HoursOfOperationOverrides", |st2, iid| {
+                st2.hours_of_operation_overrides
+                    .get(iid)
+                    .map(|m| m.values().cloned().collect())
+            })
+        }
+        "SearchNotifications" => {
+            let instance_id = match body_str(body, "InstanceId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            op_search(st, &instance_id, "Notifications", |st2, iid| {
+                st2.notifications
+                    .get(iid)
+                    .map(|m| m.values().cloned().collect())
+            })
+        }
+        "SearchResourceTags" => op_search_resource_tags(st, body),
+        "SearchTestCases" => {
+            let instance_id = match body_str(body, "InstanceId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            op_search(st, &instance_id, "TestCases", |st2, iid| {
+                st2.test_cases
+                    .get(iid)
+                    .map(|m| m.values().cloned().collect())
+            })
+        }
+        "SearchViews" => {
+            let instance_id = match body_str(body, "InstanceId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            op_search(st, &instance_id, "Views", |st2, iid| {
+                st2.views.get(iid).map(|m| m.values().cloned().collect())
+            })
+        }
+        "SearchWorkspaceAssociations" => {
+            let instance_id = match body_str(body, "InstanceId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            op_search_workspace_associations(st, &instance_id, body)
+        }
+        "SearchWorkspaces" => {
+            let instance_id = match body_str(body, "InstanceId") {
+                Ok(v) => v,
+                Err(resp) => return resp,
+            };
+            op_search(st, &instance_id, "Workspaces", |st2, iid| {
+                st2.workspaces
+                    .get(iid)
+                    .map(|m| m.values().cloned().collect())
+            })
+        }
+        "SendChatIntegrationEvent" => op_send_chat_integration_event(st, body),
+        "SendOutboundEmail" => op_send_outbound_email(st, param(params, "InstanceId"), body),
+        "StartAttachedFileUpload" => {
+            op_start_attached_file_upload(st, param(params, "InstanceId"), body)
+        }
+        "StartChatContact" => op_start_chat_contact(st, body),
+        "StartContactMediaProcessing" => op_contact_media_processing(st, body, true),
+        "StartContactRecording" => op_set_contact_recording(st, body, "STARTED"),
+        "StartContactStreaming" => {
+            op_start_contact_streaming(st, param(params, "InstanceId"), body)
+        }
+        "StartEmailContact" => op_start_email_contact(st, body, false),
+        "StartOutboundChatContact" => op_start_outbound_chat_contact(st, body),
+        "StartOutboundEmailContact" => op_start_email_contact(st, body, true),
+        "StartOutboundVoiceContact" => op_start_outbound_voice_contact(st, body),
+        "StartScreenSharing" => op_start_screen_sharing(st, body),
+        "StartTaskContact" => op_start_task_contact(st, body),
+        "StartTestCaseExecution" => op_start_test_case_execution(
+            st,
+            param(params, "InstanceId"),
+            param(params, "TestCaseId"),
+        ),
+        "StartWebRTCContact" => op_start_webrtc_contact(st, body),
+        "StopContactMediaProcessing" => op_contact_media_processing(st, body, false),
+        "StopContactRecording" => op_set_contact_recording(st, body, "STOPPED"),
+        "StopContactStreaming" => op_stop_contact_streaming(st, body),
+        "StopTestCaseExecution" => op_stop_test_case_execution(
+            st,
+            param(params, "InstanceId"),
+            param(params, "TestCaseId"),
+            param(params, "TestCaseExecutionId"),
+        ),
+        "SubmitContactEvaluation" => op_submit_contact_evaluation(
+            st,
+            param(params, "InstanceId"),
+            param(params, "EvaluationId"),
+        ),
+        "SuspendContactRecording" => op_set_contact_recording(st, body, "SUSPENDED"),
+        "TagContact" => op_tag_contact(st, body),
+        "TransferContact" => op_transfer_contact(st, body),
+        "UntagContact" => op_untag_contact(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactId"),
+            body,
+        ),
+        "UpdateAuthenticationProfile" => op_update_authentication_profile(
+            st,
+            param(params, "InstanceId"),
+            param(params, "AuthenticationProfileId"),
+            body,
+        ),
+        "UpdateContactRoutingData" => op_update_contact_routing_data(
+            st,
+            param(params, "InstanceId"),
+            param(params, "ContactId"),
+            body,
+        ),
+        "UpdateContactSchedule" => op_update_contact_schedule(st, body),
+        "UpdateDataTableMetadata" => op_update_data_table_metadata(
+            st,
+            param(params, "InstanceId"),
+            param(params, "DataTableId"),
+            body,
+        ),
+        "UpdateDataTablePrimaryValues" => op_update_data_table_primary_values(
+            st,
+            param(params, "InstanceId"),
+            param(params, "DataTableId"),
+            body,
+        ),
+        "UpdateEmailAddressMetadata" => op_update_email_address_metadata(
+            st,
+            param(params, "InstanceId"),
+            param(params, "EmailAddressId"),
+            body,
+        ),
+        "UpdateInstanceStorageConfig" => op_update_instance_storage_config(
+            st,
+            param(params, "InstanceId"),
+            param(params, "AssociationId"),
+            body,
+        ),
+        "UpdateNotificationContent" => op_update_notification_content(
+            st,
+            param(params, "InstanceId"),
+            param(params, "NotificationId"),
+            body,
+        ),
+        "UpdateParticipantAuthentication" => op_update_participant_authentication(st, body),
+        "UpdatePhoneNumberMetadata" => {
+            op_update_phone_number_metadata(st, param(params, "PhoneNumberId"), body)
+        }
+        "UpdateQueueOutboundEmailConfig" => op_update_queue_outbound_email_config(
+            st,
+            param(params, "InstanceId"),
+            param(params, "QueueId"),
+            body,
+        ),
+        "UpdateRoutingProfileAgentAvailabilityTimer" => {
+            op_update_routing_profile_agent_availability_timer(
+                st,
+                param(params, "InstanceId"),
+                param(params, "RoutingProfileId"),
+                body,
+            )
+        }
+        "UpdateTrafficDistribution" => {
+            op_update_traffic_distribution(st, param(params, "Id"), body)
+        }
+        "UpdateUserConfig" => op_update_user_config(
+            st,
+            param(params, "InstanceId"),
+            param(params, "UserId"),
+            body,
+        ),
+        "UpdateUserNotificationStatus" => op_update_user_notification_status(
+            st,
+            param(params, "InstanceId"),
+            param(params, "UserId"),
+            param(params, "NotificationId"),
+            body,
+        ),
+        "UpdateUserProficiencies" => op_update_user_proficiencies_inner(
+            st,
+            param(params, "InstanceId"),
+            param(params, "UserId"),
+            body,
+            false,
+        ),
+        "UpdateWorkspaceMetadata" => op_update_workspace_field(
+            st,
+            param(params, "InstanceId"),
+            param(params, "WorkspaceId"),
+            body,
+            None,
+        ),
+        "UpdateWorkspacePage" => op_update_workspace_page(
+            st,
+            param(params, "InstanceId"),
+            param(params, "WorkspaceId"),
+            param(params, "Page"),
+            body,
+        ),
+        "UpdateWorkspaceTheme" => op_update_workspace_field(
+            st,
+            param(params, "InstanceId"),
+            param(params, "WorkspaceId"),
+            body,
+            Some("WorkspaceTheme"),
+        ),
+        "UpdateWorkspaceVisibility" => op_update_workspace_field(
+            st,
+            param(params, "InstanceId"),
+            param(params, "WorkspaceId"),
+            body,
+            Some("Visibility"),
+        ),
 
         _ => op_not_implemented(op),
     }
@@ -7186,6 +7896,139 @@ fn op_list_evaluations(st: &mut ConnectState, instance_id: &str) -> Response {
     }
     ok(json!({"EvaluationSummaryList": []}))
 }
+
+// ---------------------------------------------------------------------------
+// Instance-family ops (surface wave) — moto is absent for every op in this
+// section; the botocore wire model is the contract: 2xx happy path with all
+// required output members synthesized, plus the modeled 4xx the module's
+// existing families give on the same fills.
+// ---------------------------------------------------------------------------
+
+fn notfound_flow_association(resource_id: &str) -> Response {
+    not_found(format!("Flow association {resource_id} not found"))
+}
+
+// -- Flow associations (AssociateFlow family) ------------------------------
+
+fn op_associate_flow(
+    st: &mut ConnectState,
+    instance_id: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let resource_id = match body_str(body, "ResourceId") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let flow_id = match body_str(body, "FlowId") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    let resource_type = match body_str(body, "ResourceType") {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let mut stored = Map::new();
+    stored.insert("ResourceId".into(), json!(resource_id.clone()));
+    stored.insert("FlowId".into(), json!(flow_id.clone()));
+    stored.insert("ResourceType".into(), json!(resource_type.clone()));
+    st.flow_associations
+        .entry(instance_id.to_string())
+        .or_default()
+        .insert(resource_id.clone(), stored.clone());
+    ok(json!({}))
+}
+
+fn op_get_flow_association(
+    st: &mut ConnectState,
+    instance_id: &str,
+    resource_id: &str,
+    resource_type: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    match st
+        .flow_associations
+        .get(instance_id)
+        .and_then(|m| m.get(resource_id))
+    {
+        Some(assoc) => ok(logical_assoc(assoc, resource_type)),
+        None => notfound_flow_association(resource_id),
+    }
+}
+
+fn logical_assoc(assoc: &Map<String, Value>, resource_type: &str) -> Value {
+    let mut out = Map::new();
+    out.insert("ResourceId".into(), json!(assoc["ResourceId"].clone()));
+    out.insert("FlowId".into(), json!(assoc["FlowId"].clone()));
+    // The URI ResourceType shadows the stored one at query time.
+    out.insert("ResourceType".into(), json!(resource_type.to_string()));
+    Value::Object(out)
+}
+
+fn op_disassociate_flow(
+    st: &mut ConnectState,
+    instance_id: &str,
+    resource_id: &str,
+    _resource_type: &str,
+) -> Response {
+    if !st.instances.contains_key(instance_id) {
+        return notfound_instance(instance_id);
+    }
+    let present = st
+        .flow_associations
+        .get(instance_id)
+        .is_some_and(|m| m.contains_key(resource_id));
+    if !present {
+        return notfound_flow_association(resource_id);
+    }
+    if let Some(map) = st.flow_associations.get_mut(instance_id) {
+        map.remove(resource_id);
+    }
+    ok(json!({}))
+}
+
+fn op_batch_get_flow_association(
+    st: &mut ConnectState,
+    instance_id_param: &str,
+    body: &Map<String, Value>,
+) -> Response {
+    let instance_id = instance_id_param.to_string();
+    let resource_ids = match opt_val(body, "ResourceIds") {
+        Some(Value::Array(v)) => v.clone(),
+        Some(_) => return invalid("ResourceIds must be a list"),
+        None => return missing_body_param("ResourceIds"),
+    };
+    let resource_type = opt_string(body, "ResourceType").unwrap_or_default();
+    if !st.instances.contains_key(&instance_id) {
+        return notfound_instance(&instance_id);
+    }
+    let associations = st
+        .flow_associations
+        .get(&instance_id)
+        .cloned()
+        .unwrap_or_default();
+    let rows: Vec<Value> = resource_ids
+        .iter()
+        .filter_map(|rid| rid.as_str())
+        .filter_map(|rid| associations.get(rid))
+        .map(|a| {
+            // honour the stored association type when the probe omits it
+            let stored = a
+                .get("ResourceType")
+                .and_then(Value::as_str)
+                .unwrap_or(&resource_type);
+            logical_assoc(a, stored)
+        })
+        .collect();
+    ok(json!({"FlowAssociationSummaryList": rows}))
+}
+
+include!("connect_f5_handlers_s.rs");
+
 // ---------------------------------------------------------------------------
 // Unit tests
 // ---------------------------------------------------------------------------
@@ -7545,29 +8388,24 @@ mod tests {
         let filtered = val_filtered["Results"].as_array().unwrap();
         assert_eq!(filtered.len(), 1);
 
-        // disassociate (BatchDisassociateAnalyticsDataSet at the plural path is
-        // moto-unrouted -> 501; the real op posts to the singular path)
-        let del = request(
-            "POST",
-            &format!("/analytics-data/instance/{id}/association"),
-            json!({"DataSetId": "ds-1"}),
-            "",
-        );
-        assert_eq!(status_of(&del), 200);
+        // disassociate (the batches answered) — modeled 200 with Deleted+Errors
         let batch = request(
             "POST",
             &format!("/analytics-data/instance/{id}/associations"),
-            json!({"DataSetId": "ds-1"}),
+            json!({"DataSetIds": ["ds-1"]}),
             "",
         );
-        assert_eq!(batch.status, 501);
-        let list = request(
+        assert_eq!(batch.status, 200);
+        let out = body_of(&batch);
+        assert_eq!(out["Deleted"].as_array().unwrap().len(), 1);
+        assert_eq!(out["Errors"].as_array().unwrap().len(), 0);
+        let listed = request(
             "GET",
             &format!("/analytics-data/instance/{id}/association"),
             json!({}),
             "",
         );
-        assert_eq!(body_of(&list)["Results"].as_array().unwrap().len(), 1);
+        assert_eq!(body_of(&listed)["Results"].as_array().unwrap().len(), 1);
     }
 
     // -- Tags -----------------------------------------------------------------
@@ -9429,10 +10267,8 @@ mod tests {
             json!({}),
             "",
         );
-        assert_eq!(del.status, 501);
-        assert!(
-            String::from_utf8_lossy(&del.body).contains("Service connect is not yet implemented")
-        );
+        assert_eq!(del.status, 200);
+        assert_eq!(body_of(&del), json!({}));
 
         let listed = request(
             "GET",
@@ -9445,7 +10281,7 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .len(),
-            1
+            0
         );
     }
 
@@ -9801,23 +10637,24 @@ mod tests {
 
     #[test]
     fn unimplemented_and_unknown_ops() {
-        // moto routes this URL but has no handler
-        let resp = request("GET", "/instance/i/storage-config/a", json!({}), "");
-        assert_eq!(resp.status, 501);
-        let body = String::from_utf8_lossy(&resp.body);
-        assert!(
-            body.contains("The describe_instance_storage_config action has not been implemented"),
-            "{body}"
+        // the storage-config describe family is now armed: unknown ids land in
+        // the modeled ResourceNotFound
+        let resp = request(
+            "GET",
+            "/instance/i/storage-config/a",
+            json!({}),
+            "ResourceType=S3",
         );
+        assert_eq!(resp.status, 404);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("ResourceNotFoundException"), "{body}");
 
-        // moto does not route this at all
+        // start-chat is armed; missing inputs land in the modeled 500-key
+        // color the moto KeyError contract uses (not a 501)
         let resp = request("PUT", "/contact/chat", json!({}), "");
-        assert_eq!(resp.status, 501);
+        assert_eq!(resp.status, 500);
         let body = String::from_utf8_lossy(&resp.body);
-        assert!(
-            body.contains("Service connect is not yet implemented"),
-            "{body}"
-        );
+        assert!(body.contains("InternalError"), "{body}");
 
         // unregistered URL shape
         let resp = request("POST", "/bogus/path", json!({}), "");
@@ -9826,6 +10663,369 @@ mod tests {
         assert!(
             body.contains("Service connect is not yet implemented"),
             "{body}"
+        );
+    }
+
+    fn status_owned(resp: Response) -> u16 {
+        resp.status
+    }
+
+    fn list_owned(resp: Response, field: &str) -> usize {
+        let body = body_of(&resp);
+        body[field]
+            .as_array()
+            .unwrap_or_else(|| panic!("missing list field {field} in {body}"))
+            .len()
+    }
+
+    // -- Instance-family ops (surface wave) ----------------------------------
+
+    fn make_flow(instance: &str) -> String {
+        let resp = request(
+            "PUT",
+            &format!("/contact-flows/{instance}"),
+            json!({"Name": "flow", "Type": "CONTACT_FLOW", "Content": "{}"}),
+            "",
+        );
+        assert_eq!(status_of(&resp), 200);
+        body_of(&resp)["ContactFlowId"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    }
+
+    #[test]
+    fn flow_associations_round_trip() {
+        let (id, _) = make_instance(json!({}));
+        let flow = make_flow(&id);
+        let resource = "h1".to_string();
+
+        let assoc = request(
+            "PUT",
+            &format!("/flow-associations/{id}"),
+            json!({"ResourceId": resource, "FlowId": flow, "ResourceType": "HOURS_OF_OPERATION"}),
+            "",
+        );
+        assert_eq!(status_of(&assoc), 200);
+
+        let get = request(
+            "GET",
+            &format!("/flow-associations/{id}/{resource}/HOURS_OF_OPERATION"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&get), 200);
+        let got = body_of(&get);
+        assert_eq!(got["FlowId"], flow.as_str());
+        assert_eq!(got["ResourceType"], "HOURS_OF_OPERATION");
+
+        let batch = request(
+            "POST",
+            &format!("/flow-associations-batch/{id}"),
+            json!({"ResourceIds": [resource]}),
+            "",
+        );
+        assert_eq!(status_of(&batch), 200);
+        let batch_body = body_of(&batch);
+        let rows = batch_body["FlowAssociationSummaryList"].as_array().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["ResourceType"], "HOURS_OF_OPERATION");
+
+        let dis = request(
+            "DELETE",
+            &format!("/flow-associations/{id}/{resource}/HOURS_OF_OPERATION"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&dis), 200);
+        let gone = request(
+            "DELETE",
+            &format!("/flow-associations/{id}/{resource}/HOURS_OF_OPERATION"),
+            json!({}),
+            "",
+        );
+        assert_eq!(status_of(&gone), 404);
+    }
+
+    #[test]
+    fn data_table_values_round_trip() {
+        let (id, _) = make_instance(json!({}));
+        let table = request(
+            "PUT",
+            &format!("/data-tables/{id}"),
+            json!({"Name": "t"}),
+            "",
+        );
+        let table_id = body_of(&table)["Id"].as_str().unwrap().to_string();
+        let base = format!("/data-tables/{id}/{table_id}");
+
+        let created = request(
+            "POST",
+            &format!("{base}/values/create"),
+            json!({"Values": [{"PrimaryValues": [{"AttributeName": "sku", "Value": "v1"}], "AttributeName": "price", "Value": "10"}]}),
+            "",
+        );
+        let out = body_of(&created);
+        assert_eq!(out["Successful"].as_array().unwrap().len(), 1);
+        assert_eq!(out["Failed"].as_array().unwrap().len(), 0);
+
+        let dup = request(
+            "POST",
+            &format!("{base}/values/create"),
+            json!({"Values": [{"PrimaryValues": [{"AttributeName": "sku", "Value": "v1"}], "AttributeName": "price", "Value": "11"}]}),
+            "",
+        );
+        assert_eq!(body_of(&dup)["Failed"].as_array().unwrap().len(), 1);
+
+        let described = request(
+            "POST",
+            &format!("{base}/values/describe"),
+            json!({"Values": [{"PrimaryValues": [{"AttributeName": "sku", "Value": "v1"}], "AttributeName": "price"}]}),
+            "",
+        );
+        let described_body = body_of(&described);
+        let rows = described_body["Successful"].as_array().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["Value"], "10");
+        assert!(rows[0]["RecordId"].as_str().is_some());
+
+        let updated = request(
+            "POST",
+            &format!("{base}/values/update"),
+            json!({"Values": [{"PrimaryValues": [{"AttributeName": "sku", "Value": "v1"}], "AttributeName": "price", "Value": "12"}]}),
+            "",
+        );
+        assert_eq!(body_of(&updated)["Successful"].as_array().unwrap().len(), 1);
+
+        let evaluated = request(
+            "POST",
+            &format!("{base}/values/evaluate"),
+            json!({"Values": [{"PrimaryValues": [{"AttributeName": "sku", "Value": "v1"}], "AttributeName": "price"}]}),
+            "",
+        );
+        let evaluated_body = body_of(&evaluated);
+        let rows = evaluated_body["Values"].as_array().unwrap();
+        assert!(rows[0]["Found"].as_bool().unwrap());
+
+        let listed = request(
+            "POST",
+            &format!("{base}/values/list"),
+            json!({"InstanceId": id, "DataTableId": table_id}),
+            "",
+        );
+        assert_eq!(list_check(&listed, "Values"), 1);
+        let primary = request(
+            "POST",
+            &format!("{base}/values/list-primary"),
+            json!({"InstanceId": id, "DataTableId": table_id}),
+            "",
+        );
+        assert_eq!(list_check(&primary, "PrimaryValuesList"), 1);
+
+        let deleted = request(
+            "POST",
+            &format!("{base}/values/delete"),
+            json!({"Values": [{"PrimaryValues": [{"AttributeName": "sku", "Value": "v1"}], "AttributeName": "price"}]}),
+            "",
+        );
+        assert_eq!(body_of(&deleted)["Successful"].as_array().unwrap().len(), 1);
+
+        let meta = request(
+            "POST",
+            &format!("/{base}"),
+            json!({"Name": "t2", "ValueLockLevel": "CELL", "TimeZone": "UTC"}),
+            "",
+        );
+        assert!(body_of(&meta)["LockVersion"].is_object());
+    }
+
+    fn list_check(resp: &Response, field: &str) -> usize {
+        let body = body_of(resp);
+        body[field]
+            .as_array()
+            .unwrap_or_else(|| panic!("missing list field {field} in {body}"))
+            .len()
+    }
+
+    #[test]
+    fn attached_files_round_trip() {
+        let (id, _) = make_instance(json!({}));
+        let base = format!("/attached-files/{id}");
+        let instance_arn = format!("arn:aws:connect:us-east-1:{ACCOUNT}:instance/{id}");
+        let started = request(
+            "PUT",
+            &base,
+            json!({"FileName": "a.txt", "FileSizeInBytes": 12, "FileUseCaseType": "ATTACHMENT", "AssociatedResourceArn": instance_arn.clone()}),
+            "",
+        );
+        assert_eq!(status_of(&started), 200);
+        let file_id = body_of(&started)["FileId"].as_str().unwrap().to_string();
+        assert_eq!(body_of(&started)["FileStatus"], "PROCESSING");
+
+        assert_eq!(
+            status_owned(request("POST", &format!("{base}/{file_id}"), json!({}), "")),
+            200
+        );
+
+        let got = request(
+            "GET",
+            &format!("{base}/{file_id}"),
+            json!({}),
+            "AssociatedResourceArn=x",
+        );
+        assert_eq!(status_of(&got), 200);
+        let got_file = body_of(&got);
+        assert_eq!(got_file["FileSizeInBytes"], 12);
+        assert_eq!(got_file["FileStatus"], "APPROVED");
+        assert!(got_file["DownloadUrlMetadata"].is_object());
+
+        let batch = request(
+            "POST",
+            &base,
+            json!({"FileIds": [file_id, "missing"], "AssociatedResourceArn": instance_arn.clone()}),
+            "",
+        );
+        let out = body_of(&batch);
+        assert_eq!(out["Files"].as_array().unwrap().len(), 1);
+        assert_eq!(out["Errors"].as_array().unwrap().len(), 1);
+
+        assert_eq!(
+            status_owned(request(
+                "DELETE",
+                &format!("{base}/{file_id}"),
+                json!({}),
+                ""
+            )),
+            200
+        );
+        assert_eq!(
+            status_owned(request("GET", &format!("{base}/{file_id}"), json!({}), "")),
+            404
+        );
+    }
+
+    #[test]
+    fn workspace_family_round_trip() {
+        let (id, _) = make_instance(json!({}));
+        let ws = request(
+            "PUT",
+            &format!("/workspaces/{id}"),
+            json!({"Name": "ws"}),
+            "",
+        );
+        assert_eq!(status_of(&ws), 200);
+        let ws_id = body_of(&ws)["WorkspaceId"].as_str().unwrap().to_string();
+        let base = format!("/workspaces/{id}/{ws_id}");
+
+        assert_eq!(
+            status_owned(request(
+                "PUT",
+                &format!("{base}/pages"),
+                json!({"ResourceArn": "arn:apps:app", "Page": "home", "Slug": "slug"}),
+                ""
+            )),
+            200
+        );
+        assert_eq!(
+            list_owned(
+                request("GET", &format!("{base}/pages"), json!({}), ""),
+                "WorkspacePageList"
+            ),
+            1
+        );
+        assert_eq!(
+            status_owned(request(
+                "POST",
+                &format!("{base}/pages/home"),
+                json!({"Slug": "s2"}),
+                ""
+            )),
+            200
+        );
+        assert_eq!(
+            status_owned(request(
+                "DELETE",
+                &format!("{base}/pages/home"),
+                json!({}),
+                ""
+            )),
+            200
+        );
+        assert_eq!(
+            status_owned(request(
+                "DELETE",
+                &format!("{base}/pages/home"),
+                json!({}),
+                ""
+            )),
+            404
+        );
+
+        assert_eq!(
+            status_owned(request(
+                "POST",
+                &format!("{base}/media"),
+                json!({"MediaType": "IMAGE_LOGO_LIGHT_HORIZONTAL", "MediaSource": "u"}),
+                ""
+            )),
+            200
+        );
+        assert_eq!(
+            list_owned(
+                request("GET", &format!("{base}/media"), json!({}), ""),
+                "Media"
+            ),
+            1
+        );
+        assert_eq!(
+            status_owned(request(
+                "DELETE",
+                &format!("{base}/media"),
+                json!({}),
+                "mediaType=IMAGE_LOGO_LIGHT_HORIZONTAL",
+            )),
+            200
+        );
+
+        let assoc = request(
+            "POST",
+            &format!("{base}/associate"),
+            json!({"ResourceArns": ["arn:apps:app"]}),
+            "",
+        );
+        assert_eq!(status_of(&assoc), 200);
+        let out = body_of(&assoc);
+        assert_eq!(out["SuccessfulList"].as_array().unwrap().len(), 1);
+        let associations = request(
+            "POST",
+            "/search-workspace-associations",
+            json!({"InstanceId": id}),
+            "",
+        );
+        assert_eq!(list_check(&associations, "WorkspaceAssociations"), 1);
+
+        // disassociate removes it again
+        assert_eq!(
+            status_owned(request(
+                "POST",
+                &format!("{base}/disassociate"),
+                json!({"ResourceArns": ["arn:apps:app"]}),
+                ""
+            )),
+            200
+        );
+
+        let metadata = request(
+            "POST",
+            &format!("{base}/metadata"),
+            json!({"Name": "ws2", "Title": "T"}),
+            "",
+        );
+        assert_eq!(status_of(&metadata), 200);
+        let described = request("POST", "/search-workspaces", json!({"InstanceId": id}), "");
+        assert_eq!(
+            body_of(&described)["Workspaces"].as_array().unwrap()[0]["Name"],
+            "ws2"
         );
     }
 }
