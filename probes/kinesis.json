@@ -1,6 +1,6 @@
 {
   "service": "kinesis",
-  "generated_at": "2026-10-22T06:56:47.123939+00:00",
+  "generated_at": "2026-10-22T07:01:20.573509+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 39,

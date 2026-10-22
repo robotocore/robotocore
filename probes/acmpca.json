@@ -1,6 +1,6 @@
 {
   "service": "acmpca",
-  "generated_at": "2026-10-22T06:54:45.587804+00:00",
+  "generated_at": "2026-10-22T06:59:20.484974+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 18,

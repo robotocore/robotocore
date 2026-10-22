@@ -1,6 +1,6 @@
 {
   "service": "kinesisanalyticsv2",
-  "generated_at": "2026-10-22T06:56:47.728645+00:00",
+  "generated_at": "2026-10-22T07:01:21.091248+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 33,

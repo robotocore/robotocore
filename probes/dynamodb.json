@@ -1,6 +1,6 @@
 {
   "service": "dynamodb",
-  "generated_at": "2026-10-22T06:55:34.836321+00:00",
+  "generated_at": "2026-10-22T07:00:09.807568+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 56,
@@ -28,17 +28,17 @@
     {
       "operation": "CreateBackup",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "CreateGlobalTable",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (GlobalTableAlreadyExistsException: Global table with name 'probe-table-name' already exists)"
     },
     {
       "operation": "CreateTable",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceInUseException: Table already exists: probe-table-name)"
     },
     {
       "operation": "DeleteBackup",
@@ -68,7 +68,7 @@
     {
       "operation": "DescribeContributorInsights",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeEndpoints",

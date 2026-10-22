@@ -1,6 +1,6 @@
 {
   "service": "glue",
-  "generated_at": "2026-10-22T06:56:29.748102+00:00",
+  "generated_at": "2026-10-22T07:01:04.026986+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 264,
@@ -133,7 +133,7 @@
     {
       "operation": "CreateCatalog",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (AlreadyExistsException: Catalog already exists.)"
     },
     {
       "operation": "CreateClassifier",
@@ -183,7 +183,7 @@
     {
       "operation": "CreateIntegration",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (AlreadyExistsException: Integration already exists.)"
     },
     {
       "operation": "CreateIntegrationResourceProperty",
@@ -308,7 +308,7 @@
     {
       "operation": "DeleteConnectionType",
       "status": "working",
-      "message": "likely implemented (EntityNotFoundException: Connection type probe-test-value not found.)"
+      "message": "OK"
     },
     {
       "operation": "DeleteCrawler",
@@ -383,7 +383,7 @@
     {
       "operation": "DeleteResourcePolicy",
       "status": "working",
-      "message": "likely implemented (EntityNotFoundException: Policy does not exist)"
+      "message": "OK"
     },
     {
       "operation": "DeleteSchema",

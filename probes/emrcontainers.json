@@ -1,6 +1,6 @@
 {
   "service": "emrcontainers",
-  "generated_at": "2026-10-22T06:56:18.902268+00:00",
+  "generated_at": "2026-10-22T07:00:53.539278+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 9,
@@ -33,7 +33,7 @@
     {
       "operation": "CreateVirtualCluster",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "DeleteJobTemplate",
@@ -83,7 +83,7 @@
     {
       "operation": "ListJobRuns",
       "status": "500_error",
-      "message": "server crash (InternalError: invalid literal for int() with base 10: 'probe-token-3726')"
+      "message": "server crash (InternalError: invalid literal for int() with base 10: 'probe-token-9517')"
     },
     {
       "operation": "ListJobTemplates",
@@ -108,7 +108,7 @@
     {
       "operation": "ListVirtualClusters",
       "status": "500_error",
-      "message": "server crash (InternalError: invalid literal for int() with base 10: 'probe-token-3726')"
+      "message": "server crash (InternalError: invalid literal for int() with base 10: 'probe-token-9517')"
     },
     {
       "operation": "StartJobRun",

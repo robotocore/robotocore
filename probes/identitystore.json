@@ -1,6 +1,6 @@
 {
   "service": "identitystore",
-  "generated_at": "2026-10-22T06:56:36.104633+00:00",
+  "generated_at": "2026-10-22T07:01:10.340919+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 17,
@@ -13,7 +13,7 @@
     {
       "operation": "CreateGroup",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ConflictException)"
     },
     {
       "operation": "CreateGroupMembership",
@@ -23,7 +23,7 @@
     {
       "operation": "CreateUser",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ConflictException)"
     },
     {
       "operation": "DeleteGroup",

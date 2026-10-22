@@ -1,6 +1,6 @@
 {
   "service": "elasticache",
-  "generated_at": "2026-10-22T06:56:16.083376+00:00",
+  "generated_at": "2026-10-22T07:00:50.826276+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 74,
@@ -48,7 +48,7 @@
     {
       "operation": "CreateCacheCluster",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (CacheClusterAlreadyExistsFault: Cache cluster probe-cache-cluster-id-id already exists.)"
     },
     {
       "operation": "CreateCacheParameterGroup",

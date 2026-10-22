@@ -1,6 +1,6 @@
 {
   "service": "opensearchserverless",
-  "generated_at": "2026-10-22T06:57:08.179320+00:00",
+  "generated_at": "2026-10-22T07:01:40.884637+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 42,
@@ -63,7 +63,7 @@
     {
       "operation": "CreateSecurityConfig",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ConflictException)"
     },
     {
       "operation": "CreateSecurityPolicy",
@@ -73,7 +73,7 @@
     {
       "operation": "CreateVpcEndpoint",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ConflictException)"
     },
     {
       "operation": "DeleteAccessPolicy",

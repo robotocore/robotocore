@@ -1,6 +1,6 @@
 {
   "service": "swf",
-  "generated_at": "2026-10-22T06:58:03.083772+00:00",
+  "generated_at": "2026-10-22T07:02:37.253429+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 39,
@@ -23,67 +23,67 @@
     {
       "operation": "CountPendingActivityTasks",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+      "message": "OK"
     },
     {
       "operation": "CountPendingDecisionTasks",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+      "message": "OK"
     },
     {
       "operation": "DeleteActivityType",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+      "message": "likely implemented (UnknownResourceFault: Unknown type: ActivityType=[name=probe-test-value, version=p)"
     },
     {
       "operation": "DeleteWorkflowType",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "DeprecateActivityType",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+      "message": "likely implemented (UnknownResourceFault: Unknown type: ActivityType=[name=probe-test-value, version=p)"
     },
     {
       "operation": "DeprecateDomain",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+      "message": "OK"
     },
     {
       "operation": "DeprecateWorkflowType",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+      "message": "OK"
     },
     {
       "operation": "DescribeActivityType",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+      "message": "likely implemented (UnknownResourceFault: Unknown type: ActivityType=[name=probe-test-value, version=p)"
     },
     {
       "operation": "DescribeDomain",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+      "message": "OK"
     },
     {
       "operation": "DescribeWorkflowExecution",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+      "message": "likely implemented (UnknownResourceFault: Unknown execution: WorkflowExecution=[workflowId=probe-workf)"
     },
     {
       "operation": "DescribeWorkflowType",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+      "message": "OK"
     },
     {
       "operation": "GetWorkflowExecutionHistory",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+      "message": "likely implemented (UnknownResourceFault: Unknown execution: WorkflowExecution=[workflowId=probe-workf)"
     },
     {
       "operation": "ListActivityTypes",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+      "message": "OK"
     },
     {
       "operation": "ListClosedWorkflowExecutions",
@@ -108,17 +108,17 @@
     {
       "operation": "ListWorkflowTypes",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+      "message": "OK"
     },
     {
       "operation": "PollForActivityTask",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+      "message": "OK"
     },
     {
       "operation": "PollForDecisionTask",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+      "message": "OK"
     },
     {
       "operation": "RecordActivityTaskHeartbeat",
@@ -128,17 +128,17 @@
     {
       "operation": "RegisterActivityType",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+      "message": "OK"
     },
     {
       "operation": "RegisterDomain",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (DomainAlreadyExistsFault: probe-test-value)"
     },
     {
       "operation": "RegisterWorkflowType",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (TypeAlreadyExistsFault: WorkflowType=[name=probe-test-value, version=probe-test-valu)"
     },
     {
       "operation": "RequestCancelWorkflowExecution",
@@ -173,7 +173,7 @@
     {
       "operation": "StartWorkflowExecution",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (TypeDeprecatedFault: WorkflowType=[name=probe-test-value, version=probe-test-valu)"
     },
     {
       "operation": "TagResource",
@@ -188,17 +188,17 @@
     {
       "operation": "UndeprecateActivityType",
       "status": "working",
-      "message": "likely implemented (UnknownResourceFault: Unknown type: ActivityType=[name=probe-test-value, version=p)"
+      "message": "likely implemented (TypeAlreadyExistsFault: ActivityType=[name=probe-test-value, version=probe-test-valu)"
     },
     {
       "operation": "UndeprecateDomain",
       "status": "working",
-      "message": "likely implemented (DomainAlreadyExistsFault: probe-test-value)"
+      "message": "OK"
     },
     {
       "operation": "UndeprecateWorkflowType",
       "status": "working",
-      "message": "likely implemented (TypeAlreadyExistsFault: WorkflowType=[name=probe-test-value, version=probe-test-valu)"
+      "message": "OK"
     },
     {
       "operation": "UntagResource",

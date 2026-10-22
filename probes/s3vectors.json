@@ -1,6 +1,6 @@
 {
   "service": "s3vectors",
-  "generated_at": "2026-10-22T06:57:35.638251+00:00",
+  "generated_at": "2026-10-22T07:02:09.454102+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 15,

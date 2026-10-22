@@ -1,6 +1,6 @@
 {
   "service": "mediaconnect",
-  "generated_at": "2026-10-22T06:56:58.193808+00:00",
+  "generated_at": "2026-10-22T07:01:31.076370+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 79,
@@ -243,12 +243,12 @@
     {
       "operation": "ListTagsForGlobalResource",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "ListTagsForResource",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "PurchaseOffering",

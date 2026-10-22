@@ -1,6 +1,6 @@
 {
   "service": "resource-groups",
-  "generated_at": "2026-10-22T06:57:28.912328+00:00",
+  "generated_at": "2026-10-22T07:02:02.416256+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 17,

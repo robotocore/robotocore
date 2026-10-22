@@ -1,6 +1,6 @@
 {
   "service": "bedrock",
-  "generated_at": "2026-10-22T06:54:57.717555+00:00",
+  "generated_at": "2026-10-22T06:59:32.589598+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 95,

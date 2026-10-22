@@ -1,6 +1,6 @@
 {
   "service": "elbv2",
-  "generated_at": "2026-10-22T06:56:17.597363+00:00",
+  "generated_at": "2026-10-22T07:00:52.284087+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 51,
@@ -43,12 +43,12 @@
     {
       "operation": "CreateTargetGroup",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (DuplicateTargetGroupName: A target group with the specified name already exists.)"
     },
     {
       "operation": "CreateTrustStore",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (DuplicateTrustStoreName: The specified trust store name is already in use.)"
     },
     {
       "operation": "DeleteListener",

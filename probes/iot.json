@@ -1,6 +1,6 @@
 {
   "service": "iot",
-  "generated_at": "2026-10-22T06:56:44.911320+00:00",
+  "generated_at": "2026-10-22T07:01:18.675842+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 261,
@@ -188,7 +188,7 @@
     {
       "operation": "CreatePolicy",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceAlreadyExistsException: Policy cannot be created - name already exists (name=probe-t)"
     },
     {
       "operation": "CreatePolicyVersion",
@@ -238,7 +238,7 @@
     {
       "operation": "CreateThingGroup",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceAlreadyExistsException: Thing Group probe-test-value already exists in current accou)"
     },
     {
       "operation": "CreateThingType",
@@ -453,7 +453,7 @@
     {
       "operation": "DescribeAuditMitigationActionsTask",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeAuditSuppression",
@@ -503,7 +503,7 @@
     {
       "operation": "DescribeDetectMitigationActionsTask",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeDimension",
@@ -1093,12 +1093,12 @@
     {
       "operation": "RegisterCACertificate",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceAlreadyExistsException: The certificate is already provisioned or registered)"
     },
     {
       "operation": "RegisterCertificate",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceAlreadyExistsException: The certificate is already provisioned or registered)"
     },
     {
       "operation": "RegisterCertificateWithoutCA",
@@ -1348,7 +1348,7 @@
     {
       "operation": "UpdateThingGroup",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (VersionConflictException: The version for thing probe-test-value does not match the ex)"
     },
     {
       "operation": "UpdateThingGroupsForThing",

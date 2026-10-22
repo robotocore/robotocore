@@ -1,6 +1,6 @@
 {
   "service": "codepipeline",
-  "generated_at": "2026-10-22T06:55:10.969398+00:00",
+  "generated_at": "2026-10-22T06:59:45.776795+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 44,

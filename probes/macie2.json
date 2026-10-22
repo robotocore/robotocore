@@ -1,6 +1,6 @@
 {
   "service": "macie2",
-  "generated_at": "2026-10-22T06:56:56.302723+00:00",
+  "generated_at": "2026-10-22T07:01:29.249732+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 81,

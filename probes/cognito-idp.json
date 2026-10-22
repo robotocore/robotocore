@@ -1,6 +1,6 @@
 {
   "service": "cognito-idp",
-  "generated_at": "2026-10-22T06:55:13.116450+00:00",
+  "generated_at": "2026-10-22T06:59:48.010975+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 70,
@@ -513,7 +513,7 @@
     {
       "operation": "SetUserMFAPreference",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-8822)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-6564)"
     },
     {
       "operation": "SetUserPoolMfaConfig",

@@ -1,6 +1,6 @@
 {
   "service": "datapipeline",
-  "generated_at": "2026-10-22T06:55:28.934315+00:00",
+  "generated_at": "2026-10-22T07:00:03.885484+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 19,

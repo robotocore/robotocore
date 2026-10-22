@@ -1,6 +1,6 @@
 {
   "service": "codebuild",
-  "generated_at": "2026-10-22T06:55:08.770813+00:00",
+  "generated_at": "2026-10-22T06:59:43.567387+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 59,
@@ -68,7 +68,7 @@
     {
       "operation": "CreateReportGroup",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceAlreadyExistsException: Report group already exists: probe-test-value)"
     },
     {
       "operation": "CreateWebhook",
@@ -103,7 +103,7 @@
     {
       "operation": "DeleteResourcePolicy",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteSourceCredentials",
@@ -138,7 +138,7 @@
     {
       "operation": "ImportSourceCredentials",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ResourceAlreadyExistsException: Source credentials for type GITHUB already exist)"
     },
     {
       "operation": "InvalidateProjectCache",
