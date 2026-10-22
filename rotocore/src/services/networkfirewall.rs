@@ -307,11 +307,20 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
             let policy = json!({
                 "FirewallPolicyName": policy_name,
                 "FirewallPolicyArn": arn,
+                "FirewallPolicyId": uuid_id(),
+                "FirewallPolicyStatus": "ACTIVE",
                 "FirewallPolicy": p.get("FirewallPolicy").cloned().unwrap_or(json!({})),
                 "Description": p.get("Description").cloned().unwrap_or(Value::Null),
+                "LastModifiedTime": now_epoch(),
             });
+            if let Some(tags) = p.get("Tags") {
+                store_tags(st, &arn, tags);
+            }
             st.policies.push(policy.clone());
-            ok(&json!({"FirewallPolicyResponse": policy, "UpdateToken": UPDATE_TOKEN}))
+            ok(&json!({
+                "FirewallPolicyResponse": policy_response(&policy, st),
+                "UpdateToken": UPDATE_TOKEN,
+            }))
         }
         "DeleteFirewallPolicy" => {
             let pn = p
@@ -332,16 +341,46 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
                 .find(|v| v["FirewallPolicyName"] == json!(pn))
             {
                 Some(v) => ok(&json!({
-                    "FirewallPolicyResponse": v,
+                    "FirewallPolicyResponse": policy_response(v, st),
                     "FirewallPolicy": v["FirewallPolicy"].clone(),
                     "UpdateToken": UPDATE_TOKEN,
                 })),
                 None => not_found(&format!("FirewallPolicy {pn} not found")),
             }
         }
+        "UpdateFirewallPolicy" => {
+            let (parn, pn) = (policy_arn(p), policy_name(p));
+            match st.policies.iter_mut().find(|v| {
+                v["FirewallPolicyArn"].as_str() == Some(parn)
+                    || v["FirewallPolicyName"].as_str() == Some(pn)
+            }) {
+                Some(pl) => {
+                    if let Some(v) = p.get("FirewallPolicy") {
+                        pl["FirewallPolicy"] = v.clone();
+                    }
+                    if let Some(v) = p.get("Description") {
+                        pl["Description"] = v.clone();
+                    }
+                    if let Some(v) = p.get("EncryptionConfiguration") {
+                        pl["EncryptionConfiguration"] = v.clone();
+                    }
+                    pl["LastModifiedTime"] = json!(now_epoch());
+                    let updated = pl.clone();
+                    ok(&json!({
+                        "UpdateToken": UPDATE_TOKEN,
+                        "FirewallPolicyResponse": policy_response(&updated, st),
+                    }))
+                }
+                None => not_found(&format!("FirewallPolicy {pn} not found")),
+            }
+        }
         "ListFirewallPolicies" => ok(&json!({
-            "FirewallPolicies": st.policies.clone(),
-            "nextToken": Value::Null,
+            "FirewallPolicies": st
+                .policies
+                .iter()
+                .map(|pl| json!({"Name": pl["FirewallPolicyName"], "Arn": pl["FirewallPolicyArn"]}))
+                .collect::<Vec<Value>>(),
+            "NextToken": next_token_of(p),
         })),
         "ListTagsForResource" => {
             let tags = tag_map(st, arn_param);
@@ -1724,6 +1763,37 @@ fn fw_arn_for_reports(p: &Value, st: &State) -> (String, bool) {
         ),
         None => (String::new(), false),
     }
+}
+
+fn policy_name(p: &Value) -> &str {
+    p.get("FirewallPolicyName")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+}
+
+fn policy_arn(p: &Value) -> &str {
+    p.get("FirewallPolicyArn")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+}
+
+/// The response slice of a stored firewall policy record (drops the
+/// policy body fields; renders the botocore FirewallPolicyResponse shape).
+fn policy_response(pl: &Value, st: &State) -> Value {
+    let arn = pl
+        .get("FirewallPolicyArn")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    json!({
+        "FirewallPolicyName": pl["FirewallPolicyName"].clone(),
+        "FirewallPolicyArn": pl["FirewallPolicyArn"].clone(),
+        "FirewallPolicyId": pl.get("FirewallPolicyId").cloned().unwrap_or(json!("")),
+        "FirewallPolicyStatus": pl.get("FirewallPolicyStatus").cloned().unwrap_or(json!("ACTIVE")),
+        "Description": pl.get("Description").cloned().unwrap_or(Value::Null),
+        "Tags": tag_map(st, arn),
+        "NumberOfAssociations": 0,
+        "LastModifiedTime": pl.get("LastModifiedTime").cloned().unwrap_or(Value::Null),
+    })
 }
 
 /// The response slice of a stored RuleGroup record (drops private members).
