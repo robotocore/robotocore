@@ -1,6 +1,6 @@
 {
   "service": "lambda",
-  "generated_at": "2026-10-22T04:30:28.562308+00:00",
+  "generated_at": "2026-10-22T06:56:51.582638+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 84,
@@ -28,7 +28,7 @@
     {
       "operation": "CreateAlias",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateCapacityProvider",
@@ -43,12 +43,12 @@
     {
       "operation": "CreateEventSourceMapping",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateFunction",
       "status": "working",
-      "message": "implemented via required-only (ResourceConflictException)"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreateFunctionUrlConfig",
@@ -58,7 +58,7 @@
     {
       "operation": "DeleteAlias",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteCapacityProvider",
@@ -98,7 +98,7 @@
     {
       "operation": "DeleteLayerVersion",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteProvisionedConcurrencyConfig",

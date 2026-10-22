@@ -1,6 +1,6 @@
 {
   "service": "applicationautoscaling",
-  "generated_at": "2026-10-22T04:28:36.174407+00:00",
+  "generated_at": "2026-10-22T06:54:50.040448+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 9,

@@ -1,6 +1,6 @@
 {
   "service": "route53resolver",
-  "generated_at": "2026-10-22T04:31:15.160041+00:00",
+  "generated_at": "2026-10-22T06:57:31.439904+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 67,
@@ -158,7 +158,7 @@
     {
       "operation": "GetResolverDnssecConfig",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetResolverEndpoint",

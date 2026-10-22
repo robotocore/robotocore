@@ -1,6 +1,6 @@
 {
   "service": "transcribe",
-  "generated_at": "2026-10-22T04:31:54.900764+00:00",
+  "generated_at": "2026-10-22T06:58:04.748543+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 40,
@@ -43,7 +43,7 @@
     {
       "operation": "DeleteCallAnalyticsJob",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (BadRequestException: The requested job couldn't be found. Check the job name and )"
     },
     {
       "operation": "DeleteLanguageModel",
@@ -53,12 +53,12 @@
     {
       "operation": "DeleteMedicalScribeJob",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (BadRequestException: The requested job couldn't be found. Check the job name and )"
     },
     {
       "operation": "DeleteMedicalTranscriptionJob",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (BadRequestException: The requested job couldn't be found. Check the job name and )"
     },
     {
       "operation": "DeleteMedicalVocabulary",
@@ -68,7 +68,7 @@
     {
       "operation": "DeleteTranscriptionJob",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (BadRequestException: The requested job couldn't be found. Check the job name and )"
     },
     {
       "operation": "DeleteVocabulary",

@@ -1,7 +1,7 @@
 {
   "service": "networkfirewall",
-  "generated_at": "2026-10-22T05:50:43.580192+00:00",
-  "endpoint": "http://localhost:4794",
+  "generated_at": "2026-10-22T06:57:04.882284+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 77,
     "needs_params": 2,

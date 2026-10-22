@@ -1,12 +1,12 @@
 {
   "service": "workspaces",
-  "generated_at": "2026-10-22T04:32:00.833520+00:00",
+  "generated_at": "2026-10-22T06:58:10.627256+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 84,
+    "working": 83,
     "needs_params": 4,
     "not_implemented": 0,
-    "500_error": 3,
+    "500_error": 4,
     "timeout": 0
   },
   "operations": [
@@ -142,8 +142,8 @@
     },
     {
       "operation": "DeregisterWorkspaceDirectory",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "server crash (InternalError: 'probe-directory-id-id')"
     },
     {
       "operation": "DescribeAccount",

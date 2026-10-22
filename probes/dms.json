@@ -1,6 +1,6 @@
 {
   "service": "dms",
-  "generated_at": "2026-10-22T04:29:25.944515+00:00",
+  "generated_at": "2026-10-22T06:55:32.510450+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 114,
@@ -78,12 +78,12 @@
     {
       "operation": "CreateReplicationConfig",
       "status": "working",
-      "message": "likely implemented (ResourceAlreadyExistsFault: The resource you are attempting to create already exists.)"
+      "message": "OK"
     },
     {
       "operation": "CreateReplicationInstance",
       "status": "working",
-      "message": "likely implemented (ResourceAlreadyExistsFault: The resource you are attempting to create already exists.)"
+      "message": "OK"
     },
     {
       "operation": "CreateReplicationSubnetGroup",
@@ -93,7 +93,7 @@
     {
       "operation": "CreateReplicationTask",
       "status": "working",
-      "message": "likely implemented (ResourceAlreadyExistsFault: The resource you are attempting to create already exists.)"
+      "message": "OK"
     },
     {
       "operation": "DeleteCertificate",
@@ -418,7 +418,7 @@
     {
       "operation": "ImportCertificate",
       "status": "working",
-      "message": "likely implemented (ResourceAlreadyExistsFault: The resource you are attempting to create already exists.)"
+      "message": "OK"
     },
     {
       "operation": "ListTagsForResource",

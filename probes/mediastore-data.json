@@ -1,6 +1,6 @@
 {
   "service": "mediastore-data",
-  "generated_at": "2026-10-22T04:30:40.440233+00:00",
+  "generated_at": "2026-10-22T06:57:02.240258+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 5,
@@ -13,7 +13,7 @@
     {
       "operation": "DeleteObject",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ObjectNotFoundException: Object with id=probe-test-value not found)"
     },
     {
       "operation": "DescribeObject",

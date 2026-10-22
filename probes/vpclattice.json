@@ -1,6 +1,6 @@
 {
   "service": "vpclattice",
-  "generated_at": "2026-10-22T04:31:58.813376+00:00",
+  "generated_at": "2026-10-22T06:58:08.439269+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 23,
@@ -108,7 +108,7 @@
     {
       "operation": "DeleteResourcePolicy",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteRule",

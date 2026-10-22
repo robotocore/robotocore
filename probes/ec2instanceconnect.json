@@ -1,6 +1,6 @@
 {
   "service": "ec2instanceconnect",
-  "generated_at": "2026-10-22T04:29:43.280630+00:00",
+  "generated_at": "2026-10-22T06:56:11.504391+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 0,

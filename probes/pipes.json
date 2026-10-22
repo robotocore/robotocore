@@ -1,6 +1,6 @@
 {
   "service": "pipes",
-  "generated_at": "2026-10-22T04:30:53.123985+00:00",
+  "generated_at": "2026-10-22T06:57:13.194490+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 10,

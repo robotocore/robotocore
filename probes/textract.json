@@ -1,6 +1,6 @@
 {
   "service": "textract",
-  "generated_at": "2026-10-22T04:31:53.658814+00:00",
+  "generated_at": "2026-10-22T06:58:03.622957+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 25,

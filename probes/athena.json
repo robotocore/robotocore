@@ -1,6 +1,6 @@
 {
   "service": "athena",
-  "generated_at": "2026-10-22T04:28:38.813711+00:00",
+  "generated_at": "2026-10-22T06:54:52.546443+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 67,
@@ -273,7 +273,7 @@
     {
       "operation": "ListTagsForResource",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (InvalidRequestException)"
     },
     {
       "operation": "ListWorkGroups",

@@ -1,7 +1,7 @@
 {
   "service": "bedrockagent",
-  "generated_at": "2026-10-22T06:44:24.282116+00:00",
-  "endpoint": "http://localhost:4794",
+  "generated_at": "2026-10-22T06:54:59.413293+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 72,
     "needs_params": 0,

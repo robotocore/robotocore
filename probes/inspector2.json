@@ -1,6 +1,6 @@
 {
   "service": "inspector2",
-  "generated_at": "2026-10-22T04:30:13.434633+00:00",
+  "generated_at": "2026-10-22T06:56:37.468706+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 73,

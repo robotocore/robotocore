@@ -1,6 +1,6 @@
 {
   "service": "panorama",
-  "generated_at": "2026-10-22T04:30:49.159424+00:00",
+  "generated_at": "2026-10-22T06:57:09.764959+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 32,
@@ -48,7 +48,7 @@
     {
       "operation": "DeregisterPackageVersion",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeApplicationInstance",

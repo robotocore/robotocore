@@ -1,6 +1,6 @@
 {
   "service": "networkmanager",
-  "generated_at": "2026-10-22T04:30:44.958296+00:00",
+  "generated_at": "2026-10-22T06:57:06.121388+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 95,

@@ -1,6 +1,6 @@
 {
   "service": "opensearch",
-  "generated_at": "2026-10-22T04:30:46.411271+00:00",
+  "generated_at": "2026-10-22T06:57:07.510742+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 80,

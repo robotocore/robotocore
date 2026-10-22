@@ -1,6 +1,6 @@
 {
   "service": "iam",
-  "generated_at": "2026-10-22T04:30:11.575370+00:00",
+  "generated_at": "2026-10-22T06:56:35.840079+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 168,
@@ -88,12 +88,12 @@
     {
       "operation": "CreateOpenIDConnectProvider",
       "status": "working",
-      "message": "implemented via required-only (EntityAlreadyExists)"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreatePolicy",
       "status": "working",
-      "message": "likely implemented (EntityAlreadyExists: A policy called probe-test-value already exists.)"
+      "message": "OK"
     },
     {
       "operation": "CreatePolicyVersion",
@@ -128,7 +128,7 @@
     {
       "operation": "CreateVirtualMFADevice",
       "status": "working",
-      "message": "likely implemented (EntityAlreadyExists: MFADevice entity at the same path and name already exists.)"
+      "message": "OK"
     },
     {
       "operation": "DeactivateMFADevice",
@@ -213,7 +213,7 @@
     {
       "operation": "DeleteServerCertificate",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "DeleteServiceLinkedRole",

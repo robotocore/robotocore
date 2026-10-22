@@ -1,7 +1,7 @@
 {
   "service": "forecast",
-  "generated_at": "2026-10-22T06:17:16.374575+00:00",
-  "endpoint": "http://localhost:4794",
+  "generated_at": "2026-10-22T06:56:21.445890+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 63,
     "needs_params": 0,

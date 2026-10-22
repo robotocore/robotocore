@@ -1,6 +1,6 @@
 {
   "service": "directconnect",
-  "generated_at": "2026-10-22T04:29:23.648768+00:00",
+  "generated_at": "2026-10-22T06:55:30.615057+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 10,

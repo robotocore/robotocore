@@ -1,7 +1,7 @@
 {
   "service": "personalize",
-  "generated_at": "2026-10-22T06:14:20.184240+00:00",
-  "endpoint": "http://127.0.0.1:4793",
+  "generated_at": "2026-10-22T06:57:10.770698+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 71,
     "needs_params": 0,
