@@ -402,6 +402,8 @@ pub struct Image {
     pub tags: Tags,
     pub created_at: String,
     pub snapshot_description: Option<String>,
+    pub deprecation_time: Option<String>,
+    pub deregistration_protection: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]

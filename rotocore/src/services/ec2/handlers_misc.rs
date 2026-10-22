@@ -333,6 +333,160 @@ pub static SIMPLE_FAMILIES: &[FamilySpec] = &[
         "iew",
         "InstanceEventWindowId"
     ),
+    // --- wave-11 gap families (create/describe/delete round trips) --------
+    fam!(
+        "route-server",
+        "CreateRouteServer",
+        "DescribeRouteServers",
+        "DeleteRouteServer",
+        "routeServerSet",
+        "route-server",
+        "RouteServerId"
+    ),
+    fam!(
+        "route-server-endpoint",
+        "CreateRouteServerEndpoint",
+        "DescribeRouteServerEndpoints",
+        "DeleteRouteServerEndpoint",
+        "routeServerEndpointsSet",
+        "route-server-endpoint",
+        "RouteServerEndpointId"
+    ),
+    fam!(
+        "route-server-peer",
+        "CreateRouteServerPeer",
+        "DescribeRouteServerPeers",
+        "DeleteRouteServerPeer",
+        "routeServerPeersSet",
+        "route-server-peer",
+        "RouteServerPeerId"
+    ),
+    fam!(
+        "vpn-concentrator",
+        "CreateVpnConcentrator",
+        "DescribeVpnConcentrators",
+        "DeleteVpnConcentrator",
+        "vpnConcentratorSet",
+        "vpn-concentrator",
+        "VpnConcentratorId"
+    ),
+    fam!(
+        "secondary-network",
+        "CreateSecondaryNetwork",
+        "DescribeSecondaryNetworks",
+        "DeleteSecondaryNetwork",
+        "secondaryNetworkSet",
+        "sernet",
+        "SecondaryNetworkId"
+    ),
+    fam!(
+        "secondary-subnet",
+        "CreateSecondarySubnet",
+        "DescribeSecondarySubnets",
+        "DeleteSecondarySubnet",
+        "secondarySubnetSet",
+        "sersub",
+        "SecondarySubnetId"
+    ),
+    fam!(
+        "capacity-manager-data-export",
+        "CreateCapacityManagerDataExport",
+        "DescribeCapacityManagerDataExports",
+        "DeleteCapacityManagerDataExport",
+        "capacityManagerDataExportSet",
+        "cmde",
+        "CapacityManagerDataExportId"
+    ),
+    fam!(
+        "transit-gateway-metering-policy",
+        "CreateTransitGatewayMeteringPolicy",
+        "DescribeTransitGatewayMeteringPolicies",
+        "DeleteTransitGatewayMeteringPolicy",
+        "transitGatewayMeteringPolicies",
+        "tgw-mp",
+        "TransitGatewayMeteringPolicyId"
+    ),
+    fam!(
+        "ipam-policy",
+        "CreateIpamPolicy",
+        "DescribeIpamPolicies",
+        "DeleteIpamPolicy",
+        "ipamPolicySet",
+        "ipam-policy",
+        "IpamPolicyId"
+    ),
+    fam!(
+        "ipam-prefix-list-resolver",
+        "CreateIpamPrefixListResolver",
+        "DescribeIpamPrefixListResolvers",
+        "DeleteIpamPrefixListResolver",
+        "ipamPrefixListResolverSet",
+        "ipam-plr",
+        "IpamPrefixListResolverId"
+    ),
+    fam!(
+        "ipam-prefix-list-resolver-target",
+        "CreateIpamPrefixListResolverTarget",
+        "DescribeIpamPrefixListResolverTargets",
+        "DeleteIpamPrefixListResolverTarget",
+        "ipamPrefixListResolverTargetSet",
+        "ipam-plrt",
+        "IpamPrefixListResolverTargetId"
+    ),
+    fam!(
+        "vpc-endpoint-connection-notification",
+        "CreateVpcEndpointConnectionNotification",
+        "DescribeVpcEndpointConnectionNotifications",
+        "DeleteVpcEndpointConnectionNotifications",
+        "connectionNotificationSet",
+        "cn-",
+        "ConnectionNotificationId"
+    ),
+    fam!(
+        "vpc-encryption-control",
+        "CreateVpcEncryptionControl",
+        "DescribeVpcEncryptionControls",
+        "DeleteVpcEncryptionControl",
+        "vpcEncryptionControlSet",
+        "vpc-ec",
+        "VpcEncryptionControlId"
+    ),
+    fam!(
+        "image-usage-report",
+        "CreateImageUsageReport",
+        "DescribeImageUsageReports",
+        "DeleteImageUsageReport",
+        "imageUsageReportSet",
+        "iur-",
+        "ReportId"
+    ),
+    fam!(
+        "tgw-route-table-announcement",
+        "CreateTransitGatewayRouteTableAnnouncement",
+        "DescribeTransitGatewayRouteTableAnnouncements",
+        "DeleteTransitGatewayRouteTableAnnouncement",
+        "transitGatewayRouteTableAnnouncements",
+        "tgw-rtba",
+        "TransitGatewayRouteTableAnnouncementId"
+    ),
+    fam!(
+        "byoip-cidr",
+        "ProvisionByoipCidr",
+        "DescribeByoipCidrs",
+        "DeprovisionByoipCidr",
+        "byoipCidrSet",
+        "",
+        "Cidr"
+    ),
+    fam!(
+        "ipam-byoasn",
+        "ProvisionIpamByoasn",
+        "DescribeIpamByoasn",
+        "DeprovisionIpamByoasn",
+        "byoasnSet",
+        "",
+        "Asn"
+    ),
 ];
 
 fn render_template(xml: &str) -> (String, HashMap<String, String>) {
@@ -453,7 +607,8 @@ pub fn route(req: &Request, params: &P) -> Response {
         let xml = render_template(xml).0;
         return Response::xml(status, xml.into_bytes());
     }
-    super::not_implemented(&req.operation)
+    // 3) wave-11 terminator: modeled envelope from the botocore shape
+    gap_ops_c_response(req, op, params)
 }
 
 static MODIFY_OPS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
@@ -782,12 +937,258 @@ fn simple_family_route(req: &Request, params: &P) -> Response {
     ) {
         return hostlist_route(req, fam);
     }
+    // wave-11 families: create-time validation of referenced resources and
+    // required params, then the shared create/describe/delete machinery.
+    if req.operation == fam.create_op {
+        if let Some(err) = validate_family_refs(req, params, fam) {
+            return err;
+        }
+    }
     match req.operation.as_str() {
         op if op == fam.create_op => simple_create(req, params, fam),
         op if op == fam.describe_op => simple_describe(req, params, fam),
         op if op == fam.delete_op => simple_delete(req, params, fam),
         _ => simple_describe(req, params, fam),
     }
+}
+
+/// Provigional 4xx checks for the new families' create ops, mirroring the
+/// Id-not-found styles used elsewhere in the module.
+fn validate_family_refs(req: &Request, params: &P, fam: &'static FamilySpec) -> Option<Response> {
+    let missing = |param: &str| {
+        Some(ec2_error(
+            400,
+            "MissingParameter",
+            &format!("The request must contain the parameter {param}"),
+        ))
+    };
+    match fam.kind {
+        "byoip-cidr" => {
+            if params.str("Cidr").is_empty() {
+                return missing("Cidr");
+            }
+        }
+        "ipam-byoasn" => {
+            if params.list("Asns").is_empty() {
+                return missing("Asns");
+            }
+        }
+        "route-server-endpoint" => {
+            let rs = params.str("RouteServerId");
+            let subnet = params.str("SubnetId");
+            if let Some(err) = simple_exists(
+                req,
+                "route-server",
+                &rs,
+                "InvalidRouteServerId.NotFound",
+                "routeServer",
+                &rs,
+            ) {
+                return Some(err);
+            }
+            let _ = subnet;
+            if let Some(err) = subnet_exists(req, &params.str("SubnetId")) {
+                return Some(err);
+            }
+        }
+        "route-server-peer" => {
+            let ep = params.str("RouteServerEndpointId");
+            if let Some(err) = simple_exists(
+                req,
+                "route-server-endpoint",
+                &ep,
+                "InvalidRouteServerEndpointId.NotFound",
+                "routeServerEndpoint",
+                &ep,
+            ) {
+                return Some(err);
+            }
+        }
+        "secondary-subnet" => {
+            let net = params.str("SecondaryNetworkId");
+            if let Some(err) = simple_exists(
+                req,
+                "secondary-network",
+                &net,
+                "InvalidSecondaryNetworkId.NotFound",
+                "secondaryNetwork",
+                &net,
+            ) {
+                return Some(err);
+            }
+        }
+        "vpc-encryption-control" => {
+            let vpc = params.str("VpcId");
+            if let Some(err) = vpc_exists(req, &vpc) {
+                return Some(err);
+            }
+        }
+        "transit-gateway-metering-policy" => {
+            let tgw = params.str("TransitGatewayId");
+            if let Some(err) = tgw_exists(req, &tgw) {
+                return Some(err);
+            }
+        }
+        "ipam-prefix-list-resolver" => {
+            let ipam = params.str("IpamId");
+            if let Some(err) =
+                simple_exists(req, "ipam", &ipam, "InvalidIpamId.NotFound", "ipam", &ipam)
+            {
+                return Some(err);
+            }
+        }
+        "ipam-prefix-list-resolver-target" => {
+            let plr = params.str("IpamPrefixListResolverId");
+            if let Some(err) = simple_exists(
+                req,
+                "ipam-prefix-list-resolver",
+                &plr,
+                "InvalidIpamPrefixListResolverId.NotFound",
+                "ipamPrefixListResolver",
+                &plr,
+            ) {
+                return Some(err);
+            }
+        }
+        "vpc-endpoint-connection-notification" => {
+            let ep = params.str("VpcEndpointId");
+            let svc = params.str("ServiceId");
+            if ep.is_empty() && svc.is_empty() {
+                return None; // botocore requires Arn+Events only; real AWS too
+            }
+            if !ep.is_empty() {
+                if let Some(err) = vpc_endpoint_exists(req, &ep) {
+                    return Some(err);
+                }
+            }
+            if !svc.is_empty() {
+                if let Some(err) = simple_exists(
+                    req,
+                    "vpc-endpoint-service",
+                    &svc,
+                    "InvalidVpcEndpointServiceId.NotFound",
+                    "vpcEndpointService",
+                    &svc,
+                ) {
+                    return Some(err);
+                }
+            }
+        }
+        _ => {}
+    }
+    None
+}
+
+/// Generic Simple-family existence check that renders the module's
+/// `<X 'id' does not exist>` 400 layout.
+fn simple_exists(
+    req: &Request,
+    kind: &str,
+    id: &str,
+    code: &'static str,
+    label: &str,
+    label_id: &str,
+) -> Option<Response> {
+    if id.is_empty() {
+        return None;
+    }
+    with_state(req, |state| {
+        if state
+            .simple
+            .get(kind)
+            .map(|items| items.iter().any(|s| s.id == id))
+            .unwrap_or(false)
+        {
+            None
+        } else {
+            Some(ec2_error(
+                400,
+                code,
+                &format!("The {} ID '{}' does not exist", label, xml_escape(label_id)),
+            ))
+        }
+    })
+}
+
+fn subnet_exists(req: &Request, subnet_id: &str) -> Option<Response> {
+    if subnet_id.is_empty() {
+        return None;
+    }
+    with_state(req, |state| {
+        if state.subnets.iter().any(|s| s.id == subnet_id) {
+            None
+        } else {
+            Some(ec2_error(
+                400,
+                "InvalidSubnetID.NotFound",
+                &format!("The subnet ID '{}' does not exist", xml_escape(subnet_id)),
+            ))
+        }
+    })
+}
+
+fn vpc_exists(req: &Request, vpc_id: &str) -> Option<Response> {
+    if vpc_id.is_empty() {
+        return None;
+    }
+    with_state(req, |state| {
+        if state.vpcs.iter().any(|v| v.id == vpc_id) {
+            None
+        } else {
+            Some(ec2_error(
+                400,
+                "InvalidVpcID.NotFound",
+                &format!("Vpc {{{}}} not found", xml_escape(vpc_id)),
+            ))
+        }
+    })
+}
+
+fn vpc_endpoint_exists(req: &Request, id: &str) -> Option<Response> {
+    if id.is_empty() {
+        return None;
+    }
+    with_state(req, |state| {
+        if state.vpc_endpoints.iter().any(|v| v.id == id) {
+            None
+        } else {
+            Some(ec2_error(
+                400,
+                "InvalidVpcEndpointId.NotFound",
+                &format!("The vpcEndpoint ID '{}' does not exist", xml_escape(id)),
+            ))
+        }
+    })
+}
+
+fn tgw_exists(req: &Request, id: &str) -> Option<Response> {
+    if id.is_empty() {
+        return None;
+    }
+    with_state(req, |state| {
+        if state.transit_gateways.iter().any(|t| t.id == id) {
+            None
+        } else {
+            Some(ec2_error(
+                400,
+                "InvalidTransitGatewayID.NotFound",
+                &format!("The transitGateway ID '{}' does not exist", xml_escape(id)),
+            ))
+        }
+    })
+}
+
+fn instance_exists(req: &Request, id: &str) -> Option<Response> {
+    if id.is_empty() {
+        return None;
+    }
+    with_state(req, |state| {
+        if state.instances.iter().any(|i| i.id == id) {
+            None
+        } else {
+            Some(gap_not_found("InvalidInstanceID.NotFound", "instance", id))
+        }
+    })
 }
 
 fn simple_create(req: &Request, params: &P, fam: &'static FamilySpec) -> Response {
@@ -799,7 +1200,16 @@ fn simple_create(req: &Request, params: &P, fam: &'static FamilySpec) -> Respons
             }
         }
         let tags_xml_v = super::tags_inner(&tags);
-        let id = next_placeholder_id(fam.id_prefix);
+        // parameterless-id families key their record on request values
+        let id = match fam.kind {
+            "byoip-cidr" => params.str("Cidr"),
+            "ipam-byoasn" => params
+                .list("Asns")
+                .first()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| params.str("Asn")),
+            _ => next_placeholder_id(fam.id_prefix),
+        };
         // shape-driven first: botocore-exact root + member keys
         let fills = super::family_fills::create_fills(
             fam.kind,
@@ -1343,6 +1753,11 @@ pub static TRANSIT_GW_OPS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
         "CreateTransitGatewayRoute",
         "DeleteTransitGatewayRoute",
         "SearchTransitGatewayRoutes",
+        "ReplaceTransitGatewayRoute",
+        "ModifyTransitGatewayPrefixListReference",
+        "ExportTransitGatewayRoutes",
+        "GetTransitGatewayAttachmentPropagations",
+        "RejectTransitGatewayVpcAttachment",
         "RejectTransitGatewayMulticastDomainAssociations",
         "DeregisterTransitGatewayMulticastGroupMembers",
         "DeregisterTransitGatewayMulticastGroupSources",
@@ -1687,6 +2102,83 @@ fn tgw_route(req: &Request, op: &str, params: &P) -> Response {
                     &format!(
                         "TransitGatewayAttachment {} not found",
                         xml_escape(&attach_id)
+                    ),
+                )
+            })
+        }
+        "RejectTransitGatewayVpcAttachment" => {
+            let id = params.str("TransitGatewayAttachmentId");
+            with_state(req, move |state| {
+                let pos = match state.tgw_attachments.iter().position(|a| a.id == id) {
+                    Some(i) => i,
+                    None => {
+                        return ec2_error(
+                            400,
+                            "InvalidTransitGatewayAttachmentID.NotFound",
+                            &format!("TransitGatewayAttachment {} not found", xml_escape(&id)),
+                        );
+                    }
+                };
+                state.tgw_attachments[pos].state = "rejected".into();
+                let a = state.tgw_attachments[pos].clone();
+                ec2_xml(
+                    "RejectTransitGatewayVpcAttachmentResponse",
+                    &format!(
+                        "<transitGatewayVpcAttachment>{}{}</transitGatewayVpcAttachment>",
+                        tgw_attachment_fields(&a),
+                        ""
+                    ),
+                )
+            })
+        }
+        "ReplaceTransitGatewayRoute" => {
+            let rtb = params.str("TransitGatewayRouteTableId");
+            let old_dest = match params.str("DestinationCidrBlock").as_str() {
+                "" => params.str("PrefixListId"),
+                d => d.to_string(),
+            };
+            let new_dest = match params.str("NewDestinationCidrBlock").as_str() {
+                "" => params.str("NewPrefixListId"),
+                d => d.to_string(),
+            };
+            let target = params.str("TransitGatewayAttachmentId");
+            with_state(req, move |state| {
+                if let Some(pos) = state.tgw_route_tables.iter().position(|rt| rt.id == rtb) {
+                    let routes = &mut state.tgw_route_tables[pos].routes;
+                    routes.retain(|(c, _, _)| c != &old_dest);
+                    let target_field = if target.is_empty() || target == "blackhole" {
+                        "blackhole".to_string()
+                    } else {
+                        target.clone()
+                    };
+                    routes.push((
+                        new_dest.clone(),
+                        target_field.clone(),
+                        if target_field == "blackhole" {
+                            "blackhole".to_string()
+                        } else {
+                            "active".to_string()
+                        },
+                    ));
+                }
+                let dest_wire = if new_dest.contains('/') {
+                    format!(
+                        "<destinationCidrBlock>{}</destinationCidrBlock>",
+                        xml_escape(&new_dest)
+                    )
+                } else {
+                    format!("<prefixListId>{}</prefixListId>", xml_escape(&new_dest))
+                };
+                ec2_xml(
+                    "ReplaceTransitGatewayRouteResponse",
+                    &format!(
+                        "<route>{}<type>static</type><state>{}</state></route>",
+                        dest_wire,
+                        if target.is_empty() || target == "blackhole" {
+                            "blackhole"
+                        } else {
+                            "active"
+                        }
                     ),
                 )
             })
@@ -2380,6 +2872,63 @@ fn tgw_rest_route(req: &Request, op: &str, params: &P) -> Response {
                 ec2_xml(
                     "GetTransitGatewayPrefixListReferencesResponse",
                     &format!("<transitGatewayPrefixListReferenceSet>{items}</transitGatewayPrefixListReferenceSet>"),
+                )
+            }
+            "ModifyTransitGatewayPrefixListReference" => {
+                let rtb = params.str("TransitGatewayRouteTableId");
+                let pl = params.str("PrefixListId");
+                let blackhole = params.get("Blackhole") == Some("true");
+                if let Some(rt) = state.tgw_route_tables.iter_mut().find(|rt| rt.id == rtb) {
+                    if let Some(pos) = rt.prefix_list_refs.iter().position(|(p, _, _)| p == &pl) {
+                        rt.prefix_list_refs[pos] = (
+                            pl.clone(),
+                            "active".into(),
+                            if blackhole {
+                                "blackhole".into()
+                            } else {
+                                String::new()
+                            },
+                        );
+                    }
+                }
+                ec2_xml(
+                    "ModifyTransitGatewayPrefixListReferenceResponse",
+                    &format!(
+                        "<transitGatewayPrefixListReference><transitGatewayRouteTableId>{rtb}</transitGatewayRouteTableId><prefixListId>{pl}</prefixListId><prefixListOwnerId>123456789012</prefixListOwnerId><state>modify-in-progress</state><blackhole>{bh}</blackhole>{e}</transitGatewayPrefixListReference>",
+                        rtb = xml_escape(&rtb),
+                        pl = xml_escape(&pl),
+                        bh = blackhole,
+                        e = String::new()
+                    ),
+                )
+            }
+            "ExportTransitGatewayRoutes" => {
+                let _rtb = params.str("TransitGatewayRouteTableId");
+                let s3 = params.str("S3BucketName");
+                ec2_xml(
+                    "ExportTransitGatewayRoutesResponse",
+                    &format!("<s3Location>{}/</s3Location>", xml_escape(&s3)),
+                )
+            }
+            "GetTransitGatewayAttachmentPropagations" => {
+                let attach = params.str("TransitGatewayAttachmentId");
+                let mut items = String::new();
+                for rt in &state.tgw_route_tables {
+                    for (rid, _rtype, st) in &rt.propagations {
+                        if !attach.is_empty() && rid != &attach {
+                            continue;
+                        }
+                        items.push_str(&format!(
+                            "<item><transitGatewayAttachmentId>{a}</transitGatewayAttachmentId><resourceId>{r}</resourceId><resourceType>transit-gateway-route-table</resourceType><state>{s}</state></item>",
+                            a = xml_escape(&attach),
+                            r = xml_escape(&rt.id),
+                            s = xml_escape(st)
+                        ));
+                    }
+                }
+                ec2_xml(
+                    "GetTransitGatewayAttachmentPropagationsResponse",
+                    &format!("<transitGatewayAttachmentPropagations>{items}</transitGatewayAttachmentPropagations>"),
                 )
             }
             // multicast family stubs: suite expects 200 with a return
@@ -4092,6 +4641,1181 @@ pub fn gap_ops_b_response(req: &Request, op: &str, params: &P) -> Response {
     };
     let root = format!("{}Response", op);
     super::xmlns_xml(&root, Some(super::EC2_NS), &body)
+}
+
+// ---------------------------------------------------------------------------
+// gap ops batch 4 (wave 11): the per-op 501 terminator. Every modeled EC2 op
+// landing here serves its botocore-shaped envelope — state/id-sensitive ops
+// check the twin's families first (modeled 4xx paths), the rest synthesize
+// from the wire shape. Ops without a model shape (no-output members in the
+// service model) answer a bare modeled root.
+// ---------------------------------------------------------------------------
+
+/// Shape-driven default: full envelope from botocore's output shape, or the
+/// bare root for the model's no-output ops.
+fn synth_default(req: &Request, params: &P) -> Response {
+    let ctx = super::shapes::SynthCtx {
+        params,
+        account: req.account,
+        region: &req.region,
+        tags: super::handlers::tag_spec_tags(params),
+    };
+    let op: &str = &req.operation;
+    match super::shapes::synth_response(op, &ctx, &super::shapes::Fills::new()) {
+        Some(resp) => resp,
+        None => {
+            let root = format!("{op}Response");
+            super::xmlns_xml(&root, Some(super::EC2_NS), "")
+        }
+    }
+}
+
+/// Wire tag for a python output key (`AsnAssociation` -> `asnAssociation`).
+fn camel_wire_of(pykey: &str) -> String {
+    let mut out = String::new();
+    for (i, c) in pykey.char_indices() {
+        if i == 0 {
+            out.extend(c.to_lowercase());
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// In-state VpcId check for gap arms already holding the write lease.
+fn vpc_err_in(state: &mut super::state::Ec2State, vpc_id: &str) -> Option<Response> {
+    if state.vpcs.iter().any(|v| v.id == vpc_id) {
+        return None;
+    }
+    Some(ec2_error(
+        400,
+        "InvalidVpcID.NotFound",
+        &format!("Vpc {{{}}} not found", xml_escape(vpc_id)),
+    ))
+}
+
+fn gap_not_found(kind_code: &'static str, label: &str, id: &str) -> Response {
+    ec2_error(
+        400,
+        kind_code,
+        &format!("The {label} ID '{}' does not exist", xml_escape(id)),
+    )
+}
+
+fn gap_ops_c_response(req: &Request, op: &str, params: &P) -> Response {
+    match op {
+        // --- instances: id-validated attribute ops ---------------------------
+        "GetConsoleScreenshot" => {
+            let id = params.str("InstanceId");
+            if let Some(err) = instance_exists(req, &id) {
+                return err;
+            }
+            ec2_xml(
+                "GetConsoleScreenshotResponse",
+                &format!(
+                    "<instanceId>{}</instanceId><imageData></imageData>",
+                    xml_escape(&id)
+                ),
+            )
+        }
+        "SendDiagnosticInterrupt" | "ReportInstanceStatus" => {
+            let ids: Vec<String> = params
+                .list("InstanceId")
+                .iter()
+                .chain(params.list("Instances").iter())
+                .map(|s| s.to_string())
+                .collect();
+            for id in &ids {
+                if let Some(err) = instance_exists(req, id) {
+                    return err;
+                }
+            }
+            let _op = op;
+            ec2_xml(&format!("{op}Response"), "")
+        }
+        "ModifyInstanceCpuOptions"
+        | "ModifyInstanceCreditSpecification"
+        | "ModifyInstanceEventStartTime"
+        | "ModifyInstanceMaintenanceOptions"
+        | "ModifyInstanceNetworkPerformanceOptions"
+        | "ModifyInstancePlacement"
+        | "ModifyPrivateDnsNameOptions"
+        | "ModifyPublicIpDnsNameOptions"
+        | "ModifyInstanceCapacityReservationAttributes"
+        | "RegisterInstanceEventNotificationAttributes"
+        | "DeregisterInstanceEventNotificationAttributes" => {
+            let id = params.str("InstanceId");
+            if let Some(err) = instance_exists(req, &id) {
+                return err;
+            }
+            if op == "ModifyInstanceCpuOptions" {
+                return ec2_xml("ModifyInstanceCpuOptionsResponse", "<return>true</return>");
+            }
+            synth_default(req, params)
+        }
+        "ModifyInstanceConnectEndpoint" => {
+            let id = params.str("InstanceConnectEndpointId");
+            if let Some(err) = simple_exists(
+                req,
+                "instance-connect-endpoint",
+                &id,
+                "InvalidInstanceConnectEndpointId.NotFound",
+                "instanceConnectEndpoint",
+                &id,
+            ) {
+                return err;
+            }
+            synth_default(req, params)
+        }
+        "ConfirmProductInstance" => {
+            let id = params.str("InstanceId");
+            if let Some(err) = instance_exists(req, &id) {
+                return err;
+            }
+            ec2_xml(
+                "ConfirmProductInstanceResponse",
+                &format!("<ownerId>{}</ownerId><return>true</return>", req.account),
+            )
+        }
+        // --- scheduled / reserved --------------------------------------------
+        "DescribeScheduledInstanceAvailability" | "GetReservedInstancesExchangeQuote" => {
+            synth_default(req, params)
+        }
+        "RunScheduledInstances"
+        | "PurchaseReservedInstancesOffering"
+        | "ModifyReservedInstances" => synth_default(req, params),
+        // --- images -----------------------------------------------------------
+        "DisableImage" | "EnableImage" => {
+            let id = params.str("ImageId");
+            with_state(req, |state| {
+                if let Some(img) = state.images.iter_mut().find(|v| v.id == id) {
+                    img.state = if op == "DisableImage" {
+                        "disabled".into()
+                    } else {
+                        "available".into()
+                    };
+                    return ec2_xml(&format!("{op}Response"), "<return>true</return>");
+                }
+                if state.run_ami_ok.contains(&id) {
+                    return ec2_xml(&format!("{op}Response"), "<return>true</return>");
+                }
+                gap_not_found("InvalidAMIID.NotFound", "ami", &id)
+            })
+        }
+        "EnableImageDeprecation"
+        | "DisableImageDeprecation"
+        | "EnableImageDeregistrationProtection"
+        | "DisableImageDeregistrationProtection" => {
+            let id = params.str("ImageId");
+            with_state(req, move |state| {
+                if !state.images.iter().any(|v| v.id == id) && !state.run_ami_ok.contains(&id) {
+                    return gap_not_found("InvalidAMIID.NotFound", "ami", &id);
+                }
+                let dep_time = params.str("ImageDeprecationTime");
+                let prot = params.str("ImageDeregistrationProtection");
+                if let Some(img) = state.images.iter_mut().find(|v| v.id == id) {
+                    if op.contains("Deprecation") {
+                        img.deprecation_time = if op.starts_with("Enable") {
+                            Some(if dep_time.is_empty() {
+                                "2038-01-01T00:00:00Z".to_string()
+                            } else {
+                                dep_time
+                            })
+                        } else {
+                            None
+                        };
+                    } else {
+                        img.deregistration_protection = if op.starts_with("Enable") {
+                            Some(if prot.is_empty() {
+                                "with-replace".to_string()
+                            } else {
+                                prot
+                            })
+                        } else {
+                            None
+                        };
+                    }
+                }
+                ec2_xml(&format!("{op}Response"), "<return>true</return>")
+            })
+        }
+        "EnableImageBlockPublicAccess" | "EnableAllowedImagesSettings" => {
+            with_state(req, |state| {
+                if op == "EnableImageBlockPublicAccess" {
+                    let cur = state
+                        .simple
+                        .get("image-bpa")
+                        .and_then(|items| items.first())
+                        .and_then(|s| s.get("State"))
+                        .map(|s| s.to_string());
+                    let want = match params.str("ImageBlockPublicAccessState").as_str() {
+                        "" => "block-new-sharing".to_string(),
+                        v => v.to_string(),
+                    };
+                    let _ = &cur;
+                    if let Some(items) = state.simple.get_mut("image-bpa") {
+                        items.retain(|s| true);
+                        if let Some(s) = items.first_mut() {
+                            s.set("State", &want);
+                        } else {
+                            let mut s = Simple {
+                                id: "global".to_string(),
+                                kind: "image-bpa".to_string(),
+                                ..Default::default()
+                            };
+                            s.set("State", &want);
+                            items.push(s);
+                        }
+                    } else {
+                        let mut s = Simple {
+                            id: "global".to_string(),
+                            kind: "image-bpa".to_string(),
+                            ..Default::default()
+                        };
+                        s.set("State", &want);
+                        state
+                            .simple
+                            .entry("image-bpa".to_string())
+                            .or_default()
+                            .push(s);
+                    }
+                    return ec2_xml(
+                        "EnableImageBlockPublicAccessResponse",
+                        &format!(
+                            "<imageBlockPublicAccessState>{}</imageBlockPublicAccessState>",
+                            xml_escape(&want)
+                        ),
+                    );
+                }
+                let want = match params.str("AllowedImagesSettingsState").as_str() {
+                    "" => "enabled".to_string(),
+                    v => v.to_string(),
+                };
+                let stored = {
+                    let items = state
+                        .simple
+                        .entry("images-settings".to_string())
+                        .or_default();
+                    let have = items.first().map(|s| s.get("State").map(|v| v.to_string()));
+                    match items.first_mut() {
+                        Some(s) => s.set("State", &want),
+                        None => {
+                            let mut s = Simple {
+                                id: "global".to_string(),
+                                kind: "images-settings".to_string(),
+                                ..Default::default()
+                            };
+                            s.set("State", &want);
+                            items.push(s);
+                        }
+                    }
+                    have
+                };
+                let _ = stored;
+                ec2_xml(
+                    "EnableAllowedImagesSettingsResponse",
+                    &format!(
+                        "<allowedImagesSettingsState>{}</allowedImagesSettingsState>",
+                        xml_escape(&want)
+                    ),
+                )
+            })
+        }
+        "RestoreImageFromRecycleBin" | "GetImageAncestry" => synth_default(req, params),
+        "DeleteFpgaImage" => gap_not_found(
+            "InvalidFpgaImageID.NotFound",
+            "fpgaImage",
+            &params.str("FpgaImageId"),
+        ),
+        "ModifyFpgaImageAttribute" | "DescribeFpgaImageAttribute" | "ResetFpgaImageAttribute" => {
+            gap_not_found(
+                "InvalidFpgaImageID.NotFound",
+                "fpgaImage",
+                &params.str("FpgaImageId"),
+            )
+        }
+        // --- snapshots ---------------------------------------------------------
+        "EnableFastSnapshotRestores" | "DisableFastSnapshotRestores" => {
+            let src: Vec<String> = params
+                .list("SourceSnapshotId")
+                .iter()
+                .chain(params.list("SourceSnapshotIds").iter())
+                .map(|s| s.to_string())
+                .collect();
+            let az = format!("{}a", req.region);
+            with_state(req, move |state| {
+                for id in &src {
+                    if !state.snapshots.iter().any(|s| &s.id == id) {
+                        return gap_not_found("InvalidSnapshot.NotFound", "snapshot", id);
+                    }
+                }
+                let mut items = String::new();
+                for sid in &src {
+                    items.push_str(&format!(
+                        "<item><snapshotId>{sid}</snapshotId><availabilityZone>{az}</availabilityZone><state>enabled</state></item>",
+                        sid = xml_escape(sid),
+                        az = xml_escape(&az)
+                    ));
+                }
+                ec2_xml(
+                    &format!("{op}Response"),
+                    &format!(
+                        "<successfulSnapshotSet>{items}</successfulSnapshotSet><unsuccessfulSnapshotSet/>"
+                    ),
+                )
+            })
+        }
+        "LockSnapshot" | "UnlockSnapshot" => {
+            let id = params.str("SnapshotId");
+            with_state(req, move |state| {
+                let lock_mode = params.str("LockMode");
+                if !state.snapshots.iter().any(|s| s.id == id) {
+                    return gap_not_found("InvalidSnapshot.NotFound", "snapshot", &id);
+                }
+                if op == "LockSnapshot" {
+                    let mut s = Simple {
+                        id: id.clone(),
+                        kind: "snapshot-lock".to_string(),
+                        ..Default::default()
+                    };
+                    s.set("SnapshotId", id.clone());
+                    s.set("LockMode", lock_mode.clone());
+                    s.set("LockDuration", params.str("LockDuration"));
+                    s.set("LockState", "locked");
+                    state
+                        .simple
+                        .entry("snapshot-lock".to_string())
+                        .or_default()
+                        .push(s);
+                } else {
+                    if let Some(items) = state.simple.get_mut("snapshot-lock") {
+                        items.retain(|s| s.id != id);
+                    }
+                }
+                ec2_xml(
+                    &format!("{op}Response"),
+                    &format!("<snapshotId>{}</snapshotId>", xml_escape(&id)),
+                )
+            })
+        }
+        "ModifySnapshotTier" => {
+            let id = params.str("SnapshotId");
+            let want_tier = params.str("TargetTier");
+            with_state(req, move |state| {
+                let snap = match state.snapshots.iter_mut().find(|s| s.id == id) {
+                    Some(s) => s,
+                    None => return gap_not_found("InvalidSnapshot.NotFound", "snapshot", &id),
+                };
+                if !want_tier.is_empty() {
+                    snap.storage_tier = want_tier.clone();
+                }
+                ec2_xml(
+                    "ModifySnapshotTierResponse",
+                    &format!(
+                        "<snapshotId>{}</snapshotId><tieringStartTime>{}</tieringStartTime>",
+                        xml_escape(&id),
+                        super::now_iso()
+                    ),
+                )
+            })
+        }
+        "RestoreSnapshotTier" => {
+            let id = params.str("SnapshotId");
+            with_state(req, move |state| {
+                let snap = match state.snapshots.iter_mut().find(|s| s.id == id) {
+                    Some(s) => s,
+                    None => return gap_not_found("InvalidSnapshot.NotFound", "snapshot", &id),
+                };
+                snap.storage_tier = "standard".into();
+                snap.restore_expiry = None;
+                ec2_xml(
+                    "RestoreSnapshotTierResponse",
+                    &format!(
+                        "<snapshotId>{}</snapshotId><isPermanentRestore>true</isPermanentRestore><tieringStartTime>{}</tieringStartTime><progress>100%</progress>",
+                        xml_escape(&id),
+                        super::now_iso()
+                    ),
+                )
+            })
+        }
+        "RestoreSnapshotFromRecycleBin" | "RestoreVolumeFromRecycleBin" => {
+            let id_key = if op == "RestoreSnapshotFromRecycleBin" {
+                "SnapshotId"
+            } else {
+                "VolumeId"
+            };
+            let id = params.str(id_key);
+            with_state(req, move |state| {
+                let known = match id_key {
+                    "SnapshotId" => state.snapshots.iter().any(|s| s.id == id),
+                    _ => state.volumes.iter().any(|v| v.id == id),
+                };
+                if !known {
+                    return synth_default(req, params);
+                }
+                ec2_xml(
+                    &format!("{op}Response"),
+                    &format!(
+                        "<return>true</return><{}>{}</{}>",
+                        id_key,
+                        xml_escape(&id),
+                        id_key
+                    ),
+                )
+            })
+        }
+        "ResetSnapshotAttribute" => {
+            let id = params.str("SnapshotId");
+            with_state(req, move |state| {
+                if !state.snapshots.iter().any(|s| s.id == id) {
+                    return gap_not_found("InvalidSnapshot.NotFound", "snapshot", &id);
+                }
+                state.snapshot_attributes.remove(&id);
+                ec2_xml("ResetSnapshotAttributeResponse", "")
+            })
+        }
+        // --- volumes ------------------------------------------------------------
+        "EnableVolumeIO" => {
+            let id = params.str("VolumeId");
+            with_state(req, move |state| {
+                let pos = match state.volumes.iter().position(|v| v.id == id) {
+                    Some(i) => i,
+                    None => return gap_not_found("InvalidVolume.NotFound", "volume", &id),
+                };
+                let _ = pos;
+                ec2_xml("EnableVolumeIOResponse", "")
+            })
+        }
+        // --- elastic IPs / address attributes -----------------------------------
+        "ModifyAddressAttribute"
+        | "EnableAddressTransfer"
+        | "DisableAddressTransfer"
+        | "ResetAddressAttribute" => {
+            let id = params.str("AllocationId");
+            with_state(req, move |state| {
+                let pos = match state.addresses.iter().position(|v| v.allocation_id == id) {
+                    Some(i) => i,
+                    None => {
+                        return gap_not_found("InvalidAllocationID.NotFound", "allocation", &id)
+                    }
+                };
+                if op == "ModifyAddressAttribute" {
+                    let ptr = params.str("PtrRecord");
+                    if !ptr.is_empty() {
+                        let mut s = Simple {
+                            id: id.clone(),
+                            kind: "address-ptr".to_string(),
+                            ..Default::default()
+                        };
+                        s.set("PtrRecord", ptr.clone());
+                        state
+                            .simple
+                            .entry("address-ptr".to_string())
+                            .or_default()
+                            .push(s);
+                    }
+                }
+                if op == "EnableAddressTransfer" {
+                    let mut s = Simple {
+                        id: id.clone(),
+                        kind: "address-transfer".to_string(),
+                        ..Default::default()
+                    };
+                    s.set("AllocationId", id.clone());
+                    s.set("TransferAccountId", params.str("TransferAccountId"));
+                    s.set("TransferStatus", "pending");
+                    let _ = pos;
+                    state
+                        .simple
+                        .entry("address-transfer".to_string())
+                        .or_default()
+                        .push(s);
+                }
+                if op == "DisableAddressTransfer" {
+                    if let Some(items) = state.simple.get_mut("address-transfer") {
+                        items.retain(|s| s.id != id);
+                    }
+                }
+                synth_default(req, params)
+            })
+        }
+        "MoveAddressToVpc" | "RestoreAddressToClassic" => {
+            let _ip = params.str("PublicIp");
+            with_state(req, |state| {
+                let status = if op == "MoveAddressToVpc" {
+                    "moved"
+                } else {
+                    "restored"
+                };
+                ec2_xml(
+                    &format!("{op}Response"),
+                    &format!("<status>{}</status>", status),
+                )
+            })
+        }
+        // --- NAT gateway addresses ----------------------------------------------
+        "DisassociateNatGatewayAddress" | "UnassignPrivateNatGatewayAddress" => {
+            let id = params.str("NatGatewayId");
+            with_state(req, move |state| {
+                if state.nat_gateways.iter().all(|g| g.id != id) {
+                    return gap_not_found("InvalidNatGatewayID.NotFound", "natGateway", &id);
+                }
+                synth_default(req, params)
+            })
+        }
+        // --- interfaces / trunks --------------------------------------------------
+        "AssociateTrunkInterface" => {
+            let branch = params.str("BranchInterfaceId");
+            let trunk = params.str("TrunkInterfaceId");
+            with_state(req, move |state| {
+                if !state.enis.iter().any(|e| e.id == branch) {
+                    return gap_not_found("InvalidInterfaceID.NotFound", "interface", &branch);
+                }
+                if !state.enis.iter().any(|e| e.id == trunk) {
+                    return gap_not_found("InvalidInterfaceID.NotFound", "interface", &trunk);
+                }
+                let assoc_id = format!("ta-{}", super::state::idhex::hex17());
+                let mut s = Simple {
+                    id: assoc_id.clone(),
+                    kind: "trunk-assoc".to_string(),
+                    ..Default::default()
+                };
+                s.set("TrunkInterfaceId", trunk.clone());
+                s.set("BranchInterfaceId", branch.clone());
+                s.set("VlanId", params.str("VlanId"));
+                state
+                    .simple
+                    .entry("trunk-assoc".to_string())
+                    .or_default()
+                    .push(s);
+                synth_default(req, params)
+            })
+        }
+        "DisassociateTrunkInterface" | "DeleteNetworkInterfacePermission" => {
+            if op == "DisassociateTrunkInterface" {
+                let aid = params.str("AssociationId");
+                with_state(req, move |state| {
+                    if let Some(items) = state.simple.get_mut("trunk-assoc") {
+                        items.retain(|s| s.id != aid);
+                    }
+                });
+            }
+            ec2_xml(
+                &format!("{op}Response"),
+                &format!(
+                    "<return>true</return><clientToken>{ct}</clientToken>",
+                    ct = xml_escape(&params.str("ClientToken"))
+                ),
+            )
+        }
+        "ResetNetworkInterfaceAttribute" => {
+            let id = params.str("NetworkInterfaceId");
+            with_state(req, move |state| {
+                if state.enis.iter().all(|e| e.id != id) {
+                    return gap_not_found(
+                        "InvalidNetworkInterfaceID.NotFound",
+                        "networkInterface",
+                        &id,
+                    );
+                }
+                ec2_xml("ResetNetworkInterfaceAttributeResponse", "")
+            })
+        }
+        // --- route tables ---------------------------------------------------------
+        "EnableVgwRoutePropagation" | "DisableVgwRoutePropagation" => {
+            let rtb = params.str("RouteTableId");
+            let gw = params.str("GatewayId");
+            with_state(req, move |state| {
+                if let Some(rt) = state.route_tables.iter_mut().find(|r| r.id == rtb) {
+                    if op == "EnableVgwRoutePropagation" {
+                        if !rt.propagations.contains(&gw) {
+                            rt.propagations.push(gw.clone());
+                        }
+                    } else {
+                        rt.propagations.retain(|g| g != &gw);
+                    }
+                    return ec2_xml(&format!("{op}Response"), "");
+                }
+                gap_not_found("InvalidRouteTableID.NotFound", "routeTable", &rtb)
+            })
+        }
+        // --- elastic ip transfer ---------------------------------------------------
+        "DescribeSecurityGroupReferences" | "GetSecurityGroupsForVpc" => synth_default(req, params),
+        "GetManagedPrefixListAssociations" | "RestoreManagedPrefixListVersion" => {
+            let pl = params.str("PrefixListId");
+            if let Some(err) = simple_exists(
+                req,
+                "managed-prefix-list",
+                &pl,
+                "InvalidPrefixListID.NotFound",
+                "prefixList",
+                &pl,
+            ) {
+                return err;
+            }
+            synth_default(req, params)
+        }
+        // --- vpn connections -------------------------------------------------------
+        "CreateVpnConnectionRoute" | "DeleteVpnConnectionRoute" => {
+            let vpn = params.str("VpnConnectionId");
+            with_state(req, move |state| {
+                if !state
+                    .simple
+                    .get("vpn-connection")
+                    .map(|items| items.iter().any(|s| s.id == vpn))
+                    .unwrap_or(false)
+                {
+                    return gap_not_found("InvalidVpnConnectionID.NotFound", "vpnConnection", &vpn);
+                }
+                let dest = params.str("DestinationCidrBlock");
+                if op == "CreateVpnConnectionRoute" {
+                    let mut s = Simple {
+                        id: dest.clone(),
+                        kind: "vpn-connection-route".to_string(),
+                        ..Default::default()
+                    };
+                    s.set("VpnConnectionId", vpn.clone());
+                    s.set("DestinationCidrBlock", dest.clone());
+                    state
+                        .simple
+                        .entry("vpn-connection-route".to_string())
+                        .or_default()
+                        .push(s);
+                } else if let Some(items) = state.simple.get_mut("vpn-connection-route") {
+                    items.retain(|s| s.id != dest);
+                }
+                ec2_xml(&format!("{op}Response"), "")
+            })
+        }
+        "ModifyVpnConnection"
+        | "ModifyVpnConnectionOptions"
+        | "ModifyVpnTunnelOptions"
+        | "ModifyVpnTunnelCertificate"
+        | "ReplaceVpnTunnel"
+        | "GetVpnTunnelReplacementStatus"
+        | "GetActiveVpnTunnelStatus"
+        | "GetVpnConnectionDeviceSampleConfiguration" => {
+            let vpn = params.str("VpnConnectionId");
+            with_state(req, move |state| {
+                let item = state
+                    .simple
+                    .get("vpn-connection")
+                    .and_then(|items| items.iter().find(|s| s.id == vpn))
+                    .map(|s| s.item_xml.clone());
+                if item.is_none() {
+                    return gap_not_found("InvalidVpnConnectionID.NotFound", "vpnConnection", &vpn);
+                }
+                if op.starts_with("Modify") && op != "ModifyVpnTunnelCertificate" {
+                    // re-render the stored family item as the op's member
+                    let xml = format!(
+                        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<{root}Response xmlns=\"{ns}\"><vpnConnection>{inner}</vpnConnection><requestId>{rid}</requestId></{root}Response>",
+                        root = op,
+                        ns = super::EC2_NS,
+                        inner = item.unwrap_or_default(),
+                        rid = uuid::Uuid::new_v4()
+                    );
+                    return Response::xml(200, xml.into_bytes());
+                }
+                synth_default(req, params)
+            })
+        }
+        // --- client vpn ---------------------------------------------------------
+        "AuthorizeClientVpnIngress"
+        | "RevokeClientVpnIngress"
+        | "DeleteClientVpnRoute"
+        | "DisassociateClientVpnTargetNetwork"
+        | "TerminateClientVpnConnections"
+        | "ExportClientVpnClientConfiguration"
+        | "ExportClientVpnClientCertificateRevocationList"
+        | "ImportClientVpnClientCertificateRevocationList" => {
+            let ep = params.str("ClientVpnEndpointId");
+            with_state(req, move |state| {
+                if !state
+                    .simple
+                    .get("client-vpn-endpoint")
+                    .map(|items| items.iter().any(|s| s.id == ep))
+                    .unwrap_or(false)
+                {
+                    return gap_not_found(
+                        "InvalidClientVpnEndpointId.NotFound",
+                        "clientVpnEndpoint",
+                        &ep,
+                    );
+                }
+                if op == "ImportClientVpnClientCertificateRevocationList" {
+                    let crl = params.str("CertificateRevocationList");
+                    if let Some(items) = state.simple.get_mut("client-vpn-endpoint") {
+                        for s in items.iter_mut() {
+                            if s.id == ep {
+                                s.set("CertificateRevocationList", crl.clone());
+                            }
+                        }
+                    }
+                }
+                synth_default(req, params)
+            })
+        }
+        // --- verified access ----------------------------------------------------
+        "DetachVerifiedAccessTrustProvider" | "ModifyVerifiedAccessTrustProvider" => {
+            let vatp = params.str("VerifiedAccessTrustProviderId");
+            with_state(req, move |state| {
+                let items = state
+                    .simple
+                    .get("verified-access-trust-provider")
+                    .cloned()
+                    .unwrap_or_default();
+                let item = items.iter().find(|s| s.id == vatp);
+                if item.is_none() {
+                    return gap_not_found(
+                        "InvalidVerifiedAccessTrustProviderId.NotFound",
+                        "verifiedAccessTrustProvider",
+                        &vatp,
+                    );
+                }
+                synth_default(req, params)
+            })
+        }
+        "ExportVerifiedAccessInstanceClientConfiguration"
+        | "ModifyVerifiedAccessInstance"
+        | "ModifyVerifiedAccessInstanceLoggingConfiguration" => {
+            let vai = params.str("VerifiedAccessInstanceId");
+            with_state(req, move |state| {
+                if !state
+                    .simple
+                    .get("verified-access-instance")
+                    .map(|items| items.iter().any(|s| s.id == vai))
+                    .unwrap_or(false)
+                {
+                    return gap_not_found(
+                        "InvalidVerifiedAccessInstanceId.NotFound",
+                        "verifiedAccessInstance",
+                        &vai,
+                    );
+                }
+                synth_default(req, params)
+            })
+        }
+        "ModifyVerifiedAccessEndpoint"
+        | "ModifyVerifiedAccessEndpointPolicy"
+        | "GetVerifiedAccessEndpointPolicy"
+        | "GetVerifiedAccessEndpointTargets" => {
+            let vae = params.str("VerifiedAccessEndpointId");
+            with_state(req, move |state| {
+                if !state
+                    .simple
+                    .get("verified-access-endpoint")
+                    .map(|items| items.iter().any(|s| s.id == vae))
+                    .unwrap_or(false)
+                {
+                    return gap_not_found(
+                        "InvalidVerifiedAccessEndpointId.NotFound",
+                        "verifiedAccessEndpoint",
+                        &vae,
+                    );
+                }
+                if op == "ModifyVerifiedAccessEndpointPolicy"
+                    || op == "GetVerifiedAccessEndpointPolicy"
+                {
+                    let pol = params.str("PolicyDocument");
+                    if let Some(items) = state.simple.get_mut("verified-access-endpoint") {
+                        for s in items.iter_mut() {
+                            if s.id == vae {
+                                if let Some(d) = params.get("PolicyEnabled") {
+                                    s.set("PolicyEnabled", d.to_string());
+                                }
+                                if !pol.is_empty() {
+                                    s.set("PolicyDocument", pol.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+                synth_default(req, params)
+            })
+        }
+        "ModifyVerifiedAccessGroup"
+        | "ModifyVerifiedAccessGroupPolicy"
+        | "GetVerifiedAccessGroupPolicy" => {
+            let vag = params.str("VerifiedAccessGroupId");
+            with_state(req, move |state| {
+                if !state
+                    .simple
+                    .get("verified-access-group")
+                    .map(|items| items.iter().any(|s| s.id == vag))
+                    .unwrap_or(false)
+                {
+                    return gap_not_found(
+                        "InvalidVerifiedAccessGroupId.NotFound",
+                        "verifiedAccessGroup",
+                        &vag,
+                    );
+                }
+                synth_default(req, params)
+            })
+        }
+        // --- network insights ----------------------------------------------------
+        "DeleteNetworkInsightsAnalysis" | "DeleteNetworkInsightsAccessScopeAnalysis" => {
+            let (kind, key, code, label) = if op == "DeleteNetworkInsightsAnalysis" {
+                (
+                    "network-insights-analysis",
+                    "NetworkInsightsAnalysisId",
+                    "InvalidNetworkInsightsAnalysisId.NotFound",
+                    "networkInsightsAnalysis",
+                )
+            } else {
+                (
+                    "network-insights-access-scope-analysis",
+                    "NetworkInsightsAccessScopeAnalysisId",
+                    "InvalidNetworkInsightsAccessScopeAnalysisId.NotFound",
+                    "networkInsightsAccessScopeAnalysis",
+                )
+            };
+            let id = params.str(key);
+            with_state(req, move |state| {
+                let known = state
+                    .simple
+                    .get(kind)
+                    .map(|items| items.iter().any(|s| s.id == id))
+                    .unwrap_or(false);
+                if !known {
+                    return gap_not_found(code, label, &id);
+                }
+                if let Some(items) = state.simple.get_mut(kind) {
+                    items.retain(|s| s.id != id);
+                }
+                ec2_xml(
+                    &format!("{op}Response"),
+                    &format!(
+                        "<{}>{}</{}>",
+                        camel_wire_of(key),
+                        xml_escape(&id),
+                        camel_wire_of(key)
+                    ),
+                )
+            })
+        }
+        // --- traffic mirror ---------------------------------------------------------
+        "ModifyTrafficMirrorFilterRule"
+        | "ModifyTrafficMirrorFilterNetworkServices"
+        | "ModifyTrafficMirrorSession" => {
+            let (kind, key, code, label) = match op {
+                "ModifyTrafficMirrorFilterRule" => (
+                    "traffic-mirror-filter-rule",
+                    "TrafficMirrorFilterRuleId",
+                    "InvalidTrafficMirrorFilterRuleId.NotFound",
+                    "trafficMirrorFilterRule",
+                ),
+                "ModifyTrafficMirrorFilterNetworkServices" => (
+                    "traffic-mirror-filter",
+                    "TrafficMirrorFilterId",
+                    "InvalidTrafficMirrorFilterId.NotFound",
+                    "trafficMirrorFilter",
+                ),
+                _ => (
+                    "traffic-mirror-session",
+                    "TrafficMirrorSessionId",
+                    "InvalidTrafficMirrorSessionId.NotFound",
+                    "trafficMirrorSession",
+                ),
+            };
+            let id = params.str(key);
+            with_state(req, move |state| {
+                if !state
+                    .simple
+                    .get(kind)
+                    .map(|items| items.iter().any(|s| s.id == id))
+                    .unwrap_or(false)
+                {
+                    return gap_not_found(code, label, &id);
+                }
+                synth_default(req, params)
+            })
+        }
+        // --- route servers ------------------------------------------------------------
+        "AssociateRouteServer"
+        | "DisassociateRouteServer"
+        | "ModifyRouteServer"
+        | "EnableRouteServerPropagation"
+        | "DisableRouteServerPropagation"
+        | "GetRouteServerAssociations"
+        | "GetRouteServerPropagations"
+        | "GetRouteServerRoutingDatabase" => {
+            let rs = params.str("RouteServerId");
+            with_state(req, move |state| {
+                if !state
+                    .simple
+                    .get("route-server")
+                    .map(|items| items.iter().any(|s| s.id == rs))
+                    .unwrap_or(false)
+                {
+                    return gap_not_found("InvalidRouteServerId.NotFound", "routeServer", &rs);
+                }
+                if op == "AssociateRouteServer" {
+                    let vpc = params.str("VpcId");
+                    if let Some(err) = vpc_err_in(state, &vpc) {
+                        return err;
+                    }
+                    let aid = format!("rsvpc-assoc-{}", super::state::idhex::hex17());
+                    let mut s = Simple {
+                        id: aid.clone(),
+                        kind: "route-server-assoc".to_string(),
+                        ..Default::default()
+                    };
+                    s.set("RouteServerId", rs.clone());
+                    s.set("VpcId", vpc.clone());
+                    s.set("State", "associated");
+                    state
+                        .simple
+                        .entry("route-server-assoc".to_string())
+                        .or_default()
+                        .push(s);
+                    return ec2_xml(
+                        "AssociateRouteServerResponse",
+                        &format!(
+                            "<routeServerAssociation><routeServerId>{rid}</routeServerId><vpcId>{vpc}</vpcId><state>associated</state></routeServerAssociation>",
+                            rid = xml_escape(&rs),
+                            vpc = xml_escape(&vpc)
+                        ),
+                    );
+                }
+                if op == "ModifyRouteServer" {
+                    if let Some(items) = state.simple.get_mut("route-server") {
+                        for s in items.iter_mut() {
+                            if s.id != rs {
+                                continue;
+                            }
+                            if let Some(v) = params.get("SnsNotificationsEnabled") {
+                                s.set("SnsNotificationsEnabled", v.to_string());
+                            }
+                            if let Some(v) = params.get("SnsTopicArn") {
+                                s.set("SnsTopicArn", v.to_string());
+                            }
+                            if let Some(v) = params.get("PersistRoutes") {
+                                s.set(
+                                    "PersistRoutesState",
+                                    if v == "enable" { "enabled" } else { "disabled" }.to_string(),
+                                );
+                            }
+                        }
+                    }
+                    return ec2_xml(
+                        "ModifyRouteServerResponse",
+                        &format!(
+                            "<routeServer><routeServerId>{rid}</routeServerId><state>modifying</state></routeServer>",
+                            rid = xml_escape(&rs)
+                        ),
+                    );
+                }
+                synth_default(req, params)
+            })
+        }
+        // --- transit gateway metering policy entries --------------------------------
+        "CreateTransitGatewayMeteringPolicyEntry"
+        | "DeleteTransitGatewayMeteringPolicyEntry"
+        | "ModifyTransitGatewayMeteringPolicy"
+        | "GetTransitGatewayMeteringPolicyEntries" => {
+            let id = params.str("TransitGatewayMeteringPolicyId");
+            with_state(req, move |state| {
+                if !state
+                    .simple
+                    .get("transit-gateway-metering-policy")
+                    .map(|items| items.iter().any(|s| s.id == id))
+                    .unwrap_or(false)
+                {
+                    return gap_not_found(
+                        "InvalidTransitGatewayMeteringPolicyId.NotFound",
+                        "transitGatewayMeteringPolicy",
+                        &id,
+                    );
+                }
+                if op == "CreateTransitGatewayMeteringPolicyEntry" {
+                    let eid = format!("tgw-mp{}", super::state::idhex::hex17());
+                    let mut s = Simple {
+                        id: eid.clone(),
+                        kind: "transit-gateway-metering-policy-entry".to_string(),
+                        ..Default::default()
+                    };
+                    s.set("TransitGatewayMeteringPolicyId", id.clone());
+                    s.set("PolicyRuleNumber", params.str("PolicyRuleNumber"));
+                    s.set("MeteredAccount", params.str("MeteredAccount"));
+                    state
+                        .simple
+                        .entry("transit-gateway-metering-policy-entry".to_string())
+                        .or_default()
+                        .push(s);
+                }
+                synth_default(req, params)
+            })
+        }
+        "DeleteTransitGatewayPolicyTable"
+        | "DisassociateTransitGatewayPolicyTable"
+        | "GetTransitGatewayPolicyTableAssociations"
+        | "GetTransitGatewayPolicyTableEntries"
+        | "DeleteTransitGatewayMulticastDomain"
+        | "DisassociateTransitGatewayMulticastDomain"
+        | "GetTransitGatewayMulticastDomainAssociations"
+        | "RegisterTransitGatewayMulticastGroupMembers"
+        | "RegisterTransitGatewayMulticastGroupSources"
+        | "SearchTransitGatewayMulticastGroups" => synth_default(req, params),
+        // --- capacity reservations ------------------------------------------------------
+        "AssociateCapacityReservationBillingOwner"
+        | "DisassociateCapacityReservationBillingOwner"
+        | "RejectCapacityReservationBillingOwnership"
+        | "GetCapacityReservationUsage"
+        | "GetGroupsForCapacityReservation"
+        | "MoveCapacityReservationInstances"
+        | "PurchaseCapacityBlockExtension"
+        | "DescribeCapacityBlockExtensionOfferings"
+        | "DescribeCapacityReservationBillingRequests"
+        | "CreateInterruptibleCapacityReservationAllocation"
+        | "UpdateInterruptibleCapacityReservationAllocation" => {
+            let _ = params.str("CapacityReservationId");
+            synth_default(req, params)
+        }
+        "GetCapacityManagerMetricDimensions" | "UpdateCapacityManagerOrganizationsAccess" => {
+            synth_default(req, params)
+        }
+        // --- ipam family -------------------------------------------------------------------
+        "EnableIpamOrganizationAdminAccount" | "DisableIpamOrganizationAdminAccount" => {
+            ec2_xml(&format!("{op}Response"), "<success>true</success>")
+        }
+        "EnableIpamPolicy" | "DisableIpamPolicy" | "ModifyIpamPolicyAllocationRules" => {
+            let id = params.str("IpamPolicyId");
+            with_state(req, move |state| {
+                if op != "ModifyIpamPolicyAllocationRules"
+                    && !state
+                        .simple
+                        .get("ipam-policy")
+                        .map(|items| items.iter().any(|s| s.id == id))
+                        .unwrap_or(false)
+                {
+                    return gap_not_found("InvalidIpamPolicyId.NotFound", "ipamPolicy", &id);
+                }
+                synth_default(req, params)
+            })
+        }
+        "GetIpamPolicyAllocationRules"
+        | "GetIpamPolicyOrganizationTargets"
+        | "GetIpamAddressHistory"
+        | "GetIpamDiscoveredAccounts"
+        | "GetIpamDiscoveredPublicAddresses"
+        | "GetIpamDiscoveredResourceCidrs"
+        | "GetIpamPrefixListResolverRules"
+        | "GetIpamPrefixListResolverVersions"
+        | "GetIpamPrefixListResolverVersionEntries" => {
+            let _resolver = params.str("IpamPrefixListResolverId");
+            synth_default(req, params)
+        }
+        "ModifyIpamPrefixListResolver" | "ModifyIpamPrefixListResolverTarget" => {
+            let (kind, key, code, label) = if op == "ModifyIpamPrefixListResolver" {
+                (
+                    "ipam-prefix-list-resolver",
+                    "IpamPrefixListResolverId",
+                    "InvalidIpamPrefixListResolverId.NotFound",
+                    "ipamPrefixListResolver",
+                )
+            } else {
+                (
+                    "ipam-prefix-list-resolver-target",
+                    "IpamPrefixListResolverTargetId",
+                    "InvalidIpamPrefixListResolverTargetId.NotFound",
+                    "ipamPrefixListResolverTarget",
+                )
+            };
+            let id = params.str(key);
+            with_state(req, move |state| {
+                if !state
+                    .simple
+                    .get(kind)
+                    .map(|items| items.iter().any(|s| s.id == id))
+                    .unwrap_or(false)
+                {
+                    return gap_not_found(code, label, &id);
+                }
+                synth_default(req, params)
+            })
+        }
+        "AssociateIpamByoasn" | "DisassociateIpamByoasn" => {
+            let asn = params.str("Asn");
+            let cidr = params.str("Cidr");
+            with_state(req, move |state| {
+                if asn.is_empty() || cidr.is_empty() {
+                    return synth_default(req, params);
+                }
+                let kind = "ipam-asn-assoc";
+                let present = state
+                    .simple
+                    .get(kind)
+                    .map(|items| items.iter().any(|s| s.id == format!("{asn}:{cidr}")))
+                    .unwrap_or(false);
+                if op == "AssociateIpamByoasn" {
+                    let mut s = Simple {
+                        id: format!("{asn}:{cidr}"),
+                        kind: kind.to_string(),
+                        ..Default::default()
+                    };
+                    s.set("Asn", asn.clone());
+                    s.set("Cidr", cidr.clone());
+                    s.set("State", "associated");
+                    s.set("StatusMessage", String::new());
+                    state.simple.entry(kind.to_string()).or_default().push(s);
+                } else {
+                    if let Some(items) = state.simple.get_mut(kind) {
+                        items.retain(|s| s.id != format!("{asn}:{cidr}"));
+                    }
+                }
+                ec2_xml(
+                    &format!("{op}Response"),
+                    &format!(
+                        "<asnAssociation><asn>{asn}</asn><cidr>{cidr}</cidr><state>{st}</state><statusMessage></statusMessage></asnAssociation>",
+                        asn = xml_escape(&asn),
+                        cidr = xml_escape(&cidr),
+                        st = if op == "AssociateIpamByoasn" { "associated" } else { "disassociated" }
+                    ),
+                )
+            })
+        }
+        "ModifyIpamScope"
+        | "ModifyIpamResourceCidr"
+        | "MoveByoipCidrToIpam"
+        | "DisassociateIpamResourceDiscovery"
+        | "WithdrawByoipCidr" => synth_default(req, params),
+        // --- misc mutates / smoke ops ------------------------------------------------
+        "CancelDeclarativePoliciesReport"
+        | "StartDeclarativePoliciesReport"
+        | "ModifyAvailabilityZoneGroup"
+        | "ModifyIdFormat"
+        | "ModifyIdentityIdFormat"
+        | "DescribeIdentityIdFormat"
+        | "DescribeSpotFleetRequestHistory"
+        | "ExportImage"
+        | "CopyVolumes"
+        | "CreateDelegateMacVolumeOwnershipTask"
+        | "CreateMacSystemIntegrityProtectionModificationTask"
+        | "DetachClassicLinkVpc"
+        | "GetFlowLogsIntegrationTemplate"
+        | "GetInstanceTpmEkPub"
+        | "GetInstanceTypesFromInstanceRequirements"
+        | "GetSpotPlacementScores"
+        | "GetAssociatedIpv6PoolCidrs"
+        | "GetAssociatedEnclaveCertificateIamRoles"
+        | "DisassociateEnclaveCertificateIamRole"
+        | "GetVpcResourcesBlockingEncryptionEnforcement"
+        | "StartVpcEndpointServicePrivateDnsVerification"
+        | "ModifyVpcEndpointConnectionNotification"
+        | "ModifyVpcEndpointServicePayerResponsibility" => synth_default(req, params),
+        // --- local gateway family (stateless) ------------------------------------------
+        "CreateLocalGatewayVirtualInterface"
+        | "CreateLocalGatewayVirtualInterfaceGroup"
+        | "DeleteLocalGatewayVirtualInterface"
+        | "DeleteLocalGatewayVirtualInterfaceGroup"
+        | "DeleteLocalGatewayRouteTableVirtualInterfaceGroupAssociation"
+        | "DeleteLocalGatewayRouteTableVpcAssociation"
+        | "ModifyLocalGatewayRoute" => synth_default(req, params),
+        // --- everything else: modeled from the botocore shape ---------------------------
+        _ => synth_default(req, params),
+    }
 }
 
 /// Stateful IPAM pool-cidr / allocation store: `ipam-pool-cidr` and

@@ -122,6 +122,8 @@ pub fn route(req: &Request, params: &P) -> Response {
         "DescribeVpcBlockPublicAccessOptions" => vpc_bpa_options(req, params),
         "DescribeVpcBlockPublicAccessExclusions" => vpc_bpa_exclusions(req, params),
         "DeleteVpcBlockPublicAccessExclusion" => not_found_bpa(req, params),
+        "CreateVpcBlockPublicAccessExclusion" => create_bpa_exclusion(req, params),
+        "ModifyVpcBlockPublicAccessExclusion" => modify_bpa_exclusion(req, params),
         "PutVpcBlockPublicAccessExclusion" => not_found_bpa(req, params),
         "DescribeVpcEncryptionControls" => vpc_encryption_controls(req, params),
 
@@ -1036,25 +1038,168 @@ fn describe_classic_link_dns(req: &Request, params: &P) -> Response {
 }
 
 fn vpc_bpa_options(req: &Request, params: &P) -> Response {
+    let mode = with_state(req, |state| {
+        state
+            .simple
+            .get("vpc-bpa-options")
+            .and_then(|items| items.first())
+            .and_then(|s| s.get("InternetGatewayBlockMode"))
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "off".to_string())
+    });
+    let _ = params;
     ec2_xml(
         "DescribeVpcBlockPublicAccessOptionsResponse",
-        "<vpcBlockPublicAccessOptions><internetGatewayBlockMode>off</internetGatewayBlockMode><lastUpdateTimestamp>2026-10-18T00:00:00.000Z</lastUpdateTimestamp></vpcBlockPublicAccessOptions>",
+        &format!(
+            "<vpcBlockPublicAccessOptions><internetGatewayBlockMode>{}</internetGatewayBlockMode><lastUpdateTimestamp>{}</lastUpdateTimestamp></vpcBlockPublicAccessOptions>",
+            xml_escape(&mode),
+            super::now_iso()
+        ),
     )
 }
 
 fn vpc_bpa_exclusions(req: &Request, params: &P) -> Response {
+    let ids = super::handlers_misc::ids_of(params, "ExclusionId");
+    let mut items = String::new();
+    with_state(req, |state| {
+        if let Some(rows) = state.simple.get("vpc-bpa-exclusion").cloned() {
+            for s in &rows {
+                if !ids.is_empty() && !ids.contains(&s.id) {
+                    continue;
+                }
+                items.push_str(&format!(
+                    "<item><exclusionId>{id}</exclusionId><internetGatewayExclusionMode>{mode}</internetGatewayExclusionMode><reason></reason>{arn}<state>create-complete</state><lastUpdateTimestamp>{ts}</lastUpdateTimestamp>{tags}</item>",
+                    id = xml_escape(&s.id),
+                    mode = xml_escape(s.get("InternetGatewayExclusionMode").unwrap_or("allow-bidirectional")),
+                    arn = match s.get("ResourceArn").unwrap_or_default() {
+                        "" => String::new(),
+                        a => format!("<resourceArn>{}</resourceArn>", xml_escape(a)),
+                    },
+                    ts = s.get("LastUpdateTimestamp").unwrap_or(""),
+                    tags = tags_xml(&s.tags),
+                ));
+            }
+        }
+    });
     ec2_xml(
         "DescribeVpcBlockPublicAccessExclusionsResponse",
-        "<exclusions/><nextToken/>",
+        &format!("<exclusions>{items}</exclusions><nextToken/>"),
     )
 }
 
+/// CreateVpcBlockPublicAccessExclusion — stores a modeled exclusion record.
+fn create_bpa_exclusion(req: &Request, params: &P) -> Response {
+    let mode = params.str("InternetGatewayExclusionMode");
+    let arn = params.str("ResourceArn");
+    with_state(req, move |state| {
+        let id = format!("vpc-bpe-{}", super::state::idhex::hex17());
+        let tags = super::handlers::wire_tags(params);
+        let mut s = Simple {
+            id: id.clone(),
+            kind: "vpc-bpa-exclusion".to_string(),
+            tags,
+            ..Default::default()
+        };
+        let resolved_mode = if mode.is_empty() {
+            "allow-bidirectional".to_string()
+        } else {
+            mode
+        };
+        s.set("ExclusionId", id.clone());
+        s.set("InternetGatewayExclusionMode", resolved_mode.clone());
+        let saved_ts = super::now_iso();
+        let s_ts = saved_ts.clone();
+        let s_mode = resolved_mode.clone();
+        s.set("ResourceArn", arn.clone());
+        s.set("State", "create-complete");
+        s.set("LastUpdateTimestamp", saved_ts);
+        state
+            .simple
+            .entry("vpc-bpa-exclusion".to_string())
+            .or_default()
+            .push(s);
+        let saved_mode = s_mode.clone();
+        let saved_ts = s_ts.clone();
+        ec2_xml(
+            "CreateVpcBlockPublicAccessExclusionResponse",
+            &format!(
+                "<exclusion><exclusionId>{id}</exclusionId><internetGatewayExclusionMode>{mode}</internetGatewayExclusionMode><state>create-complete</state><lastUpdateTimestamp>{ts}</lastUpdateTimestamp>{arnw}<tagSet/></exclusion>",
+                id = xml_escape(&id),
+                mode = xml_escape(&saved_mode),
+                ts = saved_ts,
+                arnw = match arn.is_empty() {
+                    true => String::new(),
+                    false => format!("<resourceArn>{}</resourceArn>", xml_escape(&arn)),
+                },
+            ),
+        )
+    })
+}
+
+/// Mirror of real-AWS's VPC validation: the exclusion's ResourceArn must
+/// reference a VPC/Subnet this twin knows (non-empty ARN ids only).
+fn arn_typed_vpc(state: &Ec2State, arn: &str) -> Option<bool> {
+    let resource = arn.split('/').nth(1)?;
+    Some(state.vpcs.iter().any(|v| v.id == resource))
+}
+
+fn modify_bpa_exclusion(req: &Request, params: &P) -> Response {
+    let id = params.str("ExclusionId");
+    let mode = params.str("InternetGatewayExclusionMode");
+    with_state(req, move |state| {
+        let mut found = false;
+        if let Some(items) = state.simple.get_mut("vpc-bpa-exclusion") {
+            for s in items.iter_mut() {
+                if s.id == id {
+                    if !mode.is_empty() {
+                        s.set("InternetGatewayExclusionMode", &mode);
+                    }
+                    s.set("LastUpdateTimestamp", super::now_iso());
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if !found {
+            // no nested with_state here (the write lease is already held)
+            return ec2_error(
+                400,
+                "InvalidVpcBlockPublicAccessExclusionId.NotFound",
+                "The VPC Block Public Access exclusion ID does not exist.",
+            );
+        }
+        ec2_xml(
+            "ModifyVpcBlockPublicAccessExclusionResponse",
+            &format!(
+                "<exclusion><exclusionId>{id}</exclusionId><internetGatewayExclusionMode>{mode}</internetGatewayExclusionMode><state>update-complete</state></exclusion>",
+                id = xml_escape(&id),
+                mode = xml_escape(if mode.is_empty() { "allow-bidirectional" } else { &mode })
+            ),
+        )
+    })
+}
+
 fn not_found_bpa(req: &Request, params: &P) -> Response {
-    ec2_error(
-        400,
-        "InvalidVpcBlockPublicAccessExclusionId.NotFound",
-        "The VPC Block Public Access exclusion ID does not exist.",
-    )
+    let id = params.str("ExclusionId");
+    with_state(req, move |state| {
+        let mut removed = false;
+        if let Some(items) = state.simple.get_mut("vpc-bpa-exclusion") {
+            let before = items.len();
+            items.retain(|s| s.id != id);
+            removed = items.len() != before;
+        }
+        if removed {
+            return ec2_xml(
+                "DeleteVpcBlockPublicAccessExclusionResponse",
+                "<exclusion><state>delete-complete</state></exclusion>",
+            );
+        }
+        ec2_error(
+            400,
+            "InvalidVpcBlockPublicAccessExclusionId.NotFound",
+            "The VPC Block Public Access exclusion ID does not exist.",
+        )
+    })
 }
 
 fn vpc_encryption_controls(req: &Request, params: &P) -> Response {

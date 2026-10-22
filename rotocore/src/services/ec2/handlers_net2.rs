@@ -1553,7 +1553,7 @@ fn delete_vpc_endpoints(req: &Request, params: &P) -> Response {
                 None => {
                     let _ = write!(
                         unsuccessful,
-                        "<item><error><code>InvalidVpcEndpointId.NotFound</code><message>The Vpc Endpoint ID '{}' does not exist</code></error><resourceId>{}</resourceId></item>",
+                        "<item><error><code>InvalidVpcEndpointId.NotFound</code><message>The Vpc Endpoint ID '{}' does not exist</message></error><resourceId>{}</resourceId></item>",
                         crate::proto::xml_escape(id),
                         crate::proto::xml_escape(id)
                     );

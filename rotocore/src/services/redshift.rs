@@ -1141,6 +1141,12 @@ fn fetch_subnets(req: &Request, ids: &[String]) -> BTreeMap<String, SubnetInfo> 
     if ids.is_empty() {
         return out;
     }
+    // No Host header → no loopback mirror (unit-test context): resolve as
+    // empty and let the caller's moto-style InvalidSubnet 400 fire —
+    // never dial a dead fallback port (the wave-5 ASG rule).
+    if !req.headers.contains_key("host") {
+        return out;
+    }
     let host = req
         .headers
         .get("host")
