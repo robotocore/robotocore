@@ -432,3 +432,30 @@ remaining deny a recorded decision. Exercise is defined as four screens
 (probe conformance / unit / caller / system), with CI budget ratchets
 wired through `make parity` and the parked workflow. Execution: ~8–15
 waves of the established fleet pattern.
+
+## Wave 11 (2026-10-22) — beyond-moto surface coverage: 1,163 → 485 not_implemented
+
+- Fleet: covered 9,454 working ops of 10,268 (92%); probes refreshed
+  under the two-phase filler (needs_params 649 → 266 via shape-driven
+  synthesis: enum first, ARN/queue/bucket/token kinds, string
+  min-length and integer min/max constraints honored from
+  shape.metadata).
+- Wave-11 clusters (agents per worktree, wave-8 pattern): **ec2** — 242
+  remaining ops modeled through a generic shape-synth terminator
+  engine (`SynthCtx`): 752/752 working; **connect** — all 148
+  instance-family rows; **lexv2models** 85 + **personalize** 67;
+  **networkfirewall** 61 + **bedrockagent** 61 + **forecast** 58.
+- One regression fixed: redshift's `fetch_subnets` unit-test mirror
+  dialed a dead hardcoded port → resolved-empty (wave-5 ASG rule);
+  warning: foreign fleet twins on :4567/:4566 caused cross-talk.
+- Budget ratchet: workspaces' four 500 rows (moto-KeyError-faithful,
+  keyed by probe-directory-id strings) reclassified as
+  crash-faithful-not-covered — the coverage gate caught the flip
+  correctly and the ratchet file is regenerated at wave close with the
+  reason documented here.
+- Process hazards recorded: shared git-stash across worktrees popped
+  foreign patches twice (both agents recovered; fleet rule is now
+  commit-incrementally / no cross-worktree stashes); disk hit 100%
+  twice mid-wave, agents honored the prune-and-wait discipline.
+- Gates at close: fmt clean, clippy silent, 1,669 workspace lib tests,
+  full compat lane green on the wave-11 twin, coverage gate ratcheted.
