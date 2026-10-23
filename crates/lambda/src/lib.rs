@@ -4,6 +4,7 @@
 
 pub mod bridge;
 pub mod destinations;
+pub mod docker_runtime;
 pub mod handler;
 pub mod models;
 pub mod protocol;

@@ -763,6 +763,29 @@ impl LambdaHandler {
             }
         }
         let env_vars = func.environment.read().clone().unwrap_or_default();
+        // LAMBDA_EXECUTOR=docker: when the mode is set, the daemon answers
+        // and the runtime has a mapped image, the invocation runs in an
+        // official Lambda runtime image (see docker_runtime). With no env set
+        // this is None and the in-process branches below run exactly as
+        // before.
+        if let Some(res) = crate::docker_runtime::try_execute_docker(
+            &func.runtime.read().clone(),
+            &zip_bytes,
+            &layer_zips,
+            &func.handler.read().clone(),
+            &event,
+            &func.function_name,
+            &func.version.read().clone(),
+            &func.function_arn.clone(),
+            &env_vars,
+            *func.timeout.read(),
+            *func.memory_size.read(),
+            &req.region.clone(),
+            &req.account.to_string(),
+            None,
+        ) {
+            return Ok(res);
+        }
         // provided./go runtimes run the `bootstrap` executable from the
         // package with the event on stdin and the result JSON on stdout.
         if runtime::is_custom_runtime(&func.runtime.read()) {
