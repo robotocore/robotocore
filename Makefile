@@ -1,7 +1,7 @@
 .PHONY: test compat-test compat-test-hot parity rust-test rust-lint rust-fmt \
         docker-build docker-run serve clean help start stop status \
         test-iac test-iac-terraform test-iac-cloudformation test-iac-cdk \
-        test-iac-pulumi test-iac-serverless test-iac-sam help
+        test-iac-pulumi test-iac-serverless test-iac-sam help coverage-gate
 
 N := $(shell python3 -c "import os; print(min(os.cpu_count() or 4, 12))")
 
@@ -30,6 +30,10 @@ compat-test-hot: ## Compatibility tests (assumes server already running)
 
 parity: ## Full rust-only parity run against the golden baseline
 	uv run python scripts/harness/parity.py --update-expectations
+	$(MAKE) coverage-gate
+
+coverage-gate: ## Regenerate coverage artifacts and fail on budget regressions
+	uv run python scripts/coverage.py --gate
 
 ## ── IaC tests ────────────────────────────────────────────────────────────
 

@@ -29,6 +29,36 @@ KNOWN_PARAMS: dict[str, dict[str, dict]] = {
     "sts": {
         "GetCallerIdentity": {},
     },
+    # connect's evaluation-form ops: the full-shape walk hits the tagged
+    # union + nested question tree botocore validates strictly, so seed the
+    # smallest structurally valid fill (as if auto-filled: first enum,
+    # filler-style "probe-*-id" ids).
+    "connect": {
+        "CreateEvaluationForm": {
+            "InstanceId": "probe-instance-id-id",
+            "Title": "probe-test",
+            "Items": [{
+                "Question": {
+                    "Title": "probe-test",
+                    "RefId": "probe-test",
+                    "QuestionType": "TEXT",
+                },
+            }],
+        },
+        "UpdateEvaluationForm": {
+            "InstanceId": "probe-instance-id-id",
+            "EvaluationFormId": "probe-evaluation-form-id-id",
+            "EvaluationFormVersion": 1,
+            "Title": "probe-test",
+            "Items": [{
+                "Question": {
+                    "Title": "probe-test",
+                    "RefId": "probe-test",
+                    "QuestionType": "TEXT",
+                },
+            }],
+        },
+    },
 }
 
 _ENUM_FALLBACK = "probe-test"

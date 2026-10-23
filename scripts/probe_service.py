@@ -14,8 +14,10 @@ Classifies operations as:
   - working: returned 200 or a "resource not found" error (proves implementation)
   - needs_params: couldn't auto-fill params, client-side validation blocked
   - not_implemented: server returned 501 or "not implemented"
-  - 500_error: server crashed
-  - timeout: the server never answered within the read timeout
+  - 500_error: server crashed — genuine server-side error payloads only
+    (HTTP 500, or a server answer botocore could not parse)
+  - timeout: the server never answered within the read timeout (hang), or
+    the call failed at connection level (endpoint unreachable)
 
 Per AGENTS.md only HTTP 501 means "genuinely absent" — a ClientError with a
 4xx code means the handler ran and the probe params were just wrong.
@@ -189,14 +191,14 @@ def probe_operation(
             except botocore.exceptions.ParamValidationError:
                 return "needs_params", "client-side validation (never contacted server)"
             except (botocore.exceptions.ReadTimeoutError,
-                    botocore.exceptions.ConnectReadTimeoutError,
+                    botocore.exceptions.ConnectTimeoutError,
                     socket.timeout):
                 return "timeout", "read timeout (required-only retry)"
             except botocore.exceptions.EndpointConnectionError:
                 return "timeout", "endpoint unreachable (required-only retry)"
         return "needs_params", "client-side validation (never contacted server)"
     except (botocore.exceptions.ReadTimeoutError,
-            botocore.exceptions.ConnectReadTimeoutError,
+            botocore.exceptions.ConnectTimeoutError,
             socket.timeout) as e:
         # A hanging/timing-out handler is a distinct artifact: the twin
         # never answered. Contract labels 500_error as "server crashed",
@@ -205,7 +207,32 @@ def probe_operation(
     except botocore.exceptions.EndpointConnectionError as e:
         return "timeout", f"endpoint unreachable ({str(e)[:60]})"
     except Exception as e:
-        return "500_error", f"exception: {str(e)[:60]}"
+        # Anything left is a non-ClientError, non-timeout raise. Split by
+        # what the exception actually was:
+        #  - AttributeError / "object has no attribute": the probe never
+        #    made a wire call (typically an unfilled client method) — a
+        #    client-side probe gap, not a crash.
+        #  - "Could not connect" / socket errors: connection-level failure,
+        #    timeout-class (the surface plan's timeout bucket), not a crash.
+        #  - "Unable to parse response": the server DID answer with a
+        #    payload botocore could not parse (e.g. an HTML 500 page) —
+        #    a genuine server-side error; keep 500_error and carry the
+        #    parse summary in the reason.
+        text = str(e)
+        summary = f"{type(e).__name__}: {text[:60]}"
+        if (
+            isinstance(e, AttributeError)
+            or "AttributeError" in text
+            or "object has no attribute" in text
+        ):
+            return "needs_params", f"client-side probe gap ({summary})"
+        if (
+            "Could not connect" in text
+            or "Connection" in type(e).__name__
+            or isinstance(e, (ConnectionError, socket.timeout, TimeoutError, OSError))
+        ):
+            return "timeout", f"exception: {summary}"
+        return "500_error", f"exception: {summary}"
 
 
 def get_operations(service_name: str, all_ops: bool) -> list[str]:
@@ -228,7 +255,7 @@ def make_client(service_name: str, endpoint: str, read_timeout: float = 60.0):
     total_max_attempts=1 keeps a genuine 500_error from being retried twice
     more by botocore before classification — one request, one verdict.
     read_timeout caps how long a hanging handler can block the probe run
-    (a read timeout classifies as 500_error: the server never answered).
+    (a read timeout classifies as timeout: the server never answered).
     """
     return boto3.client(
         service_name,

@@ -11,9 +11,20 @@ Outputs:
 plus the exit code for the budget gate:
   0 = covered set >= stored ratchet; 2 = regressions found.
 
+Bucket taxonomy (cov_bucket): working / pending_fill (probe status
+needs_params — the filler rejected the fill or the op is a client-side
+probe gap; the twin was never contacted) / absent_crash_faithful
+(genuine server-side error payloads only: HTTP 500, or a server answer
+botocore could not parse) / unreachable (timeout-class: connection
+failures and hangs) / modeled_deny (manifest-recorded deny) / absent
+(everything else). Since the wave-11 classifier split in
+scripts/probe_service.py the catch-all no longer labels client-side
+attribute errors or connection failures as 500_error, so
+absent_crash_faithful only counts real server errors.
+
 Usage:
-  uv run python scripts/coverage.py              # regenerate + gate check
-  uv run python scripts/coverage.py --no-gate    # regenerate only
+  uv run python scripts/coverage.py            # regenerate only
+  uv run python scripts/coverage.py --gate     # regenerate + budget ratchet
 """
 
 import argparse
@@ -48,11 +59,17 @@ def cov_bucket(status: str, absence: dict | None):
     if status == "working":
         return "working"
     if status == "needs_params":
-        # The probe fill was rejected by botocore's client-side validation;
-        # coverage pending a per-service caller-screen wave.
+        # The probe never produced a trusted call: the fill was rejected by
+        # botocore's client-side validation, or the probe itself was a
+        # client-side gap (see the probe_service.py classifier split).
         return "pending_fill"
     if status == "500_error":
+        # A genuine server-side error payload: HTTP 500, or a server answer
+        # botocore could not parse. Never a client-side probe artifact.
         return "absent_crash_faithful"
+    if status == "timeout":
+        # connection-level failure / hang: the twin never (fully) answered
+        return "unreachable"
     if status == "modeled_deny":
         return "modeled_deny"
     if status == "not_implemented" and absence:
@@ -132,8 +149,6 @@ def main() -> None:
         f"covered={coverage_totals_covered(coverage):>{7}} / {coverage_totals_total(coverage)}",
     )
     print(f"absent_manifest_entries: {absent_manifest_entries}")
-
-def covered(v): return v["covered"] if False else None
 
 
 def coverage_totals(cov) -> tuple[int, int]:

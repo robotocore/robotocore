@@ -22578,7 +22578,7 @@
   "total": 97
  },
  "connect": {
-  "covered": 363,
+  "covered": 365,
   "ops": {
    "ActivateEvaluationForm": {
     "absence": null,
@@ -23044,10 +23044,10 @@
    },
    "CreateEvaluationForm": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -26102,10 +26102,10 @@
    },
    "UpdateEvaluationForm": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111634,7 +111634,7 @@
   "total": 55
  },
  "workspaces": {
-  "covered": 84,
+  "covered": 83,
   "ops": {
    "AcceptAccountLinkInvitation": {
     "absence": null,
@@ -111924,10 +111924,10 @@
    },
    "DeregisterWorkspaceDirectory": {
     "absence": null,
-    "bucket": "working",
+    "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "OK",
-    "probe_status": "working",
+    "probe_message": "server crash (InternalError: 'probe-directory-id-id')",
+    "probe_status": "500_error",
     "screens": {
      "probe": true,
      "unit": true
