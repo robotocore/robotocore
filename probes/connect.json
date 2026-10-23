@@ -1,10 +1,10 @@
 {
   "service": "connect",
-  "generated_at": "2026-10-22T07:00:02.754947+00:00",
+  "generated_at": "2026-10-23T03:57:20.356816+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 363,
-    "needs_params": 3,
+    "working": 365,
+    "needs_params": 1,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -222,8 +222,8 @@
     },
     {
       "operation": "CreateEvaluationForm",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateHoursOfOperation",
@@ -1612,8 +1612,8 @@
     },
     {
       "operation": "UpdateEvaluationForm",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateHoursOfOperation",

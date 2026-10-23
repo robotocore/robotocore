@@ -33,7 +33,7 @@
  "cognitoidentity": 4348,
  "comprehend": 10000,
  "config": 10000,
- "connect": 9918,
+ "connect": 9973,
  "connectcampaigns": 5909,
  "databrew": 7727,
  "datapipeline": 10000,
@@ -154,7 +154,7 @@
  "transfer": 4930,
  "vpclattice": 3151,
  "wafv2": 8909,
- "workspaces": 9231,
+ "workspaces": 9121,
  "workspacesweb": 4133,
  "xray": 9737
 }

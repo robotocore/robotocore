@@ -459,3 +459,50 @@ waves of the established fleet pattern.
   twice mid-wave, agents honored the prune-and-wait discipline.
 - Gates at close: fmt clean, clippy silent, 1,669 workspace lib tests,
   full compat lane green on the wave-11 twin, coverage gate ratcheted.
+
+### Wave-11 review settle (2026-10-23, post-aa9ec804) — workspaces corpus truth
+
+- The adversarial review of the wave-11 range found the committed
+  workspaces probe row optimistic: `DeregisterWorkspaceDirectory`
+  answered OK on the warm fleet twin only because of probe-order state
+  dependence — an earlier op in the sweep had already seeded the
+  probe-directory-id state moto's dict-index deregistration path reads.
+  A faithful cold twin probes every one of moto 5.2.4's fields empty.
+- Re-probed on a cold scratch twin: 83 working / 4x500 crash-faithful /
+  4 needs_params (91 ops). The four 500 rows are the modeled moto
+  `KeyError` crashes — moto `workspaces/models.py:889-892` does a bare
+  dict index on the directory/resource/image id — for
+  `DeregisterWorkspaceDirectory`, `ModifyClientProperties`,
+  `ModifySelfservicePermissions`, `UpdateWorkspaceImagePermission`.
+- Budget ratchet settled `workspaces` 9231 → 9121 (= round(83/91)):
+  aa9ec804's 9231 counted the flaky OK row. No server-side change.
+- Same review caught the wave-11 filler regression: connect's
+  `CreateEvaluationForm`/`UpdateEvaluationForm` had slipped to
+  needs_params; KNOWN_PARAMS seeds now fill them, connect 365 working
+  of 366, ratchet 9918 → 9973. The probe classifier keeps client-side
+  attribute gaps as needs_params and connection failures as timeout —
+  500_error is reserved for genuine server-side error payloads.
+
+## Wave 8 addendum (2026-10-22) — prober rewrite, corpus regeneration, backlog ports
+
+The wave-8 close's tooling pieces, recorded here because the wave-9
+row carried them only inline (the prober/corpus/site facts and the
+backlog ports, per the fleet corpus):
+
+- **Prober rewrite**: `scripts/probe_service.py` +
+  `scripts/lib/param_filler.py` — rust-first, budget + artifact
+  envelope; one `probes/<service>.json` per registered service
+  (working / needs_params / not_implemented / 500_error / timeout).
+  Supersedes the wave-7 "probes not regenerated" known gap.
+- **Full corpus regeneration**: all 158 `probes/*.json` artifacts
+  regenerated from the fleet sweep on the rust twin; the
+  `tooling/coverage.json` + `tooling/coverage-budget.json` surface
+  machine regenerates from that corpus under the per-service ratchet
+  gate.
+- **site/ rebuild**: `docs/coverage.html` + `site/` parity report
+  rebuilt from the regenerated corpus; the stale sidecar-era
+  dashboard is retired.
+- **Backlog ports folded into the wave range**: `mediaconnect`
+  (+63 ops — the percent-encoding binding fix un-gated them),
+  `ssoadmin` (+14 real ops; 47 genuinely-absent ops stay 501),
+  `swf` (the 26 flagged rows were prober misclassification, no gap).
