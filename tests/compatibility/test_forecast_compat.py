@@ -208,52 +208,67 @@ class TestCreateValidation:
 
 
 class TestNotImplemented:
-    """Moto has no handlers for these operations — they stay 501."""
+    """Wave-11 (6c973a2e) models these on the twin: unknown members are denied
+    with ResourceNotFoundException and list/create paths return modeled 200
+    envelopes; nothing here is a 501 stub anymore."""
 
     def test_list_datasets_not_implemented(self, forecast):
-        with pytest.raises(ClientError) as exc:
-            forecast.list_datasets()
-        assert err_code(exc) == "NotImplemented"
-        assert err_message(exc) == "The list_datasets action has not been implemented"
+        # wave-11 (6c973a2e): list_datasets now answers with a modeled list
+        # envelope (account-scoped, populated by other tests on a hot twin)
+        # instead of the old moto-parity 501.
+        resp = forecast.list_datasets()
+        assert isinstance(resp["Datasets"], list)
+        for dataset in resp["Datasets"]:
+            assert dataset["DatasetArn"]
+            assert dataset["DatasetName"]
 
     def test_create_dataset_not_implemented(self, forecast):
-        with pytest.raises(ClientError) as exc:
-            forecast.create_dataset(
-                DatasetName=_unique_name(),
-                Domain="CUSTOM",
-                DatasetType="TARGET_TIME_SERIES",
-                Schema={"Attributes": [{"AttributeName": "ts", "AttributeType": "timestamp"}]},
-            )
-        assert err_code(exc) == "NotImplemented"
-        assert err_message(exc) == "The create_dataset action has not been implemented"
+        # wave-11 (6c973a2e): create_dataset now mints a dataset ARN on the
+        # twin instead of the old moto-parity 501.
+        resp = forecast.create_dataset(
+            DatasetName=_unique_name(),
+            Domain="CUSTOM",
+            DatasetType="TARGET_TIME_SERIES",
+            Schema={"Attributes": [{"AttributeName": "ts", "AttributeType": "timestamp"}]},
+        )
+        assert "DatasetArn" in resp
 
     def test_list_predictors_not_implemented(self, forecast):
-        with pytest.raises(ClientError) as exc:
-            forecast.list_predictors()
-        assert err_code(exc) == "NotImplemented"
-        assert err_message(exc) == "The list_predictors action has not been implemented"
+        # wave-11 (6c973a2e): list_predictors now answers with a modeled list
+        # envelope (account-scoped) instead of the old moto-parity 501.
+        resp = forecast.list_predictors()
+        assert isinstance(resp["Predictors"], list)
+        for predictor in resp["Predictors"]:
+            assert predictor["PredictorArn"]
 
     def test_list_tag_resources_not_implemented(self, forecast):
+        # wave-11 (6c973a2e): tag_resource now resolves its target ARN before
+        # writing, so an unknown resource is denied with
+        # ResourceNotFoundException instead of the old moto-parity 501.
         with pytest.raises(ClientError) as exc:
             forecast.tag_resource(
                 ResourceArn=_arn(_unique_name()), Tags=[{"Key": "env", "Value": "test"}]
             )
-        assert err_code(exc) == "NotImplemented"
-        assert err_message(exc) == "The tag_resource action has not been implemented"
+        assert err_code(exc) == "ResourceNotFoundException"
 
     def test_list_dataset_import_jobs_not_implemented(self, forecast):
-        with pytest.raises(ClientError) as exc:
-            forecast.list_dataset_import_jobs()
-        assert err_code(exc) == "NotImplemented"
-        assert err_message(exc) == "The list_dataset_import_jobs action has not been implemented"
+        # wave-11 (6c973a2e): list_dataset_import_jobs now answers with a
+        # modeled list envelope (account-scoped) instead of the old
+        # moto-parity 501.
+        resp = forecast.list_dataset_import_jobs()
+        assert isinstance(resp["DatasetImportJobs"], list)
+        for job in resp["DatasetImportJobs"]:
+            assert job["DatasetImportJobArn"]
 
     def test_describe_predictor_not_implemented(self, forecast):
+        # wave-11 (6c973a2e): describe_predictor now resolves its target ARN,
+        # so an unknown predictor is denied with ResourceNotFoundException
+        # instead of the old moto-parity 501.
         with pytest.raises(ClientError) as exc:
             forecast.describe_predictor(
                 PredictorArn=f"arn:aws:forecast:us-east-1:{ACCOUNT}:predictor/nope"
             )
-        assert err_code(exc) == "NotImplemented"
-        assert err_message(exc) == "The describe_predictor action has not been implemented"
+        assert err_code(exc) == "ResourceNotFoundException"
 
 
 class TestRegionIsolation:

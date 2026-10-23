@@ -2,6 +2,7 @@
 
 from datetime import UTC
 
+import botocore.parsers
 import pytest
 from botocore.exceptions import ClientError
 
@@ -58,9 +59,19 @@ class TestConnectInstances:
 
     def test_list_instances_has_summary_fields(self, connect):
         """Verify list_instances returns summaries with expected fields."""
-        resp = connect.list_instances()
-        assert len(resp["InstanceSummaryList"]) >= 1
-        summary = resp["InstanceSummaryList"][0]
+        # Wave-11 (5b0e0067) models replicate_instance, and replica summaries
+        # carry only Arn/Id. A hot twin accumulates both kinds across lane
+        # runs and its first page can be all-replica, so scan the paginated
+        # list for a fully modeled summary before asserting the shape.
+        summaries = [
+            entry
+            for page in connect.get_paginator("list_instances").paginate()
+            for entry in page["InstanceSummaryList"]
+        ]
+        assert summaries
+        canonical = [s for s in summaries if "IdentityManagementType" in s]
+        assert canonical, "list_instances returned no fully modeled summary"
+        summary = canonical[0]
         assert "Id" in summary
         assert "Arn" in summary
         assert "IdentityManagementType" in summary
@@ -3377,7 +3388,11 @@ class TestConnectTestCaseCRUD:
 
 
 class TestConnectAssociateOpsNotImplemented:
-    """Tests for Connect associate/disassociate gap operations (all return 501)."""
+    """
+    Wave-11 (5b0e0067) models these associate/disassociate operations: an
+    unknown member is denied with ResourceNotFoundException and association
+    writes return modeled 200 envelopes; nothing here is a 501 stub anymore.
+    """
 
     @pytest.fixture
     def instance_id(self, connect):
@@ -3391,7 +3406,9 @@ class TestConnectAssociateOpsNotImplemented:
                 ContactId="fake-contact-id",
                 UserId="fake-user-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_associate_default_vocabulary_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3400,7 +3417,9 @@ class TestConnectAssociateOpsNotImplemented:
                 LanguageCode="en-US",
                 VocabularyId="fake-vocab-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_associate_email_address_alias_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3409,17 +3428,21 @@ class TestConnectAssociateOpsNotImplemented:
                 EmailAddressId="fake-email-id",
                 AliasConfiguration={"EmailAddressId": "alias-id"},
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_associate_flow_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.associate_flow(
-                InstanceId=instance_id,
-                ResourceId="fake-resource-id",
-                FlowId="fake-flow-id",
-                ResourceType="SMS_PHONE_NUMBER",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models associate_flow as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.associate_flow(
+            InstanceId=instance_id,
+            ResourceId="fake-resource-id",
+            FlowId="fake-flow-id",
+            ResourceType="SMS_PHONE_NUMBER",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_associate_hours_of_operations_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3428,15 +3451,19 @@ class TestConnectAssociateOpsNotImplemented:
                 HoursOfOperationId="fake-hoo-id",
                 ParentHoursOfOperationConfigs=[{"HoursOfOperationId": "parent-hoo-id"}],
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_associate_lex_bot_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.associate_lex_bot(
-                InstanceId=instance_id,
-                LexBot={"Name": "fake-bot", "LexRegion": "us-east-1"},
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models associate_lex_bot as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.associate_lex_bot(
+            InstanceId=instance_id,
+            LexBot={"Name": "fake-bot", "LexRegion": "us-east-1"},
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_associate_phone_number_contact_flow_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3445,7 +3472,9 @@ class TestConnectAssociateOpsNotImplemented:
                 InstanceId=instance_id,
                 ContactFlowId="fake-flow-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_associate_queue_email_addresses_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3454,17 +3483,21 @@ class TestConnectAssociateOpsNotImplemented:
                 QueueId="fake-queue-id",
                 EmailAddressesConfig=[{"EmailAddressId": "fake-email-id"}],
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_associate_security_profiles_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.associate_security_profiles(
-                InstanceId=instance_id,
-                SecurityProfiles=[{"Id": "fake-sp-id"}],
-                EntityType="ROUTING_PROFILE",
-                EntityArn=f"arn:aws:connect:us-east-1:123456789012:instance/{instance_id}/routing-profile/fake",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models associate_security_profiles as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.associate_security_profiles(
+            InstanceId=instance_id,
+            SecurityProfiles=[{"Id": "fake-sp-id"}],
+            EntityType="ROUTING_PROFILE",
+            EntityArn=f"arn:aws:connect:us-east-1:123456789012:instance/{instance_id}/routing-profile/fake",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_associate_traffic_distribution_group_user_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3473,7 +3506,9 @@ class TestConnectAssociateOpsNotImplemented:
                 UserId="fake-user-id",
                 InstanceId=instance_id,
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_associate_user_proficiencies_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3484,7 +3519,9 @@ class TestConnectAssociateOpsNotImplemented:
                     {"AttributeName": "skill", "AttributeValue": "value", "Level": 5.0}
                 ],
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_associate_workspace_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3495,7 +3532,9 @@ class TestConnectAssociateOpsNotImplemented:
                     f"arn:aws:connect:us-east-1:123456789012:instance/{instance_id}/queue/fake"
                 ],
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_disassociate_email_address_alias_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3504,7 +3543,9 @@ class TestConnectAssociateOpsNotImplemented:
                 EmailAddressId="fake-email-id",
                 AliasConfiguration={"EmailAddressId": "alias-id"},
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_disassociate_flow_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3513,7 +3554,10 @@ class TestConnectAssociateOpsNotImplemented:
                 ResourceId="fake-resource-id",
                 ResourceType="SMS_PHONE_NUMBER",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models flow associations: with no prior associate
+        # on the fresh per-test instance, disassociate denies with
+        # ResourceNotFoundException instead of the old 501 stub.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_disassociate_hours_of_operations_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3522,16 +3566,20 @@ class TestConnectAssociateOpsNotImplemented:
                 HoursOfOperationId="fake-hoo-id",
                 ParentHoursOfOperationIds=["parent-hoo-id"],
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_disassociate_lex_bot_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.disassociate_lex_bot(
-                InstanceId=instance_id,
-                BotName="fake-bot",
-                LexRegion="us-east-1",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models disassociate_lex_bot as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.disassociate_lex_bot(
+            InstanceId=instance_id,
+            BotName="fake-bot",
+            LexRegion="us-east-1",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_disassociate_phone_number_contact_flow_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3539,7 +3587,9 @@ class TestConnectAssociateOpsNotImplemented:
                 PhoneNumberId="fake-phone-id",
                 InstanceId=instance_id,
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_disassociate_queue_email_addresses_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3548,7 +3598,9 @@ class TestConnectAssociateOpsNotImplemented:
                 QueueId="fake-queue-id",
                 EmailAddressesId=["fake-email-id"],
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_disassociate_security_profiles_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3558,7 +3610,10 @@ class TestConnectAssociateOpsNotImplemented:
                 EntityType="ROUTING_PROFILE",
                 EntityArn=f"arn:aws:connect:us-east-1:123456789012:instance/{instance_id}/routing-profile/fake",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models security-profile associations: with no
+        # prior associate on the fresh per-test instance, disassociate denies
+        # with ResourceNotFoundException instead of the old 501 stub.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_disassociate_traffic_distribution_group_user_not_implemented(
         self, connect, instance_id
@@ -3569,7 +3624,9 @@ class TestConnectAssociateOpsNotImplemented:
                 UserId="fake-user-id",
                 InstanceId=instance_id,
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_disassociate_user_proficiencies_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3578,7 +3635,9 @@ class TestConnectAssociateOpsNotImplemented:
                 UserId="fake-user-id",
                 UserProficiencies=[{"AttributeName": "skill", "AttributeValue": "value"}],
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_disassociate_workspace_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3589,11 +3648,17 @@ class TestConnectAssociateOpsNotImplemented:
                     f"arn:aws:connect:us-east-1:123456789012:instance/{instance_id}/queue/fake"
                 ],
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestConnectBatchOpsNotImplemented:
-    """Tests for Connect batch gap operations (all return 501)."""
+    """
+    Wave-11 (5b0e0067) models these batch operations: unknown members are
+    denied with ResourceNotFoundException or, for batch gets, come back as
+    modeled per-item Errors; nothing here is a 501 stub anymore.
+    """
 
     @pytest.fixture
     def instance_id(self, connect):
@@ -3601,13 +3666,16 @@ class TestConnectBatchOpsNotImplemented:
         yield iid
 
     def test_batch_associate_analytics_data_set_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.batch_associate_analytics_data_set(
-                InstanceId=instance_id,
-                DataSetIds=["fake-dataset-id"],
-                TargetAccountId="123456789012",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models batch_associate_analytics_data_set as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.batch_associate_analytics_data_set(
+            InstanceId=instance_id,
+            DataSetIds=["fake-dataset-id"],
+            TargetAccountId="123456789012",
+        )
+        assert resp["Created"][0]["DataSetId"] == "fake-dataset-id"
+        assert resp["Errors"] == []
 
     def test_batch_create_data_table_value_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3622,7 +3690,9 @@ class TestConnectBatchOpsNotImplemented:
                     }
                 ],
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_batch_delete_data_table_value_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3637,7 +3707,9 @@ class TestConnectBatchOpsNotImplemented:
                     }
                 ],
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_batch_describe_data_table_value_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3651,53 +3723,70 @@ class TestConnectBatchOpsNotImplemented:
                     }
                 ],
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_batch_disassociate_analytics_data_set_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.batch_disassociate_analytics_data_set(
-                InstanceId=instance_id,
-                DataSetIds=["fake-dataset-id"],
-                TargetAccountId="123456789012",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        resp = connect.batch_disassociate_analytics_data_set(
+            InstanceId=instance_id,
+            DataSetIds=["fake-dataset-id"],
+            TargetAccountId="123456789012",
+        )
+        # wave-11 (5b0e0067) models batch disassociate: against the fresh
+        # per-test instance there is nothing to delete, so the modeled 200
+        # envelope reports an empty Deleted list and the unknown member is
+        # denied via a per-item ResourceNotFound error entry.
+        assert resp["Deleted"] == []
+        assert len(resp["Errors"]) == 1
+        assert resp["Errors"][0]["ErrorCode"] == "ResourceNotFoundException"
 
     def test_batch_get_attached_file_metadata_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.batch_get_attached_file_metadata(
-                InstanceId=instance_id,
-                FileIds=["fake-file-id"],
-                AssociatedResourceArn=f"arn:aws:connect:us-east-1:123456789012:instance/{instance_id}/case/fake",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models batch_get_attached_file_metadata as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.batch_get_attached_file_metadata(
+            InstanceId=instance_id,
+            FileIds=["fake-file-id"],
+            AssociatedResourceArn=f"arn:aws:connect:us-east-1:123456789012:instance/{instance_id}/case/fake",
+        )
+        assert resp["Files"] == []
+        assert resp["Errors"][0]["ErrorCode"] == "ResourceNotFoundException"
+        assert resp["Errors"][0]["FileId"] == "fake-file-id"
 
     def test_batch_get_flow_association_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.batch_get_flow_association(
-                InstanceId=instance_id,
-                ResourceIds=["fake-resource-id"],
-                ResourceType="VOICE_PHONE_NUMBER",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models batch_get_flow_association as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.batch_get_flow_association(
+            InstanceId=instance_id,
+            ResourceIds=["fake-resource-id"],
+            ResourceType="VOICE_PHONE_NUMBER",
+        )
+        assert resp["FlowAssociationSummaryList"] == []
 
     def test_batch_put_contact_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.batch_put_contact(
-                InstanceId=instance_id,
-                ContactDataRequestList=[
-                    {
-                        "SystemEndpoint": {
-                            "Type": "TELEPHONE_NUMBER",
-                            "Address": "+15551234567",
-                        },
-                        "CustomerEndpoint": {
-                            "Type": "TELEPHONE_NUMBER",
-                            "Address": "+15559876543",
-                        },
-                    }
-                ],
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models batch_put_contact as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.batch_put_contact(
+            InstanceId=instance_id,
+            ContactDataRequestList=[
+                {
+                    "SystemEndpoint": {
+                        "Type": "TELEPHONE_NUMBER",
+                        "Address": "+15551234567",
+                    },
+                    "CustomerEndpoint": {
+                        "Type": "TELEPHONE_NUMBER",
+                        "Address": "+15559876543",
+                    },
+                }
+            ],
+        )
+        assert len(resp["SuccessfulRequestList"]) == 1
+        assert "ContactId" in resp["SuccessfulRequestList"][0]
+        assert resp["FailedRequestList"] == []
 
     def test_batch_update_data_table_value_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3712,11 +3801,17 @@ class TestConnectBatchOpsNotImplemented:
                     }
                 ],
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestConnectCreateVersionOpsNotImplemented:
-    """Tests for Connect create version/versioned resource gap operations (all return 501)."""
+    """
+    Wave-11 (5b0e0067) models these create-version operations: an unknown
+    member is denied with ResourceNotFoundException and versioned writes
+    return modeled 200 envelopes; nothing here is a 501 stub anymore.
+    """
 
     @pytest.fixture
     def instance_id(self, connect):
@@ -3729,7 +3824,9 @@ class TestConnectCreateVersionOpsNotImplemented:
                 InstanceId=instance_id,
                 ContactFlowModuleId="fake-cfm-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_create_contact_flow_version_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3737,7 +3834,9 @@ class TestConnectCreateVersionOpsNotImplemented:
                 InstanceId=instance_id,
                 ContactFlowId="fake-cf-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_create_participant_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3746,7 +3845,9 @@ class TestConnectCreateVersionOpsNotImplemented:
                 ContactId="fake-contact-id",
                 ParticipantDetails={"ParticipantRole": "CUSTOMER"},
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_create_persistent_contact_association_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3756,21 +3857,25 @@ class TestConnectCreateVersionOpsNotImplemented:
                 RehydrationType="ENTIRE_PAST_SESSION",
                 SourceContactId="source-contact-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_create_push_notification_registration_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.create_push_notification_registration(
-                InstanceId=instance_id,
-                ContactConfiguration={
-                    "ContactId": "fake-contact",
-                    "ParticipantRole": "CUSTOMER",
-                },
-                DeviceToken="fake-device-token",
-                DeviceType="IOS",
-                PinpointAppArn="arn:aws:mobiletargeting:us-east-1:123456789012:apps/fake",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models create_push_notification_registration as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.create_push_notification_registration(
+            InstanceId=instance_id,
+            ContactConfiguration={
+                "ContactId": "fake-contact",
+                "ParticipantRole": "CUSTOMER",
+            },
+            DeviceToken="fake-device-token",
+            DeviceType="IOS",
+            PinpointAppArn="arn:aws:mobiletargeting:us-east-1:123456789012:apps/fake",
+        )
+        assert "RegistrationId" in resp
 
     def test_create_view_version_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3778,7 +3883,9 @@ class TestConnectCreateVersionOpsNotImplemented:
                 InstanceId=instance_id,
                 ViewId="fake-view-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_create_workspace_page_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3788,11 +3895,17 @@ class TestConnectCreateVersionOpsNotImplemented:
                 ResourceArn=f"arn:aws:connect:us-east-1:123456789012:instance/{instance_id}/queue/fake",
                 Page="page-content",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestConnectDeleteOpsNotImplemented:
-    """Tests for Connect delete gap operations (all return 501)."""
+    """
+    Wave-11 (5b0e0067) models these delete operations: an unknown member is
+    denied with ResourceNotFoundException; nothing here is a 501 stub
+    anymore.
+    """
 
     @pytest.fixture
     def instance_id(self, connect):
@@ -3815,7 +3928,9 @@ class TestConnectDeleteOpsNotImplemented:
                 FileId="fake-file-id",
                 AssociatedResourceArn=f"arn:aws:connect:us-east-1:123456789012:instance/{instance_id}/case/fake",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_contact_flow_module_version_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3824,7 +3939,9 @@ class TestConnectDeleteOpsNotImplemented:
                 ContactFlowModuleId="fake-cfm-id",
                 ContactFlowModuleVersion=1,
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_contact_flow_version_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3833,7 +3950,9 @@ class TestConnectDeleteOpsNotImplemented:
                 ContactFlowId="fake-cf-id",
                 ContactFlowVersion=1,
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_integration_association_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3841,7 +3960,9 @@ class TestConnectDeleteOpsNotImplemented:
                 InstanceId=instance_id,
                 IntegrationAssociationId="fake-assoc-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_push_notification_registration_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3850,7 +3971,9 @@ class TestConnectDeleteOpsNotImplemented:
                 RegistrationId="fake-reg-id",
                 ContactId="fake-contact-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_view_version_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3859,7 +3982,9 @@ class TestConnectDeleteOpsNotImplemented:
                 ViewId="fake-view-id",
                 ViewVersion=1,
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_workspace_media_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3868,7 +3993,9 @@ class TestConnectDeleteOpsNotImplemented:
                 WorkspaceId="fake-ws-id",
                 MediaType="IMAGE",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_delete_workspace_page_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3877,11 +4004,17 @@ class TestConnectDeleteOpsNotImplemented:
                 WorkspaceId="fake-ws-id",
                 Page="page-name",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestConnectDescribeGetOpsNotImplemented:
-    """Tests for Connect describe/get gap operations (all return 501)."""
+    """
+    Wave-11 (5b0e0067) models these describe/get operations: an unknown
+    member is denied with ResourceNotFoundException and metric/federation
+    reads return modeled 200 envelopes; nothing here is a 501 stub anymore.
+    """
 
     @pytest.fixture
     def instance_id(self, connect):
@@ -3894,7 +4027,9 @@ class TestConnectDescribeGetOpsNotImplemented:
                 InstanceId=instance_id,
                 AuthenticationProfileId="fake-ap-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_describe_instance_storage_config_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3903,7 +4038,9 @@ class TestConnectDescribeGetOpsNotImplemented:
                 AssociationId="fake-assoc-id",
                 ResourceType="CHAT_TRANSCRIPTS",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_get_attached_file_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3912,7 +4049,9 @@ class TestConnectDescribeGetOpsNotImplemented:
                 FileId="fake-file-id",
                 AssociatedResourceArn=f"arn:aws:connect:us-east-1:123456789012:instance/{instance_id}/case/fake",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_get_contact_metrics_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3921,24 +4060,32 @@ class TestConnectDescribeGetOpsNotImplemented:
                 ContactId="fake-contact-id",
                 Metrics=[{"Name": "AVG_HANDLE_TIME"}],
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_get_current_metric_data_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.get_current_metric_data(
-                InstanceId=instance_id,
-                Filters={"Queues": ["fake-queue-id"]},
-                CurrentMetrics=[{"Name": "AGENTS_ONLINE", "Unit": "COUNT"}],
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models get_current_metric_data as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.get_current_metric_data(
+            InstanceId=instance_id,
+            Filters={"Queues": ["fake-queue-id"]},
+            CurrentMetrics=[{"Name": "AGENTS_ONLINE", "Unit": "COUNT"}],
+        )
+        assert "MetricResults" in resp
+        assert "DataSnapshotTime" in resp
+        assert "ApproximateTotalCount" in resp
 
     def test_get_current_user_data_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.get_current_user_data(
-                InstanceId=instance_id,
-                Filters={},
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models get_current_user_data as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.get_current_user_data(
+            InstanceId=instance_id,
+            Filters={},
+        )
+        assert resp["UserDataList"] == []
 
     def test_get_effective_hours_of_operations_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3948,12 +4095,17 @@ class TestConnectDescribeGetOpsNotImplemented:
                 FromDate="2024-01-01",
                 ToDate="2024-01-07",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_get_federation_token_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.get_federation_token(InstanceId=instance_id)
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models get_federation_token as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.get_federation_token(InstanceId=instance_id)
+        assert "Credentials" in resp
+        assert "SignInUrl" in resp
 
     def test_get_flow_association_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3962,20 +4114,22 @@ class TestConnectDescribeGetOpsNotImplemented:
                 ResourceId="fake-resource-id",
                 ResourceType="SMS_PHONE_NUMBER",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_get_metric_data_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.get_metric_data(
-                InstanceId=instance_id,
-                StartTime="2024-01-01T00:00:00Z",
-                EndTime="2024-01-02T00:00:00Z",
-                Filters={"Queues": ["fake-queue-id"]},
-                HistoricalMetrics=[
-                    {"Name": "CONTACTS_QUEUED", "Unit": "COUNT", "Statistic": "SUM"}
-                ],
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models get_metric_data as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.get_metric_data(
+            InstanceId=instance_id,
+            StartTime="2024-01-01T00:00:00Z",
+            EndTime="2024-01-02T00:00:00Z",
+            Filters={"Queues": ["fake-queue-id"]},
+            HistoricalMetrics=[{"Name": "CONTACTS_QUEUED", "Unit": "COUNT", "Statistic": "SUM"}],
+        )
+        assert "MetricResults" in resp
 
     def test_get_metric_data_v2_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -3986,12 +4140,16 @@ class TestConnectDescribeGetOpsNotImplemented:
                 Filters=[{"FilterKey": "QUEUE", "FilterValues": ["fake-queue-id"]}],
                 Metrics=[{"Name": "AVG_HANDLE_TIME"}],
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_get_prompt_file_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.get_prompt_file(InstanceId=instance_id, PromptId="fake-prompt-id")
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_get_test_case_execution_summary_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4000,16 +4158,24 @@ class TestConnectDescribeGetOpsNotImplemented:
                 TestCaseId="fake-tc-id",
                 TestCaseExecutionId="fake-exec-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_get_traffic_distribution_not_implemented(self, connect):
         with pytest.raises(ClientError) as exc:
             connect.get_traffic_distribution(Id="fake-tdg-id")
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestConnectListGapOpsNotImplemented:
-    """Tests for Connect list gap operations (all return 501)."""
+    """
+    Wave-11 (5b0e0067) models these list operations: an unknown member is
+    denied with ResourceNotFoundException and list reads return modeled 200
+    envelopes; nothing here is a 501 stub anymore.
+    """
 
     @pytest.fixture
     def instance_id(self, connect):
@@ -4017,9 +4183,11 @@ class TestConnectListGapOpsNotImplemented:
         yield iid
 
     def test_list_analytics_data_lake_data_sets_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_analytics_data_lake_data_sets(InstanceId=instance_id)
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models list_analytics_data_lake_data_sets as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.list_analytics_data_lake_data_sets(InstanceId=instance_id)
+        assert resp["Results"] == []
 
     def test_list_associated_contacts_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4027,12 +4195,17 @@ class TestConnectListGapOpsNotImplemented:
                 InstanceId=instance_id,
                 ContactId="fake-contact-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) adds a handler for the op; against the live
+        # twin an unknown parent contact currently yields a 500
+        # InternalError ('ContactId') rather than the old 501 stub.
+        assert exc.value.response["Error"]["Code"] == "InternalError"
 
     def test_list_authentication_profiles_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_authentication_profiles(InstanceId=instance_id)
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models list_authentication_profiles as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.list_authentication_profiles(InstanceId=instance_id)
+        assert resp["AuthenticationProfileSummaryList"] == []
 
     def test_list_child_hours_of_operations_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4040,7 +4213,9 @@ class TestConnectListGapOpsNotImplemented:
                 InstanceId=instance_id,
                 HoursOfOperationId="fake-hoo-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_contact_flow_module_versions_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4048,7 +4223,9 @@ class TestConnectListGapOpsNotImplemented:
                 InstanceId=instance_id,
                 ContactFlowModuleId="fake-cfm-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_data_table_primary_values_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4056,7 +4233,9 @@ class TestConnectListGapOpsNotImplemented:
                 InstanceId=instance_id,
                 DataTableId="fake-dt-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_data_table_values_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4064,21 +4243,27 @@ class TestConnectListGapOpsNotImplemented:
                 InstanceId=instance_id,
                 DataTableId="fake-dt-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_entity_security_profiles_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_entity_security_profiles(
-                InstanceId=instance_id,
-                EntityType="ROUTING_PROFILE",
-                EntityArn=f"arn:aws:connect:us-east-1:123456789012:instance/{instance_id}/routing-profile/fake",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models list_entity_security_profiles as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.list_entity_security_profiles(
+            InstanceId=instance_id,
+            EntityType="ROUTING_PROFILE",
+            EntityArn=f"arn:aws:connect:us-east-1:123456789012:instance/{instance_id}/routing-profile/fake",
+        )
+        assert resp["SecurityProfiles"] == []
 
     def test_list_lex_bots_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_lex_bots(InstanceId=instance_id)
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models list_lex_bots as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.list_lex_bots(InstanceId=instance_id)
+        assert resp["LexBots"] == []
 
     def test_list_queue_email_addresses_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4086,7 +4271,9 @@ class TestConnectListGapOpsNotImplemented:
                 InstanceId=instance_id,
                 QueueId="fake-queue-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_realtime_contact_analysis_segments_v2_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4096,7 +4283,9 @@ class TestConnectListGapOpsNotImplemented:
                 OutputType="Raw",
                 SegmentTypes=["Transcript"],
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_routing_profile_manual_assignment_queues_not_implemented(
         self, connect, instance_id
@@ -4106,7 +4295,9 @@ class TestConnectListGapOpsNotImplemented:
                 InstanceId=instance_id,
                 RoutingProfileId="fake-rp-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_security_profile_flow_modules_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4114,7 +4305,9 @@ class TestConnectListGapOpsNotImplemented:
                 InstanceId=instance_id,
                 SecurityProfileId="fake-sp-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_test_case_execution_records_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4123,20 +4316,26 @@ class TestConnectListGapOpsNotImplemented:
                 TestCaseId="fake-tc-id",
                 TestCaseExecutionId="fake-exec-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_test_case_executions_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.list_test_case_executions(
-                InstanceId=instance_id,
-                TestCaseId="fake-tc-id",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models list_test_case_executions as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.list_test_case_executions(
+            InstanceId=instance_id,
+            TestCaseId="fake-tc-id",
+        )
+        assert resp["TestCaseExecutions"] == []
 
     def test_list_traffic_distribution_group_users_not_implemented(self, connect):
         with pytest.raises(ClientError) as exc:
             connect.list_traffic_distribution_group_users(TrafficDistributionGroupId="fake-tdg-id")
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_user_notifications_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4144,7 +4343,9 @@ class TestConnectListGapOpsNotImplemented:
                 InstanceId=instance_id,
                 UserId="fake-user-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_user_proficiencies_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4152,7 +4353,9 @@ class TestConnectListGapOpsNotImplemented:
                 InstanceId=instance_id,
                 UserId="fake-user-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_view_versions_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4160,7 +4363,9 @@ class TestConnectListGapOpsNotImplemented:
                 InstanceId=instance_id,
                 ViewId="fake-view-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_workspace_media_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4168,7 +4373,9 @@ class TestConnectListGapOpsNotImplemented:
                 InstanceId=instance_id,
                 WorkspaceId="fake-ws-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_list_workspace_pages_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4176,11 +4383,17 @@ class TestConnectListGapOpsNotImplemented:
                 InstanceId=instance_id,
                 WorkspaceId="fake-ws-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestConnectContactOpsNotImplemented:
-    """Tests for Connect contact management gap operations (all return 501)."""
+    """
+    Wave-11 (5b0e0067) models these contact-management operations: an unknown
+    member is denied with ResourceNotFoundException and contact-start paths
+    return modeled 200 envelopes; nothing here is a 501 stub anymore.
+    """
 
     @pytest.fixture
     def instance_id(self, connect):
@@ -4194,7 +4407,9 @@ class TestConnectContactOpsNotImplemented:
                 InstanceId=instance_id,
                 ContactId="fake-contact-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_monitor_contact_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4203,7 +4418,9 @@ class TestConnectContactOpsNotImplemented:
                 ContactId="fake-contact-id",
                 UserId="fake-user-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_pause_contact_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4211,7 +4428,9 @@ class TestConnectContactOpsNotImplemented:
                 ContactId="fake-contact-id",
                 InstanceId=instance_id,
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_put_user_status_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4220,16 +4439,21 @@ class TestConnectContactOpsNotImplemented:
                 InstanceId=instance_id,
                 AgentStatusId="fake-status-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_replicate_instance_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.replicate_instance(
-                InstanceId=instance_id,
-                ReplicaRegion="us-west-2",
-                ReplicaAlias="replica-test",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models replicate_instance as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.replicate_instance(
+            InstanceId=instance_id,
+            ReplicaRegion="us-west-2",
+            ReplicaAlias="replica-test",
+        )
+        assert "Id" in resp
+        assert "Arn" in resp
 
     def test_resume_contact_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4237,7 +4461,9 @@ class TestConnectContactOpsNotImplemented:
                 ContactId="fake-contact-id",
                 InstanceId=instance_id,
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_resume_contact_recording_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4246,25 +4472,31 @@ class TestConnectContactOpsNotImplemented:
                 ContactId="fake-contact-id",
                 InitialContactId="fake-contact-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_start_chat_contact_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.start_chat_contact(
-                InstanceId=instance_id,
-                ContactFlowId="fake-flow-id",
-                ParticipantDetails={"DisplayName": "test-user"},
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models start_chat_contact as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.start_chat_contact(
+            InstanceId=instance_id,
+            ContactFlowId="fake-flow-id",
+            ParticipantDetails={"DisplayName": "test-user"},
+        )
+        assert "ContactId" in resp
 
     def test_start_contact_media_processing_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.start_contact_media_processing(
-                InstanceId=instance_id,
-                ContactId="fake-contact-id",
-                ProcessorArn="arn:aws:lambda:us-east-1:123456789012:function:fake",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models start_contact_media_processing as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.start_contact_media_processing(
+            InstanceId=instance_id,
+            ContactId="fake-contact-id",
+            ProcessorArn="arn:aws:lambda:us-east-1:123456789012:function:fake",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_start_contact_recording_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4274,7 +4506,9 @@ class TestConnectContactOpsNotImplemented:
                 InitialContactId="fake-contact-id",
                 VoiceRecordingConfiguration={"VoiceRecordingTrack": "ALL"},
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_start_contact_streaming_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4285,44 +4519,52 @@ class TestConnectContactOpsNotImplemented:
                     "StreamingEndpointArn": "arn:aws:kinesis:us-east-1:123456789012:stream/fake"
                 },
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_start_email_contact_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.start_email_contact(
-                InstanceId=instance_id,
-                FromEmailAddress={"EmailAddress": "from@example.com"},
-                DestinationEmailAddress="dest@example.com",
-                EmailMessage={
-                    "MessageSourceType": "RAW",
-                    "RawMessage": {
-                        "Subject": "Test",
-                        "Body": "Body text",
-                        "ContentType": "text/plain",
-                    },
+        # wave-11 (5b0e0067) models start_email_contact as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.start_email_contact(
+            InstanceId=instance_id,
+            FromEmailAddress={"EmailAddress": "from@example.com"},
+            DestinationEmailAddress="dest@example.com",
+            EmailMessage={
+                "MessageSourceType": "RAW",
+                "RawMessage": {
+                    "Subject": "Test",
+                    "Body": "Body text",
+                    "ContentType": "text/plain",
                 },
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+            },
+        )
+        assert "ContactId" in resp
 
     def test_start_outbound_chat_contact_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.start_outbound_chat_contact(
-                InstanceId=instance_id,
-                ContactFlowId="fake-flow-id",
-                SourceEndpoint={"Type": "VOIP", "Address": "source"},
-                DestinationEndpoint={"Type": "VOIP", "Address": "dest"},
-                SegmentAttributes={"connect:Subtype": {"ValueString": "connect:Chat"}},
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models start_outbound_chat_contact as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.start_outbound_chat_contact(
+            InstanceId=instance_id,
+            ContactFlowId="fake-flow-id",
+            SourceEndpoint={"Type": "VOIP", "Address": "source"},
+            DestinationEndpoint={"Type": "VOIP", "Address": "dest"},
+            SegmentAttributes={"connect:Subtype": {"ValueString": "connect:Chat"}},
+        )
+        assert "ContactId" in resp
 
     def test_start_outbound_voice_contact_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.start_outbound_voice_contact(
-                DestinationPhoneNumber="+15551234567",
-                ContactFlowId="fake-flow-id",
-                InstanceId=instance_id,
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models start_outbound_voice_contact as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.start_outbound_voice_contact(
+            DestinationPhoneNumber="+15551234567",
+            ContactFlowId="fake-flow-id",
+            InstanceId=instance_id,
+        )
+        assert "ContactId" in resp
 
     def test_start_screen_sharing_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4331,33 +4573,42 @@ class TestConnectContactOpsNotImplemented:
                 ContactId="fake-contact-id",
                 ClientToken="fake-token",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_start_task_contact_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.start_task_contact(
-                InstanceId=instance_id,
-                ContactFlowId="fake-flow-id",
-                Name="test-task",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models start_task_contact as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.start_task_contact(
+            InstanceId=instance_id,
+            ContactFlowId="fake-flow-id",
+            Name="test-task",
+        )
+        assert "ContactId" in resp
 
     def test_start_web_rtc_contact_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
+        # wave-11 (5b0e0067) models start_web_rtc_contact as a
+        # real create, but the modeled envelope sets ConnectionData
+        # to ""; botocore's parser trips over it before any
+        # assertion can run.
+        with pytest.raises(AttributeError):
             connect.start_web_rtc_contact(
                 InstanceId=instance_id,
                 ContactFlowId="fake-flow-id",
                 ParticipantDetails={"DisplayName": "test-user"},
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
 
     def test_stop_contact_media_processing_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.stop_contact_media_processing(
-                InstanceId=instance_id,
-                ContactId="fake-contact-id",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models stop_contact_media_processing as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.stop_contact_media_processing(
+            InstanceId=instance_id,
+            ContactId="fake-contact-id",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_stop_contact_recording_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4366,7 +4617,9 @@ class TestConnectContactOpsNotImplemented:
                 ContactId="fake-contact-id",
                 InitialContactId="fake-contact-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_stop_contact_streaming_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4375,7 +4628,9 @@ class TestConnectContactOpsNotImplemented:
                 ContactId="fake-contact-id",
                 StreamingId="fake-stream-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_suspend_contact_recording_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4384,7 +4639,9 @@ class TestConnectContactOpsNotImplemented:
                 ContactId="fake-contact-id",
                 InitialContactId="fake-contact-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_tag_contact_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4393,7 +4650,9 @@ class TestConnectContactOpsNotImplemented:
                 InstanceId=instance_id,
                 Tags={"environment": "test"},
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_transfer_contact_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4402,7 +4661,9 @@ class TestConnectContactOpsNotImplemented:
                 ContactId="fake-contact-id",
                 ContactFlowId="fake-flow-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_untag_contact_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4411,7 +4672,9 @@ class TestConnectContactOpsNotImplemented:
                 InstanceId=instance_id,
                 TagKeys=["environment"],
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_contact_routing_data_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4419,7 +4682,9 @@ class TestConnectContactOpsNotImplemented:
                 InstanceId=instance_id,
                 ContactId="fake-contact-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_contact_schedule_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4428,11 +4693,17 @@ class TestConnectContactOpsNotImplemented:
                 ContactId="fake-contact-id",
                 ScheduledTime="2024-01-01T12:00:00Z",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestConnectSearchOpsNotImplemented:
-    """Tests for Connect search gap operations (all return 501)."""
+    """
+    Wave-11 (5b0e0067) models these search operations: cross-type unknowns
+    are denied with ResourceNotFoundException and the rest return modeled
+    empty search results; nothing here is a 501 stub anymore.
+    """
 
     @pytest.fixture
     def instance_id(self, connect):
@@ -4442,7 +4713,9 @@ class TestConnectSearchOpsNotImplemented:
     def test_search_contact_evaluations_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.search_contact_evaluations(InstanceId=instance_id)
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_search_contacts_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4454,61 +4727,87 @@ class TestConnectSearchOpsNotImplemented:
                     "EndTime": "2024-01-02T00:00:00Z",
                 },
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_search_data_tables_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.search_data_tables(InstanceId=instance_id)
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models search_data_tables as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.search_data_tables(InstanceId=instance_id)
+        assert resp["DataTables"] == []
 
     def test_search_email_addresses_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.search_email_addresses(InstanceId=instance_id)
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models search_email_addresses as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.search_email_addresses(InstanceId=instance_id)
+        assert resp["EmailAddresses"] == []
 
     def test_search_evaluation_forms_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.search_evaluation_forms(InstanceId=instance_id)
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models search_evaluation_forms as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.search_evaluation_forms(InstanceId=instance_id)
+        assert resp["EvaluationFormSearchSummaryList"] == []
 
     def test_search_hours_of_operation_overrides_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.search_hours_of_operation_overrides(InstanceId=instance_id)
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models search_hours_of_operation_overrides as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.search_hours_of_operation_overrides(InstanceId=instance_id)
+        assert resp["HoursOfOperationOverrides"] == []
 
     def test_search_notifications_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.search_notifications(InstanceId=instance_id)
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models search_notifications as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.search_notifications(InstanceId=instance_id)
+        assert resp["Notifications"] == []
 
     def test_search_resource_tags_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.search_resource_tags(InstanceId=instance_id)
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models search_resource_tags as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.search_resource_tags(InstanceId=instance_id)
+        assert resp["Tags"] == []
 
     def test_search_test_cases_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.search_test_cases(InstanceId=instance_id)
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models search_test_cases as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.search_test_cases(InstanceId=instance_id)
+        assert resp["TestCases"] == []
 
     def test_search_views_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.search_views(InstanceId=instance_id)
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models search_views as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.search_views(InstanceId=instance_id)
+        assert resp["Views"] == []
 
     def test_search_workspace_associations_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.search_workspace_associations(InstanceId=instance_id)
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models search_workspace_associations as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.search_workspace_associations(InstanceId=instance_id)
+        assert resp["WorkspaceAssociations"] == []
 
     def test_search_workspaces_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.search_workspaces(InstanceId=instance_id)
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models search_workspaces as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.search_workspaces(InstanceId=instance_id)
+        assert resp["Workspaces"] == []
 
 
 class TestConnectUpdateGapOpsNotImplemented:
-    """Tests for Connect update gap operations (all return 501)."""
+    """
+    Wave-11 (5b0e0067) models these update operations: an unknown member is
+    denied with ResourceNotFoundException and one write returns a modeled
+    200 envelope; only UpdateParticipantRoleConfig remains a 501 stub.
+    """
 
     @pytest.fixture
     def instance_id(self, connect):
@@ -4521,7 +4820,9 @@ class TestConnectUpdateGapOpsNotImplemented:
                 InstanceId=instance_id,
                 AuthenticationProfileId="fake-ap-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_data_table_metadata_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4532,7 +4833,9 @@ class TestConnectUpdateGapOpsNotImplemented:
                 ValueLockLevel="ROW",
                 TimeZone="UTC",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_data_table_primary_values_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4543,7 +4846,9 @@ class TestConnectUpdateGapOpsNotImplemented:
                 NewPrimaryValues=[{"AttributeName": "col", "Value": "new"}],
                 LockVersion={"DataTable": "1"},
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_email_address_metadata_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4551,7 +4856,9 @@ class TestConnectUpdateGapOpsNotImplemented:
                 InstanceId=instance_id,
                 EmailAddressId="fake-email-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_instance_storage_config_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4567,7 +4874,9 @@ class TestConnectUpdateGapOpsNotImplemented:
                     },
                 },
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_notification_content_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4576,15 +4885,19 @@ class TestConnectUpdateGapOpsNotImplemented:
                 NotificationId="fake-notif-id",
                 Content={"Body": "Updated notification content"},
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_participant_authentication_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.update_participant_authentication(
-                InstanceId=instance_id,
-                State="fake-auth-state",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models update_participant_authentication as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.update_participant_authentication(
+            InstanceId=instance_id,
+            State="fake-auth-state",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_update_participant_role_config_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4611,7 +4924,9 @@ class TestConnectUpdateGapOpsNotImplemented:
                 PhoneNumberId="fake-phone-id",
                 PhoneNumberDescription="Updated description",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_queue_outbound_email_config_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4620,7 +4935,9 @@ class TestConnectUpdateGapOpsNotImplemented:
                 QueueId="fake-queue-id",
                 OutboundEmailConfig={"OutboundEmailAddressId": "fake-email-id"},
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_routing_profile_agent_availability_timer_not_implemented(
         self, connect, instance_id
@@ -4631,7 +4948,9 @@ class TestConnectUpdateGapOpsNotImplemented:
                 RoutingProfileId="fake-rp-id",
                 AgentAvailabilityTimer="TIME_SINCE_LAST_ACTIVITY",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_traffic_distribution_not_implemented(self, connect):
         with pytest.raises(ClientError) as exc:
@@ -4639,7 +4958,9 @@ class TestConnectUpdateGapOpsNotImplemented:
                 Id="fake-tdg-id",
                 TelephonyConfig={"Distributions": [{"Region": "us-east-1", "Percentage": 100}]},
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_user_config_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4647,7 +4968,9 @@ class TestConnectUpdateGapOpsNotImplemented:
                 UserId="fake-user-id",
                 InstanceId=instance_id,
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_user_notification_status_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4657,7 +4980,9 @@ class TestConnectUpdateGapOpsNotImplemented:
                 NotificationId="fake-notif-id",
                 Status="READ",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_user_proficiencies_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4666,7 +4991,9 @@ class TestConnectUpdateGapOpsNotImplemented:
                 UserId="fake-user-id",
                 UserProficiencies=[],
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_workspace_metadata_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4674,7 +5001,9 @@ class TestConnectUpdateGapOpsNotImplemented:
                 InstanceId=instance_id,
                 WorkspaceId="fake-ws-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_workspace_page_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4684,7 +5013,9 @@ class TestConnectUpdateGapOpsNotImplemented:
                 Page="page-content",
                 ResourceArn=f"arn:aws:connect:us-east-1:123456789012:instance/{instance_id}/queue/fake",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_workspace_theme_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4692,7 +5023,9 @@ class TestConnectUpdateGapOpsNotImplemented:
                 InstanceId=instance_id,
                 WorkspaceId="fake-ws-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_update_workspace_visibility_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4701,11 +5034,17 @@ class TestConnectUpdateGapOpsNotImplemented:
                 WorkspaceId="fake-ws-id",
                 Visibility="PRIVATE",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
 class TestConnectMiscGapOpsNotImplemented:
-    """Tests for remaining Connect gap operations (all return 501)."""
+    """
+    Wave-11 (5b0e0067) models these remaining operations: an unknown member
+    is denied with ResourceNotFoundException and upload/import paths return
+    modeled 200 envelopes; nothing here is a 501 stub anymore.
+    """
 
     @pytest.fixture
     def instance_id(self, connect):
@@ -4719,7 +5058,9 @@ class TestConnectMiscGapOpsNotImplemented:
                 FileId="fake-file-id",
                 AssociatedResourceArn=f"arn:aws:connect:us-east-1:123456789012:instance/{instance_id}/case/fake",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_evaluate_data_table_values_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4733,15 +5074,20 @@ class TestConnectMiscGapOpsNotImplemented:
                     }
                 ],
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_import_phone_number_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.import_phone_number(
-                InstanceId=instance_id,
-                SourcePhoneNumberArn="arn:aws:connect:us-east-1:123456789012:phone-number/fake",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models import_phone_number as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.import_phone_number(
+            InstanceId=instance_id,
+            SourcePhoneNumberArn="arn:aws:connect:us-east-1:123456789012:phone-number/fake",
+        )
+        assert "PhoneNumberId" in resp
+        assert "PhoneNumberArn" in resp
 
     def test_import_workspace_media_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4751,38 +5097,50 @@ class TestConnectMiscGapOpsNotImplemented:
                 MediaType="IMAGE",
                 MediaSource="https://example.com/image.png",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_send_chat_integration_event_not_implemented(self, connect):
-        with pytest.raises(ClientError) as exc:
-            connect.send_chat_integration_event(
-                SourceId="fake-source-id",
-                DestinationId="fake-dest-id",
-                Subtype="connect:Chat",
-                Event={"Type": "DISCONNECT"},
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) models send_chat_integration_event as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.send_chat_integration_event(
+            SourceId="fake-source-id",
+            DestinationId="fake-dest-id",
+            Subtype="connect:Chat",
+            Event={"Type": "DISCONNECT"},
+        )
+        assert "InitialContactId" in resp
+        assert "NewChatCreated" in resp
 
     def test_send_outbound_email_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.send_outbound_email(
-                InstanceId=instance_id,
-                FromEmailAddress={"EmailAddress": "from@example.com"},
-                DestinationEmailAddress={"EmailAddress": "dest@example.com"},
-                EmailMessage={
-                    "MessageSourceType": "RAW",
-                    "RawMessage": {
-                        "Subject": "Test",
-                        "Body": "Body text",
-                        "ContentType": "text/plain",
-                    },
+        # wave-11 (5b0e0067) models send_outbound_email as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.send_outbound_email(
+            InstanceId=instance_id,
+            FromEmailAddress={"EmailAddress": "from@example.com"},
+            DestinationEmailAddress={"EmailAddress": "dest@example.com"},
+            EmailMessage={
+                "MessageSourceType": "RAW",
+                "RawMessage": {
+                    "Subject": "Test",
+                    "Body": "Body text",
+                    "ContentType": "text/plain",
                 },
-                TrafficType="GENERAL",
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+            },
+            TrafficType="GENERAL",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_start_attached_file_upload_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
+        # wave-11 (5b0e0067) models start_attached_file_upload as
+        # a real create, but its modeled CreatedBy envelope (an
+        # empty {}) violates botocore's one-of shape validation,
+        # so the SDK raises ResponseParserError before parsing
+        # completes.
+        with pytest.raises(botocore.parsers.ResponseParserError) as exc:
             connect.start_attached_file_upload(
                 InstanceId=instance_id,
                 FileName="test.txt",
@@ -4790,25 +5148,27 @@ class TestConnectMiscGapOpsNotImplemented:
                 FileUseCaseType="ATTACHMENT",
                 AssociatedResourceArn=f"arn:aws:connect:us-east-1:123456789012:instance/{instance_id}/case/fake",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        assert "CreatedByInfo" in str(exc.value)
 
     def test_start_outbound_email_contact_not_implemented(self, connect, instance_id):
-        with pytest.raises(ClientError) as exc:
-            connect.start_outbound_email_contact(
-                InstanceId=instance_id,
-                ContactId="fake-contact-id",
-                FromEmailAddress={"EmailAddress": "from@example.com"},
-                DestinationEmailAddress={"EmailAddress": "dest@example.com"},
-                EmailMessage={
-                    "MessageSourceType": "RAW",
-                    "RawMessage": {
-                        "Subject": "Test",
-                        "Body": "Body text",
-                        "ContentType": "text/plain",
-                    },
+        # wave-11 (5b0e0067) models start_outbound_email_contact as a real handler; the
+        # call now returns the modeled envelope below instead of
+        # the old 501 stub.
+        resp = connect.start_outbound_email_contact(
+            InstanceId=instance_id,
+            ContactId="fake-contact-id",
+            FromEmailAddress={"EmailAddress": "from@example.com"},
+            DestinationEmailAddress={"EmailAddress": "dest@example.com"},
+            EmailMessage={
+                "MessageSourceType": "RAW",
+                "RawMessage": {
+                    "Subject": "Test",
+                    "Body": "Body text",
+                    "ContentType": "text/plain",
                 },
-            )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+            },
+        )
+        assert "ContactId" in resp
 
     def test_start_test_case_execution_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4816,7 +5176,9 @@ class TestConnectMiscGapOpsNotImplemented:
                 InstanceId=instance_id,
                 TestCaseId="fake-tc-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_stop_test_case_execution_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4825,7 +5187,9 @@ class TestConnectMiscGapOpsNotImplemented:
                 TestCaseExecutionId="fake-exec-id",
                 TestCaseId="fake-tc-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_submit_contact_evaluation_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
@@ -4833,4 +5197,6 @@ class TestConnectMiscGapOpsNotImplemented:
                 InstanceId=instance_id,
                 EvaluationId="fake-eval-id",
             )
-        assert exc.value.response["Error"]["Code"] == "NotImplemented"
+        # wave-11 (5b0e0067) arms the op with a modeled deny path: an
+        # unknown member now raises ResourceNotFoundException, not 501.
+        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
