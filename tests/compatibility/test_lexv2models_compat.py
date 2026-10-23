@@ -283,13 +283,13 @@ class TestMissingResourcesAndGaps:
         error = ctx.value.response["Error"]
         assert error["Code"] == "ResourceNotFoundException"
 
-    # Operations outside moto's lexv2models handler surface (locales, intents,
-    # exports, test sets, uploads): moto defines handler methods only for the
-    # bot/alias/policy/tag ops exercised above and raises
-    # NotImplementedError for the rest; the twin answers them with HTTP 501
-    # NotImplemented. Verified against the live twin.
+    # Wave-11 (5737f2c4) modeled the previously-501 lexv2 surfaces on the
+    # twin (locales, intents, exports, test sets, uploads): unknown bot ids
+    # are denied with ResourceNotFoundException, and export/upload/test-set
+    # paths return modeled 200 envelopes; moto raised NotImplementedError
+    # for all five. Verified against the live twin.
     @pytest.mark.parametrize(
-        "op,kwargs",
+        "op,kwargs,mode",
         [
             (
                 "create_bot_locale",
@@ -299,6 +299,7 @@ class TestMissingResourcesAndGaps:
                     localeId="en_US",
                     nluIntentConfidenceThreshold=0.9,
                 ),
+                "deny",
             ),
             (
                 "list_intents",
@@ -307,6 +308,7 @@ class TestMissingResourcesAndGaps:
                     botVersion="DRAFT",
                     localeId="en_US",
                 ),
+                "deny",
             ),
             (
                 "create_export",
@@ -319,16 +321,22 @@ class TestMissingResourcesAndGaps:
                         }
                     },
                 ),
+                ("success", ("fileFormat", "exportId", "exportStatus")),
             ),
-            ("create_upload_url", {}),
-            ("list_test_sets", {}),
+            ("create_upload_url", {}, ("success", ("importId", "uploadUrl"))),
+            ("list_test_sets", {}, ("success", ("testSets",))),
         ],
     )
-    def test_unimplemented_operations_are_not_implemented(self, lexv2_client, op, kwargs):
+    def test_unimplemented_operations_are_not_implemented(self, lexv2_client, op, kwargs, mode):
         import botocore.exceptions
 
-        with pytest.raises(botocore.exceptions.ClientError) as ctx:
-            getattr(lexv2_client, op)(**kwargs)
-        error = ctx.value.response["Error"]
-        assert error["Code"] == "NotImplemented"
-        assert ctx.value.response["ResponseMetadata"]["HTTPStatusCode"] == 501
+        if mode == "deny":
+            # unknown bot id -> modeled ResourceNotFoundException, not a 501
+            with pytest.raises(botocore.exceptions.ClientError) as ctx:
+                getattr(lexv2_client, op)(**kwargs)
+            assert ctx.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        else:
+            _, required_keys = mode
+            resp = getattr(lexv2_client, op)(**kwargs)
+            for key in required_keys:
+                assert key in resp
