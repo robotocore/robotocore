@@ -2202,7 +2202,7 @@ fn create_flow(req: &Request, body: &Value, st: &mut BedrockAgentStore) -> Respo
             ("id", json!(flow_id)),
             ("arn", json!(arn)),
             ("status", json!("NotPrepared")),
-            ("version", json!("1")),
+            ("version", json!("DRAFT")),
             ("createdAt", json!(unix_time())),
             ("updatedAt", json!(unix_time())),
         ],
@@ -2216,7 +2216,7 @@ fn create_flow(req: &Request, body: &Value, st: &mut BedrockAgentStore) -> Respo
     }
     st.flows.insert(flow_id.clone(), record.clone());
     st.flow_versions
-        .insert(format!("{flow_id}|1"), record.clone());
+        .insert(format!("{flow_id}|DRAFT"), record.clone());
     ok(record)
 }
 
@@ -2324,7 +2324,8 @@ fn create_flow_version(req: &Request, body: &Value, st: &mut BedrockAgentStore) 
     let Some(flow) = st.flows.get(&flow_id) else {
         return not_found(&format!("Flow {flow_id} not found"));
     };
-    // Version numbers are the stored max + 1.
+    // Version numbers are the stored max + 1 (numeric only — the DRAFT root
+    // record isn't parseable, so the first created version is 2).
     let next = st
         .flow_versions
         .keys()
@@ -2514,7 +2515,7 @@ fn create_prompt(req: &Request, body: &Value, st: &mut BedrockAgentStore) -> Res
             ("name", json!(name)),
             ("id", json!(prompt_id)),
             ("arn", json!(arn)),
-            ("version", json!("1")),
+            ("version", json!("DRAFT")),
             ("createdAt", json!(unix_time())),
             ("updatedAt", json!(unix_time())),
         ],
@@ -2528,7 +2529,7 @@ fn create_prompt(req: &Request, body: &Value, st: &mut BedrockAgentStore) -> Res
     }
     st.prompts.insert(prompt_id.clone(), record.clone());
     st.prompt_versions
-        .insert(format!("{prompt_id}|1"), record.clone());
+        .insert(format!("{prompt_id}|DRAFT"), record.clone());
     ok(record)
 }
 
@@ -3710,7 +3711,7 @@ mod tests {
             account,
         )));
         assert_eq!(flow["status"], "NotPrepared");
-        assert_eq!(flow["version"], "1");
+        assert_eq!(flow["version"], "DRAFT");
         let flow_id = flow["id"].as_str().unwrap().to_string();
         assert!(flow_id.starts_with("support-flow"));
         assert!(flow["arn"].as_str().unwrap().contains("flow/"));
@@ -3881,7 +3882,7 @@ mod tests {
             }),
             account,
         )));
-        assert_eq!(prompt["version"], "1");
+        assert_eq!(prompt["version"], "DRAFT");
         let prompt_id = prompt["id"].as_str().unwrap().to_string();
         assert!(prompt_id.starts_with("summarize"));
 

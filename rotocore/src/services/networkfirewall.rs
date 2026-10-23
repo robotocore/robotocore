@@ -217,9 +217,11 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
                 "FirewallPolicyArn": p.get("FirewallPolicyArn").cloned().unwrap_or(Value::Null),
                 "VpcId": p.get("VpcId").cloned().unwrap_or(Value::Null),
                 "SubnetMappings": p.get("SubnetMappings").cloned().unwrap_or(json!([])),
-                "DeleteProtection": p.get("DeleteProtection").cloned().unwrap_or(json!(false)),
-                "SubnetChangeProtection": p.get("SubnetChangeProtection").cloned().unwrap_or(json!(false)),
-                "FirewallPolicyChangeProtection": p.get("FirewallPolicyChangeProtection").cloned().unwrap_or(json!(false)),
+                // moto defaults all three change-protection flags to true
+                // (moto/networkfirewall/models.py — delete/subnet/policy).
+                "DeleteProtection": p.get("DeleteProtection").cloned().unwrap_or(json!(true)),
+                "SubnetChangeProtection": p.get("SubnetChangeProtection").cloned().unwrap_or(json!(true)),
+                "FirewallPolicyChangeProtection": p.get("FirewallPolicyChangeProtection").cloned().unwrap_or(json!(true)),
                 "Description": p.get("Description").cloned().unwrap_or(Value::Null),
                 "Tags": p.get("Tags").cloned().unwrap_or(json!([])),
                 "EncryptionConfiguration": p.get("EncryptionConfiguration").cloned().unwrap_or(Value::Null),
@@ -421,10 +423,13 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
                 return invalid_request("Please specify one of: Rules or RuleGroup");
             }
             let id = uuid_id();
-            let arn = format!("arn:aws:network-firewall:{region}:{account}:rulegroup/{rn}|{id}");
+            // moto/AWS wire ARN: <kind>/<name> — no id suffix. The unique
+            // uuid stays in RuleGroupId; name|uuid lives on only as the
+            // internal `rule_group_key` state key (never rendered).
+            let arn = format!("arn:aws:network-firewall:{region}:{account}:rulegroup/{rn}");
             let capacity = p.get("Capacity").cloned().unwrap_or(json!(0));
             let rg = json!({
-                "RuleGroupArn": arn,
+                "RuleGroupArn": arn.clone(),
                 "RuleGroupName": rn,
                 "RuleGroupId": id,
                 "Description": p.get("Description").cloned().unwrap_or(Value::Null),
@@ -436,6 +441,7 @@ fn handle(req: &Request, st: &mut State, p: &Value) -> Response {
                 "LastModifiedTime": now_epoch(),
                 "rules_string": rules_string,
                 "rule_group_body": group_body.cloned().unwrap_or(Value::Null),
+                "rule_group_key": format!("{rn}|{id}"),
             });
             if let Some(tags) = p.get("Tags") {
                 store_tags(st, &arn, tags);
@@ -2013,7 +2019,27 @@ mod tests {
         let resp = handle(&create, b, &p);
         let v = serde_json::from_slice::<Value>(&resp.body).unwrap();
         assert_eq!(v["Firewall"]["FirewallName"], "fw-test");
+        // moto defaults all three protection flags to true when omitted.
+        assert_eq!(v["Firewall"]["DeleteProtection"], true);
+        assert_eq!(v["Firewall"]["SubnetChangeProtection"], true);
+        assert_eq!(v["Firewall"]["FirewallPolicyChangeProtection"], true);
         assert_eq!(v["FirewallStatus"]["Status"], "READY");
+
+        // An explicit false still wins over the default.
+        let explicit = req(
+            "CreateFirewall",
+            json!({
+                "FirewallName": "fw-explicit",
+                "FirewallPolicyArn": "arn:aws:network-firewall:us-east-1:123456789012:firewall-policy/t",
+                "SubnetMappings": [{"SubnetId": "subnet-12345"}],
+                "VpcId": "vpc-12345",
+                "DeleteProtection": false,
+            }),
+        );
+        let p = serde_json::from_slice(&explicit.body).unwrap();
+        let v = serde_json::from_slice::<Value>(&handle(&explicit, b, &p).body).unwrap();
+        assert_eq!(v["Firewall"]["DeleteProtection"], false);
+        assert_eq!(v["Firewall"]["SubnetChangeProtection"], true);
 
         let describe = req("DescribeFirewall", json!({"FirewallName": "fw-test"}));
         let p = serde_json::from_slice(&describe.body).unwrap();
@@ -2024,7 +2050,7 @@ mod tests {
         let list = req("ListFirewalls", json!({}));
         let p = serde_json::from_slice(&list.body).unwrap();
         let v = serde_json::from_slice::<Value>(&handle(&list, b, &p).body).unwrap();
-        assert_eq!(v["Firewalls"].as_array().unwrap().len(), 1);
+        assert_eq!(v["Firewalls"].as_array().unwrap().len(), 2);
     }
 
     #[test]
@@ -2051,8 +2077,16 @@ mod tests {
             .to_string();
         assert_eq!(v["RuleGroupResponse"]["RuleGroupName"], "rg-crud");
         assert_eq!(v["RuleGroupResponse"]["RuleGroupStatus"], "ACTIVE");
-        assert!(arn.contains("rulegroup/rg-crud"));
+        // moto/AWS wire shape: rulegroup/<name>, no |uuid suffix.
+        assert!(arn.ends_with(":rulegroup/rg-crud"), "{arn}");
+        assert!(!arn.contains('|'), "{arn}");
         assert!(v["UpdateToken"].is_string());
+        // The composite name|uuid survives as the internal state key only.
+        let rg_id = v["RuleGroupResponse"]["RuleGroupId"].as_str().unwrap();
+        assert_eq!(
+            b.rule_groups[0]["rule_group_key"].as_str().unwrap(),
+            format!("rg-crud|{rg_id}")
+        );
 
         let (status, v) = call(b, "DescribeRuleGroup", json!({"RuleGroupName": "rg-crud"}));
         assert_eq!(status, 200);

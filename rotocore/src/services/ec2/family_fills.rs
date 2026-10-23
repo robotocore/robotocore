@@ -622,15 +622,18 @@ pub fn create_fills(
                     .into(),
                 ),
             );
-            f.insert(
-                "PersistRoutesDuration".to_string(),
-                Fill::S(
-                    params
-                        .get("PersistRoutesDuration")
-                        .unwrap_or("")
-                        .to_string(),
-                ),
-            );
+            // Optional member: only render it when the caller provided it —
+            // an empty element makes real SDKs parse "" where they expect
+            // an integer (boto3: invalid literal for int()).
+            if let Some(duration) = params
+                .get("PersistRoutesDuration")
+                .filter(|v| !v.is_empty())
+            {
+                f.insert(
+                    "PersistRoutesDuration".to_string(),
+                    Fill::S(duration.to_string()),
+                );
+            }
             f.insert(
                 "SnsNotificationsEnabled".to_string(),
                 Fill::S(

@@ -517,6 +517,53 @@ fn wave11_simple_families_round_trip() {
 }
 
 #[test]
+fn route_server_omitted_persist_routes_duration_not_rendered() {
+    // Reviewer repro: PersistRoutesDuration is optional per botocore, but the
+    // fill map used to render an empty `<PersistRoutesDuration></>` element,
+    // which boto3 parses as int("") and raises ValueError. The member must
+    // be absent from the record when the caller omits it.
+    let resp = super::dispatch(&req("CreateRouteServer", "Action=CreateRouteServer"));
+    assert_eq!(resp.status, 200);
+    let create_text = String::from_utf8(resp.body).unwrap();
+    assert!(
+        !create_text
+            .to_ascii_lowercase()
+            .contains("persistroutesduration"),
+        "create must not render an empty member: {create_text}"
+    );
+    let rs_id = tag_text(&create_text, "routeServerId");
+
+    let describe_text = String::from_utf8(
+        super::dispatch(&req(
+            "DescribeRouteServers",
+            &format!("Action=DescribeRouteServers&RouteServerId.1={rs_id}"),
+        ))
+        .body,
+    )
+    .unwrap();
+    assert!(
+        !describe_text
+            .to_ascii_lowercase()
+            .contains("persistroutesduration"),
+        "describe must not render an empty member: {describe_text}"
+    );
+    assert!(describe_text.contains(&rs_id), "{describe_text}");
+
+    // When the caller does provide it, the member renders with its value.
+    let resp = super::dispatch(&req(
+        "CreateRouteServer",
+        "Action=CreateRouteServer&PersistRoutesDuration=8",
+    ));
+    assert_eq!(resp.status, 200);
+    let text = String::from_utf8(resp.body).unwrap();
+    assert!(
+        text.to_ascii_lowercase()
+            .contains("<persistroutesduration>8</persistroutesduration>"),
+        "{text}"
+    );
+}
+
+#[test]
 fn wave11_byoip_parameterized_family_round_trip() {
     // BYOIP keys its record on the request's Cidr (no generated id).
     let cidr = "203.0.113.0/24";
