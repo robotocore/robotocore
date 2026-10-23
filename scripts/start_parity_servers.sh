@@ -12,6 +12,13 @@ RUST_PORT=${RUST_PORT:-4566}
 RUST_HOST=${RUST_HOST:-127.0.0.1}
 LOG_PREFIX=${LOG_PREFIX:-parity}
 
+# The lambda shim imports boto3 through this interpreter (crates/lambda/
+# src/runtime.rs reads ROBOTOCORE_PY). Without it, every lambda-driven
+# compat test fails on `ModuleNotFoundError: No module named 'boto3'`.
+if [ -z "${ROBOTOCORE_PY:-}" ] && [ -x "$PWD/.venv/bin/python" ]; then
+    export ROBOTOCORE_PY="$PWD/.venv/bin/python"
+fi
+
 incumbent_pid() { # PID listening on PORT whose cmdline matches needle
     local port="$1" needle="$2"
     ss -ltnp "sport = :$port" 2>/dev/null \
