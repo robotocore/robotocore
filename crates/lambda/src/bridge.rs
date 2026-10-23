@@ -77,6 +77,30 @@ pub fn invoke_by_arn(arn: &str, event: &Value) -> Option<InvokeOutcome> {
     let region = arn.split(':').nth(3).unwrap_or("us-east-1").to_string();
     let account = arn.split(':').nth(4).unwrap_or("123456789012").to_string();
     let runtime_name = func.runtime.read().clone();
+    // LAMBDA_EXECUTOR=docker: official runtime images via the docker CLI
+    // when mode/daemon/image all check out (same dispatch as the REST path);
+    // None keeps the in-process dispatch below.
+    if let Some(out) = crate::docker_runtime::try_execute_docker(
+        &runtime_name,
+        &zip_bytes,
+        &layer_zips,
+        &func.handler.read().clone(),
+        &event_json,
+        &func.function_name,
+        &func.version.read().clone(),
+        &func.function_arn.clone(),
+        &func.environment.read().clone().unwrap_or_default(),
+        *func.timeout.read(),
+        *func.memory_size.read(),
+        &region,
+        &account,
+        None,
+    ) {
+        return Some(InvokeOutcome {
+            payload: out.payload,
+            function_error: out.function_error,
+        });
+    }
     let out = if runtime::is_custom_runtime(&runtime_name) {
         runtime::execute_custom(
             &zip_bytes,

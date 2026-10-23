@@ -131,7 +131,7 @@ if __name__ == "__main__":
     main()
 "#;
 
-fn safe_dir_name(fn_name: &str) -> String {
+pub(crate) fn safe_dir_name(fn_name: &str) -> String {
     fn_name
         .chars()
         .map(|c| {
@@ -161,7 +161,9 @@ const OUTPUT_CAP: usize = 128 * 1024;
 /// can wait on with a deadline. Reading blocks until EOF, which never
 /// arrives while a grandchild inherited the pipe, so the caller must bound
 /// how long it waits and abandon the thread (and its text) on timeout.
-fn drain_thread<R: std::io::Read + Send + 'static>(pipe: Option<R>) -> mpsc::Receiver<String> {
+pub(crate) fn drain_thread<R: std::io::Read + Send + 'static>(
+    pipe: Option<R>,
+) -> mpsc::Receiver<String> {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let mut kept: Vec<u8> = Vec::new();
@@ -187,7 +189,7 @@ fn drain_thread<R: std::io::Read + Send + 'static>(pipe: Option<R>) -> mpsc::Rec
 
 /// Take the drained text, bounded by the absolute `deadline`; on timeout
 /// abandon the drain thread and return nothing.
-fn collect_by(rx: &mpsc::Receiver<String>, deadline: std::time::Instant) -> String {
+pub(crate) fn collect_by(rx: &mpsc::Receiver<String>, deadline: std::time::Instant) -> String {
     rx.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
         .unwrap_or_default()
 }
@@ -884,7 +886,7 @@ pub fn is_custom_runtime(runtime: &str) -> bool {
     r.starts_with("provided") || r.starts_with("go")
 }
 
-fn extract_zip_into(zip_bytes: &[u8], dest: &std::path::Path) -> Result<(), String> {
+pub(crate) fn extract_zip_into(zip_bytes: &[u8], dest: &std::path::Path) -> Result<(), String> {
     let reader = std::io::Cursor::new(zip_bytes);
     let mut archive = zip::ZipArchive::new(reader).map_err(|e| e.to_string())?;
     for i in 0..archive.len() {
@@ -1153,6 +1155,81 @@ pub fn execute_custom(
         payload,
         function_error: None,
         logs,
+    }
+}
+
+/// Family dispatch shared with the docker executor's local fallback: identical
+/// branches to the handler's/bridge's invoke paths — provided./go runtimes run
+/// the package `bootstrap`, nodejs through the node bootstrap, the python
+/// family through the python shim, anything else reports an invalid runtime.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_family(
+    runtime: &str,
+    code_zip: &[u8],
+    layer_zips: &[Vec<u8>],
+    handler: &str,
+    event: &str,
+    function_name: &str,
+    function_version: &str,
+    function_arn: &str,
+    env_vars: &HashMap<String, String>,
+    timeout_secs: u32,
+    memory_size: u32,
+    region: &str,
+    account_id: &str,
+) -> ExecResult {
+    if is_custom_runtime(runtime) {
+        return execute_custom(
+            code_zip,
+            layer_zips,
+            handler,
+            event,
+            function_name,
+            function_version,
+            env_vars,
+            timeout_secs,
+            memory_size,
+            region,
+            account_id,
+        );
+    }
+    if is_node_runtime(runtime) {
+        return execute_nodejs(
+            code_zip,
+            layer_zips,
+            handler,
+            event,
+            function_name,
+            function_version,
+            env_vars,
+            timeout_secs,
+            memory_size,
+            region,
+            account_id,
+        );
+    }
+    if is_python_runtime(runtime) {
+        return execute_python(
+            code_zip,
+            layer_zips,
+            handler,
+            event,
+            function_name,
+            function_version,
+            function_arn,
+            env_vars,
+            timeout_secs,
+            memory_size,
+            region,
+            account_id,
+        );
+    }
+    // No executor in this backend for the runtime; mirror the ground-truth
+    // shape used by the invoke paths: null payload + Runtime.InvalidRuntime.
+    ExecResult {
+        payload: "null".to_string(),
+        function_error: Some("Runtime.InvalidRuntime".to_string()),
+        logs: String::new(),
     }
 }
 
