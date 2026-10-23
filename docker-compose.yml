@@ -22,6 +22,31 @@ services:
       start_period: 10s
       retries: 3
 
+  # java-and-dotnet variant: runtimes image + OpenJDK 21 + .NET SDK 8
+  # Usage: docker compose --profile java-dotnet up
+  robotocore-java-dotnet:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: java-and-dotnet
+    image: ghcr.io/robotocore/robotocore:java-and-dotnet
+    # Build instead of pulling: the python-era registry tag with this name
+    # is stale (no rust binary), so never resolve from a registry.
+    pull_policy: build
+    profiles:
+      - java-dotnet
+    ports:
+      - "4568:4566"
+    environment:
+      - ROBOTOCORE_VERSION=local
+    healthcheck:
+      # runner has /busybox (same shim as the default image) for the probe
+      test: ["CMD", "/busybox", "wget", "-q", "--spider", "-T", "3", "http://127.0.0.1:4566/_robotocore/health"]
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+
   # LocalStack profile for parity comparison
   # Usage: docker compose --profile localstack up
   localstack:
