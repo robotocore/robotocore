@@ -1632,16 +1632,85 @@ fn registry_service_statuses() -> serde_json::Map<String, serde_json::Value> {
 /// Field contract mirrors the Python endpoint (`available` sorted, `all`
 /// equal to _ALL_RUNTIME_FAMILIES). Honesty rule: a family may only appear in
 /// `available` when the Rust lambda handler can actually execute it — keep
-/// this list truthful, not aspirational. Update when executors land in
-/// `crates/lambda`.
+/// this list truthful, not aspirational. Executors currently live in
+/// `crates/lambda` for python/nodejs/custom; `java`/`ruby`/`dotnet` stay
+/// in `all` only until their executors land (the python twin probed host
+/// toolchains for the same three families, but never executed them in the
+/// golden lanes — see the frozen baseline's pass: 0 rows).
 pub async fn runtimes_handler() -> impl IntoResponse {
-    let all = ["custom", "dotnet", "java", "nodejs", "python", "ruby"];
-    let mut available: Vec<&str> = vec!["custom", "python"];
-    available.sort_unstable();
+    let all = _ALL_RUNTIME_FAMILIES;
+    let available = available_runtime_families();
     (
         StatusCode::OK,
         axum::Json(json!({ "available": available, "all": all })),
     )
+}
+
+/// Same tuples array as the python gateway's `_ALL_RUNTIME_FAMILIES`.
+pub const _ALL_RUNTIME_FAMILIES: [&str; 6] =
+    ["custom", "dotnet", "java", "nodejs", "python", "ruby"];
+
+/// Executor + toolchain availability for this host:
+/// - `python` runs in-process (the shim) and `custom` through /bin/sh-style
+///   bootstrap: always available.
+/// - `nodejs` has an executor in crates/lambda and needs a `node` binary at
+///   invoke time: present only when the host has one (python era: `which node`).
+///
+/// The python twin probed ruby/dotnet/javac the same way; those probes
+/// return false until their executors exist, so `available` stays honest.
+fn available_runtime_families() -> Vec<&'static str> {
+    let mut available: Vec<&'static str> = vec!["custom", "python"];
+    if which("node") || which("nodejs") {
+        available.push("nodejs");
+    }
+    available.sort_unstable();
+    available
+}
+
+/// shutil.which equivalent over PATH without spawning a process.
+fn which(bin: &str) -> bool {
+    if let Some(paths) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&paths) {
+            if dir.join(bin).is_file() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+#[cfg(test)]
+mod runtime_families_tests {
+    use super::*;
+
+    #[test]
+    fn available_is_sorted_subset_of_all() {
+        let available = available_runtime_families();
+        assert!(available.contains(&"custom"));
+        assert!(available.contains(&"python"));
+        // nodejs appears exactly when the host has node (python-era probe).
+        assert_eq!(
+            available.contains(&"nodejs"),
+            which("node") || which("nodejs")
+        );
+        let mut sorted = available.clone();
+        sorted.sort_unstable();
+        assert_eq!(available, sorted, "python twin reported available sorted");
+        for &family in &available {
+            assert!(
+                _ALL_RUNTIME_FAMILIES.contains(&family),
+                "{family} not in all-list"
+            );
+        }
+        // Families without executors must stay out of `available` no matter
+        // what toolchains the host has (crates/lambda has no executors yet).
+        for absent_family in ["java", "ruby", "dotnet"] {
+            assert!(
+                !available.contains(&absent_family),
+                "{absent_family} has no executor; must not be available"
+            );
+        }
+    }
 }
 
 /// Config endpoint
