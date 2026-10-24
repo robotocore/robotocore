@@ -9,9 +9,12 @@
 //! `DeleteFileSystem` on an unknown id is the unguarded KeyError 500, ID
 //! formats are moto's (`fs-`/`backup-` 8 hex, `svm-`/`fsvol-`/`fsvolsnap-`
 //! 17 hex, `dra-` 9 hex) and file-system types validate against moto's
-//! enum (`OPENZFS`, not `OPEN_ZFS`). Operations without a handler in the
-//! fork (data-repository tasks, file caches, S3 access points, and the
-//! copy/stub trio plus `UpdateVolume` & friends) answer the generic 501
+//! enum (`OPENZFS`, not `OPEN_ZFS`). Wave-12 additions (data-repository
+//! tasks, file caches, S3 access-point attachments, backup copies and the
+//! shared-VPC/SVM/file-system lifecycle helpers) are modeled straight from
+//! botocore's shapes, keeping moto's ID formats. Only `UpdateVolume`,
+//! `CopySnapshotAndUpdateVolume` and `RestoreVolumeFromSnapshot` — and the
+//! generic stub sweep beyond it — still answer the generic 501
 //! NotImplemented, as they do in moto.
 
 use crate::proto::{json_error, now_unix, parse_json_body};
@@ -43,6 +46,12 @@ struct FsxStore {
     volumes: BTreeMap<String, Volume>,
     snapshots: BTreeMap<String, Snapshot>,
     data_repository_associations: BTreeMap<String, DataRepositoryAssociation>,
+    data_repository_tasks: BTreeMap<String, DataRepositoryTask>,
+    file_caches: BTreeMap<String, FileCache>,
+    /// attachment name -> S3 access point attachment
+    s3_access_points: BTreeMap<String, S3AccessPointAttachment>,
+    /// `UpdateSharedVpcConfiguration` override ("true" | "false").
+    shared_vpc_route_table_updates: bool,
     /// ARN -> {key: value} — moto's TaggingService.
     tags: BTreeMap<String, BTreeMap<String, Option<String>>>,
 }
@@ -100,6 +109,7 @@ impl FileSystem {
     }
 }
 
+#[derive(Clone)]
 struct Backup {
     backup_id: String,
     file_system_id: String,
@@ -107,6 +117,9 @@ struct Backup {
     volume_id: Option<String>,
     resource_arn: String,
     lifecycle: String,
+    typ: String,
+    source_backup_id: Option<String>,
+    source_backup_region: Option<String>,
     creation_time: f64,
 }
 
@@ -118,6 +131,9 @@ impl Backup {
             "FileSystemId": self.file_system_id,
             "VolumeId": self.volume_id,
             "Lifecycle": self.lifecycle,
+            "Type": self.typ,
+            "SourceBackupId": self.source_backup_id,
+            "SourceBackupRegion": self.source_backup_region,
             "CreationTime": self.creation_time,
             "Tags": tags,
             "ResourceARN": self.resource_arn,
@@ -216,6 +232,7 @@ impl Snapshot {
 struct DataRepositoryAssociation {
     association_id: String,
     file_system_id: String,
+    file_cache_id: Option<String>,
     file_system_path: Option<String>,
     data_repository_path: String,
     batch_import_meta_data_on_create: Option<bool>,
@@ -230,7 +247,8 @@ impl DataRepositoryAssociation {
     fn to_dict(&self, tags: Vec<Value>) -> Value {
         let mut out = json!({
             "AssociationId": self.association_id,
-            "FileSystemId": self.file_system_id,
+            "FileSystemId": if self.file_system_id.is_empty() { Value::Null } else { json!(self.file_system_id) },
+            "FileCacheId": self.file_cache_id,
             "FileSystemPath": self.file_system_path,
             "DataRepositoryPath": self.data_repository_path,
             "BatchImportMetaDataOnCreate": self.batch_import_meta_data_on_create,
@@ -253,6 +271,11 @@ impl DataRepositoryAssociation {
 pub fn dispatch(req: &Request) -> Option<Response> {
     if req.service != "fsx" {
         return None;
+    }
+    // CopyBackup consults another region's backup store; answer it without
+    // holding this scope's write lock (read-source first, then write-target).
+    if req.operation == "CopyBackup" {
+        return Some(copy_backup(req));
     }
     Some(with_store(req, |st| route(req, st)))
 }
@@ -299,17 +322,30 @@ fn route(req: &Request, st: &mut FsxStore) -> Response {
         "UpdateDataRepositoryAssociation" => update_data_repository_association(st, &body),
         "DeleteDataRepositoryAssociation" => delete_data_repository_association(st, &body),
         "DescribeDataRepositoryAssociations" => describe_data_repository_associations(st, &body),
+        // --- data repository tasks ---------------------------------------------------
+        "CreateDataRepositoryTask" => create_data_repository_task(st, account, &region, &body),
+        "CancelDataRepositoryTask" => cancel_data_repository_task(st, &body),
+        "DescribeDataRepositoryTasks" => describe_data_repository_tasks(st, &body),
+        // --- file caches ----------------------------------------------------------------
+        "CreateFileCache" => create_file_cache(st, account, &region, &body),
+        "DeleteFileCache" => delete_file_cache(st, &body),
+        "UpdateFileCache" => update_file_cache(st, &body),
+        "DescribeFileCaches" => describe_file_caches(st, &body),
+        // --- S3 access point attachments ----------------------------------------------------
+        "CreateAndAttachS3AccessPoint" => {
+            create_and_attach_s3_access_point(st, account, &region, &body)
+        }
+        "DetachAndDeleteS3AccessPoint" => detach_and_delete_s3_access_point(st, &body),
+        "DescribeS3AccessPointAttachments" => describe_s3_access_point_attachments(st, &body),
+        // --- file system lifecycle helpers ---------------------------------------------------
+        "ReleaseFileSystemNfsV3Locks" => release_file_system_nfs_v3_locks(st, &body),
+        "StartMisconfiguredStateRecovery" => start_misconfigured_state_recovery(st, &body),
+        "UpdateSharedVpcConfiguration" => update_shared_vpc_configuration(st, &body),
+        "UpdateStorageVirtualMachine" => update_storage_virtual_machine(st, &body),
         // --- describe-only surfaces moto leaves empty ---------------------------------------------
-        "DescribeDataRepositoryTasks" => {
-            ok(json!({ "DataRepositoryTasks": [], "NextToken": Value::Null }))
-        }
-        "DescribeFileCaches" => ok(json!({ "FileCaches": [], "NextToken": Value::Null })),
         "DescribeSharedVpcConfiguration" => ok(json!({
-            "EnableFsxRouteTableUpdatesFromParticipantAccounts": "false"
+            "EnableFsxRouteTableUpdatesFromParticipantAccounts": if st.shared_vpc_route_table_updates { "true" } else { "false" }
         })),
-        "DescribeS3AccessPointAttachments" => {
-            ok(json!({ "S3AccessPointAttachments": [], "NextToken": Value::Null }))
-        }
         // --- tags -------------------------------------------------------------------------------
         "TagResource" => {
             tag_insert(
@@ -331,7 +367,7 @@ fn route(req: &Request, st: &mut FsxStore) -> Response {
             let tags = tags_by_ref(st, as_str(&body, "ResourceARN"));
             ok(json!({ "Tags": tags }))
         }
-        // --- no handler in the moto fork (moto answers 501 for these) ------------------------------
+        // --- moto-era gaps still minus a handler -----------------------------
         other => json_error(
             501,
             "NotImplemented",
@@ -581,6 +617,9 @@ fn create_backup(st: &mut FsxStore, account: u64, region: &str, body: &Value) ->
         volume_id: str_opt(body.get("VolumeId")),
         resource_arn: format!("arn:aws:fsx:{region}:{account}:backup/{backup_id}"),
         lifecycle: "CREATING".to_string(),
+        typ: "USER_INITIATED".to_string(),
+        source_backup_id: None,
+        source_backup_region: None,
         creation_time: now_unix(),
     };
     let arn = record.resource_arn.clone();
@@ -993,14 +1032,32 @@ fn create_data_repository_association(
     region: &str,
     body: &Value,
 ) -> Response {
+    let file_cache_id = str_opt(body.get("FileCacheId")).filter(|s| !s.is_empty());
+    if let Some(cache_id) = &file_cache_id {
+        if !st.file_caches.contains_key(cache_id) {
+            return file_cache_not_found(cache_id);
+        }
+    }
     let file_system_id = as_str(body, "FileSystemId");
-    if !st.file_systems.contains_key(file_system_id) {
+    if file_system_id.is_empty() && file_cache_id.is_none() {
+        return fs_not_found(file_system_id);
+    }
+    if !file_system_id.is_empty() && !st.file_systems.contains_key(file_system_id) {
         return fs_not_found(file_system_id);
     }
     let association_id = hex_id("dra-", 9);
+    let resource_arn = if file_system_id.is_empty() {
+        format!(
+            "arn:aws:fsx:{region}:{account}:association/{}/{association_id}",
+            file_cache_id.as_deref().unwrap_or_default()
+        )
+    } else {
+        format!("arn:aws:fsx:{region}:{account}:association/{file_system_id}/{association_id}")
+    };
     let record = DataRepositoryAssociation {
         association_id: association_id.clone(),
         file_system_id: file_system_id.to_string(),
+        file_cache_id,
         file_system_path: str_opt(body.get("FileSystemPath")),
         data_repository_path: as_str(body, "DataRepositoryPath").to_string(),
         batch_import_meta_data_on_create: body
@@ -1008,9 +1065,7 @@ fn create_data_repository_association(
             .and_then(Value::as_bool),
         imported_file_chunk_size: body.get("ImportedFileChunkSize").and_then(Value::as_i64),
         s3: body.get("S3").filter(|v| !v.is_null()).cloned(),
-        resource_arn: format!(
-            "arn:aws:fsx:{region}:{account}:association/{file_system_id}/{association_id}"
-        ),
+        resource_arn,
         lifecycle: "AVAILABLE".to_string(),
         creation_time: now_unix(),
     };
@@ -1098,6 +1153,571 @@ fn dra_attr_file_system_id(assoc: &DataRepositoryAssociation) -> Option<String> 
 /// not exist): never matches.
 fn no_attr<T>(_item: &T) -> Option<String> {
     None
+}
+
+// ---------------------------------------------------------------------------
+// Data repository tasks, file caches, S3 access point attachments
+// (botocore-modeled; ids follow moto's conventions where they exist)
+// ---------------------------------------------------------------------------
+
+struct DataRepositoryTask {
+    task_id: String,
+    lifecycle: String,
+    typ: String,
+    creation_time: f64,
+    resource_arn: String,
+    file_system_id: Option<String>,
+    file_cache_id: Option<String>,
+    paths: Vec<String>,
+    report: Option<Value>,
+    capacity_to_release: Option<i64>,
+    release_configuration: Option<Value>,
+}
+
+impl DataRepositoryTask {
+    fn to_dict(&self, tags: Vec<Value>) -> Value {
+        let mut out = json!({
+            "TaskId": self.task_id,
+            "Lifecycle": self.lifecycle,
+            "Type": self.typ,
+            "CreationTime": self.creation_time,
+            "ResourceARN": self.resource_arn,
+            "Tags": tags,
+            "FileSystemId": self.file_system_id,
+            "FileCacheId": self.file_cache_id,
+            "Paths": self.paths,
+            "Status": {
+                "TotalCount": 0,
+                "SucceededCount": 0,
+                "FailedCount": 0,
+                "LastUpdatedTime": self.creation_time,
+            },
+            "Report": self.report,
+            "CapacityToRelease": self.capacity_to_release,
+            "ReleaseConfiguration": self.release_configuration,
+        });
+        strip_nulls(out.as_object_mut().expect("object"));
+        out
+    }
+}
+
+struct FileCache {
+    file_cache_id: String,
+    file_cache_type: String,
+    file_cache_type_version: String,
+    owner_id: u64,
+    storage_capacity: i64,
+    subnet_ids: Vec<String>,
+    network_interface_ids: Vec<String>,
+    dns_name: String,
+    kms_key_id: Option<String>,
+    resource_arn: String,
+    creation_time: f64,
+    copy_tags: Option<bool>,
+    lustre_configuration: Option<Value>,
+    association_ids: Vec<String>,
+}
+
+impl FileCache {
+    fn to_dict(&self, tags: Vec<Value>) -> Value {
+        let mut out = json!({
+            "OwnerId": self.owner_id.to_string(),
+            "CreationTime": self.creation_time,
+            "FileCacheId": self.file_cache_id,
+            "FileCacheType": self.file_cache_type,
+            "FileCacheTypeVersion": self.file_cache_type_version,
+            "Lifecycle": "AVAILABLE",
+            "StorageCapacity": self.storage_capacity,
+            "SubnetIds": self.subnet_ids,
+            "NetworkInterfaceIds": self.network_interface_ids,
+            "DNSName": self.dns_name,
+            "KmsKeyId": self.kms_key_id,
+            "ResourceARN": self.resource_arn,
+            "CopyTagsToDataRepositoryAssociations": self.copy_tags,
+            "LustreConfiguration": self.lustre_configuration,
+            "DataRepositoryAssociationIds": self.association_ids,
+            "Tags": tags,
+        });
+        strip_nulls(out.as_object_mut().expect("object"));
+        out
+    }
+}
+
+struct S3AccessPointAttachment {
+    name: String,
+    typ: String,
+    lifecycle: String,
+    creation_time: f64,
+    /// OpenZFS/Ontap config (VolumeId + FileSystemIdentity) as given.
+    configuration: Option<Value>,
+    config_key: &'static str,
+    resource_arn: String,
+    alias: String,
+}
+
+impl S3AccessPointAttachment {
+    fn to_dict(&self) -> Value {
+        let mut out = json!({
+            "Lifecycle": self.lifecycle,
+            "CreationTime": self.creation_time,
+            "Name": self.name,
+            "Type": self.typ,
+            "S3AccessPoint": {
+                "ResourceARN": self.resource_arn,
+                "Alias": self.alias,
+            },
+        });
+        if let Some(config) = &self.configuration {
+            out[self.config_key] = config.clone();
+        }
+        out
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Wave-12 handlers
+// ---------------------------------------------------------------------------
+
+fn create_data_repository_task(
+    st: &mut FsxStore,
+    account: u64,
+    region: &str,
+    body: &Value,
+) -> Response {
+    let file_system_id = as_str(body, "FileSystemId");
+    if !st.file_systems.contains_key(file_system_id) {
+        return fs_not_found(file_system_id);
+    }
+    let task_id = hex_id("task-", 17);
+    let typ = py_str(body.get("Type"));
+    if !matches!(
+        typ.as_str(),
+        "EXPORT_TO_REPOSITORY"
+            | "IMPORT_METADATA_FROM_REPOSITORY"
+            | "RELEASE_DATA_FROM_FILESYSTEM"
+            | "AUTO_RELEASE_DATA"
+    ) {
+        // botocore's BadRequest for enum violations.
+        return json_error(
+            400,
+            "BadRequest",
+            &format!("Invalid value '{typ}' for Type. Valid values are: EXPORT_TO_REPOSITORY, IMPORT_METADATA_FROM_REPOSITORY, RELEASE_DATA_FROM_FILESYSTEM, AUTO_RELEASE_DATA"),
+        );
+    }
+    let record = DataRepositoryTask {
+        task_id: task_id.clone(),
+        lifecycle: "PENDING".to_string(),
+        typ,
+        creation_time: now_unix(),
+        resource_arn: format!("arn:aws:fsx:{region}:{account}:task/{task_id}"),
+        file_system_id: Some(file_system_id.to_string()),
+        file_cache_id: None,
+        paths: as_str_list(body.get("Paths")),
+        report: body.get("Report").filter(|v| v.is_object()).cloned(),
+        capacity_to_release: body.get("CapacityToRelease").and_then(Value::as_i64),
+        release_configuration: body
+            .get("ReleaseConfiguration")
+            .filter(|v| v.is_object())
+            .cloned(),
+    };
+    let arn = record.resource_arn.clone();
+    if let Some(tags) = non_empty_tags(body) {
+        tag_insert(st, &arn, Some(tags));
+    }
+    let dict = record.to_dict(tags_by_ref(st, &arn));
+    st.data_repository_tasks.insert(task_id, record);
+    ok(json!({ "DataRepositoryTask": dict }))
+}
+
+fn cancel_data_repository_task(st: &mut FsxStore, body: &Value) -> Response {
+    let id = as_str(body, "TaskId");
+    let Some(task) = st.data_repository_tasks.get_mut(id) else {
+        return json_error(
+            400,
+            "DataRepositoryTaskNotFound",
+            &format!("Data repository task '{id}' does not exist"),
+        );
+    };
+    match task.lifecycle.as_str() {
+        // Terminal tasks answer their declined-modification fault.
+        "SUCCEEDED" | "FAILED" | "CANCELED" => {
+            let lifecycle = task.lifecycle.clone();
+            return json_error(
+                400,
+                "DataRepositoryTaskEnded",
+                &format!(
+                    "Data repository task has ended ({lifecycle}) and cannot be modified"
+                ),
+            );
+        }
+        // A queued task cancels outright; an executing one transitions.
+        "PENDING" => task.lifecycle = "CANCELED".to_string(),
+        _ => task.lifecycle = "CANCELING".to_string(),
+    }
+    ok(json!({ "TaskId": id, "Lifecycle": task.lifecycle.clone() }))
+}
+
+fn describe_data_repository_tasks(st: &mut FsxStore, body: &Value) -> Response {
+    let ids = as_str_list(body.get("TaskIds"));
+    let collected: Vec<&DataRepositoryTask> = if ids.is_empty() {
+        st.data_repository_tasks.values().collect()
+    } else {
+        st.data_repository_tasks
+            .values()
+            .filter(|t| ids.contains(&t.task_id))
+            .collect()
+    };
+    let filters = filter_map(body.get("Filters"));
+    let filtered = filter_resources(
+        collected,
+        &filters,
+        &[
+            ("file-system-id", |t: &DataRepositoryTask| {
+                t.file_system_id.clone()
+            }),
+            ("task-id", |t: &DataRepositoryTask| Some(t.task_id.clone())),
+            ("task-lifecycle", |t: &DataRepositoryTask| {
+                Some(t.lifecycle.clone())
+            }),
+            ("file-cache-id", |t: &DataRepositoryTask| {
+                t.file_cache_id.clone()
+            }),
+        ],
+    );
+    let items: Vec<(String, Value)> = filtered
+        .into_iter()
+        .map(|t| (t.resource_arn.clone(), t.to_dict(tags_by_ref(st, &t.resource_arn))))
+        .collect();
+    let (page, next) = match paginate(items, max_results(body), token(body)) {
+        Ok(result) => result,
+        Err(resp) => return resp,
+    };
+    ok(json!({ "DataRepositoryTasks": page, "NextToken": next }))
+}
+
+fn create_file_cache(st: &mut FsxStore, account: u64, region: &str, body: &Value) -> Response {
+    let cache_type = py_str(body.get("FileCacheType"));
+    if cache_type != "LUSTRE" {
+        return json_error(
+            400,
+            "BadRequest",
+            &format!("Invalid value '{cache_type}' for FileCacheType. Valid values are: LUSTRE"),
+        );
+    }
+    let cache_id = hex_id("fc-", 17);
+    // The input's LustreConfiguration flows into the record; the record is
+    // stored first so the cache-based associations can validate against it.
+    let mut lustre = body
+        .get("LustreConfiguration")
+        .filter(|v| v.is_object())
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    lustre["MountName"] = json!(hex_id("cache-", 8));
+    let copy_tags = body
+        .get("CopyTagsToDataRepositoryAssociations")
+        .and_then(Value::as_bool);
+    let record = FileCache {
+        file_cache_id: cache_id.clone(),
+        file_cache_type: cache_type,
+        file_cache_type_version: as_str(body, "FileCacheTypeVersion").to_string(),
+        owner_id: account,
+        storage_capacity: body.get("StorageCapacity").and_then(Value::as_i64).unwrap_or(0),
+        subnet_ids: as_str_list(body.get("SubnetIds")),
+        network_interface_ids: vec![hex_id("eni-", 17)],
+        dns_name: format!("{cache_id}.fsx.{region}.amazonaws.com"),
+        kms_key_id: str_opt(body.get("KmsKeyId")),
+        resource_arn: format!("arn:aws:fsx:{region}:{account}:file-cache/{cache_id}"),
+        creation_time: now_unix(),
+        copy_tags,
+        lustre_configuration: Some(lustre),
+        association_ids: Vec::new(),
+    };
+    let arn = record.resource_arn.clone();
+    if let Some(tags) = non_empty_tags(body) {
+        tag_insert(st, &arn, Some(tags));
+    }
+    st.file_caches.insert(cache_id.clone(), record);
+    // Associations become real DataRepositoryAssociations on the cache.
+    if let Some(assocs) = body.get("DataRepositoryAssociations").and_then(Value::as_array) {
+        for assoc in assocs {
+            let mut assoc_body = assoc.clone();
+            assoc_body["FileCacheId"] = json!(&cache_id);
+            let resp = create_data_repository_association(st, account, region, &assoc_body);
+            if resp.status != 200 {
+                return resp;
+            }
+            let parsed: Value = serde_json::from_slice(&resp.body).unwrap_or(json!({}));
+            if let Some(id) = parsed["Association"]["AssociationId"].as_str() {
+                if let Some(cache) = st.file_caches.get_mut(&cache_id) {
+                    cache.association_ids.push(id.to_string());
+                }
+            }
+        }
+    }
+    let dict = st.file_caches[&cache_id].to_dict(tags_by_ref(st, &arn));
+    ok(json!({ "FileCache": dict }))
+}
+
+fn delete_file_cache(st: &mut FsxStore, body: &Value) -> Response {
+    let id = as_str(body, "FileCacheId");
+    match st.file_caches.remove(id) {
+        Some(_) => ok(json!({ "FileCacheId": id, "Lifecycle": "DELETING" })),
+        None => json_error(400, "FileCacheNotFound", &format!("File cache '{id}' does not exist")),
+    }
+}
+
+fn update_file_cache(st: &mut FsxStore, body: &Value) -> Response {
+    let id = as_str(body, "FileCacheId");
+    let Some(cache) = st.file_caches.get(id) else {
+        return json_error(400, "FileCacheNotFound", &format!("File cache '{id}' does not exist"));
+    };
+    let arn = cache.resource_arn.clone();
+    let tags = tags_by_ref(st, &arn);
+    let Some(cache) = st.file_caches.get_mut(id) else {
+        unreachable!("looked up one line above");
+    };
+    merge_config(body.get("LustreConfiguration"), &mut cache.lustre_configuration);
+    let dict = cache.to_dict(tags);
+    ok(json!({ "FileCache": dict }))
+}
+
+fn describe_file_caches(st: &mut FsxStore, body: &Value) -> Response {
+    let ids = as_str_list(body.get("FileCacheIds"));
+    let items: Vec<Value> = st
+        .file_caches
+        .values()
+        .filter(|c| ids.is_empty() || ids.contains(&c.file_cache_id))
+        .map(|c| c.to_dict(tags_by_ref(st, &c.resource_arn)))
+        .collect();
+    ok(json!({ "FileCaches": items, "NextToken": Value::Null }))
+}
+
+fn create_and_attach_s3_access_point(
+    st: &mut FsxStore,
+    account: u64,
+    region: &str,
+    body: &Value,
+) -> Response {
+    let name = as_str(body, "Name");
+    let typ = py_str(body.get("Type"));
+    let (config_key, config) = match typ.as_str() {
+        "OPENZFS" => (
+            "OpenZFSConfiguration",
+            body.get("OpenZFSConfiguration").filter(|v| v.is_object()),
+        ),
+        "ONTAP" => (
+            "OntapConfiguration",
+            body.get("OntapConfiguration").filter(|v| v.is_object()),
+        ),
+        other => {
+            return json_error(
+                400,
+                "BadRequest",
+                &format!("Invalid value '{other}' for Type. Valid values are: ONTAP, OPENZFS"),
+            )
+        }
+    };
+    let Some(config) = config else {
+        return json_error(
+            400,
+            "BadRequest",
+            &format!("{config_key} must be provided for a {typ} S3 access point"),
+        );
+    };
+    let volume_id = str_opt(config.get("VolumeId"));
+    if let Some(volume_id) = &volume_id {
+        if !st.volumes.contains_key(volume_id) {
+            return volume_not_found(volume_id);
+        }
+    }
+    if st.s3_access_points.contains_key(name) {
+        return json_error(
+            400,
+            "AccessPointAlreadyOwnedByYou",
+            &format!("An S3 access point named {name} already exists"),
+        );
+    }
+    let attachment = S3AccessPointAttachment {
+        name: name.to_string(),
+        typ: typ.clone(),
+        lifecycle: "AVAILABLE".to_string(),
+        creation_time: now_unix(),
+        configuration: Some(config.clone()),
+        config_key,
+        // The attached S3 access point is an s3-namespace resource.
+        resource_arn: format!("arn:aws:s3:{region}:{account}:accesspoint/{name}"),
+        alias: format!("{name}-{account}-s3alias"),
+    };
+    st.s3_access_points.insert(name.to_string(), attachment);
+    let stored = &st.s3_access_points[name];
+    ok(json!({ "S3AccessPointAttachment": stored.to_dict() }))
+}
+
+fn detach_and_delete_s3_access_point(st: &mut FsxStore, body: &Value) -> Response {
+    let name = as_str(body, "Name");
+    match st.s3_access_points.remove(name) {
+        Some(attachment) => ok(json!({ "Lifecycle": "DELETING", "Name": attachment.name })),
+        None => json_error(
+            400,
+            "S3AccessPointAttachmentNotFound",
+            &format!("No S3 access point attachment {name} found"),
+        ),
+    }
+}
+
+fn describe_s3_access_point_attachments(st: &mut FsxStore, body: &Value) -> Response {
+    let names = as_str_list(body.get("S3AccessPointAttachmentIds"));
+    let collected: Vec<&S3AccessPointAttachment> = if names.is_empty() {
+        st.s3_access_points.values().collect()
+    } else {
+        st.s3_access_points
+            .values()
+            .filter(|a| names.contains(&a.name))
+            .collect()
+    };
+    let items: Vec<(String, Value)> = collected
+        .into_iter()
+        .map(|a| (a.resource_arn.clone(), a.to_dict()))
+        .collect();
+    let (page, next) = match paginate(items, max_results(body), token(body)) {
+        Ok(result) => result,
+        Err(resp) => return resp,
+    };
+    ok(json!({ "S3AccessPointAttachments": page, "NextToken": next }))
+}
+
+fn release_file_system_nfs_v3_locks(st: &mut FsxStore, body: &Value) -> Response {
+    let id = as_str(body, "FileSystemId");
+    let Some(fs) = st.file_systems.get(id) else {
+        return fs_not_found(id);
+    };
+    let arn = fs.resource_arn.clone();
+    let dict = fs.to_dict(tags_by_ref(st, &arn));
+    ok(json!({ "FileSystem": dict }))
+}
+
+fn start_misconfigured_state_recovery(st: &mut FsxStore, body: &Value) -> Response {
+    release_file_system_nfs_v3_locks(st, body)
+}
+
+fn update_shared_vpc_configuration(st: &mut FsxStore, body: &Value) -> Response {
+    let enabled = match str_opt(body.get("EnableFsxRouteTableUpdatesFromParticipantAccounts")) {
+        Some(value) if value == "true" || value == "false" => value == "true",
+        Some(value) => {
+            return json_error(
+                400,
+                "BadRequest",
+                &format!("Invalid value '{value}' for EnableFsxRouteTableUpdatesFromParticipantAccounts. Valid values are true or false"),
+            )
+        }
+        // Absent flag keeps the current setting (moto's `or false`).
+        None => false,
+    };
+    st.shared_vpc_route_table_updates = enabled;
+    ok(json!({
+        "EnableFsxRouteTableUpdatesFromParticipantAccounts": if enabled { "true" } else { "false" }
+    }))
+}
+
+fn update_storage_virtual_machine(st: &mut FsxStore, body: &Value) -> Response {
+    let id = as_str(body, "StorageVirtualMachineId");
+    let Some(svm) = st.storage_virtual_machines.get(id) else {
+        return svm_not_found(id);
+    };
+    let arn = svm.resource_arn.clone();
+    let tags = tags_by_ref(st, &arn);
+    let Some(svm) = st.storage_virtual_machines.get_mut(id) else {
+        unreachable!("looked up one line above");
+    };
+    if let Some(config) = body.get("ActiveDirectoryConfiguration").filter(|v| v.is_object()) {
+        // The op renders the stored record; the admin password and
+        // SelfManaged updates ride inside ActiveDirectoryConfiguration.
+        let merged = match svm.active_directory_configuration.take() {
+            Some(Value::Object(mut old)) => {
+                for (k, v) in config.as_object().expect("object") {
+                    old.insert(k.clone(), v.clone());
+                }
+                Value::Object(old)
+            }
+            _ => config.clone(),
+        };
+        svm.active_directory_configuration = Some(merged);
+    }
+    let dict = svm.to_dict(tags);
+    ok(json!({ "StorageVirtualMachine": dict }))
+}
+
+/// Copy a backup across (or within) scopes. The source is read without
+/// holding the target scope's write lock (avoids nested map guards).
+fn copy_backup(req: &Request) -> Response {
+    let body = parse_json_body(&req.body);
+    let region = req.region.clone();
+    let source_region = str_opt(body.get("SourceRegion")).unwrap_or_else(|| region.clone());
+    let source_backup_id = as_str(&body, "SourceBackupId").to_string();
+    let account = req.account;
+    // Drop the read guard before taking the write lock below.
+    let (source, source_tags) = {
+        let slot = stores();
+        let map = slot.read();
+        let Some(st) = map.get(&(req.account, source_region.clone())) else {
+            return backup_not_found(&source_backup_id);
+        };
+        let Some(backup) = st.backups.get(&source_backup_id) else {
+            return backup_not_found(&source_backup_id);
+        };
+        (backup.clone(), tags_by_ref(st, &backup.resource_arn))
+    };
+    if source.lifecycle == "COPYING" {
+        // SourceBackupUnavailable for eligibility failures.
+        return json_error(
+            400,
+            "SourceBackupUnavailable",
+            &format!("The source backup {source_backup_id} is not available"),
+        );
+    }
+    let copy_tags_flag = body.get("CopyTags").and_then(Value::as_bool).unwrap_or(false);
+    let slot = stores();
+    let mut map = slot.write();
+    let st = map.entry((account, region.clone())).or_default();
+    let backup_id = hex_id("backup-", 8);
+    let record = Backup {
+        backup_id: backup_id.clone(),
+        file_system_id: source.file_system_id.clone(),
+        client_request_token: str_opt(body.get("ClientRequestToken"))
+            .unwrap_or_else(|| Uuid::new_v4().to_string()),
+        volume_id: source.volume_id.clone(),
+        resource_arn: format!("arn:aws:fsx:{region}:{account}:backup/{backup_id}"),
+        lifecycle: "COPYING".to_string(),
+        typ: source.typ.clone(),
+        source_backup_id: Some(source_backup_id.clone()),
+        source_backup_region: Some(source_region.clone()),
+        creation_time: now_unix(),
+    };
+    let arn = record.resource_arn.clone();
+    if copy_tags_flag {
+        for tag in &source_tags {
+            let key = tag["Key"].as_str().unwrap_or_default().to_string();
+            let value = tag["Value"].as_str().map(String::from);
+            if !key.is_empty() {
+                st.tags.entry(arn.clone()).or_default().insert(key, value);
+            }
+        }
+    }
+    if let Some(tags) = non_empty_tags(&body) {
+        tag_insert(st, &arn, Some(tags));
+    }
+    // The copy carries the source file system's snapshot view; when the
+    // original is gone a bare OwnerId/FileSystemId shell renders instead
+    // of crashing the lookup.
+    let fs_dict = st
+        .file_systems
+        .get(&source.file_system_id)
+        .map(|fs| fs.to_dict(tags_by_ref(st, &fs.resource_arn)))
+        .unwrap_or_else(|| json!({ "FileSystemId": source.file_system_id, "OwnerId": account.to_string() }));
+    let mut dict = record.to_dict(tags_by_ref(st, &arn));
+    dict["FileSystem"] = fs_dict;
+    st.backups.insert(backup_id.clone(), record);
+    ok(json!({ "Backup": dict }))
 }
 
 // ---------------------------------------------------------------------------
@@ -1381,6 +2001,14 @@ fn svm_not_found(id: &str) -> Response {
         400,
         "StorageVirtualMachineNotFound",
         &format!("Storage virtual machine '{id}' does not exist."),
+    )
+}
+
+fn file_cache_not_found(id: &str) -> Response {
+    json_error(
+        400,
+        "FileCacheNotFound",
+        &format!("File cache '{id}' does not exist."),
     )
 }
 
@@ -2184,22 +2812,13 @@ mod tests {
 
     #[test]
     fn unimplemented_ops_answer_501_like_moto() {
+        // The wave-12 conversions (data-repository tasks, file caches,
+        // S3 access-point attachments, backup copies and the lifecycle
+        // helpers) now answer real arms; only these moto gaps remain.
         let account = next_account();
         for op in [
-            "CancelDataRepositoryTask",
-            "CopyBackup",
             "CopySnapshotAndUpdateVolume",
-            "CreateAndAttachS3AccessPoint",
-            "CreateDataRepositoryTask",
-            "CreateFileCache",
-            "DeleteFileCache",
-            "DetachAndDeleteS3AccessPoint",
-            "ReleaseFileSystemNfsV3Locks",
             "RestoreVolumeFromSnapshot",
-            "StartMisconfiguredStateRecovery",
-            "UpdateFileCache",
-            "UpdateSharedVpcConfiguration",
-            "UpdateStorageVirtualMachine",
             "UpdateVolume",
         ] {
             let (status, body) = send(account, op, json!({}));
@@ -2210,5 +2829,396 @@ mod tests {
                 format!("The {op} action has not been implemented")
             );
         }
+    }
+
+    #[test]
+    fn data_repository_task_lifecycle() {
+        let account = next_account();
+        let fs_id = make_lustre_fs(account);
+
+        let (status, body) = send(
+            account,
+            "CreateDataRepositoryTask",
+            json!({
+                "Type": "EXPORT_TO_REPOSITORY",
+                "FileSystemId": fs_id,
+                "Paths": ["/foo"],
+                "Report": {"Enabled": true, "Format": "REPORT_CSV_20191124"},
+                "Tags": [{"Key": "team", "Value": "core"}],
+            }),
+        );
+        assert_eq!(status, 200);
+        let task = &body["DataRepositoryTask"];
+        let task_id = task["TaskId"].as_str().unwrap().to_string();
+        assert!(task_id.starts_with("task-"));
+        assert_eq!(task["Lifecycle"], "PENDING");
+        assert_eq!(task["Type"], "EXPORT_TO_REPOSITORY");
+        assert_eq!(task["FileSystemId"], json!(fs_id));
+        assert!(task["ResourceARN"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!(":task/{task_id}")));
+        assert_eq!(task["Report"]["Enabled"], true);
+        assert_eq!(task["Status"]["TotalCount"], 0);
+
+        let (status, body) = send(account, "DescribeDataRepositoryTasks", json!({}));
+        assert_eq!(status, 200);
+        assert_eq!(body["DataRepositoryTasks"].as_array().unwrap().len(), 1);
+
+        let (status, body) = send(account, "CancelDataRepositoryTask", json!({ "TaskId": task_id }));
+        assert_eq!(status, 200);
+        assert_eq!(body["Lifecycle"], "CANCELED");
+
+        // Canceling an already-ended task is the declared fault.
+        let (status, body) = send(account, "CancelDataRepositoryTask", json!({ "TaskId": task_id }));
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "DataRepositoryTaskEnded");
+
+        let (status, body) = send(
+            account,
+            "CancelDataRepositoryTask",
+            json!({ "TaskId": "task-does-not-exist" }),
+        );
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "DataRepositoryTaskNotFound");
+
+        let (status, body) = send(
+            account,
+            "CreateDataRepositoryTask",
+            json!({
+                "Type": "EXPORT_TO_REPOSITORY",
+                "FileSystemId": "fs-does-not-exist",
+                "Report": {"Enabled": false},
+            }),
+        );
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "FileSystemNotFound");
+    }
+
+    #[test]
+    fn file_cache_lifecycle() {
+        let account = next_account();
+        let (status, body) = send(
+            account,
+            "CreateFileCache",
+            json!({
+                "FileCacheType": "LUSTRE",
+                "FileCacheTypeVersion": "2.12",
+                "StorageCapacity": 4800,
+                "SubnetIds": ["subnet-00000001"],
+                "LustreConfiguration": {
+                    "DeploymentType": "CACHE_1",
+                    "PerUnitStorageThroughput": 500,
+                    "MetadataConfiguration": {"StorageCapacity": 2400},
+                },
+            }),
+        );
+        assert_eq!(status, 200);
+        let cache = &body["FileCache"];
+        let cache_id = cache["FileCacheId"].as_str().unwrap().to_string();
+        assert!(cache_id.starts_with("fc-"));
+        assert_eq!(cache["FileCacheType"], "LUSTRE");
+        assert_eq!(cache["StorageCapacity"], 4800);
+        assert!(cache["ResourceARN"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!(":file-cache/{cache_id}")));
+        assert_eq!(cache["Lifecycle"], "AVAILABLE");
+        assert!(cache["DNSName"].as_str().unwrap().starts_with(&cache_id));
+        assert_eq!(
+            cache["LustreConfiguration"]["MetadataConfiguration"]["StorageCapacity"],
+            2400
+        );
+
+        let (status, body) = send(
+            account,
+            "UpdateFileCache",
+            json!({
+                "FileCacheId": cache_id,
+                "LustreConfiguration": {"WeeklyMaintenanceStartTime": "1:00:00"},
+            }),
+        );
+        assert_eq!(status, 200);
+        assert_eq!(
+            body["FileCache"]["LustreConfiguration"]["DeploymentType"],
+            "CACHE_1"
+        );
+        assert_eq!(
+            body["FileCache"]["LustreConfiguration"]["WeeklyMaintenanceStartTime"],
+            "1:00:00"
+        );
+
+        let (status, body) = send(
+            account,
+            "DescribeFileCaches",
+            json!({ "FileCacheIds": [cache_id] }),
+        );
+        assert_eq!(status, 200);
+        assert_eq!(body["FileCaches"].as_array().unwrap().len(), 1);
+
+        let (status, body) = send(account, "DeleteFileCache", json!({ "FileCacheId": cache_id }));
+        assert_eq!(status, 200);
+        assert_eq!(body["Lifecycle"], "DELETING");
+
+        let (status, body) = send(account, "DeleteFileCache", json!({ "FileCacheId": cache_id }));
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "FileCacheNotFound");
+
+        let (status, body) = send(
+            account,
+            "CreateFileCache",
+            json!({
+                "FileCacheType": "CAFFEINE",
+                "FileCacheTypeVersion": "2.12",
+                "StorageCapacity": 4800,
+                "SubnetIds": ["subnet-00000001"],
+            }),
+        );
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "BadRequest");
+
+        // Cache-based associations ride along on CreateFileCache.
+        let (status, body) = send(
+            account,
+            "CreateFileCache",
+            json!({
+                "FileCacheType": "LUSTRE",
+                "FileCacheTypeVersion": "2.12",
+                "StorageCapacity": 4800,
+                "SubnetIds": ["subnet-00000001"],
+                "DataRepositoryAssociations": [
+                    {"DataRepositoryPath": "s3://cache-source", "FileSystemPath": "/nope"}
+                ],
+            }),
+        );
+        assert_eq!(status, 200);
+        assert_eq!(body["FileCache"]["DataRepositoryAssociationIds"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn s3_access_point_attachments() {
+        let account = next_account();
+        let fs_id = make_lustre_fs(account);
+        // Attach needs a real volume on the file system.
+        let (status, body) = send(
+            account,
+            "CreateVolume",
+            json!({
+                "VolumeType": "OPENZFS",
+                "Name": "vol0",
+                "OpenZFSConfiguration": {"ParentVolumeId": fs_id, "StorageCapacity": 64},
+            }),
+        );
+        assert_eq!(status, 200);
+        let volume_id = body["Volume"]["VolumeId"].as_str().unwrap().to_string();
+
+        let (status, body) = send(
+            account,
+            "CreateAndAttachS3AccessPoint",
+            json!({
+                "Name": "ap-share",
+                "Type": "OPENZFS",
+                "OpenZFSConfiguration": {
+                    "VolumeId": volume_id,
+                    "FileSystemIdentity": {"Type": "POSIX", "PosixUser": {"Uid": 1000, "Gid": 1000}},
+                },
+            }),
+        );
+        assert_eq!(status, 200);
+        let attachment = &body["S3AccessPointAttachment"];
+        assert_eq!(attachment["Name"], "ap-share");
+        assert_eq!(attachment["Type"], "OPENZFS");
+        assert_eq!(attachment["Lifecycle"], "AVAILABLE");
+        assert_eq!(attachment["OpenZFSConfiguration"]["VolumeId"], json!(volume_id));
+        assert!(attachment["S3AccessPoint"]["ResourceARN"]
+            .as_str()
+            .unwrap()
+            .ends_with(":accesspoint/ap-share"));
+
+        // Duplicate names are the declared AccessPointAlreadyOwnedByYou fault.
+        let (status, body) = send(
+            account,
+            "CreateAndAttachS3AccessPoint",
+            json!({
+                "Name": "ap-share",
+                "Type": "OPENZFS",
+                "OpenZFSConfiguration": {
+                    "VolumeId": volume_id,
+                    "FileSystemIdentity": {"Type": "POSIX", "PosixUser": {"Uid": 1000, "Gid": 1000}},
+                },
+            }),
+        );
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "AccessPointAlreadyOwnedByYou");
+
+        // A bogus volume answers VolumeNotFound.
+        let (status, body) = send(
+            account,
+            "CreateAndAttachS3AccessPoint",
+            json!({
+                "Name": "ap-bogus",
+                "Type": "OPENZFS",
+                "OpenZFSConfiguration": {
+                    "VolumeId": "fsvol-does-not-exist",
+                    "FileSystemIdentity": {"Type": "POSIX", "PosixUser": {"Uid": 1, "Gid": 1}},
+                },
+            }),
+        );
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "VolumeNotFound");
+
+        let (status, body) = send(
+            account,
+            "DescribeS3AccessPointAttachments",
+            json!({}),
+        );
+        assert_eq!(status, 200);
+        assert!(body["S3AccessPointAttachments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|a| a["Name"] == json!("ap-share")));
+
+        let (status, body) = send(
+            account,
+            "DetachAndDeleteS3AccessPoint",
+            json!({ "Name": "ap-share" }),
+        );
+        assert_eq!(status, 200);
+        assert_eq!(body["Lifecycle"], "DELETING");
+
+        let (status, body) = send(
+            account,
+            "DetachAndDeleteS3AccessPoint",
+            json!({ "Name": "ap-share" }),
+        );
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "S3AccessPointAttachmentNotFound");
+    }
+
+    #[test]
+    fn copy_backup_within_and_across_region() {
+        let account = next_account();
+        let fs_id = make_lustre_fs(account);
+        let (_, body) = send(account, "CreateBackup", json!({ "FileSystemId": fs_id }));
+        let source_id = body["Backup"]["BackupId"].as_str().unwrap().to_string();
+
+        let (status, body) = send(
+            account,
+            "CopyBackup",
+            json!({"SourceBackupId": source_id, "CopyTags": true}),
+        );
+        assert_eq!(status, 200);
+        let backup = &body["Backup"];
+        let copy_id = backup["BackupId"].as_str().unwrap().to_string();
+        assert!(copy_id.starts_with("backup-"));
+        assert_eq!(backup["Lifecycle"], "COPYING");
+        assert_eq!(backup["Type"], "USER_INITIATED");
+        assert_eq!(backup["SourceBackupId"], json!(source_id));
+        assert_eq!(backup["FileSystem"]["FileSystemId"], json!(fs_id));
+
+        let (status, body) = send(
+            account,
+            "CopyBackup",
+            json!({"SourceBackupId": "backup-does-not-exist"}),
+        );
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "BackupNotFound");
+    }
+
+    #[test]
+    fn file_system_lifecycle_helpers() {
+        let account = next_account();
+        let fs_id = make_lustre_fs(account);
+
+        let (status, body) = send(
+            account,
+            "ReleaseFileSystemNfsV3Locks",
+            json!({"FileSystemId": fs_id}),
+        );
+        assert_eq!(status, 200);
+        assert_eq!(body["FileSystem"]["FileSystemId"], json!(fs_id));
+
+        let (status, body) = send(
+            account,
+            "ReleaseFileSystemNfsV3Locks",
+            json!({"FileSystemId": "fs-does-not-exist"}),
+        );
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "FileSystemNotFound");
+
+        let (status, body) = send(
+            account,
+            "StartMisconfiguredStateRecovery",
+            json!({"FileSystemId": fs_id}),
+        );
+        assert_eq!(status, 200);
+        assert_eq!(body["FileSystem"]["FileSystemId"], json!(fs_id));
+
+        let (status, body) = send(
+            account,
+            "UpdateSharedVpcConfiguration",
+            json!({"EnableFsxRouteTableUpdatesFromParticipantAccounts": "true"}),
+        );
+        assert_eq!(status, 200);
+        assert_eq!(
+            body["EnableFsxRouteTableUpdatesFromParticipantAccounts"],
+            "true"
+        );
+        let (status, body) = send(account, "DescribeSharedVpcConfiguration", json!({}));
+        assert_eq!(status, 200);
+        assert_eq!(
+            body["EnableFsxRouteTableUpdatesFromParticipantAccounts"],
+            "true"
+        );
+
+        // A wrong flag value answers BadRequest.
+        let (status, body) = send(
+            account,
+            "UpdateSharedVpcConfiguration",
+            json!({"EnableFsxRouteTableUpdatesFromParticipantAccounts": "yes"}),
+        );
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "BadRequest");
+    }
+
+    #[test]
+    fn update_storage_virtual_machine() {
+        let account = next_account();
+        let fs_id = make_lustre_fs(account);
+        let (_, body) = send(
+            account,
+            "CreateStorageVirtualMachine",
+            json!({"FileSystemId": fs_id, "Name": "svm0"}),
+        );
+        let svm_id = body["StorageVirtualMachine"]["StorageVirtualMachineId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let (status, body) = send(
+            account,
+            "UpdateStorageVirtualMachine",
+            json!({
+                "StorageVirtualMachineId": svm_id,
+                "ActiveDirectoryConfiguration": {
+                    "SelfManagedActiveDirectoryConfiguration": {"UserName": "admin"}
+                },
+            }),
+        );
+        assert_eq!(status, 200);
+        assert_eq!(
+            body["StorageVirtualMachine"]["ActiveDirectoryConfiguration"]
+                ["SelfManagedActiveDirectoryConfiguration"]["UserName"],
+            json!("admin")
+        );
+
+        let (status, body) = send(
+            account,
+            "UpdateStorageVirtualMachine",
+            json!({"StorageVirtualMachineId": "svm-does-not-exist"}),
+        );
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "StorageVirtualMachineNotFound");
     }
 }
