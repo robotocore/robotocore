@@ -62,6 +62,26 @@ pub fn error_response(status: u16, code: &str, message: &str) -> Response {
     Response::xml(status, error_xml(code, message).into_bytes())
 }
 
+/// moto's unhandled-exception answer for crash-faithful rows.
+///
+/// When a moto handler raises something it does not model (a bare
+/// `KeyError`, `AttributeError`, `ValueError`, `assert`, ...) the exception
+/// escapes to the werkzeug server, which answers the exact page below — no
+/// AWS error envelope at all. Crash-faithful rows must produce these bytes
+/// so SDKs see what moto serves (a parse failure, not an `InternalError`).
+pub fn moto_crash_response() -> Response {
+    Response::new(
+        500,
+        "text/html; charset=utf-8",
+        "<!doctype html>\n\
+         <html lang=en>\n\
+         <title>500 Internal Server Error</title>\n\
+         <h1>Internal Server Error</h1>\n\
+         <p>The server encountered an internal error and was unable to complete your request. \
+         Either the server is overloaded or there is an error in the application.</p>\n",
+    )
+}
+
 /// JSON-protocol error response (JSON services use `__type` codes).
 pub fn json_error(status: u16, code: &str, message: &str) -> Response {
     let body = serde_json::json!({ "__type": code, "message": message });

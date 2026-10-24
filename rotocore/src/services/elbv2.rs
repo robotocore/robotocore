@@ -554,9 +554,13 @@ pub enum ElbError {
     Service(u16, String, String),
     /// moto `RESTError` inline raises (wrapped `<Errors>` template, CDATA).
     Rest(u16, String, String),
-    /// moto's flask-level fallthrough (unimplemented op, unhandled crash):
-    /// bare `<ErrorResponse>` with just Code/Message.
+    /// moto's flask-level fallthrough for unimplemented operations:
+    /// bare `<ErrorResponse>` with just Code/Message. (Unhandled handler
+    /// crashes take [`ElbError::moto_crash`] — werkzeug's HTML 500.)
     Raw(u16, String, String),
+    /// moto unhandled handler crash measured against moto itself (werkzeug's
+    /// plain HTML 500 page — no AWS envelope at all).
+    MotoCrash(u16),
 }
 
 impl ElbError {
@@ -575,6 +579,9 @@ impl ElbError {
     }
     pub fn internal(msg: &str) -> Self {
         ElbError::Raw(500, "InternalError".into(), msg.into())
+    }
+    pub fn moto_crash() -> Self {
+        ElbError::MotoCrash(500)
     }
 
     pub fn response(&self, xmlns: &str) -> Response {
@@ -616,6 +623,7 @@ impl ElbError {
                 );
                 Response::xml(*status, body.into_bytes())
             }
+            ElbError::MotoCrash(_) => crate::proto::moto_crash_response(),
         }
     }
 }

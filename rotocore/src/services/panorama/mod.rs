@@ -11,8 +11,8 @@
 //!
 //! Known moto surface quirks kept faithful (fork `moto/panorama`):
 //! - `UpdateDeviceMetadata` / `DeleteDevice` on an unknown device raise a
-//!   bare `KeyError` moto-side → HTTP 500 `InternalError` with the
-//!   repr-quoted id (as recorded in probes/panorama.json).
+//!   bare `KeyError` moto-side → crash-faithful as moto's werkzeug HTML 500
+//!   page (as recorded in probes/panorama.json).
 //! - `ListNodes` / `ListNodeFromTemplateJobs` / `ListPackages` /
 //!   `ListPackageImportJobs` read `category`/`maxResults`/`nextToken`
 //!   lowercase while botocore sends capitalised query keys, so the filters
@@ -221,10 +221,11 @@ fn not_found(message: String) -> Response {
     err(404, "ResourceNotFoundException", message)
 }
 
-/// moto's bare `KeyError` on unknown devices: HTTP 500 `InternalError` with
-/// the repr-quoted key as message (probe-recorded behavior).
-fn internal_error(key: &str) -> Response {
-    err(500, "InternalError", format!("'{key}'"))
+/// moto's bare `KeyError` on unknown devices: crash-faithful through moto's
+/// werkzeug server — the plain HTML 500 page (probe-recorded row status;
+/// the repr-quoted id never reaches the wire, like moto).
+fn internal_error(_key: &str) -> Response {
+    crate::proto::moto_crash_response()
 }
 
 fn list_response(key: &str, items: Vec<Value>, next_token: Option<String>) -> Response {

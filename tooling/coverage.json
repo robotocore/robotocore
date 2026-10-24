@@ -5792,7 +5792,7 @@
     "absence": null,
     "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "server crash (InternalError: 'NoneType' object has no attribute 'name')",
+    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
     "probe_status": "500_error",
     "screens": {
      "probe": true,
@@ -5825,7 +5825,7 @@
     "absence": null,
     "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "server crash (InternalError: 'probe-query-execution-id-id')",
+    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
     "probe_status": "500_error",
     "screens": {
      "probe": true,
@@ -6089,7 +6089,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (InvalidRequestException)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -6166,7 +6166,7 @@
     "absence": null,
     "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "server crash (InternalError: 'probe-query-execution-id-id')",
+    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
     "probe_status": "500_error",
     "screens": {
      "probe": true,
@@ -9798,14 +9798,14 @@
   "total": 98
  },
  "bedrock-runtime": {
-  "covered": 0,
+  "covered": 1,
   "ops": {
    "ApplyGuardrail": {
     "absence": null,
-    "bucket": "absent",
+    "bucket": "pending_fill",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "client-side validation (never contacted server)",
+    "probe_status": "needs_params",
     "screens": {
      "probe": true,
      "unit": false
@@ -9857,10 +9857,10 @@
    },
    "InvokeModel": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "server crash (InternalError: EOF while parsing a value at line 1 column 0)",
-    "probe_status": "500_error",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -9868,10 +9868,10 @@
    },
    "InvokeModelWithBidirectionalStream": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "pending_fill",
     "conformance": null,
-    "probe_message": "exception: 'BedrockRuntime' object has no attribute 'invoke_model_with_",
-    "probe_status": "500_error",
+    "probe_message": "client-side probe gap (AttributeError: 'BedrockRuntime' object has no attribute 'invoke_model_with_)",
+    "probe_status": "needs_params",
     "screens": {
      "probe": true,
      "unit": false
@@ -9901,10 +9901,10 @@
    },
    "StartAsyncInvoke": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "absent",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -29226,7 +29226,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (ResourceAlreadyExistsFault: The resource you are attempting to create already exists.)",
+    "probe_message": "OK",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -29237,7 +29237,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (ResourceAlreadyExistsFault: The resource you are attempting to create already exists.)",
+    "probe_message": "OK",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -29259,7 +29259,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (ResourceAlreadyExistsFault: The resource you are attempting to create already exists.)",
+    "probe_message": "OK",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -29468,7 +29468,7 @@
     "absence": null,
     "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "server crash (InternalError: Invalid filter name: probe-test-value)",
+    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
     "probe_status": "500_error",
     "screens": {
      "probe": true,
@@ -29534,7 +29534,7 @@
     "absence": null,
     "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "server crash (InternalError: Invalid filter name: probe-test-value)",
+    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
     "probe_status": "500_error",
     "screens": {
      "probe": true,
@@ -29853,7 +29853,7 @@
     "absence": null,
     "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "server crash (InternalError: Invalid filter name: probe-test-value)",
+    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
     "probe_status": "500_error",
     "screens": {
      "probe": true,
@@ -29974,7 +29974,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (ResourceAlreadyExistsFault: The resource you are attempting to create already exists.)",
+    "probe_message": "OK",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -29985,7 +29985,7 @@
     "absence": null,
     "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "server crash (InternalError: Both ResourceArn and ResourceArnList cannot be specified.)",
+    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
     "probe_status": "500_error",
     "screens": {
      "probe": true,
@@ -44176,7 +44176,7 @@
   "total": 46
  },
  "elb": {
-  "covered": 21,
+  "covered": 22,
   "ops": {
    "AddTags": {
     "absence": null,
@@ -44191,10 +44191,10 @@
    },
    "ApplySecurityGroupsToLoadBalancer": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "server crash (InternalError: 'NoneType' object has no attribute 'security_groups')",
-    "probe_status": "500_error",
+    "probe_message": "implemented (ValidationError)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -44204,7 +44204,7 @@
     "absence": null,
     "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "server crash (InternalError: 'NoneType' object has no attribute 'subnets')",
+    "probe_message": "exception: ResponseParserError: Unable to parse response (syntax error: line 1, column 0), i",
     "probe_status": "500_error",
     "screens": {
      "probe": true,
@@ -44248,7 +44248,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (ValidationError)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -44268,10 +44268,10 @@
    },
    "CreateLoadBalancerPolicy": {
     "absence": null,
-    "bucket": "working",
+    "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "OK",
-    "probe_status": "working",
+    "probe_message": "exception: ResponseParserError: Unable to parse response (syntax error: line 1, column 0), i",
+    "probe_status": "500_error",
     "screens": {
      "probe": true,
      "unit": true
@@ -44314,7 +44314,7 @@
     "absence": null,
     "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "server crash (InternalError: 'NoneType' object has no attribute 'instance_ids')",
+    "probe_message": "exception: ResponseParserError: Unable to parse response (syntax error: line 1, column 0), i",
     "probe_status": "500_error",
     "screens": {
      "probe": true,
@@ -44347,7 +44347,7 @@
     "absence": null,
     "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "server crash (InternalError: 'NoneType' object has no attribute 'attributes')",
+    "probe_message": "exception: ResponseParserError: Unable to parse response (syntax error: line 1, column 0), i",
     "probe_status": "500_error",
     "screens": {
      "probe": true,
@@ -44356,10 +44356,10 @@
    },
    "DescribeLoadBalancerPolicies": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "server crash (InternalError: 'NoneType' object has no attribute 'policies')",
-    "probe_status": "500_error",
+    "probe_message": "likely implemented (LoadBalancerNotFound: The specified load balancer does not exist: probe-test-value)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -44402,7 +44402,7 @@
     "absence": null,
     "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "server crash (InternalError: 'NoneType' object has no attribute 'subnets')",
+    "probe_message": "exception: ResponseParserError: Unable to parse response (syntax error: line 1, column 0), i",
     "probe_status": "500_error",
     "screens": {
      "probe": true,
@@ -44435,7 +44435,7 @@
     "absence": null,
     "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "server crash (InternalError: 'NoneType' object has no attribute 'attributes')",
+    "probe_message": "exception: ResponseParserError: Unable to parse response (syntax error: line 1, column 0), i",
     "probe_status": "500_error",
     "screens": {
      "probe": true,
@@ -44446,7 +44446,7 @@
     "absence": null,
     "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "server crash (InternalError: 'NoneType' object has no attribute 'instance_ids')",
+    "probe_message": "exception: ResponseParserError: Unable to parse response (syntax error: line 1, column 0), i",
     "probe_status": "500_error",
     "screens": {
      "probe": true,
@@ -45646,7 +45646,7 @@
     "absence": null,
     "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "server crash (InternalError: 'probe-test-value')",
+    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
     "probe_status": "500_error",
     "screens": {
      "probe": true,
@@ -45668,7 +45668,7 @@
     "absence": null,
     "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "server crash (InternalError: 'probe-test-value')",
+    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
     "probe_status": "500_error",
     "screens": {
      "probe": true,
@@ -45701,7 +45701,7 @@
     "absence": null,
     "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "server crash (InternalError: 'probe-test-value')",
+    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
     "probe_status": "500_error",
     "screens": {
      "probe": true,
@@ -45784,7 +45784,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "implemented (ValidationException)",
+    "probe_message": "OK",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -45894,7 +45894,7 @@
     "absence": null,
     "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "server crash (InternalError: invalid literal for int() with base 10: 'probe-token-9517')",
+    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
     "probe_status": "500_error",
     "screens": {
      "probe": true,
@@ -45949,7 +45949,7 @@
     "absence": null,
     "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "server crash (InternalError: invalid literal for int() with base 10: 'probe-token-9517')",
+    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
     "probe_status": "500_error",
     "screens": {
      "probe": true,
@@ -77090,7 +77090,7 @@
     "absence": null,
     "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "server crash (InternalError: 'probe-device-id-id')",
+    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
     "probe_status": "500_error",
     "screens": {
      "probe": true,
@@ -77112,7 +77112,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (ResourceNotFoundException)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -77398,7 +77398,7 @@
     "absence": null,
     "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "server crash (InternalError: 'probe-device-id-id')",
+    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
     "probe_status": "500_error",
     "screens": {
      "probe": true,
@@ -91460,7 +91460,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91471,7 +91471,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91482,7 +91482,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91493,7 +91493,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91757,7 +91757,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91779,7 +91779,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91801,7 +91801,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -92120,7 +92120,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -92131,7 +92131,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -92142,7 +92142,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -92153,7 +92153,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -92164,7 +92164,7 @@
     "absence": null,
     "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "server crash (InternalError: &#39;PutBucketVersioningRequest&#39;)",
+    "probe_message": "server crash (500: Internal Server Error)",
     "probe_status": "500_error",
     "screens": {
      "probe": true,
@@ -100899,7 +100899,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (EventDestinationAlreadyExists: Duplicate Event destination Name.)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -100908,10 +100908,10 @@
    },
    "CreateConfigurationSetTrackingOptions": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "absent",
     "conformance": null,
-    "probe_message": "exception: Unable to parse response (not well-formed (invalid token): l",
-    "probe_status": "500_error",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -100965,7 +100965,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "implemented (InvalidParameterValue)",
+    "probe_message": "OK",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -100985,10 +100985,10 @@
    },
    "DeleteConfigurationSetEventDestination": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "absent",
     "conformance": null,
-    "probe_message": "exception: Unable to parse response (not well-formed (invalid token): l",
-    "probe_status": "500_error",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": true
@@ -100996,10 +100996,10 @@
    },
    "DeleteConfigurationSetTrackingOptions": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "absent",
     "conformance": null,
-    "probe_message": "exception: Unable to parse response (not well-formed (invalid token): l",
-    "probe_status": "500_error",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -101029,10 +101029,10 @@
    },
    "DeleteIdentityPolicy": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "absent",
     "conformance": null,
-    "probe_message": "exception: Unable to parse response (not well-formed (invalid token): l",
-    "probe_status": "500_error",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -101084,10 +101084,10 @@
    },
    "DeleteVerifiedEmailAddress": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "absent",
     "conformance": null,
-    "probe_message": "exception: Unable to parse response (not well-formed (invalid token): l",
-    "probe_status": "500_error",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -101194,10 +101194,10 @@
    },
    "GetIdentityPolicies": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "absent",
     "conformance": null,
-    "probe_message": "exception: Unable to parse response (not well-formed (invalid token): l",
-    "probe_status": "500_error",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -101282,10 +101282,10 @@
    },
    "ListIdentityPolicies": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "absent",
     "conformance": null,
-    "probe_message": "exception: Unable to parse response (not well-formed (invalid token): l",
-    "probe_status": "500_error",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -101337,10 +101337,10 @@
    },
    "PutConfigurationSetDeliveryOptions": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "absent",
     "conformance": null,
-    "probe_message": "exception: Unable to parse response (not well-formed (invalid token): l",
-    "probe_status": "500_error",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": true
@@ -101348,10 +101348,10 @@
    },
    "PutIdentityPolicy": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "absent",
     "conformance": null,
-    "probe_message": "exception: Unable to parse response (not well-formed (invalid token): l",
-    "probe_status": "500_error",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -101359,10 +101359,10 @@
    },
    "ReorderReceiptRuleSet": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "absent",
     "conformance": null,
-    "probe_message": "exception: Unable to parse response (not well-formed (invalid token): l",
-    "probe_status": "500_error",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -101370,10 +101370,10 @@
    },
    "SendBounce": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "absent",
     "conformance": null,
-    "probe_message": "exception: Unable to parse response (not well-formed (invalid token): l",
-    "probe_status": "500_error",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -101416,7 +101416,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (MessageRejected: Source not specified)",
+    "probe_message": "likely implemented (MessageRejected: Did not have authority to send from email probe-test-value)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -101438,7 +101438,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (RuleSetDoesNotExist: Rule set does not exist: probe-test-value)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -101469,10 +101469,10 @@
    },
    "SetIdentityHeadersInNotificationsEnabled": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "absent",
     "conformance": null,
-    "probe_message": "exception: Unable to parse response (not well-formed (invalid token): l",
-    "probe_status": "500_error",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -101502,10 +101502,10 @@
    },
    "SetReceiptRulePosition": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "absent",
     "conformance": null,
-    "probe_message": "exception: Unable to parse response (not well-formed (invalid token): l",
-    "probe_status": "500_error",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -101535,10 +101535,10 @@
    },
    "UpdateConfigurationSetEventDestination": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "absent",
     "conformance": null,
-    "probe_message": "exception: Unable to parse response (not well-formed (invalid token): l",
-    "probe_status": "500_error",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": true
@@ -101557,10 +101557,10 @@
    },
    "UpdateConfigurationSetSendingEnabled": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "absent",
     "conformance": null,
-    "probe_message": "exception: Unable to parse response (not well-formed (invalid token): l",
-    "probe_status": "500_error",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -101568,10 +101568,10 @@
    },
    "UpdateConfigurationSetTrackingOptions": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "absent",
     "conformance": null,
-    "probe_message": "exception: Unable to parse response (not well-formed (invalid token): l",
-    "probe_status": "500_error",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false

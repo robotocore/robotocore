@@ -14,6 +14,19 @@
 //!
 //! Cross-service reads/writes (default security group creation, SG
 //! existence) go through the gateway loopback, like the ELBv2 port.
+//!
+//! Crash-fidelity ruling (crash-row triage): operations moto crashes on
+//! when the load balancer is missing (`register_instances`,
+//! `deregister_instances`, `apply_security_groups_to_load_balancer` with no
+//! SG error first, attribute/subnet reads/writes) reproduce moto's exact
+//! wire answer — an unhandled Python exception surfaces through the
+//! werkzeug server as the plain HTML 500 page, not an AWS envelope
+//! (`ElbError::moto_crash`). `DescribeLoadBalancerPolicies` instead routes
+//! through moto's `describe_load_balancers`, which raises the modeled
+//! `LoadBalancerNotFound`, and `ApplySecurityGroupsToLoadBalancer`
+//! validates SG existence (the EC2 loopback's `Filter.1.Value.1` encoding)
+//! before the LB lookup, missing that rule was 500 on the twin where moto
+//! answers 400.
 
 use super::elbv2::{
     create_default_security_group, fetch_default_subnets, fetch_subnets, iso_micro, p_i64, p_list,
@@ -474,9 +487,17 @@ fn val_non_empty(v: &ElbVal) -> bool {
 
 fn sg_exists(req: &Request, id: &str) -> bool {
     let body = LoopbackBody::Form(format!(
-        "Action=DescribeSecurityGroups&Version=2016-11-15&Filter.1.Name=group-id&Filter.1.Values.member.1={id}"
+        // The gateway's EC2 accepts AWS's canonical filter encoding
+        // (`Filter.1.Value.1`); a `Values.member.1` filter fails to match.
+        "Action=DescribeSecurityGroups&Version=2016-11-15&Filter.1.Name=group-id&Filter.1.Value.1={id}"
     ));
-    matches!(super::elbv2::loopback(req, "ec2", &body), Some((200, _)))
+    // moto raises InvalidSecurityGroupError whenever the EC2 backend has no
+    // such group id, so existence means the id actually appears in the
+    // response's securityGroups list — not merely a 200 answer.
+    matches!(
+        super::elbv2::loopback(req, "ec2", &body),
+        Some((200, xml)) if xml.contains(&format!("<groupId>{id}</groupId>"))
+    )
 }
 
 fn instance_states(req: &Request, ids: &[String]) -> BTreeMap<String, String> {
@@ -883,10 +904,10 @@ fn op_register_instances(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -> 
                 .map(|s| s.to_string())
         })
         .collect();
+    // moto: `register_instances` getattr's the None load balancer, an
+    // unhandled AttributeError → werkzeug HTML 500 (moto-crash-faithful).
     let Some(lb) = lb_by(state, &name) else {
-        return Err(ElbError::internal(
-            "'NoneType' object has no attribute 'instance_ids'",
-        ));
+        return Err(ElbError::moto_crash());
     };
     for id in ids {
         if !lb.instance_ids.contains(&id) {
@@ -910,10 +931,9 @@ fn op_deregister_instances(state: &mut ElbState, p: &BTreeMap<String, ElbVal>) -
                 .map(|s| s.to_string())
         })
         .collect();
+    // moto: same unhandled getattr crash on a missing load balancer.
     let Some(lb) = lb_by(state, &name) else {
-        return Err(ElbError::internal(
-            "'NoneType' object has no attribute 'instance_ids'",
-        ));
+        return Err(ElbError::moto_crash());
     };
     lb.instance_ids.retain(|id| !ids.contains(id));
     Ok("<Instances/>".to_string())
@@ -1056,10 +1076,10 @@ fn op_describe_load_balancer_attributes(
     let name = p_string(p, "LoadBalancerName")
         .unwrap_or_default()
         .to_string();
+    // moto: `load_balancer.attributes` on the None lookup → unhandled
+    // AttributeError → werkzeug HTML 500 (moto-crash-faithful).
     let Some(lb) = lb_by(state, &name) else {
-        return Err(ElbError::internal(
-            "'NoneType' object has no attribute 'attributes'",
-        ));
+        return Err(ElbError::moto_crash());
     };
     Ok(attributes_xml(lb))
 }
@@ -1071,10 +1091,9 @@ fn op_modify_load_balancer_attributes(
     let name = p_string(p, "LoadBalancerName")
         .unwrap_or_default()
         .to_string();
+    // moto: same `load_balancer.attributes` crash on the modify path.
     let Some(lb) = lb_by(state, &name) else {
-        return Err(ElbError::internal(
-            "'NoneType' object has no attribute 'attributes'",
-        ));
+        return Err(ElbError::moto_crash());
     };
     let attrs = p
         .get("LoadBalancerAttributes")
@@ -1208,9 +1227,10 @@ fn op_create_load_balancer_policy(state: &mut ElbState, p: &BTreeMap<String, Elb
         })
         .collect();
     let Some(lb) = lb_by(state, &name) else {
-        return Err(ElbError::internal(
-            "'NoneType' object has no attribute 'policies'",
-        ));
+        // moto: `load_balancer.policies` on the None lookup in
+        // create_load_balancer_policy → the same unhandled getattr crash
+        // (werkzeug HTML 500).
+        return Err(ElbError::moto_crash());
     };
     if !lb.policies.iter().any(|p| p.name() == policy_name) {
         lb.policies.push(ElbPolicy::Other {
@@ -1266,9 +1286,13 @@ fn op_describe_load_balancer_policies(
         .unwrap_or_default()
         .to_string();
     let policy_names = p_list(p, "PolicyNames");
+    // moto routes describe_load_balancer_policies through
+    // `describe_load_balancers([name])`, which raises the modeled
+    // LoadBalancerNotFound for a missing name.
     let Some(lb) = lb_by(state, &name) else {
-        return Err(ElbError::internal(
-            "'NoneType' object has no attribute 'policies'",
+        return Err(ElbError::svc(
+            "LoadBalancerNotFound",
+            format!("The specified load balancer does not exist: {name}"),
         ));
     };
     policies_descriptions_xml(lb, &policy_names)
@@ -1415,9 +1439,9 @@ fn op_apply_security_groups(
         }
     }
     let Some(lb) = lb_by(state, &name) else {
-        return Err(ElbError::internal(
-            "'NoneType' object has no attribute 'security_groups'",
-        ));
+        // moto: `load_balancer.security_groups = ids` on the None lookup →
+        // unhandled AttributeError → werkzeug HTML 500.
+        return Err(ElbError::moto_crash());
     };
     lb.security_groups = sgs.clone();
     let mut items = String::new();
@@ -1436,9 +1460,9 @@ fn op_attach_load_balancer_to_subnets(
         .to_string();
     let subnets = p_list(p, "Subnets");
     let Some(lb) = lb_by(state, &name) else {
-        return Err(ElbError::internal(
-            "'NoneType' object has no attribute 'subnets'",
-        ));
+        // moto: `load_balancer.subnets` on the None lookup → unhandled
+        // AttributeError → werkzeug HTML 500 (moto-crash-faithful).
+        return Err(ElbError::moto_crash());
     };
     let mut set: Vec<String> = lb.subnets.clone();
     for s in &subnets {
@@ -1463,9 +1487,8 @@ fn op_detach_load_balancer_from_subnets(
         .to_string();
     let subnets = p_list(p, "Subnets");
     let Some(lb) = lb_by(state, &name) else {
-        return Err(ElbError::internal(
-            "'NoneType' object has no attribute 'subnets'",
-        ));
+        // moto: same `load_balancer.subnets` crash on the detach path.
+        return Err(ElbError::moto_crash());
     };
     let set: Vec<String> = lb
         .subnets
@@ -1779,5 +1802,116 @@ mod tests {
         let p = parse_params(&req);
         let err = op_configure_health_check(st, &p).unwrap_err();
         assert!(matches!(err, ElbError::Service(400, c, _) if c == "ValidationError"));
+    }
+
+    /// Crash-row triage: the ops moto itself crashes on (NoneType attribute
+    /// access on a missing load balancer) answer moto's exact werkzeug HTML
+    /// 500 — no AWS envelope. The two ops moto models
+    /// (`DescribeLoadBalancerPolicies`, and SG-existence ordering for
+    /// `ApplySecurityGroupsToLoadBalancer`) answer modeled errors.
+    #[test]
+    fn missing_lb_crash_ops_render_moto_html_500() {
+        let slots = store::slot::<ElbState>("elb");
+        let mut map = slots.write();
+        let st = map.entry((123456789006, "us-east-1".into())).or_default();
+        let req = req_for(
+            "RegisterInstancesWithLoadBalancer",
+            "LoadBalancerName=ghost&Instances.member.1.InstanceId=i-1",
+        );
+        let p = parse_params(&req);
+        let err = op_register_instances(st, &p).unwrap_err();
+        assert!(matches!(err, ElbError::MotoCrash(500)));
+        let resp = err.response(XMLNS);
+        assert_eq!(resp.status, 500);
+        assert_eq!(
+            String::from_utf8(resp.body.clone()).unwrap(),
+            String::from_utf8(crate::proto::moto_crash_response().body.clone()).unwrap()
+        );
+        let req = req_for("DescribeLoadBalancerAttributes", "LoadBalancerName=ghost");
+        let p = parse_params(&req);
+        assert!(matches!(
+            op_describe_load_balancer_attributes(st, &p).unwrap_err(),
+            ElbError::MotoCrash(500)
+        ));
+        let req = req_for("ModifyLoadBalancerAttributes", "LoadBalancerName=ghost");
+        let p = parse_params(&req);
+        assert!(matches!(
+            op_modify_load_balancer_attributes(st, &p).unwrap_err(),
+            ElbError::MotoCrash(500)
+        ));
+        let req = req_for(
+            "AttachLoadBalancerToSubnets",
+            "LoadBalancerName=ghost&Subnets.member.1=subnet-1",
+        );
+        let p = parse_params(&req);
+        assert!(matches!(
+            op_attach_load_balancer_to_subnets(st, &p).unwrap_err(),
+            ElbError::MotoCrash(500)
+        ));
+        let req = req_for(
+            "DetachLoadBalancerFromSubnets",
+            "LoadBalancerName=ghost&Subnets.member.1=subnet-1",
+        );
+        let p = parse_params(&req);
+        assert!(matches!(
+            op_detach_load_balancer_from_subnets(st, &p).unwrap_err(),
+            ElbError::MotoCrash(500)
+        ));
+        let req = req_for(
+            "DeregisterInstancesFromLoadBalancer",
+            "LoadBalancerName=ghost",
+        );
+        let p = parse_params(&req);
+        assert!(matches!(
+            op_deregister_instances(st, &p).unwrap_err(),
+            ElbError::MotoCrash(500)
+        ));
+    }
+
+    /// moto routes `describe_load_balancer_policies` through
+    /// `describe_load_balancers`, which raises the modeled
+    /// `LoadBalancerNotFound` (400) instead of crashing.
+    #[test]
+    fn describe_policies_missing_lb_is_modeled_not_found() {
+        let slots = store::slot::<ElbState>("elb");
+        let mut map = slots.write();
+        let st = map.entry((123456789007, "us-east-1".into())).or_default();
+        let req = req_for("DescribeLoadBalancerPolicies", "LoadBalancerName=ghost");
+        let p = parse_params(&req);
+        let err = op_describe_load_balancer_policies(st, &p).unwrap_err();
+        let (status, code, message) = match &err {
+            ElbError::Service(s, c, m) => (*s, c.clone(), m.clone()),
+            other => panic!("expected Service error, got {other:?}"),
+        };
+        assert_eq!(status, 400);
+        assert_eq!(code, "LoadBalancerNotFound");
+        assert_eq!(message, "The specified load balancer does not exist: ghost");
+    }
+
+    /// moto validates SG existence before the LB lookup, so a bogus
+    /// security group answers the modeled ValidationError (400) even when
+    /// the load balancer is missing too. (Unit context: the EC2 loopback
+    /// has no server, so every group id counts as absent, like moto's
+    /// backend with an empty search.)
+    #[test]
+    fn apply_security_groups_validates_groups_before_lb() {
+        let slots = store::slot::<ElbState>("elb");
+        let mut map = slots.write();
+        let st = map.entry((123456789008, "us-east-1".into())).or_default();
+        let req = req_for(
+            "ApplySecurityGroupsToLoadBalancer",
+            "LoadBalancerName=ghost&SecurityGroups.member.1=sg-00000000000000000",
+        );
+        let p = parse_params(&req);
+        let err = op_apply_security_groups(&req, st, &p).unwrap_err();
+        let (code, message) = match &err {
+            ElbError::Service(_, c, m) => (c.clone(), m.clone()),
+            other => panic!("expected Service error, got {other:?}"),
+        };
+        assert_eq!(code, "ValidationError");
+        assert_eq!(
+            message,
+            "One or more of the specified security groups do not exist."
+        );
     }
 }

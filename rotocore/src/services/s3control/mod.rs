@@ -16,6 +16,13 @@
 //! lifecycle/replication delegate to the S3 state over
 //! `s3::bridge::get_bucket`, exactly like moto's `s3_backends[...]` calls.
 //!
+//! Crash-fidelity exception (crash-row triage): moto's
+//! `put_bucket_versioning` indexes `xmltodict.parse(body)
+//! ["PutBucketVersioningRequest"]`, but botocore sends the
+//! `VersioningConfiguration` root — moto's probe-visible answer is the
+//! werkzeug HTML 500 for every real-client shape, so that is what the
+//! twin serves; only a body with moto's expected root sets versioning.
+//!
 //! Operations outside moto's surface answer 501 the same way the sidecar
 //! did: identity-center association, data access, caller grants, the
 //! directory/regional bucket and object-lambda listing/configuration
@@ -2646,16 +2653,22 @@ fn bucket_op(req: &Request, st: &mut S3ControlStore, bucket: &str, leaf_pair: &s
     let method = req.method.as_str();
     match (method, leaf.as_str()) {
         ("PUT", "versioning") => {
-            // moto parses then indexes: an empty body crashes (500), a wrapper
-            // without <Status> clears versioning.
-            let Some(status) = parse_xml(&req.body)
-                .as_ref()
-                .and_then(|b| b.sub(&["VersioningConfiguration", "Status"]))
-                .map(|s| s.as_str().to_string())
-            else {
-                return xml_error(500, "InternalError", "'PutBucketVersioningRequest'", "");
-            };
-            put_bucket_versioning(req, st, bucket, &status)
+            // moto: `xmltodict.parse(body)["PutBucketVersioningRequest"]`.
+            // botocore sends the `VersioningConfiguration` root, so moto's
+            // index KeyErrors and its werkzeug server answers the plain
+            // HTML 500 — crash-faithful for every real client shape. Only
+            // a body carrying moto's root key passes through and sets
+            // versioning (`VersioningConfiguration.Status`, default "").
+            match parse_xml(&req.body) {
+                Some(el) if el.name == "PutBucketVersioningRequest" => {
+                    let status = el
+                        .sub(&["VersioningConfiguration", "Status"])
+                        .map(|s| s.as_str().to_string())
+                        .unwrap_or_default();
+                    put_bucket_versioning(req, st, bucket, &status)
+                }
+                _ => crate::proto::moto_crash_response(),
+            }
         }
         ("GET", "versioning") => get_bucket_versioning(req, st, bucket),
         ("PUT", "policy") => put_bucket_policy(req, st, bucket),
@@ -3276,5 +3289,76 @@ mod tests {
         let resp = request(account, "GET", "/v20180820/accesspoint", "");
         assert_eq!(resp.status, 200, "{}", status_code_str(&resp));
         assert!(status_code_str(&resp).contains("AccessPointList"));
+    }
+
+    /// moto's `xmltodict.parse(body)["PutBucketVersioningRequest"]` raises a
+    /// bare KeyError on an empty body and escapes to the werkzeug server:
+    /// the wire answer is the plain HTML 500 page, no AWS envelope.
+    #[test]
+    fn put_bucket_versioning_empty_body_is_moto_crash() {
+        let account = next_account();
+        let resp = request(
+            account,
+            "PUT",
+            "/v20180820/bucket/probe-bucket/versioning",
+            "",
+        );
+        assert_eq!(resp.status, 500);
+        assert!(
+            resp.headers
+                .iter()
+                .any(|(k, v)| k == "Content-Type" && v == "text/html; charset=utf-8"),
+            "{:?}",
+            resp.headers
+        );
+        let text = status_code_str(&resp);
+        assert!(text.starts_with("<!doctype html>"), "{text}");
+        assert!(
+            text.contains("<title>500 Internal Server Error</title>"),
+            "{text}"
+        );
+    }
+
+    /// botocore sends the `VersioningConfiguration` root, so moto's
+    /// `["PutBucketVersioningRequest"]` index KeyErrors: every real-client
+    /// PUT versioning shape crashes the same way (an HTML 500, not 200,
+    /// even with a valid wrapper).
+    #[test]
+    fn put_bucket_versioning_real_shape_is_moto_crash() {
+        let account = next_account();
+        let resp = request(
+            account,
+            "PUT",
+            "/v20180820/bucket/probe-ver-bucket/versioning",
+            "<VersioningConfiguration><Status>Enabled</Status></VersioningConfiguration>",
+        );
+        assert_eq!(resp.status, 500);
+        let text = status_code_str(&resp);
+        assert!(text.starts_with("<!doctype html>"), "{text}");
+    }
+
+    /// moto only sets versioning when the body carries its expected
+    /// `PutBucketVersioningRequest` root (measured against moto itself).
+    #[test]
+    fn put_bucket_versioning_sets_status_via_moto_root() {
+        let account = next_account();
+        let state = s3::models::S3State::new();
+        state.put_bucket(std::sync::Arc::new(s3::models::Bucket::new(
+            "probe-ver-bucket".to_string(),
+            "us-east-1".to_string(),
+        )));
+        s3::bridge::register_state(account, "us-east-1", &state);
+        let bucket = "/v20180820/bucket/probe-ver-bucket/versioning";
+        assert_eq!(
+            request(
+                account,
+                "PUT",
+                bucket,
+                "<PutBucketVersioningRequest><VersioningConfiguration><Status>Enabled</Status></VersioningConfiguration></PutBucketVersioningRequest>",
+            ).status,
+            200
+        );
+        let resp = request(account, "GET", bucket, "");
+        assert!(status_code_str(&resp).contains("<Status>Enabled</Status>"));
     }
 }

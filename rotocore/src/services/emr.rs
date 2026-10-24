@@ -14,8 +14,8 @@
 //!   GetOnClusterAppUIPresignedURL) are now implemented per the suites.
 //! - Unknown clusters answer `InvalidRequestException`/`NoSuchCluster`; a few
 //!   moto paths (bare `self.clusters[id]` dict reads) escape as KeyError →
-//!   `InternalError` (SetTerminationProtection, SetVisibleToAllUsers,
-//!   TerminateJobFlows, ModifyInstanceGroups).
+//!   the werkzeug HTML 500 page crash-faithful (SetTerminationProtection,
+//!   SetVisibleToAllUsers, TerminateJobFlows, ModifyInstanceGroups).
 //! - `Instances.InstanceFleets` on RunJobFlow is ignored — moto only creates
 //!   fleets through `AddInstanceFleet`.
 //! - State is per-(account, region) via [`crate::store`].
@@ -368,12 +368,10 @@ fn validation(message: &str) -> Response {
     )
 }
 
-/// moto's KeyError escape (e.g. `self.clusters[unknown_id]`).
-fn key_error(key: &str) -> Response {
-    Response::json_status(
-        500,
-        &json!({"__type": "InternalError", "message": format!("'{}'", key)}),
-    )
+/// moto's KeyError escape (e.g. `self.clusters[unknown_id]`): crash-faithful
+/// as moto's werkzeug server — the plain HTML 500 page, no AWS envelope.
+fn key_error(_key: &str) -> Response {
+    crate::proto::moto_crash_response()
 }
 
 fn ok(body: Value) -> Response {
@@ -1816,7 +1814,8 @@ fn put_auto_scaling_policy(
     // moto: `assert instance_group is not None` → InternalError("") when absent.
     let group_id = as_str(param(body, "InstanceGroupId")).unwrap_or_default();
     let group = state.instance_groups.get_mut(&group_id).ok_or_else(|| {
-        Response::json_status(500, &json!({"__type": "InternalError", "message": ""}))
+        // moto: `assert instance_group is not None` → the werkzeug HTML 500.
+        crate::proto::moto_crash_response()
     })?;
     group.auto_scaling_policy =
         attach_auto_scaling_policy(param(body, "AutoScalingPolicy"), &cluster_id.clone());
@@ -2568,6 +2567,25 @@ mod tests {
         serde_json::from_slice(&resp.body).unwrap_or(Value::Null)
     }
 
+    /// moto-crash rows render the werkzeug unhandled-exception page: the
+    /// HTML body yields no parsable JSON for a boto3 client.
+    fn assert_moto_crash(resp: &Response) {
+        assert_eq!(resp.status, 500);
+        assert!(
+            resp.headers
+                .iter()
+                .any(|(k, v)| k == "Content-Type" && v == "text/html; charset=utf-8"),
+            "{:?}",
+            resp.headers
+        );
+        let text = String::from_utf8(resp.body.clone()).expect("utf8");
+        assert!(text.starts_with("<!doctype html>"), "{text}");
+        assert!(
+            text.contains("<title>500 Internal Server Error</title>"),
+            "{text}"
+        );
+    }
+
     fn status_of(resp: &Response) -> u16 {
         resp.status
     }
@@ -2715,17 +2733,17 @@ mod tests {
         let desc = body_of(&run("DescribeCluster", json!({"ClusterId": id})));
         assert_eq!(desc["Cluster"]["TerminationProtected"], true);
 
-        // moto: bare dict read on unknown cluster → InternalError 500
+        // moto: bare dict read on unknown cluster → moto's werkzeug HTML 500
         let bad = run(
             "SetTerminationProtection",
             json!({"JobFlowIds": ["j-NOPE123"]}),
         );
         assert_eq!(status_of(&bad), 500);
-        assert_eq!(body_of(&bad)["__type"], "InternalError");
-        assert_eq!(body_of(&bad)["message"], "'j-NOPE123'");
+        assert_moto_crash(&bad);
 
         let bad_visible = run("SetVisibleToAllUsers", json!({"JobFlowIds": ["j-NOPE123"]}));
         assert_eq!(status_of(&bad_visible), 500);
+        assert_moto_crash(&bad_visible);
         let _bad_term = run("TerminateJobFlows", json!({"JobFlowIds": ["j-NOPE123"]}));
         assert_eq!(status_of(&bad), 500);
         assert_eq!(status_of(&bad_visible), 500);
@@ -2983,13 +3001,13 @@ mod tests {
         assert_eq!(status_of(&empty), 200);
         assert_eq!(body_of(&empty), json!({}));
 
-        // unknown group → moto KeyError
+        // unknown group → moto KeyError crash (werkzeug HTML 500)
         let bad = run(
             "ModifyInstanceGroups",
             json!({"InstanceGroups": [{"InstanceGroupId": "i-NOPE", "InstanceCount": 2}]}),
         );
         assert_eq!(status_of(&bad), 500);
-        assert_eq!(body_of(&bad)["__type"], "InternalError");
+        assert_moto_crash(&bad);
 
         run("TerminateJobFlows", json!({"JobFlowIds": [id]}));
     }
@@ -3133,13 +3151,13 @@ mod tests {
             .unwrap();
         assert!(group2.get("AutoScalingPolicy").is_none());
 
-        // unknown group → moto assert → InternalError("")
+        // unknown group → moto assert → the same werkzeug HTML 500 page
         let bad = run(
             "PutAutoScalingPolicy",
             json!({"ClusterId": id, "InstanceGroupId": "i-NOPE123", "AutoScalingPolicy": {}}),
         );
         assert_eq!(status_of(&bad), 500);
-        assert_eq!(body_of(&bad)["message"], "");
+        assert_moto_crash(&bad);
 
         run("TerminateJobFlows", json!({"JobFlowIds": [id]}));
     }

@@ -1,12 +1,12 @@
 {
   "service": "elb",
-  "generated_at": "2026-10-22T07:00:51.664822+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-24T17:31:22.119989+00:00",
+  "endpoint": "http://localhost:4794",
   "counts": {
-    "working": 21,
+    "working": 22,
     "needs_params": 0,
     "not_implemented": 0,
-    "500_error": 8,
+    "500_error": 7,
     "timeout": 0
   },
   "operations": [
@@ -17,13 +17,13 @@
     },
     {
       "operation": "ApplySecurityGroupsToLoadBalancer",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'security_groups')"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "AttachLoadBalancerToSubnets",
       "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'subnets')"
+      "message": "exception: ResponseParserError: Unable to parse response (syntax error: line 1, column 0), i"
     },
     {
       "operation": "ConfigureHealthCheck",
@@ -43,7 +43,7 @@
     {
       "operation": "CreateLoadBalancer",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "CreateLoadBalancerListeners",
@@ -52,8 +52,8 @@
     },
     {
       "operation": "CreateLoadBalancerPolicy",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: ResponseParserError: Unable to parse response (syntax error: line 1, column 0), i"
     },
     {
       "operation": "DeleteLoadBalancer",
@@ -73,7 +73,7 @@
     {
       "operation": "DeregisterInstancesFromLoadBalancer",
       "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'instance_ids')"
+      "message": "exception: ResponseParserError: Unable to parse response (syntax error: line 1, column 0), i"
     },
     {
       "operation": "DescribeAccountLimits",
@@ -88,12 +88,12 @@
     {
       "operation": "DescribeLoadBalancerAttributes",
       "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'attributes')"
+      "message": "exception: ResponseParserError: Unable to parse response (syntax error: line 1, column 0), i"
     },
     {
       "operation": "DescribeLoadBalancerPolicies",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'policies')"
+      "status": "working",
+      "message": "likely implemented (LoadBalancerNotFound: The specified load balancer does not exist: probe-test-value)"
     },
     {
       "operation": "DescribeLoadBalancerPolicyTypes",
@@ -113,7 +113,7 @@
     {
       "operation": "DetachLoadBalancerFromSubnets",
       "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'subnets')"
+      "message": "exception: ResponseParserError: Unable to parse response (syntax error: line 1, column 0), i"
     },
     {
       "operation": "DisableAvailabilityZonesForLoadBalancer",
@@ -128,12 +128,12 @@
     {
       "operation": "ModifyLoadBalancerAttributes",
       "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'attributes')"
+      "message": "exception: ResponseParserError: Unable to parse response (syntax error: line 1, column 0), i"
     },
     {
       "operation": "RegisterInstancesWithLoadBalancer",
       "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'instance_ids')"
+      "message": "exception: ResponseParserError: Unable to parse response (syntax error: line 1, column 0), i"
     },
     {
       "operation": "RemoveTags",

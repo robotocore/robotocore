@@ -1,12 +1,13 @@
 {
   "service": "ses",
-  "generated_at": "2026-10-20T08:08:31.413360+00:00",
-  "endpoint": "http://localhost:4599",
+  "generated_at": "2026-10-24T17:31:26.026679+00:00",
+  "endpoint": "http://localhost:4794",
   "counts": {
     "working": 55,
     "needs_params": 0,
-    "not_implemented": 0,
-    "500_error": 16
+    "not_implemented": 16,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -22,12 +23,12 @@
     {
       "operation": "CreateConfigurationSetEventDestination",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (EventDestinationAlreadyExists: Duplicate Event destination Name.)"
     },
     {
       "operation": "CreateConfigurationSetTrackingOptions",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "CreateCustomVerificationEmailTemplate",
@@ -52,7 +53,7 @@
     {
       "operation": "CreateTemplate",
       "status": "working",
-      "message": "implemented (InvalidParameterValue)"
+      "message": "OK"
     },
     {
       "operation": "DeleteConfigurationSet",
@@ -61,13 +62,13 @@
     },
     {
       "operation": "DeleteConfigurationSetEventDestination",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "DeleteConfigurationSetTrackingOptions",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "DeleteCustomVerificationEmailTemplate",
@@ -81,8 +82,8 @@
     },
     {
       "operation": "DeleteIdentityPolicy",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "DeleteReceiptFilter",
@@ -106,8 +107,8 @@
     },
     {
       "operation": "DeleteVerifiedEmailAddress",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "DescribeActiveReceiptRuleSet",
@@ -156,8 +157,8 @@
     },
     {
       "operation": "GetIdentityPolicies",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "GetIdentityVerificationAttributes",
@@ -196,8 +197,8 @@
     },
     {
       "operation": "ListIdentityPolicies",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "ListReceiptFilters",
@@ -221,23 +222,23 @@
     },
     {
       "operation": "PutConfigurationSetDeliveryOptions",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "PutIdentityPolicy",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "ReorderReceiptRuleSet",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "SendBounce",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "SendBulkTemplatedEmail",
@@ -257,7 +258,7 @@
     {
       "operation": "SendRawEmail",
       "status": "working",
-      "message": "likely implemented (MessageRejected: Source not specified)"
+      "message": "likely implemented (MessageRejected: Did not have authority to send from email probe-test-value)"
     },
     {
       "operation": "SendTemplatedEmail",
@@ -267,7 +268,7 @@
     {
       "operation": "SetActiveReceiptRuleSet",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (RuleSetDoesNotExist: Rule set does not exist: probe-test-value)"
     },
     {
       "operation": "SetIdentityDkimEnabled",
@@ -281,8 +282,8 @@
     },
     {
       "operation": "SetIdentityHeadersInNotificationsEnabled",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "SetIdentityMailFromDomain",
@@ -296,8 +297,8 @@
     },
     {
       "operation": "SetReceiptRulePosition",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "TestRenderTemplate",
@@ -311,8 +312,8 @@
     },
     {
       "operation": "UpdateConfigurationSetEventDestination",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "UpdateConfigurationSetReputationMetricsEnabled",
@@ -321,13 +322,13 @@
     },
     {
       "operation": "UpdateConfigurationSetSendingEnabled",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "UpdateConfigurationSetTrackingOptions",
-      "status": "500_error",
-      "message": "exception: Unable to parse response (not well-formed (invalid token): l"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "UpdateCustomVerificationEmailTemplate",
