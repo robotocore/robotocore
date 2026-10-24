@@ -77,15 +77,18 @@ def make_client(service_name: str, **kwargs):
 
 @pytest.fixture(autouse=True, scope="session")
 def _clear_chaos_rules_at_session_end():
-    """Safety net: clear all chaos rules when a compat test session ends.
+    """Safety net: clear this session's chaos rules when a compat test session ends.
 
-    If chaos tests somehow leak into a compat shard (e.g., due to CI
-    misconfiguration), this prevents leftover rules from poisoning
-    subsequent test runs on the same server.
+    Account-scoped (`?account=`): if chaos rules somehow leak into a compat
+    shard (e.g. due to CI misconfiguration), this removes any rule aimed at
+    this session's account without clobbering rules another worker's chaos
+    test on the same shared twin is still using (their rules live in their
+    own account and cannot affect other accounts anyway).
     """
     yield
     try:
-        resp = requests.post(f"{ENDPOINT_URL}/_robotocore/chaos/rules/clear", timeout=5)
+        url = f"{ENDPOINT_URL}/_robotocore/chaos/rules/clear?account=123456789012"
+        resp = requests.post(url, timeout=5)
         if resp.ok and resp.json().get("count", 0) > 0:
             logger.warning(
                 "Session teardown cleared %d leftover chaos rules — "

@@ -1,5 +1,6 @@
 """Compatibility tests for AWS Lake Formation service."""
 
+import os
 import uuid
 
 import pytest
@@ -1270,7 +1271,7 @@ class TestLakeFormationQueryPlanningOps:
 
         return boto3.client(
             "lakeformation",
-            endpoint_url="http://localhost:4566",
+            endpoint_url=os.environ.get("ENDPOINT_URL", "http://localhost:4566"),
             region_name="us-east-1",
             aws_access_key_id="test",
             aws_secret_access_key="test",
@@ -1332,7 +1333,7 @@ class TestLakeFormationAssumeDecoratedRoleGapOp:
 
         client = boto3.client(
             "lakeformation",
-            endpoint_url="http://localhost:4566",
+            endpoint_url=os.environ.get("ENDPOINT_URL", "http://localhost:4566"),
             region_name="us-east-1",
             aws_access_key_id="test",
             aws_secret_access_key="test",

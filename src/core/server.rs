@@ -1260,6 +1260,7 @@ pub async fn catch_all_handler(
         uri.path(),
         &query_string,
         &region_for_audit,
+        account,
     )
     .await
     {

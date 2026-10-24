@@ -24,17 +24,21 @@
 //! otherwise — plus the `x-robotocore-chaos: {rule_id}` header.
 //!
 //! Matching: service glob (fnmatch `*`/`?`/`[..]`), operation regex
-//! (`re.search` semantics), exact region, probability draw, TTL expiry,
-//! `enabled` flag. The store is a process-wide in-memory singleton (not
-//! per-account), exactly like the python singleton. First matching rule
-//! wins; `match_count` increments on every effective match.
+//! (`re.search` semantics), exact region, exact account (extension: the
+//! body's `account` member, absent from the python rule), probability
+//! draw, TTL expiry, `enabled` flag. The store is a process-wide
+//! in-memory singleton (not per-account), exactly like the python
+//! singleton. First matching rule wins; `match_count` increments on every
+//! effective match. An `account`-scoped rule only applies to requests
+//! from that account — the compat chaos suite uses this to throttle only
+//! itself inside the 12-worker shared-twin lane.
 
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::{
     body::Bytes,
-    extract::Path,
+    extract::{Path, Query},
     http::{Method, StatusCode},
     response::{IntoResponse, Response},
     Json,
@@ -59,6 +63,10 @@ pub struct FaultRule {
     operation: Option<String>,
     /// Exact region filter; `None`/empty matches all.
     region: Option<String>,
+    /// Exact account filter; `None`/empty matches all (`account:<12-digit>`).
+    /// A chaos suite in its own account can thus fault-inject without
+    /// throttling the parallel lane's other workers that share the twin.
+    account: Option<String>,
     error_code: Option<String>,
     error_message: String,
     status_code: i64,
@@ -118,6 +126,11 @@ impl FaultRule {
             .and_then(Value::as_str)
             .filter(|s| !s.is_empty())
             .map(str::to_string);
+        let account = data
+            .get("account")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
         let error_code = data
             .get("error_code")
             .and_then(Value::as_str)
@@ -157,6 +170,7 @@ impl FaultRule {
             service,
             operation,
             region,
+            account,
             error_code,
             error_message,
             status_code,
@@ -187,7 +201,13 @@ impl FaultRule {
 
     /// Python `FaultRule.matches` — `match_count` increments only when the
     /// rule fully matches (probability draw included).
-    fn matches(&mut self, service: &str, operation: Option<&str>, region: &str) -> bool {
+    fn matches(
+        &mut self,
+        service: &str,
+        operation: Option<&str>,
+        region: &str,
+        account: u64,
+    ) -> bool {
         if !self.enabled || self.is_expired() {
             return false;
         }
@@ -196,6 +216,11 @@ impl FaultRule {
         }
         if let Some(rule_region) = &self.region {
             if !rule_region.is_empty() && rule_region != region {
+                return false;
+            }
+        }
+        if let Some(rule_account) = &self.account {
+            if rule_account != &account.to_string() {
                 return false;
             }
         }
@@ -226,6 +251,7 @@ impl FaultRule {
             "service": self.service,
             "operation": self.operation,
             "region": self.region,
+            "account": self.account,
             "error_code": self.error_code,
             "error_message": self.error_message,
             "status_code": self.status_code,
@@ -342,6 +368,17 @@ impl FaultRuleStore {
         count
     }
 
+    /// Clear rules that would apply to `account`: rules scoped to it plus
+    /// unscoped (global) ones — "undo my account's exposure". Rules scoped
+    /// to other accounts survive, so a session-end safety net never clobbers
+    /// a concurrently running chaos session on the shared twin.
+    pub fn clear_account(&mut self, account: &str) -> usize {
+        let before = self.rules.len();
+        self.rules
+            .retain(|r| !(r.account.as_deref().is_none() || r.account.as_deref() == Some(account)));
+        before - self.rules.len()
+    }
+
     pub fn list_rules(&self) -> Vec<Value> {
         self.rules.iter().map(FaultRule::to_value).collect()
     }
@@ -360,9 +397,10 @@ impl FaultRuleStore {
         service: &str,
         operation: Option<&str>,
         region: &str,
+        account: u64,
     ) -> Option<FaultRule> {
         for rule in self.rules.iter_mut() {
-            if rule.matches(service, operation, region) {
+            if rule.matches(service, operation, region, account) {
                 return Some(rule.clone());
             }
         }
@@ -568,6 +606,7 @@ pub async fn intercept(
     path: &str,
     query_string: &str,
     region: &str,
+    account: u64,
 ) -> Option<ChaosIntercept> {
     let operation = if operation_detected.is_empty() && service == "s3" {
         detect_s3_rest_operation(method, path, query_string)
@@ -583,6 +622,7 @@ pub async fn intercept(
             service,
             (!operation.is_empty()).then_some(operation.as_str()),
             region,
+            account,
         )
     }?;
 
@@ -707,8 +747,18 @@ pub async fn chaos_delete_rule(Path(rule_id): Path<String>) -> Response {
     }
 }
 
-pub async fn chaos_clear_rules() -> Response {
-    let count = lock_store().clear();
+pub async fn chaos_clear_rules(
+    query: Query<std::collections::HashMap<String, String>>,
+) -> Response {
+    // `?account=X` clears only rules scoped to account X — the compat lane's
+    // session-end safety net uses this to clean its own account without
+    // clobbering a concurrently running chaos session on the shared twin.
+    // The bare call clears everything, like python.
+    let count = if let Some(account) = query.get("account").filter(|s| !s.is_empty()) {
+        lock_store().clear_account(account)
+    } else {
+        lock_store().clear()
+    };
     (
         StatusCode::OK,
         Json(json!({"status": "cleared", "count": count})),
@@ -838,35 +888,70 @@ mod tests {
             json!({"service": "s3", "operation": "Create.*", "error_code": "X"}),
         ]);
         assert!(store
-            .find_matching("s3", Some("CreateBucket"), "us-east-1")
+            .find_matching("s3", Some("CreateBucket"), "us-east-1", 123456789012)
             .is_some());
 
         let mut store = seeded_store(vec![
             json!({"service": "s3", "operation": "^Delete.*", "error_code": "X"}),
         ]);
         assert!(store
-            .find_matching("s3", Some("CreateBucket"), "us-east-1")
+            .find_matching("s3", Some("CreateBucket"), "us-east-1", 123456789012)
             .is_none());
         assert!(store
-            .find_matching("s3", Some("DeleteBucket"), "us-east-1")
+            .find_matching("s3", Some("DeleteBucket"), "us-east-1", 123456789012)
             .is_some());
 
         // A rule with an operation filter does not match op-less requests
         // (S3 root requests carry "ListBuckets" via REST detection first).
-        assert!(store.find_matching("s3", None, "us-east-1").is_none());
+        assert!(store
+            .find_matching("s3", None, "us-east-1", 123456789012)
+            .is_none());
     }
 
     #[test]
     fn service_rule_matches_opless_requests() {
         let mut store = seeded_store(vec![json!({"service": "s3", "error_code": "X"})]);
-        assert!(store.find_matching("s3", None, "us-east-1").is_some());
+        assert!(store
+            .find_matching("s3", None, "us-east-1", 123456789012)
+            .is_some());
     }
 
     #[test]
     fn region_filter_is_exact() {
         let mut store = seeded_store(vec![json!({"region": "eu-west-1", "error_code": "X"})]);
-        assert!(store.find_matching("s3", None, "eu-west-1").is_some());
-        assert!(store.find_matching("s3", None, "us-east-1").is_none());
+        assert!(store
+            .find_matching("s3", None, "eu-west-1", 123456789012)
+            .is_some());
+        assert!(store
+            .find_matching("s3", None, "us-east-1", 123456789012)
+            .is_none());
+    }
+
+    /// Account-scoped rules match only their account; unscoped rules match
+    /// any account (python-parity default).
+    #[test]
+    fn account_filter_is_exact_and_unscoped_matches_all() {
+        let mut scoped = seeded_store(vec![json!({
+            "service": "s3", "error_code": "X", "account": "999777700001"
+        })]);
+        assert!(scoped
+            .find_matching("s3", None, "us-east-1", 999777700001)
+            .is_some());
+        assert!(scoped
+            .find_matching("s3", None, "us-east-1", 123456789012)
+            .is_none());
+        // non-numeric access keys resolve to the default account
+        assert!(scoped
+            .find_matching("s3", None, "us-east-1", 123456789012)
+            .is_none());
+
+        let mut unscoped = seeded_store(vec![json!({"service": "s3", "error_code": "X"})]);
+        assert!(unscoped
+            .find_matching("s3", None, "us-east-1", 999777700001)
+            .is_some());
+        assert!(unscoped
+            .find_matching("s3", None, "us-east-1", 123456789012)
+            .is_some());
     }
 
     #[test]
@@ -874,7 +959,9 @@ mod tests {
         let mut store = seeded_store(vec![
             json!({"service": "s3", "error_code": "X", "enabled": false}),
         ]);
-        assert!(store.find_matching("s3", None, "us-east-1").is_none());
+        assert!(store
+            .find_matching("s3", None, "us-east-1", 123456789012)
+            .is_none());
     }
 
     #[test]
@@ -884,12 +971,16 @@ mod tests {
             let mut store = seeded_store(vec![
                 json!({"service": "s3", "error_code": "X", "probability": 0.0}),
             ]);
-            assert!(store.find_matching("s3", None, "us-east-1").is_none());
+            assert!(store
+                .find_matching("s3", None, "us-east-1", 123456789012)
+                .is_none());
         }
         let mut store = seeded_store(vec![
             json!({"service": "s3", "error_code": "X", "probability": 1.0}),
         ]);
-        assert!(store.find_matching("s3", None, "us-east-1").is_some());
+        assert!(store
+            .find_matching("s3", None, "us-east-1", 123456789012)
+            .is_some());
     }
 
     #[test]
@@ -900,7 +991,10 @@ mod tests {
             let mut store = seeded_store(vec![
                 json!({"service": "s3", "error_code": "X", "probability": 0.5}),
             ]);
-            if store.find_matching("s3", None, "us-east-1").is_some() {
+            if store
+                .find_matching("s3", None, "us-east-1", 123456789012)
+                .is_some()
+            {
                 hits += 1;
             }
         }
@@ -912,13 +1006,17 @@ mod tests {
         let mut store = seeded_store(vec![json!({
             "service": "s3", "error_code": "X", "ttl_seconds": 10.0, "created_at": 0.0
         })]);
-        assert!(store.find_matching("s3", None, "us-east-1").is_none());
+        assert!(store
+            .find_matching("s3", None, "us-east-1", 123456789012)
+            .is_none());
 
         let recent = FaultRule::now_epoch() - 1.0;
         let mut store = seeded_store(vec![json!({
             "service": "s3", "error_code": "X", "ttl_seconds": 10.0, "created_at": recent
         })]);
-        assert!(store.find_matching("s3", None, "us-east-1").is_some());
+        assert!(store
+            .find_matching("s3", None, "us-east-1", 123456789012)
+            .is_some());
     }
 
     #[test]
@@ -927,7 +1025,9 @@ mod tests {
             json!({"service": "s3", "error_code": "First"}),
             json!({"service": "s3", "error_code": "Second"}),
         ]);
-        let rule = store.find_matching("s3", None, "us-east-1").unwrap();
+        let rule = store
+            .find_matching("s3", None, "us-east-1", 123456789012)
+            .unwrap();
         assert_eq!(rule.error_code.as_deref(), Some("First"));
         // match_count increments only on the matched rule
         let listed = store.list_rules();
@@ -938,7 +1038,9 @@ mod tests {
     #[test]
     fn no_match_leaves_store_untouched() {
         let mut store = seeded_store(vec![json!({"service": "dynamodb", "error_code": "X"})]);
-        assert!(store.find_matching("s3", None, "us-east-1").is_none());
+        assert!(store
+            .find_matching("s3", None, "us-east-1", 123456789012)
+            .is_none());
         assert_eq!(store.list_rules()[0]["match_count"], 0);
     }
 
@@ -1033,7 +1135,7 @@ mod tests {
         let rules = body_value(resp).await["rules"].as_array().unwrap().clone();
         assert_eq!(rules.len(), 2);
 
-        let resp = chaos_clear_rules().await;
+        let resp = chaos_clear_rules(Query::default()).await;
         assert_eq!(resp.status(), StatusCode::OK);
         let body = body_value(resp).await;
         assert_eq!(body["status"], "cleared");
@@ -1042,8 +1144,27 @@ mod tests {
         assert_eq!(body_value(resp).await["rules"].as_array().unwrap().len(), 0);
 
         // clear on empty still answers 0
-        let resp = chaos_clear_rules().await;
+        let resp = chaos_clear_rules(Query::default()).await;
         assert_eq!(body_value(resp).await["count"], 0);
+    }
+
+    /// `?account=X` clears every rule that would apply to account X (rules
+    /// scoped to X and unscoped/global ones). Rules scoped to other accounts
+    /// survive — the lane's session-end safety net uses this so it never
+    /// clobbers a concurrently running chaos session on the shared twin.
+    #[test]
+    fn clear_account_scopes_removal() {
+        let mut store = seeded_store(vec![
+            json!({"service": "s3", "error_code": "X", "account": "999777700001"}),
+            json!({"service": "sqs", "error_code": "X", "account": "123456789012"}),
+            json!({"service": "sns", "error_code": "X"}),
+        ]);
+        assert_eq!(store.clear_account("123456789012"), 2);
+        assert_eq!(store.len(), 1);
+        assert_eq!(store.clear_account("123456789012"), 0);
+        // the other account's rule survives; the unscoped rule was removed
+        assert_eq!(store.rules[0].account.as_deref(), Some("999777700001"));
+        assert_eq!(store.clear(), 1);
     }
 
     #[tokio::test]
@@ -1059,9 +1180,17 @@ mod tests {
             .unwrap()
             .to_string();
 
-        let hit = intercept("chaos-json-test", "", &Method::POST, "/", "", "us-east-1")
-            .await
-            .expect("rule should match");
+        let hit = intercept(
+            "chaos-json-test",
+            "",
+            &Method::POST,
+            "/",
+            "",
+            "us-east-1",
+            123456789012,
+        )
+        .await
+        .expect("rule should match");
         assert_eq!(hit.response.status(), StatusCode::TOO_MANY_REQUESTS);
         assert_eq!(
             hit.response.headers().get("x-robotocore-chaos").unwrap(),
@@ -1096,7 +1225,7 @@ mod tests {
         ))
         .await;
 
-        let hit = intercept("s3", "", &Method::GET, "/", "", "us-east-1")
+        let hit = intercept("s3", "", &Method::GET, "/", "", "us-east-1", 123456789012)
             .await
             .expect("rule should match");
         assert_eq!(hit.response.status(), StatusCode::SERVICE_UNAVAILABLE);
@@ -1121,7 +1250,16 @@ mod tests {
                 json!({"service": "chaos-lat-test", "latency_ms": 1}),
             ))
         };
-        let hit = intercept("chaos-lat-test", "", &Method::POST, "/", "", "us-east-1").await;
+        let hit = intercept(
+            "chaos-lat-test",
+            "",
+            &Method::POST,
+            "/",
+            "",
+            "us-east-1",
+            123456789012,
+        )
+        .await;
         assert!(hit.is_none(), "latency-only rules must not short-circuit");
         let rules = lock_store().list_rules();
         assert_eq!(rules[0]["rule_id"], id.as_str());

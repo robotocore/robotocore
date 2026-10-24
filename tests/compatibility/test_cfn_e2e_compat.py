@@ -6,6 +6,7 @@ Every test verifies the end state via the target service's own client.
 """
 
 import json
+import os
 import uuid
 
 import boto3
@@ -13,7 +14,9 @@ import pytest
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
-ENDPOINT_URL = "http://localhost:4566"
+# Honor ENDPOINT_URL so a lane can run against any single twin (default: the
+# shipped port); matches conftest.py and test_cloudformation_compat.py.
+ENDPOINT_URL = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
 
 
 def _client(service_name: str):

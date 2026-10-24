@@ -7,6 +7,7 @@ JSON to stdout, mimicking the custom runtime API contract.
 
 import io
 import json
+import os
 import platform
 import uuid
 import zipfile
@@ -21,7 +22,7 @@ pytestmark = pytest.mark.skipif(
     reason="Custom runtime tests require bash (Unix only)",
 )
 
-ENDPOINT_URL = "http://localhost:4566"
+ENDPOINT_URL = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
 
 
 def _unique_name(prefix: str = "crt") -> str:
