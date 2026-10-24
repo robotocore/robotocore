@@ -14,6 +14,19 @@
 //! `DeleteAccountAssignment` raises `ResourceNotFoundException` when nothing
 //! matched and the deleted assignment keeps its request id for the
 //! `DescribeAccountAssignmentDeletionStatus` lookup.
+//!
+//! The application-era surface (instances beyond the seed, region
+//! replication, applications and their assignment/access/auth/grant/session
+//! configs, trusted token issuers, ABAC configurations, permissions
+//! boundaries and the operation-status lists) has no handler in the moto
+//! fork; its shapes are pinned to the botocore wire model (sso-admin
+//! 2020-07-20). Decisions taken there: missing-ARN lookups answer the
+//! module's modeled `ResourceNotFoundException` (moto's JsonRESTError 400
+//! envelope) even where botocore does not declare that error; update ops
+//! write only members present on the request body (no moto mimicry exists
+//! for them); `DeleteInstance` cascades to everything anchored on the
+//! instance (regions, ABAC config, applications, assignments, issuers and
+//! provisioning statuses).
 
 use crate::store;
 use crate::{Request, Response};
@@ -37,6 +50,62 @@ struct State {
     provisioned: Vec<(String, Vec<String>)>,
     /// Untagged-but-recorded tags: arn -> {Key: Value}.
     tags: HashMap<String, Value>,
+    /// ProvisionPermissionSet records, for the botocore status lookups.
+    provisioning_statuses: Vec<ProvisioningStatus>,
+    /// Region-replication records; the primary region is the caller's
+    /// region and seeds lazily.
+    regions: Vec<Value>,
+    /// instance arn -> the ABAC configuration body.
+    instance_abac: Vec<(String, Value)>,
+    /// Applications created through the application-era arms.
+    applications: Vec<AppRecord>,
+    /// Principal assignments on applications.
+    app_assignments: Vec<AppAssignment>,
+    /// Trusted token issuer configurations.
+    token_issuers: Vec<TtiRecord>,
+}
+
+/// The application-era record: the wire `Application` body (the
+/// DescribeApplication member and ListApplications item) plus the config
+/// collections the application-era ops attach to it.
+struct AppRecord {
+    instance_arn: String,
+    body: Value,
+    /// AssignmentRequired; real AWS defaults to true.
+    assignment_required: bool,
+    /// (Scope, AuthorizedTargets).
+    access_scopes: Vec<(String, Value)>,
+    /// (AuthenticationMethodType, AuthenticationMethod body).
+    auth_methods: Vec<(String, Value)>,
+    /// (GrantType, Grant body).
+    grants: Vec<(String, Value)>,
+    /// The session-configuration status; real AWS defaults to DISABLED.
+    background_status: Value,
+}
+
+/// moto-era `AssignmentSummary`-style record for application assignments.
+struct AppAssignment {
+    application_arn: String,
+    principal_id: Value,
+    principal_type: Value,
+}
+
+/// The trusted token issuer record: the DescribeTrustedTokenIssuer body
+/// plus the instance it belongs to.
+struct TtiRecord {
+    arn: String,
+    instance_arn: String,
+    body: Value,
+}
+
+/// ProvisionPermissionSet's status record: moto's handler builds the wire
+/// body fresh without storing it; the wave keeps the record so the
+/// botocore status lookups (`DescribePermissionSetProvisioningStatus`,
+/// `ListPermissionSetProvisioningStatus`) resolve afterwards.
+struct ProvisioningStatus {
+    request_id: String,
+    instance_arn: String,
+    body: Value,
 }
 
 /// moto's `PermissionSet` record: the wire summary body plus the mutable
@@ -55,6 +124,9 @@ struct PsRecord {
     customer_policies: Vec<(String, Option<String>)>,
     /// moto's `total_managed_policies_attached` (both policy kinds).
     attached_policies: i64,
+    /// The PermissionsBoundary body; null until
+    /// `PutPermissionsBoundaryToPermissionSet` runs.
+    permissions_boundary: Value,
 }
 
 /// moto's `AccountAssignment` record.
@@ -170,11 +242,57 @@ fn moto_internal_error() -> Response {
 
 /// moto's `_find_permission_set`: the tail of the ARN after the last "/".
 fn ps_id(permission_set_arn: &str) -> String {
-    permission_set_arn
-        .split('/')
+    arn_tail(permission_set_arn)
+}
+
+/// The ARN tail (`ssoins-…`, `apl-…`, `tti-…`): the id every not-found
+/// message quotes, moto's `_find_*` convention.
+fn arn_tail(arn: &str) -> String {
+    arn.split('/')
         .next_back()
         .unwrap_or("")
         .to_string()
+}
+
+fn find_instance(st: &State, instance_arn: &str) -> Option<usize> {
+    st.instances
+        .iter()
+        .position(|i| i["InstanceArn"] == json!(instance_arn))
+}
+
+/// The modeled missing-instance envelope (botocore declares
+/// `ResourceNotFoundException` on the ops that take an InstanceArn).
+fn instance_not_found(instance_arn: &str) -> Response {
+    rnf(&format!(
+        "Could not find Instance with id {}",
+        arn_tail(instance_arn)
+    ))
+}
+
+/// Region-replication records seed lazily: the primary region is the
+/// caller's region (state partitions are per (account, region)).
+fn ensure_primary_region(st: &mut State, region: &str) {
+    if st.regions.is_empty() {
+        st.regions.push(json!({
+            "RegionName": region,
+            "Status": "ACTIVE",
+            "AddedDate": epoch(),
+            "IsPrimaryRegion": true,
+        }));
+    }
+}
+
+fn find_application(st: &State, application_arn: &str) -> Option<usize> {
+    st.applications
+        .iter()
+        .position(|a| a.body["ApplicationArn"] == json!(application_arn))
+}
+
+fn application_not_found(application_arn: &str) -> Response {
+    rnf(&format!(
+        "Could not find Application with id {}",
+        ps_id(application_arn)
+    ))
 }
 
 fn find_ps(st: &State, instance_arn: &str, permission_set_arn: &str) -> Option<usize> {
@@ -280,6 +398,61 @@ fn assignment_json(a: &Assignment, status: Option<&str>) -> Value {
     summary
 }
 
+/// Application-era updates write only the members present on the request
+/// body (no moto fork exists to mimic there).
+fn put_present(body: &mut Value, p: &Value, keys: &[&str]) {
+    if let Some(obj) = body.as_object_mut() {
+        for key in keys {
+            if let Some(v) = p.get(*key) {
+                obj.insert((*key).to_string(), v.clone());
+            }
+        }
+    }
+}
+
+/// The ApplicationAssignment wire body (create input echo, the
+/// DescribeApplicationAssignment member, list items).
+fn app_assignment_json(x: &AppAssignment) -> Value {
+    json!({
+        "ApplicationArn": x.application_arn,
+        "PrincipalId": x.principal_id,
+        "PrincipalType": x.principal_type,
+    })
+}
+
+/// DeleteInstance's cascade: regions, ABAC config, applications,
+/// assignments, token issuers and provisioning records are anchored on
+/// the instance.
+fn drop_instance_state(st: &mut State, instance_arn: &str) {
+    st.regions.clear();
+    st.instance_abac.retain(|(a, _)| a != instance_arn);
+    let arns: Vec<String> = st
+        .applications
+        .iter()
+        .filter(|a| a.instance_arn == instance_arn)
+        .filter_map(|a| a.body["ApplicationArn"].as_str())
+        .map(str::to_string)
+        .collect();
+    st.applications.retain(|a| a.instance_arn != instance_arn);
+    st.app_assignments.retain(|x| !arns.contains(&x.application_arn));
+    st.token_issuers.retain(|t| t.instance_arn != instance_arn);
+    st.provisioning_statuses
+        .retain(|s| s.instance_arn != instance_arn);
+    st.instances
+        .retain(|i| i["InstanceArn"] != json!(instance_arn));
+}
+
+/// An OperationStatusFilter on a status list: moto-era records are always
+/// SUCCEEDED, so only that value survives a non-empty filter.
+fn status_filter(p: &Value) -> impl Fn() -> bool + '_ {
+    let wanted = p
+        .get("Filter")
+        .and_then(|f| f.get("Status"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    move || wanted.is_empty() || wanted == "SUCCEEDED"
+}
+
 fn handle(st: &mut State, p: &Value, req: &Request) -> Response {
     match req.operation.as_str() {
         "ListInstances" => ok(&json!({"Instances": st.instances})),
@@ -317,6 +490,7 @@ fn handle(st: &mut State, p: &Value, req: &Request) -> Response {
                 managed_policies: Vec::new(),
                 customer_policies: Vec::new(),
                 attached_policies: 0,
+                permissions_boundary: Value::Null,
             });
             ok(&json!({"PermissionSet": body}))
         }
@@ -709,22 +883,28 @@ fn handle(st: &mut State, p: &Value, req: &Request) -> Response {
                         .as_str()
                         .unwrap_or("")
                         .to_string();
+                    // moto's handler builds the status itself: TargetType and
+                    // TargetId are ignored — the permission set is provisioned
+                    // to the caller's account. The record is kept so the
+                    // botocore status lookups resolve it afterwards.
+                    let status = json!({
+                        "AccountId": req.account.to_string(),
+                        "CreatedDate": epoch(),
+                        "FailureReason": Value::Null,
+                        "PermissionSetArn": ps,
+                        "RequestId": uuid::Uuid::new_v4().to_string(),
+                        "Status": "SUCCEEDED",
+                    });
+                    st.provisioning_statuses.push(ProvisioningStatus {
+                        request_id: status["RequestId"].as_str().unwrap_or("").to_string(),
+                        instance_arn: instance_arn.to_string(),
+                        body: status.clone(),
+                    });
                     match st.provisioned.iter_mut().find(|(i, _)| i == instance_arn) {
                         Some((_, list)) => list.push(arn),
                         None => st.provisioned.push((instance_arn.to_string(), vec![arn])),
                     }
-                    // moto's handler builds the status itself: TargetType and
-                    // TargetId are ignored — the permission set is provisioned
-                    // to the caller's account.
-                    ok(&json!({
-                        "PermissionSetProvisioningStatus": {
-                            "AccountId": req.account.to_string(),
-                            "CreatedDate": epoch(),
-                            "PermissionSetArn": ps,
-                            "RequestId": uuid::Uuid::new_v4().to_string(),
-                            "Status": "SUCCEEDED",
-                        }
-                    }))
+                    ok(&json!({"PermissionSetProvisioningStatus": status}))
                 }
                 None => ps_not_found(ps),
             }
@@ -740,6 +920,767 @@ fn handle(st: &mut State, p: &Value, req: &Request) -> Response {
                 Vec::new()
             };
             ok(&json!({"AccountIds": ids}))
+        }
+        "CreateInstance" => {
+            let arn = format!("arn:aws:sso:::instance/ssoins-{}", random_string(16));
+            if let Some(tags) = p.get("Tags") {
+                store_tags(st, &arn, tags);
+            }
+            st.instances.push(json!({
+                "CreatedDate": epoch(),
+                "IdentityStoreId": format!("d-{}", random_string(10)),
+                "InstanceArn": &arn,
+                "Name": param(p, "Name"),
+                "OwnerAccountId": req.account.to_string(),
+                "Status": "ACTIVE",
+            }));
+            ok(&json!({"InstanceArn": arn}))
+        }
+        "DescribeInstance" => {
+            let arn = body_str(p, "InstanceArn");
+            match find_instance(st, arn) {
+                Some(i) => {
+                    let mut body = st.instances[i].clone();
+                    body["EncryptionConfigurationDetails"] = json!({
+                        "EncryptionStatus": "ENABLED",
+                        "KeyType": "AWS_OWNED_KMS_KEY",
+                    });
+                    ok(&body)
+                }
+                None => instance_not_found(arn),
+            }
+        }
+        "DeleteInstance" => {
+            let arn = body_str(p, "InstanceArn");
+            match find_instance(st, arn) {
+                Some(_) => {
+                    drop_instance_state(st, arn);
+                    ok(&json!({}))
+                }
+                None => instance_not_found(arn),
+            }
+        }
+        "AddRegion" => {
+            let instance_arn = body_str(p, "InstanceArn");
+            if find_instance(st, instance_arn).is_none() {
+                return instance_not_found(instance_arn);
+            }
+            let name = body_str(p, "RegionName").to_string();
+            ensure_primary_region(st, &req.region);
+            if st.regions.iter().any(|r| r["RegionName"] == json!(name)) {
+                return conflict(&format!("The region {name} is already on the instance"));
+            }
+            st.regions.push(json!({
+                "RegionName": name,
+                "Status": "ADDING",
+                "AddedDate": epoch(),
+                "IsPrimaryRegion": false,
+            }));
+            ok(&json!({"Status": "ADDING"}))
+        }
+        "DescribeRegion" => {
+            let instance_arn = body_str(p, "InstanceArn");
+            if find_instance(st, instance_arn).is_none() {
+                return instance_not_found(instance_arn);
+            }
+            let name = body_str(p, "RegionName");
+            ensure_primary_region(st, &req.region);
+            match st.regions.iter().find(|r| r["RegionName"] == json!(name)) {
+                Some(r) => ok(r),
+                None => rnf(&format!("Could not find Region {name}")),
+            }
+        }
+        "ListRegions" => {
+            let instance_arn = body_str(p, "InstanceArn");
+            if find_instance(st, instance_arn).is_none() {
+                return instance_not_found(instance_arn);
+            }
+            ensure_primary_region(st, &req.region);
+            ok(&json!({"Regions": st.regions, "NextToken": Value::Null}))
+        }
+        "RemoveRegion" => {
+            let instance_arn = body_str(p, "InstanceArn");
+            if find_instance(st, instance_arn).is_none() {
+                return instance_not_found(instance_arn);
+            }
+            let name = body_str(p, "RegionName");
+            let region = match st.regions.iter_mut().find(|r| r["RegionName"] == json!(name)) {
+                Some(r) => r,
+                None => return rnf(&format!("Could not find Region {name}")),
+            };
+            if region["IsPrimaryRegion"] == json!(true) {
+                return conflict("The primary region cannot be removed");
+            }
+            // The asynchronous workflow flips ADDING/ACTIVE to REMOVING; the
+            // record stays listed until the delete lands, which the twin
+            // keeps pending forever.
+            region["Status"] = json!("REMOVING");
+            ok(&json!({"Status": "REMOVING"}))
+        }
+        "CreateApplication" => {
+            let instance_arn = body_str(p, "InstanceArn").to_string();
+            if find_instance(st, &instance_arn).is_none() {
+                return instance_not_found(&instance_arn);
+            }
+            let arn = format!("{instance_arn}/application/apl-{}", random_string(16));
+            if let Some(tags) = p.get("Tags") {
+                store_tags(st, &arn, tags);
+            }
+            st.applications.push(AppRecord {
+                instance_arn,
+                body: json!({
+                    "ApplicationAccount": req.account.to_string(),
+                    "ApplicationArn": &arn,
+                    "ApplicationProviderArn": param(p, "ApplicationProviderArn"),
+                    "CreatedDate": epoch(),
+                    "CreatedFrom": req.region,
+                    "Description": param(p, "Description"),
+                    "InstanceArn": param(p, "InstanceArn"),
+                    "Name": param(p, "Name"),
+                    "PortalOptions": param(p, "PortalOptions"),
+                    "Status": p.get("Status").and_then(Value::as_str)
+                        .map(str::to_string).unwrap_or_else(|| "ENABLED".into()),
+                }),
+                assignment_required: true,
+                access_scopes: Vec::new(),
+                auth_methods: Vec::new(),
+                grants: Vec::new(),
+                background_status: json!("DISABLED"),
+            });
+            ok(&json!({"ApplicationArn": arn}))
+        }
+        "DescribeApplication" => {
+            let arn = body_str(p, "ApplicationArn");
+            match find_application(st, arn) {
+                Some(i) => ok(&st.applications[i].body),
+                None => application_not_found(arn),
+            }
+        }
+        "ListApplications" => {
+            let instance_arn = body_str(p, "InstanceArn");
+            if find_instance(st, instance_arn).is_none() {
+                return instance_not_found(instance_arn);
+            }
+            let account_filter =
+                p.get("Filter").and_then(|f| f.get("ApplicationAccount")).cloned();
+            let provider_filter =
+                p.get("Filter").and_then(|f| f.get("ApplicationProvider")).cloned();
+            let list: Vec<Value> = st
+                .applications
+                .iter()
+                .filter(|a| a.instance_arn == instance_arn)
+                .filter(|a| {
+                    account_filter
+                        .as_ref()
+                        .map_or(true, |f| *f == a.body["ApplicationAccount"])
+                })
+                .filter(|a| {
+                    provider_filter
+                        .as_ref()
+                        .map_or(true, |f| *f == a.body["ApplicationProviderArn"])
+                })
+                .map(|a| a.body.clone())
+                .collect();
+            ok(&json!({"Applications": list, "NextToken": Value::Null}))
+        }
+        "UpdateApplication" => {
+            let arn = body_str(p, "ApplicationArn");
+            match find_application(st, arn) {
+                Some(i) => {
+                    let rec = &mut st.applications[i];
+                    put_present(&mut rec.body, p, &["Name", "Description", "PortalOptions", "Status"]);
+                    ok(&json!({}))
+                }
+                None => application_not_found(arn),
+            }
+        }
+        "DeleteApplication" => {
+            let arn = body_str(p, "ApplicationArn").to_string();
+            match find_application(st, &arn) {
+                Some(i) => {
+                    st.applications.remove(i);
+                    st.app_assignments.retain(|x| x.application_arn != arn);
+                    ok(&json!({}))
+                }
+                None => application_not_found(&arn),
+            }
+        }
+        "CreateApplicationAssignment" => {
+            let arn = body_str(p, "ApplicationArn");
+            if find_application(st, arn).is_none() {
+                return application_not_found(arn);
+            }
+            st.app_assignments.push(AppAssignment {
+                application_arn: arn.to_string(),
+                principal_id: param(p, "PrincipalId"),
+                principal_type: param(p, "PrincipalType"),
+            });
+            ok(&json!({}))
+        }
+        "DeleteApplicationAssignment" => {
+            let arn = body_str(p, "ApplicationArn");
+            let principal_id = param(p, "PrincipalId");
+            let principal_type = param(p, "PrincipalType");
+            match st.app_assignments.iter().position(|x| {
+                x.application_arn == arn
+                    && x.principal_id == principal_id
+                    && x.principal_type == principal_type
+            }) {
+                Some(i) => {
+                    st.app_assignments.remove(i);
+                    ok(&json!({}))
+                }
+                None => rnf(&format!(
+                    "Could not find ApplicationAssignment for principal {}",
+                    principal_id
+                )),
+            }
+        }
+        "DescribeApplicationAssignment" => {
+            let arn = body_str(p, "ApplicationArn");
+            let principal_id = param(p, "PrincipalId");
+            let principal_type = param(p, "PrincipalType");
+            match st.app_assignments.iter().find(|x| {
+                x.application_arn == arn
+                    && x.principal_id == principal_id
+                    && x.principal_type == principal_type
+            }) {
+                Some(x) => ok(&app_assignment_json(x)),
+                None => rnf(&format!(
+                    "Could not find ApplicationAssignment for principal {}",
+                    principal_id
+                )),
+            }
+        }
+        "ListApplicationAssignments" => {
+            let arn = body_str(p, "ApplicationArn");
+            if find_application(st, arn).is_none() {
+                return application_not_found(arn);
+            }
+            let list: Vec<Value> = st
+                .app_assignments
+                .iter()
+                .filter(|x| x.application_arn == arn)
+                .map(app_assignment_json)
+                .collect();
+            ok(&json!({"ApplicationAssignments": list, "NextToken": Value::Null}))
+        }
+        "ListApplicationAssignmentsForPrincipal" => {
+            let instance_arn = body_str(p, "InstanceArn");
+            if find_instance(st, instance_arn).is_none() {
+                return instance_not_found(instance_arn);
+            }
+            let principal_id = param(p, "PrincipalId");
+            let principal_type = param(p, "PrincipalType");
+            let app_filter =
+                p.get("Filter").and_then(|f| f.get("ApplicationArn")).cloned();
+            let list: Vec<Value> = st
+                .app_assignments
+                .iter()
+                .filter(|x| x.principal_id == principal_id && x.principal_type == principal_type)
+                .filter(|x| {
+                    app_filter
+                        .as_ref()
+                        .map_or(true, |f| *f == json!(x.application_arn))
+                })
+                .filter(|x| {
+                    st.applications
+                        .iter()
+                        .find(|a| a.body["ApplicationArn"] == json!(x.application_arn))
+                        .map(|a| a.instance_arn == instance_arn)
+                        .unwrap_or(false)
+                })
+                .map(app_assignment_json)
+                .collect();
+            ok(&json!({"ApplicationAssignments": list, "NextToken": Value::Null}))
+        }
+        "GetApplicationAssignmentConfiguration" => {
+            let arn = body_str(p, "ApplicationArn");
+            match find_application(st, arn) {
+                Some(i) => ok(&json!({
+                    "AssignmentRequired": st.applications[i].assignment_required
+                })),
+                None => application_not_found(arn),
+            }
+        }
+        "PutApplicationAssignmentConfiguration" => {
+            let arn = body_str(p, "ApplicationArn");
+            match find_application(st, arn) {
+                Some(i) => {
+                    st.applications[i].assignment_required =
+                        p.get("AssignmentRequired").and_then(Value::as_bool).unwrap_or(true);
+                    ok(&json!({}))
+                }
+                None => application_not_found(arn),
+            }
+        }
+        "PutApplicationAccessScope" => {
+            let arn = body_str(p, "ApplicationArn");
+            match find_application(st, arn) {
+                Some(i) => {
+                    let rec = &mut st.applications[i];
+                    let scope = body_str(p, "Scope").to_string();
+                    let targets = p
+                        .get("AuthorizedTargets")
+                        .and_then(Value::as_array)
+                        .map(|t| json!(t))
+                        .unwrap_or_else(|| json!([]));
+                    match rec.access_scopes.iter_mut().find(|(s, _)| *s == scope) {
+                        Some((_, stored)) => *stored = targets,
+                        None => rec.access_scopes.push((scope, targets)),
+                    }
+                    ok(&json!({}))
+                }
+                None => application_not_found(arn),
+            }
+        }
+        "GetApplicationAccessScope" => {
+            let arn = body_str(p, "ApplicationArn");
+            match find_application(st, arn) {
+                Some(i) => {
+                    let scope = body_str(p, "Scope");
+                    match st.applications[i].access_scopes.iter().find(|(s, _)| s == scope) {
+                        Some((s, targets)) => ok(&json!({"Scope": s, "AuthorizedTargets": targets})),
+                        None => rnf(&format!("Could not find AccessScope with name {scope}")),
+                    }
+                }
+                None => application_not_found(arn),
+            }
+        }
+        "ListApplicationAccessScopes" => {
+            let arn = body_str(p, "ApplicationArn");
+            match find_application(st, arn) {
+                Some(i) => {
+                    let scopes: Vec<Value> = st.applications[i]
+                        .access_scopes
+                        .iter()
+                        .map(|(s, t)| json!({"Scope": s, "AuthorizedTargets": t}))
+                        .collect();
+                    ok(&json!({"Scopes": scopes, "NextToken": Value::Null}))
+                }
+                None => application_not_found(arn),
+            }
+        }
+        "DeleteApplicationAccessScope" => {
+            let arn = body_str(p, "ApplicationArn");
+            match find_application(st, arn) {
+                Some(i) => {
+                    let scope = body_str(p, "Scope").to_string();
+                    let rec = &mut st.applications[i];
+                    match rec.access_scopes.iter().position(|(s, _)| *s == scope) {
+                        Some(j) => {
+                            rec.access_scopes.remove(j);
+                            ok(&json!({}))
+                        }
+                        None => rnf(&format!("Could not find AccessScope with name {scope}")),
+                    }
+                }
+                None => application_not_found(arn),
+            }
+        }
+        "PutApplicationAuthenticationMethod" => {
+            let arn = body_str(p, "ApplicationArn");
+            match find_application(st, arn) {
+                Some(i) => {
+                    let rec = &mut st.applications[i];
+                    let mtype = body_str(p, "AuthenticationMethodType").to_string();
+                    let method = param(p, "AuthenticationMethod");
+                    match rec.auth_methods.iter_mut().find(|(t, _)| *t == mtype) {
+                        Some((_, stored)) => *stored = method,
+                        None => rec.auth_methods.push((mtype, method)),
+                    }
+                    ok(&json!({}))
+                }
+                None => application_not_found(arn),
+            }
+        }
+        "ListApplicationAuthenticationMethods" => {
+            let arn = body_str(p, "ApplicationArn");
+            match find_application(st, arn) {
+                Some(i) => {
+                    let list: Vec<Value> = st.applications[i]
+                        .auth_methods
+                        .iter()
+                        .map(|(t, m)| json!({"AuthenticationMethodType": t, "AuthenticationMethod": m}))
+                        .collect();
+                    ok(&json!({"AuthenticationMethods": list, "NextToken": Value::Null}))
+                }
+                None => application_not_found(arn),
+            }
+        }
+        "GetApplicationAuthenticationMethod" => {
+            let arn = body_str(p, "ApplicationArn");
+            match find_application(st, arn) {
+                Some(i) => {
+                    let mtype = body_str(p, "AuthenticationMethodType");
+                    match st.applications[i]
+                        .auth_methods
+                        .iter()
+                        .find(|(t, _)| t == mtype)
+                    {
+                        Some((_, m)) => ok(&json!({"AuthenticationMethod": m})),
+                        None => {
+                            rnf(&format!("Could not find AuthenticationMethod with type {mtype}"))
+                        }
+                    }
+                }
+                None => application_not_found(arn),
+            }
+        }
+        "DeleteApplicationAuthenticationMethod" => {
+            let arn = body_str(p, "ApplicationArn");
+            match find_application(st, arn) {
+                Some(i) => {
+                    let mtype = body_str(p, "AuthenticationMethodType").to_string();
+                    let rec = &mut st.applications[i];
+                    match rec.auth_methods.iter().position(|(t, _)| *t == mtype) {
+                        Some(j) => {
+                            rec.auth_methods.remove(j);
+                            ok(&json!({}))
+                        }
+                        None => {
+                            rnf(&format!("Could not find AuthenticationMethod with type {mtype}"))
+                        }
+                    }
+                }
+                None => application_not_found(arn),
+            }
+        }
+        "ListApplicationGrants" => {
+            let arn = body_str(p, "ApplicationArn");
+            match find_application(st, arn) {
+                Some(i) => {
+                    let list: Vec<Value> = st.applications[i]
+                        .grants
+                        .iter()
+                        .map(|(t, g)| json!({"GrantType": t, "Grant": g}))
+                        .collect();
+                    ok(&json!({"Grants": list, "NextToken": Value::Null}))
+                }
+                None => application_not_found(arn),
+            }
+        }
+        "GetApplicationGrant" => {
+            let arn = body_str(p, "ApplicationArn");
+            match find_application(st, arn) {
+                Some(i) => {
+                    let gtype = body_str(p, "GrantType");
+                    match st.applications[i].grants.iter().find(|(t, _)| t == gtype) {
+                        Some((_, g)) => ok(&json!({"Grant": g})),
+                        None => rnf(&format!("Could not find Grant with type {gtype}")),
+                    }
+                }
+                None => application_not_found(arn),
+            }
+        }
+        "DeleteApplicationGrant" => {
+            let arn = body_str(p, "ApplicationArn");
+            match find_application(st, arn) {
+                Some(i) => {
+                    let gtype = body_str(p, "GrantType").to_string();
+                    let rec = &mut st.applications[i];
+                    match rec.grants.iter().position(|(t, _)| *t == gtype) {
+                        Some(j) => {
+                            rec.grants.remove(j);
+                            ok(&json!({}))
+                        }
+                        None => rnf(&format!("Could not find Grant with type {gtype}")),
+                    }
+                }
+                None => application_not_found(arn),
+            }
+        }
+        "PutApplicationSessionConfiguration" => {
+            let arn = body_str(p, "ApplicationArn");
+            match find_application(st, arn) {
+                Some(i) => {
+                    if let Some(v) = p.get("UserBackgroundSessionApplicationStatus") {
+                        st.applications[i].background_status = v.clone();
+                    }
+                    ok(&json!({}))
+                }
+                None => application_not_found(arn),
+            }
+        }
+        "GetApplicationSessionConfiguration" => {
+            let arn = body_str(p, "ApplicationArn");
+            match find_application(st, arn) {
+                Some(i) => ok(&json!({
+                    "UserBackgroundSessionApplicationStatus":
+                        st.applications[i].background_status
+                })),
+                None => application_not_found(arn),
+            }
+        }
+        "CreateInstanceAccessControlAttributeConfiguration" => {
+            let instance_arn = body_str(p, "InstanceArn").to_string();
+            if find_instance(st, &instance_arn).is_none() {
+                return instance_not_found(&instance_arn);
+            }
+            if st
+                .instance_abac
+                .iter()
+                .any(|(a, _)| a == &instance_arn)
+            {
+                return conflict(&format!(
+                    "InstanceAccessControlAttributeConfiguration already exists for instance {instance_arn}"
+                ));
+            }
+            st.instance_abac.push((
+                instance_arn,
+                param(p, "InstanceAccessControlAttributeConfiguration"),
+            ));
+            ok(&json!({}))
+        }
+        "DescribeInstanceAccessControlAttributeConfiguration" => {
+            let instance_arn = body_str(p, "InstanceArn");
+            match find_instance(st, instance_arn) {
+                Some(_) => match st.instance_abac.iter().find(|(a, _)| a == instance_arn) {
+                    Some((_, config)) => ok(&json!({
+                        "InstanceAccessControlAttributeConfiguration": config,
+                        "Status": "ENABLED",
+                    })),
+                    None => rnf(&format!(
+                        "Could not find InstanceAccessControlAttributeConfiguration for instance {}",
+                        arn_tail(instance_arn)
+                    )),
+                },
+                None => instance_not_found(instance_arn),
+            }
+        }
+        "UpdateInstanceAccessControlAttributeConfiguration" => {
+            let instance_arn = body_str(p, "InstanceArn");
+            match find_instance(st, instance_arn) {
+                Some(_) => match st.instance_abac.iter_mut().find(|(a, _)| a == instance_arn) {
+                    Some((_, config)) => {
+                        *config = param(p, "InstanceAccessControlAttributeConfiguration");
+                        ok(&json!({}))
+                    }
+                    None => rnf(&format!(
+                        "Could not find InstanceAccessControlAttributeConfiguration for instance {}",
+                        arn_tail(instance_arn)
+                    )),
+                },
+                None => instance_not_found(instance_arn),
+            }
+        }
+        "DeleteInstanceAccessControlAttributeConfiguration" => {
+            let instance_arn = body_str(p, "InstanceArn");
+            match find_instance(st, instance_arn) {
+                Some(_) => match st.instance_abac.iter().position(|(a, _)| a == instance_arn) {
+                    Some(i) => {
+                        st.instance_abac.remove(i);
+                        ok(&json!({}))
+                    }
+                    None => rnf(&format!(
+                        "Could not find InstanceAccessControlAttributeConfiguration for instance {}",
+                        arn_tail(instance_arn)
+                    )),
+                },
+                None => instance_not_found(instance_arn),
+            }
+        }
+        "PutPermissionsBoundaryToPermissionSet" => {
+            let instance_arn = body_str(p, "InstanceArn");
+            let ps = body_str(p, "PermissionSetArn");
+            match find_ps(st, instance_arn, ps) {
+                Some(i) => {
+                    st.permission_sets[i].permissions_boundary = param(p, "PermissionsBoundary");
+                    ok(&json!({}))
+                }
+                None => ps_not_found(ps),
+            }
+        }
+        "GetPermissionsBoundaryForPermissionSet" => {
+            let instance_arn = body_str(p, "InstanceArn");
+            let ps = body_str(p, "PermissionSetArn");
+            match find_ps(st, instance_arn, ps) {
+                Some(i) => match st.permission_sets[i].permissions_boundary.as_object() {
+                    Some(_) => ok(&json!({
+                        "PermissionsBoundary": st.permission_sets[i].permissions_boundary
+                    })),
+                    None => rnf(&format!(
+                        "Could not find PermissionsBoundary for id {}",
+                        ps_id(ps)
+                    )),
+                },
+                None => ps_not_found(ps),
+            }
+        }
+        "DeletePermissionsBoundaryFromPermissionSet" => {
+            let instance_arn = body_str(p, "InstanceArn");
+            let ps = body_str(p, "PermissionSetArn");
+            match find_ps(st, instance_arn, ps) {
+                Some(i) => {
+                    if !st.permission_sets[i].permissions_boundary.is_object() {
+                        return rnf(&format!(
+                            "Could not find PermissionsBoundary for id {}",
+                            ps_id(ps)
+                        ));
+                    }
+                    st.permission_sets[i].permissions_boundary = Value::Null;
+                    ok(&json!({}))
+                }
+                None => ps_not_found(ps),
+            }
+        }
+        "CreateTrustedTokenIssuer" => {
+            let instance_arn = body_str(p, "InstanceArn").to_string();
+            if find_instance(st, &instance_arn).is_none() {
+                return instance_not_found(&instance_arn);
+            }
+            let arn = format!("{instance_arn}/trustedTokenIssuer/tti-{}", random_string(16));
+            if let Some(tags) = p.get("Tags") {
+                store_tags(st, &arn, tags);
+            }
+            st.token_issuers.push(TtiRecord {
+                arn: arn.clone(),
+                instance_arn,
+                body: json!({
+                    "Name": param(p, "Name"),
+                    "TrustedTokenIssuerArn": &arn,
+                    "TrustedTokenIssuerConfiguration": param(p, "TrustedTokenIssuerConfiguration"),
+                    "TrustedTokenIssuerType": param(p, "TrustedTokenIssuerType"),
+                }),
+            });
+            ok(&json!({"TrustedTokenIssuerArn": arn}))
+        }
+        "DescribeTrustedTokenIssuer" => {
+            let arn = body_str(p, "TrustedTokenIssuerArn");
+            match st.token_issuers.iter().find(|t| t.arn == arn) {
+                Some(t) => ok(&t.body),
+                None => rnf(&format!(
+                    "Could not find TrustedTokenIssuer with id {}",
+                    arn_tail(arn)
+                )),
+            }
+        }
+        "UpdateTrustedTokenIssuer" => {
+            let arn = body_str(p, "TrustedTokenIssuerArn");
+            match st.token_issuers.iter_mut().find(|t| t.arn == arn) {
+                Some(t) => {
+                    put_present(
+                        &mut t.body,
+                        p,
+                        &["Name", "TrustedTokenIssuerConfiguration"],
+                    );
+                    ok(&json!({}))
+                }
+                None => rnf(&format!(
+                    "Could not find TrustedTokenIssuer with id {}",
+                    arn_tail(arn)
+                )),
+            }
+        }
+        "DeleteTrustedTokenIssuer" => {
+            let arn = body_str(p, "TrustedTokenIssuerArn");
+            match st.token_issuers.iter().position(|t| t.arn == arn) {
+                Some(i) => {
+                    st.token_issuers.remove(i);
+                    ok(&json!({}))
+                }
+                None => rnf(&format!(
+                    "Could not find TrustedTokenIssuer with id {}",
+                    arn_tail(arn)
+                )),
+            }
+        }
+        "ListTrustedTokenIssuers" => {
+            let instance_arn = body_str(p, "InstanceArn");
+            if find_instance(st, instance_arn).is_none() {
+                return instance_not_found(instance_arn);
+            }
+            let list: Vec<Value> = st
+                .token_issuers
+                .iter()
+                .filter(|t| t.instance_arn == instance_arn)
+                .map(|t| {
+                    json!({
+                        "Name": t.body["Name"],
+                        "TrustedTokenIssuerArn": t.arn,
+                        "TrustedTokenIssuerType": t.body["TrustedTokenIssuerType"],
+                    })
+                })
+                .collect();
+            ok(&json!({"TrustedTokenIssuers": list, "NextToken": Value::Null}))
+        }
+        "DescribePermissionSetProvisioningStatus" => {
+            let request_id = body_str(p, "ProvisionPermissionSetRequestId");
+            match st.provisioning_statuses.iter().find(|s| s.request_id == request_id) {
+                Some(s) => ok(&json!({"PermissionSetProvisioningStatus": s.body})),
+                // The sibling DeleteAccountAssignment lookups answer moto's
+                // empty-message RNF; keep that content for these too.
+                None => rnf(""),
+            }
+        }
+        "ListPermissionSetProvisioningStatus" => {
+            let instance_arn = body_str(p, "InstanceArn");
+            if find_instance(st, instance_arn).is_none() {
+                return instance_not_found(instance_arn);
+            }
+            let keep = status_filter(p);
+            let list: Vec<Value> = st
+                .provisioning_statuses
+                .iter()
+                .filter(|s| s.instance_arn == instance_arn && keep())
+                .map(|s| {
+                    json!({
+                        "CreatedDate": s.body["CreatedDate"],
+                        "RequestId": s.body["RequestId"],
+                        "Status": s.body["Status"],
+                    })
+                })
+                .collect();
+            ok(&json!({
+                "PermissionSetsProvisioningStatus": list,
+                "NextToken": Value::Null,
+            }))
+        }
+        "ListAccountAssignmentCreationStatus" => {
+            let instance_arn = body_str(p, "InstanceArn");
+            if find_instance(st, instance_arn).is_none() {
+                return instance_not_found(instance_arn);
+            }
+            let keep = status_filter(p);
+            let list: Vec<Value> = st
+                .assignments
+                .iter()
+                .filter(|a| a.instance_arn == instance_arn && keep())
+                .map(|a| {
+                    json!({
+                        "CreatedDate": a.created_date,
+                        "RequestId": a.request_id,
+                        "Status": "SUCCEEDED",
+                    })
+                })
+                .collect();
+            ok(&json!({
+                "AccountAssignmentsCreationStatus": list,
+                "NextToken": Value::Null,
+            }))
+        }
+        "ListAccountAssignmentDeletionStatus" => {
+            let instance_arn = body_str(p, "InstanceArn");
+            if find_instance(st, instance_arn).is_none() {
+                return instance_not_found(instance_arn);
+            }
+            let keep = status_filter(p);
+            let list: Vec<Value> = st
+                .deleted_assignments
+                .iter()
+                .filter(|a| a.instance_arn == instance_arn && keep())
+                .map(|a| {
+                    json!({
+                        "CreatedDate": a.created_date,
+                        "RequestId": a.request_id,
+                        "Status": "SUCCEEDED",
+                    })
+                })
+                .collect();
+            ok(&json!({
+                "AccountAssignmentsDeletionStatus": list,
+                "NextToken": Value::Null,
+            }))
         }
         _ => {
             let e = json!({
@@ -1354,5 +2295,667 @@ mod tests {
         );
         let listed = body(&handle(st, &json!({}), &req("ListInstances")));
         assert_eq!(listed["Instances"][0]["Name"], "renamed");
+    }
+
+    fn create_application(st: &mut State, inst: &str, name: &str) -> String {
+        let resp = handle(
+            st,
+            &json!({
+                "InstanceArn": inst,
+                "ApplicationProviderArn": "arn:aws:sso:::applicationProvider/custom",
+                "Name": name,
+            }),
+            &req("CreateApplication"),
+        );
+        body(&resp)["ApplicationArn"].as_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn instances_and_regions() {
+        let st = &mut fresh_state(111_000_000_010);
+        let seeded = instance_arn(st);
+
+        let created = body(&handle(
+            st,
+            &json!({"Name": "second"}),
+            &req("CreateInstance"),
+        ));
+        let arn = created["InstanceArn"].as_str().unwrap().to_string();
+        assert!(arn.starts_with("arn:aws:sso:::instance/ssoins-"));
+        assert!(arn != seeded);
+        assert_eq!(st.instances.len(), 2);
+
+        let described = body(&handle(
+            st,
+            &json!({"InstanceArn": &arn}),
+            &req("DescribeInstance"),
+        ));
+        assert_eq!(described["Name"], "second");
+        assert_eq!(described["OwnerAccountId"], "123456789012");
+        assert_eq!(described["Status"], "ACTIVE");
+        assert_eq!(
+            described["EncryptionConfigurationDetails"]["KeyType"],
+            "AWS_OWNED_KMS_KEY"
+        );
+
+        // regions seed lazily with the caller's region as primary.
+        let listed = body(&handle(
+            st,
+            &json!({"InstanceArn": &arn}),
+            &req("ListRegions"),
+        ));
+        assert_eq!(listed["Regions"][0]["RegionName"], "us-east-1");
+        assert_eq!(listed["Regions"][0]["IsPrimaryRegion"], true);
+        assert_eq!(listed["Regions"][0]["Status"], "ACTIVE");
+
+        // a duplicate add conflicts; a new one lands ADDING.
+        let added = body(&handle(
+            st,
+            &json!({"InstanceArn": &arn, "RegionName": "eu-west-1"}),
+            &req("AddRegion"),
+        ));
+        assert_eq!(added["Status"], "ADDING");
+        let dup = handle(
+            st,
+            &json!({"InstanceArn": &arn, "RegionName": "eu-west-1"}),
+            &req("AddRegion"),
+        );
+        assert_eq!(dup.status, 400);
+        assert_eq!(body(&dup)["__type"], "ConflictException");
+
+        let described = body(&handle(
+            st,
+            &json!({"InstanceArn": &arn, "RegionName": "eu-west-1"}),
+            &req("DescribeRegion"),
+        ));
+        assert_eq!(described["Status"], "ADDING");
+
+        // the primary cannot be removed; the added one flips REMOVING.
+        let primary = handle(
+            st,
+            &json!({"InstanceArn": &arn, "RegionName": "us-east-1"}),
+            &req("RemoveRegion"),
+        );
+        assert_eq!(primary.status, 400);
+        assert_eq!(body(&primary)["__type"], "ConflictException");
+        let removed = body(&handle(
+            st,
+            &json!({"InstanceArn": &arn, "RegionName": "eu-west-1"}),
+            &req("RemoveRegion"),
+        ));
+        assert_eq!(removed["Status"], "REMOVING");
+
+        // unknown instance / region → modeled RNF.
+        let missing = handle(
+            st,
+            &json!({"InstanceArn": "arn:aws:sso:::instance/ssoins-nope", "RegionName": "us-east-1"}),
+            &req("AddRegion"),
+        );
+        assert_eq!(missing.status, 400);
+        assert_eq!(body(&missing)["__type"], "ResourceNotFoundException");
+
+        // delete cascades …
+        handle(st, &json!({"InstanceArn": &arn}), &req("DeleteInstance"));
+        assert_eq!(st.instances.len(), 1);
+        let vanished = handle(
+            st,
+            &json!({"InstanceArn": &arn}),
+            &req("DescribeInstance"),
+        );
+        assert_eq!(vanished.status, 400);
+        assert_eq!(body(&vanished)["__type"], "ResourceNotFoundException");
+    }
+
+    #[test]
+    fn applications_surface() {
+        let st = &mut fresh_state(111_000_000_011);
+        let inst = instance_arn(st);
+        let app = create_application(st, &inst, "app");
+
+        let described = body(&handle(
+            st,
+            &json!({"ApplicationArn": &app}),
+            &req("DescribeApplication"),
+        ));
+        assert_eq!(described["Name"], "app");
+        assert_eq!(described["Status"], "ENABLED");
+        assert_eq!(described["InstanceArn"], inst);
+        assert_eq!(described["ApplicationAccount"], "123456789012");
+
+        // updates touch present members only.
+        handle(
+            st,
+            &json!({"ApplicationArn": &app, "Description": "d", "Status": "DISABLED"}),
+            &req("UpdateApplication"),
+        );
+        let described = body(&handle(
+            st,
+            &json!({"ApplicationArn": &app}),
+            &req("DescribeApplication"),
+        ));
+        assert_eq!(described["Description"], "d");
+        assert_eq!(described["Status"], "DISABLED");
+        assert_eq!(described["Name"], "app");
+
+        let listed = body(&handle(
+            st,
+            &json!({"InstanceArn": &inst}),
+            &req("ListApplications"),
+        ));
+        assert_eq!(listed["Applications"].as_array().unwrap().len(), 1);
+
+        // assignment configuration defaults to required and flips on put.
+        let cfg = body(&handle(
+            st,
+            &json!({"ApplicationArn": &app}),
+            &req("GetApplicationAssignmentConfiguration"),
+        ));
+        assert_eq!(cfg["AssignmentRequired"], true);
+        handle(
+            st,
+            &json!({"ApplicationArn": &app, "AssignmentRequired": false}),
+            &req("PutApplicationAssignmentConfiguration"),
+        );
+        let cfg = body(&handle(
+            st,
+            &json!({"ApplicationArn": &app}),
+            &req("GetApplicationAssignmentConfiguration"),
+        ));
+        assert_eq!(cfg["AssignmentRequired"], false);
+
+        // session configuration starts DISABLED.
+        let cfg = body(&handle(
+            st,
+            &json!({"ApplicationArn": &app}),
+            &req("GetApplicationSessionConfiguration"),
+        ));
+        assert_eq!(cfg["UserBackgroundSessionApplicationStatus"], "DISABLED");
+        handle(
+            st,
+            &json!({"ApplicationArn": &app, "UserBackgroundSessionApplicationStatus": "ENABLED"}),
+            &req("PutApplicationSessionConfiguration"),
+        );
+        let cfg = body(&handle(
+            st,
+            &json!({"ApplicationArn": &app}),
+            &req("GetApplicationSessionConfiguration"),
+        ));
+        assert_eq!(cfg["UserBackgroundSessionApplicationStatus"], "ENABLED");
+
+        // assignments round-trip and list for a principal.
+        handle(
+            st,
+            &json!({"ApplicationArn": &app, "PrincipalId": "u-1", "PrincipalType": "USER"}),
+            &req("CreateApplicationAssignment"),
+        );
+        let describe = body(&handle(
+            st,
+            &json!({"ApplicationArn": &app, "PrincipalId": "u-1", "PrincipalType": "USER"}),
+            &req("DescribeApplicationAssignment"),
+        ));
+        assert_eq!(describe["PrincipalType"], "USER");
+
+        let listed = body(&handle(
+            st,
+            &json!({"ApplicationArn": &app}),
+            &req("ListApplicationAssignments"),
+        ));
+        assert_eq!(listed["ApplicationAssignments"][0]["PrincipalId"], "u-1");
+
+        let listed = body(&handle(
+            st,
+            &json!({"InstanceArn": &inst, "PrincipalId": "u-1", "PrincipalType": "USER"}),
+            &req("ListApplicationAssignmentsForPrincipal"),
+        ));
+        assert_eq!(listed["ApplicationAssignments"][0]["ApplicationArn"], app);
+
+        handle(
+            st,
+            &json!({"ApplicationArn": &app, "PrincipalId": "u-1", "PrincipalType": "USER"}),
+            &req("DeleteApplicationAssignment"),
+        );
+        let listed = body(&handle(
+            st,
+            &json!({"ApplicationArn": &app}),
+            &req("ListApplicationAssignments"),
+        ));
+        assert_eq!(listed["ApplicationAssignments"].as_array().unwrap().len(), 0);
+
+        // access scopes round-trip.
+        handle(
+            st,
+            &json!({"ApplicationArn": &app, "Scope": "sso:accounts:access", "AuthorizedTargets": ["arn:target"]}),
+            &req("PutApplicationAccessScope"),
+        );
+        let scope = body(&handle(
+            st,
+            &json!({"ApplicationArn": &app, "Scope": "sso:accounts:access"}),
+            &req("GetApplicationAccessScope"),
+        ));
+        assert_eq!(scope["AuthorizedTargets"], json!(["arn:target"]));
+        let listed = body(&handle(
+            st,
+            &json!({"ApplicationArn": &app}),
+            &req("ListApplicationAccessScopes"),
+        ));
+        assert_eq!(
+            listed["Scopes"][0]["Scope"],
+            "sso:accounts:access"
+        );
+        // an unknown scope → modeled RNF.
+        let missing = handle(
+            st,
+            &json!({"ApplicationArn": &app, "Scope": "nope"}),
+            &req("GetApplicationAccessScope"),
+        );
+        assert_eq!(missing.status, 400);
+        assert_eq!(body(&missing)["__type"], "ResourceNotFoundException");
+
+        handle(
+            st,
+            &json!({"ApplicationArn": &app, "Scope": "sso:accounts:access"}),
+            &req("DeleteApplicationAccessScope"),
+        );
+        let listed = body(&handle(
+            st,
+            &json!({"ApplicationArn": &app}),
+            &req("ListApplicationAccessScopes"),
+        ));
+        assert_eq!(listed["Scopes"].as_array().unwrap().len(), 0);
+
+        // authentication methods round-trip by type.
+        handle(
+            st,
+            &json!({
+                "ApplicationArn": &app,
+                "AuthenticationMethodType": "IAM",
+                "AuthenticationMethod": {"Iam": {"ActorPolicy": {"Version": "2012-10-17"}}},
+            }),
+            &req("PutApplicationAuthenticationMethod"),
+        );
+        let method = body(&handle(
+            st,
+            &json!({"ApplicationArn": &app, "AuthenticationMethodType": "IAM"}),
+            &req("GetApplicationAuthenticationMethod"),
+        ));
+        assert_eq!(
+            method["AuthenticationMethod"]["Iam"]["ActorPolicy"]["Version"],
+            "2012-10-17"
+        );
+        let listed = body(&handle(
+            st,
+            &json!({"ApplicationArn": &app}),
+            &req("ListApplicationAuthenticationMethods"),
+        ));
+        assert_eq!(
+            listed["AuthenticationMethods"][0]["AuthenticationMethodType"],
+            "IAM"
+        );
+        handle(
+            st,
+            &json!({"ApplicationArn": &app, "AuthenticationMethodType": "IAM"}),
+            &req("DeleteApplicationAuthenticationMethod"),
+        );
+        let listed = body(&handle(
+            st,
+            &json!({"ApplicationArn": &app}),
+            &req("ListApplicationAuthenticationMethods"),
+        ));
+        assert_eq!(
+            listed["AuthenticationMethods"].as_array().unwrap().len(),
+            0
+        );
+
+        // grants: nothing stored → list empty / get & delete RNF.
+        let listed = body(&handle(
+            st,
+            &json!({"ApplicationArn": &app}),
+            &req("ListApplicationGrants"),
+        ));
+        assert_eq!(listed["Grants"].as_array().unwrap().len(), 0);
+        let missing = handle(
+            st,
+            &json!({"ApplicationArn": &app, "GrantType": "authorization_code"}),
+            &req("GetApplicationGrant"),
+        );
+        assert_eq!(missing.status, 400);
+        assert_eq!(body(&missing)["__type"], "ResourceNotFoundException");
+
+        // delete cascades to the application's assignments.
+        handle(
+            st,
+            &json!({"ApplicationArn": &app, "PrincipalId": "u-2", "PrincipalType": "GROUP"}),
+            &req("CreateApplicationAssignment"),
+        );
+        handle(st, &json!({"ApplicationArn": &app}), &req("DeleteApplication"));
+        assert_eq!(st.applications.len(), 0);
+        assert_eq!(st.app_assignments.len(), 0);
+        let vanished = handle(
+            st,
+            &json!({"ApplicationArn": &app}),
+            &req("DescribeApplication"),
+        );
+        assert_eq!(vanished.status, 400);
+        assert_eq!(body(&vanished)["__type"], "ResourceNotFoundException");
+    }
+
+    #[test]
+    fn application_not_found_envelopes() {
+        let st = &mut fresh_state(111_000_000_012);
+        let inst = instance_arn(st);
+
+        // unknown instance arns → modeled RNF across the op families.
+        for op in [
+            "ListApplications",
+            "ListRegions",
+            "ListTrustedTokenIssuers",
+            "ListPermissionSetProvisioningStatus",
+        ] {
+            let params = json!({"InstanceArn": "arn:aws:sso:::instance/ssoins-nope"});
+            let resp = handle(st, &params, &req(op));
+            assert_eq!(resp.status, 400, "{op}");
+            assert_eq!(body(&resp)["__type"], "ResourceNotFoundException", "{op}");
+        }
+        let mut params = json!({"InstanceArn": "arn:aws:sso:::instance/ssoins-nope"});
+        params["ApplicationProviderArn"] = json!("arn:aws:sso:::applicationProvider/x");
+        params["Name"] = json!("app");
+        let resp = handle(st, &params, &req("CreateApplication"));
+        assert_eq!(resp.status, 400);
+        assert_eq!(body(&resp)["__type"], "ResourceNotFoundException");
+
+        // unknown application arn → modeled RNF.
+        let missing = handle(
+            st,
+            &json!({"ApplicationArn": &format!("{inst}/application/apl-nope")}),
+            &req("DescribeApplication"),
+        );
+        assert_eq!(missing.status, 400);
+        assert_eq!(body(&missing)["__type"], "ResourceNotFoundException");
+    }
+
+    #[test]
+    fn trusted_token_issuers_surface() {
+        let st = &mut fresh_state(111_000_000_013);
+        let inst = instance_arn(st);
+
+        let created = body(&handle(
+            st,
+            &json!({
+                "InstanceArn": &inst,
+                "Name": "iss",
+                "TrustedTokenIssuerType": "OIDC_JWT",
+                "TrustedTokenIssuerConfiguration": {
+                    "IssuerUrl": "https://issuer.example.com",
+                    "ClaimAttributePath": "sub",
+                    "IdentityStoreAttributePath": "userName",
+                    "JwksRetrievalOption": "OPEN_ID_DISCOVERY",
+                },
+            }),
+            &req("CreateTrustedTokenIssuer"),
+        ));
+        let arn = created["TrustedTokenIssuerArn"].as_str().unwrap().to_string();
+        assert!(arn.starts_with(&inst));
+
+        let described = body(&handle(
+            st,
+            &json!({"TrustedTokenIssuerArn": &arn}),
+            &req("DescribeTrustedTokenIssuer"),
+        ));
+        assert_eq!(described["Name"], "iss");
+        assert_eq!(described["TrustedTokenIssuerType"], "OIDC_JWT");
+        assert_eq!(
+            described["TrustedTokenIssuerConfiguration"]["IssuerUrl"],
+            "https://issuer.example.com"
+        );
+
+        let listed = body(&handle(
+            st,
+            &json!({"InstanceArn": &inst}),
+            &req("ListTrustedTokenIssuers"),
+        ));
+        assert_eq!(listed["TrustedTokenIssuers"][0]["Name"], "iss");
+
+        // updates touch present members only.
+        handle(
+            st,
+            &json!({
+                "TrustedTokenIssuerArn": &arn,
+                "Name": "renamed",
+                "TrustedTokenIssuerConfiguration": {
+                    "ClaimAttributePath": "groups",
+                },
+            }),
+            &req("UpdateTrustedTokenIssuer"),
+        );
+        let described = body(&handle(
+            st,
+            &json!({"TrustedTokenIssuerArn": &arn}),
+            &req("DescribeTrustedTokenIssuer"),
+        ));
+        assert_eq!(described["Name"], "renamed");
+        assert_eq!(
+            described["TrustedTokenIssuerConfiguration"]["ClaimAttributePath"],
+            "groups"
+        );
+
+        handle(st, &json!({"TrustedTokenIssuerArn": &arn}), &req("DeleteTrustedTokenIssuer"));
+        let missing = handle(
+            st,
+            &json!({"TrustedTokenIssuerArn": &arn}),
+            &req("DescribeTrustedTokenIssuer"),
+        );
+        assert_eq!(missing.status, 400);
+        assert_eq!(body(&missing)["__type"], "ResourceNotFoundException");
+    }
+
+    #[test]
+    fn abac_and_permissions_boundaries() {
+        let st = &mut fresh_state(111_000_000_014);
+        let inst = instance_arn(st);
+        let ps = create_permission_set(st, "ps");
+
+        let config = json!({
+            "AccessControlAttributes": [
+                {"Key": "costCenter", "Value": {"Source": ["$.costCenter"]}}
+            ]
+        });
+        handle(
+            st,
+            &json!({"InstanceArn": &inst, "InstanceAccessControlAttributeConfiguration": config}),
+            &req("CreateInstanceAccessControlAttributeConfiguration"),
+        );
+        // a second create conflicts.
+        let dup = handle(
+            st,
+            &json!({"InstanceArn": &inst, "InstanceAccessControlAttributeConfiguration": config}),
+            &req("CreateInstanceAccessControlAttributeConfiguration"),
+        );
+        assert_eq!(dup.status, 400);
+        assert_eq!(body(&dup)["__type"], "ConflictException");
+
+        let described = body(&handle(
+            st,
+            &json!({"InstanceArn": &inst}),
+            &req("DescribeInstanceAccessControlAttributeConfiguration"),
+        ));
+        assert_eq!(described["Status"], "ENABLED");
+        assert_eq!(
+            described["InstanceAccessControlAttributeConfiguration"]["AccessControlAttributes"][0]["Key"],
+            "costCenter"
+        );
+
+        // updates replace the configuration.
+        handle(
+            st,
+            &json!({"InstanceArn": &inst, "InstanceAccessControlAttributeConfiguration": {
+                "AccessControlAttributes": []
+            }}),
+            &req("UpdateInstanceAccessControlAttributeConfiguration"),
+        );
+        let described = body(&handle(
+            st,
+            &json!({"InstanceArn": &inst}),
+            &req("DescribeInstanceAccessControlAttributeConfiguration"),
+        ));
+        assert_eq!(
+            described["InstanceAccessControlAttributeConfiguration"]["AccessControlAttributes"]
+                .as_array()
+                .unwrap()
+                .len(),
+            0
+        );
+
+        handle(
+            st,
+            &json!({"InstanceArn": &inst}),
+            &req("DeleteInstanceAccessControlAttributeConfiguration"),
+        );
+        let missing = handle(
+            st,
+            &json!({"InstanceArn": &inst}),
+            &req("DescribeInstanceAccessControlAttributeConfiguration"),
+        );
+        assert_eq!(missing.status, 400);
+        assert_eq!(body(&missing)["__type"], "ResourceNotFoundException");
+
+        // permissions boundary round-trip on the permission set.
+        let boundary = json!({"ManagedPolicyArn": "arn:aws:iam::aws:policy/AdministratorAccess"});
+        let missing = body(&handle(
+            st,
+            &json!({"InstanceArn": &inst, "PermissionSetArn": &ps}),
+            &req("GetPermissionsBoundaryForPermissionSet"),
+        ));
+        assert_eq!(missing["__type"], "ResourceNotFoundException");
+        handle(
+            st,
+            &json!({"InstanceArn": &inst, "PermissionSetArn": &ps, "PermissionsBoundary": boundary}),
+            &req("PutPermissionsBoundaryToPermissionSet"),
+        );
+        let got = body(&handle(
+            st,
+            &json!({"InstanceArn": &inst, "PermissionSetArn": &ps}),
+            &req("GetPermissionsBoundaryForPermissionSet"),
+        ));
+        assert_eq!(
+            got["PermissionsBoundary"]["ManagedPolicyArn"],
+            "arn:aws:iam::aws:policy/AdministratorAccess"
+        );
+        handle(
+            st,
+            &json!({"InstanceArn": &inst, "PermissionSetArn": &ps}),
+            &req("DeletePermissionsBoundaryFromPermissionSet"),
+        );
+        let missing = handle(
+            st,
+            &json!({"InstanceArn": &inst, "PermissionSetArn": &ps}),
+            &req("GetPermissionsBoundaryForPermissionSet"),
+        );
+        assert_eq!(body(&missing)["__type"], "ResourceNotFoundException");
+    }
+
+    #[test]
+    fn operation_status_lists() {
+        let st = &mut fresh_state(111_000_000_015);
+        let inst = instance_arn(st);
+        let ps = create_permission_set(st, "ps");
+
+        let provisioned = body(&handle(
+            st,
+            &json!({"InstanceArn": &inst, "PermissionSetArn": &ps}),
+            &req("ProvisionPermissionSet"),
+        ));
+        let request_id = provisioned["PermissionSetProvisioningStatus"]["RequestId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let described = body(&handle(
+            st,
+            &json!({
+                "InstanceArn": &inst,
+                "ProvisionPermissionSetRequestId": &request_id,
+            }),
+            &req("DescribePermissionSetProvisioningStatus"),
+        ));
+        assert_eq!(
+            described["PermissionSetProvisioningStatus"]["Status"],
+            "SUCCEEDED"
+        );
+        assert_eq!(
+            described["PermissionSetProvisioningStatus"]["PermissionSetArn"],
+            ps
+        );
+
+        let listed = body(&handle(
+            st,
+            &json!({"InstanceArn": &inst}),
+            &req("ListPermissionSetProvisioningStatus"),
+        ));
+        assert_eq!(
+            listed["PermissionSetsProvisioningStatus"][0]["RequestId"],
+            request_id
+        );
+
+        // unknown request ids → the sibling empty-message RNF.
+        let missing = handle(
+            st,
+            &json!({
+                "InstanceArn": &inst,
+                "ProvisionPermissionSetRequestId": "nope",
+            }),
+            &req("DescribePermissionSetProvisioningStatus"),
+        );
+        assert_eq!(missing.status, 400);
+        assert_eq!(body(&missing)["__type"], "ResourceNotFoundException");
+
+        // account assignment statuses list by request id.
+        let assignment = body(&handle(
+            st,
+            &json!({
+                "InstanceArn": &inst,
+                "PermissionSetArn": &ps,
+                "PrincipalId": "user-1",
+                "PrincipalType": "USER",
+                "TargetId": "123456789012",
+                "TargetType": "AWS_ACCOUNT",
+            }),
+            &req("CreateAccountAssignment"),
+        ));
+        let created_id = assignment["AccountAssignmentCreationStatus"]["RequestId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let listed = body(&handle(
+            st,
+            &json!({"InstanceArn": &inst}),
+            &req("ListAccountAssignmentCreationStatus"),
+        ));
+        assert_eq!(listed["AccountAssignmentsCreationStatus"][0]["RequestId"], created_id);
+        assert_eq!(
+            listed["AccountAssignmentsCreationStatus"][0]["Status"],
+            "SUCCEEDED"
+        );
+
+        handle(
+            st,
+            &json!({
+                "InstanceArn": &inst,
+                "PermissionSetArn": &ps,
+                "PrincipalId": "user-1",
+                "PrincipalType": "USER",
+                "TargetId": "123456789012",
+                "TargetType": "AWS_ACCOUNT",
+            }),
+            &req("DeleteAccountAssignment"),
+        );
+        let listed = body(&handle(
+            st,
+            &json!({"InstanceArn": &inst}),
+            &req("ListAccountAssignmentDeletionStatus"),
+        ));
+        assert_eq!(
+            listed["AccountAssignmentsDeletionStatus"][0]["RequestId"],
+            created_id
+        );
     }
 }
