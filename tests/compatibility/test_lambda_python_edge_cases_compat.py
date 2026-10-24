@@ -16,7 +16,6 @@ import pytest
 
 from tests.compatibility.conftest import make_client
 
-ENDPOINT_URL = "http://localhost:4566"
 RUNTIME = "python3.12"
 ROLE = "arn:aws:iam::123456789012:role/lambda-edge-role"
 

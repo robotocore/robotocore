@@ -13,7 +13,10 @@ use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
+use std::time::{Duration, Instant};
 use uuid::Uuid;
+
+use parking_lot::Mutex;
 
 use crate::core::account::parse_account_from_key;
 use crate::core::protocol::{
@@ -1632,11 +1635,13 @@ fn registry_service_statuses() -> serde_json::Map<String, serde_json::Value> {
 /// Field contract mirrors the Python endpoint (`available` sorted, `all`
 /// equal to _ALL_RUNTIME_FAMILIES). Honesty rule: a family may only appear in
 /// `available` when the Rust lambda handler can actually execute it — keep
-/// this list truthful, not aspirational. Executors currently live in
-/// `crates/lambda` for python/nodejs/custom; `java`/`ruby`/`dotnet` stay
-/// in `all` only until their executors land (the python twin probed host
-/// toolchains for the same three families, but never executed them in the
-/// golden lanes — see the frozen baseline's pass: 0 rows).
+/// this list truthful, not aspirational. Executors live in `crates/lambda`:
+/// the in-process executors cover python/custom (and nodejs when the host has
+/// a `node` binary), and the docker executor (`LAMBDA_EXECUTOR=docker`) runs
+/// every runtime mapped to an official AWS runtime image — including the
+/// managed java/dotnet/ruby families — in containers. Like the python twin
+/// (befd9a8b), the endpoint reports the server's actual capability, not this
+/// process's PATH.
 pub async fn runtimes_handler() -> impl IntoResponse {
     let all = _ALL_RUNTIME_FAMILIES;
     let available = available_runtime_families();
@@ -1650,21 +1655,55 @@ pub async fn runtimes_handler() -> impl IntoResponse {
 pub const _ALL_RUNTIME_FAMILIES: [&str; 6] =
     ["custom", "dotnet", "java", "nodejs", "python", "ruby"];
 
-/// Executor + toolchain availability for this host:
-/// - `python` runs in-process (the shim) and `custom` through /bin/sh-style
-///   bootstrap: always available.
-/// - `nodejs` has an executor in crates/lambda and needs a `node` binary at
-///   invoke time: present only when the host has one (python era: `which node`).
-///
-/// The python twin probed ruby/dotnet/javac the same way; those probes
-/// return false until their executors exist, so `available` stays honest.
+/// Executor + toolchain availability for this server:
+/// - Host (local-mode) families: `python` runs in-process (the shim) and
+///   `custom` through /bin/sh-style bootstrap: always available. `nodejs`
+///   has an in-process executor and needs a `node` binary at invoke time:
+///   present only when the host has one (python era: `which node`).
+/// - `LAMBDA_EXECUTOR=docker`: the docker executor runs every runtime mapped
+///   to an official AWS runtime image in a container, so the families those
+///   runtimes belong to (java/dotnet/ruby among them) are unioned in whenever
+///   the daemon answers. This is the python-era semantics (befd9a8b): the
+///   endpoint reflects the server's actual capability, not this process's
+///   PATH — a containerized twin with no local toolchains still reports the
+///   managed families it can execute.
 fn available_runtime_families() -> Vec<&'static str> {
     let mut available: Vec<&'static str> = vec!["custom", "python"];
     if which("node") || which("nodejs") {
         available.push("nodejs");
     }
+    if let Some(families) = docker_capability_runtimes_cached() {
+        for family in families {
+            if !available.contains(&family) {
+                available.push(family);
+            }
+        }
+    }
     available.sort_unstable();
     available
+}
+
+/// Probe-cache for the docker executor's runtime families.
+///
+/// `docker_capability_runtimes()` shells out to `docker info` (2s timeout)
+/// whenever the executor is in docker mode, and this endpoint is polled
+/// (health checks, test collection) — without caching every poll would pay
+/// the daemon round-trip. The answer is therefore cached for 5s, keyed by
+/// executor mode so a pod (or test) flipping `LAMBDA_EXECUTOR` sees fresh
+/// results instead of a stale mode's probe. Daemon state changes are picked
+/// up within the TTL window, which is acceptable for a capability report.
+fn docker_capability_runtimes_cached() -> Option<Vec<&'static str>> {
+    static CACHE: Mutex<Option<(Instant, String, Option<Vec<&'static str>>)>> = Mutex::new(None);
+    let mode = lambda::docker_runtime::executor_mode();
+    let mut guard = CACHE.lock();
+    if let Some((at, cached_mode, families)) = guard.as_ref() {
+        if *cached_mode == mode && at.elapsed() < Duration::from_secs(5) {
+            return families.clone();
+        }
+    }
+    let families = lambda::docker_runtime::docker_capability_runtimes();
+    *guard = Some((Instant::now(), mode, families.clone()));
+    families
 }
 
 /// shutil.which equivalent over PATH without spawning a process.
@@ -1683,16 +1722,36 @@ fn which(bin: &str) -> bool {
 mod runtime_families_tests {
     use super::*;
 
+    /// Env mutation (executor mode) is process-global and `available_runtime_
+    /// families()` reads it — serialize every test below on this guard, like
+    /// the crate's docker-executor tests do.
+    static ENV_GUARD: Mutex<()> = Mutex::new(());
+
     #[test]
     fn available_is_sorted_subset_of_all() {
+        let _guard = ENV_GUARD.lock();
         let available = available_runtime_families();
         assert!(available.contains(&"custom"));
         assert!(available.contains(&"python"));
-        // nodejs appears exactly when the host has node (python-era probe).
-        assert_eq!(
-            available.contains(&"nodejs"),
-            which("node") || which("nodejs")
-        );
+        // Local mode: nodejs appears exactly when the host has node
+        // (python-era probe), and the managed families stay out — that is
+        // the pre-docker contract. Docker mode: the docker executor serves
+        // nodejs from its mapped runtime image and runs java/dotnet/ruby in
+        // containers, so those families are unioned in (test below).
+        let docker_mode = lambda::docker_runtime::executor_mode() == "docker"
+            && lambda::docker_runtime::docker_available(2);
+        if !docker_mode {
+            assert_eq!(
+                available.contains(&"nodejs"),
+                which("node") || which("nodejs")
+            );
+            for absent_family in ["java", "ruby", "dotnet"] {
+                assert!(
+                    !available.contains(&absent_family),
+                    "{absent_family} must not be available outside docker mode"
+                );
+            }
+        }
         let mut sorted = available.clone();
         sorted.sort_unstable();
         assert_eq!(available, sorted, "python twin reported available sorted");
@@ -1702,14 +1761,37 @@ mod runtime_families_tests {
                 "{family} not in all-list"
             );
         }
-        // Families without executors must stay out of `available` no matter
-        // what toolchains the host has (crates/lambda has no executors yet).
-        for absent_family in ["java", "ruby", "dotnet"] {
+    }
+
+    /// Docker mode unions in the families the executor's mapped runtime
+    /// images cover — the endpoint reflects server capability (containers),
+    /// not this process's PATH (python-era befd9a8b semantics).
+    #[test]
+    fn docker_mode_unions_managed_runtime_families() {
+        // Same guard as the crate's live-docker tests: no daemon, no test.
+        if !lambda::docker_runtime::docker_available(2) {
+            return;
+        }
+        let _guard = ENV_GUARD.lock();
+        let saved = std::env::var("LAMBDA_EXECUTOR").ok();
+        std::env::set_var("LAMBDA_EXECUTOR", "docker");
+        // The probe cache is keyed by mode, so the first docker-mode call
+        // re-probes instead of reusing a local-mode answer.
+        let available = available_runtime_families();
+        match saved {
+            Some(v) => std::env::set_var("LAMBDA_EXECUTOR", v),
+            None => std::env::remove_var("LAMBDA_EXECUTOR"),
+        }
+        for family in ["python", "nodejs", "java", "dotnet", "ruby", "custom"] {
             assert!(
-                !available.contains(&absent_family),
-                "{absent_family} has no executor; must not be available"
+                available.contains(&family),
+                "docker mode must report {family} available; got {available:?}"
             );
         }
+        assert_eq!(
+            available, _ALL_RUNTIME_FAMILIES,
+            "the docker executor's mapped runtimes cover the full family list"
+        );
     }
 }
 
