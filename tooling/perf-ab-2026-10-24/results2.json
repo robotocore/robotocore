@@ -1,0 +1,59 @@
+{
+  "released-py": {
+    "serial_p50s": {
+      "sts_get_caller_identity": 0.974,
+      "s3_put_16k": 1.324,
+      "s3_get_16k": 1.13,
+      "s3_list_head": 1.355,
+      "sqs_send": 0.71,
+      "sqs_receive": 0.733,
+      "sqs_delete": 0.693,
+      "ddb_put": 1.036,
+      "ddb_get": 0.98,
+      "ddb_query_range": 2.326,
+      "ec2_describe_vpcs": 2.172,
+      "ec2_describe_instances": 1.94,
+      "iam_list_users": 1.069
+    },
+    "mixed_ops_per_sec": 820.6,
+    "concurrent2_ops_per_sec": 830.2,
+    "samples": {
+      "bench-released": {
+        "cpu_pct_avg": 67.8,
+        "mem_peak_mb": 232.5,
+        "samples": 6
+      }
+    }
+  },
+  "rust-new": {
+    "serial_p50s": {
+      "sts_get_caller_identity": 0.478,
+      "s3_put_16k": 0.686,
+      "s3_get_16k": 0.615,
+      "s3_list_head": 0.64,
+      "sqs_send": 0.446,
+      "sqs_receive": 0.458,
+      "sqs_delete": 0.444,
+      "ddb_put": 0.478,
+      "ddb_get": 0.443,
+      "ddb_query_range": 1.108,
+      "ec2_describe_vpcs": 0.526,
+      "ec2_describe_instances": 0.45,
+      "iam_list_users": 0.473
+    },
+    "mixed_ops_per_sec": 939.2,
+    "concurrent2_ops_per_sec": 957.9,
+    "samples": {
+      "bench-rust": {
+        "cpu_pct_avg": 16.0,
+        "mem_peak_mb": 16.0,
+        "samples": 3
+      },
+      "bench-released": {
+        "cpu_pct_avg": 0.1,
+        "mem_peak_mb": 232.2,
+        "samples": 3
+      }
+    }
+  }
+}

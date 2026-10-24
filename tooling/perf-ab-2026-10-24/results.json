@@ -1,0 +1,203 @@
+{
+  "a": {
+    "serial": {
+      "sts_get_caller_identity": {
+        "n": 400,
+        "p50": 0.987,
+        "p95": 1.149,
+        "mean": 1.018
+      },
+      "s3_put_16k": {
+        "n": 200,
+        "p50": 1.307,
+        "p95": 1.423,
+        "mean": 1.358
+      },
+      "s3_get_16k": {
+        "n": 200,
+        "p50": 1.13,
+        "p95": 1.334,
+        "mean": 1.419
+      },
+      "s3_list_head": {
+        "n": 400,
+        "p50": 1.364,
+        "p95": 1.465,
+        "mean": 1.378
+      },
+      "sqs_send": {
+        "n": 400,
+        "p50": 0.686,
+        "p95": 0.852,
+        "mean": 0.711
+      },
+      "sqs_receive_delete": {
+        "n": 0
+      },
+      "sqs_receive": {
+        "n": 400,
+        "p50": 0.734,
+        "p95": 0.777,
+        "mean": 0.741
+      },
+      "sqs_delete": {
+        "n": 400,
+        "p50": 0.698,
+        "p95": 0.739,
+        "mean": 0.703
+      },
+      "ddb_put": {
+        "n": 200,
+        "p50": 1.021,
+        "p95": 1.075,
+        "mean": 1.03
+      },
+      "ddb_get": {
+        "n": 400,
+        "p50": 0.983,
+        "p95": 1.127,
+        "mean": 1.0
+      },
+      "ddb_query_range": {
+        "n": 400,
+        "p50": 2.334,
+        "p95": 2.453,
+        "mean": 2.353
+      },
+      "ec2_describe_vpcs": {
+        "n": 400,
+        "p50": 2.155,
+        "p95": 2.264,
+        "mean": 2.169
+      },
+      "ec2_describe_instances": {
+        "n": 400,
+        "p50": 1.953,
+        "p95": 2.084,
+        "mean": 1.968
+      },
+      "iam_list_users": {
+        "n": 400,
+        "p50": 1.067,
+        "p95": 1.175,
+        "mean": 1.084
+      }
+    },
+    "concurrent": {
+      "wall_s": 1.93,
+      "threads": 4,
+      "cycles_per_thread": 100,
+      "mixed_ops_per_sec": 830.4
+    },
+    "resources": {
+      "bench-released": {
+        "cpu_pct_avg": 67.9,
+        "mem_peak_mb": 239.9,
+        "samples": 4
+      }
+    }
+  },
+  "b": {
+    "serial": {
+      "sts_get_caller_identity": {
+        "n": 400,
+        "p50": 0.469,
+        "p95": 0.542,
+        "mean": 0.507
+      },
+      "s3_put_16k": {
+        "n": 200,
+        "p50": 0.676,
+        "p95": 0.776,
+        "mean": 0.694
+      },
+      "s3_get_16k": {
+        "n": 200,
+        "p50": 0.598,
+        "p95": 0.632,
+        "mean": 0.603
+      },
+      "s3_list_head": {
+        "n": 400,
+        "p50": 0.627,
+        "p95": 0.66,
+        "mean": 0.635
+      },
+      "sqs_send": {
+        "n": 400,
+        "p50": 0.44,
+        "p95": 0.488,
+        "mean": 0.445
+      },
+      "sqs_receive_delete": {
+        "n": 0
+      },
+      "sqs_receive": {
+        "n": 400,
+        "p50": 0.456,
+        "p95": 0.525,
+        "mean": 0.462
+      },
+      "sqs_delete": {
+        "n": 400,
+        "p50": 0.439,
+        "p95": 0.502,
+        "mean": 0.446
+      },
+      "ddb_put": {
+        "n": 200,
+        "p50": 0.449,
+        "p95": 0.47,
+        "mean": 0.449
+      },
+      "ddb_get": {
+        "n": 400,
+        "p50": 0.44,
+        "p95": 0.454,
+        "mean": 0.441
+      },
+      "ddb_query_range": {
+        "n": 400,
+        "p50": 1.084,
+        "p95": 1.145,
+        "mean": 1.097
+      },
+      "ec2_describe_vpcs": {
+        "n": 400,
+        "p50": 0.487,
+        "p95": 0.528,
+        "mean": 0.55
+      },
+      "ec2_describe_instances": {
+        "n": 400,
+        "p50": 0.441,
+        "p95": 0.46,
+        "mean": 0.451
+      },
+      "iam_list_users": {
+        "n": 400,
+        "p50": 0.461,
+        "p95": 0.478,
+        "mean": 0.472
+      }
+    },
+    "concurrent": {
+      "wall_s": 1.69,
+      "threads": 4,
+      "cycles_per_thread": 100,
+      "mixed_ops_per_sec": 946.9
+    },
+    "resources": {
+      "bench-released": {
+        "cpu_pct_avg": 8.3,
+        "mem_peak_mb": 240.3,
+        "samples": 3
+      },
+      "bench-rust": {
+        "cpu_pct_avg": 9.9,
+        "mem_peak_mb": 20.6,
+        "samples": 3
+      }
+    }
+  }
+}
