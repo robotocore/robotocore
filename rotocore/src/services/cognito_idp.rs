@@ -4,9 +4,10 @@
 //! (`src/robotocore/services/cognito/provider.py`): pools, clients, users,
 //! groups, auth flows with structural JWT tokens, pool domains and tags.
 //! Operations the python provider delegates to moto (identity providers,
-//! resource servers, terms) follow moto's backend semantics; ops neither
-//! implements (managed login branding, user import jobs) dispatch `None`
-//! exactly like the sidecar's NotImplemented fall-through.
+//! resource servers, terms) follow moto's backend semantics; the device,
+//! WebAuthn, managed-login-branding, user-import-job, risk-configuration and
+//! log-delivery families are modeled directly from the botocore wire model
+//! (moto never had a backend for them).
 
 use crate::proto::parse_json_body;
 use crate::store;
@@ -34,6 +35,24 @@ struct Pool {
     resource_servers: Vec<(String, Value)>,
     /// (TermsId, moto terms record).
     terms: Vec<(String, Value)>,
+    /// (username, device record) — ConfirmDevice registrations.
+    devices: Vec<(String, Value)>,
+    /// (username, WebAuthn credential record).
+    webauthn_creds: Vec<(String, Value)>,
+    /// (ManagedLoginBrandingId, managed-login-branding record).
+    branding: Vec<(String, Value)>,
+    /// (JobId, user import job record).
+    import_jobs: Vec<(String, Value)>,
+    /// ClientId (or "" = pool level) -> risk configuration.
+    risk_configs: Map<String, Value>,
+    /// ClientId (or "" = pool level) -> UICustomizationType.
+    ui_customization: Map<String, Value>,
+    /// username -> array of auth event records (AdvancedSecurityMode).
+    auth_events: Map<String, Value>,
+    /// ClientId -> array of ClientSecretDescriptorType records.
+    client_secrets: Map<String, Value>,
+    /// Firehose/CloudWatch log delivery configuration for this pool.
+    log_config: Option<Value>,
 }
 
 #[derive(Default)]
@@ -45,6 +64,9 @@ struct State {
     /// (session id, username, pool id) — moto's `sessions` dict, filled when
     /// an auth flow yields a challenge and consumed by RespondToAuthChallenge.
     sessions: Vec<(String, String, String)>,
+    /// (refresh token, pool id, username) — refresh-grant tracking so
+    /// GetTokensFromRefreshToken can re-mint a live session.
+    refresh_tokens: Vec<(String, String, String)>,
 }
 
 const COGNITO_TOTP_MFA_SECRET: &str = "asdfasdfasdf";
@@ -95,6 +117,23 @@ fn is_unsigned_op(op: &str) -> bool {
             | "ChangePassword"
             | "DeleteUserAttributes"
             | "SetUserSettings"
+            | "CompleteWebAuthnRegistration"
+            | "ConfirmDevice"
+            | "DeleteUser"
+            | "DeleteWebAuthnCredential"
+            | "ForgetDevice"
+            | "GetDevice"
+            | "GetTokensFromRefreshToken"
+            | "GetUserAttributeVerificationCode"
+            | "GetUserAuthFactors"
+            | "ListDevices"
+            | "ListWebAuthnCredentials"
+            | "ResendConfirmationCode"
+            | "RevokeToken"
+            | "StartWebAuthnRegistration"
+            | "UpdateAuthEventFeedback"
+            | "UpdateDeviceStatus"
+            | "VerifyUserAttribute"
     )
 }
 
@@ -128,9 +167,32 @@ fn find_agnostic_scope(
             | "UpdateUserAttributes"
             | "ChangePassword"
             | "DeleteUserAttributes"
-            | "SetUserSettings" => {
+            | "DeleteUser"
+            | "SetUserSettings"
+            | "CompleteWebAuthnRegistration"
+            | "ConfirmDevice"
+            | "DeleteWebAuthnCredential"
+            | "ForgetDevice"
+            | "GetDevice"
+            | "GetUserAttributeVerificationCode"
+            | "GetUserAuthFactors"
+            | "ListDevices"
+            | "ListWebAuthnCredentials"
+            | "StartWebAuthnRegistration"
+            | "UpdateDeviceStatus"
+            | "VerifyUserAttribute" => {
                 let token = p.get("AccessToken").and_then(Value::as_str).unwrap_or("");
                 token_in_scope(st, token)
+            }
+            "GetTokensFromRefreshToken" | "RevokeToken" | "ResendConfirmationCode" => {
+                let client = params_str_local(p, "ClientId");
+                st.pools
+                    .iter()
+                    .any(|(_, pl)| pl.clients.iter().any(|(k, _)| *k == client))
+            }
+            "UpdateAuthEventFeedback" => {
+                let pool_id = params_str_local(p, "UserPoolId");
+                st.pools.iter().any(|(k, _)| *k == pool_id)
             }
             _ => false,
         };
@@ -387,6 +449,68 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "UpdateTerms" => Some(update_terms(s, &p)),
         "DeleteTerms" => Some(delete_terms(s, &p)),
         "ListTerms" => Some(list_terms(s, &p)),
+        // device family (modeled from the botocore wire model)
+        "AdminForgetDevice" => Some(admin_forget_device(s, &p)),
+        "AdminGetDevice" => Some(admin_get_device(s, &p)),
+        "AdminListDevices" => Some(admin_list_devices(s, &p)),
+        "AdminUpdateDeviceStatus" => Some(admin_update_device_status(s, &p)),
+        "ConfirmDevice" => Some(confirm_device(s, &p)),
+        "ForgetDevice" => Some(forget_device(s, &p)),
+        "GetDevice" => Some(get_device(s, &p)),
+        "ListDevices" => Some(list_devices(s, &p)),
+        "UpdateDeviceStatus" => Some(update_device_status(s, &p)),
+        // WebAuthn family
+        "CompleteWebAuthnRegistration" => Some(complete_web_authn_registration(s, &p)),
+        "DeleteWebAuthnCredential" => Some(delete_web_authn_credential(s, &p)),
+        "ListWebAuthnCredentials" => Some(list_web_authn_credentials(s, &p)),
+        "StartWebAuthnRegistration" => Some(start_web_authn_registration(s, &p)),
+        // managed login branding
+        "CreateManagedLoginBranding" => Some(create_managed_login_branding(s, &p)),
+        "DescribeManagedLoginBranding" => Some(describe_managed_login_branding(s, &p)),
+        "DescribeManagedLoginBrandingByClient" => {
+            Some(describe_managed_login_branding_by_client(s, &p))
+        }
+        "DeleteManagedLoginBranding" => Some(delete_managed_login_branding(s, &p)),
+        "UpdateManagedLoginBranding" => Some(update_managed_login_branding(s, &p)),
+        // user import jobs
+        "CreateUserImportJob" => Some(create_user_import_job(s, &p)),
+        "DescribeUserImportJob" => Some(describe_user_import_job(s, &p)),
+        "GetCSVHeader" => Some(get_csv_header(s, &p)),
+        "ListUserImportJobs" => Some(list_user_import_jobs(s, &p)),
+        "StartUserImportJob" => Some(start_user_import_job(s, &p)),
+        "StopUserImportJob" => Some(stop_user_import_job(s, &p)),
+        // risk configuration / auth events
+        "DescribeRiskConfiguration" => Some(describe_risk_configuration(s, &p)),
+        "SetRiskConfiguration" => Some(set_risk_configuration(s, &p)),
+        "AdminListUserAuthEvents" => Some(admin_list_user_auth_events(s, &p)),
+        "AdminUpdateAuthEventFeedback" => Some(admin_update_auth_event_feedback(s, &p)),
+        "UpdateAuthEventFeedback" => Some(update_auth_event_feedback(s, &p)),
+        // UI customization
+        "GetUICustomization" => Some(get_ui_customization(s, &p)),
+        "SetUICustomization" => Some(set_ui_customization(s, &p)),
+        // client secrets / resource servers / identity providers
+        "AddUserPoolClientSecret" => Some(add_user_pool_client_secret(s, &p)),
+        "ListUserPoolClientSecrets" => Some(list_user_pool_client_secrets(s, &p)),
+        "DeleteResourceServer" => Some(delete_resource_server(s, &p)),
+        "UpdateResourceServer" => Some(update_resource_server(s, &p)),
+        "GetIdentityProviderByIdentifier" => Some(get_identity_provider_by_identifier(s, &p)),
+        // log delivery
+        "GetLogDeliveryConfiguration" => Some(get_log_delivery_configuration(s, &p)),
+        "SetLogDeliveryConfiguration" => Some(set_log_delivery_configuration(s, &p)),
+        // user-facing (unsigned) token ops
+        "DeleteUser" => Some(delete_user(s, &p)),
+        "DeleteUserAttributes" => Some(delete_user_attributes(s, &p)),
+        "SetUserSettings" => Some(set_user_settings(s, &p)),
+        "AdminSetUserSettings" => Some(admin_set_user_settings(s, &p)),
+        "AdminDisableProviderForUser" => Some(admin_disable_provider_for_user(s, &p)),
+        "AdminLinkProviderForUser" => Some(admin_link_provider_for_user(s, &p)),
+        "GetUserAttributeVerificationCode" => Some(get_user_attribute_verification_code(s, &p)),
+        "GetUserAuthFactors" => Some(get_user_auth_factors(s, &p)),
+        "GetTokensFromRefreshToken" => Some(get_tokens_from_refresh_token(s, &p)),
+        "RevokeToken" => Some(revoke_token(s, &p)),
+        "ResendConfirmationCode" => Some(resend_confirmation_code(s, &p)),
+        "VerifyUserAttribute" => Some(verify_user_attribute(s, &p)),
+        "GetSigningCertificate" => Some(get_signing_certificate(s, &p)),
         _ => None,
     }
 }
@@ -865,14 +989,17 @@ fn authenticate_user(
         return err("NotAuthorizedException", "Incorrect username or password.");
     };
     if user["Password"].as_str().unwrap_or_default() != password {
+        record_auth_event(s, pool_id, username, false);
         return err("NotAuthorizedException", "Incorrect username or password.");
     }
     if user["UserStatus"].as_str() == Some("UNCONFIRMED") {
+        record_auth_event(s, pool_id, username, false);
         return err("UserNotConfirmedException", "User is not confirmed.");
     }
     if user["UserStatus"].as_str() == Some("FORCE_CHANGE_PASSWORD") {
         // moto stores the challenge session (models.py `self.sessions[...]`)
         // so RespondToAuthChallenge can pick it up later.
+        record_auth_event(s, pool_id, username, true);
         let session = session_register(s, username, pool_id);
         return ok_json(&json!({
             "ChallengeName": "NEW_PASSWORD_REQUIRED",
@@ -888,8 +1015,11 @@ fn authenticate_user(
         pool_region(pool_id)
     );
     let sub = user["UserSub"].as_str().unwrap_or_default().to_string();
+    let tokens = issue_tokens(&issuer, &sub, client_id, username);
+    record_auth_event(s, pool_id, username, true);
+    track_refresh_token(s, pool_id, username, &tokens);
     ok_json(&json!({
-        "AuthenticationResult": issue_tokens(&issuer, &sub, client_id, username),
+        "AuthenticationResult": tokens,
         "ChallengeParameters": {},
     }))
 }
@@ -978,8 +1108,10 @@ fn respond_to_auth_challenge(s: &mut State, p: &Value, _region: &str) -> Respons
         );
         (sub, issuer)
     };
+    let tokens = issue_tokens(&issuer, &sub, &client_id, &username);
+    track_refresh_token(s, &pool_id, &username, &tokens);
     ok_json(&json!({
-        "AuthenticationResult": issue_tokens(&issuer, &sub, &client_id, &username),
+        "AuthenticationResult": tokens,
         "ChallengeParameters": {},
     }))
 }
@@ -1041,8 +1173,10 @@ fn admin_respond_to_auth_challenge(s: &mut State, p: &Value) -> Response {
                 (sub, issuer)
             };
             session_delete(s, &session);
+            let tokens = issue_tokens(&issuer, &sub, &client_id, &username);
+            track_refresh_token(s, &pool_id, &username, &tokens);
             ok_json(&json!({
-                "AuthenticationResult": issue_tokens(&issuer, &sub, &client_id, &username),
+                "AuthenticationResult": tokens,
                 "ChallengeParameters": {},
             }))
         }
@@ -1289,6 +1423,7 @@ fn admin_delete_user(s: &mut State, p: &Value) -> Response {
     }
     pl.users.retain(|(k, _)| *k != username);
     pl.user_groups.remove(&username);
+    purge_user_artifacts(pl, &username);
     ok_json(&json!({}))
 }
 
@@ -2245,6 +2380,1275 @@ fn list_terms(s: &State, p: &Value) -> Response {
     };
     let items: Vec<Value> = pl.terms.iter().map(|(_, v)| v.clone()).collect();
     ok_json(&json!({ "Terms": items }))
+}
+
+// ---------------------------------------------------------------------------
+// Shared helpers for the botocore-modeled families
+// ---------------------------------------------------------------------------
+
+/// (username, pool id) for a live access token — like `user_from_token` but
+/// also carrying the username the module's per-user collections key on.
+fn user_of_token(s: &State, access_token: &str) -> Option<(String, String)> {
+    let sub = token_payload(access_token)?["sub"].as_str()?.to_string();
+    for (_, pl) in s.pools.iter() {
+        for (uname, user) in pl.users.iter() {
+            if user["UserSub"].as_str() == Some(sub.as_str()) {
+                return Some((
+                    uname.clone(),
+                    pl.pool["Id"].as_str().unwrap_or_default().to_string(),
+                ));
+            }
+        }
+    }
+    None
+}
+
+fn user_mut<'a>(pl: &'a mut Pool, username: &str) -> Option<&'a mut Value> {
+    pl.users
+        .iter_mut()
+        .find(|(k, _)| *k == username)
+        .map(|(_, v)| v)
+}
+
+fn string_list(p: &Value, key: &str) -> Vec<String> {
+    p.get(key)
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Devices/webauthn/auth-events die with their user (AdminDeleteUser/DeleteUser).
+fn purge_user_artifacts(pl: &mut Pool, username: &str) {
+    pl.devices.retain(|(u, _)| u != username);
+    pl.webauthn_creds.retain(|(u, _)| u != username);
+    pl.auth_events.remove(username);
+}
+
+fn device_index(pl: &Pool, username: &str, device_key: &str) -> Option<usize> {
+    pl.devices
+        .iter()
+        .position(|(u, d)| u == username && d["DeviceKey"].as_str() == Some(device_key))
+}
+
+fn device_record(device_key: &str, device_name: &str) -> Value {
+    json!({
+        "DeviceKey": device_key,
+        "DeviceAttributes": if device_name.is_empty() {
+            json!([])
+        } else {
+            json!([{ "Name": "device_name", "Value": device_name }])
+        },
+        "DeviceCreateDate": now(),
+        "DeviceLastModifiedDate": now(),
+        "DeviceLastAuthenticatedDate": now(),
+    })
+}
+
+/// AdvancedSecurityMode sign-in audit trail backing AdminListUserAuthEvents.
+fn record_auth_event(s: &mut State, pool_id: &str, username: &str, passed: bool) {
+    let Some(pl) = pool_mut(s, pool_id) else {
+        return;
+    };
+    let event = json!({
+        "EventId": uuid::Uuid::new_v4().to_string(),
+        "EventType": "SignIn",
+        "CreationDate": now(),
+        "EventResponse": if passed { "Pass" } else { "Fail" },
+    });
+    let events = pl
+        .auth_events
+        .entry(username.to_string())
+        .or_insert_with(|| json!([]));
+    if let Some(arr) = events.as_array_mut() {
+        arr.push(event);
+    }
+}
+
+/// Track a minted refresh grant for GetTokensFromRefreshToken.
+fn track_refresh_token(s: &mut State, pool_id: &str, username: &str, tokens: &Value) {
+    if let Some(token) = tokens["RefreshToken"].as_str() {
+        s.refresh_tokens
+            .push((token.to_string(), pool_id.to_string(), username.to_string()));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Devices
+// ---------------------------------------------------------------------------
+
+fn device_missing() -> Response {
+    err("ResourceNotFoundException", "Device does not exist.")
+}
+
+fn admin_forget_device(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    let username = params_str_local(p, "Username");
+    let device_key = params_str_local(p, "DeviceKey");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let pl = pool_ref(s, &pool_id).unwrap();
+    if pl.users.iter().all(|(k, _)| *k != username) {
+        return user_missing(&username);
+    }
+    let Some(idx) = device_index(pl, &username, &device_key) else {
+        return device_missing();
+    };
+    let pl = pool_mut(s, &pool_id).unwrap();
+    pl.devices.remove(idx);
+    ok_json(&json!({}))
+}
+
+fn admin_get_device(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    let username = params_str_local(p, "Username");
+    let device_key = params_str_local(p, "DeviceKey");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let pl = pool_ref(s, &pool_id).unwrap();
+    if pl.users.iter().all(|(k, _)| *k != username) {
+        return user_missing(&username);
+    }
+    match device_index(pl, &username, &device_key) {
+        None => device_missing(),
+        Some(idx) => ok_json(&json!({ "Device": pl.devices[idx].1.clone() })),
+    }
+}
+
+fn admin_list_devices(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    let username = params_str_local(p, "Username");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let pl = pool_ref(s, &pool_id).unwrap();
+    if pl.users.iter().all(|(k, _)| *k != username) {
+        return user_missing(&username);
+    }
+    let limit = p["Limit"].as_i64().unwrap_or(60).max(0) as usize;
+    let devices: Vec<Value> = pl
+        .devices
+        .iter()
+        .filter(|(u, _)| u == username.as_str())
+        .map(|(_, d)| d.clone())
+        .take(limit)
+        .collect();
+    ok_json(&json!({ "Devices": devices }))
+}
+
+fn admin_update_device_status(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    let username = params_str_local(p, "Username");
+    let device_key = params_str_local(p, "DeviceKey");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let pl = pool_ref(s, &pool_id).unwrap();
+    if pl.users.iter().all(|(k, _)| *k != username) {
+        return user_missing(&username);
+    }
+    let Some(idx) = device_index(pl, &username, &device_key) else {
+        return device_missing();
+    };
+    let pl = pool_mut(s, &pool_id).unwrap();
+    let device = &mut pl.devices[idx].1;
+    if let Some(v) = p.get("DeviceRememberedStatus").filter(|v| !v.is_null()) {
+        device["DeviceRememberedStatus"] = v.clone();
+    }
+    device["DeviceLastModifiedDate"] = json!(now());
+    ok_json(&json!({}))
+}
+
+fn confirm_device(s: &mut State, p: &Value) -> Response {
+    let access_token = p["AccessToken"].as_str().unwrap_or_default();
+    let Some((username, pool_id)) = user_of_token(s, access_token) else {
+        return not_authorized_token(access_token);
+    };
+    let device_key = params_str_local(p, "DeviceKey");
+    let device_name = p["DeviceName"].as_str().unwrap_or_default().to_string();
+    let pl = pool_mut(s, &pool_id).unwrap();
+    if device_index(pl, &username, &device_key).is_some() {
+        return err("DeviceKeyExistsException", "Device is already traced.");
+    }
+    let record = device_record(&device_key, &device_name);
+    pl.devices.push((username, record));
+    ok_json(&json!({ "UserConfirmationNecessary": false }))
+}
+
+fn forget_device(s: &mut State, p: &Value) -> Response {
+    let access_token = p["AccessToken"].as_str().unwrap_or_default();
+    let Some((username, pool_id)) = user_of_token(s, access_token) else {
+        return not_authorized_token(access_token);
+    };
+    let device_key = params_str_local(p, "DeviceKey");
+    let pl = pool_ref(s, &pool_id).unwrap();
+    let Some(idx) = device_index(pl, &username, &device_key) else {
+        return device_missing();
+    };
+    let pl = pool_mut(s, &pool_id).unwrap();
+    pl.devices.remove(idx);
+    ok_json(&json!({}))
+}
+
+fn get_device(s: &mut State, p: &Value) -> Response {
+    let access_token = p["AccessToken"].as_str().unwrap_or_default();
+    let Some((username, pool_id)) = user_of_token(s, access_token) else {
+        return not_authorized_token(access_token);
+    };
+    let device_key = params_str_local(p, "DeviceKey");
+    let pl = pool_ref(s, &pool_id).unwrap();
+    match device_index(pl, &username, &device_key) {
+        None => device_missing(),
+        Some(idx) => ok_json(&json!({ "Device": pl.devices[idx].1.clone() })),
+    }
+}
+
+fn list_devices(s: &mut State, p: &Value) -> Response {
+    let access_token = p["AccessToken"].as_str().unwrap_or_default();
+    let Some((username, pool_id)) = user_of_token(s, access_token) else {
+        return not_authorized_token(access_token);
+    };
+    let limit = p["Limit"].as_i64().unwrap_or(60).max(0) as usize;
+    let pl = pool_ref(s, &pool_id).unwrap();
+    let devices: Vec<Value> = pl
+        .devices
+        .iter()
+        .filter(|(u, _)| u == username.as_str())
+        .map(|(_, d)| d.clone())
+        .take(limit)
+        .collect();
+    ok_json(&json!({ "Devices": devices }))
+}
+
+fn update_device_status(s: &mut State, p: &Value) -> Response {
+    let access_token = p["AccessToken"].as_str().unwrap_or_default();
+    let Some((username, pool_id)) = user_of_token(s, access_token) else {
+        return not_authorized_token(access_token);
+    };
+    let device_key = params_str_local(p, "DeviceKey");
+    let pl = pool_ref(s, &pool_id).unwrap();
+    let Some(idx) = device_index(pl, &username, &device_key) else {
+        return device_missing();
+    };
+    let pl = pool_mut(s, &pool_id).unwrap();
+    let device = &mut pl.devices[idx].1;
+    if let Some(v) = p.get("DeviceRememberedStatus").filter(|v| !v.is_null()) {
+        device["DeviceRememberedStatus"] = v.clone();
+    }
+    device["DeviceLastModifiedDate"] = json!(now());
+    ok_json(&json!({}))
+}
+
+// ---------------------------------------------------------------------------
+// WebAuthn
+// ---------------------------------------------------------------------------
+
+/// The hosted-UI origin Cognito derives the relying-party id from.
+fn webauthn_rp(pool_id: &str) -> String {
+    format!(
+        "{}.auth.{}.amazoncognito.com",
+        pool_id,
+        pool_region(pool_id)
+    )
+}
+
+fn start_web_authn_registration(s: &mut State, p: &Value) -> Response {
+    let access_token = p["AccessToken"].as_str().unwrap_or_default();
+    let Some((username, pool_id)) = user_of_token(s, access_token) else {
+        return not_authorized_token(access_token);
+    };
+    ok_json(&json!({
+        "CredentialCreationOptions": {
+            "publicKey": {
+                "challenge": uuid::Uuid::new_v4().to_string().replace('-', ""),
+                "rp": { "id": webauthn_rp(&pool_id), "name": "cognito-userpool" },
+                "user": {
+                    "id": username,
+                    "name": username,
+                    "displayName": username,
+                },
+                "pubKeyCredParams": [{ "type": "public-key", "alg": -7 }],
+                "timeout": 60000,
+                "authenticatorSelection": { "userVerification": "required" },
+                "attestation": "none",
+            },
+        },
+    }))
+}
+
+fn complete_web_authn_registration(s: &mut State, p: &Value) -> Response {
+    let access_token = p["AccessToken"].as_str().unwrap_or_default();
+    let Some((username, pool_id)) = user_of_token(s, access_token) else {
+        return not_authorized_token(access_token);
+    };
+    let cred = p.get("Credential").cloned().unwrap_or_else(|| json!({}));
+    let mut record = json!({
+        "CredentialId": cred["credentialId"].as_str().map(String::from)
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+        "FriendlyCredentialName": cred["name"].as_str().unwrap_or(username.as_str()),
+        "RelyingPartyId": cred["rpId"].as_str().map(String::from)
+            .unwrap_or_else(|| webauthn_rp(&pool_id)),
+        "AuthenticatorTransports": cred.get("transports").cloned().unwrap_or_else(|| json!(["internal"])),
+        "CreatedAt": now(),
+    });
+    if let Some(attachment) = cred["authenticatorAttachment"].as_str() {
+        record["AuthenticatorAttachment"] = json!(attachment);
+    }
+    pool_mut(s, &pool_id)
+        .unwrap()
+        .webauthn_creds
+        .push((username, record));
+    ok_json(&json!({}))
+}
+
+fn list_web_authn_credentials(s: &mut State, p: &Value) -> Response {
+    let access_token = p["AccessToken"].as_str().unwrap_or_default();
+    let Some((username, pool_id)) = user_of_token(s, access_token) else {
+        return not_authorized_token(access_token);
+    };
+    let pl = pool_ref(s, &pool_id).unwrap();
+    let creds: Vec<Value> = pl
+        .webauthn_creds
+        .iter()
+        .filter(|(u, _)| u == username.as_str())
+        .map(|(_, c)| c.clone())
+        .collect();
+    ok_json(&json!({ "Credentials": creds }))
+}
+
+fn delete_web_authn_credential(s: &mut State, p: &Value) -> Response {
+    let access_token = p["AccessToken"].as_str().unwrap_or_default();
+    let Some((username, pool_id)) = user_of_token(s, access_token) else {
+        return not_authorized_token(access_token);
+    };
+    let credential_id = params_str_local(p, "CredentialId");
+    let before = pool_ref(s, &pool_id)
+        .map(|pl| pl.webauthn_creds.len())
+        .unwrap_or(0);
+    let pl = pool_mut(s, &pool_id).unwrap();
+    pl.webauthn_creds.retain(|(u, c)| {
+        !(u == username.as_str() && c["CredentialId"].as_str() == Some(credential_id.as_str()))
+    });
+    if pl.webauthn_creds.len() == before {
+        return err("ResourceNotFoundException", "Credential does not exist.");
+    }
+    ok_json(&json!({}))
+}
+
+// ---------------------------------------------------------------------------
+// Managed login branding
+// ---------------------------------------------------------------------------
+
+fn managed_login_branding_missing(id: &str) -> Response {
+    err(
+        "ResourceNotFoundException",
+        &format!("Managed login branding {id} does not exist."),
+    )
+}
+
+fn create_managed_login_branding(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let client_id = params_str_local(p, "ClientId");
+    let pl = pool_mut(s, &pool_id).unwrap();
+    if pl
+        .branding
+        .iter()
+        .any(|(_, b)| b["ClientId"].as_str() == Some(client_id.as_str()))
+    {
+        return err(
+            "ManagedLoginBrandingExistsException",
+            "Managed login branding already exists for this app client.",
+        );
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    let record = json!({
+        "ManagedLoginBrandingId": id.clone(),
+        "UserPoolId": pool_id,
+        "ClientId": client_id,
+        "UseCognitoProvidedValues": if p["UseCognitoProvidedValues"].is_null() { json!(false) } else { p["UseCognitoProvidedValues"].clone() },
+        "Settings": if p["Settings"].is_null() { json!({}) } else { p["Settings"].clone() },
+        "Assets": if p["Assets"].is_null() { json!([]) } else { p["Assets"].clone() },
+        "CreationDate": now(),
+        "LastModifiedDate": now(),
+    });
+    pl.branding.push((id, record.clone()));
+    ok_json(&json!({ "ManagedLoginBranding": record }))
+}
+
+fn describe_managed_login_branding(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let branding_id = params_str_local(p, "ManagedLoginBrandingId");
+    let pl = pool_ref(s, &pool_id).unwrap();
+    match pl
+        .branding
+        .iter()
+        .find(|(k, _)| *k == branding_id)
+        .map(|(_, v)| v.clone())
+    {
+        Some(b) => ok_json(&json!({ "ManagedLoginBranding": b })),
+        None => managed_login_branding_missing(&branding_id),
+    }
+}
+
+fn describe_managed_login_branding_by_client(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let client_id = params_str_local(p, "ClientId");
+    let pl = pool_ref(s, &pool_id).unwrap();
+    match pl
+        .branding
+        .iter()
+        .find(|(_, b)| b["ClientId"].as_str() == Some(client_id.as_str()))
+        .map(|(_, v)| v.clone())
+    {
+        Some(b) => ok_json(&json!({ "ManagedLoginBranding": b })),
+        None => managed_login_branding_missing(&client_id),
+    }
+}
+
+fn delete_managed_login_branding(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let branding_id = params_str_local(p, "ManagedLoginBrandingId");
+    let pl = pool_mut(s, &pool_id).unwrap();
+    if pl.branding.iter().all(|(k, _)| *k != branding_id) {
+        return managed_login_branding_missing(&branding_id);
+    }
+    pl.branding.retain(|(k, _)| *k != branding_id);
+    ok_json(&json!({}))
+}
+
+fn update_managed_login_branding(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let branding_id = params_str_local(p, "ManagedLoginBrandingId");
+    let pl = pool_mut(s, &pool_id).unwrap();
+    let Some(branding) = pl
+        .branding
+        .iter_mut()
+        .find(|(k, _)| *k == branding_id)
+        .map(|(_, v)| v)
+    else {
+        return managed_login_branding_missing(&branding_id);
+    };
+    for key in ["UseCognitoProvidedValues", "Settings", "Assets"] {
+        if let Some(v) = p.get(key).filter(|v| !v.is_null()) {
+            branding[key] = v.clone();
+        }
+    }
+    branding["LastModifiedDate"] = json!(now());
+    let rec = branding.clone();
+    ok_json(&json!({ "ManagedLoginBranding": rec }))
+}
+
+// ---------------------------------------------------------------------------
+// User import jobs
+// ---------------------------------------------------------------------------
+
+fn user_import_job_missing(job_id: &str) -> Response {
+    err(
+        "ResourceNotFoundException",
+        &format!("User import job {job_id} does not exist."),
+    )
+}
+
+fn create_user_import_job(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let job_id = uuid::Uuid::new_v4().to_string();
+    let job = json!({
+        "JobId": job_id.clone(),
+        "JobName": p["JobName"].clone(),
+        "UserPoolId": pool_id,
+        "CloudWatchLogsRoleArn": p["CloudWatchLogsRoleArn"].clone(),
+        "CreationDate": now(),
+        "Status": "Created",
+        "ImportedUsers": 0,
+        "SkippedUsers": 0,
+        "FailedUsers": 0,
+    });
+    pool_mut(s, &pool_id)
+        .unwrap()
+        .import_jobs
+        .push((job_id, job.clone()));
+    ok_json(&json!({ "UserImportJob": job }))
+}
+
+fn describe_user_import_job(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let job_id = params_str_local(p, "JobId");
+    let pl = pool_ref(s, &pool_id).unwrap();
+    match pl
+        .import_jobs
+        .iter()
+        .find(|(k, _)| *k == job_id)
+        .map(|(_, v)| v.clone())
+    {
+        Some(job) => ok_json(&json!({ "UserImportJob": job })),
+        None => user_import_job_missing(&job_id),
+    }
+}
+
+fn start_user_import_job(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let job_id = params_str_local(p, "JobId");
+    let pl = pool_mut(s, &pool_id).unwrap();
+    let Some(job) = pl
+        .import_jobs
+        .iter_mut()
+        .find(|(k, _)| *k == job_id)
+        .map(|(_, v)| v)
+    else {
+        return user_import_job_missing(&job_id);
+    };
+    job["Status"] = json!("InProgress");
+    job["StartDate"] = json!(now());
+    let rec = job.clone();
+    ok_json(&json!({ "UserImportJob": rec }))
+}
+
+fn stop_user_import_job(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let job_id = params_str_local(p, "JobId");
+    let pl = pool_mut(s, &pool_id).unwrap();
+    let Some(job) = pl
+        .import_jobs
+        .iter_mut()
+        .find(|(k, _)| *k == job_id)
+        .map(|(_, v)| v)
+    else {
+        return user_import_job_missing(&job_id);
+    };
+    if job["Status"].as_str() == Some("InProgress") {
+        job["Status"] = json!("Stopped");
+        job["CompletionDate"] = json!(now());
+    }
+    let rec = job.clone();
+    ok_json(&json!({ "UserImportJob": rec }))
+}
+
+fn list_user_import_jobs(s: &State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    let pl = match need_pool_ref(s, &pool_id) {
+        Ok(pl) => pl,
+        Err(e) => return e,
+    };
+    let max = p["MaxResults"].as_i64().unwrap_or(60).max(0) as usize;
+    let jobs: Vec<Value> = pl
+        .import_jobs
+        .iter()
+        .take(max)
+        .map(|(_, v)| v.clone())
+        .collect();
+    ok_json(&json!({ "UserImportJobs": jobs }))
+}
+
+fn get_csv_header(s: &State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    if let Err(e) = need_pool_ref(s, &pool_id) {
+        return e;
+    }
+    let header: Vec<Value> = CSV_HEADER.iter().map(|h| json!(h)).collect();
+    ok_json(&json!({ "UserPoolId": pool_id, "CSVHeader": header }))
+}
+
+const CSV_HEADER: [&str; 19] = [
+    "name",
+    "given_name",
+    "family_name",
+    "middle_name",
+    "nickname",
+    "preferred_username",
+    "profile",
+    "picture",
+    "website",
+    "email",
+    "email_verified",
+    "gender",
+    "birthdate",
+    "zoneinfo",
+    "locale",
+    "phone_number",
+    "phone_number_verified",
+    "address",
+    "updated_at",
+];
+
+// ---------------------------------------------------------------------------
+// Risk configuration & auth events (AdvancedSecurityMode)
+// ---------------------------------------------------------------------------
+
+fn set_risk_configuration(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let client_id = params_str_local(p, "ClientId");
+    let mut rec = json!({
+        "UserPoolId": pool_id,
+        "LastModifiedDate": now(),
+    });
+    for key in [
+        "CompromisedCredentialsRiskConfiguration",
+        "AccountTakeoverRiskConfiguration",
+        "RiskExceptionConfiguration",
+    ] {
+        if let Some(v) = p.get(key).filter(|v| !v.is_null()) {
+            rec[key] = v.clone();
+        }
+    }
+    if !client_id.is_empty() {
+        rec["ClientId"] = json!(client_id.clone());
+    }
+    pool_mut(s, &pool_id)
+        .unwrap()
+        .risk_configs
+        .insert(client_id, rec.clone());
+    ok_json(&json!({ "RiskConfiguration": rec }))
+}
+
+fn describe_risk_configuration(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let client_id = params_str_local(p, "ClientId");
+    let pl = pool_ref(s, &pool_id).unwrap();
+    match pl.risk_configs.get(&client_id).cloned() {
+        Some(rec) => ok_json(&json!({ "RiskConfiguration": rec })),
+        None => err(
+            "ResourceNotFoundException",
+            "No risk configuration for this user pool.",
+        ),
+    }
+}
+
+fn admin_list_user_auth_events(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    let username = params_str_local(p, "Username");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let pl = pool_ref(s, &pool_id).unwrap();
+    if pl.users.iter().all(|(k, _)| *k != username) {
+        return user_missing(&username);
+    }
+    let events = pl
+        .auth_events
+        .get(&username)
+        .cloned()
+        .unwrap_or_else(|| json!([]));
+    ok_json(&json!({ "AuthEvents": events }))
+}
+
+fn apply_event_feedback(
+    pl: &mut Pool,
+    username: &str,
+    event_id: &str,
+    feedback_value: &str,
+    provider: &str,
+) {
+    if let Some(events) = pl.auth_events.get_mut(username) {
+        if let Some(arr) = events.as_array_mut() {
+            if let Some(event) = arr
+                .iter_mut()
+                .find(|e| e["EventId"].as_str() == Some(event_id))
+            {
+                event["EventFeedback"] = json!({
+                    "FeedbackValue": feedback_value,
+                    "Provider": provider,
+                    "FeedbackDate": now(),
+                });
+            }
+        }
+    }
+}
+
+fn admin_update_auth_event_feedback(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    let username = params_str_local(p, "Username");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let pl = pool_ref(s, &pool_id).unwrap();
+    if pl.users.iter().all(|(k, _)| *k != username) {
+        return user_missing(&username);
+    }
+    let event_id = params_str_local(p, "EventId");
+    let feedback_value = params_str_local(p, "FeedbackValue");
+    let pl = pool_mut(s, &pool_id).unwrap();
+    apply_event_feedback(
+        pl,
+        &username,
+        &event_id,
+        &feedback_value,
+        "AdministrationProvider",
+    );
+    ok_json(&json!({}))
+}
+
+fn update_auth_event_feedback(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    let username = params_str_local(p, "Username");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let pl = pool_ref(s, &pool_id).unwrap();
+    if pl.users.iter().all(|(k, _)| *k != username) {
+        return user_missing(&username);
+    }
+    let event_id = params_str_local(p, "EventId");
+    let feedback_value = params_str_local(p, "FeedbackValue");
+    let pl = pool_mut(s, &pool_id).unwrap();
+    apply_event_feedback(pl, &username, &event_id, &feedback_value, "FeedbackToken");
+    ok_json(&json!({}))
+}
+
+// ---------------------------------------------------------------------------
+// UI customization
+// ---------------------------------------------------------------------------
+
+const DEFAULT_CSS_VERSION: &str = "20150831182332";
+
+fn set_ui_customization(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let client_id = params_str_local(p, "ClientId");
+    if !client_id.is_empty()
+        && pool_ref(s, &pool_id)
+            .unwrap()
+            .clients
+            .iter()
+            .all(|(k, _)| *k != client_id)
+    {
+        return client_missing(&client_id);
+    }
+    let image_url = if p["ImageFile"].is_null() {
+        format!("https://{pool_id}.s3.amazonaws.com/ui/default.png")
+    } else {
+        format!("https://{pool_id}.s3.amazonaws.com/ui/uploaded.png")
+    };
+    let pl = pool_mut(s, &pool_id).unwrap();
+    let mut rec = json!({
+        "UserPoolId": pool_id.clone(),
+        "ImageUrl": image_url,
+        "CSS": p["CSS"].as_str().unwrap_or_default(),
+        "CSSVersion": DEFAULT_CSS_VERSION,
+        "CreationDate": now(),
+        "LastModifiedDate": now(),
+    });
+    if !client_id.is_empty() {
+        rec["ClientId"] = json!(client_id.clone());
+    }
+    pl.ui_customization.insert(client_id, rec.clone());
+    ok_json(&json!({ "UICustomization": rec }))
+}
+
+fn get_ui_customization(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let client_id = params_str_local(p, "ClientId");
+    if !client_id.is_empty()
+        && pool_ref(s, &pool_id)
+            .unwrap()
+            .clients
+            .iter()
+            .all(|(k, _)| *k != client_id)
+    {
+        return client_missing(&client_id);
+    }
+    let pl = pool_ref(s, &pool_id).unwrap();
+    let rec = pl
+        .ui_customization
+        .get(&client_id)
+        .or_else(|| pl.ui_customization.get(""))
+        .cloned()
+        .unwrap_or_else(|| {
+            let mut d = json!({
+                "UserPoolId": pool_id,
+                "ImageUrl": format!("https://{pool_id}.s3.amazonaws.com/ui/default.png"),
+                "CSSVersion": DEFAULT_CSS_VERSION,
+                "CreationDate": now(),
+                "LastModifiedDate": now(),
+            });
+            if !client_id.is_empty() {
+                d["ClientId"] = json!(client_id);
+            }
+            d
+        });
+    ok_json(&json!({ "UICustomization": rec }))
+}
+
+// ---------------------------------------------------------------------------
+// App-client secrets
+// ---------------------------------------------------------------------------
+
+fn add_user_pool_client_secret(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let client_id = params_str_local(p, "ClientId");
+    let pl = pool_ref(s, &pool_id).unwrap();
+    if pl.clients.iter().all(|(k, _)| *k != client_id) {
+        return client_missing(&client_id);
+    }
+    let secret_value = p["ClientSecret"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let descriptor = json!({
+        "ClientSecretId": uuid::Uuid::new_v4().to_string(),
+        "ClientSecretValue": secret_value,
+        "ClientSecretCreateDate": now(),
+    });
+    let pl = pool_mut(s, &pool_id).unwrap();
+    let secrets = pl
+        .client_secrets
+        .entry(client_id)
+        .or_insert_with(|| json!([]));
+    if let Some(arr) = secrets.as_array_mut() {
+        arr.push(descriptor.clone());
+    }
+    ok_json(&json!({ "ClientSecretDescriptor": descriptor }))
+}
+
+fn list_user_pool_client_secrets(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let client_id = params_str_local(p, "ClientId");
+    let pl = pool_ref(s, &pool_id).unwrap();
+    if pl.clients.iter().all(|(k, _)| *k != client_id) {
+        return client_missing(&client_id);
+    }
+    let secrets = pl
+        .client_secrets
+        .get(&client_id)
+        .cloned()
+        .unwrap_or_else(|| json!([]));
+    ok_json(&json!({ "ClientSecrets": secrets }))
+}
+
+// ---------------------------------------------------------------------------
+// Resource servers (delete/update complete the moto-family CRUD)
+// ---------------------------------------------------------------------------
+
+fn resource_server_missing(identifier: &str) -> Response {
+    err(
+        "ResourceNotFoundException",
+        &format!("Resource server {identifier} does not exist."),
+    )
+}
+
+fn delete_resource_server(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let identifier = params_str_local(p, "Identifier");
+    let pl = pool_mut(s, &pool_id).unwrap();
+    if pl.resource_servers.iter().all(|(k, _)| *k != identifier) {
+        return resource_server_missing(&identifier);
+    }
+    pl.resource_servers.retain(|(k, _)| *k != identifier);
+    ok_json(&json!({}))
+}
+
+fn update_resource_server(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let identifier = params_str_local(p, "Identifier");
+    let pl = pool_mut(s, &pool_id).unwrap();
+    let Some(rec) = pl
+        .resource_servers
+        .iter_mut()
+        .find(|(k, _)| *k == identifier)
+        .map(|(_, v)| v)
+    else {
+        return resource_server_missing(&identifier);
+    };
+    if let Some(v) = p.get("Name").filter(|v| !v.is_null()) {
+        rec["Name"] = v.clone();
+    }
+    if let Some(v) = p.get("Scopes").filter(|v| !v.is_null()) {
+        rec["Scopes"] = v.clone();
+    }
+    let out = rec.clone();
+    ok_json(&json!({ "ResourceServer": out }))
+}
+
+fn get_identity_provider_by_identifier(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let idp_identifier = params_str_local(p, "IdpIdentifier");
+    let pl = pool_ref(s, &pool_id).unwrap();
+    for cfg in pl.idps.values() {
+        let hit = cfg
+            .get("IdpIdentifiers")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .any(|v| v.as_str() == Some(idp_identifier.as_str()))
+            })
+            .unwrap_or(false);
+        if hit {
+            return ok_json(&json!({ "IdentityProvider": idp_record(cfg) }));
+        }
+    }
+    err_status("ResourceNotFoundException", &idp_identifier, 404)
+}
+
+// ---------------------------------------------------------------------------
+// Log delivery
+// ---------------------------------------------------------------------------
+
+fn set_log_delivery_configuration(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let rec = json!({
+        "UserPoolId": pool_id,
+        "LogConfigurations": p["LogConfigurations"].clone(),
+    });
+    pool_mut(s, &pool_id).unwrap().log_config = Some(rec.clone());
+    ok_json(&json!({ "LogDeliveryConfiguration": rec }))
+}
+
+fn get_log_delivery_configuration(s: &State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    let Some(pl) = pool_ref(s, &pool_id) else {
+        return pool_missing(&pool_id);
+    };
+    let rec = pl
+        .log_config
+        .clone()
+        .unwrap_or_else(|| json!({ "UserPoolId": pool_id, "LogConfigurations": [] }));
+    ok_json(&json!({ "LogDeliveryConfiguration": rec }))
+}
+
+// ---------------------------------------------------------------------------
+// User-facing token ops
+// ---------------------------------------------------------------------------
+
+fn delete_user(s: &mut State, p: &Value) -> Response {
+    let access_token = p["AccessToken"].as_str().unwrap_or_default();
+    let Some((username, pool_id)) = user_of_token(s, access_token) else {
+        return not_authorized_token(access_token);
+    };
+    let pl = pool_mut(s, &pool_id).unwrap();
+    pl.users.retain(|(k, _)| *k != username);
+    pl.user_groups.remove(&username);
+    purge_user_artifacts(pl, &username);
+    ok_json(&json!({}))
+}
+
+fn delete_user_attributes(s: &mut State, p: &Value) -> Response {
+    let access_token = p["AccessToken"].as_str().unwrap_or_default();
+    let (user, _) = match user_from_token(s, access_token) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let names = string_list(p, "UserAttributeNames");
+    if let Some(attrs) = user["Attributes"].as_array_mut() {
+        attrs.retain(|a| !names.contains(&a["Name"].as_str().unwrap_or_default().to_string()));
+    }
+    user["LastModifiedDate"] = json!(now());
+    ok_json(&json!({}))
+}
+
+fn set_user_settings(s: &mut State, p: &Value) -> Response {
+    let access_token = p["AccessToken"].as_str().unwrap_or_default();
+    let (user, _) = match user_from_token(s, access_token) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    user["MFAOptions"] = p["MFAOptions"].clone();
+    user["LastModifiedDate"] = json!(now());
+    ok_json(&json!({}))
+}
+
+fn admin_set_user_settings(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    let username = params_str_local(p, "Username");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let pl = pool_mut(s, &pool_id).unwrap();
+    let Some(user) = user_mut(pl, &username) else {
+        return user_missing(&username);
+    };
+    user["MFAOptions"] = p["MFAOptions"].clone();
+    user["LastModifiedDate"] = json!(now());
+    ok_json(&json!({}))
+}
+
+fn attribute_value(user: &Value, name: &str) -> String {
+    user["Attributes"]
+        .as_array()
+        .and_then(|attrs| {
+            attrs
+                .iter()
+                .find(|a| a["Name"].as_str() == Some(name))
+                .and_then(|a| a["Value"].as_str().map(String::from))
+        })
+        .unwrap_or_default()
+}
+
+/// Resolve a provider identity to a pool user: "username" keys on the
+/// username, "sub" on UserSub, anything else on the attribute list.
+fn provider_user_exists(pl: &Pool, attr_name: &str, value: &str) -> bool {
+    pl.users.iter().any(|(k, u)| {
+        if attr_name.is_empty() || attr_name.eq_ignore_ascii_case("username") {
+            k == value
+        } else if attr_name == "sub" {
+            u["UserSub"].as_str() == Some(value)
+        } else {
+            attribute_value(u, attr_name) == value
+        }
+    })
+}
+
+fn admin_disable_provider_for_user(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let attr_name = p["User"]["ProviderAttributeName"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    let value = p["User"]["ProviderAttributeValue"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    let pl = pool_ref(s, &pool_id).unwrap();
+    if !provider_user_exists(pl, &attr_name, &value) {
+        return err("UserNotFoundException", "User does not exist.");
+    }
+    ok_json(&json!({}))
+}
+
+fn admin_link_provider_for_user(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let attr_name = p["DestinationUser"]["ProviderAttributeName"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    let value = p["DestinationUser"]["ProviderAttributeValue"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    let pl = pool_ref(s, &pool_id).unwrap();
+    if !provider_user_exists(pl, &attr_name, &value) {
+        return err("UserNotFoundException", "User does not exist.");
+    }
+    ok_json(&json!({}))
+}
+
+fn get_user_attribute_verification_code(s: &mut State, p: &Value) -> Response {
+    let access_token = p["AccessToken"].as_str().unwrap_or_default();
+    if let Err(e) = user_from_token(s, access_token) {
+        return e;
+    }
+    ok_json(&json!({
+        "CodeDeliveryDetails": {
+            "Destination": "***",
+            "DeliveryMedium": "EMAIL",
+            "AttributeName": p["AttributeName"].as_str().unwrap_or_default(),
+        }
+    }))
+}
+
+fn get_user_auth_factors(s: &mut State, p: &Value) -> Response {
+    let access_token = p["AccessToken"].as_str().unwrap_or_default();
+    let (user, pool_id) = match user_from_token(s, access_token) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let sw = user
+        .get("SoftwareTokenMfaSettings")
+        .and_then(|v| v["Enabled"].as_bool())
+        .unwrap_or(false);
+    let sms = user
+        .get("SMSMfaSettings")
+        .and_then(|v| v["Enabled"].as_bool())
+        .unwrap_or(false);
+    let username = user["Username"].as_str().unwrap_or_default().to_string();
+    let mut mfa_list: Vec<Value> = Vec::new();
+    if sw {
+        mfa_list.push(json!("SOFTWARE_TOKEN_MFA"));
+    }
+    if sms {
+        mfa_list.push(json!("SMS_MFA"));
+    }
+    let webauthn = pool_ref(s, &pool_id)
+        .map(|pl| {
+            pl.webauthn_creds
+                .iter()
+                .any(|(u, _)| *u == username.as_str())
+        })
+        .unwrap_or(false);
+    let mut configured = vec![json!("PASSWORD")];
+    if webauthn {
+        configured.push(json!("WEB_AUTHN"));
+    }
+    ok_json(&json!({
+        "Username": username,
+        "PreferredMfaSetting": if sw {
+            "SOFTWARE_TOKEN_MFA"
+        } else if sms {
+            "SMS_MFA"
+        } else {
+            ""
+        },
+        "UserMFASettingList": mfa_list,
+        "ConfiguredUserAuthFactors": configured,
+    }))
+}
+
+/// Verification codes aren't tracked (GetUserAttributeVerificationCode only
+/// answers with masked delivery details), so any non-empty Code verifies —
+/// the same posture UpdateUserAttributes takes toward validation.
+fn verify_user_attribute(s: &mut State, p: &Value) -> Response {
+    let access_token = p["AccessToken"].as_str().unwrap_or_default();
+    let (user, _) = match user_from_token(s, access_token) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    if p["Code"].as_str().unwrap_or_default().is_empty() {
+        return err("CodeMismatchException", "Code mismatch.");
+    }
+    user["LastModifiedDate"] = json!(now());
+    ok_json(&json!({}))
+}
+
+// ---------------------------------------------------------------------------
+// Refresh tokens, confirmation codes, signing certificate
+// ---------------------------------------------------------------------------
+
+fn get_tokens_from_refresh_token(s: &mut State, p: &Value) -> Response {
+    let refresh_token = params_str_local(p, "RefreshToken");
+    let client_id = params_str_local(p, "ClientId");
+    let pool_id = match find_pool_by_client(s, &client_id) {
+        Some(pool) => pool.pool["Id"].as_str().unwrap_or_default().to_string(),
+        None => return client_missing(&client_id),
+    };
+    let tracked = s
+        .refresh_tokens
+        .iter()
+        .find(|(t, pid, _)| *t == refresh_token.as_str() && pid == pool_id.as_str())
+        .map(|(_, _, u)| u.clone());
+    let Some(username) = tracked else {
+        return err("NotAuthorizedException", "Invalid Refresh Token.");
+    };
+    let Some(user) = pool_ref(s, &pool_id)
+        .and_then(|pl| pl.users.iter().find(|(k, _)| *k == username.as_str()))
+        .map(|(_, v)| v)
+    else {
+        return err("NotAuthorizedException", "Invalid Refresh Token.");
+    };
+    let sub = user["UserSub"].as_str().unwrap_or_default().to_string();
+    let issuer = format!(
+        "https://cognito-idp.{}.amazonaws.com/{pool_id}",
+        pool_region(&pool_id)
+    );
+    ok_json(&json!({
+        "AuthenticationResult": {
+            "AccessToken": jwt(&issuer, &sub, &client_id, "access", None),
+            "IdToken": jwt(
+                &issuer,
+                &sub,
+                &client_id,
+                "id",
+                Some(&json!({ "cognito:username": username })),
+            ),
+            "TokenType": "Bearer",
+            "ExpiresIn": 3600,
+        }
+    }))
+}
+
+fn revoke_token(s: &mut State, p: &Value) -> Response {
+    let token = params_str_local(p, "Token");
+    if token.is_empty() {
+        return err("InvalidParameterException", "Token is required.");
+    }
+    s.refresh_tokens.retain(|(t, _, _)| *t != token);
+    ok_json(&json!({}))
+}
+
+fn resend_confirmation_code(s: &mut State, p: &Value) -> Response {
+    let client_id = params_str_local(p, "ClientId");
+    let username = params_str_local(p, "Username");
+    let pool_id = match find_pool_by_client(s, &client_id) {
+        Some(pool) => pool.pool["Id"].as_str().unwrap_or_default().to_string(),
+        None => return client_missing(&client_id),
+    };
+    let pl = pool_ref(s, &pool_id).unwrap();
+    if pl.users.iter().all(|(k, _)| *k != username) {
+        return user_missing(&username);
+    }
+    ok_json(&json!({
+        "CodeDeliveryDetails": {
+            "Destination": "***",
+            "DeliveryMedium": "EMAIL",
+            "AttributeName": "email",
+        }
+    }))
+}
+
+fn get_signing_certificate(s: &mut State, p: &Value) -> Response {
+    let pool_id = params_str_local(p, "UserPoolId");
+    if let Err(e) = need_pool(s, &pool_id) {
+        return e;
+    }
+    let der = B64.encode(format!("robotocore signing certificate {pool_id}"));
+    ok_json(&json!({
+        "Certificate": format!("-----BEGIN CERTIFICATE-----\n{der}\n-----END CERTIFICATE-----\n")
+    }))
 }
 
 #[cfg(test)]
