@@ -23,8 +23,23 @@
 //! of that file's own `_invoke_via_runtime_interface` — POST the event to the
 //! Lambda Runtime Interface (the runtime-interface-emulator inside every
 //! official runtime image, listening on localhost:8080).
+//!
+//! .NET source-package compile safety: the mapped public-ECR dotnet images
+//! ship only the shared runtime — no build SDK — so the python-era
+//! `_compile_source` fallback (compile a .cs package into an assembly) still
+//! runs on the twin host with its own SDK. That build never touches
+//! caller-controlled build input: the handler's assembly component is
+//! validated first ([`dotnet_assembly_violation`]), every fragment
+//! interpolated into the generated csproj is XML-escaped, and the build runs
+//! in a fresh staging directory under the temp root holding only the twin's
+//! csproj and the package's .cs sources, so a crafted csproj or
+//! `Directory.Build.props` shipped in the code package never reaches the
+//! host MSBuild (the python era interpolated the raw name into the csproj
+//! and built in place). Building inside the mapped image itself is not
+//! possible: those images carry no SDK (verified with `dotnet --list-sdks`
+//! in public.ecr.aws/lambda/dotnet:6/8).
 
-use crate::runtime::{collect_by, drain_thread, ExecResult};
+use crate::runtime::{collect_by, drain_thread, ExecResult, DOCKER_OUTPUT_CAP};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::Write;
@@ -352,14 +367,111 @@ pub(crate) fn ensure_dotnet_bridge(tfm: &str) -> Option<std::path::PathBuf> {
     result
 }
 
+/// Validation rule for the dotnet handler's assembly component. The python
+/// era (`runtimes/dotnet.py`) split `Assembly::Type::Method` on `::` and
+/// passed `parts[0]` to `os.path.join` and a csproj `<AssemblyName>` with no
+/// further vetting — the escape/injection hole this module closes (the
+/// mapped dotnet images have no SDK, so that build runs on the twin host).
+pub(crate) fn dotnet_assembly_violation(assembly: &str) -> Option<&'static str> {
+    if assembly.is_empty() {
+        return Some("empty assembly name");
+    }
+    if assembly.starts_with('.') {
+        return Some("leading dot");
+    }
+    if assembly.contains("..") {
+        return Some("dot segment");
+    }
+    if assembly.contains('/') || assembly.contains('\\') {
+        return Some("path separator");
+    }
+    if assembly.chars().any(|c| "<>&\"'".contains(c)) {
+        return Some("XML metacharacter");
+    }
+    None
+}
+
+/// XML escape for the fragments interpolated into the generated csproj
+/// (`AssemblyName`, `TargetFramework`): the csproj charset is fixed by the
+/// twin, not the caller, so `&<>"'` arrive here only escaped.
+pub(crate) fn xml_escape_csproj_value(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for c in value.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// The era's lib csproj template ([era `USER_LIB_CSPROJ`]) with the
+/// Directory.Build imports disabled, every interpolated fragment first
+/// XML-escaped. Returns the written project path.
+pub(crate) fn write_generated_csproj(
+    dir: &std::path::Path,
+    assembly_name: &str,
+    tfm: &str,
+) -> std::path::PathBuf {
+    let csproj = format!(
+        "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{}</TargetFramework>\n    <ImplicitUsings>enable</ImplicitUsings>\n    <AssemblyName>{}</AssemblyName>\n    <ImportDirectoryBuildProps>false</ImportDirectoryBuildProps>\n    <ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets>\n  </PropertyGroup>\n</Project>\n",
+        xml_escape_csproj_value(tfm),
+        xml_escape_csproj_value(assembly_name),
+    );
+    let proj = dir.join(format!("{assembly_name}.csproj"));
+    let _ = std::fs::write(&proj, csproj);
+    proj
+}
+
+/// Recursively collect `*.cs` sources under `dir` as
+/// (path relative to `dir`, absolute path) — the set the SDK's implicit
+/// `**/*.cs` glob would compile.
+fn collect_cs_sources(dir: &std::path::Path) -> Vec<(std::path::PathBuf, std::path::PathBuf)> {
+    let mut out = Vec::new();
+    let mut stack = vec![std::path::PathBuf::from(dir)];
+    while let Some(current) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&current) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = current.join(entry.file_name());
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                stack.push(path);
+            } else if entry.file_name().to_string_lossy().ends_with(".cs") {
+                // Package-internal relative path, as the implicit glob sees it.
+                if let Ok(rel) = path.strip_prefix(dir).map(std::path::Path::to_path_buf) {
+                    out.push((rel, path));
+                }
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
 /// Compile .cs sources inside `code_dir` when the package carries source and
 /// no DLL (python-era `_compile_source`). Returns Some(result-shaped) only
 /// for the era's error conditions; None means "nothing to compile / ok".
+///
+/// The build itself runs in a fresh staging directory under the temp root —
+/// never in `code_dir` and never against a caller-supplied csproj: the host
+/// SDK otherwise evaluates whatever project files / `Directory.Build.*`
+/// hooks the code package carries (the python era built in place, which
+/// meant `dotnet build` would consume the user's own csproj). Only the .cs
+/// sources travel; non-source assets (resx etc.) are out of scope for the
+/// twin's compile fallback and live only in DLL packages.
 pub(crate) fn compile_dotnet_source_if_needed(
     tfm: &str,
     code_dir: &std::path::Path,
     handler: &str,
 ) -> Option<ExecResult> {
+    // Era split (dotnet.py: "Assembly::Type::Method", parts[0] names the
+    // assembly). Every use of the name below — path joins and the generated
+    // csproj — is behind [`dotnet_assembly_violation`].
     let parts: Vec<&str> = handler.split("::").collect();
     let assembly_name = parts.first().copied().unwrap_or("");
     if assembly_name.is_empty() {
@@ -373,6 +485,17 @@ pub(crate) fn compile_dotnet_source_if_needed(
             logs: String::new(),
         });
     }
+    if let Some(violation) = dotnet_assembly_violation(assembly_name) {
+        return Some(ExecResult {
+            payload: json!({
+                "errorMessage": format!("Invalid .NET handler assembly '{assembly_name}': {violation}"),
+                "errorType": "Runtime.ImportModuleError",
+            })
+            .to_string(),
+            function_error: Some("Runtime.ImportModuleError".to_string()),
+            logs: String::new(),
+        });
+    }
     let dll = code_dir.join(format!("{assembly_name}.dll"));
     if dll.exists()
         || code_dir
@@ -382,18 +505,7 @@ pub(crate) fn compile_dotnet_source_if_needed(
     {
         return None;
     }
-    let cs_sources: Vec<String> = std::fs::read_dir(code_dir)
-        .map(|entries| {
-            entries
-                .filter_map(|e| e.ok())
-                .filter(|e| {
-                    let name = e.file_name();
-                    name.to_string_lossy().ends_with(".cs")
-                })
-                .map(|e| e.file_name().to_string_lossy().to_string())
-                .collect()
-        })
-        .unwrap_or_default();
+    let cs_sources: Vec<(std::path::PathBuf, std::path::PathBuf)> = collect_cs_sources(code_dir);
     if cs_sources.is_empty() {
         return Some(ExecResult {
             payload: json!({
@@ -405,17 +517,62 @@ pub(crate) fn compile_dotnet_source_if_needed(
             logs: String::new(),
         });
     }
-    // Write the era lib csproj and let the twin's SDK build it. The source
-    // package also drops any duplicate handler sources — mirror the python
-    // era's "compile in place" behavior with a CLI-decorated env.
-    let proj = code_dir.join(format!("{assembly_name}.csproj"));
-    let csproj = format!(
-        "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{tfm}</TargetFramework>\n    <ImplicitUsings>enable</ImplicitUsings>\n    <AssemblyName>{assembly_name}</AssemblyName>\n  </PropertyGroup>\n</Project>\n"
-    );
-    if std::fs::write(&proj, csproj).is_err() {
+    // Staging dir under the temp root, outside any user-visible tree: the
+    // write below is the only thing that lands here, and the parent chain
+    // (…/robotocore-lambda-build/<uuid>) is twin-owned, so the SDK finds no
+    // caller-planted MSBuild hooks to import.
+    let staging = std::env::temp_dir()
+        .join("robotocore-lambda-build")
+        .join(uuid::Uuid::new_v4().simple().to_string());
+    let cleanup_staging = || {
+        let _ = std::fs::remove_dir_all(&staging);
+    };
+    if std::fs::create_dir_all(&staging).is_err() {
         return Some(ExecResult {
             payload: json!({
-                "errorMessage": "failed to write csproj for server-side compile",
+                "errorMessage": "failed to create staging dir for server-side compile",
+                "errorType": "Runtime.ImportModuleError",
+            })
+            .to_string(),
+            function_error: Some("Runtime.ImportModuleError".to_string()),
+            logs: String::new(),
+        });
+    }
+    for (rel, source) in cs_sources {
+        let target = staging.join(&rel);
+        if let Some(parent) = target.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if std::fs::copy(&source, &target).is_err() {
+            cleanup_staging();
+            return Some(ExecResult {
+                payload: json!({
+                    "errorMessage": "failed to copy .cs source into staging for server-side compile",
+                    "errorType": "Runtime.ImportModuleError",
+                })
+                .to_string(),
+                function_error: Some("Runtime.ImportModuleError".to_string()),
+                logs: String::new(),
+            });
+        }
+    }
+    // Write the generated csproj and assert — canonicalized prefix, belt in
+    // front of the byte-level validation — that the path still resolves
+    // inside the staging dir.
+    let proj = write_generated_csproj(&staging, assembly_name, tfm);
+    let proj_inside_dir = std::fs::canonicalize(&proj)
+        .ok()
+        .and_then(|canonical| {
+            std::fs::canonicalize(&staging)
+                .ok()
+                .map(|staging_canonical| canonical.starts_with(&staging_canonical))
+        })
+        .unwrap_or(false);
+    if !proj_inside_dir {
+        cleanup_staging();
+        return Some(ExecResult {
+            payload: json!({
+                "errorMessage": format!("generated csproj escaped the staging dir for assembly '{assembly_name}'"),
                 "errorType": "Runtime.ImportModuleError",
             })
             .to_string(),
@@ -424,29 +581,14 @@ pub(crate) fn compile_dotnet_source_if_needed(
         });
     }
     let _ = std::fs::remove_dir_all(code_dir.join("publish"));
-    let mut builder = std::process::Command::new("dotnet");
-    builder
-        .arg("build")
-        .arg("-c")
-        .arg("Release")
-        .arg("-o")
-        .arg(code_dir)
-        .arg("--nologo")
-        .arg("-v")
-        .arg("quiet")
-        .env("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
-        .env("DOTNET_NOLOGO", "1")
-        .env("DOTNET_SKIP_FIRST_TIME_EXPERIENCE", "1")
-        .env("DOTNET_SYSTEM_GLOBALIZATION_INVARIANT", "1")
-        .current_dir(code_dir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    // The SDK's implicit glob + project-dir-as-output interplay: building
-    // with `-o <project dir>` (the python-era behavior) yields an empty
-    // assembly (type names missing from the metadata heap). Build into a
-    // subdirectory and hoist the outputs into the code dir instead — the
-    // python-era `_run_with_bootstrap` peeks `publish/` for the same reason.
-    let build_out = code_dir.join(".robotocore-build");
+    // The SDK's implicit glob + project-dir-as-output interplay: building a
+    // project with `-o <project dir>` (direct output at the csproj, the
+    // python-era `_compile_source` invocation that was removed here)
+    // produced an EMPTY assembly — type names missing from the metadata
+    // heap — the quirk era `_run_with_bootstrap` dodged by publishing to a
+    // subdirectory and peeking `publish/` for the same reason. Build into a
+    // subdirectory and hoist the outputs into the code dir instead.
+    let build_out = staging.join(".robotocore-build");
     let _ = std::fs::remove_dir_all(&build_out);
     let mut builder = std::process::Command::new("dotnet");
     builder
@@ -462,7 +604,7 @@ pub(crate) fn compile_dotnet_source_if_needed(
         .env("DOTNET_NOLOGO", "1")
         .env("DOTNET_SKIP_FIRST_TIME_EXPERIENCE", "1")
         .env("DOTNET_SYSTEM_GLOBALIZATION_INVARIANT", "1")
-        .current_dir(code_dir)
+        .current_dir(&staging)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let run = builder.output();
@@ -477,6 +619,7 @@ pub(crate) fn compile_dotnet_source_if_needed(
             }
         }
     }
+    cleanup_staging();
     match run {
         Ok(_) if ok && dll.exists() => None,
         _ => {
@@ -827,8 +970,10 @@ public class RobotocoreJavaBridge {
 
 /// Ruby loose bridge (port of the python-era `bootstraps/bootstrap.rb`):
 /// `_HANDLER` as `module.method`, event parsed from stdin (bad JSON -> `{}`),
-/// Struct context with integer `memory_limit_in_mb` and the shim's
-/// log-group shape, error JSON with the exception class name.
+/// Struct context carrying the era's same VALUES — here derived from the
+/// runtime envs the run prefix sets (`AWS_LAMBDA_FUNCTION_ARN`,
+/// `AWS_LAMBDA_LOG_STREAM_NAME`, `AWS_LAMBDA_FUNCTION_MEMORY_SIZE`) — and
+/// error JSON with the exception class name.
 const RUBY_BRIDGE_SOURCE: &str = r##"require 'json'
 require 'securerandom'
 
@@ -1154,8 +1299,8 @@ pub(crate) fn run_subprocess(
 
     // Drain pipes immediately, on dedicated threads, so a chatty container
     // cannot deadlock on the OS pipe buffer while nobody reads.
-    let stdout_rx = drain_thread(child.stdout.take());
-    let stderr_rx = drain_thread(child.stderr.take());
+    let stdout_rx = drain_thread(child.stdout.take(), DOCKER_OUTPUT_CAP);
+    let stderr_rx = drain_thread(child.stderr.take(), DOCKER_OUTPUT_CAP);
 
     let deadline = Instant::now() + Duration::from_secs(timeout_secs.max(1));
     let mut timed_out = false;
@@ -1219,11 +1364,63 @@ pub(crate) trait DockerCli: Send + Sync {
 
     /// Combined stdout+stderr of a container (function + rapid logs).
     fn container_logs(&self, container_name: &str) -> String;
+
+    /// Container ids of leftover `robotocore-lambda-*` containers — the
+    /// list half of the startup sweep ([`sweep_list_cmd`]); the removal half
+    /// is [`DockerCli::force_remove_container`].
+    fn lambda_straggler_containers(&self) -> Vec<String>;
 }
 
 const DOCKER: &str = "docker";
 const RUNTIME_INTERFACE_INVOKE_URL: &str =
     "http://localhost:8080/2015-03-31/functions/function/invocations";
+
+/// Name prefix of every Lambda container this executor spawns
+/// (`robotocore-lambda-{function}-{uuid8}`). Also the startup sweep's filter.
+pub(crate) const LAMBDA_CONTAINER_PREFIX: &str = "robotocore-lambda-";
+
+/// Argv listing leftover Lambda containers (`docker ps -q --filter
+/// name=robotocore-lambda-`), the first half of the `xargs -r docker rm -f`
+/// sweep, spelled out as this module's argv-only convention (no shell).
+pub(crate) fn sweep_list_cmd() -> Vec<String> {
+    vec![
+        DOCKER.to_string(),
+        "ps".to_string(),
+        "-q".to_string(),
+        "--filter".to_string(),
+        format!("name={LAMBDA_CONTAINER_PREFIX}"),
+    ]
+}
+
+/// Age beyond which a per-invocation extraction dir under
+/// /tmp/robotocore-lambda-docker counts as crashed-process debris: live ones
+/// are removed by the same invocation that created them, well within an
+/// hour even at the maximum function timeout.
+pub(crate) const STALE_EXTRACT_DIR_AGE: std::time::Duration = std::time::Duration::from_secs(3600);
+
+/// Remove `base/{function}-{uuid}` extraction dirs left by a crashed twin
+/// (the `docker rm -f` sweep may run before the dirs are reaped). Age-based,
+/// so a concurrently running twin's in-flight dirs survive.
+pub(crate) fn prune_stale_extract_dirs(base: &std::path::Path, older_than: std::time::Duration) {
+    let Ok(now) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) else {
+        return;
+    };
+    let Ok(entries) = std::fs::read_dir(base) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let stale = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|m| now >= m && now - m >= older_than)
+            .unwrap_or(false);
+        if stale {
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
+    }
+}
 
 /// The real docker CLI.
 #[derive(Default)]
@@ -1302,6 +1499,13 @@ impl DockerCli for RealCli {
             Err(_) => String::new(),
         }
     }
+
+    fn lambda_straggler_containers(&self) -> Vec<String> {
+        match run_subprocess(&sweep_list_cmd(), None, 10) {
+            Ok(out) => out.stdout.split_whitespace().map(str::to_string).collect(),
+            Err(_) => Vec::new(),
+        }
+    }
 }
 
 /// Executes Lambda functions in Docker containers using the docker CLI.
@@ -1336,13 +1540,42 @@ impl DockerLambdaExecutor {
             .ok()
             .filter(|s| !s.is_empty());
         let docker_available = docker_available(5);
-        Self {
+        let executor = Self {
             gateway_port,
             docker_network,
             docker_dns,
             docker_available,
             cli: Arc::new(RealCli),
+        };
+        if docker_available {
+            // Leak-bounded startup sweep: a twin killed mid-invocation leaves
+            // `--rm` containers running forever (the runtime interface keeps
+            // them alive waiting for the next event) and extraction dirs on
+            // disk. Reap any stragglers from a previous process now; a live
+            // concurrent twin loses at most containers that were in flight
+            // at this instant (a timeout+10s window).
+            executor.sweep_stragglers();
         }
+        executor
+    }
+
+    /// Leak-bounded straggler sweep: list-run the leftover
+    /// `robotocore-lambda-*` containers ([`sweep_list_cmd`]) into
+    /// [`DockerCli::force_remove_container`] (the `xargs -r docker rm -f`
+    /// halves), then prune extraction dirs older than
+    /// [`STALE_EXTRACT_DIR_AGE`]. Runs once per executor construction
+    /// (python-era `__init__` took no such step; this bounds leaks from a
+    /// twin killed mid-invocation, whose `--rm` containers the runtime
+    /// interface keeps alive forever). A concurrently live twin loses at
+    /// most the containers in flight at this instant.
+    pub(crate) fn sweep_stragglers(&self) {
+        for container in self.cli.lambda_straggler_containers() {
+            self.cli.force_remove_container(&container);
+        }
+        prune_stale_extract_dirs(
+            &std::env::temp_dir().join("robotocore-lambda-docker"),
+            STALE_EXTRACT_DIR_AGE,
+        );
     }
 
     /// Execute a Lambda function in a Docker container.
@@ -1567,9 +1800,12 @@ impl DockerLambdaExecutor {
         // Overall budget: the python-era `docker run` window with grace for
         // container startup.
         let run_budget_secs = u64::from(timeout_secs) + 10;
-
+        // `docker run -d` answers with the container id on stdout, but a
+        // bodyless exit 0 is still a started run — success rides on the exit
+        // status alone (empty-stdout-but-zero is not a failed start); a
+        // failed start surfaces below.
         match self.cli.run(&cmd, &event_json, run_budget_secs) {
-            Ok(out) if out.status_code == Some(0) && !out.stdout.trim().is_empty() => {}
+            Ok(out) if out.status_code == Some(0) => {}
             Ok(out) => {
                 // `docker run -d` failed to start the container (bad image,
                 // pull rejected, malformed mount). Python-era shape for a
@@ -1606,11 +1842,20 @@ impl DockerLambdaExecutor {
         // POST the event to the runtime API server inside the container. The
         // first POST may land before the runtime process registered with the
         // emulator; retry until the overall budget expires. Each accepted
-        // POST is one invocation (the emulator queues lone events).
+        // POST is one invocation (the emulator queues lone events), so the
+        // loop only rescues post attempts that never reached the HTTP
+        // exchange — curl could not connect (exit 7, the runtime client had
+        // not bound port 8080 yet) or the daemon could not run the exec
+        // (125/126/127). Once an attempt has been delivered or its
+        // deliverability is unknowable, rescue stops: re-sending delivered
+        // events would fire the function twice (double-delivery).
         let deadline = Instant::now() + Duration::from_secs(run_budget_secs);
         let mut result_stdout = String::new();
         let mut timed_out = false;
         let mut container_gone = false;
+        // Per-connection accepted-once latch: TRUE once an attempt stopped
+        // being a proven pre-exchange failure.
+        let mut delivered = false;
         loop {
             match self
                 .cli
@@ -1629,18 +1874,42 @@ impl DockerLambdaExecutor {
                         container_gone = true;
                         break;
                     }
-                    // Runtime not up yet or bodyless response: keep polling.
+                    if !out.stdout.trim().is_empty() {
+                        // A result body arrived despite a non-zero curl
+                        // status: prefer the delivered body over a re-POST.
+                        result_stdout = out.stdout.trim().to_string();
+                        break;
+                    }
+                    if delivered {
+                        break;
+                    }
+                    // Pre-exchange failures only: the runtime client had not
+                    // bound port 8080 (curl exit 7) or the daemon never
+                    // started the exec (125/126/127) — the POST was not
+                    // delivered, so keep polling while the budget holds.
+                    // Anything else (a bodyless exit 0 included) is
+                    // delivered-or-unknown: latch and stop.
+                    if matches!(out.status_code, Some(7 | 125 | 126 | 127)) {
+                        // Runtime not up yet: keep polling.
+                    } else {
+                        delivered = true;
+                        break;
+                    }
                 }
                 Err(DockerRunError::Timeout) => {
                     // The curl budget (timeout + 5, python-era
                     // _invoke_via_runtime_interface tune) expired: the
-                    // function hung. Same outcome as the python-era docker
-                    // run TimeoutExpired branch.
+                    // function hung (a delivered invocation with no response).
+                    // Same outcome as the python-era subprocess.TimeoutExpired
+                    // branch of docker run — and no re-POST.
                     timed_out = true;
                     break;
                 }
                 Err(_) => {
-                    // Transient CLI failure: keep polling until the budget.
+                    // Spawn/wait-phase CLI failure — deliverability unknown:
+                    // accepted-once, never re-send the event.
+                    delivered = true;
+                    break;
                 }
             }
             if Instant::now() > deadline {
@@ -1683,6 +1952,15 @@ impl DockerLambdaExecutor {
                 function_error: Some("Unhandled".to_string()),
                 logs,
             };
+        }
+        if delivered {
+            // The POST reached (or may have reached) the runtime interface
+            // but no readable result came back — accepted-once: the outcome
+            // is a failed invocation, not a rescuable retry and not a
+            // timeout (the budget has not run out).
+            let mut failure = run_exit_error("", "");
+            failure.logs = logs;
+            return failure;
         }
 
         if result_stdout.starts_with("Task timed out after") {
@@ -1867,7 +2145,9 @@ impl DockerLambdaExecutor {
                         "CP=\"/tmp/rc-bridge:/var/task\"\n",
                         "for jar in $(find /var/task -name '*.jar' 2>/dev/null | sort); do CP=\"$CP:$jar\"; done\n",
                         "for d in /var/task/lib /var/task/java /var/task/java/lib; do if [ -d \"$d\" ]; then CP=\"$CP:$d\"; fi; done\n",
-                        "timeout \"${AWS_LAMBDA_FUNCTION_TIMEOUT}s\" java -cp \"$CP\" RobotocoreJavaBridge\n",
+                        // Era memory parity: `runtimes/java.py` invoked
+                        // `java -cp <cp> -Xmx{memory_size}m Bootstrap`.
+                        "timeout \"${AWS_LAMBDA_FUNCTION_TIMEOUT}s\" java -cp \"$CP\" -Xmx\"${AWS_LAMBDA_FUNCTION_MEMORY_SIZE}m\" RobotocoreJavaBridge\n",
                         "rc=$?\n",
                         "if [ \"$rc\" -eq 124 ]; then echo \"Task timed out after ${AWS_LAMBDA_FUNCTION_TIMEOUT}.00 seconds\"; fi\n",
                         "exit $rc\n",
@@ -2025,6 +2305,7 @@ mod tests {
         exec_script: parking_lot::Mutex<VecDeque<Result<SubprocessOutput, DockerRunError>>>,
         rms: parking_lot::Mutex<Vec<String>>,
         logs_back: parking_lot::Mutex<String>,
+        lists: parking_lot::Mutex<VecDeque<Vec<String>>>,
     }
 
     impl MockCli {
@@ -2037,8 +2318,20 @@ mod tests {
                     exec_script: parking_lot::Mutex::new(VecDeque::new()),
                     rms: parking_lot::Mutex::new(Vec::new()),
                     logs_back: parking_lot::Mutex::new(String::new()),
+                    lists: parking_lot::Mutex::new(VecDeque::new()),
                 }),
             }
+        }
+
+        /// Script the straggler sweep's container listing (one returned
+        /// vec per sweep).
+        fn script_stragglers(&self, containers: &[&str]) {
+            self.st.lists.lock().push_back(
+                containers
+                    .iter()
+                    .map(|c| c.to_string())
+                    .collect::<Vec<String>>(),
+            );
         }
 
         /// Script one healthy container start (docker run -d → id on stdout).
@@ -2112,6 +2405,10 @@ mod tests {
 
         fn container_logs(&self, _container_name: &str) -> String {
             self.st.logs_back.lock().clone()
+        }
+
+        fn lambda_straggler_containers(&self) -> Vec<String> {
+            self.st.lists.lock().pop_front().unwrap_or_default()
         }
     }
 
@@ -2734,12 +3031,20 @@ mod tests {
         let _g = GUARD.lock();
         let cli = MockCli::new();
         cli.run_starts();
-        // Bodyless 200 from the runtime interface = runtime never answered;
-        // the next POST hits the dry script (curl-budget timeout).
-        cli.exec_results(&[Ok(mock_output(0, "", ""))]);
+        // Runtime not up yet = curl could not connect (exit 7): a proven
+        // pre-exchange failure, so the loop keeps rescuing until the dry
+        // script answers the curl-budget timeout (Task.TimedOut). A
+        // bodyless exit 0 would mean delivered-or-unknown instead (see the
+        // accept-once dedup test below).
+        cli.exec_results(&[Ok(mock_output(7, "", ""))]);
         let ex = mk_executor(&cli, true);
         let res = run_execute(&ex, "python3.12", r#"{}"#);
         assert_eq!(res.function_error.as_deref(), Some("Task.TimedOut"));
+        assert!(
+            cli.exec_calls().len() >= 2,
+            "refused post rescued until the budget: {} execs",
+            cli.exec_calls().len()
+        );
     }
 
     #[test]
@@ -3156,5 +3461,260 @@ mod tests {
         assert_eq!(payload["status"], 200);
         assert_eq!(payload["body"], "probe6");
         server.join().unwrap();
+    }
+
+    // ------------------------------------------------------------------
+    // Executor hardening (adversarial-review fixes)
+    // ------------------------------------------------------------------
+
+    /// The dotnet handler's assembly component is the only piece that lands
+    /// in a filesystem path or a generated csproj: every separator, dot
+    /// segment, leading dot and csproj/XML metacharacter is rejected. The
+    /// python era (`runtimes/dotnet.py`) vetted nothing — that gap is the
+    /// csproj-injection/path-traversal hole this guard closes.
+    #[test]
+    fn dotnet_assembly_violation_rejects_unsafe_names() {
+        for bad in [
+            "", ".hidden", "..", "a..b", "sub/dir", "sub\\dir", "a<b", "a>b", "a&b", "a\"b", "a'b",
+        ] {
+            assert!(
+                dotnet_assembly_violation(bad).is_some(),
+                "assembly {bad:?} must be rejected"
+            );
+        }
+        for good in ["Assembly", "my-lib", "My.App", "Assembly_2"] {
+            assert_eq!(dotnet_assembly_violation(good), None, "{good}");
+        }
+    }
+
+    /// A rejected handler answers with the era's Runtime.ImportModuleError
+    /// shape and nothing is written into or near `code_dir`.
+    #[test]
+    fn dotnet_invalid_assembly_rejected_before_any_write() {
+        let dir = std::env::temp_dir().join(format!(
+            "lam-dotnet-invalid-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("evil.cs"), "using System;\n").unwrap();
+        for handler in ["/etc/evil::T::M", "../evil::T::M"] {
+            let res = compile_dotnet_source_if_needed("net8.0", &dir, handler)
+                .expect("invalid handler must reject with a result");
+            assert_eq!(
+                res.function_error.as_deref(),
+                Some("Runtime.ImportModuleError")
+            );
+            let payload: Value = serde_json::from_str(&res.payload).unwrap();
+            assert_eq!(payload["errorType"], "Runtime.ImportModuleError");
+            assert!(!res.payload.is_empty());
+        }
+        let leftovers: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        assert_eq!(leftovers, vec!["evil.cs".to_string()]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Every fragment interpolated into the generated csproj is XML-escaped
+    /// (second belt behind the charset validation) and the project's
+    /// Directory.Build imports are disabled, so package-shipped MSBuild
+    /// hooks cannot reach the host SDK either.
+    #[test]
+    fn generated_csproj_escapes_interpolated_fragments() {
+        let dir =
+            std::env::temp_dir().join(format!("lam-csproj-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let proj = write_generated_csproj(&dir, "MyLib", "net8.0");
+        let content = std::fs::read_to_string(&proj).unwrap();
+        assert!(
+            content.contains("<AssemblyName>MyLib</AssemblyName>"),
+            "content: {content}"
+        );
+        assert!(
+            content.contains("<TargetFramework>net8.0</TargetFramework>"),
+            "content: {content}"
+        );
+        assert!(content.contains("<ImportDirectoryBuildProps>false"));
+        assert!(content.contains("<ImportDirectoryBuildTargets>false"));
+        // Escapes apply to every metacharacter (validation keeps them out of
+        // names; the escape is corroborated directly here).
+        assert_eq!(xml_escape_csproj_value("&"), "&amp;");
+        assert_eq!(xml_escape_csproj_value("<"), "&lt;");
+        assert_eq!(xml_escape_csproj_value(">"), "&gt;");
+        assert_eq!(xml_escape_csproj_value("\""), "&quot;");
+        assert_eq!(xml_escape_csproj_value("'"), "&apos;");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Host-SDK compile of a .cs source package through the staging path:
+    /// the DLL lands in `code_dir` and the staging dir is reaped. Requires a
+    /// host dotnet SDK; skipped on SDK-less hosts.
+    #[test]
+    fn test_dotnet_source_compiles_in_staging() {
+        let dotnet_on_path = std::env::var("PATH")
+            .map(|paths| std::env::split_paths(&paths).any(|p| p.join("dotnet").is_file()))
+            .ok();
+        if dotnet_on_path != Some(true) {
+            return; // skip: no host dotnet SDK
+        }
+        let dir = std::env::temp_dir().join(format!(
+            "lam-dotnet-compile-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("TestAssembly.cs"),
+            "using System;\nnamespace Robotocore.Tests\n{\n    public class TestHandler\n    {\n        public string Handle(string evt, object ctx)\n        {\n            return \"compiled\";\n        }\n    }\n}\n",
+        )
+        .unwrap();
+        let res = compile_dotnet_source_if_needed(
+            "net8.0",
+            &dir,
+            "TestAssembly::Robotocore.Tests.TestHandler::Handle",
+        );
+        assert!(
+            res.is_none(),
+            "compile failed: {:?}",
+            res.as_ref()
+                .map(|r| (r.function_error.clone(), r.logs.clone()))
+        );
+        assert!(dir.join("TestAssembly.dll").exists());
+        // The staging dir only holds twin-generated content and is reaped.
+        let build_root = std::env::temp_dir().join("robotocore-lambda-build");
+        let leftovers = std::fs::read_dir(&build_root)
+            .map(|entries| entries.filter_map(|e| e.ok()).count())
+            .unwrap_or(0);
+        assert_eq!(leftovers, 0, "staging dirs must be reaped after compile");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A POST that reached the HTTP exchange — or whose reachability is
+    /// unknowable — is never re-sent: one accepted POST is one invocation.
+    /// A bodyless exit 0 (curl -s delivered, response lost) latches and
+    /// reports a failed invocation instead of rescuing.
+    #[test]
+    fn post_retry_never_redelivers_after_ambiguous_attempt() {
+        let _g = GUARD.lock();
+        let cli = MockCli::new();
+        cli.run_starts();
+        cli.exec_results(&[Ok(mock_output(0, "", ""))]);
+        let ex = mk_executor(&cli, true);
+        let res = run_execute(&ex, "python3.12", r#"{}"#);
+        assert_eq!(res.function_error.as_deref(), Some("Unhandled"));
+        let payload: Value = serde_json::from_str(&res.payload).unwrap();
+        assert_eq!(payload["errorType"], "Runtime.ExitError");
+        assert_eq!(payload["errorMessage"], "Function execution failed");
+        assert!(
+            cli.run_calls().is_empty() || cli.run_calls().len() == 1,
+            "container run not retried"
+        );
+        assert_eq!(
+            cli.exec_calls().len(),
+            1,
+            "no re-POST after ambiguous attempt"
+        );
+    }
+
+    /// A refused POST (curl exit 7 — runtime client not bound to :8080 yet)
+    /// is rescuable and the next POST delivers; a body that arrives despite
+    /// a non-zero curl status is preferred over any re-POST.
+    #[test]
+    fn post_retry_rescues_only_pre_exchange_refusals() {
+        let _g = GUARD.lock();
+        let cli = MockCli::new();
+        cli.run_starts();
+        cli.exec_results(&[
+            Ok(mock_output(7, "", "")),
+            Ok(mock_output(0, r#"{"found": true}"#, "")),
+        ]);
+        let ex = mk_executor(&cli, true);
+        let res = run_execute(&ex, "python3.12", r#"{}"#);
+        assert_eq!(res.function_error, None, "logs: {}", res.logs);
+        let payload: Value = serde_json::from_str(&res.payload).unwrap();
+        assert_eq!(payload["found"], true);
+        assert_eq!(cli.exec_calls().len(), 2, "refused then delivered");
+    }
+
+    /// The sweep's list half is argv-only (no shell pipeline):
+    /// `docker ps -q --filter name=robotocore-lambda-`.
+    #[test]
+    fn sweep_list_cmd_filters_lambda_container_prefix() {
+        assert_eq!(
+            sweep_list_cmd(),
+            vec![
+                "docker".to_string(),
+                "ps".to_string(),
+                "-q".to_string(),
+                "--filter".to_string(),
+                "name=robotocore-lambda-".to_string(),
+            ]
+        );
+    }
+
+    /// Sweep through the injected CLI: every listed straggler is
+    /// force-removed through the recorded `rm` method, nothing else runs.
+    #[test]
+    fn sweep_stragglers_force_removes_only_listed_containers() {
+        let _g = GUARD.lock();
+        let cli = MockCli::new();
+        cli.script_stragglers(&["a1b2c3d4", "e5f6a7b8"]);
+        let ex = mk_executor(&cli, true);
+        ex.sweep_stragglers();
+        assert_eq!(
+            cli.rm_calls(),
+            vec!["a1b2c3d4".to_string(), "e5f6a7b8".to_string()]
+        );
+        assert!(
+            cli.run_calls().is_empty(),
+            "sweep never goes through cli.run"
+        );
+    }
+
+    /// Stale extraction dirs (older than the live-bound) are pruned; dirs
+    /// younger than that survive.
+    #[test]
+    fn prune_removes_only_stale_extract_dirs() {
+        let base =
+            std::env::temp_dir().join(format!("lam-prune-{}", uuid::Uuid::new_v4().simple()));
+        let stale = base.join("stale-fn-0001");
+        let fresh = base.join("fresh-fn-0002");
+        std::fs::create_dir_all(&stale).unwrap();
+        std::fs::create_dir_all(&fresh).unwrap();
+        let handle = std::fs::File::open(&stale).unwrap();
+        let backdated = std::time::SystemTime::now()
+            - STALE_EXTRACT_DIR_AGE
+            - std::time::Duration::from_secs(10);
+        if std::fs::File::set_times(&handle, std::fs::FileTimes::new().set_modified(backdated))
+            .is_err()
+        {
+            // Platform cannot backdate directory times: skip rather than fail.
+            let _ = std::fs::remove_dir_all(&base);
+            return;
+        }
+        drop(handle);
+        prune_stale_extract_dirs(&base, STALE_EXTRACT_DIR_AGE);
+        assert!(!stale.exists());
+        assert!(fresh.exists());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// `docker run -d` answering exit 0 with an empty stdout (daemon quirk)
+    /// is a started run: the flow proceeds to the runtime-interface POST.
+    #[test]
+    fn docker_run_exit_zero_with_empty_stdout_is_a_started_run() {
+        let _g = GUARD.lock();
+        let cli = MockCli::new();
+        cli.run_script_of(&[Ok(mock_output(0, "", ""))]);
+        cli.exec_results(&[Ok(mock_output(0, r#"{"ok": true}"#, ""))]);
+        let ex = mk_executor(&cli, true);
+        let res = run_execute(&ex, "python3.12", r#"{}"#);
+        assert_eq!(res.function_error, None, "logs: {}", res.logs);
+        let payload: Value = serde_json::from_str(&res.payload).unwrap();
+        assert_eq!(payload["ok"], true);
+        assert_eq!(cli.run_calls().len(), 1);
+        assert_eq!(cli.exec_calls().len(), 1);
+        assert_eq!(cli.rm_calls().len(), 1);
     }
 }
