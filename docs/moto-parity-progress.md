@@ -506,3 +506,66 @@ backlog ports, per the fleet corpus):
   (+63 ops — the percent-encoding binding fix un-gated them),
   `ssoadmin` (+14 real ops; 47 genuinely-absent ops stay 501),
   `swf` (the 26 flagged rows were prober misclassification, no gap).
+
+## Wave 11 addendum (2026-10-24) — the surface-absence manifest (every deny recorded)
+
+The botocore-surface plan's missing machine (§3d) is built: every
+not_implemented probe row is now a recorded decision in
+`tooling/surface-absence.json` (485 rows over 51 services at build
+time). `scripts/build_surface_absence.py` derives the manifest
+deterministically from probes/\*.json + the twin sources
+(rotocore/src/services + crates/<svc>/src) + the moto fork checkout
+when present; `make absence-manifest` rebuilds, `--check` verifies
+without rewriting, and a forkless rebuild preserves committed moto-side
+citations verbatim (no rewrite diff). Row shape: `{status:
+not_implemented, class, evidence, decided_in}` — evidence cites a twin
+file:line idiom or the fork source; `decided_in` = this ledger row.
+
+Class taxonomy and counts at build time (485 = 1 + 77 + 403 + 4):
+
+- `modeled_deny` 77 — the twin names the op in a deny context: an
+  explicit arm rendering the NotImplemented envelope (ds double-absent
+  arm, cfn CfnError .status(501), lakeformation, sdb's moto-501-comment
+  arm, workspacesweb call-sites), a moto-absent op table consumed by the
+  module's deny path (kinesisvideo ABSENT_OPS), or a committed unit test
+  pinning the deny envelope 501+NotImplemented / arm fall-through
+  (memorydb 15, fsx 12, redshift 11, applicationautoscaling,
+  service-quotas, datasync \[is_none fall-through\], directconnect,
+  autoscaling, emr, wafv2…).
+- `absent_moto_crash_faithful` 1 — moto's own arm denies at runtime per
+  fork source: resource-groups.SearchResources (moto
+  resourcegroups/responses.py search_resources is a bare `raise
+  NotImplementedError` → moto 501s; the twin's gateway 501 mirrors it).
+  The workspaces four KeyError-500 rows remain the class's ledger
+  exemplar, but they live in the 500_error probe partition
+  (absent_crash_faithful), not in this manifest.
+- `absent_no_handler` 403 — no twin deny arm and moto absent at runtime
+  (no fork module, or the module has no handler so moto dispatch raises
+  NotImplementedError → 501); the twin's gateway 501 mirrors moto's
+  absence.
+- `legacy_gap` 4 — rows disagreeing with moto truth: moto implements the
+  op while the twin still 501s (timestreaminfluxdb.UntagResource — moto
+  timestreaminfluxdb/responses.py:92; vpclattice.ListServiceNetworkVpc
+  Associations — moto vpclattice/responses.py:223, the twin resolves the
+  route but arms no match arm), or the probe row predates a twin arm
+  (s3.PutObjectAcl / s3.UploadPartCopy — crates/s3 arms verified live
+  2026-10-24: 200 and a modeled NoSuchKey). All four need the next wave
+  (a port or a probe sweep re-run) and are OVERRIDES-disposed in the
+  builder.
+
+Coverage wiring (this wave, no semantics change): cov_bucket's old
+single `absent` catch-all for not_implemented rows is attributed per
+manifest class (buckets absent_modeled_deny / absent_moto_crash_
+faithful / absent_no_handler / legacy_gap in tooling/coverage.json),
+with per-class counts in the coverage.py report and in
+generate_parity_report.py's summary (so the site's dashboard data
+carries the breakdown). The ratcheted covered topline stays working-only
+— 9456/10268 unchanged; the plan doc's modeled-deny-inclusive covered
+currency is a later ratchet, not this wave's. The gate chain now
+verifies the manifest before the budget ratchet (`make parity` →
+coverage-gate): drift between the manifest and the probe corpus is
+repaired mechanically with a "(manifest drifted — rebuilding
+mechanically)" note, stale entries (ops no longer not_implemented in
+probes) are gate-warned, and a class not backed by its sources fails the
+gate outright (exit 2).
+
