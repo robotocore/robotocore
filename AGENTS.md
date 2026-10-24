@@ -265,6 +265,23 @@ result = lam.invoke(FunctionName="hello", Payload=json.dumps({}))
 print(json.loads(result["Payload"].read()))  # {"ok": True}
 ```
 
+Lambda runtimes: the engine executes `python*`/`custom`/`provided.*` in-process
+and `nodejs` via node, on every host. `GET /_robotocore/runtimes` reports what
+the running server can actually execute:
+
+- Default (`LAMBDA_EXECUTOR=local`): host-toolchain families only.
+- `LAMBDA_EXECUTOR=docker`: every mapped AWS runtime executes inside its
+  official public-ECR image (python 3.8–3.13, nodejs 16–22, java 8–21,
+  dotnet 6/8, go 1.x, ruby 3.2/3.3, provided) — requires a docker daemon
+  reachable from the server; the compat suites for ruby/java/dotnet are
+  then served for real.
+
+The Docker image model mirrors this: the default image stays tiny
+(distroless, local python-family runtimes only), a `runtimes` target bakes
+node+ruby into the server's runtime, and a `java-and-dotnet` variant target
+adds OpenJDK 21 + .NET SDK 8 (`docker build --target java-and-dotnet .`,
+`docker compose --profile java-dotnet up`).
+
 ### Secrets Manager
 
 ```python

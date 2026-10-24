@@ -300,20 +300,17 @@ Built by [Jack Danger](https://github.com/jackdanger). Entirely in Rust — the 
 
 ## Supported Services
 
-**157 services** are registered at one of two levels:
-
-- **native** — a Rust backend answers in-process: the gateway core (Lambda execution, SQS visibility timeouts, SigV4 auth, IAM policy evaluation, CloudFormation resource orchestration) plus the rotocore engine's ported backends — currently 92 of 157 (S3, SQS, DynamoDB, EC2, Connect, Glue, ELB/ELBv2, CloudFront, Redshift, EMR, IoT, Athena, and more).
-
-- **absent** — requests answer `501 NotImplemented` until a backend is ported (~65 of 157: bedrock, mq, pinpoint, quicksight, wafv2, workspaces, …).
-
-Ask the running twin for the authoritative, always-current list:
+**158 services**, every one answered natively in-process — there is no sidecar, proxy, or fallback runtime left. The running twin is the authoritative map:
 
 ```bash
 curl -s http://localhost:4566/_robotocore/services | python3 -c "
 import json, sys, collections
 s = json.load(sys.stdin)['services']
 print(len(s), dict(collections.Counter(x['status'] for x in s)))"
+# 158 {'native': 158}
 ```
+
+What "native" means in practice: most surface areas are ported moto backends with full behavioral fidelity recorded against the pinned moto fork (`probes/` corpus, 9.5k+ op regimes; every deny is a recorded decision — see `tooling/surface-absence.json`).
 
 ### Native highlights
 
@@ -339,7 +336,7 @@ print(len(s), dict(collections.Counter(x['status'] for x in s)))"
 | Firehose | Buffered delivery to S3 |
 | IAM | Full policy engine, permission boundaries, resource policies |
 | Kinesis | Streams and shard management |
-| Lambda | Versions, aliases, layers, function URLs, ESM, destinations |
+| Lambda | Versions, aliases, layers, function URLs, ESM, destinations; **all AWS runtimes** — in-process python/nodejs/custom, or every official runtime image with `LAMBDA_EXECUTOR=docker` |
 | OpenSearch | Domain management |
 | Rekognition | Image analysis stubs |
 | Resource Groups | Group management |
