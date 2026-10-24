@@ -94,6 +94,400 @@ pub fn is_docker_runtime(runtime: &str) -> bool {
     runtime_image(runtime).is_some()
 }
 
+/// Runtime families that run the python-era *loose bridge* instead of the
+/// official image's strict runtime-interface bootstrap.
+///
+/// Port lineage: `src/robotocore/services/lambda_/runtimes/{java,dotnet,ruby}.py`
+/// (every executor of that era, multi-runtime engine from 547fb91b). Those
+/// executors defined the invocation semantics this twin's managed-runtime
+/// suites encode: the handler receives loosely-typed arguments (java
+/// `(String|Map, Object)`, dotnet `(string, object)`, ruby
+/// `(event:, context:)` built from env), the result protocol is "event JSON
+/// on stdin, result on stdout, error JSON + non-zero exit" (era
+/// `base.run_subprocess`). Official images are strict about handler
+/// signatures (java RIC rejects `(String, Object)`; dotnet's
+/// `Amazon.Lambda.RuntimeSupport` requires `ILambdaContext`; the ruby EMI
+/// context returns memo/limit values as strings), so the faithful port runs
+/// the era's loose bootstrap INSIDE the mapped official image as a one-shot
+/// `docker run --rm -i` and keeps the era's exact response rules.
+const LOOSE_BRIDGE_FAMILIES: [&str; 3] = ["java", "dotnet", "ruby"];
+
+/// Loose observed timeout text (python-era `base.run_subprocess`
+/// `TimeoutExpired` branch and the in-process shims' shape). The official
+/// EMI's own timeout meanwhile answers with a plain-text body
+/// `Task timed out after 2.00 seconds`.
+pub(crate) fn task_timed_out_message(timeout: u32) -> String {
+    format!("Task timed out after {timeout}.00 seconds")
+}
+
+/// Structured Task.TimedOut result in the python-era shape.
+pub(crate) fn run_timed_out_result(timeout_secs: u32, logs: &str) -> ExecResult {
+    ExecResult {
+        payload: json!({
+            "errorMessage": task_timed_out_message(timeout_secs),
+            "errorType": "Task.TimedOut",
+        })
+        .to_string(),
+        function_error: Some("Task.TimedOut".to_string()),
+        logs: if logs.is_empty() {
+            format!("Function timed out after {timeout_secs}s")
+        } else {
+            logs.to_string()
+        },
+    }
+}
+
+/// Port of the python-era `runtimes/base.py run_subprocess` response rules
+/// for the one-shot bridge containers: exit 0 -> stdout as parsed JSON (or
+/// raw string; empty -> "null"); non-zero -> stdout error JSON ("Handled")
+/// else Runtime.ExitError with stderr tail ("Unhandled"); emulator-style
+/// plain "Task timed out after ..." bodies become Task.TimedOut.
+pub(crate) fn loose_result(out: SubprocessOutput, timeout_secs: u32) -> ExecResult {
+    let stdout = out.stdout.trim().to_string();
+    let logs = out.stderr;
+    if out.status_code == Some(0) {
+        let payload = if stdout.is_empty() {
+            json!("null").to_string()
+        } else {
+            match serde_json::from_str::<Value>(&stdout) {
+                Ok(parsed) => parsed.to_string(),
+                Err(_) => json!(stdout).to_string(),
+            }
+        };
+        return ExecResult {
+            payload,
+            function_error: None,
+            logs,
+        };
+    }
+    // Non-zero exits: structured error JSON -> "Handled"; the in-container
+    // timeout's text -> Task.TimedOut; anything else -> Runtime.ExitError.
+    if let Ok(parsed) = serde_json::from_str::<Value>(&stdout) {
+        if parsed
+            .as_object()
+            .map(|o| o.contains_key("errorMessage"))
+            .unwrap_or(false)
+        {
+            return ExecResult {
+                payload: parsed.to_string(),
+                function_error: Some("Handled".to_string()),
+                logs,
+            };
+        }
+    }
+    if stdout.starts_with("Task timed out after") {
+        return run_timed_out_result(timeout_secs, &logs);
+    }
+    ExecResult {
+        payload: json!({
+            "errorMessage": if stdout.is_empty() {
+                logs.lines().last().unwrap_or("Unknown error")
+            } else {
+                stdout.as_str()
+            },
+            "errorType": "Runtime.ExitError",
+            "stackTrace": logs.trim().lines().collect::<Vec<_>>(),
+        })
+        .to_string(),
+        function_error: Some("Unhandled".to_string()),
+        logs,
+    }
+}
+
+/// The `docker run --rm -i` prefix for one-shot bridge containers: read-only
+/// code mount at /var/task, bridge assets at /var/bridge, the era env pairs
+/// (same core set as `build_docker_run_cmd`), plus network/dns/add-host.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn loose_bridge_run_prefix(
+    code_dir: &str,
+    handler: &str,
+    function_name: &str,
+    function_version: &str,
+    function_arn: &str,
+    env_vars: &HashMap<String, String>,
+    timeout: u32,
+    memory_size: u32,
+    region: &str,
+    account_id: &str,
+    gateway_port: u16,
+    docker_network: Option<&str>,
+    docker_dns: Option<&str>,
+) -> Vec<String> {
+    let mut cmd = vec![
+        "docker".to_string(),
+        "run".to_string(),
+        "--rm".to_string(),
+        // Without -i the CLI never attaches stdin, so the event never
+        // reaches the bridge (the python-era happy-path lesson).
+        "-i".to_string(),
+        "-v".to_string(),
+        format!("{code_dir}:/var/task:ro"),
+        "-e".to_string(),
+        format!("AWS_LAMBDA_FUNCTION_NAME={function_name}"),
+        "-e".to_string(),
+        format!("AWS_LAMBDA_FUNCTION_VERSION={function_version}"),
+        "-e".to_string(),
+        format!("AWS_LAMBDA_FUNCTION_ARN={function_arn}"),
+        "-e".to_string(),
+        format!("AWS_LAMBDA_FUNCTION_MEMORY_SIZE={memory_size}"),
+        "-e".to_string(),
+        format!("AWS_LAMBDA_FUNCTION_TIMEOUT={timeout}"),
+        "-e".to_string(),
+        format!("AWS_REGION={region}"),
+        "-e".to_string(),
+        format!("AWS_DEFAULT_REGION={region}"),
+        "-e".to_string(),
+        format!("AWS_ACCOUNT_ID={account_id}"),
+        "-e".to_string(),
+        format!("AWS_LAMBDA_LOG_GROUP_NAME=/aws/lambda/{function_name}"),
+        "-e".to_string(),
+        format!("AWS_LAMBDA_LOG_STREAM_NAME={}", shim_log_stream_name()),
+        "-e".to_string(),
+        format!("LAMBDA_TASK_ROOT=/var/task"),
+        "-e".to_string(),
+        format!("_HANDLER={handler}"),
+        "-e".to_string(),
+        "AWS_ACCESS_KEY_ID=testing".to_string(),
+        "-e".to_string(),
+        "AWS_SECRET_ACCESS_KEY=testing".to_string(),
+        "-e".to_string(),
+        format!("AWS_ENDPOINT_URL=http://host.docker.internal:{gateway_port}"),
+    ];
+    for (key, value) in env_vars {
+        cmd.push("-e".to_string());
+        cmd.push(format!("{key}={value}"));
+    }
+    if let Some(network) = docker_network {
+        cmd.push("--network".to_string());
+        cmd.push(network.to_string());
+    }
+    if let Some(dns) = docker_dns {
+        cmd.push("--dns".to_string());
+        cmd.push(dns.to_string());
+    }
+    cmd.push("--add-host".to_string());
+    cmd.push("host.docker.internal:host-gateway".to_string());
+    cmd.push("-v".to_string());
+    cmd.push(format!(
+        "{}:/var/bridge:ro",
+        loose_bridge_dir().to_string_lossy()
+    ));
+    cmd
+}
+
+/// The image's dotnet TFM from the runtime string (dotnet6 -> net6.0,
+/// dotnet8 -> net8.0; default net8.0).
+pub(crate) fn dotnet_runtime_tfm(runtime: &str) -> &'static str {
+    if runtime.starts_with("dotnet6") {
+        "net6.0"
+    } else {
+        "net8.0"
+    }
+}
+
+/// Build (once per TFM, python-era cached bootstrap) the loose dotnet bridge
+/// with the twin's SDK. `None` when the twin has no dotnet CLI or the build
+/// fails — callers degrade to the era's Runtime.InvalidRuntime shape.
+pub(crate) fn ensure_dotnet_bridge(tfm: &str) -> Option<std::path::PathBuf> {
+    static CACHE: parking_lot::Mutex<Option<HashMap<String, Option<std::path::PathBuf>>>> =
+        parking_lot::Mutex::new(None);
+    let mut guard = CACHE.lock();
+    if let Some(entry) = guard.as_mut() {
+        if let Some(cached) = entry.get(tfm) {
+            return cached.clone();
+        }
+    }
+    let dir = loose_bridge_dir();
+    let out_dir = dir.join(format!("publish-{tfm}"));
+    let dll = out_dir.join("RobotocoreDotnetBridge.dll");
+    let result = if dll.exists() {
+        Some(out_dir.clone())
+    } else {
+        let proj = dir.join("RobotocoreDotnetBridge.csproj");
+        let which = std::env::var_os("PATH").map(|paths| {
+            std::env::split_paths(&paths)
+                .map(|p| p.join("dotnet"))
+                .any(|p| p.is_file())
+        });
+        if which != Some(true) {
+            None
+        } else {
+            let _ = std::fs::create_dir_all(&out_dir);
+            let mut builder = std::process::Command::new("dotnet");
+            builder
+                .arg("publish")
+                .arg(&proj)
+                .env("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
+                .env("DOTNET_NOLOGO", "1")
+                .env("DOTNET_SKIP_FIRST_TIME_EXPERIENCE", "1")
+                .env("DOTNET_SYSTEM_GLOBALIZATION_INVARIANT", "1")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
+            let ok = builder
+                .arg("-c")
+                .arg("Release")
+                .arg("-f")
+                .arg(tfm)
+                .arg("-o")
+                .arg(&out_dir)
+                .status()
+                .ok()
+                .map(|s| s.success())
+                .unwrap_or(false)
+                && dll.exists();
+            if ok { Some(out_dir.clone()) } else { None }
+        }
+    };
+    if let Some(entry) = guard.as_mut() {
+        entry.insert(tfm.to_string(), result.clone());
+    } else {
+        let mut map = HashMap::new();
+        map.insert(tfm.to_string(), result.clone());
+        *guard = Some(map);
+    }
+    result
+}
+
+/// Compile .cs sources inside `code_dir` when the package carries source and
+/// no DLL (python-era `_compile_source`). Returns Some(result-shaped) only
+/// for the era's error conditions; None means "nothing to compile / ok".
+pub(crate) fn compile_dotnet_source_if_needed(
+    tfm: &str,
+    code_dir: &std::path::Path,
+    handler: &str,
+) -> Option<ExecResult> {
+    let parts: Vec<&str> = handler.split("::").collect();
+    let assembly_name = parts.first().copied().unwrap_or("");
+    if assembly_name.is_empty() {
+        return Some(ExecResult {
+            payload: json!({
+                "errorMessage": format!("Bad .NET handler format: {handler}. Expected Assembly::Type::Method"),
+                "errorType": "Runtime.HandlerNotFound",
+            })
+            .to_string(),
+            function_error: Some("Runtime.HandlerNotFound".to_string()),
+            logs: String::new(),
+        });
+    }
+    let dll = code_dir.join(format!("{assembly_name}.dll"));
+    if dll.exists() || code_dir.join("publish").join(format!("{assembly_name}.dll")).exists() {
+        return None;
+    }
+    let cs_sources: Vec<String> = std::fs::read_dir(code_dir)
+        .map(|entries| {
+            entries
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    let name = e.file_name();
+                    name.to_string_lossy().ends_with(".cs")
+                })
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+    if cs_sources.is_empty() {
+        return Some(ExecResult {
+            payload: json!({
+                "errorMessage": format!("Assembly '{assembly_name}.dll' not found and no .cs source files"),
+                "errorType": "Runtime.ImportModuleError",
+            })
+            .to_string(),
+            function_error: Some("Runtime.ImportModuleError".to_string()),
+            logs: String::new(),
+        });
+    }
+    // Write the era lib csproj and let the twin's SDK build it. The source
+    // package also drops any duplicate handler sources — mirror the python
+    // era's "compile in place" behavior with a CLI-decorated env.
+    let proj = code_dir.join(format!("{assembly_name}.csproj"));
+    let csproj = format!(
+        "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>{tfm}</TargetFramework>\n    <ImplicitUsings>enable</ImplicitUsings>\n    <AssemblyName>{assembly_name}</AssemblyName>\n  </PropertyGroup>\n</Project>\n"
+    );
+    if std::fs::write(&proj, csproj).is_err() {
+        return Some(ExecResult {
+            payload: json!({
+                "errorMessage": "failed to write csproj for server-side compile",
+                "errorType": "Runtime.ImportModuleError",
+            })
+            .to_string(),
+            function_error: Some("Runtime.ImportModuleError".to_string()),
+            logs: String::new(),
+        });
+    }
+    let _ = std::fs::remove_dir_all(code_dir.join("publish"));
+    let mut builder = std::process::Command::new("dotnet");
+    builder
+        .arg("build")
+        .arg("-c")
+        .arg("Release")
+        .arg("-o")
+        .arg(code_dir)
+        .arg("--nologo")
+        .arg("-v")
+        .arg("quiet")
+        .env("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
+        .env("DOTNET_NOLOGO", "1")
+        .env("DOTNET_SKIP_FIRST_TIME_EXPERIENCE", "1")
+        .env("DOTNET_SYSTEM_GLOBALIZATION_INVARIANT", "1")
+        .current_dir(code_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    // The SDK's implicit glob + project-dir-as-output interplay: building
+    // with `-o <project dir>` (the python-era behavior) yields an empty
+    // assembly (type names missing from the metadata heap). Build into a
+    // subdirectory and hoist the outputs into the code dir instead — the
+    // python-era `_run_with_bootstrap` peeks `publish/` for the same reason.
+    let build_out = code_dir.join(".robotocore-build");
+    let _ = std::fs::remove_dir_all(&build_out);
+    let mut builder = std::process::Command::new("dotnet");
+    builder
+        .arg("build")
+        .arg("-c")
+        .arg("Release")
+        .arg("-o")
+        .arg(&build_out)
+        .arg("--nologo")
+        .arg("-v")
+        .arg("quiet")
+        .env("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
+        .env("DOTNET_NOLOGO", "1")
+        .env("DOTNET_SKIP_FIRST_TIME_EXPERIENCE", "1")
+        .env("DOTNET_SYSTEM_GLOBALIZATION_INVARIANT", "1")
+        .current_dir(code_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let run = builder.output();
+    let ok = run.as_ref().map(|o| o.status.success()).unwrap_or(false);
+    if ok {
+        for entry in std::fs::read_dir(&build_out)
+            .map(|entries| entries.filter_map(|e| e.ok()).collect::<Vec<_>>())
+            .unwrap_or_default()
+        {
+            if let Some(name) = entry.path().file_name() {
+                let _ = std::fs::copy(entry.path(), code_dir.join(name));
+            }
+        }
+    }
+    match run {
+        Ok(out) if ok && dll.exists() => None,
+        _ => {
+            let stderr = run
+                .as_ref()
+                .map(|o| String::from_utf8_lossy(&o.stderr).to_string())
+                .unwrap_or_default();
+            Some(ExecResult {
+                payload: json!({
+                    "errorMessage": format!("Failed to compile .cs source files into '{assembly_name}.dll'"),
+                    "errorType": "Runtime.ImportModuleError",
+                })
+                .to_string(),
+                function_error: Some("Runtime.ImportModuleError".to_string()),
+                logs: stderr,
+            })
+        }
+    }
+}
+
 /// Map a runtime string to its runtime *family* as the gateway reports it
 /// (the python-era `/_robotocore/runtimes` family list: custom, dotnet, java,
 /// nodejs, python, ruby).
@@ -199,6 +593,17 @@ pub fn build_docker_run_cmd(
         format!("AWS_DEFAULT_REGION={region}"),
         "-e".to_string(),
         format!("AWS_ACCOUNT_ID={account_id}"),
+        // The shim's context reports these names (`log_group_name`,
+        // `log_stream_name`) — the official runtime clients read them from
+        // this env in containers, so ctx.log_group_name matches the shim.
+        "-e".to_string(),
+        format!("AWS_LAMBDA_LOG_GROUP_NAME=/aws/lambda/{function_name}"),
+        "-e".to_string(),
+        format!("AWS_LAMBDA_LOG_STREAM_NAME={}", shim_log_stream_name()),
+        // The twin's python shim puts layer packages (their `python/`
+        // prefixes) on the interpreter path — same behavior in containers.
+        "-e".to_string(),
+        "PYTHONPATH=/var/task:/var/task/python".to_string(),
         "-e".to_string(),
         format!("_HANDLER={handler}"),
         "-e".to_string(),
@@ -239,6 +644,398 @@ pub fn build_docker_run_cmd(
     cmd.push(handler.to_string());
 
     cmd
+}
+
+// ============================================================================
+// Loose managed-family bridges (python-era ports)
+//
+// For `LOOSE_BRIDGE_FAMILIES` the invocation semantics are the python twin's:
+// `src/robotocore/services/lambda_/runtimes/{java,dotnet,ruby}.py` + their
+// bootstraps (Bootstrap.java, bootstrap.rb, dotnet's Bootstrap.cs) ran ON THE
+// TWIN's host with `run_subprocess` (event JSON on stdin, JSON result on
+// stdout, error JSON + non-zero exit). The official images dispatch these
+// families' handlers strictly (java rejects `(String, Object)`, dotnet
+// requires `ILambdaContext`, the ruby EMI gives string context values), so
+// the ported bootstraps run INSIDE the mapped image as a one-shot container.
+// ============================================================================
+
+/// Where the bridge assets live on the twin (written once per process).
+pub(crate) fn loose_bridge_dir() -> std::path::PathBuf {
+    static DIR: parking_lot::Mutex<Option<std::path::PathBuf>> = parking_lot::Mutex::new(None);
+    let mut guard = DIR.lock();
+    if let Some(dir) = &*guard {
+        return dir.clone();
+    }
+    let dir = std::env::temp_dir()
+        .join("robotocore-lambda-bridges")
+        .join(uuid::Uuid::new_v4().simple().to_string());
+    let _ = std::fs::create_dir_all(&dir);
+    for (name, source) in [
+        ("RobotocoreJavaBridge.java", JAVA_BRIDGE_SOURCE.as_bytes()),
+        ("bootstrap.rb", RUBY_BRIDGE_SOURCE.as_bytes()),
+        (
+            "RobotocoreDotnetBridge.csproj",
+            DOTNET_BRIDGE_CSPROJ.as_bytes(),
+        ),
+        ("RobotocoreDotnetBridge.cs", DOTNET_BRIDGE_SOURCE.as_bytes()),
+    ] {
+        let _ = std::fs::write(dir.join(name), source);
+    }
+    *guard = Some(dir.clone());
+    dir
+}
+
+/// Java loose bridge (port of the python-era `bootstraps/Bootstrap.java`;
+/// handler spec from `_HANDLER` as `Class::method` or `Class`, event JSON on
+/// stdin, result `toString`ed to stdout, error JSON + exit 1 on failure).
+const JAVA_BRIDGE_SOURCE: &str = r#"import java.io.*;
+import java.lang.reflect.*;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+import java.util.stream.*;
+
+public class RobotocoreJavaBridge {
+    public static void main(String[] args) {
+        String handlerSpec = System.getenv("_HANDLER");
+        if (handlerSpec == null && args.length > 0) handlerSpec = args[0];
+        if (handlerSpec == null) {
+            System.out.println("{\"errorMessage\":\"No handler specified\",\"errorType\":\"Runtime.HandlerNotFound\"}");
+            System.exit(1);
+        }
+
+        String className;
+        String methodName = "handleRequest";
+        if (handlerSpec.contains("::")) {
+            String[] parts = handlerSpec.split("::");
+            className = parts[0];
+            methodName = parts[1];
+        } else {
+            className = handlerSpec;
+        }
+
+        String eventJson;
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
+            eventJson = reader.lines().collect(Collectors.joining("\n"));
+        } catch (IOException e) {
+            eventJson = "{}";
+        }
+
+        Class<?> handlerClass;
+        try {
+            handlerClass = Class.forName(className);
+        } catch (ClassNotFoundException e) {
+            System.out.printf("{\"errorMessage\":\"Cannot find class '%s': %s\",\"errorType\":\"Runtime.ImportModuleError\"}%n",
+                className, e.getMessage());
+            System.exit(1);
+            return;
+        }
+
+        Object instance;
+        try {
+            instance = handlerClass.getDeclaredConstructor().newInstance();
+        } catch (Exception e) {
+            System.out.printf("{\"errorMessage\":\"Cannot instantiate '%s': %s\",\"errorType\":\"Runtime.ImportModuleError\"}%n",
+                className, e.getMessage());
+            System.exit(1);
+            return;
+        }
+
+        Method method = null;
+        try {
+            method = handlerClass.getMethod(methodName, String.class, Object.class);
+        } catch (NoSuchMethodException e1) {
+            try {
+                method = handlerClass.getMethod(methodName, Map.class, Object.class);
+            } catch (NoSuchMethodException e2) {
+                try {
+                    method = handlerClass.getMethod(methodName, InputStream.class, OutputStream.class, Object.class);
+                } catch (NoSuchMethodException e3) {
+                    try {
+                        method = handlerClass.getMethod(methodName, Object.class, Object.class);
+                    } catch (NoSuchMethodException e4) {
+                        System.out.printf(
+                            "{\"errorMessage\":\"Handler method '%s' not found in '%s'\",\"errorType\":\"Runtime.HandlerNotFound\"}%n",
+                            methodName, className);
+                        System.exit(1);
+                        return;
+                    }
+                }
+            }
+        }
+
+        // era build_env context: a map the handler may inspect as is.
+        Map<String, Object> context = new LinkedHashMap<>();
+        context.put("functionName", System.getenv().getOrDefault("AWS_LAMBDA_FUNCTION_NAME", "test-function"));
+        context.put("functionVersion", System.getenv().getOrDefault("AWS_LAMBDA_FUNCTION_VERSION", "$LATEST"));
+        context.put("invokedFunctionArn", System.getenv().getOrDefault("AWS_LAMBDA_FUNCTION_ARN", ""));
+        context.put("memoryLimitInMB", Integer.parseInt(System.getenv().getOrDefault("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", "128")));
+        context.put("awsRequestId", UUID.randomUUID().toString());
+        context.put("logGroupName", System.getenv().getOrDefault("AWS_LAMBDA_LOG_GROUP_NAME", "/aws/lambda/Functions"));
+        context.put("logStreamName", System.getenv().getOrDefault("AWS_LAMBDA_LOG_STREAM_NAME", ""));
+
+        try {
+            Object result;
+            Class<?>[] paramTypes = method.getParameterTypes();
+
+            if (paramTypes.length == 3 && paramTypes[0] == InputStream.class) {
+                ByteArrayInputStream in = new ByteArrayInputStream(eventJson.getBytes(StandardCharsets.UTF_8));
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                method.invoke(instance, in, out, context);
+                System.out.print(out.toString());
+            } else if (paramTypes[0] == String.class) {
+                result = method.invoke(instance, eventJson, context);
+                System.out.print(result == null ? "null" : result.toString());
+            } else if (paramTypes[0] == Map.class) {
+                Map<String, Object> eventMap = new HashMap<>();
+                eventMap.put("_raw", eventJson);
+                result = method.invoke(instance, eventMap, context);
+                System.out.print(result == null ? "null" : result.toString());
+            } else {
+                result = method.invoke(instance, eventJson, context);
+                System.out.print(result == null ? "null" : result.toString());
+            }
+        } catch (InvocationTargetException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            StringWriter sw = new StringWriter();
+            cause.printStackTrace(new PrintWriter(sw));
+            System.err.print(sw.toString());
+            System.out.printf(
+                "{\"errorMessage\":\"%s\",\"errorType\":\"%s\"}",
+                cause.getMessage() != null ? cause.getMessage().replace("\"", "\\\"") : "Unknown error",
+                cause.getClass().getSimpleName());
+            System.exit(1);
+        } catch (Exception e) {
+            System.err.println(e.toString());
+            System.out.printf(
+                "{\"errorMessage\":\"%s\",\"errorType\":\"%s\"}",
+                e.getMessage() != null ? e.getMessage().replace("\"", "\\\"") : "Unknown error",
+                e.getClass().getSimpleName());
+            System.exit(1);
+        }
+    }
+}
+"#;
+
+/// Ruby loose bridge (port of the python-era `bootstraps/bootstrap.rb`):
+/// `_HANDLER` as `module.method`, event parsed from stdin (bad JSON -> `{}`),
+/// Struct context with integer `memory_limit_in_mb` and the shim's
+/// log-group shape, error JSON with the exception class name.
+const RUBY_BRIDGE_SOURCE: &str = r##"require 'json'
+require 'securerandom'
+
+handler_spec = ENV['_HANDLER'] || ARGV[0]
+unless handler_spec
+  $stdout.write(JSON.generate({
+    errorMessage: 'No handler specified',
+    errorType: 'Runtime.HandlerNotFound'
+  }))
+  exit(1)
+end
+
+dot_index = handler_spec.rindex('.')
+unless dot_index
+  $stdout.write(JSON.generate({
+    errorMessage: "Bad handler format: #{handler_spec}",
+    errorType: 'Runtime.HandlerNotFound'
+  }))
+  exit(1)
+end
+
+module_name = handler_spec[0...dot_index]
+method_name = handler_spec[dot_index + 1..]
+
+input_data = $stdin.read
+event = begin
+  JSON.parse(input_data)
+rescue JSON::ParserError
+  {}
+end
+
+context_data = {
+  function_name: ENV['AWS_LAMBDA_FUNCTION_NAME'] || 'test-function',
+  function_version: '$LATEST',
+  invoked_function_arn: ENV['AWS_LAMBDA_FUNCTION_ARN'],
+  memory_limit_in_mb: (ENV['AWS_LAMBDA_FUNCTION_MEMORY_SIZE'] || '128').to_i,
+  aws_request_id: SecureRandom.uuid,
+  log_group_name: "/aws/lambda/#{ENV['AWS_LAMBDA_FUNCTION_NAME'] || 'test-function'}",
+  log_stream_name: ENV['AWS_LAMBDA_LOG_STREAM_NAME'],
+}
+
+LambdaContext = Struct.new(*context_data.keys, keyword_init: true) do
+  def get_remaining_time_in_millis
+    timeout = (ENV['AWS_LAMBDA_FUNCTION_TIMEOUT'] || '3').to_i
+    timeout * 1000
+  end
+end
+context = LambdaContext.new(**context_data)
+
+module_file = File.join(Dir.pwd, "#{module_name}.rb")
+unless File.exist?(module_file)
+  $stdout.write(JSON.generate({
+    errorMessage: "Cannot find module '#{module_name}': #{module_file}",
+    errorType: 'Runtime.ImportModuleError'
+  }))
+  exit(1)
+end
+
+begin
+  require module_file
+rescue => e
+  $stdout.write(JSON.generate({
+    errorMessage: "Error loading module '#{module_name}': #{e.message}",
+    errorType: 'Runtime.ImportModuleError',
+    stackTrace: e.backtrace || []
+  }))
+  exit(1)
+end
+
+unless respond_to?(method_name.to_sym, true)
+  $stdout.write(JSON.generate({
+    errorMessage: "Handler method '#{method_name}' not found in '#{module_name}'",
+    errorType: 'Runtime.HandlerNotFound'
+  }))
+  exit(1)
+end
+
+begin
+  result = send(method_name.to_sym, event: event, context: context)
+  $stdout.write(JSON.generate(result))
+rescue => e
+  $stderr.write("#{e.class}: #{e.message}\n#{e.backtrace&.join("\n")}\n")
+  $stdout.write(JSON.generate({
+    errorMessage: e.message,
+    errorType: e.class.name,
+    stackTrace: e.backtrace || []
+  }))
+  exit(1)
+end
+"##;
+
+/// .NET loose bridge (port of the python-era dotnet `Bootstrap.cs`): loads
+/// the user assembly via reflection, invokes `method(eventJson, null)` for
+/// the era's `(string, object)` handlers, prints `result.ToString() ?? null`
+/// to stdout, error JSON (type name) + exit 1 on failure. Built once per TFM
+/// on the twin (`dotnet publish`) because the official dotnet images ship
+/// only the runtime, not the SDK.
+const DOTNET_BRIDGE_SOURCE: &str = r##"using System;
+using System.IO;
+using System.Reflection;
+using System.Text.Json;
+
+class RobotocoreDotnetBridge {
+    static int Main(string[] args) {
+        string handler = Environment.GetEnvironmentVariable("_HANDLER") ?? "";
+        string[] parts = handler.Split("::");
+        if (parts.Length < 3) {
+            Console.Write(JsonSerializer.Serialize(new {
+                errorMessage = "Bad handler format: " + handler,
+                errorType = "Runtime.HandlerNotFound"
+            }));
+            return 1;
+        }
+
+        string assemblyName = parts[0];
+        string typeName = parts[1];
+        string methodName = parts[2];
+
+        string eventJson = Console.In.ReadToEnd();
+
+        try {
+            string dllPath = Path.Combine("/var/task", assemblyName + ".dll");
+            Assembly assembly = Assembly.LoadFrom(dllPath);
+            Type type = assembly.GetType(typeName);
+            if (type == null) {
+                Console.Write(JsonSerializer.Serialize(new {
+                    errorMessage = "Type not found: " + typeName,
+                    errorType = "Runtime.ImportModuleError"
+                }));
+                return 1;
+            }
+
+            MethodInfo method = type.GetMethod(methodName);
+            if (method == null) {
+                Console.Write(JsonSerializer.Serialize(new {
+                    errorMessage = "Method '" + methodName + "' not found in '" + typeName + "'",
+                    errorType = "Runtime.HandlerNotFound"
+                }));
+                return 1;
+            }
+
+            object instance = Activator.CreateInstance(type);
+            ParameterInfo[] parameters = method.GetParameters();
+
+            object result;
+            if (parameters.Length == 0) {
+                result = method.Invoke(instance, null);
+            } else if (parameters.Length == 1) {
+                result = method.Invoke(instance, new object[] { eventJson });
+            } else {
+                result = method.Invoke(instance, new object[] { eventJson, null });
+            }
+            Console.Write(result?.ToString() ?? "null");
+            return 0;
+        } catch (TargetInvocationException e) {
+            Exception cause = e.InnerException ?? e;
+            Console.Error.WriteLine(cause.ToString());
+            Console.Write(JsonSerializer.Serialize(new {
+                errorMessage = cause.Message,
+                errorType = cause.GetType().Name
+            }));
+            return 1;
+        } catch (Exception e) {
+            Console.Error.WriteLine(e.ToString());
+            Console.Write(JsonSerializer.Serialize(new {
+                errorMessage = e.Message,
+                errorType = e.GetType().Name
+            }));
+            return 1;
+        }
+    }
+}
+"##;
+
+/// The bridge's csproj: the .NET images ship no SDK, so the twin builds this
+/// once per TFM with the host SDK (python-era pattern: cached bootstrap).
+pub(crate) const DOTNET_BRIDGE_CSPROJ: &str = r##"<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- -f net8.0/net6.0 selects at publish time; the images carry the
+         matching shared runtime only. -->
+    <TargetFrameworks>net8.0;net6.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+</Project>"##;
+
+/// The shim's per-invocation Lambda log-stream name (`src/runtime.rs`
+/// execute_python context): `YYYY/MM/DD/[$LATEST]{uuid32}`.
+pub(crate) fn shim_log_stream_name() -> String {
+    let date = chrono::Utc::now().format("%Y/%m/%d");
+    format!("{date}/[$LATEST]{}", uuid::Uuid::new_v4().simple())
+}
+
+/// Python-family error-type normalizer: the official python runtime client
+/// prefixes its load errors (`Runtime.UserCodeSyntaxError`,
+/// `Runtime.ImportModuleError`) while this twin's shim reports the bare
+/// interpreter names (`SyntaxError`, `ModuleNotFoundError`) — the parity
+/// shape the suites assert. Only applied to the python family.
+pub(crate) fn normalize_error_type_for_family(payload: &mut serde_json::Value, family: &str) {
+    let Some(obj) = payload.as_object_mut() else {
+        return;
+    };
+    let Some(t) = obj.get("errorType").and_then(serde_json::Value::as_str) else {
+        return;
+    };
+    if family != "python" {
+        return;
+    }
+    let mapped = match t {
+        "Runtime.UserCodeSyntaxError" => Some("SyntaxError"),
+        "Runtime.ImportModuleError" => Some("ModuleNotFoundError"),
+        _ => None,
+    };
+    if let Some(mapped) = mapped {
+        obj.insert("errorType".to_string(), serde_json::Value::String(mapped.to_string()));
+    }
 }
 
 /// Execute an invocation through the docker executor when the invoke path
@@ -698,6 +1495,28 @@ impl DockerLambdaExecutor {
         region: &str,
         account_id: &str,
     ) -> ExecResult {
+        // Managed families (java/dotnet/ruby) run the python-era loose
+        // bridges: one-shot `docker run --rm -i` with the event on stdin —
+        // see LOOSE_BRIDGE_FAMILIES and exec_loose_family.
+        if LOOSE_BRIDGE_FAMILIES.contains(&runtime_family(runtime)) {
+            return self.exec_loose_family(
+                runtime,
+                code_zip,
+                layer_zips,
+                code_dir,
+                handler,
+                event,
+                function_name,
+                function_version,
+                function_arn,
+                env_vars,
+                timeout_secs,
+                memory_size,
+                region,
+                account_id,
+            );
+        }
+
         // Generate a unique container name.
         let uuid_hex = uuid::Uuid::new_v4().simple().to_string();
         let container_name = format!("robotocore-lambda-{function_name}-{}", &uuid_hex[..8]);
@@ -722,7 +1541,16 @@ impl DockerLambdaExecutor {
         );
         cmd.insert(2, "-d".to_string());
 
-        let event_json = event.to_string();
+        // The python-era provider normalized an empty invoke body to an
+        // empty object before any executor saw it (`event = json.loads(body)
+        // if body else {}`), and the Runtime Interface POST must match: a
+        // blank body handed to the runtime image is unparseable
+        // (Runtime.UnmarshalError from the runtime's JSON load).
+        let event_json = if event.trim().is_empty() {
+            "{}".to_string()
+        } else {
+            event.to_string()
+        };
         let timeout_secs = timeout_secs.max(1);
         // Overall budget: the python-era `docker run` window with grace for
         // container startup.
@@ -845,6 +1673,13 @@ impl DockerLambdaExecutor {
             };
         }
 
+        if result_stdout.starts_with("Task timed out after") {
+            // The official emulator answers function-timeout breaches with a
+            // plain-text body; surface the shim's Task.TimedOut shape (the
+            // suites assert FunctionError + "timed out" in the message).
+            return run_timed_out_result(timeout_secs, "Task timed out after emulator cap");
+        }
+
         // Parse successful response: JSON data verbatim; non-JSON output as a
         // JSON string (python-era raw-string fallback via the provider's
         // json.dumps). The runtime interface emulator answers handler errors
@@ -852,15 +1687,24 @@ impl DockerLambdaExecutor {
         // requestId/stackTrace), so surface those as "Handled" function
         // errors.
         match serde_json::from_str::<Value>(&result_stdout) {
-            Ok(parsed) => {
+            Ok(mut parsed) => {
                 let is_handler_error = parsed
                     .as_object()
                     .map(|o| {
                         o.contains_key("errorMessage")
-                            && (o.contains_key("requestId") || o.contains_key("stackTrace"))
+                            && (o.contains_key("requestId")
+                                || o.contains_key("stackTrace")
+                                // The nodejs runtime client signals stack
+                                // frames under "trace" (Runtime.HandlerNotFound etc).
+                                || o.contains_key("trace")
+                                || o.contains_key("errorType"))
                     })
                     .unwrap_or(false);
                 if is_handler_error {
+                    // The python twin's shim reports bare interpreter names
+                    // for load errors; normalize the emulator's prefixed
+                    // ones for the python family.
+                    normalize_error_type_for_family(&mut parsed, runtime_family(runtime));
                     return ExecResult {
                         payload: parsed.to_string(),
                         function_error: Some("Handled".to_string()),
@@ -935,6 +1779,151 @@ impl DockerLambdaExecutor {
             region,
             account_id,
         )
+    }
+
+    /// Port of the python-era managed-family executors
+    /// (`runtimes/{java,dotnet,ruby}.py` + their bootstraps): a one-shot
+    /// `docker run --rm -i` running the shipped loose bridge INSIDE the
+    /// mapped official image — event JSON on stdin (the era
+    /// `run_subprocess` protocol), result/error JSON on stdout, era
+    /// `Task.TimedOut` on run-out; response parsing mirrors the era's
+    /// `base.run_subprocess`.
+    #[allow(clippy::too_many_arguments)]
+    fn exec_loose_family(
+        &self,
+        runtime: &str,
+        code_zip: &[u8],
+        layer_zips: &[Vec<u8>],
+        code_dir: &std::path::Path,
+        handler: &str,
+        event: &str,
+        function_name: &str,
+        function_version: &str,
+        function_arn: &str,
+        env_vars: &HashMap<String, String>,
+        timeout_secs: u32,
+        memory_size: u32,
+        region: &str,
+        account_id: &str,
+    ) -> ExecResult {
+        // The era run_subprocess path always sent json.dumps(event) — {} for
+        // empty bodies.
+        let event_json = if event.trim().is_empty() {
+            "{}".to_string()
+        } else {
+            event.to_string()
+        };
+        // (loose_bridge_dir() is created by loose_bridge_run_prefix below.)
+        let family = runtime_family(runtime);
+        let mut cmd = loose_bridge_run_prefix(
+            &code_dir.to_string_lossy(),
+            handler,
+            function_name,
+            function_version,
+            function_arn,
+            env_vars,
+            timeout_secs,
+            memory_size,
+            region,
+            account_id,
+            self.gateway_port,
+            self.docker_network.as_deref(),
+            self.docker_dns.as_deref(),
+        );
+        let image = runtime_image(runtime).unwrap_or_default();
+        // The family images' /lambda-entrypoint.sh demands the handler as the
+        // single CMD argument and boots their own RIC bootstrap — not what the
+        // loose bridges need. Override the entrypoint with `sh` and drive the
+        // bridge through an explicit script (stdin pipes through to the child,
+        // which lets `-i` feed the event).
+        cmd.push("--entrypoint".to_string());
+        cmd.push("sh".to_string());
+        cmd.push(image.to_string());
+        match family {
+            // javac ships in the amazonlinux java images: compile the bridge
+            // into container tmp (never into the read-only code mount), build
+            // the era classpath (code dir + packaged jars + layer dirs), and
+            // let coreutils `timeout` enforce the function timeout.
+            "java" => {
+                let script = format!(
+                    concat!(
+                        "mkdir -p /tmp/rc-bridge\n",
+                        "if ! javac -d /tmp/rc-bridge /var/bridge/RobotocoreJavaBridge.java 2>/dev/null; then\n",
+                        "  echo '{{\"errorMessage\":\"java bridge could not compile\",\"errorType\":\"Runtime.InvalidRuntime\"}}'\n",
+                        "  exit 1\n",
+                        "fi\n",
+                        "CP=\"/tmp/rc-bridge:/var/task\"\n",
+                        "for jar in $(find /var/task -name '*.jar' 2>/dev/null | sort); do CP=\"$CP:$jar\"; done\n",
+                        "for d in /var/task/lib /var/task/java /var/task/java/lib; do if [ -d \"$d\" ]; then CP=\"$CP:$d\"; fi; done\n",
+                        "timeout \"${{AWS_LAMBDA_FUNCTION_TIMEOUT}}s\" java -cp \"$CP\" RobotocoreJavaBridge\n",
+                        "rc=$?\n",
+                        "if [ \"$rc\" -eq 124 ]; then echo \"Task timed out after ${{AWS_LAMBDA_FUNCTION_TIMEOUT}}.00 seconds\"; fi\n",
+                        "exit $rc\n",
+                    ),
+                );
+                cmd.push("-c".to_string());
+                cmd.push(script);
+            }
+            "ruby" => {
+                let script = "rc=0\n".to_string()
+                    + "timeout \"${AWS_LAMBDA_FUNCTION_TIMEOUT}s\" ruby /var/bridge/bootstrap.rb || rc=$?\n"
+                    + "if [ \"$rc\" -eq 124 ]; then echo \"Task timed out after ${AWS_LAMBDA_FUNCTION_TIMEOUT}.00 seconds\"; fi\n"
+                    + "exit $rc\n";
+                cmd.push("-c".to_string());
+                cmd.push(script);
+            }
+            _ => {
+                // dotnet: the twin builds the bridge once per TFM (the
+                // official images carry only the runtime); class libraries
+                // with .cs sources and no DLL compile first (python-era
+                // `_compile_source`).
+                let tfm = dotnet_runtime_tfm(runtime);
+                if ensure_dotnet_bridge(&tfm).is_none() {
+                    return ExecResult {
+                        payload: json!({
+                            "errorMessage": ".NET SDK not installed",
+                            "errorType": "Runtime.InvalidRuntime",
+                        })
+                        .to_string(),
+                        function_error: Some("Runtime.InvalidRuntime".to_string()),
+                        logs: String::new(),
+                    };
+                }
+                if let Some(err) = compile_dotnet_source_if_needed(&tfm, code_dir, handler) {
+                    return err;
+                }
+                let script = format!(
+                    "rc=0\ntimeout \"${{AWS_LAMBDA_FUNCTION_TIMEOUT}}s\" dotnet /var/bridge/publish-{tfm}/RobotocoreDotnetBridge.dll || rc=$?\nif [ \"$rc\" -eq 124 ]; then echo \"Task timed out after ${{AWS_LAMBDA_FUNCTION_TIMEOUT}}.00 seconds\"; fi\nexit $rc\n"
+                );
+                cmd.push("-c".to_string());
+                cmd.push(script);
+            }
+        }
+
+        // Overall CLI budget: bridge bootstrap (javac/dotnet boot) plus the
+        // function runtime, whose own cap is enforced inside by `timeout` or
+        // the emulator.
+        let budget = u64::from(timeout_secs.max(1)) + 15;
+        let out = self.cli.run(&cmd, &event_json, budget);
+        match out {
+            Ok(o) => loose_result(o, timeout_secs),
+            Err(DockerRunError::NotFound) => self.execute_local_fallback(
+                runtime,
+                code_zip,
+                layer_zips,
+                handler,
+                &event_json,
+                function_name,
+                function_version,
+                function_arn,
+                env_vars,
+                timeout_secs,
+                memory_size,
+                region,
+                account_id,
+            ),
+            Err(_) => run_timed_out_result(timeout_secs, "Task timed out after CLI budget"),
+        }
     }
 
     /// No-op for subprocess-based executor (containers use --rm).
@@ -1687,7 +2676,9 @@ mod tests {
         let body = r#"{"errorMessage": "bad", "errorType": "ValueError", "requestId": "r1", "stackTrace": ["t"]}"#;
         cli.exec_results(&[Ok(mock_output(0, body, "err\n"))]);
         let ex = mk_executor(&cli, true);
-        let res = run_execute(&ex, "java21", r#"{}"#);
+        // EMI-family runtime: java/dotnet/ruby take the loose bridge path now
+        // (see LOOSE_BRIDGE_FAMILIES) and never reach the runtime interface.
+        let res = run_execute(&ex, "nodejs20.x", r#"{}"#);
         assert_eq!(res.function_error.as_deref(), Some("Handled"));
         let payload: Value = serde_json::from_str(&res.payload).unwrap();
         assert_eq!(payload["errorMessage"], "bad");
@@ -1704,7 +2695,9 @@ mod tests {
             "Error response from daemon: No such container: cnt",
         ))]);
         let ex = mk_executor(&cli, true);
-        let res = run_execute(&ex, "dotnet8", r#"{}"#);
+        // EMI-family runtime (java/dotnet/ruby take the loose bridge, which
+        // has no runtime-interface POST to observe).
+        let res = run_execute(&ex, "nodejs20.x", r#"{}"#);
         assert_eq!(res.function_error.as_deref(), Some("Unhandled"));
         let payload: Value = serde_json::from_str(&res.payload).unwrap();
         assert_eq!(payload["errorType"], "Runtime.ExitError");
@@ -1793,9 +2786,133 @@ mod tests {
         assert!(execs[0].0.starts_with("robotocore-lambda-f-"));
     }
 
-    // ------------------------------------------------------------------
-    // Singleton (python-era module-level singleton)
-    // ------------------------------------------------------------------
+    /// An empty invoke body (boto3 `invoke` with no `Payload`) normalizes to
+    /// `{}` before the Runtime Interface POST, like the python-era provider's
+    /// `event = json.loads(body) if body else {}` — a blank POST body reaches
+    /// the runtime image unparseable (Runtime.UnmarshalError).
+    #[test]
+    fn test_empty_event_normalized_to_empty_object() {
+        let _g = GUARD.lock();
+        let cli = MockCli::new();
+        cli.run_starts();
+        cli.exec_results(&[Ok(mock_output(0, "null", ""))]);
+        let ex = mk_executor(&cli, true);
+        let _ = run_execute(&ex, "python3.12", "");
+        let execs = cli.exec_calls();
+        assert_eq!(execs.len(), 1);
+        assert_eq!(execs[0].1, "{}");
+    }
+
+    /// Loose-bridge (java/dotnet/ruby) result rules: exit 0 JSON verbatim;
+    /// non-zero error JSON -> Handled; plain timeout text -> Task.TimedOut;
+    /// anything else -> Runtime.ExitError with the stderr tail.
+    #[test]
+    fn loose_result_parses_era_shapes() {
+        let out = loose_result(mock_output(0, r#"{"ok":true}"#, ""), 3);
+        assert_eq!(out.function_error, None);
+        assert_eq!(out.payload, r#"{"ok":true}"#);
+        let out = loose_result(mock_output(0, "plain text", ""), 3);
+        assert_eq!(out.payload, json!("plain text").to_string());
+        let out = loose_result(
+            mock_output(1, r#"{"errorMessage":"bad","errorType":"RuntimeError"}"#, "log\n"),
+            3,
+        );
+        assert_eq!(out.function_error.as_deref(), Some("Handled"));
+        let out = loose_result(mock_output(124, "Task timed out after 3.00 seconds", ""), 3);
+        assert_eq!(out.function_error.as_deref(), Some("Task.TimedOut"));
+        let payload: Value = serde_json::from_str(&out.payload).unwrap();
+        assert_eq!(payload["errorType"], "Task.TimedOut");
+        assert_eq!(payload["errorMessage"], "Task timed out after 3.00 seconds");
+        let out = loose_result(mock_output(2, "", "boom\n"), 3);
+        let payload: Value = serde_json::from_str(&out.payload).unwrap();
+        assert_eq!(payload["errorType"], "Runtime.ExitError");
+        assert_eq!(payload["errorMessage"], "boom");
+    }
+
+    /// The loose families build a one-shot `docker run --rm -i ...` — no
+    /// detached container, no runtime-interface POST (that is for the EMI
+    /// families only).
+    #[test]
+    fn loose_java_builds_oneshot_run_cmd() {
+        let _g = GUARD.lock();
+        let cli = MockCli::new();
+        cli.run_starts();
+        let ex = mk_executor(&cli, true);
+        let _ = run_execute(&ex, "java21", r#"{"k":1}"#);
+        let runs = cli.run_calls();
+        assert_eq!(runs.len(), 1);
+        assert!(runs[0].contains(&"--rm".to_string()));
+        assert!(runs[0].contains(&"-i".to_string()));
+        assert!(runs[0].contains(&"sh".to_string()));
+        assert!(runs[0].iter().any(|a| a.contains("RobotocoreJavaBridge")));
+    }
+
+    #[test]
+    fn loose_ruby_builds_bridge_run_cmd() {
+        let _g = GUARD.lock();
+        let cli = MockCli::new();
+        cli.run_starts();
+        let ex = mk_executor(&cli, true);
+        let _ = run_execute(&ex, "ruby3.2", r#"{}"#);
+        let runs = cli.run_calls();
+        assert_eq!(runs.len(), 1);
+        assert!(runs[0].contains(&"sh".to_string()));
+        assert!(runs[0].iter().any(|a| a.contains("bootstrap.rb")));
+    }
+
+    /// For the EMI families the nodejs runtime client's stack frames come
+    /// under "trace" — such error bodies must be marked as Handled.
+    #[test]
+    fn nodejs_trace_error_marked_handled() {
+        let _g = GUARD.lock();
+        let cli = MockCli::new();
+        cli.run_starts();
+        cli.exec_results(&[Ok(mock_output(
+            0,
+            r#"{"errorType":"Error","errorMessage":"boom","trace":["Error: boom"]}"#,
+            "err\n",
+        ))]);
+        let ex = mk_executor(&cli, true);
+        let res = run_execute(&ex, "nodejs20.x", r#"{}"#);
+        assert_eq!(res.function_error.as_deref(), Some("Handled"));
+        let payload: Value = serde_json::from_str(&res.payload).unwrap();
+        assert_eq!(payload["errorType"], "Error");
+        assert_eq!(payload["errorMessage"], "boom");
+    }
+
+    /// The emulator answers function-timeout breaches with a plain-text
+    /// body; the executor maps it to the shim's Task.TimedOut result.
+    #[test]
+    fn emulator_plain_timeout_text_maps_to_task_timed_out() {
+        let _g = GUARD.lock();
+        let cli = MockCli::new();
+        cli.run_starts();
+        cli.exec_results(&[Ok(mock_output(0, "Task timed out after 3.00 seconds", ""))]);
+        let ex = mk_executor(&cli, true);
+        let res = run_execute(&ex, "python3.12", r#"{}"#);
+        assert_eq!(res.function_error.as_deref(), Some("Task.TimedOut"));
+        let payload: Value = serde_json::from_str(&res.payload).unwrap();
+        assert_eq!(payload["errorType"], "Task.TimedOut");
+    }
+
+    /// The python family report load errors with bare interpreter names
+    /// (python-era shim contract), not the emulator's prefixed aliases.
+    #[test]
+    fn python_load_errors_normalize_to_shim_names() {
+        let _g = GUARD.lock();
+        let cli = MockCli::new();
+        cli.run_starts();
+        cli.exec_results(&[Ok(mock_output(
+            0,
+            r#"{"errorType":"Runtime.UserCodeSyntaxError","errorMessage":"bad","requestId":"r1"}"#,
+            "",
+        ))]);
+        let ex = mk_executor(&cli, true);
+        let res = run_execute(&ex, "python3.12", r#"{}"#);
+        let payload: Value = serde_json::from_str(&res.payload).unwrap();
+        assert_eq!(payload["errorType"], "SyntaxError");
+    }
+
 
     #[test]
     fn test_docker_executor_singleton() {

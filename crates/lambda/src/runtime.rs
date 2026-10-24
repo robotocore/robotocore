@@ -154,7 +154,9 @@ fn missing_runtime_result(msg: &str) -> ExecResult {
 
 /// Cap on captured handler output per stream (stdout, stderr). When a
 /// stream exceeds the cap only the last bytes are kept (tail semantics).
-const OUTPUT_CAP: usize = 128 * 1024;
+/// Results may carry large payloads ((SIG) docker-mode answers ride this
+/// pipe; 4MB keeps multi-hundred-KB results intact while bounding buffer).
+const OUTPUT_CAP: usize = 4 * 1024 * 1024;
 
 /// Drain a spawned child pipe on a dedicated thread, keeping at most
 /// `OUTPUT_CAP` bytes (tail semantics) and returning a channel the caller
