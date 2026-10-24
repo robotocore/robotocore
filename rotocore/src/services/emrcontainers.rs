@@ -16,7 +16,7 @@
 //!   repeat), ids are 25/19 lowercase-alnum chars, missing virtual-cluster
 //!   paths answer moto's `ValidationException` / `ResourceNotFoundException`
 //!   JSON documents, and misshapen `containerProvider` bodies escape moto's
-//!   `KeyError` as a 500 `InternalError`.
+//!   `KeyError` as moto's werkzeug HTML 500 page.
 //! - Botocore surface outside moto's module (job templates, managed
 //!   endpoints, security configurations, `ListTagsForResource`) answers
 //!   moto's `The <snake_op> action has not been implemented` 501 document.
@@ -147,12 +147,11 @@ fn ok(v: Value) -> Response {
     Response::json_status(200, &v)
 }
 
-/// moto's KeyError escapes surface as a 500 (werkzeug internal error).
-fn internal_error(message: String) -> Response {
-    Response::json_status(
-        500,
-        &json!({ "__type": "InternalError", "message": message }),
-    )
+/// moto's unguarded KeyError/ValueError escapes (`self.info[...]`,
+/// `int(next_token)`) surface through moto's werkzeug server as the plain
+/// HTML 500 page — crash-faithful, no AWS envelope.
+fn internal_error(_message: String) -> Response {
+    crate::proto::moto_crash_response()
 }
 
 /// moto's shared `ValidationException` (config.exceptions): 400 JSON doc.
@@ -790,6 +789,25 @@ mod tests {
         serde_json::from_slice(&resp.body).unwrap_or(Value::Null)
     }
 
+    /// moto-crash rows render the werkzeug unhandled-exception page
+    /// (Content-Type text/html; an SDK sees a parse failure, like moto).
+    fn assert_moto_crash(resp: &Response) {
+        assert_eq!(resp.status, 500);
+        assert!(
+            resp.headers
+                .iter()
+                .any(|(k, v)| k == "Content-Type" && v == "text/html; charset=utf-8"),
+            "{:?}",
+            resp.headers
+        );
+        let text = String::from_utf8(resp.body.clone()).expect("utf8");
+        assert!(text.starts_with("<!doctype html>"), "{text}");
+        assert!(
+            text.contains("<title>500 Internal Server Error</title>"),
+            "{text}"
+        );
+    }
+
     fn provider(ns: &str) -> Value {
         json!({"id": "eks-1", "type": "EKS", "info": {"eksInfo": {"namespace": ns}}})
     }
@@ -1255,9 +1273,7 @@ mod tests {
         );
         let resp = dispatch(&r).unwrap();
         assert_eq!(resp.status, 500);
-        let b = body_of(&resp);
-        assert_eq!(b["__type"], "InternalError");
-        assert_eq!(b["message"], "'info'");
+        assert_moto_crash(&resp);
     }
 
     #[test]

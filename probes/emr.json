@@ -1,7 +1,7 @@
 {
   "service": "emr",
-  "generated_at": "2026-10-22T07:00:53.221744+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-24T17:31:22.987818+00:00",
+  "endpoint": "http://localhost:4794",
   "counts": {
     "working": 56,
     "needs_params": 0,
@@ -273,7 +273,7 @@
     {
       "operation": "SetTerminationProtection",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "SetUnhealthyNodeReplacement",
@@ -283,7 +283,7 @@
     {
       "operation": "SetVisibleToAllUsers",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "StartNotebookExecution",
@@ -298,7 +298,7 @@
     {
       "operation": "TerminateJobFlows",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "UpdateStudio",

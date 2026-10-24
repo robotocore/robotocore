@@ -15,9 +15,11 @@
 //!   replication instance reads `available` on its first serialization and a
 //!   connection reads `successful` — here those are birth statuses.
 //! - `ListTagsForResource` with both/ neither selector reproduces moto's
-//!   unguarded `ValueError` as a 500 `InternalError` (recorded in the probe).
+//!   unguarded `ValueError` as the werkzeug HTML 500 page (crash-faithful;
+//!   recorded in the probe).
 //! - Unknown filter names in `DescribeEndpoint(s)`/`DescribeConnections`/
-//!   `DescribeReplicationSubnetGroups` raise moto's `ValueError` → 500.
+//!   `DescribeReplicationSubnetGroups` raise moto's `ValueError` → the same
+//!   unhanded-exception HTML 500.
 //! - `DescribeReplicationTaskIndividualAssessments*`, Fleet Advisor and
 //!   metadata-model describes return moto's empty lists; the start/cancel
 //!   operations mint a `RequestIdentifier` id and nothing more.
@@ -107,9 +109,12 @@ fn validation_error(message: &str) -> Response {
     json_error(400, "ValidationError", message)
 }
 
-/// moto's unguarded `ValueError` paths surface as a 500 `InternalError`.
-fn internal_error(message: String) -> Response {
-    json_error(500, "InternalError", &message)
+/// moto's unguarded `ValueError` paths (invalid filter names, the
+/// both-selectors TagInfo call) escape the handler entirely: moto's server
+/// answers the plain werkzeug HTML 500 page — crash-faithful, no AWS
+/// envelope. The message text is kept only in the doc-level comments.
+fn internal_error(_message: String) -> Response {
+    crate::proto::moto_crash_response()
 }
 
 /// moto's `random_id(uppercase=True, length=N)`: leading letter, then
@@ -2692,6 +2697,17 @@ mod tests {
         ACCOUNTS.fetch_add(1, Ordering::SeqCst)
     }
 
+    /// moto's unhandled-exception answer is the plain werkzeug HTML 500
+    /// page — no modeled AWS envelope, which the JSON test decoder renders
+    /// as `{}` (same observability a boto3 client gets from moto).
+    fn assert_moto_crash_html(body: &Value) {
+        assert_eq!(
+            body,
+            &json!({}),
+            "crash rows must not carry an AWS envelope"
+        );
+    }
+
     fn send(account: u64, operation: &str, body: Value) -> (u16, Value) {
         let request = Request {
             service: "dms".to_string(),
@@ -2837,11 +2853,7 @@ mod tests {
             json!({ "Filters": [{"Name": "bogus-filter", "Values": ["x"]}] }),
         );
         assert_eq!(status, 500);
-        assert_eq!(body["__type"], "InternalError");
-        assert!(body["message"]
-            .as_str()
-            .expect("message")
-            .starts_with("Invalid filter name:"));
+        assert_moto_crash_html(&body);
     }
 
     #[test]
@@ -3015,7 +3027,7 @@ mod tests {
         ] {
             let (status, body) = send(account, "ListTagsForResource", operation);
             assert_eq!(status, 500);
-            assert_eq!(body["__type"], "InternalError");
+            assert_moto_crash_html(&body);
         }
         let (status, body) = send(
             account,

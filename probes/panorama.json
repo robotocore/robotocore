@@ -1,7 +1,7 @@
 {
   "service": "panorama",
-  "generated_at": "2026-10-22T07:01:42.456991+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-24T17:31:23.699556+00:00",
+  "endpoint": "http://localhost:4794",
   "counts": {
     "working": 32,
     "needs_params": 0,
@@ -38,7 +38,7 @@
     {
       "operation": "DeleteDevice",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-device-id-id')"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "DeletePackage",
@@ -48,7 +48,7 @@
     {
       "operation": "DeregisterPackageVersion",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeApplicationInstance",
@@ -178,7 +178,7 @@
     {
       "operation": "UpdateDeviceMetadata",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-device-id-id')"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     }
   ]
 }

@@ -1,18 +1,19 @@
 {
   "service": "bedrock-runtime",
-  "generated_at": "2026-10-20T05:27:03.859936+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-24T17:31:59.536594+00:00",
+  "endpoint": "http://localhost:4794",
   "counts": {
-    "working": 0,
-    "needs_params": 2,
+    "working": 1,
+    "needs_params": 3,
     "not_implemented": 6,
-    "500_error": 2
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "ApplyGuardrail",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
     },
     {
       "operation": "Converse",
@@ -36,13 +37,13 @@
     },
     {
       "operation": "InvokeModel",
-      "status": "500_error",
-      "message": "server crash (InternalError: EOF while parsing a value at line 1 column 0)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "InvokeModelWithBidirectionalStream",
-      "status": "500_error",
-      "message": "exception: 'BedrockRuntime' object has no attribute 'invoke_model_with_"
+      "status": "needs_params",
+      "message": "client-side probe gap (AttributeError: 'BedrockRuntime' object has no attribute 'invoke_model_with_)"
     },
     {
       "operation": "InvokeModelWithResponseStream",
@@ -56,8 +57,8 @@
     },
     {
       "operation": "StartAsyncInvoke",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     }
   ]
 }

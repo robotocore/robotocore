@@ -6,6 +6,59 @@ auto-tags and publishes a versioned + `:latest` Docker image. Each release
 gets a top-level section here; the project source of truth for the
 maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
 
+## 2026.10.24 (unreleased, `port/fix-crash-rows` branch)
+
+### Fixed: crashed probe rows now match moto's exact wire behavior
+
+Triaged the committed probe artifacts' HTTP-500 rows against the moto fork
+(5.1.23.dev, the parity source) op-by-op. Two moto-crash classes and one
+twin-only divergence:
+
+- **Ses un-routed operations were unreadable to XML SDKs.** The 16 SES
+  operations the moto fork does not route (identity policies, tracking /
+  delivery options, `SendBounce`, rule repositioning, ...) fell through to
+  the gateway's JSON 501 document, which a query-protocol (XML) client
+  cannot parse and therefore surfaced as a `500_error` crash row. The ses
+  module now answers the twin-wide canonical 501 itself, in the
+  query-protocol envelope: `NotImplemented: The <snake_op> action has not
+  been implemented`, matching moto's `call_action` message.
+- **Moto's own unhandled exceptions are now served moto-identically.**
+  moto's unguarded `KeyError` / `AttributeError` / `ValueError` escapes
+  leave the handler and tumble to the werkzeug server, which answers a
+  plain HTML 500 page — no AWS envelope at all. Crash-faithful rows now
+  render those exact bytes (`rotocore::proto::moto_crash_response`) for
+  elb (`Register/DeregisterInstancesFromLoadBalancer`,
+  `Attach/DetachLoadBalancerFromSubnets`,
+  `Describe/ModifyLoadBalancerAttributes` when the load balancer is
+  missing), athena (`GetNamedQuery`, `Get/StopQueryExecution`), dms
+  (invalid filter names, `ListTagsForResource` selector misuse),
+  emr (`SetTerminationProtection`, `SetVisibleToAllUsers`,
+  `TerminateJobFlows`, unknown-instance-group paths), emrcontainers
+  (malformed `containerProvider` bodies, bad next tokens), panorama
+  (unknown devices), s3control (`PutBucketVersioning` — moto indexes
+  `["PutBucketVersioningRequest"]` on a body whose root is always
+  `VersioningConfiguration`).
+- **Two elb crashes were twin-only and are now fixed** to moto's modeled
+  behavior: `ApplySecurityGroupsToLoadBalancer` validates security groups
+  through the EC2 loopback before the load-balancer lookup (moto raises
+  `InvalidSecurityGroupError` → `ValidationError`; the loopback probe also
+  used an EC2 filter encoding that never matched, so every id counted as
+  existing), and `DescribeLoadBalancerPolicies` raises the modeled
+  `LoadBalancerNotFound` like moto's `describe_load_balancers`.
+- Unchanged-by-design rows: `resource-groups` tag-sync tasks (the twin
+  already serves moto's byte-exact werkzeug page), `workspaces` unknown-id
+  `InternalError` mirrors (recorded in probes and pinned by the compat
+  suite), and the `connect` module's codified 501/`InternalError` surface
+  for operations moto never routed.
+- Probe artifacts (`probes/`) re-run through the probe runner for
+  elb, ses, athena, dms, emr, emrcontainers, panorama, s3control and
+  bedrock-runtime: ses drops from 16 crashed rows to
+  16× `not_implemented` and elb from 8 to 7 (its kept crash rows now show
+  moto's unparseable-HTML observables), while the 500 rows it keeps are
+  byte-shape identical to what the moto server serves. `scripts/coverage.py`
+  regenerated `tooling/coverage.json` and advanced the
+  `tooling/coverage-budget.json` ratchet (`covered 9458/10268`, gate OK).
+
 ## 2026.10.19 (unreleased, `port/rot-emr2` branch)
 
 ### Added: native EMR backend on the pure-Rust server

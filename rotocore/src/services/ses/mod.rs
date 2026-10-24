@@ -13,8 +13,10 @@
 //! Per the wave-2 ruling (docs/moto-parity-progress.md): operations absent
 //! from the moto fork's surface (identity policies, tracking/delivery
 //! options, rule repositioning, `SendBounce`, ...) are NOT implemented
-//! here; `dispatch` answers `None` for them so the gateway's canonical 501
-//! path serves them, exactly as the sidecar did.
+//! here; `dispatch` answers moto's canonical unimplemented-op status (501
+//! `NotImplemented`) for them, in query-protocol XML so a boto3 ses client
+//! can parse the answer (the gateway's JSON fallthrough raises a parse
+//! failure for query-protocol clients).
 
 use crate::proto::query_response_xml;
 use crate::store::{self, Slot};
@@ -284,6 +286,9 @@ fn slot() -> Slot<SesState> {
 struct SesError {
     code: String,
     message: String,
+    /// 400 for modeled SES faults; 501 for operations the moto fork does
+    /// not route (moto raises `NotImplementedError` for those).
+    status: u16,
 }
 
 impl SesError {
@@ -291,14 +296,41 @@ impl SesError {
         Self {
             code: code.to_string(),
             message: message.into(),
+            status: 400,
+        }
+    }
+
+    /// An operation absent from the moto fork's surface: `call_action`
+    /// raises `NotImplementedError("The {snake} action has not been
+    /// implemented")`. The twin answers the twin-wide canonical 501, and
+    /// in the query-protocol envelope an XML SDK can parse.
+    fn not_implemented(op: &str) -> Self {
+        Self {
+            code: "NotImplemented".to_string(),
+            message: format!("The {} action has not been implemented", to_snake_case(op)),
+            status: 501,
         }
     }
 }
 
+/// moto `core/utils.py::camelcase_to_underscores` for the operation names in
+/// the canonical message (`ListIdentityPolicies` → `list_identity_policies`).
+fn to_snake_case(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 4);
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && c.is_uppercase() {
+            out.push('_');
+        }
+        out.extend(c.to_lowercase());
+    }
+    out
+}
+
 type OpResult = Result<String, SesError>;
 
-/// AWS query-protocol error envelope in the moto SES layout.
-fn error_response(code: &str, message: &str) -> Response {
+/// AWS query-protocol error envelope in the moto SES layout (400 unless the
+/// error carries its own status).
+fn error_response(code: &str, message: &str, status: u16) -> Response {
     let body = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <ErrorResponse xmlns="{XMLNS}">
@@ -313,7 +345,7 @@ fn error_response(code: &str, message: &str) -> Response {
         escape(message),
         uuid::Uuid::new_v4()
     );
-    Response::xml(400, body.into_bytes())
+    Response::xml(status, body.into_bytes())
 }
 
 // ---------------------------------------------------------------------------
@@ -450,18 +482,20 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         return None;
     }
     // The gateway seeds `operation` from the `Action=` key, so it equals the
-    // botocore operation name. Unknown query actions raised
-    // NotImplementedError in moto: answer None to fall through to the
-    // gateway's canonical 501.
+    // botocore operation name. Operations the moto fork does not route raise
+    // `NotImplementedError` in moto; per the twin-wide canon those answer the
+    // canonical 501 — here in the query-protocol envelope so XML SDKs can
+    // parse it (the gateway's JSON fallthrough is unreadable for them).
     match handle(req, &op) {
         Some(Ok(result)) => Some(response_xml(&op, &result)),
-        Some(Err(e)) => Some(error_response(&e.code, &e.message)),
+        Some(Err(e)) => Some(error_response(&e.code, &e.message, e.status)),
         None => None,
     }
 }
 
 /// Dispatch table: `Some(result)` when the backend owns the operation,
-/// `None` when the moto fork does not route it.
+/// `None` only for non-SES traffic. Operations the moto fork does not
+/// route raise moto's `NotImplementedError` (canonical 501).
 fn handle(req: &Request, op: &str) -> Option<OpResult> {
     let (p, raw) = parse_params(req);
     let slots = slot();
@@ -549,7 +583,8 @@ fn handle(req: &Request, op: &str) -> Option<OpResult> {
         "SendCustomVerificationEmail" => op_send_custom_verification_email(state, &p),
         "GetAccountSendingEnabled" => Ok(tag("Enabled", "true")),
         "UpdateAccountSendingEnabled" => empty(),
-        _ => return None,
+        // not routed by the moto fork's EmailResponse — canonical 501.
+        _ => return Some(Err(SesError::not_implemented(op))),
     };
     Some(result)
 }
@@ -1816,6 +1851,7 @@ fn op_send_custom_verification_email(state: &SesState, p: &BTreeMap<String, Val>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bytes::Bytes;
 
     #[test]
     fn parses_wrapped_and_flattened_lists() {
@@ -1853,5 +1889,71 @@ mod tests {
     fn parsed_addr_takes_angle_brackets() {
         assert_eq!(parse_addr("Foo <foo@bar.com>"), "foo@bar.com");
         assert_eq!(parse_addr("bare@x.com"), "bare@x.com");
+    }
+
+    /// Operations the moto fork does not route (identity policies, tracking
+    /// options, SendBounce, ...) answer the canonical 501 NotImplemented in
+    /// a query-protocol envelope botocore parses. Regression guard for the
+    /// gateway-JSON fallthrough that ses XML clients could not read.
+    #[test]
+    fn unrouted_ops_answer_canonical_501() {
+        for op in [
+            "ListIdentityPolicies",
+            "PutIdentityPolicy",
+            "DeleteIdentityPolicy",
+            "GetIdentityPolicies",
+            "SendBounce",
+            "ReorderReceiptRuleSet",
+            "SetReceiptRulePosition",
+            "CreateConfigurationSetTrackingOptions",
+            "DeleteConfigurationSetTrackingOptions",
+            "UpdateConfigurationSetTrackingOptions",
+            "PutConfigurationSetDeliveryOptions",
+            "UpdateConfigurationSetSendingEnabled",
+            "UpdateConfigurationSetEventDestination",
+            "DeleteConfigurationSetEventDestination",
+            "SetIdentityHeadersInNotificationsEnabled",
+            "DeleteVerifiedEmailAddress",
+        ] {
+            let full = format!("Action={op}&Version=2010-12-01");
+            let req = Request {
+                service: "ses".into(),
+                operation: op.into(),
+                method: "POST".into(),
+                path: "/".into(),
+                query_string: String::new(),
+                headers: Default::default(),
+                body: Bytes::from(full),
+                account: 123456789030,
+                region: "us-east-1".into(),
+            };
+            let resp = dispatch(&req).expect("dispatch owns every Action");
+            assert_eq!(resp.status, 501, "{op}");
+            let text = String::from_utf8(resp.body.clone()).unwrap();
+            assert!(text.contains("<Code>NotImplemented</Code>"), "{op}: {text}");
+            assert!(
+                text.contains(&format!(
+                    "<Message>The {} action has not been implemented</Message>",
+                    to_snake_case(op)
+                )),
+                "{op}: {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn snake_case_matches_moto_action_names() {
+        assert_eq!(
+            to_snake_case("ListIdentityPolicies"),
+            "list_identity_policies"
+        );
+        assert_eq!(
+            to_snake_case("UpdateConfigurationSetSendingEnabled"),
+            "update_configuration_set_sending_enabled"
+        );
+        assert_eq!(
+            to_snake_case("SetIdentityHeadersInNotificationsEnabled"),
+            "set_identity_headers_in_notifications_enabled"
+        );
     }
 }

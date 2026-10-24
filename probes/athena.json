@@ -1,7 +1,7 @@
 {
   "service": "athena",
-  "generated_at": "2026-10-22T06:59:27.401080+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-24T17:31:19.926380+00:00",
+  "endpoint": "http://localhost:4794",
   "counts": {
     "working": 67,
     "needs_params": 0,
@@ -138,7 +138,7 @@
     {
       "operation": "GetNamedQuery",
       "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'name')"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "GetNotebookMetadata",
@@ -153,7 +153,7 @@
     {
       "operation": "GetQueryExecution",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-query-execution-id-id')"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "GetQueryResults",
@@ -273,7 +273,7 @@
     {
       "operation": "ListTagsForResource",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (InvalidRequestException)"
     },
     {
       "operation": "ListWorkGroups",
@@ -308,7 +308,7 @@
     {
       "operation": "StopQueryExecution",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-query-execution-id-id')"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "TagResource",

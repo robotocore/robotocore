@@ -1,7 +1,7 @@
 {
   "service": "dms",
-  "generated_at": "2026-10-22T07:00:07.484410+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-24T17:31:21.756475+00:00",
+  "endpoint": "http://localhost:4794",
   "counts": {
     "working": 114,
     "needs_params": 1,
@@ -78,12 +78,12 @@
     {
       "operation": "CreateReplicationConfig",
       "status": "working",
-      "message": "likely implemented (ResourceAlreadyExistsFault: The resource you are attempting to create already exists.)"
+      "message": "OK"
     },
     {
       "operation": "CreateReplicationInstance",
       "status": "working",
-      "message": "likely implemented (ResourceAlreadyExistsFault: The resource you are attempting to create already exists.)"
+      "message": "OK"
     },
     {
       "operation": "CreateReplicationSubnetGroup",
@@ -93,7 +93,7 @@
     {
       "operation": "CreateReplicationTask",
       "status": "working",
-      "message": "likely implemented (ResourceAlreadyExistsFault: The resource you are attempting to create already exists.)"
+      "message": "OK"
     },
     {
       "operation": "DeleteCertificate",
@@ -188,7 +188,7 @@
     {
       "operation": "DescribeConnections",
       "status": "500_error",
-      "message": "server crash (InternalError: Invalid filter name: probe-test-value)"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "DescribeConversionConfiguration",
@@ -218,7 +218,7 @@
     {
       "operation": "DescribeEndpoints",
       "status": "500_error",
-      "message": "server crash (InternalError: Invalid filter name: probe-test-value)"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "DescribeEngineVersions",
@@ -363,7 +363,7 @@
     {
       "operation": "DescribeReplicationSubnetGroups",
       "status": "500_error",
-      "message": "server crash (InternalError: Invalid filter name: probe-test-value)"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "DescribeReplicationTableStatistics",
@@ -418,12 +418,12 @@
     {
       "operation": "ImportCertificate",
       "status": "working",
-      "message": "likely implemented (ResourceAlreadyExistsFault: The resource you are attempting to create already exists.)"
+      "message": "OK"
     },
     {
       "operation": "ListTagsForResource",
       "status": "500_error",
-      "message": "server crash (InternalError: Both ResourceArn and ResourceArnList cannot be specified.)"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "ModifyConversionConfiguration",

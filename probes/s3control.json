@@ -1,7 +1,7 @@
 {
   "service": "s3control",
-  "generated_at": "2026-10-22T07:02:08.659502+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-24T17:31:25.034469+00:00",
+  "endpoint": "http://localhost:4794",
   "counts": {
     "working": 84,
     "needs_params": 0,
@@ -108,22 +108,22 @@
     {
       "operation": "DeleteBucketLifecycleConfiguration",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchBucket)"
     },
     {
       "operation": "DeleteBucketPolicy",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchBucket)"
     },
     {
       "operation": "DeleteBucketReplication",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchBucket)"
     },
     {
       "operation": "DeleteBucketTagging",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchBucket)"
     },
     {
       "operation": "DeleteJobTagging",
@@ -243,7 +243,7 @@
     {
       "operation": "GetBucketLifecycleConfiguration",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchBucket)"
     },
     {
       "operation": "GetBucketPolicy",
@@ -253,7 +253,7 @@
     {
       "operation": "GetBucketReplication",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchBucket)"
     },
     {
       "operation": "GetBucketTagging",
@@ -263,7 +263,7 @@
     {
       "operation": "GetBucketVersioning",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchBucket)"
     },
     {
       "operation": "GetDataAccess",
@@ -408,27 +408,27 @@
     {
       "operation": "PutBucketLifecycleConfiguration",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchBucket)"
     },
     {
       "operation": "PutBucketPolicy",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchBucket)"
     },
     {
       "operation": "PutBucketReplication",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchBucket)"
     },
     {
       "operation": "PutBucketTagging",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchBucket)"
     },
     {
       "operation": "PutBucketVersioning",
       "status": "500_error",
-      "message": "server crash (InternalError: &#39;PutBucketVersioningRequest&#39;)"
+      "message": "server crash (500: Internal Server Error)"
     },
     {
       "operation": "PutJobTagging",

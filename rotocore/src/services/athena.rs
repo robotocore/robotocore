@@ -14,8 +14,8 @@
 //!   paths use `InvalidRequestException`, raised
 //!   `InvalidArgumentException` paths use that code.
 //! - `GetNamedQuery` on a missing id crashes moto with
-//!   `'NoneType' object has no attribute 'name'` — reproduced as a
-//!   500 `InternalError`.
+//!   `'NoneType' object has no attribute 'name'` — crash-faithful as the
+//!   werkzeug HTML 500 moto's server answers for unhandled exceptions.
 //! - `CreateCapacityReservation` without `Tags` succeeds: moto's
 //!   `CapacityReservation.__init__` normalizes `tags or []` and
 //!   `TaggingService.tag_resource` no-ops on `None`.
@@ -46,26 +46,15 @@ fn invalid_argument(message: &str) -> Response {
 }
 
 /// moto crash on `GetNamedQuery` with a missing id (`nq.name` on None).
+///
+/// Crash-faithful: unhandled AttributeError → werkzeug HTML 500.
 fn not_handled() -> Response {
-    Response::json_status(
-        500,
-        &json!({
-            "__type": "InternalError",
-            "message": "'NoneType' object has no attribute 'name'",
-        }),
-    )
+    crate::proto::moto_crash_response()
 }
 
-/// moto `KeyError` surfacing through the sidecar as
-/// `{"__type": "InternalError", "message": "'<id>'"}`.
-fn key_error(id: &str) -> Response {
-    Response::json_status(
-        500,
-        &json!({
-            "__type": "InternalError",
-            "message": format!("'{}'", id),
-        }),
-    )
+/// moto `executions[<id>]` KeyError surfacing as the same werkzeug crash.
+fn key_error(_id: &str) -> Response {
+    crate::proto::moto_crash_response()
 }
 
 /// moto `AthenaClientError` (JsonRESTError) wire body.
@@ -2570,16 +2559,27 @@ mod tests {
             "missing"
         );
 
-        // missing get is the moto 'NoneType' crash
+        // missing get is the moto 'NoneType' crash — moto's server renders
+        // unhandled exceptions as the exact werkzeug HTML 500 page.
         let resp = run(
             account,
             "GetNamedQuery",
             json!({"NamedQueryId": "00000000-0000-0000-0000-000000000000"}),
         );
         assert_eq!(resp.status, 500);
-        let err = body_of(&resp);
-        assert_eq!(err["__type"], "InternalError");
-        assert_eq!(err["message"], "'NoneType' object has no attribute 'name'");
+        assert!(
+            resp.headers
+                .iter()
+                .any(|(k, v)| k == "Content-Type" && v == "text/html; charset=utf-8"),
+            "{:?}",
+            resp.headers
+        );
+        let html = String::from_utf8(resp.body.clone()).unwrap();
+        assert!(html.starts_with("<!doctype html>"));
+        assert!(
+            html.contains("<title>500 Internal Server Error</title>"),
+            "{html}"
+        );
 
         // create against a missing workgroup errors
         let resp = run(
