@@ -243,7 +243,7 @@ pub(crate) fn loose_bridge_run_prefix(
         "-e".to_string(),
         format!("AWS_LAMBDA_LOG_STREAM_NAME={}", shim_log_stream_name()),
         "-e".to_string(),
-        format!("LAMBDA_TASK_ROOT=/var/task"),
+        "LAMBDA_TASK_ROOT=/var/task".to_string(),
         "-e".to_string(),
         format!("_HANDLER={handler}"),
         "-e".to_string(),
@@ -335,7 +335,11 @@ pub(crate) fn ensure_dotnet_bridge(tfm: &str) -> Option<std::path::PathBuf> {
                 .map(|s| s.success())
                 .unwrap_or(false)
                 && dll.exists();
-            if ok { Some(out_dir.clone()) } else { None }
+            if ok {
+                Some(out_dir.clone())
+            } else {
+                None
+            }
         }
     };
     if let Some(entry) = guard.as_mut() {
@@ -370,7 +374,12 @@ pub(crate) fn compile_dotnet_source_if_needed(
         });
     }
     let dll = code_dir.join(format!("{assembly_name}.dll"));
-    if dll.exists() || code_dir.join("publish").join(format!("{assembly_name}.dll")).exists() {
+    if dll.exists()
+        || code_dir
+            .join("publish")
+            .join(format!("{assembly_name}.dll"))
+            .exists()
+    {
         return None;
     }
     let cs_sources: Vec<String> = std::fs::read_dir(code_dir)
@@ -469,7 +478,7 @@ pub(crate) fn compile_dotnet_source_if_needed(
         }
     }
     match run {
-        Ok(out) if ok && dll.exists() => None,
+        Ok(_) if ok && dll.exists() => None,
         _ => {
             let stderr = run
                 .as_ref()
@@ -1034,7 +1043,10 @@ pub(crate) fn normalize_error_type_for_family(payload: &mut serde_json::Value, f
         _ => None,
     };
     if let Some(mapped) = mapped {
-        obj.insert("errorType".to_string(), serde_json::Value::String(mapped.to_string()));
+        obj.insert(
+            "errorType".to_string(),
+            serde_json::Value::String(mapped.to_string()),
+        );
     }
 }
 
@@ -1845,7 +1857,7 @@ impl DockerLambdaExecutor {
             // the era classpath (code dir + packaged jars + layer dirs), and
             // let coreutils `timeout` enforce the function timeout.
             "java" => {
-                let script = format!(
+                let script =
                     concat!(
                         "mkdir -p /tmp/rc-bridge\n",
                         "if ! javac -d /tmp/rc-bridge /var/bridge/RobotocoreJavaBridge.java 2>/dev/null; then\n",
@@ -1855,14 +1867,13 @@ impl DockerLambdaExecutor {
                         "CP=\"/tmp/rc-bridge:/var/task\"\n",
                         "for jar in $(find /var/task -name '*.jar' 2>/dev/null | sort); do CP=\"$CP:$jar\"; done\n",
                         "for d in /var/task/lib /var/task/java /var/task/java/lib; do if [ -d \"$d\" ]; then CP=\"$CP:$d\"; fi; done\n",
-                        "timeout \"${{AWS_LAMBDA_FUNCTION_TIMEOUT}}s\" java -cp \"$CP\" RobotocoreJavaBridge\n",
+                        "timeout \"${AWS_LAMBDA_FUNCTION_TIMEOUT}s\" java -cp \"$CP\" RobotocoreJavaBridge\n",
                         "rc=$?\n",
-                        "if [ \"$rc\" -eq 124 ]; then echo \"Task timed out after ${{AWS_LAMBDA_FUNCTION_TIMEOUT}}.00 seconds\"; fi\n",
+                        "if [ \"$rc\" -eq 124 ]; then echo \"Task timed out after ${AWS_LAMBDA_FUNCTION_TIMEOUT}.00 seconds\"; fi\n",
                         "exit $rc\n",
-                    ),
-                );
+                    );
                 cmd.push("-c".to_string());
-                cmd.push(script);
+                cmd.push(script.to_string());
             }
             "ruby" => {
                 let script = "rc=0\n".to_string()
@@ -1878,7 +1889,7 @@ impl DockerLambdaExecutor {
                 // with .cs sources and no DLL compile first (python-era
                 // `_compile_source`).
                 let tfm = dotnet_runtime_tfm(runtime);
-                if ensure_dotnet_bridge(&tfm).is_none() {
+                if ensure_dotnet_bridge(tfm).is_none() {
                     return ExecResult {
                         payload: json!({
                             "errorMessage": ".NET SDK not installed",
@@ -1889,7 +1900,7 @@ impl DockerLambdaExecutor {
                         logs: String::new(),
                     };
                 }
-                if let Some(err) = compile_dotnet_source_if_needed(&tfm, code_dir, handler) {
+                if let Some(err) = compile_dotnet_source_if_needed(tfm, code_dir, handler) {
                     return err;
                 }
                 let script = format!(
@@ -2814,7 +2825,11 @@ mod tests {
         let out = loose_result(mock_output(0, "plain text", ""), 3);
         assert_eq!(out.payload, json!("plain text").to_string());
         let out = loose_result(
-            mock_output(1, r#"{"errorMessage":"bad","errorType":"RuntimeError"}"#, "log\n"),
+            mock_output(
+                1,
+                r#"{"errorMessage":"bad","errorType":"RuntimeError"}"#,
+                "log\n",
+            ),
             3,
         );
         assert_eq!(out.function_error.as_deref(), Some("Handled"));
@@ -2912,7 +2927,6 @@ mod tests {
         let payload: Value = serde_json::from_str(&res.payload).unwrap();
         assert_eq!(payload["errorType"], "SyntaxError");
     }
-
 
     #[test]
     fn test_docker_executor_singleton() {

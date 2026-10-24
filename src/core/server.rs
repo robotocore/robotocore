@@ -1692,8 +1692,12 @@ fn available_runtime_families() -> Vec<&'static str> {
 /// executor mode so a pod (or test) flipping `LAMBDA_EXECUTOR` sees fresh
 /// results instead of a stale mode's probe. Daemon state changes are picked
 /// up within the TTL window, which is acceptable for a capability report.
+/// Cached docker capability report: instant of probe, executor mode it was
+/// probed under, and the families the docker executor covers at that instant.
+type DockerCapabilityCache = Option<(Instant, String, Option<Vec<&'static str>>)>;
+
 fn docker_capability_runtimes_cached() -> Option<Vec<&'static str>> {
-    static CACHE: Mutex<Option<(Instant, String, Option<Vec<&'static str>>)>> = Mutex::new(None);
+    static CACHE: Mutex<DockerCapabilityCache> = Mutex::new(None);
     let mode = lambda::docker_runtime::executor_mode();
     let mut guard = CACHE.lock();
     if let Some((at, cached_mode, families)) = guard.as_ref() {
