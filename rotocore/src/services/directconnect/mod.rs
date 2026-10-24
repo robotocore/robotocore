@@ -30,10 +30,22 @@
 //!   (or unknown id, whose lookup hides behind an empty list) is moto's
 //!   `ConnectionNotFound`.
 //!
-//! The other botocore operations answer the gateway's generic
-//! `501 NotImplemented`: the fork's `moto/directconnect/responses.py` has no
-//! handler for them (verified live: its backend raises
-//! `NotImplementedError: The <op> action has not been implemented`).
+//! The remaining botocore operations (`wave 12`) are armed here against the
+//! botocore wire model alone (the moto fork is absent for them). State is
+//! the same per-(account, region) store extended with interconnects, virtual
+//! interfaces, Direct Connect gateways/associations/proposals/attachments,
+//! BGP failover tests and stored customer agreements. Ids stay ARN-flavoured,
+//! deterministic `{dx-moto|dxgw-moto|dxassoc-moto|dxproposal-moto|…}-<name>-<ts>`
+//! with `%Y%m%d%H%M%S` timestamps. Deterministic model choices (no async in
+//! the twin): virtual interfaces are created `pending` (public: `verifying`)
+//! and move to `available` on their Confirm* call; associations are created
+//! `associated` and answer `disassociating` on delete; proposals are created
+//! `requested` and move to `accepted`/`deleted`; BGP failover tests start
+//! `running` and stop `stopped` with the virtual interface state moving
+//! `available`→`testing`→`available`. The botocore-declared
+//! `DuplicateTagKeysException`/`TooManyTagsException` never fire for the
+//! connection family (the fork's TaggingService overwrites duplicate keys),
+//! so the created families follow moto's silent-overwrite tagger too.
 //! `loaIssueTime`/`startOn` mirror moto's `%Y-%m-%d %H:%M:%S` strings; UTC
 //! is used where moto uses naive local time (containers run UTC).
 //!
@@ -67,6 +79,22 @@ struct DxStore {
     lags: BTreeMap<String, Lag>,
     /// arn -> {tag key: value} — moto's `TaggingService`
     tags: BTreeMap<String, BTreeMap<String, Option<String>>>,
+    /// interconnect id -> interconnect
+    interconnects: BTreeMap<String, Interconnect>,
+    /// virtual interface id -> virtual interface
+    virtual_interfaces: BTreeMap<String, VirtualInterfaceRecord>,
+    /// direct connect gateway id -> gateway
+    gateways: BTreeMap<String, DxGateway>,
+    /// association id -> association
+    associations: BTreeMap<String, DxAssociation>,
+    /// proposal id -> association proposal
+    proposals: BTreeMap<String, DxProposal>,
+    /// `<gateway id>\u{1f}<virtualInterface id>` -> attachment
+    attachments: BTreeMap<String, DxAttachment>,
+    /// test id -> BGP failover test history row
+    tests: BTreeMap<String, ViTest>,
+    /// agreement name -> status (ConfirmCustomerAgreement rows)
+    agreements: BTreeMap<String, String>,
 }
 
 fn with_store(req: &Request, f: impl FnOnce(&mut DxStore) -> Response) -> Response {
@@ -129,6 +157,14 @@ struct Connection {
     encryption_mode: String,
     mac_sec_keys: Vec<MacSecKey>,
     region: String,
+    /// Hosted/interconnect-allocated connections carry the owner account they
+    /// were allocated to and the id of the connection/interconnect hosting
+    /// them (`AllocateHostedConnection`/`AllocateConnectionOnInterconnect`).
+    owner_account: Option<String>,
+    parent_id: Option<String>,
+    /// The caller's `vlan` member (hosted allocations); `None` renders the
+    /// fork's static `0`.
+    vlan: Option<i64>,
 }
 
 /// The MacSec key list a connection renders: LAG members show the LAG's
@@ -152,7 +188,7 @@ fn connection_dict(st: &DxStore, conn: &Connection) -> Value {
         .iter()
         .map(MacSecKey::to_dict)
         .collect::<Vec<_>>();
-    json!({
+    let mut dict = json!({
         "awsDevice": "mock_device",
         "awsDeviceV2": "mock_device_v2",
         "awsLogicalDeviceId": "mock_logical_device_id",
@@ -173,8 +209,14 @@ fn connection_dict(st: &DxStore, conn: &Connection) -> Value {
         "providerName": conn.provider_name,
         "region": conn.region,
         "tags": list_tags_for_resource(st, &conn.connection_id),
-        "vlan": 0,
-    })
+        "vlan": conn.vlan.unwrap_or(0),
+    });
+    // Hosted/allocated connections expose their owner like botocore's
+    // `ownerAccount` member; the fork's own connections never carry it.
+    if let Some(owner) = &conn.owner_account {
+        dict["ownerAccount"] = json!(owner);
+    }
+    dict
 }
 
 /// A Direct Connect LAG (fork's `LAG` dataclass). Member connections are
@@ -232,11 +274,320 @@ fn lag_dict(st: &DxStore, lag: &Lag) -> Value {
 }
 
 // ---------------------------------------------------------------------------
+// wave-12 records — interconnects, virtual interfaces, gateways
+// ---------------------------------------------------------------------------
+
+/// A Direct Connect interconnect (botocore `Interconnect` shape).
+#[derive(Clone)]
+struct Interconnect {
+    interconnect_id: String,
+    interconnect_name: String,
+    interconnect_state: String,
+    bandwidth: String,
+    location: String,
+    lag_id: Option<String>,
+    provider_name: Option<String>,
+    mac_sec_capable: Value,
+    encryption_mode: String,
+    mac_sec_keys: Vec<MacSecKey>,
+    region: String,
+}
+
+/// botocore `Interconnect` rendering, statics shared with the fork's
+/// connections (`mock_device` et al).
+fn interconnect_dict(st: &DxStore, ic: &Interconnect) -> Value {
+    json!({
+        "awsDevice": "mock_device",
+        "awsDeviceV2": "mock_device_v2",
+        "awsLogicalDeviceId": "mock_logical_device_id",
+        "bandwidth": ic.bandwidth,
+        "encryptionMode": ic.encryption_mode,
+        "hasLogicalRedundancy": "unknown",
+        "interconnectId": ic.interconnect_id,
+        "interconnectName": ic.interconnect_name,
+        "interconnectState": ic.interconnect_state,
+        "jumboFrameCapable": false,
+        "lagId": ic.lag_id,
+        "loaIssueTime": dx_time(),
+        "location": ic.location,
+        "macSecCapable": ic.mac_sec_capable,
+        "macSecKeys": ic.mac_sec_keys.iter().map(MacSecKey::to_dict).collect::<Vec<_>>(),
+        "portEncryptionStatus": "Encryption Down",
+        "providerName": ic.provider_name,
+        "region": ic.region,
+        "tags": list_tags_for_resource(st, &ic.interconnect_id),
+    })
+}
+
+/// One BGP peer on a virtual interface (botocore `BGPPeer`).
+#[derive(Clone)]
+struct BgpPeer {
+    bgp_peer_id: String,
+    asn: Option<i64>,
+    asn_long: Option<i64>,
+    auth_key: Option<String>,
+    address_family: Option<String>,
+    amazon_address: Option<String>,
+    customer_address: Option<String>,
+    bgp_peer_state: String,
+    bgp_status: String,
+}
+
+fn bgp_peer_dict(peer: &BgpPeer) -> Value {
+    json!({
+        "asn": peer.asn,
+        "asnLong": peer.asn_long,
+        "addressFamily": peer.address_family,
+        "amazonAddress": peer.amazon_address,
+        "authKey": peer.auth_key,
+        "awsDeviceV2": "mock_device_v2",
+        "awsLogicalDeviceId": "mock_logical_device_id",
+        "bgpPeerId": peer.bgp_peer_id,
+        "bgpPeerState": peer.bgp_peer_state,
+        "bgpStatus": peer.bgp_status,
+        "customerAddress": peer.customer_address,
+    })
+}
+
+/// A virtual interface (botocore `VirtualInterface`).
+#[derive(Clone)]
+struct VirtualInterfaceRecord {
+    virtual_interface_id: String,
+    virtual_interface_name: String,
+    /// private | public | transit
+    virtual_interface_type: String,
+    virtual_interface_state: String,
+    connection_id: String,
+    location: String,
+    vlan: Option<i64>,
+    asn: Option<i64>,
+    asn_long: Option<i64>,
+    amazon_side_asn: Option<i64>,
+    auth_key: Option<String>,
+    amazon_address: Option<String>,
+    customer_address: Option<String>,
+    address_family: Option<String>,
+    mtu: Option<i64>,
+    virtual_gateway_id: Option<String>,
+    direct_connect_gateway_id: Option<String>,
+    route_filter_prefixes: Vec<String>,
+    bgp_peers: Vec<BgpPeer>,
+    site_link_enabled: Option<bool>,
+    owner_account: Option<String>,
+    region: String,
+}
+
+/// The mock customer router document `DescribeRouterConfiguration` serves.
+const ROUTER_VENDOR: &str = "Cisco";
+const ROUTER_PLATFORM: &str = "2921";
+const ROUTER_SOFTWARE: &str = "IOS";
+
+fn customer_router_config() -> String {
+    format!(
+        "<customerRouterConfig><vendor>{ROUTER_VENDOR}</vendor>\
+<platform>{ROUTER_PLATFORM}</platform><software>{ROUTER_SOFTWARE}</software></customerRouterConfig>"
+    )
+}
+
+fn virtual_interface_dict(st: &DxStore, vif: &VirtualInterfaceRecord) -> Value {
+    json!({
+        "asn": vif.asn,
+        "asnLong": vif.asn_long,
+        "amazonAddress": vif.amazon_address,
+        "amazonSideAsn": vif.amazon_side_asn,
+        "addressFamily": vif.address_family,
+        "authKey": vif.auth_key,
+        "awsDeviceV2": "mock_device_v2",
+        "awsLogicalDeviceId": "mock_logical_device_id",
+        "bgpPeers": vif.bgp_peers.iter().map(bgp_peer_dict).collect::<Vec<_>>(),
+        "connectionId": vif.connection_id,
+        "customerAddress": vif.customer_address,
+        "customerRouterConfig": customer_router_config(),
+        "directConnectGatewayId": vif.direct_connect_gateway_id,
+        "jumboFrameCapable": false,
+        "location": vif.location,
+        "mtu": vif.mtu,
+        "ownerAccount": vif.owner_account,
+        "region": vif.region,
+        "routeFilterPrefixes": vif.route_filter_prefixes.iter()
+            .map(|cidr| json!({ "cidr": cidr }))
+            .collect::<Vec<_>>(),
+        "siteLinkEnabled": vif.site_link_enabled,
+        "tags": list_tags_for_resource(st, &vif.virtual_interface_id),
+        "virtualGatewayId": vif.virtual_gateway_id,
+        "virtualInterfaceId": vif.virtual_interface_id,
+        "virtualInterfaceName": vif.virtual_interface_name,
+        "virtualInterfaceState": vif.virtual_interface_state,
+        "virtualInterfaceType": vif.virtual_interface_type,
+        "vlan": vif.vlan,
+    })
+}
+
+/// One `DescribeDirectConnectGatewayAttachment` row.
+#[derive(Clone)]
+struct DxAttachment {
+    direct_connect_gateway_id: String,
+    virtual_interface_id: String,
+    virtual_interface_region: String,
+    virtual_interface_owner_account: String,
+    attachment_state: String,
+    attachment_type: String,
+}
+
+fn attachment_dict(a: &DxAttachment) -> Value {
+    json!({
+        "attachmentState": a.attachment_state,
+        "attachmentType": a.attachment_type,
+        "directConnectGatewayId": a.direct_connect_gateway_id,
+        "stateChangeError": Value::Null,
+        "virtualInterfaceId": a.virtual_interface_id,
+        "virtualInterfaceOwnerAccount": a.virtual_interface_owner_account,
+        "virtualInterfaceRegion": a.virtual_interface_region,
+    })
+}
+
+/// The `AssociatedGateway` facet shared by associations and proposals.
+#[derive(Clone)]
+struct AssociatedGateway {
+    id: String,
+    /// virtualPrivateGateway | transitGateway — inferred from the `tgw-` id
+    /// prefix (the twin does not model the EC2/VPC side of these gateways).
+    type_: String,
+    owner_account: String,
+    region: String,
+}
+
+fn associated_gateway_dict(g: &AssociatedGateway) -> Value {
+    json!({
+        "id": g.id,
+        "ownerAccount": g.owner_account,
+        "region": g.region,
+        "type": g.type_,
+    })
+}
+
+fn gateway_type_for(gateway_id: &str) -> String {
+    if gateway_id.starts_with("tgw-") {
+        "transitGateway".to_string()
+    } else {
+        "virtualPrivateGateway".to_string()
+    }
+}
+
+/// A Direct Connect gateway (botocore `DirectConnectGateway`).
+#[derive(Clone)]
+struct DxGateway {
+    direct_connect_gateway_id: String,
+    direct_connect_gateway_name: String,
+    amazon_side_asn: Option<i64>,
+    direct_connect_gateway_state: String,
+    owner_account: String,
+}
+
+fn gateway_dict(st: &DxStore, gw: &DxGateway) -> Value {
+    json!({
+        "amazonSideAsn": gw.amazon_side_asn,
+        "directConnectGatewayId": gw.direct_connect_gateway_id,
+        "directConnectGatewayName": gw.direct_connect_gateway_name,
+        "directConnectGatewayState": gw.direct_connect_gateway_state,
+        "ownerAccount": gw.owner_account,
+        "stateChangeError": Value::Null,
+        "tags": list_tags_for_resource(st, &gw.direct_connect_gateway_id),
+    })
+}
+
+/// A Direct Connect gateway association (botocore `DirectConnectGatewayAssociation`).
+#[derive(Clone)]
+struct DxAssociation {
+    association_id: String,
+    direct_connect_gateway_id: String,
+    direct_connect_gateway_owner_account: String,
+    association_state: String,
+    associated_gateway: AssociatedGateway,
+    allowed_prefixes: Vec<String>,
+    /// Set when the association is via a classic virtual private gateway;
+    /// transit/private gateways come through `associated_gateway` alone.
+    virtual_gateway_id: Option<String>,
+    virtual_gateway_region: Option<String>,
+}
+
+fn association_dict(a: &DxAssociation) -> Value {
+    json!({
+        "allowedPrefixesToDirectConnectGateway": a.allowed_prefixes.iter()
+            .map(|cidr| json!({ "cidr": cidr }))
+            .collect::<Vec<_>>(),
+        "associationId": a.association_id,
+        "associationState": a.association_state,
+        "associatedGateway": associated_gateway_dict(&a.associated_gateway),
+        "directConnectGatewayId": a.direct_connect_gateway_id,
+        "directConnectGatewayOwnerAccount": a.direct_connect_gateway_owner_account,
+        "stateChangeError": Value::Null,
+        "virtualGatewayId": a.virtual_gateway_id,
+        "virtualGatewayOwnerAccount": a.associated_gateway.owner_account,
+        "virtualGatewayRegion": a.virtual_gateway_region,
+    })
+}
+
+/// A Direct Connect gateway association proposal (botocore
+/// `DirectConnectGatewayAssociationProposal`).
+#[derive(Clone)]
+struct DxProposal {
+    proposal_id: String,
+    /// requested | accepted | deleted
+    proposal_state: String,
+    direct_connect_gateway_id: String,
+    direct_connect_gateway_owner_account: String,
+    associated_gateway: AssociatedGateway,
+    requested_allowed_prefixes: Vec<String>,
+}
+
+fn proposal_dict(p: &DxProposal) -> Value {
+    json!({
+        "directConnectGatewayId": p.direct_connect_gateway_id,
+        "directConnectGatewayOwnerAccount": p.direct_connect_gateway_owner_account,
+        "existingAllowedPrefixesToDirectConnectGateway": json!([]),
+        "proposalId": p.proposal_id,
+        "proposalState": p.proposal_state,
+        "requestedAllowedPrefixesToDirectConnectGateway": p.requested_allowed_prefixes.iter()
+            .map(|cidr| json!({ "cidr": cidr }))
+            .collect::<Vec<_>>(),
+        "associatedGateway": associated_gateway_dict(&p.associated_gateway),
+    })
+}
+
+/// One BGP failover test history row (botocore `VirtualInterfaceTestHistory`).
+#[derive(Clone)]
+struct ViTest {
+    test_id: String,
+    virtual_interface_id: String,
+    bgp_peers: Vec<String>,
+    status: String,
+    owner_account: String,
+    test_duration_in_minutes: i64,
+    start_time: String,
+    end_time: String,
+}
+
+fn test_dict(t: &ViTest) -> Value {
+    json!({
+        "bgpPeers": t.bgp_peers,
+        "endTime": t.end_time,
+        "ownerAccount": t.owner_account,
+        "startTime": t.start_time,
+        "status": t.status,
+        "testDurationInMinutes": t.test_duration_in_minutes,
+        "testId": t.test_id,
+        "virtualInterfaceId": t.virtual_interface_id,
+    })
+}
+
+// ---------------------------------------------------------------------------
 // dispatch
 // ---------------------------------------------------------------------------
 
-/// Operations the backend answers.
-pub const OPERATIONS: [&str; 11] = [
+/// Operations the backend answers — the full botocore surface (63 ops): the
+/// 11 fork handlers plus the wave-12 arms below.
+pub const OPERATIONS: [&str; 63] = [
     "DescribeConnections",
     "CreateConnection",
     "DeleteConnection",
@@ -248,6 +599,58 @@ pub const OPERATIONS: [&str; 11] = [
     "TagResource",
     "UntagResource",
     "DescribeTags",
+    "AcceptDirectConnectGatewayAssociationProposal",
+    "AllocateConnectionOnInterconnect",
+    "AllocateHostedConnection",
+    "AllocatePrivateVirtualInterface",
+    "AllocatePublicVirtualInterface",
+    "AllocateTransitVirtualInterface",
+    "AssociateConnectionWithLag",
+    "AssociateHostedConnection",
+    "AssociateVirtualInterface",
+    "ConfirmConnection",
+    "ConfirmCustomerAgreement",
+    "ConfirmPrivateVirtualInterface",
+    "ConfirmPublicVirtualInterface",
+    "ConfirmTransitVirtualInterface",
+    "CreateBGPPeer",
+    "CreateDirectConnectGateway",
+    "CreateDirectConnectGatewayAssociation",
+    "CreateDirectConnectGatewayAssociationProposal",
+    "CreateInterconnect",
+    "CreatePrivateVirtualInterface",
+    "CreatePublicVirtualInterface",
+    "CreateTransitVirtualInterface",
+    "DeleteBGPPeer",
+    "DeleteDirectConnectGateway",
+    "DeleteDirectConnectGatewayAssociation",
+    "DeleteDirectConnectGatewayAssociationProposal",
+    "DeleteInterconnect",
+    "DeleteLag",
+    "DeleteVirtualInterface",
+    "DescribeConnectionLoa",
+    "DescribeConnectionsOnInterconnect",
+    "DescribeCustomerMetadata",
+    "DescribeDirectConnectGatewayAssociationProposals",
+    "DescribeDirectConnectGatewayAssociations",
+    "DescribeDirectConnectGatewayAttachments",
+    "DescribeDirectConnectGateways",
+    "DescribeHostedConnections",
+    "DescribeInterconnectLoa",
+    "DescribeInterconnects",
+    "DescribeLoa",
+    "DescribeLocations",
+    "DescribeRouterConfiguration",
+    "DescribeVirtualGateways",
+    "DescribeVirtualInterfaces",
+    "DisassociateConnectionFromLag",
+    "ListVirtualInterfaceTestHistory",
+    "StartBgpFailoverTest",
+    "StopBgpFailoverTest",
+    "UpdateDirectConnectGateway",
+    "UpdateDirectConnectGatewayAssociation",
+    "UpdateLag",
+    "UpdateVirtualInterfaceAttributes",
 ];
 
 /// True when `operation` is a Direct Connect operation.
@@ -306,6 +709,90 @@ fn route(req: &Request, st: &mut DxStore) -> Response {
             ok_empty()
         }
         "DescribeTags" => describe_tags(st, &body),
+        // --- wave 12: interconnects ----------------------------------------
+        "CreateInterconnect" => create_interconnect(st, req.account, &req.region, &body),
+        "DescribeInterconnects" => describe_interconnects(st, &body, &req.region),
+        "DeleteInterconnect" => delete_interconnect(st, &body, &req.region),
+        "DescribeConnectionsOnInterconnect" => {
+            describe_connections_on_interconnect(st, &body, &req.region)
+        }
+        "AllocateConnectionOnInterconnect" => {
+            allocate_connection_on_interconnect(st, req.account, &req.region, &body)
+        }
+        "DescribeInterconnectLoa" => describe_interconnect_loa(st, &body, &req.region),
+        // --- wave 12: virtual interfaces ------------------------------------
+        "CreatePrivateVirtualInterface" | "CreatePublicVirtualInterface"
+        | "CreateTransitVirtualInterface" | "AllocatePrivateVirtualInterface"
+        | "AllocatePublicVirtualInterface" | "AllocateTransitVirtualInterface" => {
+            create_or_allocate_virtual_interface(st, req.account, req, &body)
+        }
+        "ConfirmConnection" => confirm_connection(st, &body, &req.region),
+        "ConfirmPrivateVirtualInterface" | "ConfirmPublicVirtualInterface"
+        | "ConfirmTransitVirtualInterface" => confirm_virtual_interface(st, &body),
+        "DescribeVirtualInterfaces" => describe_virtual_interfaces(st, &body),
+        "DeleteVirtualInterface" => delete_virtual_interface(st, &body),
+        "AssociateVirtualInterface" => associate_virtual_interface(st, &body, &req.region),
+        "UpdateVirtualInterfaceAttributes" => update_virtual_interface_attributes(st, &body),
+        "CreateBGPPeer" => create_bgp_peer(st, &body),
+        "DeleteBGPPeer" => delete_bgp_peer(st, &body),
+        "StartBgpFailoverTest" => start_bgp_failover_test(st, req.account, &body),
+        "StopBgpFailoverTest" => stop_bgp_failover_test(st, &body),
+        "ListVirtualInterfaceTestHistory" => list_virtual_interface_test_history(st, &body),
+        "DescribeRouterConfiguration" => describe_router_configuration(st, &body),
+        // --- wave 12: Direct Connect gateways --------------------------------
+        "CreateDirectConnectGateway" => create_direct_connect_gateway(st, req.account, &body),
+        "DeleteDirectConnectGateway" => delete_direct_connect_gateway(st, &body),
+        "DescribeDirectConnectGateways" => describe_direct_connect_gateways(st, &body),
+        "UpdateDirectConnectGateway" => update_direct_connect_gateway(st, &body),
+        "CreateDirectConnectGatewayAssociation" => {
+            create_direct_connect_gateway_association(st, req.account, &req.region, &body)
+        }
+        "DeleteDirectConnectGatewayAssociation" => {
+            delete_direct_connect_gateway_association(st, &body)
+        }
+        "DescribeDirectConnectGatewayAssociations" => {
+            describe_direct_connect_gateway_associations(st, &body)
+        }
+        "UpdateDirectConnectGatewayAssociation" => {
+            update_direct_connect_gateway_association(st, &body)
+        }
+        "CreateDirectConnectGatewayAssociationProposal" => {
+            create_direct_connect_gateway_association_proposal(
+                st,
+                req.account,
+                &req.region,
+                &body,
+            )
+        }
+        "AcceptDirectConnectGatewayAssociationProposal" => {
+            accept_direct_connect_gateway_association_proposal(st, &body, &req.region)
+        }
+        "DescribeDirectConnectGatewayAssociationProposals" => {
+            describe_direct_connect_gateway_association_proposals(st, &body)
+        }
+        "DeleteDirectConnectGatewayAssociationProposal" => {
+            delete_direct_connect_gateway_association_proposal(st, &body)
+        }
+        "DescribeDirectConnectGatewayAttachments" => {
+            describe_direct_connect_gateway_attachments(st, &body)
+        }
+        // --- wave 12: LAG extras + hosted connections --------------------------
+        "DeleteLag" => delete_lag(st, &body, &req.region),
+        "UpdateLag" => update_lag(st, &body, &req.region),
+        "AssociateConnectionWithLag" => associate_connection_with_lag(st, &body, &req.region),
+        "DisassociateConnectionFromLag" => {
+            disassociate_connection_from_lag(st, &body, &req.region)
+        }
+        "DescribeHostedConnections" => describe_hosted_connections(st, &body, &req.region),
+        "AllocateHostedConnection" => allocate_hosted_connection(st, req.account, &req.region, &body),
+        "AssociateHostedConnection" => associate_hosted_connection(st, &body, &req.region),
+        // --- wave 12: metadata, agreements, locations, Loa ---------------------
+        "DescribeLocations" => describe_locations(),
+        "DescribeVirtualGateways" => describe_virtual_gateways(),
+        "DescribeCustomerMetadata" => describe_customer_metadata(st),
+        "ConfirmCustomerAgreement" => confirm_customer_agreement(st, &body),
+        "DescribeLoa" => describe_loa(st, &body, &req.region),
+        "DescribeConnectionLoa" => describe_connection_loa(st, &body, &req.region),
         other => json_error(
             501,
             "NotImplemented",
@@ -379,6 +866,9 @@ fn build_connection(
         encryption_mode,
         mac_sec_keys,
         region: region.to_string(),
+        owner_account: None,
+        parent_id: None,
+        vlan: None,
     };
     if let Some(tags) = truthy_array(params.get("tags")) {
         tag_resource(st, &connection.connection_id, Some(tags));
@@ -660,6 +1150,1225 @@ fn describe_tags(st: &DxStore, body: &Value) -> Response {
 }
 
 // ---------------------------------------------------------------------------
+// wave-12 operations — interconnects
+// ---------------------------------------------------------------------------
+
+/// Create an interconnect the way the fork builds connections (mock device,
+/// `available` state, MACSec fields from `requestMACSec`).
+fn create_interconnect(st: &mut DxStore, account: u64, region: &str, body: &Value) -> Response {
+    let interconnect_name = string_at(body, "interconnectName").unwrap_or("").to_string();
+    let request_mac_sec = body.get("requestMACSec").cloned().unwrap_or(Value::Null);
+    let mac_sec = if truthy(&request_mac_sec) {
+        ("must_encrypt".to_string(), vec![MacSecKey::default_mock()])
+    } else {
+        ("no_encrypt".to_string(), Vec::new())
+    };
+    let ic = Interconnect {
+        interconnect_id: dx_arn(
+            region,
+            account,
+            "dxcon",
+            &format!("dx-moto-{interconnect_name}-{}", dx_time_ts()),
+        ),
+        interconnect_name,
+        interconnect_state: "available".to_string(),
+        bandwidth: string_at(body, "bandwidth").unwrap_or("").to_string(),
+        location: string_at(body, "location").unwrap_or("").to_string(),
+        lag_id: string_at(body, "lagId").map(String::from),
+        provider_name: body.get("providerName").and_then(Value::as_str).map(String::from),
+        mac_sec_capable: if request_mac_sec.is_null() {
+            Value::Null
+        } else {
+            request_mac_sec
+        },
+        encryption_mode: mac_sec.0,
+        mac_sec_keys: mac_sec.1,
+        region: region.to_string(),
+    };
+    let id = ic.interconnect_id.clone();
+    if let Some(tags) = truthy_array(body.get("tags")) {
+        tag_resource(st, &id, Some(tags));
+    }
+    st.interconnects.insert(id.clone(), ic.clone());
+    ok(interconnect_dict(st, &ic))
+}
+
+/// botocore `DescribeInterconnects`: an id filter answers only that
+/// interconnect (unknown id → `DirectConnectClientException`), empty stays all.
+fn describe_interconnects(st: &DxStore, body: &Value, region: &str) -> Response {
+    if let Some(id) = truthy_str(body, "interconnectId") {
+        return match st.interconnects.get(id) {
+            Some(ic) => ok(json!({
+                "interconnects": [interconnect_dict(st, ic)],
+            })),
+            None => interconnect_not_found(id, region),
+        };
+    }
+    let all: Vec<(String, Value)> = st
+        .interconnects
+        .values()
+        .map(|ic| (ic.interconnect_id.clone(), interconnect_dict(st, ic)))
+        .collect();
+    let items = page_pairs(
+        all,
+        int_at(body, "maxResults"),
+        string_at(body, "nextToken"),
+    );
+    ok(json!({
+        "interconnects": items.0,
+        "nextToken": items.1,
+    }))
+}
+
+/// Mirrors the fork's `DeleteConnection`: mark deleted, keep the record.
+fn delete_interconnect(st: &mut DxStore, body: &Value, region: &str) -> Response {
+    match string_at(body, "interconnectId") {
+        Some(id) => match st.interconnects.get_mut(id) {
+            Some(ic) => {
+                ic.interconnect_state = "deleted".to_string();
+                let dict = interconnect_dict(st, ic);
+                ok(json!({ "interconnectState": dict["interconnectState"].clone() }))
+            }
+            None => interconnect_not_found(id, region),
+        },
+        None => interconnect_not_found("", region),
+    }
+}
+
+/// Connections allocated onto this interconnect (`AllocateConnectionOnInterconnect`).
+fn describe_connections_on_interconnect(st: &DxStore, body: &Value, region: &str) -> Response {
+    let Some(interconnect_id) = truthy_str(body, "interconnectId") else {
+        return interconnect_not_found("", region);
+    };
+    if !st.interconnects.contains_key(interconnect_id) {
+        return interconnect_not_found(interconnect_id, region);
+    }
+    let conns: Vec<Value> = st
+        .connections
+        .values()
+        .filter(|c| c.parent_id.as_deref() == Some(interconnect_id))
+        .map(|c| connection_dict(st, c))
+        .collect();
+    ok(json!({ "connections": conns }))
+}
+
+/// Allocate a hosted connection on an interconnect: `ordering` state, the
+/// requested owner account and `vlan`, parented to the interconnect.
+fn allocate_connection_on_interconnect(
+    st: &mut DxStore,
+    _account: u64,
+    region: &str,
+    body: &Value,
+) -> Response {
+    let Some(interconnect_id) = truthy_str(body, "interconnectId") else {
+        return interconnect_not_found("", region);
+    };
+    if !st.interconnects.contains_key(interconnect_id) {
+        return interconnect_not_found(interconnect_id, region);
+    }
+    let Some(location) = st.interconnects.get(interconnect_id).map(|i| i.location.clone()) else {
+        return interconnect_not_found(interconnect_id, region);
+    };
+    let mut params = Map::new();
+    params.insert("bandwidth".into(), body.get("bandwidth").cloned().unwrap_or(Value::Null));
+    params.insert(
+        "connectionName".into(),
+        body.get("connectionName").cloned().unwrap_or(Value::Null),
+    );
+    let mut conn = build_connection(st, _account, region, &Value::Object(params), None);
+    conn.location = location;
+    conn.connection_state = "ordering".to_string();
+    conn.owner_account = string_at(body, "ownerAccount").map(String::from);
+    conn.parent_id = Some(interconnect_id.to_string());
+    conn.vlan = body.get("vlan").and_then(Value::as_i64);
+    if let Some(tags) = truthy_array(body.get("tags")) {
+        tag_resource(st, &conn.connection_id, Some(tags));
+    }
+    st.connections.insert(conn.connection_id.clone(), conn.clone());
+    ok(connection_dict(st, &conn))
+}
+
+/// botocore `DescribeInterconnectLoa` — the twin serves a deterministic mock
+/// document; the interconnect (and its Loa) is the only modelled state.
+fn describe_interconnect_loa(st: &DxStore, body: &Value, region: &str) -> Response {
+    let Some(interconnect_id) = truthy_str(body, "interconnectId") else {
+        return interconnect_not_found("", region);
+    };
+    match st.interconnects.get(interconnect_id) {
+        Some(_) => ok(json!({ "loa": mock_loa() })),
+        None => interconnect_not_found(interconnect_id, region),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// wave-12 operations — virtual interfaces
+// ---------------------------------------------------------------------------
+
+/// The (op name → kind, params key, is-allocation) table for the six
+/// Create*/Allocate*xVirtualInterface dispatch arms.
+fn vif_input(req: &Request) -> (&'static str, &'static str, bool) {
+    match req.operation.as_str() {
+        "CreatePrivateVirtualInterface" => ("private", "newPrivateVirtualInterface", false),
+        "CreatePublicVirtualInterface" => ("public", "newPublicVirtualInterface", false),
+        "CreateTransitVirtualInterface" => ("transit", "newTransitVirtualInterface", false),
+        "AllocatePrivateVirtualInterface" => {
+            ("private", "newPrivateVirtualInterfaceAllocation", true)
+        }
+        "AllocatePublicVirtualInterface" => ("public", "newPublicVirtualInterfaceAllocation", true),
+        "AllocateTransitVirtualInterface" => {
+            ("transit", "newTransitVirtualInterfaceAllocation", true)
+        }
+        _ => unreachable!("dispatched by the create/allocate VIF arm"),
+    }
+}
+
+fn create_or_allocate_virtual_interface(
+    st: &mut DxStore,
+    account: u64,
+    req: &Request,
+    body: &Value,
+) -> Response {
+    let (kind, params_key, allocation) = vif_input(req);
+    let Some(connection_id) = truthy_str(body, "connectionId") else {
+        return connection_not_found("", &req.region);
+    };
+    let Some(conn) = st.connections.get(connection_id) else {
+        return connection_not_found(connection_id, &req.region);
+    };
+    let params = body.get(params_key).cloned().unwrap_or(Value::Null);
+    let owner = allocation
+        .then(|| string_at(body, "ownerAccount").map(String::from))
+        .flatten();
+    let vif = build_virtual_interface(
+        st,
+        account,
+        &req.region,
+        connection_id,
+        conn.location.clone(),
+        params,
+        kind,
+        owner,
+    );
+    st.virtual_interfaces
+        .insert(vif.virtual_interface_id.clone(), vif.clone());
+    ok(virtual_interface_dict(st, &vif))
+}
+
+/// Build the virtual interface record from the `new*VirtualInterface[Allocation]`
+/// member. Created VIFs sit `pending` (public: `verifying`) until their
+/// Confirm* call flips them to `available`; public VIFs render their
+/// `routeFilterPrefixes`, private/transit VIFs register a gateway attachment
+/// when `directConnectGatewayId` is set.
+fn build_virtual_interface(
+    st: &mut DxStore,
+    account: u64,
+    region: &str,
+    connection_id: &str,
+    location: String,
+    params: Value,
+    kind: &str,
+    owner_account: Option<String>,
+) -> VirtualInterfaceRecord {
+    let name = string_at(&params, "virtualInterfaceName").unwrap_or("").to_string();
+    let state = if kind == "public" {
+        "verifying"
+    } else {
+        "pending"
+    };
+    let mut vif = VirtualInterfaceRecord {
+        virtual_interface_id: dx_arn(
+            region,
+            account,
+            "dxvif",
+            &format!("dx-moto-{name}-{}", dx_time_ts()),
+        ),
+        virtual_interface_name: name,
+        virtual_interface_type: kind.to_string(),
+        virtual_interface_state: state.to_string(),
+        connection_id: connection_id.to_string(),
+        location,
+        vlan: params.get("vlan").and_then(Value::as_i64),
+        asn: params.get("asn").and_then(Value::as_i64),
+        asn_long: params.get("asnLong").and_then(Value::as_i64),
+        amazon_side_asn: None,
+        auth_key: string_at(&params, "authKey").map(String::from),
+        amazon_address: string_at(&params, "amazonAddress").map(String::from),
+        customer_address: string_at(&params, "customerAddress").map(String::from),
+        address_family: string_at(&params, "addressFamily").map(String::from),
+        mtu: params.get("mtu").and_then(Value::as_i64),
+        virtual_gateway_id: string_at(&params, "virtualGatewayId").map(String::from),
+        direct_connect_gateway_id: string_at(&params, "directConnectGatewayId").map(String::from),
+        route_filter_prefixes: str_list(params.get("routeFilterPrefixes")),
+        bgp_peers: Vec::new(),
+        site_link_enabled: params.get("enableSiteLink").and_then(Value::as_bool),
+        owner_account: owner_account.or_else(|| Some(account.to_string())),
+        region: region.to_string(),
+    };
+    // Transit/private VIFs bound to a Direct Connect gateway add an
+    // attachment row for DescribeDirectConnectGatewayAttachments.
+    if let Some(gateway_id) = &vif.direct_connect_gateway_id {
+        let attach_type = if kind == "transit" {
+            "TransitVirtualInterface"
+        } else {
+            "PrivateVirtualInterface"
+        };
+        st.attachments.insert(
+            attachment_key(gateway_id, &vif.virtual_interface_id),
+            DxAttachment {
+                direct_connect_gateway_id: gateway_id.clone(),
+                virtual_interface_id: vif.virtual_interface_id.clone(),
+                virtual_interface_region: region.to_string(),
+                virtual_interface_owner_account: vif.owner_account.clone().unwrap_or_default(),
+                attachment_state: "attached".to_string(),
+                attachment_type: attach_type.to_string(),
+            },
+        );
+    }
+    if let Some(tags) = truthy_array(params.get("tags")) {
+        tag_resource(st, &vif.virtual_interface_id, Some(tags));
+    }
+    vif
+}
+
+/// The attachments map key: `<gateway id>?<virtualInterface id>`.
+fn attachment_key(gateway_id: &str, vif_id: &str) -> String {
+    format!("{gateway_id}\u{1}{vif_id}")
+}
+
+/// `ConfirmConnection`: the connection answers with its (unchanged) state.
+fn confirm_connection(st: &DxStore, body: &Value, region: &str) -> Response {
+    let Some(connection_id) = truthy_str(body, "connectionId") else {
+        return connection_not_found("", region);
+    };
+    match st.connections.get(connection_id) {
+        Some(conn) => ok(json!({ "connectionState": conn.connection_state.clone() })),
+        None => connection_not_found(connection_id, region),
+    }
+}
+
+/// The three Confirm*VirtualInterface arms move the VIF to `available`.
+fn confirm_virtual_interface(st: &mut DxStore, body: &Value) -> Response {
+    let Some(vif_id) = truthy_str(body, "virtualInterfaceId") else {
+        return vif_not_found("");
+    };
+    match st
+        .virtual_interfaces
+        .get_mut(vif_id)
+        .filter(|v| v.virtual_interface_state != "deleted")
+    {
+        Some(vif) => {
+            vif.virtual_interface_state = "available".to_string();
+            ok(json!({
+                "virtualInterfaceState": vif.virtual_interface_state.clone(),
+            }))
+        }
+        None => vif_not_found(vif_id),
+    }
+}
+
+/// botocore `DescribeVirtualInterfaces` — connectionId / virtualInterfaceId
+/// filters; unknown single-id filters raise like the fork's describes.
+fn describe_virtual_interfaces(st: &DxStore, body: &Value) -> Response {
+    let wanted: Vec<&VirtualInterfaceRecord> =
+        if let Some(vif_id) = truthy_str(body, "virtualInterfaceId") {
+            match st.virtual_interfaces.get(vif_id) {
+                Some(vif) => vec![vif],
+                None => return vif_not_found(vif_id),
+            }
+        } else {
+            let mut all: Vec<&VirtualInterfaceRecord> =
+                st.virtual_interfaces.values().collect();
+            if let Some(connection_id) = truthy_str(body, "connectionId") {
+                all.retain(|v| v.connection_id == connection_id);
+            }
+            all
+        };
+    let vifs: Vec<Value> = wanted
+        .iter()
+        .map(|v| virtual_interface_dict(st, v))
+        .collect();
+    ok(json!({ "virtualInterfaces": vifs }))
+}
+
+/// The fork's `DeleteConnection` keeps the record; virtual interfaces do the
+/// same with the `deleted` state.
+fn delete_virtual_interface(st: &mut DxStore, body: &Value) -> Response {
+    let Some(vif_id) = truthy_str(body, "virtualInterfaceId") else {
+        return vif_not_found("");
+    };
+    match st.virtual_interfaces.get_mut(vif_id) {
+        Some(vif) => {
+            vif.virtual_interface_state = "deleted".to_string();
+            ok(json!({ "virtualInterfaceState": "deleted" }))
+        }
+        None => vif_not_found(vif_id),
+    }
+}
+
+/// Re-point a virtual interface at another connection.
+fn associate_virtual_interface(st: &mut DxStore, body: &Value, region: &str) -> Response {
+    let Some(vif_id) = truthy_str(body, "virtualInterfaceId") else {
+        return vif_not_found("");
+    };
+    let Some(connection_id) = truthy_str(body, "connectionId") else {
+        return connection_not_found("", region);
+    };
+    let Some(conn) = st.connections.get(connection_id) else {
+        return connection_not_found(connection_id, region);
+    };
+    let location = conn.location.clone();
+    match st.virtual_interfaces.get_mut(vif_id) {
+        Some(vif) => {
+            vif.connection_id = connection_id.to_string();
+            vif.location = location;
+            ok(virtual_interface_dict(st, vif))
+        }
+        None => vif_not_found(vif_id),
+    }
+}
+
+/// `UpdateVirtualInterfaceAttributes` renames and sets mtu / enableSiteLink.
+fn update_virtual_interface_attributes(st: &mut DxStore, body: &Value) -> Response {
+    let Some(vif_id) = truthy_str(body, "virtualInterfaceId") else {
+        return vif_not_found("");
+    };
+    match st.virtual_interfaces.get_mut(vif_id) {
+        Some(vif) => {
+            if let Some(name) = truthy_str(body, "virtualInterfaceName") {
+                vif.virtual_interface_name = name.to_string();
+            }
+            if let Some(mtu) = body.get("mtu").and_then(Value::as_i64) {
+                vif.mtu = Some(mtu);
+            }
+            if let Some(enable) = body.get("enableSiteLink").and_then(Value::as_bool) {
+                vif.site_link_enabled = Some(enable);
+            }
+            ok(virtual_interface_dict(st, vif))
+        }
+        None => vif_not_found(vif_id),
+    }
+}
+
+/// `CreateBGPPeer` appends one peer to the virtual interface's peer list.
+fn create_bgp_peer(st: &mut DxStore, body: &Value) -> Response {
+    let Some(vif_id) = truthy_str(body, "virtualInterfaceId") else {
+        return vif_not_found("");
+    };
+    let params = body.get("newBGPPeer").cloned().unwrap_or(Value::Null);
+    let asn = params.get("asn").and_then(Value::as_i64);
+    let peer = BgpPeer {
+        bgp_peer_id: format!(
+            "dxpeer-moto-{}-{}",
+            asn.unwrap_or(0),
+            dx_time_ts()
+        ),
+        asn,
+        asn_long: params.get("asnLong").and_then(Value::as_i64),
+        auth_key: string_at(&params, "authKey").map(String::from),
+        address_family: string_at(&params, "addressFamily").map(String::from),
+        amazon_address: string_at(&params, "amazonAddress").map(String::from),
+        customer_address: string_at(&params, "customerAddress").map(String::from),
+        bgp_peer_state: "available".to_string(),
+        bgp_status: "unknown".to_string(),
+    };
+    match st.virtual_interfaces.get_mut(vif_id) {
+        Some(vif) => {
+            vif.bgp_peers.push(peer);
+            ok(json!({ "virtualInterface": virtual_interface_dict(st, vif) }))
+        }
+        None => vif_not_found(vif_id),
+    }
+}
+
+/// `DeleteBGPPeer` drops the peer matching `bgpPeerId` (or asn/customerAddress):
+/// the id filter wins, then `customerAddress`, then `asn`/`asnLong`.
+fn delete_bgp_peer(st: &mut DxStore, body: &Value) -> Response {
+    let Some(vif_id) = truthy_str(body, "virtualInterfaceId") else {
+        return vif_not_found("");
+    };
+    let want_id = truthy_str(body, "bgpPeerId").map(String::from);
+    let want_asn = body
+        .get("asn")
+        .and_then(Value::as_i64)
+        .or_else(|| body.get("asnLong").and_then(Value::as_i64));
+    let want_addr = truthy_str(body, "customerAddress").map(String::from);
+    let Some(vif) = st.virtual_interfaces.get_mut(vif_id) else {
+        return vif_not_found(vif_id);
+    };
+    let matches = |p: &BgpPeer| -> bool {
+        if let Some(id) = &want_id {
+            return id == &p.bgp_peer_id;
+        }
+        if let Some(addr) = &want_addr {
+            return p.customer_address.as_deref() == Some(addr.as_str());
+        }
+        if let Some(asn) = want_asn {
+            return p.asn == Some(asn);
+        }
+        false // nothing submitted — nothing matches
+    };
+    let Some(pos) = vif.bgp_peers.iter().position(matches) else {
+        if want_id.is_none() && want_addr.is_none() && want_asn.is_none() {
+            return dx_client_error(
+                "Either asn or bgpPeerId must be provided.",
+            );
+        }
+        return dx_client_error("No BGPPeer matches the submitted parameters.");
+    };
+    vif.bgp_peers.remove(pos);
+    ok(json!({ "virtualInterface": virtual_interface_dict(st, vif) }))
+}
+
+/// A typical 3DES-capable default keeps the API surface honest: the model
+/// declares no default, so 145 minutes is used (the long-standing public
+/// default for this op).
+const BGP_FAILOVER_TEST_DEFAULT_MINUTES: i64 = 145;
+
+/// `StartBgpFailoverTest`: record a running test, move the VIF to `testing`.
+fn start_bgp_failover_test(st: &mut DxStore, account: u64, body: &Value) -> Response {
+    let Some(vif_id) = truthy_str(body, "virtualInterfaceId") else {
+        return vif_not_found("");
+    };
+    let Some(vif) = st.virtual_interfaces.get_mut(vif_id) else {
+        return vif_not_found(vif_id);
+    };
+    let minutes = body.get("testDurationInMinutes").and_then(Value::as_i64);
+    let test = ViTest {
+        test_id: format!("dxtest-moto-{}", dx_time_ts()),
+        virtual_interface_id: vif_id.to_string(),
+        bgp_peers: str_list(body.get("bgpPeers")),
+        status: "running".to_string(),
+        owner_account: account.to_string(),
+        test_duration_in_minutes: minutes.unwrap_or(BGP_FAILOVER_TEST_DEFAULT_MINUTES),
+        start_time: dx_time(),
+        end_time: None,
+    };
+    let dict = test_dict(&test);
+    st.tests.insert(test.test_id.clone(), test);
+    vif.virtual_interface_state = "testing".to_string();
+    ok(json!({ "virtualInterfaceTest": dict }))
+}
+
+/// `StopBgpFailoverTest`: the latest running test stops; the VIF returns to
+/// `available`. No running test → `DirectConnectClientException`.
+fn stop_bgp_failover_test(st: &mut DxStore, body: &Value) -> Response {
+    let Some(vif_id) = truthy_str(body, "virtualInterfaceId") else {
+        return vif_not_found("");
+    };
+    let Some(vif) = st.virtual_interfaces.get_mut(vif_id) else {
+        return vif_not_found(vif_id);
+    };
+    let Some(test_id) = st
+        .tests
+        .values()
+        .rev()
+        .find(|t| t.virtual_interface_id == vif_id && t.status == "running")
+        .map(|t| t.test_id.clone())
+    else {
+        return dx_client_error(format!(
+            "No running BGP failover test for virtual interface {vif_id}."
+        ));
+    };
+    let Some(test) = st.tests.get_mut(&test_id) else {
+        unreachable!("test_id came from the map");
+    };
+    test.status = "stopped".to_string();
+    test.end_time = Some(dx_time());
+    vif.virtual_interface_state = "available".to_string();
+    let dict = test_dict(test);
+    ok(json!({ "virtualInterfaceTest": dict }))
+}
+
+/// botocore `ListVirtualInterfaceTestHistory` with testId / virtualInterfaceId
+/// / status / bgpPeers filters and shape-driven pagination.
+fn list_virtual_interface_test_history(st: &DxStore, body: &Value) -> Response {
+    let mut rows: Vec<(String, Value)> = st
+        .tests
+        .values()
+        .filter(|t| {
+            truthy_str(body, "testId").map_or(true, |id| id == t.test_id.as_str())
+                && truthy_str(body, "virtualInterfaceId")
+                    .map_or(true, |id| id == t.virtual_interface_id.as_str())
+                && truthy_str(body, "status").map_or(true, |s| s == t.status.as_str())
+        })
+        .filter(|t| match str_list(body.get("bgpPeers")) {
+            empty if empty.is_empty() => true,
+            wanted => wanted.iter().any(|w| t.bgp_peers.contains(w)),
+        })
+        .map(|t| (t.start_time.clone(), test_dict(t)))
+        .collect();
+    rows.sort_by(|a, b| a.0.cmp(&b.0));
+    let items = page_pairs(rows, int_at(body, "maxResults"), string_at(body, "nextToken"));
+    ok(json!({
+        "virtualInterfaceTestHistory": items.0,
+        "nextToken": items.1,
+    }))
+}
+
+/// `DescribeRouterConfiguration` — the mock router constants against an
+/// existing virtual interface.
+fn describe_router_configuration(st: &DxStore, body: &Value) -> Response {
+    let Some(vif_id) = truthy_str(body, "virtualInterfaceId") else {
+        return vif_not_found("");
+    };
+    let Some(vif) = st.virtual_interfaces.get(vif_id) else {
+        return vif_not_found(vif_id);
+    };
+    ok(json!({
+        "customerRouterConfig": customer_router_config(),
+        "router": {
+            "platform": ROUTER_PLATFORM,
+            "routerTypeIdentifier": format!("{ROUTER_VENDOR}-{ROUTER_PLATFORM}-{ROUTER_SOFTWARE}"),
+            "software": ROUTER_SOFTWARE,
+            "vendor": ROUTER_VENDOR,
+            "xsltTemplateName": "customer-router.xml",
+            "xsltTemplateNameForMacSec": "customer-router-macsec.xml",
+        },
+        "virtualInterfaceId": vif.virtual_interface_id,
+        "virtualInterfaceName": vif.virtual_interface_name,
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// wave-12 operations — Direct Connect gateways
+// ---------------------------------------------------------------------------
+
+fn create_direct_connect_gateway(st: &mut DxStore, account: u64, body: &Value) -> Response {
+    let name = string_at(body, "directConnectGatewayName").unwrap_or("").to_string();
+    let gw = DxGateway {
+        direct_connect_gateway_id: format!("dxgw-moto-{name}-{}", dx_time_ts()),
+        direct_connect_gateway_name: name,
+        amazon_side_asn: body.get("amazonSideAsn").and_then(Value::as_i64),
+        direct_connect_gateway_state: "available".to_string(),
+        owner_account: account.to_string(),
+    };
+    if let Some(tags) = truthy_array(body.get("tags")) {
+        tag_resource(st, &gw.direct_connect_gateway_id, Some(tags));
+    }
+    st.gateways.insert(gw.direct_connect_gateway_id.clone(), gw.clone());
+    ok(json!({ "directConnectGateway": gateway_dict(st, &gw) }))
+}
+
+fn delete_direct_connect_gateway(st: &mut DxStore, body: &Value) -> Response {
+    let Some(gw_id) = truthy_str(body, "directConnectGatewayId") else {
+        return gateway_not_found("");
+    };
+    match st.gateways.get_mut(gw_id) {
+        Some(gw) => {
+            gw.direct_connect_gateway_state = "deleted".to_string();
+            ok(json!({ "directConnectGateway": gateway_dict(st, gw) }))
+        }
+        None => gateway_not_found(gw_id),
+    }
+}
+
+fn describe_direct_connect_gateways(st: &DxStore, body: &Value) -> Response {
+    let all: Vec<(String, Value)> = st
+        .gateways
+        .values()
+        .filter(|gw| {
+            truthy_str(body, "directConnectGatewayId")
+                .map_or(true, |id| id == gw.direct_connect_gateway_id.as_str())
+        })
+        .map(|gw| (gw.direct_connect_gateway_id.clone(), gateway_dict(st, gw)))
+        .collect();
+    let items = page_pairs(
+        all,
+        int_at(body, "maxResults"),
+        string_at(body, "nextToken"),
+    );
+    ok(json!({
+        "directConnectGateways": items.0,
+        "nextToken": items.1,
+    }))
+}
+
+fn update_direct_connect_gateway(st: &mut DxStore, body: &Value) -> Response {
+    let Some(gw_id) = truthy_str(body, "directConnectGatewayId") else {
+        return gateway_not_found("");
+    };
+    let Some(name) = truthy_str(body, "newDirectConnectGatewayName") else {
+        return dx_client_error("newDirectConnectGatewayName is required.");
+    };
+    match st.gateways.get_mut(gw_id) {
+        Some(gw) => {
+            gw.direct_connect_gateway_name = name.to_string();
+            ok(json!({ "directConnectGateway": gateway_dict(st, gw) }))
+        }
+        None => gateway_not_found(gw_id),
+    }
+}
+
+/// Create an association for a gateway the caller owns. The associated
+/// gateway (`virtualGatewayId` or `gatewayId`) is stored as sent — the twin
+/// does not model the EC2/VPC side.
+fn create_direct_connect_gateway_association(
+    st: &mut DxStore,
+    account: u64,
+    region: &str,
+    body: &Value,
+) -> Response {
+    let Some(gw_id) = truthy_str(body, "directConnectGatewayId") else {
+        return gateway_not_found("");
+    };
+    if !st.gateways.contains_key(gw_id) {
+        return gateway_not_found(gw_id);
+    }
+    let gateway_id = string_at(body, "gatewayId").map(String::from);
+    let virtual_gateway_id = string_at(body, "virtualGatewayId").map(String::from);
+    if gateway_id.is_none() && virtual_gateway_id.is_none() {
+        return dx_client_error("Either gatewayId or virtualGatewayId must be provided.");
+    }
+    let associated = match gateway_id.as_deref() {
+        Some(id) => AssociatedGateway {
+            id: id.to_string(),
+            type_: gateway_type_for(&id),
+            owner_account: account.to_string(),
+            region: region.to_string(),
+        },
+        None => AssociatedGateway {
+            id: virtual_gateway_id.clone().unwrap_or_default(),
+            type_: "virtualPrivateGateway".to_string(),
+            owner_account: account.to_string(),
+            region: region.to_string(),
+        },
+    };
+    let association = DxAssociation {
+        association_id: format!("dxassoc-moto-{}", dx_time_ts()),
+        direct_connect_gateway_id: gw_id.to_string(),
+        direct_connect_gateway_owner_account: account.to_string(),
+        association_state: "associated".to_string(),
+        associated_gateway: associated,
+        allowed_prefixes: str_list(body.get("addAllowedPrefixesToDirectConnectGateway")),
+        virtual_gateway_id,
+        virtual_gateway_region: Some(region.to_string()),
+    };
+    st.associations
+        .insert(association.association_id.clone(), association.clone());
+    ok(json!({
+        "directConnectGatewayAssociation": association_dict(&association),
+    }))
+}
+
+/// Delete via associationId, or via (directConnectGatewayId, virtualGatewayId).
+/// The record is removed; the response mirrors AWS's one-shot `disassociating`.
+fn delete_direct_connect_gateway_association(st: &mut DxStore, body: &Value) -> Response {
+    let by_id = truthy_str(body, "associationId").map(String::from);
+    let found = match by_id {
+        Some(id) => st.associations.remove(&id).filter(|a| {
+            string_at(body, "directConnectGatewayId").map_or(true, |g| {
+                a.direct_connect_gateway_id == g
+            })
+        }),
+        None => {
+            let gateway = string_at(body, "directConnectGatewayId");
+            let vgw = string_at(body, "virtualGatewayId").map(String::from);
+            let key = st
+                .associations
+                .values()
+                .find(|a| {
+                    string_at(body, "directConnectGatewayId")
+                        .map_or(true, |g| a.direct_connect_gateway_id == g)
+                        && vgw
+                            .as_ref()
+                            .map_or(true, |v| a.virtual_gateway_id.as_deref() == Some(v.as_str()))
+                        && a.association_state != "deleted"
+                })
+                .map(|a| a.association_id.clone());
+            key.and_then(|k| st.associations.remove(&k))
+        }
+    };
+    let Some(mut association) = found else {
+        return dx_client_error("The specified association does not exist.");
+    };
+    association.association_state = "disassociating".to_string();
+    ok(json!({
+        "directConnectGatewayAssociation": association_dict(&association),
+    }))
+}
+
+fn describe_direct_connect_gateway_associations(st: &DxStore, body: &Value) -> Response {
+    // A single associationId filter is a direct lookup; unknown → client error.
+    if let Some(association_id) = truthy_str(body, "associationId") {
+        return match st.associations.get(association_id) {
+            Some(a) => ok(json!({
+                "directConnectGatewayAssociations": [association_dict(a)],
+            })),
+            None => dx_client_error(format!(
+                "The association {association_id} is not present."
+            )),
+        };
+    }
+    let gateway_filter = truthy_str(body, "directConnectGatewayId").map(String::from);
+    let vgw_filter = truthy_str(body, "virtualGatewayId").map(String::from);
+    let agw_filter = truthy_str(body, "associatedGatewayId").map(String::from);
+    let all: Vec<(String, Value)> = st
+        .associations
+        .values()
+        .filter(|a| {
+            gateway_filter
+                .as_ref()
+                .map_or(true, |g| g == &a.direct_connect_gateway_id)
+                && vgw_filter
+                    .as_ref()
+                    .map_or(true, |v| a.virtual_gateway_id.as_deref() == Some(v.as_str()))
+                && agw_filter
+                    .as_ref()
+                    .map_or(true, |g| g == &a.associated_gateway.id)
+        })
+        .map(|a| (a.association_id.clone(), association_dict(a)))
+        .collect();
+    let items = page_pairs(
+        all,
+        int_at(body, "maxResults"),
+        string_at(body, "nextToken"),
+    );
+    ok(json!({
+        "directConnectGatewayAssociations": items.0,
+        "nextToken": items.1,
+    }))
+}
+
+/// `UpdateDirectConnectGatewayAssociation` adds/removes allowed prefixes.
+fn update_direct_connect_gateway_association(st: &mut DxStore, body: &Value) -> Response {
+    let Some(association_id) = truthy_str(body, "associationId") else {
+        return dx_client_error("associationId is required.");
+    };
+    let Some(a) = st.associations.get_mut(association_id) else {
+        return dx_client_error(format!(
+            "The association {association_id} is not present."
+        ));
+    };
+    for cidr in str_list(body.get("removeAllowedPrefixesToDirectConnectGateway")) {
+        a.allowed_prefixes.retain(|c| c != &cidr);
+    }
+    for cidr in str_list(body.get("addAllowedPrefixesToDirectConnectGateway")) {
+        if !a.allowed_prefixes.contains(&cidr) {
+            a.allowed_prefixes.push(cidr);
+        }
+    }
+    a.association_state = "updating".to_string();
+    ok(json!({
+        "directConnectGatewayAssociation": association_dict(a),
+    }))
+}
+
+fn create_direct_connect_gateway_association_proposal(
+    st: &mut DxStore,
+    account: u64,
+    region: &str,
+    body: &Value,
+) -> Response {
+    let Some(gw_id) = truthy_str(body, "directConnectGatewayId") else {
+        return gateway_not_found("");
+    };
+    if !st.gateways.contains_key(gw_id) {
+        return gateway_not_found(gw_id);
+    }
+    let Some(gateway_id) = truthy_str(body, "gatewayId") else {
+        return dx_client_error("gatewayId is required.");
+    };
+    let dx_owner = string_at(body, "directConnectGatewayOwnerAccount")
+        .map(String::from)
+        .unwrap_or_else(|| account.to_string());
+    let proposal = DxProposal {
+        proposal_id: format!("dxproposal-moto-{}", dx_time_ts()),
+        proposal_state: "requested".to_string(),
+        direct_connect_gateway_id: gw_id.to_string(),
+        direct_connect_gateway_owner_account: dx_owner,
+        associated_gateway: AssociatedGateway {
+            id: gateway_id.to_string(),
+            type_: gateway_type_for(gateway_id),
+            owner_account: account.to_string(),
+            region: region.to_string(),
+        },
+        requested_allowed_prefixes: str_list(body.get("addAllowedPrefixesToDirectConnectGateway")),
+    };
+    st.proposals.insert(proposal.proposal_id.clone(), proposal.clone());
+    ok(json!({
+        "directConnectGatewayAssociationProposal": proposal_dict(&proposal),
+    }))
+}
+
+/// Accepting a proposal materialises the association immediately and marks
+/// the proposal `accepted`.
+fn accept_direct_connect_gateway_association_proposal(
+    st: &mut DxStore,
+    body: &Value,
+    region: &str,
+) -> Response {
+    let Some(gw_id) = truthy_str(body, "directConnectGatewayId") else {
+        return gateway_not_found("");
+    };
+    if !st.gateways.contains_key(gw_id) {
+        return gateway_not_found(gw_id);
+    }
+    let Some(proposal_id) = truthy_str(body, "proposalId") else {
+        return dx_client_error("proposalId is required.");
+    };
+    let Some(proposal) = st.proposals.get(proposal_id) else {
+        return dx_client_error(format!("The proposal {proposal_id} is not present."));
+    };
+    if proposal.direct_connect_gateway_id != gw_id {
+        return dx_client_error(format!(
+            "The proposal {proposal_id} was not created for gateway {gw_id}."
+        ));
+    }
+    let prefixes = match body.get("overrideAllowedPrefixesToDirectConnectGateway") {
+        Some(list) => str_list(Some(list)),
+        None => proposal.requested_allowed_prefixes.clone(),
+    };
+    let owner_account = string_at(body, "associatedGatewayOwnerAccount")
+        .unwrap_or(&proposal.direct_connect_gateway_owner_account)
+        .to_string();
+    let association = DxAssociation {
+        association_id: format!("dxassoc-moto-{}-{gw_id}", dx_time_ts()),
+        direct_connect_gateway_id: gw_id.to_string(),
+        direct_connect_gateway_owner_account: proposal.direct_connect_gateway_owner_account.clone(),
+        association_state: "associated".to_string(),
+        associated_gateway: proposal.associated_gateway.clone(),
+        allowed_prefixes: prefixes,
+        virtual_gateway_id: Some(proposal.associated_gateway.id.clone()),
+        virtual_gateway_region: Some(region.to_string()),
+    };
+    st.proposals
+        .get_mut(proposal_id)
+        .expect("checked above")
+        .proposal_state = "accepted".to_string();
+    st.associations
+        .insert(association.association_id.clone(), association.clone());
+    ok(json!({
+        "directConnectGatewayAssociation": association_dict(&association),
+    }))
+}
+
+fn describe_direct_connect_gateway_association_proposals(st: &DxStore, body: &Value) -> Response {
+    if let Some(proposal_id) = truthy_str(body, "proposalId") {
+        return match st.proposals.get(proposal_id) {
+            Some(p) => ok(json!({
+                "directConnectGatewayAssociationProposals": [proposal_dict(p)],
+            })),
+            None => dx_client_error(format!("The proposal {proposal_id} is not present.")),
+        };
+    }
+    let gateway_filter = truthy_str(body, "directConnectGatewayId").map(String::from);
+    let agw_filter = truthy_str(body, "associatedGatewayId").map(String::from);
+    let all: Vec<(String, Value)> = st
+        .proposals
+        .values()
+        .filter(|p| {
+            gateway_filter
+                .as_ref()
+                .map_or(true, |g| g == &p.direct_connect_gateway_id)
+                && agw_filter
+                    .as_ref()
+                    .map_or(true, |g| g == &p.associated_gateway.id)
+        })
+        .map(|p| (p.proposal_id.clone(), proposal_dict(p)))
+        .collect();
+    let items = page_pairs(
+        all,
+        int_at(body, "maxResults"),
+        string_at(body, "nextToken"),
+    );
+    ok(json!({
+        "directConnectGatewayAssociationProposals": items.0,
+        "nextToken": items.1,
+    }))
+}
+
+/// Deleting a proposal marks it `deleted` (mirrors the fork's keep-marker
+/// delete style).
+fn delete_direct_connect_gateway_association_proposal(st: &mut DxStore, body: &Value) -> Response {
+    let Some(proposal_id) = truthy_str(body, "proposalId") else {
+        return dx_client_error("proposalId is required.");
+    };
+    match st.proposals.get_mut(proposal_id) {
+        Some(p) => {
+            p.proposal_state = "deleted".to_string();
+            ok(json!({
+                "directConnectGatewayAssociationProposal": proposal_dict(p),
+            }))
+        }
+        None => dx_client_error(format!("The proposal {proposal_id} is not present.")),
+    }
+}
+
+fn describe_direct_connect_gateway_attachments(st: &DxStore, body: &Value) -> Response {
+    let all: Vec<(String, Value)> = st
+        .attachments
+        .values()
+        .filter(|a| {
+            truthy_str(body, "directConnectGatewayId").map_or(true, |g| g == a.direct_connect_gateway_id)
+                && truthy_str(body, "virtualInterfaceId")
+                    .map_or(true, |v| v == a.virtual_interface_id)
+        })
+        .map(|a| (attachment_key(&a.direct_connect_gateway_id, &a.virtual_interface_id), attachment_dict(a)))
+        .collect();
+    let items = page_pairs(
+        all,
+        int_at(body, "maxResults"),
+        string_at(body, "nextToken"),
+    );
+    ok(json!({
+        "directConnectGatewayAttachments": items.0,
+        "nextToken": items.1,
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// wave-12 operations — LAG extras and hosted connections
+// ---------------------------------------------------------------------------
+
+/// `DeleteLag`: the LAG and its member connections go away — members are
+/// marked `deleted` like the fork's `DeleteConnection`, the LAG record drops.
+fn delete_lag(st: &mut DxStore, body: &Value, region: &str) -> Response {
+    let Some(lag_id) = truthy_str(body, "lagId") else {
+        return lag_not_found("", region);
+    };
+    let Some(lag) = st.lags.remove(lag_id) else {
+        return lag_not_found(lag_id, region);
+    };
+    for id in &lag.connections {
+        if let Some(conn) = st.connections.get_mut(id) {
+            conn.connection_state = "deleted".to_string();
+        }
+    }
+    ok(json!({
+        "lagId": lag.lag_id,
+        "lagState": "deleted",
+    }))
+}
+
+/// `UpdateLag` renames, retunes `minimumLinks` and the MACSec mode.
+fn update_lag(st: &mut DxStore, body: &Value, region: &str) -> Response {
+    let Some(lag_id) = truthy_str(body, "lagId") else {
+        return lag_not_found("", region);
+    };
+    match st.lags.get_mut(lag_id) {
+        Some(lag) => {
+            if let Some(name) = truthy_str(body, "lagName") {
+                lag.lag_name = name.to_string();
+            }
+            if let Some(minimum) = int_at(body, "minimumLinks") {
+                lag.minimum_links = minimum;
+            }
+            if let Some(mode) = truthy_str(body, "encryptionMode") {
+                lag.encryption_mode = mode.to_string();
+            }
+            ok(lag_dict(st, lag))
+        }
+        None => lag_not_found(lag_id, region),
+    }
+}
+
+fn associate_connection_with_lag(st: &mut DxStore, body: &Value, region: &str) -> Response {
+    let Some(lag_id) = truthy_str(body, "lagId") else {
+        return lag_not_found("", region);
+    };
+    let Some(connection_id) = truthy_str(body, "connectionId") else {
+        return connection_not_found("", region);
+    };
+    if !st.lags.contains_key(lag_id) {
+        return lag_not_found(lag_id, region);
+    }
+    let Some(conn) = st.connections.get_mut(connection_id) else {
+        return connection_not_found(connection_id, region);
+    };
+    conn.lag_id = Some(lag_id.to_string());
+    st.lags
+        .get_mut(lag_id)
+        .map(|l| l.connections.push(conn_id(conn)))
+        .expect("lag checked above");
+    let record = conn.clone();
+    ok(connection_dict(st, &record))
+}
+
+/// Downcast the just-borrowed connection's id — `connection_id` is not
+/// hash-keyed here, the helpers borrow in sequence.
+fn conn_id(conn: &Connection) -> String {
+    conn.connection_id.clone()
+}
+
+/// The inverse of `associate_connection_with_lag`.
+fn disassociate_connection_from_lag(st: &mut DxStore, body: &Value, region: &str) -> Response {
+    let Some(lag_id) = truthy_str(body, "lagId") else {
+        return lag_not_found("", region);
+    };
+    let Some(connection_id) = truthy_str(body, "connectionId") else {
+        return connection_not_found("", region);
+    };
+    let Some(lag) = st.lags.get_mut(lag_id) else {
+        return lag_not_found(lag_id, region);
+    };
+    lag.connections.retain(|id| id != connection_id);
+    let Some(conn) = st.connections.get_mut(connection_id) else {
+        return connection_not_found(connection_id, region);
+    };
+    conn.lag_id = None;
+    let record = conn.clone();
+    ok(connection_dict(st, &record))
+}
+
+/// Hosted connections allocated on this connection
+/// (`AllocateHostedConnection` rows whose parent is `connectionId`).
+fn describe_hosted_connections(st: &DxStore, body: &Value, region: &str) -> Response {
+    let Some(connection_id) = truthy_str(body, "connectionId") else {
+        return connection_not_found("", region);
+    };
+    if !st.connections.contains_key(connection_id) {
+        return connection_not_found(connection_id, region);
+    }
+    let conns: Vec<Value> = st
+        .connections
+        .values()
+        .filter(|c| c.parent_id.as_deref() == Some(connection_id))
+        .filter(|c| c.owner_account.is_some())
+        .map(|c| connection_dict(st, c))
+        .collect();
+    ok(json!({ "connections": conns }))
+}
+
+/// Allocate a hosted connection: `ordering` state under its parent, owned by
+/// the requested `ownerAccount`, carrying the caller's `vlan`.
+fn allocate_hosted_connection(
+    st: &mut DxStore,
+    _account: u64,
+    region: &str,
+    body: &Value,
+) -> Response {
+    let Some(parent_id) = truthy_str(body, "connectionId") else {
+        return connection_not_found("", region);
+    };
+    let Some(location) = st.connections.get(parent_id).map(|c| c.location.clone()) else {
+        return connection_not_found(parent_id, region);
+    };
+    let params = body
+        .get("connectionName")
+        .and_then(Value::as_str)
+        .map(|n| json!({"connectionName": n}))
+        .unwrap_or(Value::Null);
+    let mut conn = build_connection(st, _account, region, &params, None);
+    conn.location = location;
+    conn.bandwidth = string_at(body, "bandwidth").unwrap_or("").to_string();
+    conn.connection_state = "ordering".to_string();
+    conn.owner_account = string_at(body, "ownerAccount").map(String::from);
+    conn.parent_id = Some(parent_id.to_string());
+    conn.vlan = int_at(body, "vlan");
+    if let Some(tags) = truthy_array(body.get("tags")) {
+        tag_resource(st, &conn.connection_id, Some(tags));
+    }
+    st.connections.insert(conn.connection_id.clone(), conn.clone());
+    ok(connection_dict(st, &conn))
+}
+
+/// Move a hosted connection under another connection.
+fn associate_hosted_connection(st: &mut DxStore, body: &Value, region: &str) -> Response {
+    let Some(connection_id) = truthy_str(body, "connectionId") else {
+        return connection_not_found("", region);
+    };
+    let Some(parent_id) = truthy_str(body, "parentConnectionId") else {
+        return connection_not_found("", region);
+    };
+    let Some(location) = st.connections.get(parent_id).map(|c| c.location.clone()) else {
+        return connection_not_found(parent_id, region);
+    };
+    let Some(conn) = st.connections.get_mut(connection_id) else {
+        return connection_not_found(connection_id, region);
+    };
+    conn.parent_id = Some(parent_id.to_string());
+    conn.location = location;
+    let record = conn.clone();
+    ok(connection_dict(st, &record))
+}
+
+// ---------------------------------------------------------------------------
+// wave-12 operations — metadata, agreements, locations, Loa
+// ---------------------------------------------------------------------------
+
+/// The location catalogue: a static, deterministic subset of the real list.
+const LOCATIONS: [(&str, &str, &str); 4] = [
+    ("EqDC2", "US, Ashburn", "us-east-1"),
+    ("EqSV5", "US, Palo Alto", "us-west-1"),
+    ("EqSeD", "US, Seattle", "us-west-2"),
+    ("EuC1", "EU, Frankfurt", "eu-central-1"),
+];
+
+fn describe_locations() -> Response {
+    let locations: Vec<Value> = LOCATIONS
+        .iter()
+        .map(|(code, name, region)| {
+            json!({
+                "availableMacSecPortSpeeds": ["10Gbps", "100Gbps"],
+                "availablePortSpeeds": ["1Gbps", "10Gbps", "100Gbps"],
+                "availableProviders": ["Equinix", "Interxion", "Digital Realty"],
+                "locationCode": code,
+                "locationName": name,
+                "region": region,
+            })
+        })
+        .collect();
+    ok(json!({ "locations": locations }))
+}
+
+/// Classic virtual private gateways are an EC2-side concept the twin does not
+/// model; the describe answers the declared shape with an empty list.
+fn describe_virtual_gateways() -> Response {
+    ok(json!({ "virtualGateways": [] }))
+}
+
+fn describe_customer_metadata(st: &DxStore) -> Response {
+    let agreements: Vec<Value> = st
+        .agreements
+        .iter()
+        .map(|(name, status)| json!({ "agreementName": name, "status": status }))
+        .collect();
+    ok(json!({
+        "agreements": agreements,
+        "nniPartnerType": "nonPartner",
+    }))
+}
+
+fn confirm_customer_agreement(st: &mut DxStore, body: &Value) -> Response {
+    let name = truthy_str(body, "agreementName")
+        .unwrap_or("AWS Direct Connect Customer Agreement")
+        .to_string();
+    st.agreements.insert(name, "signed".to_string());
+    ok(json!({ "status": "signed" }))
+}
+
+/// The deterministic mock Loa document (botocore `Loa`).
+fn mock_loa() -> Value {
+    // base64("mock LOA document bytes (rotocore twin)") — stable bytes so
+    // responses rehearse byte-for-byte.
+    json!({
+        "loaContent": "bW9jayBMT0EgZG9jdW1lbnQgYnl0ZXMgKHJvdG9jb3JlIHR3aW4p",
+        "loaContentType": "application/pdf",
+    })
+}
+
+/// botocore `DescribeLoa` returns the Loa structure directly.
+fn describe_loa(st: &DxStore, body: &Value, region: &str) -> Response {
+    let Some(connection_id) = truthy_str(body, "connectionId") else {
+        return connection_not_found("", region);
+    };
+    match st.connections.get(connection_id) {
+        Some(_) => ok(mock_loa()),
+        None => connection_not_found(connection_id, region),
+    }
+}
+
+/// botocore `DescribeConnectionLoa` wraps the Loa in `{loa: ...}`.
+fn describe_connection_loa(st: &DxStore, body: &Value, region: &str) -> Response {
+    match describe_loa(st, body, region) {
+        r if r.status == 200 => ok(json!({ "loa": mock_loa() })),
+        r => r,
+    }
+}
+
+
+
+// ---------------------------------------------------------------------------
 // Tags (moto's TaggingService semantics)
 // ---------------------------------------------------------------------------
 
@@ -758,6 +2467,35 @@ fn str_list(value: Option<&Value>) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// First `maxResults` pairs with an opaque `nextToken`: the token is the id
+/// of the first entry of the following page, and resumption emits everything
+/// at or after it (so unknown tokens yield an empty, valid page).
+fn page_pairs(
+    items: Vec<(String, Value)>,
+    max_results: Option<i64>,
+    next_token: Option<&str>,
+) -> (Vec<Value>, Value) {
+    let start = next_token
+        .map(|token| items.partition_point(|(id, _)| id.as_str() < token))
+        .unwrap_or(0);
+    let window = &items[start..];
+    let mut len = window.len();
+    let mut token = Value::Null;
+    if let Some(max) = max_results.filter(|m| *m >= 0 && (*m as usize) < window.len()) {
+        len = max as usize;
+        token = json!(window[len].0.clone());
+    }
+    (
+        window[..len].iter().map(|(_, v)| v.clone()).collect(),
+        token,
+    )
+}
+
+/// Integer body members (`maxResults`, `vlan`, `minimumLinks`, ...).
+fn int_at(body: &Value, key: &str) -> Option<i64> {
+    body.get(key).and_then(Value::as_i64)
+}
+
 /// `arn:aws:directconnect:{region}:{account}:{resource}` — moto's id prefix.
 fn dx_arn(region: &str, account: u64, resource: &str, id: &str) -> String {
     format!("arn:aws:directconnect:{region}:{account}:{resource}/{id}")
@@ -811,6 +2549,29 @@ fn mac_sec_key_not_found(secret_arn: &str, connection_id: &str) -> Response {
 
 fn connection_id_missing() -> Response {
     json_error(400, "ConnectionIdMissing", "The connection ID is missing.")
+}
+
+/// botocore's declared `DirectConnectClientException` — the 400 shape for the
+/// wave-12 families (the fork's own ConnectionNotFound vocabulary stays for
+/// connections/LAGs).
+fn dx_client_error(message: impl AsRef<str>) -> Response {
+    json_error(400, "DirectConnectClientException", message.as_ref())
+}
+
+fn interconnect_not_found(interconnect_id: &str, region: &str) -> Response {
+    dx_client_error(format!(
+        "{interconnect_id} does not match any interconnects in region {region}."
+    ))
+}
+
+fn vif_not_found(vif_id: &str) -> Response {
+    dx_client_error(format!("{vif_id} does not match any virtual interfaces."))
+}
+
+fn gateway_not_found(gateway_id: &str) -> Response {
+    dx_client_error(format!(
+        "{gateway_id} does not match any Direct Connect gateways."
+    ))
 }
 
 /// moto's crash-shaped 500 for its unguarded `NotImplementedError`.
