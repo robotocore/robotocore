@@ -206,6 +206,26 @@ def read_probe(path: Path) -> dict | None:
         return None
 
 
+def load_absence_summary() -> dict | None:
+    """Per-class absence counts from the manifest, when present."""
+    path = PROJECT_ROOT / "tooling" / "surface-absence.json"
+    try:
+        data = json.loads(path.read_text())
+    except Exception:
+        return None
+    rows = data.get("services", {}) if isinstance(data, dict) else {}
+    classes: dict[str, int] = {}
+    for ops in rows.values():
+        for row in ops.values():
+            cls = row.get("class", "unclassified")
+            classes[cls] = classes.get(cls, 0) + 1
+    return {
+        "manifest": "tooling/surface-absence.json",
+        "rows": sum(classes.values()),
+        "classes": dict(sorted(classes.items())),
+    }
+
+
 def build_report(probes_dir: Path, endpoint: str) -> dict:
     """Build parity-report data from probe artifacts + the live twin."""
     live = fetch_table(endpoint)
@@ -297,28 +317,31 @@ def build_report(probes_dir: Path, endpoint: str) -> dict:
     total_tests = sum(s["test_method_count"] for s in services.values())
     native_count = sum(1 for s in services.values() if s["status"] == "native")
 
+    summary = {
+        "total_services": len(services),
+        "native_services": native_count,
+        "absent_services": len(services) - native_count,
+        "total_aws_operations": total_aws,
+        "total_implemented": total_impl,
+        "total_tested": total_tested,
+        "total_test_methods": total_tests,
+        "unmapped_test_methods": unmapped_methods,
+        "impl_pct": total_impl / total_aws * 100 if total_aws else 0,
+        "test_pct": total_tested / total_aws * 100 if total_aws else 0,
+        "probed_services": len(probed),
+        "needs_params_operations": sum(s["needs_params_count"] for s in services.values()),
+        "not_implemented_operations": sum(s["not_implemented_count"] for s in services.values()),
+        "error_operations": sum(s["error_count"] for s in services.values()),
+    }
+    absence = load_absence_summary()
+    if absence is not None:
+        # Recorded absence classes (the manifest build) alongside the raw
+        # not_implemented total — see docs/botocore-surface-plan.md §3d.
+        summary["absence"] = absence
+
     return {
         "services": services,
-        "summary": {
-            "total_services": len(services),
-            "native_services": native_count,
-            "absent_services": len(services) - native_count,
-            "total_aws_operations": total_aws,
-            "total_implemented": total_impl,
-            "total_tested": total_tested,
-            "total_test_methods": total_tests,
-            "unmapped_test_methods": unmapped_methods,
-            "impl_pct": total_impl / total_aws * 100 if total_aws else 0,
-            "test_pct": total_tested / total_aws * 100 if total_aws else 0,
-            "probed_services": len(probed),
-            "needs_params_operations": sum(
-                s["needs_params_count"] for s in services.values()
-            ),
-            "not_implemented_operations": sum(
-                s["not_implemented_count"] for s in services.values()
-            ),
-            "error_operations": sum(s["error_count"] for s in services.values()),
-        },
+        "summary": summary,
         "source": {
             "endpoint": endpoint,
             "probes_dir": str(probes_dir),
@@ -382,6 +405,10 @@ def print_report(report: dict) -> None:
     print(f"  Operations working:      {summary['total_implemented']}  ({impl})")
     print(f"  Needs params (unknown):  {summary['needs_params_operations']}")
     print(f"  Not implemented (501):   {summary['not_implemented_operations']}")
+    absence = summary.get("absence")
+    if absence:
+        classes = ", ".join(f"{k}={v}" for k, v in absence["classes"].items())
+        print(f"  Absence manifest:        {absence['rows']} rows  ({classes})")
     print(f"  500 errors (bugs):       {summary['error_operations']}")
     print(f"  Compat test methods:     {summary['total_test_methods']}")
     print()

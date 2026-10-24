@@ -1,7 +1,8 @@
 .PHONY: test compat-test compat-test-hot parity rust-test rust-lint rust-fmt \
         docker-build docker-run serve clean help start stop status \
         test-iac test-iac-terraform test-iac-cloudformation test-iac-cdk \
-        test-iac-pulumi test-iac-serverless test-iac-sam help coverage-gate
+        test-iac-pulumi test-iac-serverless test-iac-sam help coverage-gate \
+        absence-manifest
 
 N := $(shell python3 -c "import os; print(min(os.cpu_count() or 4, 12))")
 
@@ -34,6 +35,9 @@ parity: ## Full rust-only parity run against the golden baseline
 
 coverage-gate: ## Regenerate coverage artifacts and fail on budget regressions
 	uv run python scripts/coverage.py --gate
+
+absence-manifest: ## Rebuild tooling/surface-absence.json (every deny is a recorded decision)
+	uv run python scripts/build_surface_absence.py
 
 ## ── IaC tests ────────────────────────────────────────────────────────────
 
