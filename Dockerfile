@@ -44,9 +44,10 @@ FROM debian:trixie-slim AS runtimes
 
 ARG ROBOTOCORE_VERSION=1.0.0
 ENV ROBOTOCORE_VERSION=${ROBOTOCORE_VERSION}
-# Explicit PATH: debian:trixie-slim sets none in image ENV (the engine
-# default only exists inside `docker run`), so spell it out to keep
-# `docker exec` and the runtime probes on the same searchable dirs.
+# Explicit ENV belt (also governs docker exec paths): the trixie base
+# image does set a PATH env — spelling it out here pins the same value in
+# this stage's config so `docker exec` and the runtime probes run against
+# the same searchable dirs.
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

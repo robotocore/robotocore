@@ -152,19 +152,27 @@ fn missing_runtime_result(msg: &str) -> ExecResult {
     }
 }
 
-/// Cap on captured handler output per stream (stdout, stderr). When a
-/// stream exceeds the cap only the last bytes are kept (tail semantics).
-/// Results may carry large payloads ((SIG) docker-mode answers ride this
-/// pipe; 4MB keeps multi-hundred-KB results intact while bounding buffer).
-const OUTPUT_CAP: usize = 4 * 1024 * 1024;
+/// Cap on captured handler output per stream (stdout, stderr) for the LOCAL
+/// (in-process) executors: the twin's shim answers ride these pipes, which
+/// never exceed the HTTP envelope. When a stream exceeds the cap only the
+/// last bytes are kept (tail semantics).
+const LOCAL_OUTPUT_CAP: usize = 128 * 1024;
 
-/// Drain a spawned child pipe on a dedicated thread, keeping at most
-/// `OUTPUT_CAP` bytes (tail semantics) and returning a channel the caller
-/// can wait on with a deadline. Reading blocks until EOF, which never
-/// arrives while a grandchild inherited the pipe, so the caller must bound
-/// how long it waits and abandon the thread (and its text) on timeout.
+/// Cap on captured docker-cli output per stream: the EMI-family
+/// invocation answers (whole runtime-interface response bodies) ride the
+/// `docker exec` stdout, so the docker pipes need more room than the local
+/// executors — 4MB keeps multi-hundred-KB results intact while bounding the
+/// buffer.
+pub(crate) const DOCKER_OUTPUT_CAP: usize = 4 * 1024 * 1024;
+
+/// Drain a spawned child pipe on a dedicated thread, keeping at most `cap`
+/// bytes (tail semantics) and returning a channel the caller can wait on
+/// with a deadline. Reading blocks until EOF, which never arrives while a
+/// grandchild inherited the pipe, so the caller must bound how long it
+/// waits and abandon the thread (and its text) on timeout.
 pub(crate) fn drain_thread<R: std::io::Read + Send + 'static>(
     pipe: Option<R>,
+    cap: usize,
 ) -> mpsc::Receiver<String> {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
@@ -176,8 +184,8 @@ pub(crate) fn drain_thread<R: std::io::Read + Send + 'static>(
                     Ok(0) | Err(_) => break,
                     Ok(n) => {
                         kept.extend_from_slice(&chunk[..n]);
-                        if kept.len() > OUTPUT_CAP {
-                            let excess = kept.len() - OUTPUT_CAP;
+                        if kept.len() > cap {
+                            let excess = kept.len() - cap;
                             kept.drain(..excess);
                         }
                     }
@@ -290,8 +298,8 @@ pub fn execute_python(
     // beyond the OS pipe buffer blocks the child's writes until somebody
     // reads, so waiting here for child exit first would deadlock on any
     // handler that prints more than a pipe buffer.
-    let stdout_rx = drain_thread(child.stdout.take());
-    let stderr_rx = drain_thread(child.stderr.take());
+    let stdout_rx = drain_thread(child.stdout.take(), LOCAL_OUTPUT_CAP);
+    let stderr_rx = drain_thread(child.stderr.take(), LOCAL_OUTPUT_CAP);
 
     // Wait up to the function timeout; kill on overrun.
     let wait_secs = u64::from(timeout_secs.max(1)) + 5;
@@ -778,8 +786,8 @@ pub fn execute_nodejs(
 
     // Drain pipes on dedicated threads (bounded tail) so the child never
     // deadlocks on a full pipe buffer while nobody reads.
-    let stdout_rx = drain_thread(child.stdout.take());
-    let stderr_rx = drain_thread(child.stderr.take());
+    let stdout_rx = drain_thread(child.stdout.take(), LOCAL_OUTPUT_CAP);
+    let stderr_rx = drain_thread(child.stderr.take(), LOCAL_OUTPUT_CAP);
 
     // Grace period beyond the Lambda timeout, as in the Python-era twin.
     let wait_secs = u64::from(timeout_secs.max(1)) + 2;
@@ -1045,8 +1053,8 @@ pub fn execute_custom(
 
     // Start draining pipes immediately, from dedicated threads, so a
     // chatty bootstrap cannot deadlock on the OS pipe buffer.
-    let stdout_rx = drain_thread(child.stdout.take());
-    let stderr_rx = drain_thread(child.stderr.take());
+    let stdout_rx = drain_thread(child.stdout.take(), LOCAL_OUTPUT_CAP);
+    let stderr_rx = drain_thread(child.stderr.take(), LOCAL_OUTPUT_CAP);
 
     // Wait up to the function timeout plus the python-era 2s grace; kill the
     // child on overrun.
@@ -1431,7 +1439,7 @@ mod tests {
             res.logs, res.payload
         );
         assert!(
-            res.logs.len() <= OUTPUT_CAP + 8,
+            res.logs.len() <= LOCAL_OUTPUT_CAP + 8,
             "captured {} bytes of output",
             res.logs.len()
         );
