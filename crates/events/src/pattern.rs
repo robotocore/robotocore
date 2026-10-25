@@ -355,6 +355,45 @@ fn match_numeric(ops: &[Value], value: &Value) -> bool {
     true
 }
 
+/// Store-time event-pattern validation (moto `EventPatternParser`:
+/// `_validate_event_pattern` — era's `_put_rule` runs the same top-level
+/// scan). Each value in the pattern must be an object or a non-empty
+/// array; object leaves recurse.
+pub fn validate_event_pattern(pattern: &Value) -> Result<(), String> {
+    fn sub_reason(so_far: String, key: &str) -> String {
+        if so_far.is_empty() {
+            key.to_string()
+        } else {
+            format!("{so_far}.{key}")
+        }
+    }
+    match pattern {
+        Value::Object(map) => {
+            for (key, value) in map {
+                match value {
+                    Value::Object(_) => {
+                        validate_event_pattern(value)?;
+                    }
+                    Value::Array(list) => {
+                        if list.is_empty() {
+                            return Err("Empty arrays are not allowed".to_string());
+                        }
+                    }
+                    _ => {
+                        let path = sub_reason(String::new(), key);
+                        return Err(format!("'{path}' must be an object or an array"));
+                    }
+                }
+            }
+            Ok(())
+        }
+        Value::Array(list) if list.is_empty() => {
+            Err("Empty arrays are not allowed".to_string())
+        }
+        _ => Err("Value of each key must be an array or an object.".to_string()),
+    }
+}
+
 /// Resolve a JSONPath of the form `$.a.b` against an event.
 pub fn resolve_json_path(path: &str, event: &Value) -> Option<Value> {
     let rest = path.strip_prefix("$.")?;

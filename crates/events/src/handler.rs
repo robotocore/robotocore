@@ -153,11 +153,43 @@ impl EventsHandler {
             .and_then(|v| v.as_str())
             .map(String::from);
         if schedule_expression.is_none() && event_pattern.is_empty() {
+            // moto `EventsBackend.put_rule`: ValidationException with the
+            // "Parameter(s) ..." text; the twin used "InvalidParameter".
             return AwsResponse::error(
                 400,
-                "InvalidParameter",
-                "EventPattern or ScheduleExpression must be specified.",
+                "ValidationException",
+                "Parameter(s) EventPattern or ScheduleExpression must be specified.",
             );
+        }
+        if !event_pattern.is_empty() && schedule_expression.is_some() {
+            // era `_put_rule`: both together are rejected.
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                "Specifying both EventPattern and ScheduleExpression is not allowed.",
+            );
+        }
+        if !event_pattern.is_empty() {
+            // moto `EventPatternParser.parse` + era `_put_rule`: patterns
+            // are parsed and shape-checked at PutRule time; the twin used
+            // to store garbage patterns that could then never match.
+            let parsed = match serde_json::from_str::<Value>(&event_pattern) {
+                Ok(parsed) => parsed,
+                Err(_) => {
+                    return AwsResponse::error(
+                        400,
+                        "InvalidEventPatternException",
+                        "Event pattern is not valid. Reason: Invalid JSON",
+                    )
+                }
+            };
+            if let Err(reason) = crate::pattern::validate_event_pattern(&parsed) {
+                return AwsResponse::error(
+                    400,
+                    "InvalidEventPatternException",
+                    &format!("Event pattern is not valid. Reason: {reason}"),
+                );
+            }
         }
         // The caller's State param must stick (era parity: moto's
         // `Rule.__init__` does `self.state = state or "ENABLED"`), so a
@@ -1895,6 +1927,96 @@ mod tests {
         let handler = EventsHandler::new();
         let resp = handler.handle(make_req("DeleteRule", json!({"Name": "fp5-ghost-rule"})));
         assert_eq!(resp.status, 200, "deleting a missing rule succeeds (era/moto)");
+    }
+
+    // -- PutRule event-pattern validation (F9, agent-221 finding 9) ------------
+
+    #[test]
+    fn put_rule_rejects_invalid_event_patterns() {
+        let handler = EventsHandler::new();
+        // Scalar value where an array/object is required.
+        for bad in [
+            json!({"source": "not-an-array"}),
+            json!({"source": []}),
+            json!({"detail": {"state": "scalar"}}),
+        ] {
+            let resp = handler.handle(make_req(
+                "PutRule",
+                json!({
+                    "Name": "fp9-invalid-rule",
+                    "EventPattern": bad.to_string(),
+                }),
+            ));
+            assert_eq!(resp.status, 400);
+            let json = body(&resp);
+            assert_eq!(
+                json["__type"], "InvalidEventPatternException",
+                "pattern {bad} must be rejected"
+            );
+            assert!(json["message"]
+                .as_str()
+                .is_some_and(|m| m.starts_with("Event pattern is not valid.")));
+        }
+        // Malformed JSON is rejected too.
+        let resp = handler.handle(make_req(
+            "PutRule",
+            json!({"Name": "fp9-invalid-rule", "EventPattern": "{not json"}),
+        ));
+        assert_eq!(body(&resp)["__type"], "InvalidEventPatternException");
+        // None of the rejects may have stored a rule.
+        assert!(
+            !body(&handler.handle(make_req("ListRules", json!({"NamePrefix": "fp9-invalid"}))))["Rules"]
+                .as_array()
+                .expect("Rules list")
+                .iter()
+                .any(|r| r["Name"] == "fp9-invalid-rule"),
+            "the invalid pattern must not be stored"
+        );
+    }
+
+    #[test]
+    fn put_rule_rejects_event_pattern_with_schedule_expression() {
+        let handler = EventsHandler::new();
+        let resp = handler.handle(make_req(
+            "PutRule",
+            json!({
+                "Name": "fp9-both-rule",
+                "EventPattern": "{}",
+                "ScheduleExpression": "rate(1 hour)",
+            }),
+        ));
+        assert_eq!(resp.status, 400);
+        let json = body(&resp);
+        assert_eq!(json["__type"], "ValidationException");
+        assert_eq!(
+            json["message"],
+            "Specifying both EventPattern and ScheduleExpression is not allowed."
+        );
+        // Neither variant may have stored the rule.
+        assert_eq!(
+            body(&handler.handle(make_req("ListRules", json!({"NamePrefix": "fp9-both"}))))["Rules"]
+                .as_array()
+                .expect("Rules list")
+                .len(),
+            0
+        );
+    }
+
+    #[test]
+    fn put_rule_requires_pattern_or_schedule() {
+        let handler = EventsHandler::new();
+        let resp = handler.handle(make_req("PutRule", json!({"Name": "fp9-none-rule"})));
+        assert_eq!(resp.status, 400);
+        assert_eq!(body(&resp)["__type"], "ValidationException");
+        // Valid patterns still put fine ({} is an empty but valid pattern).
+        assert_eq!(
+            handler.handle(make_req(
+                "PutRule",
+                json!({"Name": "fp9-empty-pattern-rule", "EventPattern": "{}"}),
+            )).status,
+            200
+        );
+        handler.handle(make_req("DeleteRule", json!({"Name": "fp9-empty-pattern-rule"})));
     }
 
     // -- PutRule target preservation on overwrite (F8, agent-221 finding 8) ----
