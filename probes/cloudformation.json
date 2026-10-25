@@ -1,7 +1,7 @@
 {
   "service": "cloudformation",
-  "generated_at": "2026-10-22T06:59:38.089414+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-25T06:10:36.098458+00:00",
+  "endpoint": "http://localhost:4790",
   "counts": {
     "working": 86,
     "needs_params": 0,
@@ -28,12 +28,12 @@
     {
       "operation": "CancelUpdateStack",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "ContinueUpdateRollback",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "CreateChangeSet",
@@ -178,12 +178,12 @@
     {
       "operation": "DescribeStackSet",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
     },
     {
       "operation": "DescribeStackSetOperation",
       "status": "working",
-      "message": "implemented (ValidationError)"
+      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
     },
     {
       "operation": "DescribeStacks",
@@ -253,12 +253,12 @@
     {
       "operation": "GetTemplateSummary",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "ImportStacksToStackSet",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
     },
     {
       "operation": "ListChangeSets",
@@ -418,7 +418,7 @@
     {
       "operation": "StopStackSetOperation",
       "status": "working",
-      "message": "implemented (ValidationError)"
+      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
     },
     {
       "operation": "TestType",
@@ -438,12 +438,12 @@
     {
       "operation": "UpdateStackInstances",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
     },
     {
       "operation": "UpdateStackSet",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
     },
     {
       "operation": "UpdateTerminationProtection",
