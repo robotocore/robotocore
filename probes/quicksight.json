@@ -1,7 +1,7 @@
 {
   "service": "quicksight",
-  "generated_at": "2026-10-22T07:01:53.882956+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-25T05:52:01.680045+00:00",
+  "endpoint": "http://localhost:4800",
   "counts": {
     "working": 224,
     "needs_params": 5,
@@ -13,17 +13,17 @@
     {
       "operation": "BatchCreateTopicReviewedAnswer",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "BatchDeleteTopicReviewedAnswer",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CancelIngestion",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateAccountCustomization",
@@ -43,7 +43,7 @@
     {
       "operation": "CreateAnalysis",
       "status": "working",
-      "message": "likely implemented (ResourceExistsException: Analysis probe-analysis-id-id already exists)"
+      "message": "OK"
     },
     {
       "operation": "CreateBrand",
