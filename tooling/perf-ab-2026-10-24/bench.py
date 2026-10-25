@@ -186,7 +186,7 @@ def rss_mb(pid):
         return None
     return None
 
-_sampler_ctl = {"stop": False, "peak_mem": {}, "cpu_sum": {}, "samples": 0}
+_sampler_ctl = {"stop": False, "peak_mem": {}, "cpu_avg": {}, "samples": 0}
 
 def sample_once(containers):
     out = subprocess.run(["docker", "stats", "--no-stream", "--format", "{{.Name}} {{.CPUPerc}} {{.MemUsage}}", *containers],
