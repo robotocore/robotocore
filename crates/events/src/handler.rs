@@ -230,20 +230,22 @@ impl EventsHandler {
     fn delete_rule(&self, req: &AwsRequest) -> AwsResponse {
         let key = Self::rule_key(req);
         let state = self.get_state(req.account, &req.region);
-        let removed = state.rules.write().remove(&key);
-        if removed.is_none() {
+        let Some(rule) = state.get_rule(&key.0, &key.1) else {
+            // era `_delete_rule` / moto `EventsBackend.delete_rule`: a
+            // missing rule deletes silently (the twin used to 404).
+            return AwsResponse::json(200, json!({}));
+        };
+        if !rule.targets.read().is_empty() {
+            // AWS era `_delete_rule` / moto `delete_rule`: rules with
+            // remaining targets cannot be deleted.
             return AwsResponse::error(
                 400,
-                "ResourceNotFoundException",
-                &format!("Rule not found: {}", key.1),
+                "ValidationException",
+                "Rule can't be deleted since it has targets.",
             );
         }
-        if let Some(rule) = removed {
-            self.get_state(req.account, &req.region)
-                .tags
-                .write()
-                .remove(&rule.arn);
-        }
+        state.rules.write().remove(&key);
+        state.tags.write().remove(&rule.arn);
         AwsResponse::json(200, json!({}))
     }
 
@@ -1780,6 +1782,52 @@ mod tests {
         assert_eq!(EventsHandler::build_target_input(&target, &event), "b1");
     }
 
+    // -- DeleteRule semantics (F5, agent-221 finding 5) ------------------------
+
+    #[test]
+    fn delete_rule_with_targets_is_rejected() {
+        let handler = EventsHandler::new();
+        handler.handle(make_req(
+            "PutRule",
+            json!({"Name": "fp5-del-rule", "EventPattern": "{}"}),
+        ));
+        handler.handle(make_req("PutTargets", json!({
+            "Rule": "fp5-del-rule",
+            "Targets": [{"Id": "t1", "Arn": "arn:aws:sqs:us-east-1:123456789012:fp5-q"}],
+        })));
+        let resp = handler.handle(make_req("DeleteRule", json!({"Name": "fp5-del-rule"})));
+        assert_eq!(resp.status, 400, "a rule with targets cannot be deleted");
+        let json = body(&resp);
+        assert_eq!(json["__type"], "ValidationException");
+        assert_eq!(
+            json["message"],
+            "Rule can't be deleted since it has targets."
+        );
+        // The rule survives the failed delete.
+        assert_eq!(
+            handler.handle(make_req("DescribeRule", json!({"Name": "fp5-del-rule"}))).status,
+            200
+        );
+        // After removing the targets the delete succeeds.
+        handler.handle(make_req("RemoveTargets", json!({"Rule": "fp5-del-rule", "Ids": ["t1"]})));
+        assert_eq!(
+            handler.handle(make_req("DeleteRule", json!({"Name": "fp5-del-rule"}))).status,
+            200
+        );
+        // And it is really gone.
+        assert_eq!(
+            handler.handle(make_req("DescribeRule", json!({"Name": "fp5-del-rule"}))).status,
+            400
+        );
+    }
+
+    #[test]
+    fn delete_missing_rule_succeeds_silently() {
+        let handler = EventsHandler::new();
+        let resp = handler.handle(make_req("DeleteRule", json!({"Name": "fp5-ghost-rule"})));
+        assert_eq!(resp.status, 200, "deleting a missing rule succeeds (era/moto)");
+    }
+
     // -- rule state ops on missing rules (F4, agent-221 finding 4) -------------
 
     #[test]
@@ -2023,7 +2071,16 @@ mod tests {
         assert_eq!(a_deliveries, 6, "even-depth deliveries before the cap");
         assert_eq!(b_deliveries, 5, "odd-depth deliveries before the cap");
 
-        // Clean the pair of queues (the drain already consumed them).
+        // Clean the pair of queues (the drain already consumed them) and
+        // remove the targets so the rules are era-deletable.
+        handler.handle(make_req(
+            "RemoveTargets",
+            json!({"Rule": "fp9-ra", "EventBusName": a, "Ids": ["q", "next"]}),
+        ));
+        handler.handle(make_req(
+            "RemoveTargets",
+            json!({"Rule": "fp9-rb", "EventBusName": b, "Ids": ["q", "next"]}),
+        ));
         handler.handle(make_req(
             "DeleteRule",
             json!({"Name": "fp9-ra", "EventBusName": a}),
