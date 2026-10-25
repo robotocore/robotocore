@@ -214,6 +214,55 @@ def _fn_span(lines: list[str], idx: int) -> tuple[int, int] | None:
     return (fn_start, len(lines) - 1)
 
 
+_ARM_HEAD = re.compile(r'^\s*(?:"(?:[^"\\]|\\.)*"|other\b|_\b)')
+_FALL_HEAD = re.compile(r"^\s*(?:other|_)\s*=>")
+ARM_DENY = r"not_implemented\(|NotImplemented|\.status\(501\)"
+
+
+def _arm_span(lines: list[str], idx: int) -> tuple[int, int] | None:
+    """Span (0-based, inclusive) of the match arm that opens on line idx
+    (a quoted-pattern or other/_ head); None otherwise.
+
+    A quoted head without `=>` may open a multi-line pipe pattern
+    (`"A"` newline `| "B" => …`), so the span scans on until the arm's
+    terminating comma — or a bare `}` for a comma-less last arm — at
+    balanced bracket depth, keeping a multi-line arm body inside the span.
+    """
+    if not _ARM_HEAD.match(lines[idx]):
+        return None
+    depth = 0
+    for i in range(idx, len(lines)):
+        row = lines[i]
+        depth += (
+            row.count("{") + row.count("[") + row.count("(")
+        ) - (row.count("}") + row.count("]") + row.count(")"))
+        if depth == 0 and (
+            row.rstrip().endswith(",") or (i > idx and row.rstrip() in ("}", "};"))
+        ):
+            return (idx, i)
+    return (idx, len(lines) - 1)
+
+
+def _arm_in_pattern(lines: list[str], span: tuple[int, int], idx: int) -> bool:
+    """Whether line idx lies in the pattern area of the arm `span` (at or
+    before the arm's first `=>` line)."""
+    for i in range(span[0], span[1] + 1):
+        if "=>" in lines[i]:
+            return span[0] <= idx <= i
+    return False
+
+
+def _enclosing_arm(lines: list[str], idx: int) -> tuple[int, int] | None:
+    """Match-arm span that contains line idx, whichever head opens it."""
+    i = idx
+    while i >= 0:
+        span = _arm_span(lines, i)
+        if span and span[0] <= idx <= span[1]:
+            return span
+        i -= 1
+    return None
+
+
 def deny_evidence(svc: str, op: str) -> str | None:
     """First deny-recording idiom the twin sources show for op, cited."""
     lit = f'"{op}"'
@@ -269,9 +318,26 @@ def deny_evidence(svc: str, op: str) -> str | None:
                     or "is_none()" in body
                 ):
                     return f"twin unit test pins the deny at {rel}:{ln}"
-            # D2 — arm context: a deny marker within the next 10 lines
-            window = "\n".join(lines[ln - 1 : ln + 9])
-            if re.search(r"not_implemented\(|NotImplemented|\.status\(501\)", window):
+            # D2 — arm context: deny only through the arm the op itself
+            # maps through: the literal sits in the enclosing arm's
+            # PATTERN area (single- or multi-pattern head; multi-line pipe
+            # patterns included), or inside the `other =>`/`_ =>`
+            # fall-through arm whose span carries the literal, and the deny
+            # marker occurs within that arm's span. A marker in a
+            # serving-arm *neighbor* — the match's fall-through or a
+            # sibling arm that begins after the literal's own serving arm
+            # has already answered — must not model the op as denied (the
+            # six directconnect wave-12 serving arms sit directly above the
+            # same match's fall-through).
+            span = None
+            outer = _enclosing_arm(lines, ln - 1)
+            if outer is not None and (
+                _arm_in_pattern(lines, outer, ln - 1) or _FALL_HEAD.match(lines[outer[0]])
+            ):
+                span = outer
+            if span is not None and re.search(
+                ARM_DENY, "\n".join(lines[span[0] : span[1] + 1])
+            ):
                 return f"twin deny arm at {rel}:{ln}"
     return None
 
