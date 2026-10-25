@@ -598,6 +598,10 @@ impl SsmHandler {
             return err_validation(&format!(
                 "1 validation error detected: Value {max_results} at 'maxResults' failed to satisfy constraint: Member must have value less than or equal to {PARAMETER_BY_PATH_MAX_RESULTS}"));
         }
+        // moto validates ParameterFilters (by-path rules) before listing.
+        if let Err(e) = validate_parameter_filters(filters.as_ref(), true) {
+            return e;
+        }
         let token = req
             .params
             .get("NextToken")
@@ -657,6 +661,17 @@ impl SsmHandler {
             .get("ParameterFilters")
             .and_then(|v| v.as_array())
             .cloned();
+        if let (Some(filters), Some(parameter_filters)) = (&raw_filters, &parameter_filters) {
+            if !filters.is_empty() && !parameter_filters.is_empty() {
+                return err_validation(
+                    "You can use either Filters or ParameterFilters in a single request.",
+                );
+            }
+        }
+        // moto validates ParameterFilters (non-by-path rules) before filtering.
+        if let Err(e) = validate_parameter_filters(parameter_filters.as_ref(), false) {
+            return e;
+        }
         let max_results = req
             .params
             .get("MaxResults")
@@ -4158,6 +4173,232 @@ fn matches_parameter_filters(
     true
 }
 
+/// Python `repr` of a list of strings (enough for moto's validation messages).
+fn py_list_repr(items: &[String]) -> String {
+    let inner: Vec<String> = items
+        .iter()
+        .map(|s| {
+            if !s.contains('\'') {
+                format!("'{s}'")
+            } else {
+                format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+            }
+        })
+        .collect();
+    format!("[{}]", inner.join(", "))
+}
+
+/// moto's `ParameterFilters` key pattern member check (re.match of
+/// `^tag:.+|Name|Type|KeyId|Path|Label|Tier$` — note the loose `$` only binds
+/// the final `Tier` alternative, so e.g. "Namesub" validates but never matches).
+fn moto_filter_key_pattern_matches(key: &str) -> bool {
+    key.chars().count() >= 5 && key.starts_with("tag:")
+        || key.starts_with("Name")
+        || key.starts_with("Type")
+        || key.starts_with("KeyId")
+        || key.starts_with("Path")
+        || key.starts_with("Label")
+        || key == "Tier"
+}
+
+/// Port of moto/ssm/models.py `_validate_parameter_filters`: shape checks are
+/// aggregated into one `ValidationException` ("N validation errors detected:
+/// ..."), then the first semantic violation raises
+/// `InvalidFilterKey`/`InvalidFilterOption`/`InvalidFilterValue`.
+fn validate_parameter_filters(
+    filters: Option<&Vec<Value>>,
+    by_path: bool,
+) -> Result<(), AwsResponse> {
+    let Some(filters) = filters else {
+        return Ok(());
+    };
+
+    // ---- Phase 1: shape constraints (aggregated like moto) ----------------
+    let mut errors: Vec<String> = Vec::new();
+    for (index, f) in filters.iter().enumerate() {
+        let key = f.get("Key").and_then(|v| v.as_str()).unwrap_or("");
+        let values = filter_values(f);
+        let option = if key == "Path" {
+            f.get("Option")
+                .and_then(|v| v.as_str())
+                .unwrap_or("OneLevel")
+        } else {
+            f.get("Option").and_then(|v| v.as_str()).unwrap_or("Equals")
+        };
+        let where_prefix = format!("parameterFilters.{}.member", index + 1);
+
+        if !moto_filter_key_pattern_matches(key) {
+            errors.push(format!(
+                "Value \"{key}\" at \"{where_prefix}.key\" failed to satisfy constraint: Member must satisfy regular expression pattern: tag:.+|Name|Type|KeyId|Path|Label|Tier",
+                where_prefix = where_prefix
+            ));
+        }
+        if key.chars().count() > 132 {
+            errors.push(format!(
+                "Value \"{key}\" at \"{where_prefix}.key\" failed to satisfy constraint: Member must have length less than or equal to 132",
+                where_prefix = where_prefix
+            ));
+        }
+        if option.chars().count() > 10 {
+            errors.push(format!(
+                "Value \"over 10 chars\" at \"{where_prefix}.option\" failed to satisfy constraint: Member must have length less than or equal to 10",
+                where_prefix = where_prefix
+            ));
+        }
+        if values.len() > 50 {
+            errors.push(format!(
+                "Value \"{}\" at \"{where_prefix}.values\" failed to satisfy constraint: Member must have length less than or equal to 50",
+                py_list_repr(&values),
+                where_prefix = where_prefix
+            ));
+        }
+        if values.iter().any(|v| v.chars().count() > 1024) {
+            errors.push(format!(
+                "Value \"{}\" at \"{where_prefix}.values\" failed to satisfy constraint: [Member must have length less than or equal to 1024, Member must have length greater than or equal to 1]",
+                py_list_repr(&values),
+                where_prefix = where_prefix
+            ));
+        }
+    }
+    if !errors.is_empty() {
+        let count = errors.len();
+        let plural = if count > 1 { "s" } else { "" };
+        return Err(AwsResponse::error(
+            400,
+            "ValidationException",
+            &format!(
+                "{count} validation error{plural} detected: {}",
+                errors.join("; ")
+            ),
+        ));
+    }
+
+    // ---- Phase 2: semantic checks, first failure wins ----------------------
+    let mut seen: Vec<&str> = Vec::new();
+    for f in filters {
+        let key = f.get("Key").and_then(|v| v.as_str()).unwrap_or("");
+        let values = filter_values(f);
+        let option = if key == "Path" {
+            f.get("Option")
+                .and_then(|v| v.as_str())
+                .unwrap_or("OneLevel")
+        } else {
+            f.get("Option").and_then(|v| v.as_str()).unwrap_or("Equals")
+        };
+
+        if !by_path && key == "Label" {
+            return Err(AwsResponse::error(
+                400,
+                "InvalidFilterKey",
+                "The following filter key is not valid: Label. Valid filter keys include: [Path, Name, Type, KeyId, Tier].",
+            ));
+        }
+        if by_path && matches!(key, "Name" | "Path" | "Tier") {
+            return Err(AwsResponse::error(
+                400,
+                "InvalidFilterKey",
+                &format!(
+                    "The following filter key is not valid: {key}. Valid filter keys include: [Type, KeyId]."
+                ),
+            ));
+        }
+        if matches!(key, "Name" | "Type" | "Path" | "Tier" | "Keyid") && values.is_empty() {
+            // moto's message hardcodes "Name" regardless of the actual key.
+            return Err(AwsResponse::error(
+                400,
+                "InvalidFilterValue",
+                "The following filter values are missing : null for filter key Name.",
+            ));
+        }
+        if seen.contains(&key) {
+            // moto's message hardcodes "Name" too.
+            return Err(AwsResponse::error(
+                400,
+                "InvalidFilterKey",
+                "The following filter is duplicated in the request: Name. A request can contain only one occurrence of a specific filter.",
+            ));
+        }
+        if key == "Path" {
+            if option != "Recursive" && option != "OneLevel" {
+                return Err(AwsResponse::error(
+                    400,
+                    "InvalidFilterOption",
+                    &format!(
+                        "The following filter option is not valid: {option}. Valid options include: [Recursive, OneLevel]."
+                    ),
+                ));
+            }
+            if values.iter().any(|v| {
+                v.to_lowercase().starts_with("/aws") || v.to_lowercase().starts_with("/ssm")
+            }) {
+                return Err(AwsResponse::error(
+                    400,
+                    "ValidationException",
+                    "Filters for common parameters can't be prefixed with \"aws\" or \"ssm\" (case-insensitive). When using global parameters, please specify within a global namespace.",
+                ));
+            }
+            for value in &values {
+                let charset_ok = value
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '/'));
+                if value.contains("//") || !value.starts_with('/') || !charset_ok {
+                    return Err(AwsResponse::error(
+                        400,
+                        "ValidationException",
+                        "The parameter doesn't meet the parameter name requirements. The parameter name must begin with a forward slash \"/\". It can't be prefixed with \"aws\" or \"ssm\" (case-insensitive). It must use only letters, numbers, or the following symbols: . (period), - (hyphen), _ (underscore). Special characters are not allowed. All sub-paths, if specified, must use the forward slash symbol \"/\". Valid example: /get/parameters2-/by1./path0_.",
+                    ));
+                }
+            }
+        }
+        if key == "Tier" {
+            for value in &values {
+                if !matches!(
+                    value.as_str(),
+                    "Standard" | "Advanced" | "Intelligent-Tiering"
+                ) {
+                    return Err(AwsResponse::error(
+                        400,
+                        "InvalidFilterOption",
+                        &format!(
+                            "The following filter value is not valid: {value}. Valid values include: [Standard, Advanced, Intelligent-Tiering]."
+                        ),
+                    ));
+                }
+            }
+        }
+        if key == "Type" {
+            for value in &values {
+                if !matches!(value.as_str(), "String" | "StringList" | "SecureString") {
+                    return Err(AwsResponse::error(
+                        400,
+                        "InvalidFilterOption",
+                        &format!(
+                            "The following filter value is not valid: {value}. Valid values include: [String, StringList, SecureString]."
+                        ),
+                    ));
+                }
+            }
+        }
+        let allowed = if key == "Name" {
+            matches!(option, "Equals" | "BeginsWith" | "Contains")
+        } else {
+            matches!(option, "Equals" | "BeginsWith")
+        };
+        if key != "Path" && !allowed {
+            return Err(AwsResponse::error(
+                400,
+                "InvalidFilterOption",
+                &format!(
+                    "The following filter option is not valid: {option}. Valid options include: [BeginsWith, Equals]."
+                ),
+            ));
+        }
+        seen.push(key);
+    }
+    Ok(())
+}
+
+/// Tags stored under "Parameter" for one parameter name.
 fn parameter_tags_of(state: &SsmState, name: &str) -> ParameterTags {
     state
         .resource_tags
@@ -4445,7 +4686,8 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // ParameterFilters — mirrors of moto's _match_filters
+    // ParameterFilters — mirrors of moto's _match_filters and
+    // _validate_parameter_filters
     // -----------------------------------------------------------------------
 
     fn put(handler: &SsmHandler, name: &str, type_: &str) {
@@ -4615,6 +4857,20 @@ mod tests {
         )
         .expect("path recursive /o");
         assert_eq!(got, vec!["/o/a/b/c".to_string(), "/o/mid".to_string()]);
+
+        // Invalid Path options are rejected by validation.
+        let err = describe_with_filter(
+            &handler,
+            json!([{ "Key": "Path", "Option": "Equals", "Values": ["/o"] }]),
+        )
+        .err()
+        .unwrap();
+        assert_eq!(
+            body(&err)["__type"],
+            "InvalidFilterOption",
+            "{}",
+            body(&err)["message"]
+        );
     }
 
     #[test]
@@ -4635,6 +4891,201 @@ mod tests {
         )
         .expect("label filter valid in by-path");
         assert_eq!(got, vec!["/foo/a".to_string()]);
+
+        // ...but not in DescribeParameters (non by-path rules).
+        let err = describe_with_filter(&handler, json!([{ "Key": "Label", "Values": ["Label1"] }]))
+            .err()
+            .unwrap();
+        assert_eq!(
+            body(&err)["__type"],
+            "InvalidFilterKey",
+            "{}",
+            body(&err)["message"]
+        );
+        assert_eq!(
+            body(&err)["message"],
+            "The following filter key is not valid: Label. Valid filter keys include: [Path, Name, Type, KeyId, Tier]."
+        );
+    }
+
+    #[test]
+    fn test_get_parameters_by_path_rejects_name_path_tier_filters() {
+        for key in ["Name", "Path", "Tier"] {
+            let handler = SsmHandler::default();
+            let err = handler.handle(make_req(
+                "GetParametersByPath",
+                json!({ "Path": "/x", "ParameterFilters": [{ "Key": key, "Values": ["x"] }] }),
+            ));
+            assert_eq!(body(&err)["__type"], "InvalidFilterKey", "{key}");
+            assert_eq!(
+                body(&err)["message"],
+                format!(
+                    "The following filter key is not valid: {key}. Valid filter keys include: [Type, KeyId]."
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn test_describe_parameters_requires_single_filter_kind() {
+        let err = SsmHandler::default().handle(make_req(
+            "DescribeParameters",
+            json!({
+                "Filters": [{ "Key": "Name", "Values": ["x"] }],
+                "ParameterFilters": [{ "Key": "Name", "Values": ["x"] }]
+            }),
+        ));
+        assert_eq!(body(&err)["__type"], "ValidationException");
+        assert_eq!(
+            body(&err)["message"],
+            "You can use either Filters or ParameterFilters in a single request."
+        );
+    }
+
+    #[test]
+    fn test_validate_parameter_filter_shape_errors() {
+        let cases: Vec<(Value, String)> = vec![
+            (
+                json!([{ "Key": "key" }]),
+                "Member must satisfy regular expression pattern: tag:.+|Name|Type|KeyId|Path|Label|Tier"
+                    .to_string(),
+            ),
+            (
+                json!([{ "Key": format!("tag:{}", "t".repeat(129)) }]),
+                "Member must have length less than or equal to 132".to_string(),
+            ),
+            (
+                json!([{ "Key": "Name", "Option": "over 10 chars" }]),
+                "Member must have length less than or equal to 10".to_string(),
+            ),
+            (
+                json!([{ "Key": "Name", "Values": vec!["test"; 51] }]),
+                "Member must have length less than or equal to 50".to_string(),
+            ),
+            (
+                json!([{ "Key": "Name", "Values": ["t".repeat(1025)] }]),
+                "Member must have length less than or equal to 1024, Member must have length greater than or equal to 1"
+                    .to_string(),
+            ),
+            (
+                json!([
+                    { "Key": "Name", "Option": "over 10 chars" },
+                    { "Key": "key" }
+                ]),
+                "2 validation errors detected:".to_string(),
+            ),
+        ];
+        for (filters, fragment) in cases {
+            let err = describe_with_filter(&SsmHandler::default(), filters)
+                .err()
+                .unwrap();
+            assert!(
+                body(&err)["message"].as_str().unwrap().contains(&fragment),
+                "missing `{fragment}` in {}",
+                body(&err)["message"]
+            );
+        }
+    }
+
+    #[test]
+    fn test_validate_parameter_filter_missing_values() {
+        // Keys that require non-empty Values (moto's message always says Name).
+        let resp = SsmHandler::default().handle(make_req(
+            "DescribeParameters",
+            json!({ "ParameterFilters": [{ "Key": "Name" }] }),
+        ));
+        assert_eq!(
+            body(&resp)["__type"],
+            "InvalidFilterValue",
+            "{}",
+            body(&resp)["message"]
+        );
+        assert_eq!(
+            body(&resp)["message"],
+            "The following filter values are missing : null for filter key Name."
+        );
+    }
+
+    #[test]
+    fn test_validate_parameter_filter_duplicated_key() {
+        let resp = SsmHandler::default().handle(make_req(
+            "DescribeParameters",
+            json!({
+                "ParameterFilters": [
+                    { "Key": "Name", "Values": ["a"] },
+                    { "Key": "Name", "Values": ["b"] }
+                ]
+            }),
+        ));
+        assert_eq!(
+            body(&resp)["__type"],
+            "InvalidFilterKey",
+            "{}",
+            body(&resp)["message"]
+        );
+        // moto's message hardcodes "Name" even when the duplicated key differs.
+        assert_eq!(
+            body(&resp)["message"],
+            "The following filter is duplicated in the request: Name. A request can contain only one occurrence of a specific filter."
+        );
+    }
+
+    #[test]
+    fn test_validate_parameter_filter_path_values() {
+        for (values, code, fragment) in [
+            (
+                json!([{ "Key": "Path", "Values": ["/aws", "/ssm"] }]),
+                "ValidationException",
+                "Filters for common parameters can't be prefixed",
+            ),
+            (
+                json!([{ "Key": "Path", "Option": "Equals", "Values": ["test"] }]),
+                "InvalidFilterOption",
+                "Valid options include: [Recursive, OneLevel].",
+            ),
+            (
+                json!([{ "Key": "Tier", "Values": ["test"] }]),
+                "InvalidFilterOption",
+                "Valid values include: [Standard, Advanced, Intelligent-Tiering].",
+            ),
+            (
+                json!([{ "Key": "Type", "Values": ["test"] }]),
+                "InvalidFilterOption",
+                "Valid values include: [String, StringList, SecureString].",
+            ),
+            (
+                json!([{ "Key": "Name", "Option": "option", "Values": ["test"] }]),
+                "InvalidFilterOption",
+                "Valid options include: [BeginsWith, Equals].",
+            ),
+            (
+                json!([{ "Key": "Path", "Values": ["/###"] }]),
+                "ValidationException",
+                "The parameter doesn't meet the parameter name requirements.",
+            ),
+        ] {
+            let resp = SsmHandler::default().handle(make_req(
+                "DescribeParameters",
+                json!({ "ParameterFilters": values }),
+            ));
+            assert_eq!(body(&resp)["__type"], code, "{}", body(&resp)["message"]);
+            assert!(
+                body(&resp)["message"].as_str().unwrap().contains(fragment),
+                "missing `{fragment}` in {}",
+                body(&resp)["message"]
+            );
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Reserved parameter names (mirrors of moto's put_parameter checks)
+    // -----------------------------------------------------------------------
+
+    fn error_of(resp: AwsResponse) -> (String, String) {
+        (
+            body(&resp)["__type"].as_str().unwrap_or("").to_string(),
+            body(&resp)["message"].as_str().unwrap_or("").to_string(),
+        )
     }
 
     #[test]
