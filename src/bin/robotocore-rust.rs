@@ -57,6 +57,11 @@ async fn main() {
     // invokes mapped Lambda functions in-process.
     robotocore_rust::core::esm_engine::start(std::sync::Arc::new(native_handlers.clone()));
 
+    // Scheduled EventBridge rules: a five-second fire loop for ScheduleExpression
+    // rule cadences (era EventBridgeRuleScheduler), running next to the ESM
+    // engine thread.
+    events::scheduler::start();
+
     // Cross-service dispatch hooks (EventBridge targets, S3 → Lambda/SNS
     // notifications, Lambda destination records) — process-wide registry.
     robotocore_rust::core::cross_service::register(&native_handlers);

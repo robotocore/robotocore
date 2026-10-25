@@ -965,3 +965,96 @@ fn test_send_message_batch_bad_entry_is_entry_error() {
     let received = recv_data["Messages"].as_array().unwrap().len();
     assert_eq!(received, 1);
 }
+
+#[test]
+fn test_redrive_move_to_dlq_preserves_message_id() {
+    let handler = DefaultSqsHandler::new();
+
+    let resp = handler.handle(make_request(
+        "CreateQueue",
+        json!({"QueueName": "src-redrive-q"}),
+    ));
+    let src_url: String = serde_json::from_str::<Value>(&resp.body).unwrap()["QueueUrl"]
+        .as_str()
+        .unwrap()
+        .into();
+    let resp = handler.handle(make_request(
+        "CreateQueue",
+        json!({"QueueName": "src-redrive-dlq"}),
+    ));
+    let dlq_url: String = serde_json::from_str::<Value>(&resp.body).unwrap()["QueueUrl"]
+        .as_str()
+        .unwrap()
+        .into();
+
+    // Wire the redrive policy maxReceiveCount=1.
+    let dlq_arn = "arn:aws:sqs:us-east-1:123456789012:src-redrive-dlq";
+    handler.handle(make_request(
+        "SetQueueAttributes",
+        json!({
+            "QueueUrl": src_url,
+            "Attributes": {
+                "RedrivePolicy": json!({
+                    "deadLetterTargetArn": dlq_arn,
+                    "maxReceiveCount": 1,
+                })
+                .to_string(),
+            },
+        }),
+    ));
+
+    let sent = handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": src_url, "MessageBody": "redrive-me"}),
+    ));
+    let sent_id: String = serde_json::from_str::<Value>(&sent.body).unwrap()["MessageId"]
+        .as_str()
+        .unwrap()
+        .into();
+
+    // First receive: receive_count=1 (<= max). The retry receive (visibility
+    // 0, era re-delivery) lifts the count to 2 > maxReceiveCount, so the same
+    // call redrives the message into the DLQ.
+    let _ = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": src_url, "MaxNumberOfMessages": 1, "VisibilityTimeout": 0}),
+    ));
+    let _ = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({
+            "QueueUrl": src_url,
+            "MaxNumberOfMessages": 1,
+            "VisibilityTimeout": 0,
+        }),
+    ));
+    let moved = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({
+            "QueueUrl": dlq_url,
+            "MaxNumberOfMessages": 10,
+            "WaitTimeSeconds": 2,
+        }),
+    ));
+    let dlq_msgs: Value = serde_json::from_str(&moved.body).unwrap();
+    let msgs = dlq_msgs["Messages"].as_array().cloned().unwrap_or_default();
+    assert_eq!(msgs.len(), 1, "exhausted message redrives into the DLQ");
+    assert_eq!(msgs[0]["Body"], "redrive-me", "payload is preserved");
+    assert_eq!(
+        msgs[0]["MessageId"], sent_id,
+        "the dead-letter move preserves the original MessageId"
+    );
+
+    // The source no longer holds the moved message.
+    let again = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": src_url, "MaxNumberOfMessages": 10, "WaitTimeSeconds": 0}),
+    ));
+    let src_msgs: Value = serde_json::from_str(&again.body).unwrap();
+    assert!(
+        src_msgs["Messages"]
+            .as_array()
+            .map(|m| m.is_empty())
+            .unwrap_or(true),
+        "moved messages leave the source queue"
+    );
+}

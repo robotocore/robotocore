@@ -73,7 +73,11 @@ fn matches(pattern: &Map<String, Value>, event: &Map<String, Value>) -> bool {
 }
 
 /// A list of acceptable values/matchers for one event field.
-fn list_match(pattern_values: &[Value], event_value: &Value) -> bool {
+///
+/// Public so the Lambda event-source-mapping engine can reuse the exact
+/// same operator semantics (prefix/suffix/numeric/exists/anything-but)
+/// for its `FilterCriteria` leaves.
+pub fn list_match(pattern_values: &[Value], event_value: &Value) -> bool {
     for pv in pattern_values {
         if let Some(obj) = pv.as_object() {
             if let Some(p) = obj.get("prefix").and_then(|v| v.as_str()) {

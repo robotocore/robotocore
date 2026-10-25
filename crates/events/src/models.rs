@@ -22,6 +22,11 @@ pub struct Rule {
     pub state: RwLock<String>,
     pub role_arn: Option<String>,
     pub schedule_expression: Option<String>,
+    /// Rule-level delivery failure DLQ (`PutRule`); a target-level
+    /// `DeadLetterConfig` takes precedence when dispatching (era models
+    /// carried both and the dispatcher fell back to the rule's).
+    #[serde(default)]
+    pub dead_letter_config: Option<Value>,
     pub created: f64,
     #[serde(with = "crate::snapshot::rw")]
     pub targets: RwLock<Vec<Value>>,
@@ -45,6 +50,11 @@ impl Rule {
         }
         if let Some(ref sched) = self.schedule_expression {
             obj.insert("ScheduleExpression".into(), json!(sched));
+        }
+        if let Some(ref dlq) = self.dead_letter_config {
+            if !dlq.is_null() {
+                obj.insert("DeadLetterConfig".into(), dlq.clone());
+            }
         }
         resp
     }
