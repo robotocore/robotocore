@@ -296,12 +296,12 @@ impl SsmHandler {
     // -----------------------------------------------------------------------
 
     fn put_parameter(&self, req: &AwsRequest) -> AwsResponse {
-        let name = match req.params.get("Name").and_then(|v| v.as_str()) {
+        let raw_name = match req.params.get("Name").and_then(|v| v.as_str()) {
             Some(n) if !n.is_empty() => n.to_string(),
             _ => return err_validation("Parameter name is required"),
         };
         let state = self.get_state(req.account, &req.region);
-        let name = SsmState::normalize_name(&name);
+        let name = SsmState::normalize_name(&raw_name);
 
         let value = req
             .params
@@ -433,7 +433,7 @@ impl SsmHandler {
         } else {
             value.clone()
         };
-        let param = Arc::new(Parameter::new(&name));
+        let param = Arc::new(Parameter::new(&raw_name));
         param.push_version(ParamVersion {
             version: 1,
             value: stored,
@@ -630,11 +630,13 @@ impl SsmHandler {
             let Some(version) = param.current() else {
                 continue;
             };
-            if !matches_parameter_filters(&version, name, filters.as_ref()) {
+            let param_tags = parameter_tags_of(&state, name);
+            if !matches_parameter_filters(&version, &param.name, &param_tags, filters.as_ref()) {
                 continue;
             }
+            // moto's response layer reads the parameter object's name (raw).
             result.push(version.response_object(
-                name,
+                &param.name,
                 with_decryption,
                 Some(&req.region),
                 req.account,
@@ -645,7 +647,12 @@ impl SsmHandler {
     }
 
     fn describe_parameters(&self, req: &AwsRequest) -> AwsResponse {
-        let filters = req
+        let raw_filters = req
+            .params
+            .get("Filters")
+            .and_then(|v| v.as_array())
+            .cloned();
+        let parameter_filters = req
             .params
             .get("ParameterFilters")
             .and_then(|v| v.as_array())
@@ -670,10 +677,40 @@ impl SsmHandler {
             let Some(version) = param.current() else {
                 continue;
             };
-            if !matches_parameter_filters(&version, name, filters.as_ref()) {
+            let param_tags = parameter_tags_of(&state, name);
+            if !matches_parameter_filters(&version, name, &param_tags, parameter_filters.as_ref()) {
                 continue;
             }
-            result.push(version.describe_response_object(name, false, false, req.account));
+            if let Some(filters) = &raw_filters {
+                // moto's legacy Filters path: one result entry per matched
+                // filter (a parameter can appear more than once, as in moto).
+                for filter in filters {
+                    let key = filter.get("Key").and_then(|v| v.as_str()).unwrap_or("");
+                    let values = filter_values(filter);
+                    // moto compares legacy `Filters` against the parameter's
+                    // raw name (un-normalized).
+                    let matched = match key {
+                        "Name" => values.iter().any(|v| param.name.starts_with(v.as_str())),
+                        "Type" => values.contains(&version.parameter_type),
+                        "KeyId" => version
+                            .keyid
+                            .as_ref()
+                            .map(|k| values.iter().any(|v| v == k))
+                            .unwrap_or(false),
+                        _ => false,
+                    };
+                    if matched {
+                        result.push(version.describe_response_object(
+                            &param.name,
+                            false,
+                            false,
+                            req.account,
+                        ));
+                    }
+                }
+                continue;
+            }
+            result.push(version.describe_response_object(&param.name, false, false, req.account));
         }
         let (page, next_token) = page_slice(&result, token, max_results);
         AwsResponse::json(200, json!({ "Parameters": page, "NextToken": next_token }))
@@ -3923,14 +3960,53 @@ fn page_slice(values: &[Value], token: i64, max_results: i64) -> (Vec<Value>, Va
     (page, next_token)
 }
 
-/// moto's `_match_filters` subset for parameter filtering.
+/// Tags of one parameter (mirrors moto's `list_tags_for_resource("Parameter", name)`).
+type ParameterTags = std::collections::BTreeMap<String, String>;
+
+/// The `what` being filtered, mirroring moto's `_match_filters` where it can be
+/// a scalar (KeyId/Name/Path/Type) or a list (tag values).
+enum FilterWhat {
+    Str(String),
+    List(Vec<String>),
+}
+
+/// Pull the string values out of one filter object.
+fn filter_values(filter: &Value) -> Vec<String> {
+    filter
+        .get("Values")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Number of `/`-separated segments of `s` (python `len(s.split("/"))`).
+fn segments(s: &str) -> usize {
+    if s.is_empty() {
+        1
+    } else {
+        s.matches('/').count() + 1
+    }
+}
+
+/// moto's `_match_filters` for parameter filtering.
+///
+/// Keys KeyId/Name/Path/Type/Label/tag:* are matched against the current
+/// version; an unknown key (including `Tier`, which moto's matcher never
+/// implements) filters everything out, exactly as moto does. A `tag:` filter
+/// with no values checks only that the tag exists.
+///
+/// Mirrors moto/ssm/models.py `_match_filters`.
 fn matches_parameter_filters(
     version: &ParamVersion,
     name: &str,
+    parameter_tags: &ParameterTags,
     filters: Option<&Vec<Value>>,
 ) -> bool {
     let Some(filters) = filters else { return true };
-    let norm = |v: &str| format!("/{}", v.trim_start_matches('/'));
     for f in filters {
         let key = f.get("Key").and_then(|v| v.as_str()).unwrap_or("");
         let option = if key == "Path" {
@@ -3940,64 +4016,156 @@ fn matches_parameter_filters(
         } else {
             f.get("Option").and_then(|v| v.as_str()).unwrap_or("Equals")
         };
-        let values: Vec<String> = f
-            .get("Values")
-            .and_then(|v| v.as_array())
-            .map(|a| {
-                a.iter()
-                    .filter_map(|x| x.as_str().map(String::from))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let values = filter_values(f);
+        let mut match_values = values.clone();
 
-        let matched = match key {
-            "KeyId" => match &version.keyid {
-                Some(k) => values.is_empty() || values.iter().any(|v| k == v),
-                None => false,
-            },
+        if key == "Label" {
+            // moto: label filter can only be `Equals`; every existing label
+            // must be among the filter values.
+            if version.labels.is_empty()
+                || !version.labels.iter().all(|l| values.iter().any(|v| v == l))
+            {
+                return false;
+            }
+            continue;
+        }
+
+        let what: Option<FilterWhat> = match key {
+            "KeyId" => version.keyid.clone().map(FilterWhat::Str),
             "Name" => {
-                if option == "Contains" {
-                    let name_norm = name.trim_start_matches('/');
-                    values
+                if option != "Contains" {
+                    match_values = values
                         .iter()
-                        .any(|v| name_norm.contains(v.trim_start_matches('/')))
-                } else if option == "BeginsWith" {
-                    let what = norm(name);
-                    values.iter().any(|v| what.starts_with(&norm(v)))
-                } else {
-                    let what = norm(name);
-                    values.iter().any(|v| what == norm(v))
+                        .map(|v| format!("/{}", v.trim_start_matches('/')))
+                        .collect();
                 }
+                Some(FilterWhat::Str(format!(
+                    "/{}",
+                    name.trim_start_matches('/')
+                )))
             }
             "Path" => {
-                let what = norm(name);
-                match option {
-                    "OneLevel" => values.iter().any(|v| {
-                        let v = norm(v);
-                        v == "/"
-                            || (what.starts_with(&format!("{v}/"))
-                                && what[v.len()..].matches('/').count() == 1)
-                    }),
-                    "Recursive" => values.iter().any(|v| {
-                        let v = norm(v);
-                        v == "/" || what.starts_with(&format!("{v}/"))
-                    }),
-                    _ => values.iter().any(|v| what == norm(v)),
+                match_values = values
+                    .iter()
+                    .map(|v| format!("/{}", v.trim_matches('/')))
+                    .collect();
+                Some(FilterWhat::Str(format!(
+                    "/{}",
+                    name.trim_start_matches('/')
+                )))
+            }
+            "Type" => Some(FilterWhat::Str(version.parameter_type.clone())),
+            tag_key if tag_key.starts_with("tag:") => Some(FilterWhat::List(
+                parameter_tags
+                    .iter()
+                    .filter(|(k, _)| *k == &tag_key[4..])
+                    .map(|(_, v)| v.clone())
+                    .collect(),
+            )),
+            // Unhandled keys leave moto's `what` unset -> never match.
+            _ => None,
+        };
+
+        // moto: `what` unset (unhandled key) or an empty tag list filters out.
+        let Some(what) = what else { return false };
+        let items: &[String] = match &what {
+            FilterWhat::Str(_) => &[],
+            FilterWhat::List(items) => {
+                if items.is_empty() {
+                    return false;
+                }
+                items
+            }
+        };
+        let is_list = matches!(what, FilterWhat::List(_));
+        let what_str = match &what {
+            FilterWhat::Str(s) => s.as_str(),
+            FilterWhat::List(_) => "",
+        };
+
+        match option {
+            "BeginsWith" => {
+                let ok = if is_list {
+                    match_values
+                        .iter()
+                        .any(|val| items.iter().any(|w| w.starts_with(val.as_str())))
+                } else {
+                    match_values
+                        .iter()
+                        .any(|val| what_str.starts_with(val.as_str()))
+                };
+                if !ok {
+                    return false;
                 }
             }
-            "Type" => values.is_empty() || values.contains(&version.parameter_type),
-            "Tier" => values.is_empty() || values.contains(&version.tier),
-            "Label" => {
-                !version.labels.is_empty()
-                    && version.labels.iter().all(|l| values.iter().any(|v| v == l))
+            "Contains" => {
+                let ok = if is_list {
+                    match_values
+                        .iter()
+                        .any(|val| items.iter().any(|w| w == val))
+                } else {
+                    match_values
+                        .iter()
+                        .any(|val| what_str.contains(val.as_str()))
+                };
+                if !ok {
+                    return false;
+                }
             }
-            _ => true,
-        };
-        if !matched {
-            return false;
+            "Equals" => {
+                if is_list {
+                    if match_values.is_empty() {
+                        // moto: no tag values given -> the tag exists -> the
+                        // whole parameter matches (early True for all filters).
+                        return true;
+                    }
+                    if !match_values
+                        .iter()
+                        .any(|val| items.iter().any(|w| w == val))
+                    {
+                        return false;
+                    }
+                } else if !match_values.iter().any(|val| what_str == val.as_str()) {
+                    return false;
+                }
+            }
+            "OneLevel" => {
+                let seg = segments(what_str);
+                let hit = match_values.iter().any(|val| {
+                    let val = format!("/{}", val.trim_matches('/'));
+                    val == "/" && seg == 2
+                        || val != "/"
+                            && what_str.starts_with(&format!("{val}/"))
+                            && seg - 1 == segments(&val)
+                });
+                if !hit {
+                    return false;
+                }
+            }
+            "Recursive" => {
+                let hit = match_values.iter().any(|val| {
+                    let val = format!("/{}", val.trim_matches('/'));
+                    val == "/" || what_str.starts_with(&format!("{val}/"))
+                });
+                if !hit {
+                    return false;
+                }
+            }
+            // Unrecognized options are satisfied (validation rejects them first).
+            _ => {}
         }
     }
     true
+}
+
+fn parameter_tags_of(state: &SsmState, name: &str) -> ParameterTags {
+    state
+        .resource_tags
+        .read()
+        .get("Parameter")
+        .and_then(|m| m.get(name))
+        .cloned()
+        .unwrap_or_default()
 }
 
 fn strip_arn_prefix(raw: &str, region: &str, account: u64) -> String {
@@ -4274,5 +4442,241 @@ mod tests {
         assert_eq!(body(&sent)["Command"]["InstanceIds"], json!(["i-1"]));
         let listed = handler.handle(make_req("ListCommands", json!({ "CommandId": &cid })));
         assert_eq!(body(&listed)["Commands"].as_array().unwrap().len(), 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // ParameterFilters — mirrors of moto's _match_filters
+    // -----------------------------------------------------------------------
+
+    fn put(handler: &SsmHandler, name: &str, type_: &str) {
+        let resp = handler.handle(make_req(
+            "PutParameter",
+            json!({ "Name": name, "Value": "v", "Type": type_ }),
+        ));
+        assert_eq!(resp.status, 200, "put {name} failed");
+    }
+
+    fn tag_parameter(handler: &SsmHandler, name: &str, key: &str, value: &str) {
+        let resp = handler.handle(make_req(
+            "AddTagsToResource",
+            json!({
+                "ResourceType": "Parameter", "ResourceId": name,
+                "Tags": [{"Key": key, "Value": value}]
+            }),
+        ));
+        assert_eq!(resp.status, 200);
+    }
+
+    fn names_of(resp: &AwsResponse) -> Vec<String> {
+        let parsed = body(resp);
+        parsed["Parameters"]
+            .as_array()
+            .unwrap_or(&Vec::new())
+            .iter()
+            .filter_map(|p| p["Name"].as_str().map(String::from))
+            .collect()
+    }
+
+    fn describe_with_filter(
+        handler: &SsmHandler,
+        filters: Value,
+    ) -> Result<Vec<String>, AwsResponse> {
+        let resp = handler.handle(make_req(
+            "DescribeParameters",
+            json!({ "ParameterFilters": filters }),
+        ));
+        if resp.status == 200 {
+            Ok(names_of(&resp))
+        } else {
+            Err(resp)
+        }
+    }
+
+    fn by_path_with_filter(
+        handler: &SsmHandler,
+        path: &str,
+        filters: Value,
+    ) -> Result<Vec<String>, AwsResponse> {
+        let resp = handler.handle(make_req(
+            "GetParametersByPath",
+            json!({ "Path": path, "ParameterFilters": filters }),
+        ));
+        if resp.status == 200 {
+            Ok(names_of(&resp))
+        } else {
+            Err(resp)
+        }
+    }
+
+    #[test]
+    fn test_parameter_tag_filter_matches_tags() {
+        let handler = SsmHandler::default();
+        put(&handler, "/tagged", "String");
+        put(&handler, "/untagged", "String");
+        tag_parameter(&handler, "/tagged", "k1", "v1");
+
+        let got = describe_with_filter(&handler, json!([{ "Key": "tag:k1", "Values": ["v1"] }]))
+            .expect("tag filter with matching value");
+        assert_eq!(got, vec!["/tagged".to_string()]);
+
+        let got = describe_with_filter(&handler, json!([{ "Key": "tag:k1", "Values": ["nope"] }]))
+            .expect("tag filter with wrong value");
+        assert!(got.is_empty());
+
+        // moto's matcher has no Tier case: a valid Tier value filters all out.
+        let got =
+            describe_with_filter(&handler, json!([{ "Key": "Tier", "Values": ["Standard"] }]))
+                .expect("tier filter mirrors moto");
+        assert!(got.is_empty());
+    }
+
+    #[test]
+    fn test_parameter_name_type_keyid_filters() {
+        let handler = SsmHandler::default();
+        put(&handler, "/o/top", "String");
+        put(&handler, "/o/a/b/c", "String");
+        put(&handler, "/o/pwd", "SecureString");
+        put(&handler, "/top", "String");
+
+        // Equals normalizes both sides to the /-prefixed form.
+        let got = describe_with_filter(
+            &handler,
+            json!([{ "Key": "Name", "Option": "Equals", "Values": ["o/top"] }]),
+        )
+        .expect("name equals");
+        assert_eq!(got, vec!["/o/top".to_string()]);
+
+        // BeginsWith normalizes the filter values too (moto: pure startswith,
+        // so /o matches every /o-prefixed name).
+        let got = describe_with_filter(
+            &handler,
+            json!([{ "Key": "Name", "Option": "BeginsWith", "Values": ["o"] }]),
+        )
+        .expect("name beginswith");
+        assert!(got.contains(&"/o/top".to_string()));
+        assert!(got.contains(&"/o/pwd".to_string()));
+        assert!(got.contains(&"/o/a/b/c".to_string()));
+        assert!(!got.contains(&"/top".to_string()));
+
+        // Contains works on the raw value within the /-prefixed name.
+        let got = describe_with_filter(
+            &handler,
+            json!([{ "Key": "Name", "Option": "Contains", "Values": ["top"] }]),
+        )
+        .expect("name contains");
+        assert_eq!(got.len(), 2);
+        assert!(got.contains(&"/o/top".to_string()));
+        assert!(got.contains(&"/top".to_string()));
+
+        // Type
+        let got = describe_with_filter(
+            &handler,
+            json!([{ "Key": "Type", "Values": ["SecureString"] }]),
+        )
+        .expect("type filter");
+        assert_eq!(got, vec!["/o/pwd".to_string()]);
+
+        // KeyId Equals and BeginsWith (SecureString gets the default key)
+        let got = describe_with_filter(
+            &handler,
+            json!([{ "Key": "KeyId", "Values": ["alias/aws/ssm"] }]),
+        )
+        .expect("keyid equals");
+        assert_eq!(got, vec!["/o/pwd".to_string()]);
+        let got = describe_with_filter(
+            &handler,
+            json!([{ "Key": "KeyId", "Option": "BeginsWith", "Values": ["alias/"] }]),
+        )
+        .expect("keyid beginswith");
+        assert_eq!(got, vec!["/o/pwd".to_string()]);
+    }
+
+    #[test]
+    fn test_parameter_path_filter_one_level_recursive() {
+        let handler = SsmHandler::default();
+        put(&handler, "/top", "String");
+        put(&handler, "/o/mid", "String");
+        put(&handler, "/o/a/b/c", "String");
+
+        // OneLevel at "/" matches only names with a single segment.
+        let got = describe_with_filter(&handler, json!([{ "Key": "Path", "Values": ["/"] }]))
+            .expect("path onelevel root");
+        assert_eq!(got, vec!["/top".to_string()]);
+
+        // OneLevel matches exactly one level deeper (not two).
+        let got = describe_with_filter(&handler, json!([{ "Key": "Path", "Values": ["/o"] }]))
+            .expect("path onelevel /o");
+        assert_eq!(got, vec!["/o/mid".to_string()]);
+
+        // Recursive reaches every level below the path.
+        let got = describe_with_filter(
+            &handler,
+            json!([{ "Key": "Path", "Option": "Recursive", "Values": ["/o"] }]),
+        )
+        .expect("path recursive /o");
+        assert_eq!(got, vec!["/o/a/b/c".to_string(), "/o/mid".to_string()]);
+    }
+
+    #[test]
+    fn test_get_parameters_by_path_label_filter_allowed() {
+        let handler = SsmHandler::default();
+        put(&handler, "/foo/a", "String");
+        put(&handler, "/foo/b", "String");
+        handler.handle(make_req(
+            "LabelParameterVersion",
+            json!({ "Name": "/foo/a", "ParameterVersion": 1, "Labels": ["Label1"] }),
+        ));
+
+        // Label is valid as a by-path filter.
+        let got = by_path_with_filter(
+            &handler,
+            "/foo",
+            json!([{ "Key": "Label", "Values": ["Label1"] }]),
+        )
+        .expect("label filter valid in by-path");
+        assert_eq!(got, vec!["/foo/a".to_string()]);
+    }
+
+    #[test]
+    fn test_describe_parameters_legacy_filters() {
+        let handler = SsmHandler::default();
+        put(&handler, "/legacy/a", "String");
+        put(&handler, "/other/b", "String");
+
+        let resp = handler.handle(make_req(
+            "DescribeParameters",
+            json!({ "Filters": [{ "Key": "Name", "Values": ["/legacy"] }] }),
+        ));
+        assert_eq!(resp.status, 200);
+        assert_eq!(names_of(&resp), vec!["/legacy/a".to_string()]);
+
+        // moto appends one entry per matching filter, so a parameter that
+        // matches both filters shows up twice in the legacy Filters path.
+        let resp = handler.handle(make_req(
+            "DescribeParameters",
+            json!({
+                "Filters": [
+                    { "Key": "Name", "Values": ["/legacy"] },
+                    { "Key": "Type", "Values": ["String"] }
+                ]
+            }),
+        ));
+        assert_eq!(resp.status, 200);
+        let names: Vec<String> = body(&resp)["Parameters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p["Name"].as_str().unwrap().to_string())
+            .collect();
+        // moto: legacy Filters append one entry per matching filter — for
+        // parameter /other/b only the Type filter matches, for /legacy/a both.
+        assert_eq!(
+            names,
+            vec![
+                "/legacy/a".to_string(),
+                "/legacy/a".to_string(),
+                "/other/b".to_string()
+            ]
+        );
     }
 }
