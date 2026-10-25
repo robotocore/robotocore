@@ -87,6 +87,7 @@ clean: ## Remove build artifacts and caches
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name .pytest_cache -exec rm -rf {} + 2>/dev/null || true
 	rm -rf .mypy_cache .ruff_cache .robotocore.pid .robotocore.log
+	rm -f /tmp/$${LOG_PREFIX:-parity}_rust.pid /tmp/$${LOG_PREFIX:-parity}_rust.log
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"} \
