@@ -126,18 +126,6 @@ OVERRIDES: dict[tuple[str, str], dict] = {
             "answers 501 — verified live 2026-10-24; needs the wave port"
         ),
     },
-    ("vpclattice", "ListServiceNetworkVpcAssociations"): {
-        "class": "legacy_gap",
-        "evidence": (
-            "genuine fork-present residual: moto implements it — fork "
-            "handler moto/vpclattice/responses.py:223 "
-            "list_service_network_vpc_associations; the twin resolves the "
-            "route (rotocore/src/services/vpclattice.rs ROUTES) but arms "
-            "no match arm, so the moto-style fall-through at "
-            "vpclattice.rs:764 answers 501 — verified live 2026-10-24; "
-            "needs the wave port"
-        ),
-    },
 }
 
 
@@ -342,22 +330,25 @@ def deny_evidence(svc: str, op: str) -> str | None:
     return None
 
 
+# The pinned moto fork checkout on this machine — the deployed fork identity
+# the FORK_ID citations name (docs/moto-parity-progress.md wave-2 ruling).
+# The legacy ~/.moto-venv site-packages copy is deliberately NOT consulted
+# any more: it has drifted ahead of the git pin (it already carries
+# vpclattice.list_service_network_vpc_associations, which the pinned fork
+# does not), so every runtime-truth question must resolve against the pin.
+PINNED_FORK = (
+    Path.home()
+    / ".cache/uv/git-v1/checkouts/eacacc220fef84f0/2016563fd/moto"
+)
+
+
 def fork_path() -> Path | None:
-    """Locate the moto fork checkout, when available on this machine."""
+    """Locate the pinned moto fork checkout, when available."""
     argv = sys.argv
     if "--fork" in argv:
         p = Path(argv[argv.index("--fork") + 1])
         return p if p.is_dir() else None
-    try:
-        import moto  # type: ignore
-
-        return Path(moto.__file__).parent
-    except Exception:
-        pass
-    for pat in sorted(Path.home().glob(".moto-venv/lib/python*/site-packages/moto")):
-        if pat.is_dir():
-            return pat
-    return None
+    return PINNED_FORK if PINNED_FORK.is_dir() else None
 
 
 def moto_module_dir(fork: Path | None, svc: str) -> Path | None:
