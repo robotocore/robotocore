@@ -24,7 +24,6 @@ steps:
     id: robotocore
     with:
       image-tag: "v2026.3.10"
-      services: "s3,sqs,dynamodb"
       iam-enforcement: "true"
       wait-timeout: "60"
       configuration: |
@@ -49,8 +48,6 @@ steps:
 | `configuration` | Env vars for the container (newline-separated `KEY=VALUE`) | `""` |
 | `wait` | Wait for Robotocore to be ready | `true` |
 | `wait-timeout` | Seconds to wait for readiness | `30` |
-| `services` | Comma-separated AWS services to enable | `""` (all) |
-| `persistence` | Enable state persistence | `false` |
 | `iam-enforcement` | Enable IAM policy enforcement | `false` |
 
 ## Outputs

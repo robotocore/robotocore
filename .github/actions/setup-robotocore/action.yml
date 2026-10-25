@@ -17,14 +17,6 @@ inputs:
     description: "Seconds to wait for readiness"
     required: false
     default: "30"
-  services:
-    description: "Comma-separated list of AWS services to enable (maps to SERVICES env var)"
-    required: false
-    default: ""
-  persistence:
-    description: "Enable state persistence"
-    required: false
-    default: "false"
   iam-enforcement:
     description: "Enable IAM policy enforcement"
     required: false
@@ -54,12 +46,6 @@ runs:
 
         # Build env flags from well-known inputs
         ENV_FLAGS=""
-        if [ -n "${{ inputs.services }}" ]; then
-          ENV_FLAGS="$ENV_FLAGS -e SERVICES=${{ inputs.services }}"
-        fi
-        if [ "${{ inputs.persistence }}" = "true" ]; then
-          ENV_FLAGS="$ENV_FLAGS -e PERSISTENCE=1"
-        fi
         if [ "${{ inputs.iam-enforcement }}" = "true" ]; then
           ENV_FLAGS="$ENV_FLAGS -e ENFORCE_IAM=1"
         fi
