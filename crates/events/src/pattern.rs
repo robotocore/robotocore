@@ -113,9 +113,7 @@ fn named_filter_matches(filter: &Map<String, Value>, event_value: &Value) -> boo
         return expected != event_value.is_null();
     }
     match event_value {
-        Value::Array(arr) => arr
-            .iter()
-            .any(|item| evaluate_named_filter(filter, item)),
+        Value::Array(arr) => arr.iter().any(|item| evaluate_named_filter(filter, item)),
         other => evaluate_named_filter(filter, other),
     }
 }
@@ -141,9 +139,9 @@ fn evaluate_named_filter(filter: &Map<String, Value>, value: &Value) -> bool {
         };
         let matches = match target {
             Value::String(t) => s.to_lowercase() == t.to_lowercase(),
-            Value::Array(list) => list.iter().any(|t| {
-                t.as_str().map(|t| s.to_lowercase() == t.to_lowercase()) == Some(true)
-            }),
+            Value::Array(list) => list
+                .iter()
+                .any(|t| t.as_str().map(|t| s.to_lowercase() == t.to_lowercase()) == Some(true)),
             _ => false,
         };
         if matches {
@@ -180,11 +178,21 @@ fn string_targets_match(target: &Value, value: Option<&str>, prefix: bool) -> bo
         return false;
     };
     match target {
-        Value::String(t) => if prefix { s.starts_with(t) } else { s.ends_with(t) },
+        Value::String(t) => {
+            if prefix {
+                s.starts_with(t)
+            } else {
+                s.ends_with(t)
+            }
+        }
         Value::Array(list) => list.iter().any(|t| {
-            t.as_str()
-                .map(|t| if prefix { s.starts_with(t) } else { s.ends_with(t) })
-                == Some(true)
+            t.as_str().map(|t| {
+                if prefix {
+                    s.starts_with(t)
+                } else {
+                    s.ends_with(t)
+                }
+            }) == Some(true)
         }),
         Value::Object(obj) => obj
             .get("equals-ignore-case")
@@ -293,8 +301,10 @@ fn cidr_matches(value: &Value, network: &Value) -> bool {
         return false;
     };
     let (base_str, prefix_str) = spec.split_once('/').unwrap_or((spec, ""));
-    let (Ok(address), Ok(base)) = (address.parse::<std::net::IpAddr>(), base_str.parse::<std::net::IpAddr>())
-    else {
+    let (Ok(address), Ok(base)) = (
+        address.parse::<std::net::IpAddr>(),
+        base_str.parse::<std::net::IpAddr>(),
+    ) else {
         return false;
     };
     if std::mem::discriminant(&address) != std::mem::discriminant(&base) {
@@ -387,9 +397,7 @@ pub fn validate_event_pattern(pattern: &Value) -> Result<(), String> {
             }
             Ok(())
         }
-        Value::Array(list) if list.is_empty() => {
-            Err("Empty arrays are not allowed".to_string())
-        }
+        Value::Array(list) if list.is_empty() => Err("Empty arrays are not allowed".to_string()),
         _ => Err("Value of each key must be an array or an object.".to_string()),
     }
 }
@@ -417,20 +425,32 @@ mod tests {
     #[test]
     fn exists_true_matches_present_values() {
         let pattern = json!({"detail": {"state": [{"exists": true}]}});
-        assert!(matches_pattern(&pattern, &json!({"detail": {"state": "running"}})));
+        assert!(matches_pattern(
+            &pattern,
+            &json!({"detail": {"state": "running"}})
+        ));
         assert!(matches_pattern(&pattern, &json!({"detail": {"state": 0}})));
         // Absent key: `exists: true` must not match.
         assert!(!matches_pattern(&pattern, &json!({"detail": {}})));
         // Explicit null counts as absent (era parity).
-        assert!(!matches_pattern(&pattern, &json!({"detail": {"state": null}})));
+        assert!(!matches_pattern(
+            &pattern,
+            &json!({"detail": {"state": null}})
+        ));
     }
 
     #[test]
     fn exists_false_matches_absent_and_null() {
         let pattern = json!({"detail": {"state": [{"exists": false}]}});
         assert!(matches_pattern(&pattern, &json!({"detail": {}})));
-        assert!(matches_pattern(&pattern, &json!({"detail": {"state": null}})));
-        assert!(!matches_pattern(&pattern, &json!({"detail": {"state": "on"}})));
+        assert!(matches_pattern(
+            &pattern,
+            &json!({"detail": {"state": null}})
+        ));
+        assert!(!matches_pattern(
+            &pattern,
+            &json!({"detail": {"state": "on"}})
+        ));
     }
 
     // -- anything-but on array values (F2, agent-221 finding 2) ----------------
@@ -439,18 +459,36 @@ mod tests {
     fn anything_but_matches_arrays_with_any_excluded_element() {
         let pattern = json!({"detail": {"state": [{"anything-but": ["a"]}]}});
         // moto/event-bridge: any element differing ⇒ match.
-        assert!(matches_pattern(&pattern, &json!({"detail": {"state": ["a", "b"]}})));
-        assert!(matches_pattern(&pattern, &json!({"detail": {"state": ["b", "c"]}})));
+        assert!(matches_pattern(
+            &pattern,
+            &json!({"detail": {"state": ["a", "b"]}})
+        ));
+        assert!(matches_pattern(
+            &pattern,
+            &json!({"detail": {"state": ["b", "c"]}})
+        ));
         // Every element excluded: no match.
-        assert!(!matches_pattern(&pattern, &json!({"detail": {"state": ["a"]}})));
-        assert!(!matches_pattern(&pattern, &json!({"detail": {"state": ["a", "a"]}})));
+        assert!(!matches_pattern(
+            &pattern,
+            &json!({"detail": {"state": ["a"]}})
+        ));
+        assert!(!matches_pattern(
+            &pattern,
+            &json!({"detail": {"state": ["a", "a"]}})
+        ));
     }
 
     #[test]
     fn anything_but_scalar_exclusion_on_arrays() {
         let pattern = json!({"detail": {"state": [{"anything-but": "a"}]}});
-        assert!(matches_pattern(&pattern, &json!({"detail": {"state": ["a", "b"]}})));
-        assert!(!matches_pattern(&pattern, &json!({"detail": {"state": ["a", "a"]}})));
+        assert!(matches_pattern(
+            &pattern,
+            &json!({"detail": {"state": ["a", "b"]}})
+        ));
+        assert!(!matches_pattern(
+            &pattern,
+            &json!({"detail": {"state": ["a", "a"]}})
+        ));
     }
 
     // -- moto named filter set (F3, agent-221 finding 3) -----------------------
@@ -463,18 +501,33 @@ mod tests {
         assert!(!matches_pattern(&eq, &json!({"source": "my.app2"})));
         // ...and as the value form of prefix/suffix.
         let pfx = json!({"detail": {"kind": [{"prefix": {"equals-ignore-case": "CREAT"}}]}});
-        assert!(matches_pattern(&pfx, &json!({"detail": {"kind": "created"}})));
-        assert!(!matches_pattern(&pfx, &json!({"detail": {"kind": "deleted"}})));
+        assert!(matches_pattern(
+            &pfx,
+            &json!({"detail": {"kind": "created"}})
+        ));
+        assert!(!matches_pattern(
+            &pfx,
+            &json!({"detail": {"kind": "deleted"}})
+        ));
         let sfx = json!({"detail": {"kind": [{"suffix": {"equals-ignore-case": "ED"}}]}});
-        assert!(matches_pattern(&sfx, &json!({"detail": {"kind": "Created"}})));
-        assert!(!matches_pattern(&sfx, &json!({"detail": {"kind": "delete"}})));
+        assert!(matches_pattern(
+            &sfx,
+            &json!({"detail": {"kind": "Created"}})
+        ));
+        assert!(!matches_pattern(
+            &sfx,
+            &json!({"detail": {"kind": "delete"}})
+        ));
     }
 
     #[test]
     fn list_valued_prefix_and_suffix() {
         let pattern = json!({"source": [{"prefix": ["my.a", "your.b"]}]});
         assert!(matches_pattern(&pattern, &json!({"source": "your.bucket"})));
-        assert!(!matches_pattern(&pattern, &json!({"source": "other.bucket"})));
+        assert!(!matches_pattern(
+            &pattern,
+            &json!({"source": "other.bucket"})
+        ));
         let pattern = json!({"source": [{"suffix": [".png", ".jpg"]}]});
         assert!(matches_pattern(&pattern, &json!({"source": "pic.jpg"})));
         assert!(!matches_pattern(&pattern, &json!({"source": "pic.gif"})));
@@ -483,23 +536,36 @@ mod tests {
     #[test]
     fn cidr_named_filter() {
         let pattern = json!({"detail": {"source_ip": [{"cidr": "203.0.113.0/24"}]}});
-        assert!(matches_pattern(&pattern, &json!({"detail": {"source_ip": "203.0.113.9"}})));
-        assert!(!matches_pattern(&pattern, &json!({"detail": {"source_ip": "203.0.114.1"}})));
+        assert!(matches_pattern(
+            &pattern,
+            &json!({"detail": {"source_ip": "203.0.113.9"}})
+        ));
+        assert!(!matches_pattern(
+            &pattern,
+            &json!({"detail": {"source_ip": "203.0.114.1"}})
+        ));
         // Non-IP values and foreign families never match.
-        assert!(!matches_pattern(&pattern, &json!({"detail": {"source_ip": "none"}})));
-        assert!(
-            !matches_pattern(
-                &json!({"detail": {"source_ip": [{"cidr": "2001:db8::/32"}]}}),
-                &json!({"detail": {"source_ip": "203.0.113.9"}})
-            )
-        );
+        assert!(!matches_pattern(
+            &pattern,
+            &json!({"detail": {"source_ip": "none"}})
+        ));
+        assert!(!matches_pattern(
+            &json!({"detail": {"source_ip": [{"cidr": "2001:db8::/32"}]}}),
+            &json!({"detail": {"source_ip": "203.0.113.9"}})
+        ));
     }
 
     #[test]
     fn wildcard_named_filter() {
         let pattern = json!({"detail": {"path": [{"wildcard": "/tmp/*"}]}});
-        assert!(matches_pattern(&pattern, &json!({"detail": {"path": "/tmp/logs/app"}})));
-        assert!(!matches_pattern(&pattern, &json!({"detail": {"path": "/var/tmp/x"}})));
+        assert!(matches_pattern(
+            &pattern,
+            &json!({"detail": {"path": "/tmp/logs/app"}})
+        ));
+        assert!(!matches_pattern(
+            &pattern,
+            &json!({"detail": {"path": "/var/tmp/x"}})
+        ));
         // Escaped stars are literal; list targets OR together.
         assert!(matches_pattern(
             &json!({"detail": {"path": [{"wildcard": ["C:\\\\*", "id-*"]}]}}),

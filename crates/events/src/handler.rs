@@ -1892,10 +1892,13 @@ mod tests {
             "PutRule",
             json!({"Name": "fp5-del-rule", "EventPattern": "{}"}),
         ));
-        handler.handle(make_req("PutTargets", json!({
-            "Rule": "fp5-del-rule",
-            "Targets": [{"Id": "t1", "Arn": "arn:aws:sqs:us-east-1:123456789012:fp5-q"}],
-        })));
+        handler.handle(make_req(
+            "PutTargets",
+            json!({
+                "Rule": "fp5-del-rule",
+                "Targets": [{"Id": "t1", "Arn": "arn:aws:sqs:us-east-1:123456789012:fp5-q"}],
+            }),
+        ));
         let resp = handler.handle(make_req("DeleteRule", json!({"Name": "fp5-del-rule"})));
         assert_eq!(resp.status, 400, "a rule with targets cannot be deleted");
         let json = body(&resp);
@@ -1906,18 +1909,27 @@ mod tests {
         );
         // The rule survives the failed delete.
         assert_eq!(
-            handler.handle(make_req("DescribeRule", json!({"Name": "fp5-del-rule"}))).status,
+            handler
+                .handle(make_req("DescribeRule", json!({"Name": "fp5-del-rule"})))
+                .status,
             200
         );
         // After removing the targets the delete succeeds.
-        handler.handle(make_req("RemoveTargets", json!({"Rule": "fp5-del-rule", "Ids": ["t1"]})));
+        handler.handle(make_req(
+            "RemoveTargets",
+            json!({"Rule": "fp5-del-rule", "Ids": ["t1"]}),
+        ));
         assert_eq!(
-            handler.handle(make_req("DeleteRule", json!({"Name": "fp5-del-rule"}))).status,
+            handler
+                .handle(make_req("DeleteRule", json!({"Name": "fp5-del-rule"})))
+                .status,
             200
         );
         // And it is really gone.
         assert_eq!(
-            handler.handle(make_req("DescribeRule", json!({"Name": "fp5-del-rule"}))).status,
+            handler
+                .handle(make_req("DescribeRule", json!({"Name": "fp5-del-rule"})))
+                .status,
             400
         );
     }
@@ -1926,7 +1938,10 @@ mod tests {
     fn delete_missing_rule_succeeds_silently() {
         let handler = EventsHandler::new();
         let resp = handler.handle(make_req("DeleteRule", json!({"Name": "fp5-ghost-rule"})));
-        assert_eq!(resp.status, 200, "deleting a missing rule succeeds (era/moto)");
+        assert_eq!(
+            resp.status, 200,
+            "deleting a missing rule succeeds (era/moto)"
+        );
     }
 
     // -- PutRule event-pattern validation (F9, agent-221 finding 9) ------------
@@ -1965,7 +1980,8 @@ mod tests {
         assert_eq!(body(&resp)["__type"], "InvalidEventPatternException");
         // None of the rejects may have stored a rule.
         assert!(
-            !body(&handler.handle(make_req("ListRules", json!({"NamePrefix": "fp9-invalid"}))))["Rules"]
+            !body(&handler.handle(make_req("ListRules", json!({"NamePrefix": "fp9-invalid"}))))
+                ["Rules"]
                 .as_array()
                 .expect("Rules list")
                 .iter()
@@ -1994,7 +2010,8 @@ mod tests {
         );
         // Neither variant may have stored the rule.
         assert_eq!(
-            body(&handler.handle(make_req("ListRules", json!({"NamePrefix": "fp9-both"}))))["Rules"]
+            body(&handler.handle(make_req("ListRules", json!({"NamePrefix": "fp9-both"}))))
+                ["Rules"]
                 .as_array()
                 .expect("Rules list")
                 .len(),
@@ -2010,13 +2027,18 @@ mod tests {
         assert_eq!(body(&resp)["__type"], "ValidationException");
         // Valid patterns still put fine ({} is an empty but valid pattern).
         assert_eq!(
-            handler.handle(make_req(
-                "PutRule",
-                json!({"Name": "fp9-empty-pattern-rule", "EventPattern": "{}"}),
-            )).status,
+            handler
+                .handle(make_req(
+                    "PutRule",
+                    json!({"Name": "fp9-empty-pattern-rule", "EventPattern": "{}"}),
+                ))
+                .status,
             200
         );
-        handler.handle(make_req("DeleteRule", json!({"Name": "fp9-empty-pattern-rule"})));
+        handler.handle(make_req(
+            "DeleteRule",
+            json!({"Name": "fp9-empty-pattern-rule"}),
+        ));
     }
 
     // -- PutRule target preservation on overwrite (F8, agent-221 finding 8) ----
@@ -2028,10 +2050,13 @@ mod tests {
             "PutRule",
             json!({"Name": "fp8-repeat-rule", "EventPattern": "{}"}),
         ));
-        handler.handle(make_req("PutTargets", json!({
-            "Rule": "fp8-repeat-rule",
-            "Targets": [fp6_target("t1")],
-        })));
+        handler.handle(make_req(
+            "PutTargets",
+            json!({
+                "Rule": "fp8-repeat-rule",
+                "Targets": [fp6_target("t1")],
+            }),
+        ));
         let resp = handler.handle(make_req(
             "PutRule",
             json!({
@@ -2040,7 +2065,7 @@ mod tests {
                 "State": "ENABLED",
             }),
         ));
-        assert_eq!(body(&resp)["RuleArn"].is_string(), true);
+        assert!(body(&resp)["RuleArn"].is_string());
         // moto: the re-put keeps the existing rule's targets.
         let targets = handler.handle(make_req(
             "ListTargetsByRule",
@@ -2086,7 +2111,10 @@ mod tests {
             .iter()
             .filter_map(|r| r["Name"].as_str())
             .collect();
-        assert!(names.contains(&"fp7-default-rule"), "default bus rules listed");
+        assert!(
+            names.contains(&"fp7-default-rule"),
+            "default bus rules listed"
+        );
         assert!(
             !names.contains(&"fp7-side-rule"),
             "no EventBusName must not leak rules from other buses"
@@ -2097,10 +2125,7 @@ mod tests {
         assert_eq!(json["Rules"].as_array().expect("Rules list").len(), 1);
 
         // Cleanup.
-        handler.handle(make_req(
-            "DeleteRule",
-            json!({"Name": "fp7-default-rule"}),
-        ));
+        handler.handle(make_req("DeleteRule", json!({"Name": "fp7-default-rule"})));
         handler.handle(make_req(
             "DeleteRule",
             json!({"Name": "fp7-side-rule", "EventBusName": "fp7-side-bus"}),
@@ -2130,7 +2155,10 @@ mod tests {
     fn target_ops_on_missing_rule_are_resource_not_found() {
         let handler = EventsHandler::new();
         for (op, params) in [
-            ("PutTargets", json!({"Rule": "fp6-ghost", "Targets": [fp6_target("x")]})),
+            (
+                "PutTargets",
+                json!({"Rule": "fp6-ghost", "Targets": [fp6_target("x")]}),
+            ),
             ("RemoveTargets", json!({"Rule": "fp6-ghost", "Ids": ["x"]})),
         ] {
             let resp = handler.handle(make_req(op, params));
@@ -2159,12 +2187,17 @@ mod tests {
             json!({"Name": "fp6-cap-rule", "EventPattern": "{}"}),
         ));
         let targets: Vec<Value> = (0..6).map(|i| fp6_target(&format!("t{i}"))).collect();
-        let resp = handler
-            .handle(make_req("PutTargets", json!({"Rule": "fp6-cap-rule", "Targets": targets})));
+        let resp = handler.handle(make_req(
+            "PutTargets",
+            json!({"Rule": "fp6-cap-rule", "Targets": targets}),
+        ));
         let json = body(&resp);
         assert_eq!(json["FailedEntryCount"], 1);
         assert_eq!(json["FailedEntries"][0]["TargetId"], "t5");
-        assert_eq!(json["FailedEntries"][0]["ErrorCode"], "LimitExceededException");
+        assert_eq!(
+            json["FailedEntries"][0]["ErrorCode"],
+            "LimitExceededException"
+        );
         assert_eq!(listed_target_ids(&handler, "fp6-cap-rule").len(), 5);
 
         // Updating an existing entry stays inside the cap.
@@ -2182,11 +2215,16 @@ mod tests {
         );
 
         // A net-new entry on a full rule is refused.
-        let resp = handler
-            .handle(make_req("PutTargets", json!({"Rule": "fp6-cap-rule", "Targets": [fp6_target("t9")]})));
+        let resp = handler.handle(make_req(
+            "PutTargets",
+            json!({"Rule": "fp6-cap-rule", "Targets": [fp6_target("t9")]}),
+        ));
         let json = body(&resp);
         assert_eq!(json["FailedEntryCount"], 1);
-        assert_eq!(json["FailedEntries"][0]["ErrorCode"], "LimitExceededException");
+        assert_eq!(
+            json["FailedEntries"][0]["ErrorCode"],
+            "LimitExceededException"
+        );
     }
 
     // -- rule state ops on missing rules (F4, agent-221 finding 4) -------------
@@ -2199,10 +2237,7 @@ mod tests {
             assert_eq!(resp.status, 400, "{op} must fail on a missing rule");
             let json = body(&resp);
             assert_eq!(json["__type"], "ResourceNotFoundException");
-            assert_eq!(
-                json["message"],
-                "Rule fp4-no-such-rule does not exist.",
-            );
+            assert_eq!(json["message"], "Rule fp4-no-such-rule does not exist.",);
         }
         // Sanity: the ops still flip state for an existing rule.
         handler.handle(make_req(
@@ -2211,18 +2246,19 @@ mod tests {
         ));
         handler.handle(make_req("DisableRule", json!({"Name": "fp4-real-rule"})));
         assert_eq!(
-            body(&handler.handle(make_req("DescribeRule", json!({"Name": "fp4-real-rule"}))))["State"],
+            body(&handler.handle(make_req("DescribeRule", json!({"Name": "fp4-real-rule"}))))
+                ["State"],
             "DISABLED"
         );
         handler.handle(make_req("EnableRule", json!({"Name": "fp4-real-rule"})));
         assert_eq!(
-            body(&handler.handle(make_req("DescribeRule", json!({"Name": "fp4-real-rule"}))))["State"],
+            body(&handler.handle(make_req("DescribeRule", json!({"Name": "fp4-real-rule"}))))
+                ["State"],
             "ENABLED"
         );
     }
 
     // -- target DLQ record shape (F6) -----------------------------------------
-
 
     fn drain_bridge_queue(name: &str) -> Vec<Value> {
         let mut queue = sqs::models::Queue::new(
