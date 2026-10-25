@@ -1509,7 +1509,6 @@ pub(crate) const TEMP_PRUNE_ROOTS: [&str; 5] = [
     "robotocore-lambda-node",
 ];
 
-
 /// Age beyond which a per-invocation extraction dir under
 /// /tmp/robotocore-lambda-docker counts as crashed-process debris: live ones
 /// are removed by the same invocation that created them, well within an
@@ -2566,10 +2565,7 @@ mod tests {
         }
 
         fn daemon_available(&self) -> bool {
-            match self.st.probe_back.lock().pop_front() {
-                Some(verdict) => verdict,
-                None => true,
-            }
+            self.st.probe_back.lock().pop_front().unwrap_or(true)
         }
     }
 
@@ -3882,11 +3878,8 @@ Other-Container-1
             std::fs::create_dir_all(&stale_dir).unwrap();
             std::fs::create_dir_all(&fresh_dir).unwrap();
             let handle = std::fs::File::open(&stale_dir).unwrap();
-            if std::fs::File::set_times(
-                &handle,
-                std::fs::FileTimes::new().set_modified(backdated),
-            )
-            .is_err()
+            if std::fs::File::set_times(&handle, std::fs::FileTimes::new().set_modified(backdated))
+                .is_err()
             {
                 // Platform cannot backdate directory times: quit cleanly.
                 let _ = std::fs::remove_dir_all(&base);
@@ -3898,10 +3891,7 @@ Other-Container-1
                 !stale_dir.exists(),
                 "stale entry under {root} must be pruned"
             );
-            assert!(
-                fresh_dir.exists(),
-                "fresh entry under {root} must survive"
-            );
+            assert!(fresh_dir.exists(), "fresh entry under {root} must survive");
         }
         // The roots the brief pins (docker extraction, dotnet staging,
         // loose-bridges, python/custom -exec, node -node).
@@ -3938,7 +3928,10 @@ Other-Container-1
         assert_eq!(res.function_error.as_deref(), Some("Handled"));
         let payload: Value = serde_json::from_str(&res.payload).unwrap();
         assert_eq!(payload["errorType"], "BadZipFile");
-        assert!(cli.run_calls().is_empty(), "no docker run after probe death");
+        assert!(
+            cli.run_calls().is_empty(),
+            "no docker run after probe death"
+        );
         assert!(cli.exec_calls().is_empty());
         assert!(cli.rm_calls().is_empty());
     }
