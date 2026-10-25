@@ -41,6 +41,15 @@ async fn main() {
     tracing::info!("Starting Robotocore Rust on port {}", args.port);
     tracing::info!("Default account: {}", args.account);
 
+    // Docker executor mode: construct (and straggler-sweep) the lambda
+    // docker executor eagerly, so a restart reaps the previous process's
+    // leftover containers — the `docker ps -aq` list reaches Created-state
+    // bridge husks — instead of deferring the sweep to the first docker
+    // invocation.
+    if lambda::docker_runtime::executor_mode() == "docker" {
+        lambda::docker_runtime::get_docker_executor();
+    }
+
     // Create service registry
     let (registry, native_handlers) = ServiceRegistry::new_with_handlers();
 

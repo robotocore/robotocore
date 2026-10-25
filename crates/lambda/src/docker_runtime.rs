@@ -1445,20 +1445,22 @@ pub(crate) const DOCKER_DAEMON_PROBE_CAP: u64 = 5;
 /// anchor.
 pub(crate) const LAMBDA_CONTAINER_PREFIX: &str = "robotocore-lambda-";
 
-/// Argv listing leftover Lambda containers: `docker ps -aq --filter
+/// Argv listing leftover Lambda containers: `docker ps -a --filter
 /// name=robotocore-lambda- --format {{.Names}}`, the first half of the
 /// startup sweep's `docker rm -f` removal, argv-only as this module's
 /// convention (no shell). `-a` reaches every container state — docker only
 /// lists *running* containers without it, so Created-state husks (e.g. a
 /// `--rm` bridge container frozen before its entrypoint started) would
-/// otherwise survive the sweep and pile up across restarts. The docker
-/// `name=` filter matches substrings, not prefixes; the exact-prefix anchor
-/// happens in-process in [`straggler_names`].
+/// otherwise survive the sweep and pile up across restarts. `-q` must NOT
+/// ride along: the CLI honors `--format` over `-q` with only a warning,
+/// and the sweep needs the NAMES for the in-process exact-shape match
+/// ([`straggler_names`]); the docker `name=` filter matches substrings,
+/// not prefixes, so that match is what anchors the prefix.
 pub(crate) fn sweep_list_cmd() -> Vec<String> {
     vec![
         DOCKER.to_string(),
         "ps".to_string(),
-        "-aq".to_string(),
+        "-a".to_string(),
         "--filter".to_string(),
         format!("name={LAMBDA_CONTAINER_PREFIX}"),
         "--format".to_string(),
@@ -1468,12 +1470,13 @@ pub(crate) fn sweep_list_cmd() -> Vec<String> {
 
 /// The sweep's in-process exact-shape match over `sweep_list_cmd` output
 /// (one container name per line): docker's `name=` filter is substring-
-/// based, so every candidate is checked against the executor's own name
-/// shape (`robotocore-lambda-{function}-{uuid8}`) — only containers spawned
-/// by this executor are reaped, and neighbors whose name merely *contains*
-/// the prefix (e.g. `simulator-robotocore-lambda-proxy`, or a bare
-/// `robotocore-lambda-proxy`) survive. Names double as `docker rm -f`
-/// operands.
+/// based, so every candidate is checked in-process against the names this
+/// executor's family actually owns — the executor's
+/// `robotocore-lambda-{function}-{uuid8}` shape and the era's
+/// `robotocore-lambda-bridge-fn-*` husks. Neighbors whose name merely
+/// *contains* the prefix (e.g. `simulator-robotocore-lambda-proxy`) or a
+/// bare `robotocore-lambda-proxy` (no executor suffix shape) survive.
+/// Names double as `docker rm -f` operands.
 pub(crate) fn straggler_names(list_stdout: &str) -> Vec<String> {
     list_stdout
         .lines()
@@ -1484,16 +1487,20 @@ pub(crate) fn straggler_names(list_stdout: &str) -> Vec<String> {
 }
 
 /// The executor names its containers `robotocore-lambda-{function}-{uuid8}`
-/// with an 8-hex tail; a sweeper candidate must have that exact prefix AND
-/// tail segment to qualify.
+/// with an 8-hex tail, and the bridge-era one-shot containers were named
+/// `robotocore-lambda-bridge-fn-*`; a sweeper candidate must match one of
+/// those exact shapes to qualify.
 fn is_lambda_straggler_name(name: &str) -> bool {
-    let Some((_, tail)) = name
-        .strip_prefix(LAMBDA_CONTAINER_PREFIX)
-        .and_then(|rest| rest.rsplit_once('-'))
-    else {
+    let Some(rest) = name.strip_prefix(LAMBDA_CONTAINER_PREFIX) else {
         return false;
     };
-    tail.len() == 8 && tail.chars().all(|c| c.is_ascii_hexdigit())
+    if rest.starts_with("bridge-fn-") {
+        return true;
+    }
+    match rest.rsplit_once('-') {
+        Some((_, tail)) => tail.len() == 8 && tail.chars().all(|c| c.is_ascii_hexdigit()),
+        None => false,
+    }
 }
 
 /// The temp roots this crate's executors own under `std::env::temp_dir()`,
@@ -3814,9 +3821,11 @@ mod tests {
     }
 
     /// The sweep's list half is argv-only (no shell pipeline):
-    /// `docker ps -aq --filter name=robotocore-lambda- --format {{.Names}}`.
-    /// `-a` covers every container state (Created-state husks included);
-    /// `{{.Names}}` exposes names for the in-process prefix match.
+    /// `docker ps -a --filter name=robotocore-lambda- --format {{.Names}}`.
+    /// `-a` covers every container state (Created-state husks included) and
+    /// `{{.Names}}` exposes names for the in-process shape match. `-q` must
+    /// not ride along: the CLI honors `--format` over `-q` only with a
+    /// warning and answers with ids, defeating the exact-shape filter.
     #[test]
     fn sweep_list_cmd_filters_lambda_container_prefix() {
         assert_eq!(
@@ -3824,7 +3833,7 @@ mod tests {
             vec![
                 "docker".to_string(),
                 "ps".to_string(),
-                "-aq".to_string(),
+                "-a".to_string(),
                 "--filter".to_string(),
                 "name=robotocore-lambda-".to_string(),
                 "--format".to_string(),
@@ -3834,19 +3843,21 @@ mod tests {
     }
 
     /// Docker's `name=` filter matches substrings, not prefixes: the sweep's
-    /// in-process pass keeps only the executor's exact name shape
-    /// (`robotocore-lambda-{function}-{8hex}`). A neighbor like
+    /// in-process pass keeps only the executor's own shapes
+    /// (`robotocore-lambda-{function}-{8hex}` and the bridge-era
+    /// `robotocore-lambda-bridge-fn-*` husk shape). A neighbor like
     /// `simulator-robotocore-lambda-proxy` — or a bare `robotocore-lambda-
-    /// proxy` missing the executor's uuid tail — survives, while the
-    /// executor's own containers (Created-state bridge husks included) are
-    /// reaped.
+    /// proxy` missing both surfix shapes — survives.
     #[test]
     fn straggler_names_prefix_match_excludes_neighbors() {
         let stdout = "\
 robotocore-lambda-fn1-12345678
 robotocore-lambda-bridge-fn-deadbeef
+robotocore-lambda-bridge-fn-f2test1
 simulator-robotocore-lambda-proxy
 robotocore-lambda-proxy
+robotocore-lambda-fn1-12123456789
+robotocore-lambda-fn1-123456g8
 Other-Container-1
 ";
         assert_eq!(
@@ -3854,6 +3865,7 @@ Other-Container-1
             vec![
                 "robotocore-lambda-fn1-12345678".to_string(),
                 "robotocore-lambda-bridge-fn-deadbeef".to_string(),
+                "robotocore-lambda-bridge-fn-f2test1".to_string(),
             ]
         );
         assert!(straggler_names("").is_empty());
