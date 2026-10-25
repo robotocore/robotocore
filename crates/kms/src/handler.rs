@@ -2053,6 +2053,67 @@ mod tests {
     }
 
     #[test]
+    fn test_alias_name_and_arn_resolution() {
+        let handler = KmsHandler::new();
+        let resp = handler.handle(make_req("CreateKey", json!({})));
+        let key_id = serde_json::from_str::<Value>(&resp.body).unwrap()["KeyMetadata"]["KeyId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        handler.handle(make_req(
+            "CreateAlias",
+            json!({"AliasName": "alias/arn-resolve", "TargetKeyId": key_id.clone()}),
+        ));
+
+        // Plain alias names keep resolving through DescribeKey.
+        let by_name = handler.handle(make_req(
+            "DescribeKey",
+            json!({"KeyId": "alias/arn-resolve"}),
+        ));
+        assert_eq!(by_name.status, 200);
+        assert_eq!(
+            serde_json::from_str::<Value>(&by_name.body).unwrap()["KeyMetadata"]["KeyId"],
+            key_id
+        );
+
+        // The full alias ARN resolves the same way (moto get_alias_name).
+        let arn = format!(
+            "arn:aws:kms:{}:{}:alias/arn-resolve",
+            "us-east-1", 123456789012u64
+        );
+        let by_arn = handler.handle(make_req("DescribeKey", json!({"KeyId": arn.clone()})));
+        assert_eq!(by_arn.status, 200);
+        assert_eq!(
+            serde_json::from_str::<Value>(&by_arn.body).unwrap()["KeyMetadata"]["KeyId"],
+            key_id
+        );
+
+        // Operations keyed by the alias ARN behave like the plain alias.
+        let enc = handler.handle(make_req(
+            "Encrypt",
+            json!({"KeyId": arn.clone(), "Plaintext": B64.encode(b"via arn")}),
+        ));
+        assert_eq!(enc.status, 200);
+        let blob = serde_json::from_str::<Value>(&enc.body).unwrap()["CiphertextBlob"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let dec = handler.handle(make_req("Decrypt", json!({"CiphertextBlob": blob})));
+        assert_eq!(dec.status, 200);
+        assert_eq!(
+            serde_json::from_str::<Value>(&dec.body).unwrap()["Plaintext"],
+            B64.encode(b"via arn")
+        );
+
+        let dk = handler.handle(make_req(
+            "GenerateDataKey",
+            json!({"KeyId": arn, "KeySpec": "AES_256"}),
+        ));
+        assert_eq!(dk.status, 200);
+    }
+
+    #[test]
     fn test_grants_can_be_retired() {
         let handler = KmsHandler::new();
         let resp = handler.handle(make_req("CreateKey", json!({})));

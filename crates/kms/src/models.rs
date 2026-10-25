@@ -206,6 +206,23 @@ pub struct KmsState {
     pub custom_key_stores: Arc<RwLock<HashMap<String, Arc<CustomKeyStore>>>>,
 }
 
+/// Normalize a KeyId reference the way moto does (`KmsBackend::get_alias_name`
+/// then `get_key_id`, so ARNs work regardless of partition): an alias ARN
+/// (`arn:...:kms:<region>:<account>:alias/<name>`) becomes
+/// `alias/<name>`, a key ARN (`arn:...:key/<id>`) becomes the raw key id,
+/// and other inputs pass through unchanged.
+fn normalize_key_ref(id: &str) -> String {
+    if id.starts_with("arn:") {
+        if let Some(idx) = id.find(":alias/") {
+            return format!("alias/{}", &id[idx + ":alias/".len()..]);
+        }
+        if let Some(idx) = id.find(":key/") {
+            return id[idx + ":key/".len()..].to_string();
+        }
+    }
+    id.to_string()
+}
+
 impl KmsState {
     pub fn new() -> Self {
         Self {
@@ -245,26 +262,28 @@ impl KmsState {
     }
 
     pub fn get_key(&self, id: &str) -> Option<Arc<Key>> {
-        // Try direct lookup, then by ARN (`key/{id}` suffix accepted), then by alias
-        let direct = if id.starts_with("arn:aws:kms:") {
-            id.rsplit('/').next().unwrap_or(id)
-        } else {
-            id
-        };
-        let keys = self.keys.read();
-        if let Some(k) = keys.get(direct) {
-            return Some(k.clone());
-        }
-        if let Some(k) = keys.values().find(|k| k.arn == id) {
-            return Some(k.clone());
-        }
-        // Try alias resolution
-        let aliases = self.aliases.read();
-        if let Some(target) = aliases.get(id) {
-            if let Some(k) = keys.get(target) {
+        // ARNs normalize to raw ids first (mirrors moto KmsBackend
+        // get_alias_name/get_key_id): `...:alias/name` -> `alias/name`,
+        // `...:key/<id>` -> raw key id. Without this a full alias ARN only
+        // matched keys whose ARN happened to equal it, and never resolved.
+        let normalized = normalize_key_ref(id);
+        {
+            let keys = self.keys.read();
+            if let Some(k) = keys.get(normalized.as_str()) {
                 return Some(k.clone());
             }
-            return keys.values().find(|k| k.arn == *target).cloned();
+            if let Some(k) = keys.values().find(|k| k.arn == id) {
+                return Some(k.clone());
+            }
+        }
+        // Alias resolution: alias map keys are stored in `alias/<name>` form.
+        let target = self.aliases.read().get(normalized.as_str()).cloned();
+        if let Some(target) = target {
+            let keys = self.keys.read();
+            if let Some(k) = keys.get(&target) {
+                return Some(k.clone());
+            }
+            return keys.values().find(|k| k.arn == target).cloned();
         }
         None
     }
@@ -288,5 +307,60 @@ impl KmsState {
 impl Default for KmsState {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_key_ref_arns() {
+        assert_eq!(normalize_key_ref("abc123"), "abc123");
+        assert_eq!(
+            normalize_key_ref("arn:aws:kms:us-east-1:123456789012:key/abc123"),
+            "abc123"
+        );
+        assert_eq!(
+            normalize_key_ref("arn:aws:kms:us-east-1:123456789012:alias/app"),
+            "alias/app"
+        );
+        // Partition-agnostic, like moto's get_alias_name/get_key_id.
+        assert_eq!(
+            normalize_key_ref("arn:aws-us-gov:kms:us-gov-west-1:123456789012:alias/app"),
+            "alias/app"
+        );
+        // Account ids of any length still split on the last segment only.
+        assert_eq!(
+            normalize_key_ref("arn:aws:kms:us-east-1:123456789012:alias/pkg/alias/nested"),
+            "alias/pkg/alias/nested"
+        );
+    }
+
+    #[test]
+    fn get_key_resolves_alias_arn_like_alias_name() {
+        let state = KmsState::new();
+        let key = Arc::new(Key::new(
+            123456789012,
+            "us-east-1".to_string(),
+            "ENCRYPT_DECRYPT",
+            "SYMMETRIC_DEFAULT",
+        ));
+        let key_id = key.key_id.clone();
+        state.put_key(key);
+        state.create_alias("alias/app", &key_id);
+
+        // The alias name and its full ARN resolve to the same key.
+        let by_name = state.get_key("alias/app").expect("alias name resolves");
+        assert_eq!(by_name.key_id, key_id);
+        let by_arn = state.get_key("arn:aws:kms:us-east-1:123456789012:alias/app");
+        assert!(by_arn.is_some());
+        assert_eq!(by_arn.unwrap().key_id, key_id);
+
+        // Unknown alias names and ARNs still come back unresolved.
+        assert!(state.get_key("alias/missing").is_none());
+        assert!(state
+            .get_key("arn:aws:kms:us-east-1:123456789012:alias/missing")
+            .is_none());
     }
 }
