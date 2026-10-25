@@ -82,7 +82,9 @@ def main() -> None:
         if src.exists():
             if asset.endswith(".svg"):
                 svg = src.read_text()
-                svg = _inject_svg_stats(svg, total_tests, impl_count, total_ops, impl_pct)
+                svg = _inject_svg_stats(
+                    svg, total_tests, native_count, impl_count, total_ops, impl_pct
+                )
                 (out / asset).write_text(svg)
             else:
                 shutil.copy2(src, out / asset)
@@ -96,7 +98,7 @@ def _count_tests(root: Path) -> int:
     import re
 
     count = 0
-    for test_dir in ["tests/unit", "tests/compatibility", "tests/integration"]:
+    for test_dir in ["tests/apps", "tests/compatibility", "tests/iac", "tests/parity"]:
         for f in (root / test_dir).rglob("test_*.py"):
             count += len(re.findall(r"^\s+def test_", f.read_text(), re.MULTILINE))
     return count
@@ -133,7 +135,12 @@ def _inject_stats(
 
 
 def _inject_svg_stats(
-    svg: str, total_tests: int, impl_count: int, total_ops: int, impl_pct: int
+    svg: str,
+    total_tests: int,
+    native_count: int,
+    impl_count: int,
+    total_ops: int,
+    impl_pct: int,
 ) -> str:
     """Replace hardcoded stats in SVG badges with fresh values."""
     import re
@@ -142,10 +149,10 @@ def _inject_svg_stats(
     svg = re.sub(r"[\d,]+\+ tests", f"{total_tests:,}+ tests", svg)
     # coverage.svg header: "NN% of N,NNN operations"
     svg = re.sub(r"\d+% of [\d,]+ operations", f"{impl_pct}% of {total_ops:,} operations", svg)
-    # coverage.svg subheader: "147 services  ·  N,NNN implemented  ·  N,NNN tests"
+    # coverage.svg subheader: "NNN services  ·  N,NNN implemented  ·  N,NNN tests"
     svg = re.sub(
-        r"(147 services\s+·\s+)[\d,]+( implemented\s+·\s+)[\d,]+( tests)",
-        rf"\g<1>{impl_count:,}\g<2>{total_tests:,}\3",
+        r"(\d+)( services\s+·\s+)[\d,]+( implemented\s+·\s+)[\d,]+( tests)",
+        rf"{native_count}\g<2>{impl_count:,}\g<3>{total_tests:,}\g<4>",
         svg,
     )
     return svg

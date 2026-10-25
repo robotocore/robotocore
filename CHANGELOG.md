@@ -6,7 +6,7 @@ auto-tags and publishes a versioned + `:latest` Docker image. Each release
 gets a top-level section here; the project source of truth for the
 maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
 
-## 2026.10.24 (unreleased, `port/fix-crash-rows` branch)
+## 2026.10.24 (unreleased)
 
 ### Fixed: crashed probe rows now match moto's exact wire behavior
 
