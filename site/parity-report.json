@@ -6777,10 +6777,14 @@
           "outputDataConfig"
         ]
       },
-      "implemented_ops": [],
-      "implemented_count": 0,
-      "native_ops": [],
-      "native_count": 0,
+      "implemented_ops": [
+        "InvokeModel"
+      ],
+      "implemented_count": 1,
+      "native_ops": [
+        "InvokeModel"
+      ],
+      "native_count": 1,
       "moto_ops": [],
       "moto_count": 0,
       "delegates_to_moto": false,
@@ -6790,11 +6794,11 @@
       ],
       "tested_count": 2,
       "test_method_count": 2,
-      "impl_pct": 0.0,
+      "impl_pct": 10.0,
       "test_pct": 20.0,
-      "needs_params_count": 2,
+      "needs_params_count": 3,
       "not_implemented_count": 6,
-      "error_count": 2,
+      "error_count": 0,
       "probed": true
     },
     "bedrockagent": {
@@ -29081,17 +29085,18 @@
       },
       "implemented_ops": [
         "AddTags",
+        "ApplySecurityGroupsToLoadBalancer",
         "ConfigureHealthCheck",
         "CreateAppCookieStickinessPolicy",
         "CreateLBCookieStickinessPolicy",
         "CreateLoadBalancer",
         "CreateLoadBalancerListeners",
-        "CreateLoadBalancerPolicy",
         "DeleteLoadBalancer",
         "DeleteLoadBalancerListeners",
         "DeleteLoadBalancerPolicy",
         "DescribeAccountLimits",
         "DescribeInstanceHealth",
+        "DescribeLoadBalancerPolicies",
         "DescribeLoadBalancerPolicyTypes",
         "DescribeLoadBalancers",
         "DescribeTags",
@@ -29102,20 +29107,21 @@
         "SetLoadBalancerPoliciesForBackendServer",
         "SetLoadBalancerPoliciesOfListener"
       ],
-      "implemented_count": 21,
+      "implemented_count": 22,
       "native_ops": [
         "AddTags",
+        "ApplySecurityGroupsToLoadBalancer",
         "ConfigureHealthCheck",
         "CreateAppCookieStickinessPolicy",
         "CreateLBCookieStickinessPolicy",
         "CreateLoadBalancer",
         "CreateLoadBalancerListeners",
-        "CreateLoadBalancerPolicy",
         "DeleteLoadBalancer",
         "DeleteLoadBalancerListeners",
         "DeleteLoadBalancerPolicy",
         "DescribeAccountLimits",
         "DescribeInstanceHealth",
+        "DescribeLoadBalancerPolicies",
         "DescribeLoadBalancerPolicyTypes",
         "DescribeLoadBalancers",
         "DescribeTags",
@@ -29126,7 +29132,7 @@
         "SetLoadBalancerPoliciesForBackendServer",
         "SetLoadBalancerPoliciesOfListener"
       ],
-      "native_count": 21,
+      "native_count": 22,
       "moto_ops": [],
       "moto_count": 0,
       "delegates_to_moto": false,
@@ -29161,11 +29167,11 @@
       ],
       "tested_count": 27,
       "test_method_count": 28,
-      "impl_pct": 72.41379310344827,
+      "impl_pct": 75.86206896551724,
       "test_pct": 93.10344827586206,
       "needs_params_count": 0,
       "not_implemented_count": 0,
-      "error_count": 8,
+      "error_count": 7,
       "probed": true
     },
     "elbv2": {
@@ -66098,8 +66104,8 @@
       "impl_pct": 77.46478873239437,
       "test_pct": 77.46478873239437,
       "needs_params_count": 0,
-      "not_implemented_count": 0,
-      "error_count": 16,
+      "not_implemented_count": 16,
+      "error_count": 0,
       "probed": true
     },
     "sesv2": {
@@ -72971,23 +72977,33 @@
     "native_services": 158,
     "absent_services": 0,
     "total_aws_operations": 10268,
-    "total_implemented": 9456,
+    "total_implemented": 9458,
     "total_tested": 8324,
     "total_test_methods": 12483,
     "unmapped_test_methods": 438,
-    "impl_pct": 92.09193611219322,
+    "impl_pct": 92.11141410206467,
     "test_pct": 81.0673938449552,
     "probed_services": 158,
-    "needs_params_operations": 264,
-    "not_implemented_operations": 485,
-    "error_operations": 63
+    "needs_params_operations": 265,
+    "not_implemented_operations": 501,
+    "error_operations": 44,
+    "absence": {
+      "manifest": "tooling/surface-absence.json",
+      "rows": 501,
+      "classes": {
+        "absent_moto_crash_faithful": 1,
+        "absent_no_handler": 412,
+        "legacy_gap": 4,
+        "modeled_deny": 84
+      }
+    }
   },
   "source": {
     "endpoint": "http://localhost:4566",
-    "probes_dir": "/home/termag/termag/projects/robotocore/probes",
+    "probes_dir": "/home/termag/termag/projects/robotocore/.worktrees/f6/probes",
     "generated_by": "scripts/generate_parity_report.py",
     "note": "Destructive operations (TerminateInstances, DeleteBucket, DeleteVpc, \u2026) are excluded from probes \u2014 see SKIP_OPERATIONS in scripts/probe_service.py"
   },
-  "generated_at": "2026-10-23T04:59:17.247712+00:00",
-  "commit": "9d71060f"
+  "generated_at": "2026-10-25T01:29:50.438676+00:00",
+  "commit": "636796ea"
 }
