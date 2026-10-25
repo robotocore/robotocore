@@ -7,6 +7,7 @@ pub mod handler;
 pub mod models;
 pub mod pattern;
 pub mod protocol;
+pub mod scheduler;
 pub mod snapshot;
 
 pub use bridge::{hook, register_hook};

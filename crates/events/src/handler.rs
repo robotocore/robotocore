@@ -14,7 +14,7 @@ use std::sync::Arc;
 pub(crate) static GLOBAL_STATE: Lazy<RwLock<HashMap<(u64, String), EventsState>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
 
-fn global_state(account: u64, region: &str) -> EventsState {
+pub(crate) fn global_state(account: u64, region: &str) -> EventsState {
     let mut states = GLOBAL_STATE.write();
     states
         .entry((account, region.to_string()))
