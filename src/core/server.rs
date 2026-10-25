@@ -2553,8 +2553,14 @@ fn looks_like_s3_host(host: &str) -> bool {
 
 /// Extract account ID from Authorization header.
 fn extract_account_from_request(headers: &HeaderMap, query_string: &str, body: &[u8]) -> u64 {
-    // Explicit per-test override header wins over every credential-like
-    // source (mirrors the python twin's x-moto-account-id priority).
+    // Explicit per-request override header wins over every credential-like
+    // source. This mirrors moto's own account resolution priority
+    // (`moto/core/responses.py get_current_account`, the real source — not
+    // any robotocore bridge layer): PRIO 1 the `MOTO_ACCOUNT_ID` env var
+    // (the rust twin has no per-request env equivalent), PRIO 2 an account
+    // header (moto's `x-moto-account-id`, exposed here as the rename
+    // `X-Robotocore-Account`), PRIO 3 an access-key lookup, PRIO 4 the
+    // hard-coded default account that the tail of this function returns.
     if let Some(account_header) = headers.get("X-Robotocore-Account") {
         if let Ok(account_str) = account_header.to_str() {
             if let Ok(account) = account_str.parse::<u64>() {
