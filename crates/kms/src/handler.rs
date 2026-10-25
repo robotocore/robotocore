@@ -658,25 +658,44 @@ impl KmsHandler {
     fn re_encrypt(&self, req: &AwsRequest) -> AwsResponse {
         let destination = pstr(req, "DestinationKeyId").unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
-        let key = match state.get_key(&destination) {
+        let dest_key = match state.get_key(&destination) {
             Some(k) => k,
             None => return Self::not_found(),
         };
-        let ciphertext_b64 = pstr(req, "CiphertextBlob").unwrap_or_default();
-        if B64.decode(&ciphertext_b64).is_err() {
-            return AwsResponse::error(
-                400,
-                "InvalidCiphertextException",
-                "The ciphertext blob is not valid",
-            );
-        }
+        let blob = decode_param_bytes(req, "CiphertextBlob");
+        let ciphertext = match cipher::Ciphertext::parse(&blob) {
+            Some(ct) => ct,
+            None => return Self::invalid_ciphertext(),
+        };
+        let source_key = match state.keys.read().get(&ciphertext.key_id).cloned() {
+            Some(k) => k,
+            None => return Self::ciphertext_key_missing(),
+        };
+        // Moto decrypts against SourceEncryptionContext (any mismatch fails
+        // with InvalidCiphertextException) and re-encrypts the recovered
+        // plaintext under the destination key bound to
+        // DestinationEncryptionContext.
+        let source_ctx = context_entries(req.params.get("SourceEncryptionContext"));
+        let plaintext =
+            match cipher::decrypt(&source_key.key_material.read(), &ciphertext, &source_ctx) {
+                Some(pt) => pt,
+                None => return Self::invalid_ciphertext(),
+            };
+        let dest_ctx = context_entries(req.params.get("DestinationEncryptionContext"));
+        let new_blob = cipher::encrypt(
+            &dest_key.key_material.read(),
+            &dest_key.key_id,
+            &plaintext,
+            &dest_ctx,
+        );
         AwsResponse::json(
             200,
             json!({
-                "CiphertextBlob": ciphertext_b64,
+                "CiphertextBlob": B64.encode(new_blob),
+                "KeyId": dest_key.arn,
+                "SourceKeyId": source_key.arn,
                 "SourceEncryptionAlgorithm": "SYMMETRIC_DEFAULT",
                 "DestinationEncryptionAlgorithm": "SYMMETRIC_DEFAULT",
-                "KeyId": key.arn,
             }),
         )
     }
@@ -1926,6 +1945,111 @@ mod tests {
         let body: Value = serde_json::from_str(&dec.body).unwrap();
         assert_eq!(dec.status, 200);
         assert_eq!(body["Plaintext"].as_str().unwrap(), dk_plain);
+    }
+
+    /// Create a key and return `(key_id, arn)`.
+    fn created_key(handler: &KmsHandler) -> (String, String) {
+        let resp = handler.handle(make_req("CreateKey", json!({})));
+        let meta = &serde_json::from_str::<Value>(&resp.body).unwrap()["KeyMetadata"];
+        (
+            meta["KeyId"].as_str().unwrap().to_string(),
+            meta["Arn"].as_str().unwrap().to_string(),
+        )
+    }
+
+    #[test]
+    fn test_re_encrypt_rebinds_key_and_context() {
+        let handler = KmsHandler::new();
+        let (src_id, src_arn) = created_key(&handler);
+        let (dst_id, dst_arn) = created_key(&handler);
+
+        let enc = handler.handle(make_req(
+            "Encrypt",
+            json!({"KeyId": src_id, "Plaintext": B64.encode(b"reencrypt me")}),
+        ));
+        let blob = serde_json::from_str::<Value>(&enc.body).unwrap()["CiphertextBlob"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let re = handler.handle(make_req(
+            "ReEncrypt",
+            json!({
+                "CiphertextBlob": blob.clone(),
+                "DestinationKeyId": dst_id,
+                "DestinationEncryptionContext": {"env": "dev"},
+            }),
+        ));
+        assert_eq!(re.status, 200);
+        let body: Value = serde_json::from_str(&re.body).unwrap();
+        // moto response shape: KeyId = destination arn, SourceKeyId = source arn.
+        assert_eq!(body["KeyId"].as_str().unwrap(), dst_arn);
+        assert_eq!(body["SourceKeyId"].as_str().unwrap(), src_arn);
+
+        let new_blob = body["CiphertextBlob"].as_str().unwrap().to_string();
+        // moto re-encrypts: a fresh ciphertext of the recovered plaintext
+        // under the destination key (the header names the destination key),
+        // decryptable only with the bound destination context.
+        assert_ne!(new_blob, blob);
+        let new_ct = cipher::Ciphertext::parse(&B64.decode(&new_blob).unwrap()).unwrap();
+        assert_eq!(new_ct.key_id, dst_id);
+
+        let dec = handler.handle(make_req(
+            "Decrypt",
+            json!({"CiphertextBlob": new_blob, "EncryptionContext": {"env": "dev"}}),
+        ));
+        assert_eq!(dec.status, 200);
+        let body: Value = serde_json::from_str(&dec.body).unwrap();
+        assert_eq!(
+            body["Plaintext"].as_str().unwrap(),
+            B64.encode(b"reencrypt me")
+        );
+        assert_eq!(body["KeyId"].as_str().unwrap(), dst_arn);
+    }
+
+    #[test]
+    fn test_re_encrypt_rejects_wrong_source_context() {
+        let handler = KmsHandler::new();
+        let (src_id, _) = created_key(&handler);
+        let (dst_id, _) = created_key(&handler);
+
+        let enc = handler.handle(make_req(
+            "Encrypt",
+            json!({"KeyId": src_id, "Plaintext": B64.encode(b"ctx"), "EncryptionContext": {"env": "dev"}}),
+        ));
+        let blob = serde_json::from_str::<Value>(&enc.body).unwrap()["CiphertextBlob"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // moto decrypts against SourceEncryptionContext first; any mismatch
+        // raises InvalidCiphertextException (not a context-free success).
+        let re = handler.handle(make_req(
+            "ReEncrypt",
+            json!({"CiphertextBlob": blob, "SourceEncryptionContext": {"env": "prod"}, "DestinationKeyId": dst_id}),
+        ));
+        assert_eq!(re.status, 400);
+        assert!(re.body.contains("InvalidCiphertextException"));
+
+        // An empty source context against a bound blob fails the same way.
+        let re = handler.handle(make_req(
+            "ReEncrypt",
+            json!({"CiphertextBlob": blob, "DestinationKeyId": dst_id}),
+        ));
+        assert_eq!(re.status, 400);
+        assert!(re.body.contains("InvalidCiphertextException"));
+    }
+
+    #[test]
+    fn test_re_encrypt_garbage_blob_is_invalid_ciphertext() {
+        let handler = KmsHandler::new();
+        let (_, dst_arn) = created_key(&handler);
+        let re = handler.handle(make_req(
+            "ReEncrypt",
+            json!({"CiphertextBlob": B64.encode(b"junk"), "DestinationKeyId": dst_arn}),
+        ));
+        assert_eq!(re.status, 400);
+        assert!(re.body.contains("InvalidCiphertextException"));
     }
 
     #[test]
