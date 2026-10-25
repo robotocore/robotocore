@@ -6,11 +6,12 @@
 //! python twin — a POST to this endpoint answers 403 unless the twin was
 //! launched with that flag.
 //!
-//! NOTE: values are stored and reflected back on GET-style reads; settings
-//! whose consumers are not ported to the rust gateway yet (ENFORCE_IAM
-//! middleware, audit-log resize, retention toggles) are accepted but have
-//! no consumer. Read `runtime_config::get(key)` when wiring those
-//! subsystems so they honor runtime overrides.
+//! Keys without a live consumer are rejected with 400 instead of being
+//! accepted and silently ignored: "accepted but not enforced" is a silent
+//! bypass (a client toggling ENFORCE_IAM would believe enforcement changed
+//! when nothing happened). `CONSUMED_SETTINGS` lists the keys this rust
+//! gateway actually honors; read `runtime_config::get(key)` when wiring a
+//! subsystem, then add the key there so it becomes settable again.
 
 use serde_json::Value;
 use std::collections::HashMap;
@@ -42,6 +43,15 @@ pub const MUTABLE_SETTINGS: &[(&str, &str)] = &[
     ),
     ("USAGE_ANALYTICS", "Toggle usage analytics (0 or 1)"),
 ];
+
+/// Subset of `MUTABLE_SETTINGS` with a live consumer in the rust gateway.
+///
+/// Derived from actual `runtime_config::get(key)` call sites: today none of
+/// the whitelisted settings are consumed anywhere in this codebase, so the
+/// endpoint rejects every key until a consumer is wired. This check must
+/// not be skipped when re-enabling a key — an accepted key MUST have a
+/// reader, otherwise the config endpoint lies about taking effect.
+pub const CONSUMED_SETTINGS: &[&str] = &[];
 
 static UPDATES_ENABLED: Lazy<bool> =
     Lazy::new(|| std::env::var("ENABLE_CONFIG_UPDATES").as_deref() == Ok("1"));
@@ -122,6 +132,23 @@ mod tests {
     }
 
     #[test]
+    fn consumed_keys_are_a_whitelisted_subset() {
+        // Guard against the endpoint accepting (and lying about) any future
+        // key that has no reader: CONSUMED_SETTINGS entries must exist in
+        // MUTABLE_SETTINGS and must have a runtime_config::get call site.
+        // An empty CONSUMED_SETTINGS is only valid while nothing consumes
+        // these settings (see the module note).
+        for &key in CONSUMED_SETTINGS {
+            assert!(
+                MUTABLE_SETTINGS.iter().any(|(k, _)| *k == key),
+                "consumed key {key} must be whitelisted in MUTABLE_SETTINGS"
+            );
+        }
+        assert!(!known_consumed("ENFORCE_IAM"));
+        assert!(!known_consumed("NOT_A_SETTING"));
+    }
+
+    #[test]
     fn set_and_get_round_trip() {
         set("DYNAMODB_REMOVE_EXPIRED_ITEMS", "0".to_string());
         assert_eq!(get("DYNAMODB_REMOVE_EXPIRED_ITEMS"), Some("0".to_string()));
@@ -139,5 +166,9 @@ mod tests {
 
     fn known_key(key: &str) -> bool {
         MUTABLE_SETTINGS.iter().any(|(k, _)| *k == key)
+    }
+
+    fn known_consumed(key: &str) -> bool {
+        CONSUMED_SETTINGS.contains(&key)
     }
 }

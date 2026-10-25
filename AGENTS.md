@@ -164,6 +164,12 @@ account_id = str(uuid.uuid4().int)[:12].zfill(12)
 
 Non-numeric access keys (e.g. `"test"`) route to the default account `123456789012`.
 
+**Per-request override (added by fix-lane F4):** a request can pin its account with an
+`X-Robotocore-Account: <12 digits>` header, which wins over any credentials on that
+request. It mirrors moto's `x-moto-account-id` header priority (`moto/core/responses.py`
+`get_current_account`: `MOTO_ACCOUNT_ID` env var → account header → access-key lookup →
+default account); requests carrying none of these resolve to the default account.
+
 ---
 
 ## Supported services

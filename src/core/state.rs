@@ -157,6 +157,66 @@ mod tests {
         let items = store.scan(&ar, "s3");
         assert_eq!(items.len(), 2);
     }
+
+    #[test]
+    fn snapshot_name_guard_rejects_traversal() {
+        // python manager.py `_validate_snapshot_name`: empty, `/` and `\`
+        // separators are rejected; flat names pass.
+        assert!(validate_snapshot_name("snap-2024").is_ok());
+        for bad in [
+            "",
+            "sub/snap",
+            "../escape",
+            "..\\escape",
+            "/abs/snap",
+            "snap/../..",
+        ] {
+            let err = validate_snapshot_name(bad).expect_err(bad);
+            assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput, "{bad}");
+            assert!(
+                err.to_string().contains("traversal") || err.to_string().contains("empty"),
+                "{bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn save_and_load_reject_traversal_names() {
+        let tmp = std::env::temp_dir().join("robotocore-state-guard-test");
+        let dir = tmp.join("base");
+        let outside = tmp.join("escape.json");
+        std::fs::remove_dir_all(&tmp).ok();
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let value = json_snapshot();
+        // `../escape` must be refused and must not create the sibling file.
+        let err = save_to_path(dir.to_str().unwrap(), Some("../escape"), &value)
+            .expect_err("traversal save rejected");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(!outside.exists(), "traversal name escaped the base dir");
+
+        let err = load_from_path(dir.to_str().unwrap(), Some("../escape"))
+            .expect_err("traversal load rejected");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+
+        // Missing files stay "no state" (python returned False), not errors.
+        assert!(load_from_path(dir.to_str().unwrap(), Some("never-saved"))
+            .unwrap()
+            .is_none());
+
+        // A flat name still round-trips and the file stays inside the base.
+        save_to_path(dir.to_str().unwrap(), Some("round-trip"), &value).unwrap();
+        assert!(dir.join("round-trip.json").exists());
+        let loaded = load_from_path(dir.to_str().unwrap(), Some("round-trip"))
+            .unwrap()
+            .expect("saved state readable");
+        assert_eq!(loaded, value);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    fn json_snapshot() -> Value {
+        serde_json::json!({"version": "1.0", "state": {}})
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -164,7 +224,7 @@ mod tests {
 // ---------------------------------------------------------------------------
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// JSON snapshot of one service's state and when it was taken.
 #[derive(Debug, Clone)]
@@ -639,15 +699,56 @@ pub fn resolve_state_dir() -> Option<PathBuf> {
     std::env::var_os("ROBOTOCORE_STATE_DIR").map(PathBuf::from)
 }
 
+/// Python-era snapshot-name guard (state/manager.py `_validate_snapshot_name`
+/// and the `resolve().is_relative_to(...)` traversal check at its call
+/// sites): a snapshot name must be a single bare path component — no empty
+/// string, no separators, no `..` — so the joined file can never escape the
+/// base directory. Errors are `ErrorKind::InvalidInput` so the admin
+/// handlers can answer 400 for client-supplied traversal instead of a 500.
+pub fn validate_snapshot_name(name: &str) -> Result<(), std::io::Error> {
+    if name.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Snapshot name must not be empty",
+        ));
+    }
+    if name.contains('/') || name.contains('\\') {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("Invalid snapshot name (path traversal): {name:?}"),
+        ));
+    }
+    Ok(())
+}
+
+/// Lexical `resolve().is_relative_to(base)` equivalent: reject a composed
+/// path that climbs above `base` (a `..` anywhere past the base root).
+/// The name guard above makes this a defense-in-depth check, but it is
+/// what the python twin enforced last before touching disk.
+fn stays_within_base(base: &Path, file: &Path) -> bool {
+    file.components()
+        .all(|c| c != std::path::Component::ParentDir)
+        && file.starts_with(base)
+}
+
 /// Write the state JSON file: `<dir>/<name>.json`, or `<dir>/robotocore_state.json`
 /// for unnamed saves. Atomic via temp-file rename.
 pub fn save_to_path(dir: &str, name: Option<&str>, value: &Value) -> std::io::Result<String> {
+    if let Some(n) = name {
+        validate_snapshot_name(n)?;
+    }
     let dir = PathBuf::from(dir);
     std::fs::create_dir_all(&dir)?;
     let file = match name {
         Some(n) => dir.join(format!("{n}.json")),
         None => dir.join("robotocore_state.json"),
     };
+    if !stays_within_base(&dir, &file) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("Invalid snapshot name (path traversal): {name:?}"),
+        ));
+    }
     let tmp = dir.join(format!(
         ".{}.tmp",
         file.file_name().unwrap_or_default().to_string_lossy()
@@ -658,12 +759,27 @@ pub fn save_to_path(dir: &str, name: Option<&str>, value: &Value) -> std::io::Re
 }
 
 /// Read back a state JSON file written by [`save_to_path`].
-pub fn load_from_path(dir: &str, name: Option<&str>) -> Option<Value> {
+pub fn load_from_path(dir: &str, name: Option<&str>) -> Result<Option<Value>, std::io::Error> {
+    if let Some(n) = name {
+        validate_snapshot_name(n)?;
+    }
     let dir = PathBuf::from(dir);
     let file = match name {
         Some(n) => dir.join(format!("{n}.json")),
         None => dir.join("robotocore_state.json"),
     };
-    let bytes = std::fs::read(file).ok()?;
-    serde_json::from_slice(&bytes).ok()
+    if !stays_within_base(&dir, &file) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("Invalid snapshot name (path traversal): {name:?}"),
+        ));
+    }
+    let bytes = match std::fs::read(&file) {
+        Ok(bytes) => bytes,
+        // A missing file is "no state", the same answer python's load
+        // returned (`no state directory found` → False), not an error.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    Ok(serde_json::from_slice(&bytes).ok())
 }

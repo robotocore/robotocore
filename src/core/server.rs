@@ -1848,9 +1848,10 @@ pub async fn config_handler() -> impl IntoResponse {
 /// non-whitelisted keys, `{"status": "updated", "updated": {...}}` on
 /// success.
 ///
-/// Values are stored in the runtime-config override table; settings whose
-/// consumers are not ported to the rust gateway yet are accepted but have
-/// no consumer (see `core::runtime_config`).
+/// Values are stored in the runtime-config override table and reflected by
+/// future `runtime_config::get(key)` readers. Only keys with a live
+/// consumer are accepted: whitelisted-but-unconsumed keys answer 400 rather
+/// than a silent no-op (see `core::runtime_config::CONSUMED_SETTINGS`).
 pub async fn config_update_handler(body: axum::body::Bytes) -> Response {
     const DISABLED: &str = "Runtime config updates are disabled. Set ENABLE_CONFIG_UPDATES=1.";
     if !crate::core::runtime_config::updates_enabled() {
@@ -1900,6 +1901,23 @@ pub async fn config_update_handler(body: axum::body::Bytes) -> Response {
             )
                 .into_response();
         }
+        // Only keys with a live rust consumer may be stored. Accepting
+        // ENFORCE_IAM-style keys with no reader would be a silent bypass:
+        // the 200 would claim enforcement changed while nothing reads the
+        // override (see `core::runtime_config::CONSUMED_SETTINGS`).
+        if !crate::core::runtime_config::CONSUMED_SETTINGS
+            .iter()
+            .any(|k| *k == key)
+        {
+            return (
+                StatusCode::BAD_REQUEST,
+                axum::Json(json!({ "error": format!(
+                    "Setting {key} has no consumer in the rust gateway; \
+                     updates are rejected instead of silently ignored"
+                )})),
+            )
+                .into_response();
+        }
         crate::core::runtime_config::set(key, value_str.clone());
         updated.insert(key.clone(), json!(value_str));
     }
@@ -1912,14 +1930,18 @@ pub async fn config_update_handler(body: axum::body::Bytes) -> Response {
 
 /// Audit endpoint: `?limit=N` recent call records.
 pub async fn audit_handler(uri: Uri) -> impl IntoResponse {
-    // Python: `?limit=N` (int required; anything non-numeric is a 400)
+    // Python: `limit = int(request.query_params.get("limit", "100"))` —
+    // `int()` trims whitespace and accepts `+`/`-` signs, so `/audit?limit=
+    // %205` or `?limit=-1` were accepted there, not 400s. Negative values
+    // keep python slicing semantics (recent_entries): `-1` returns all
+    // entries except the oldest one.
     let limit = match uri.query().and_then(|q| {
         q.split('&').find_map(|kv| {
             let (k, v) = kv.split_once('=')?;
             (k == "limit").then_some(v)
         })
     }) {
-        Some(v) => match v.parse::<usize>() {
+        Some(v) => match parse_audit_limit(v) {
             Ok(n) => n,
             Err(_) => {
                 return (
@@ -1938,6 +1960,21 @@ pub async fn audit_handler(uri: Uri) -> impl IntoResponse {
             "count": entries.len(),
         })),
     )
+}
+
+/// Python-parity `int()` of the raw `?limit=` query value: percent-decode
+/// (`%20`), treat a bare `+` as space (urllib `parse_qs` does), trim, then
+/// `i64` so signs parse. Anything non-numeric is rejected like python's
+/// `int()` raising `ValueError`.
+fn parse_audit_limit(raw: &str) -> Result<i64, ()> {
+    let decoded = urlencoding::decode(raw)
+        .map(|c| c.into_owned())
+        .unwrap_or_default();
+    decoded
+        .replace('+', " ")
+        .trim()
+        .parse::<i64>()
+        .map_err(|_| ())
 }
 
 /// Per-service protocol listing: `GET /_robotocore/services`.
@@ -1992,11 +2029,11 @@ pub fn build_router(
         .route("/_robotocore/runtimes", get(runtimes_handler))
         .route("/_robotocore/services", get(services_handler))
         .route("/_robotocore/usage/errors", get(usage_errors_handler))
-        // State save/load/reset (Cloud Pods-style snapshots)
-        .route(
-            "/_robotocore/state/save",
-            get(state_save_handler).post(state_save_handler),
-        )
+        // State save/load/reset (Cloud Pods-style snapshots). Python-era
+        // gateway exposed save/load as POST-only (`gateway/app.py:1353-1354`);
+        // keep the methods tight so audit logs can't be tricked into random
+        // GET-triggered writes either.
+        .route("/_robotocore/state/save", post(state_save_handler))
         .route("/_robotocore/state/load", post(state_load_handler))
         .route("/_robotocore/state/reset", post(state_reset_handler))
         .route(
@@ -2113,7 +2150,11 @@ fn services_filter(params: &serde_json::Value, query: Option<&str>) -> Option<Ve
     parsed.filter(|v| !v.is_empty())
 }
 
-/// Save handler: `GET|POST /_robotocore/state/save`.
+/// Save handler: `POST /_robotocore/state/save`.
+///
+/// Snapshot `name`s are validated python-era style
+/// (`state::validate_snapshot_name`, state/manager.py:545-561): traversal
+/// names answer 400.
 pub async fn state_save_handler(
     State(state): State<Arc<AppState>>,
     uri: Uri,
@@ -2155,6 +2196,11 @@ pub async fn state_save_handler(
                     )
                         .into_response()
                 }
+                Err(e) if e.kind() == std::io::ErrorKind::InvalidInput => (
+                    StatusCode::BAD_REQUEST,
+                    axum::Json(json!({"error": e.to_string()})),
+                )
+                    .into_response(),
                 Err(e) => (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     axum::Json(json!({"error": format!("Could not save state: {e}")})),
@@ -2190,6 +2236,10 @@ pub async fn state_save_handler(
 }
 
 /// Load handler: `POST /_robotocore/state/load`.
+///
+/// Snapshot `name`s are validated python-era style
+/// (`state::validate_snapshot_name`): traversal names answer 400 instead of
+/// writing/reading outside the given directory.
 pub async fn state_load_handler(
     State(state): State<Arc<AppState>>,
     body: axum::body::Bytes,
@@ -2209,10 +2259,21 @@ pub async fn state_load_handler(
     let services = services_filter(&params, None);
 
     // Source resolution order: path-based file, then in-memory name, then default.
-    let loaded = match (&path, &name) {
-        (Some(dir), file_name) => {
-            crate::core::state::load_from_path(dir, file_name.as_deref()).map(|v| ("file", v))
-        }
+    let loaded = match (&path, name.as_deref()) {
+        (Some(dir), file_name) => match crate::core::state::load_from_path(dir, file_name) {
+            Ok(Some(v)) => Some(("file", v)),
+            Ok(None) => None,
+            Err(e) if e.kind() == std::io::ErrorKind::InvalidInput => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    axum::Json(json!({ "error": e.to_string() })),
+                )
+                    .into_response();
+            }
+            // An unreadable directory stays "no state found" — the twin
+            // answered that shape before the traversal guard existed.
+            Err(_) => None,
+        },
         (None, Some(n)) => state
             .named_snapshots
             .get(n)
@@ -2538,8 +2599,14 @@ fn looks_like_s3_host(host: &str) -> bool {
 
 /// Extract account ID from Authorization header.
 fn extract_account_from_request(headers: &HeaderMap, query_string: &str, body: &[u8]) -> u64 {
-    // Explicit per-test override header wins over every credential-like
-    // source (mirrors the python twin's x-moto-account-id priority).
+    // Explicit per-request override header wins over every credential-like
+    // source. This mirrors moto's own account resolution priority
+    // (`moto/core/responses.py get_current_account`, the real source — not
+    // any robotocore bridge layer): PRIO 1 the `MOTO_ACCOUNT_ID` env var
+    // (the rust twin has no per-request env equivalent), PRIO 2 an account
+    // header (moto's `x-moto-account-id`, exposed here as the rename
+    // `X-Robotocore-Account`), PRIO 3 an access-key lookup, PRIO 4 the
+    // hard-coded default account that the tail of this function returns.
     if let Some(account_header) = headers.get("X-Robotocore-Account") {
         if let Ok(account_str) = account_header.to_str() {
             if let Ok(account) = account_str.parse::<u64>() {
@@ -2571,6 +2638,23 @@ fn extract_account_from_request(headers: &HeaderMap, query_string: &str, body: &
     }) {
         if let Some(access_key) = cred.split('/').next() {
             return parse_account_from_key(access_key);
+        }
+    }
+
+    // SigV2 presigned query requests (SimpleDB, botocore's only SigV2
+    // service, signs GETs too) carry the access key as an `AWSAccessKeyId`
+    // query parameter — no Authorization header. moto resolves the account
+    // from it exactly this way (`moto/core/responses.py get_access_key`:
+    // Authorization header first, then `querystring["AWSAccessKeyId"]`), so
+    // per-account isolation holds for SigV2 GETs like it does for SigV2
+    // form posts below.
+    if let Some(v) = query_string.split('&').find_map(|kv| {
+        let (k, v) = kv.split_once('=')?;
+        (k == "AWSAccessKeyId" && !v.is_empty()).then(|| v.to_string())
+    }) {
+        let key = urlencoding::decode(&v).unwrap_or_default();
+        if !key.is_empty() {
+            return parse_account_from_key(&key);
         }
     }
 
@@ -2696,6 +2780,55 @@ fn error_response(status: StatusCode, message: &str) -> Response {
 mod tests {
     use super::*;
 
+    async fn config_update(body: &str) -> Response {
+        std::env::set_var("ENABLE_CONFIG_UPDATES", "1");
+        config_update_handler(axum::body::Bytes::from(body.to_string())).await
+    }
+
+    async fn config_body_value(resp: Response) -> Value {
+        let bytes = BodyExt::collect(resp.into_body()).await.unwrap().to_bytes();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    #[tokio::test]
+    async fn config_update_rejects_whitelisted_key_with_no_consumer() {
+        // ENFORCE_IAM stays whitelisted (python parity) but nothing in the
+        // rust gateway reads it: accepting it would be a silent bypass, so
+        // the endpoint must answer 400 instead of a lying 200.
+        let resp = config_update(r#"{"ENFORCE_IAM": "1"}"#).await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = config_body_value(resp).await;
+        assert!(body["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("no consumer"));
+    }
+
+    #[tokio::test]
+    async fn config_update_rejects_unknown_key() {
+        let resp = config_update(r#"{"NOT_A_SETTING": "1"}"#).await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = config_body_value(resp).await;
+        assert_eq!(
+            body["error"],
+            "Setting NOT_A_SETTING cannot be changed at runtime"
+        );
+    }
+
+    #[tokio::test]
+    async fn config_update_rejects_non_object_body() {
+        for body in [
+            r#"[]"#,
+            r#""string""#,
+            // invalid JSON
+            r#"{"DEBUG": "1""#,
+            "",
+        ] {
+            let resp = config_update(body).await;
+            assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "body: {body}");
+        }
+    }
+
     #[test]
     fn test_extract_service_from_target_header() {
         let mut headers = HeaderMap::new();
@@ -2735,6 +2868,20 @@ mod tests {
             b"Action=CreateDomain&AWSAccessKeyId=222222222222&Signature=x%3D",
         );
         assert_eq!(account, 222222222222);
+    }
+
+    #[test]
+    fn test_extract_account_from_sigv2_presigned_query() {
+        // SigV2 GETs (SimpleDB) carry AWSAccessKeyId in the query string
+        // instead of a form body — moto's get_access_key resolves the
+        // account from querystring["AWSAccessKeyId"] the same way.
+        let headers = HeaderMap::new();
+        let account = extract_account_from_request(
+            &headers,
+            "Action=ListDomains&AWSAccessKeyId=322222222223&Signature=vWj1",
+            b"",
+        );
+        assert_eq!(account, 322222222223);
     }
 
     #[test]
@@ -2843,6 +2990,21 @@ mod tests {
         let method = Method::POST;
         let service = extract_service(&method, &uri, &headers, b"Action=NotARealOp").unwrap();
         assert_eq!(service, "sts");
+    }
+
+    #[test]
+    fn test_parse_audit_limit_python_int_parity() {
+        // python `int()` accepted these forms; the old usize parse rejected
+        // signed and space-padded values.
+        assert_eq!(parse_audit_limit("5").unwrap_or_default(), 5);
+        assert_eq!(parse_audit_limit("+5").unwrap_or_default(), 5);
+        assert_eq!(parse_audit_limit("%205").unwrap_or_default(), 5);
+        // urllib `parse_qs` maps a bare `+` to a space, so `+ 5` trims to 5.
+        assert_eq!(parse_audit_limit("%2B5").unwrap_or_default(), 5);
+        assert_eq!(parse_audit_limit("-1").unwrap_or_default(), -1);
+        assert!(parse_audit_limit("abc").is_err());
+        assert!(parse_audit_limit("").is_err());
+        assert!(parse_audit_limit("5a").is_err());
     }
 
     #[test]
