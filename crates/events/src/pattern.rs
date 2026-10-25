@@ -75,59 +75,18 @@ fn matches(pattern: &Map<String, Value>, event: &Map<String, Value>) -> bool {
 /// A list of acceptable values/matchers for one event field.
 ///
 /// Public so the Lambda event-source-mapping engine can reuse the exact
-/// same operator semantics (prefix/suffix/numeric/exists/anything-but)
-/// for its `FilterCriteria` leaves.
+/// same operator semantics (prefix/suffix/equals-ignore-case/numeric/
+/// exists/anything-but/cidr/wildcard) for its `FilterCriteria` leaves.
+///
+/// Dict leaves are moto's `_does_item_match_named_filter`: the `exists`
+/// filter applies to the value itself, every other named filter is
+/// evaluated per element of an array value, and unnamed dict leaves never
+/// match (era: no branch fires).
 pub fn list_match(pattern_values: &[Value], event_value: &Value) -> bool {
     for pv in pattern_values {
-        if let Some(obj) = pv.as_object() {
-            if let Some(p) = obj.get("prefix").and_then(|v| v.as_str()) {
-                if let Some(s) = event_value.as_str() {
-                    if s.starts_with(p) {
-                        return true;
-                    }
-                }
-                if let Some(arr) = event_value.as_array() {
-                    if arr
-                        .iter()
-                        .any(|v| v.as_str().map(|s| s.starts_with(p)) == Some(true))
-                    {
-                        return true;
-                    }
-                }
-            } else if let Some(p) = obj.get("suffix").and_then(|v| v.as_str()) {
-                if let Some(s) = event_value.as_str() {
-                    if s.ends_with(p) {
-                        return true;
-                    }
-                }
-                if let Some(arr) = event_value.as_array() {
-                    if arr
-                        .iter()
-                        .any(|v| v.as_str().map(|s| s.ends_with(p)) == Some(true))
-                    {
-                        return true;
-                    }
-                }
-            } else if let Some(excluded) = obj.get("anything-but") {
-                if anything_but(excluded, event_value) {
-                    return true;
-                }
-            } else if let Some(ops) = obj.get("numeric") {
-                if let Some(ops) = ops.as_array() {
-                    if match_numeric(ops, event_value) {
-                        return true;
-                    }
-                }
-            } else if let Some(expected) = obj.get("exists").and_then(|e| e.as_bool()) {
-                // An `exists` leaf tests the presence of the event value
-                // itself, in both directions (moto
-                // `_does_item_match_named_filter`: `exists = item is not
-                // UNDEFINED`; era `_match_value_list`: a non-None value
-                // satisfies `exists: true`). Explicit JSON null counts as
-                // absent (era parity: `event.get(key) is None`).
-                if expected != event_value.is_null() {
-                    return true;
-                }
+        if let Some(filter) = pv.as_object() {
+            if named_filter_matches(filter, event_value) {
+                return true;
             }
         } else if event_value == pv {
             return true;
@@ -140,6 +99,172 @@ pub fn list_match(pattern_values: &[Value], event_value: &Value) -> bool {
     false
 }
 
+/// One named filter (`{"prefix": "a"}`, `{"exists": true}`, ...) against
+/// the whole event value. moto checks `exists` on the value itself and
+/// applies every other named filter per element of an array value.
+fn named_filter_matches(filter: &Map<String, Value>, event_value: &Value) -> bool {
+    if let Some(expected) = filter.get("exists").and_then(Value::as_bool) {
+        // An `exists` leaf tests the presence of the event value
+        // itself, in both directions (moto
+        // `_does_item_match_named_filter`: `exists = item is not
+        // UNDEFINED`; era `_match_value_list`: a non-None value
+        // satisfies `exists: true`). Explicit JSON null counts as
+        // absent (era parity: `event.get(key) is None`).
+        return expected != event_value.is_null();
+    }
+    match event_value {
+        Value::Array(arr) => arr
+            .iter()
+            .any(|item| evaluate_named_filter(filter, item)),
+        other => evaluate_named_filter(filter, other),
+    }
+}
+
+/// Evaluate a named filter against one (scalar) event value. Several
+/// recognized filter names may appear in one leaf; they OR together.
+fn evaluate_named_filter(filter: &Map<String, Value>, value: &Value) -> bool {
+    // prefix / suffix: the target is a string, a list of strings, or an
+    // {"equals-ignore-case": "..."} object (moto prefix/suffix forms).
+    if let Some(target) = filter.get("prefix") {
+        if string_targets_match(target, value.as_str(), true) {
+            return true;
+        }
+    }
+    if let Some(target) = filter.get("suffix") {
+        if string_targets_match(target, value.as_str(), false) {
+            return true;
+        }
+    }
+    if let Some(target) = filter.get("equals-ignore-case") {
+        let Some(s) = value.as_str() else {
+            return false;
+        };
+        let matches = match target {
+            Value::String(t) => s.to_lowercase() == t.to_lowercase(),
+            Value::Array(list) => list.iter().any(|t| {
+                t.as_str().map(|t| s.to_lowercase() == t.to_lowercase()) == Some(true)
+            }),
+            _ => false,
+        };
+        if matches {
+            return true;
+        }
+    }
+    if let Some(ops) = filter.get("numeric").and_then(Value::as_array) {
+        if match_numeric(ops, value) {
+            return true;
+        }
+    }
+    if let Some(excluded) = filter.get("anything-but") {
+        if anything_but(excluded, value) {
+            return true;
+        }
+    }
+    if let Some(network) = filter.get("cidr") {
+        if cidr_matches(value, network) {
+            return true;
+        }
+    }
+    if let Some(target) = filter.get("wildcard") {
+        if wildcard_targets_match(target, value.as_str()) {
+            return true;
+        }
+    }
+    false
+}
+
+/// String prefix/suffix against a scalar, list, or
+/// `equals-ignore-case`-object target (moto prefix/suffix forms).
+fn string_targets_match(target: &Value, value: Option<&str>, prefix: bool) -> bool {
+    let Some(s) = value else {
+        return false;
+    };
+    match target {
+        Value::String(t) => if prefix { s.starts_with(t) } else { s.ends_with(t) },
+        Value::Array(list) => list.iter().any(|t| {
+            t.as_str()
+                .map(|t| if prefix { s.starts_with(t) } else { s.ends_with(t) })
+                == Some(true)
+        }),
+        Value::Object(obj) => obj
+            .get("equals-ignore-case")
+            .and_then(Value::as_str)
+            .map(|t| {
+                let sv = s.to_lowercase();
+                let tv = t.to_lowercase();
+                if prefix {
+                    sv.starts_with(&tv)
+                } else {
+                    sv.ends_with(&tv)
+                }
+            })
+            .unwrap_or(false),
+        _ => false,
+    }
+}
+
+/// wildcard target: a glob string or a list of them.
+fn wildcard_targets_match(target: &Value, value: Option<&str>) -> bool {
+    let Some(s) = value else {
+        return false;
+    };
+    match target {
+        Value::String(pattern) => wildcard_match(s, pattern),
+        Value::Array(list) => list
+            .iter()
+            .any(|p| p.as_str().map(|p| wildcard_match(s, p)) == Some(true)),
+        _ => false,
+    }
+}
+
+/// moto `_wildcard_match`: `*` matches any run of characters, `\*` and
+/// `\\` are literal, any other `\x` pair unescapes to backslash + `x`
+/// (moto re-escapes the backslash and keeps scanning at the next char).
+fn wildcard_match(item: &str, pattern: &str) -> bool {
+    // Split on unescaped `*` into literal segments.
+    let mut segments: Vec<String> = vec![String::new()];
+    let mut chars = pattern.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => {
+                if let Some(&next_c) = chars.peek() {
+                    if next_c == '*' || next_c == '\\' {
+                        segments.last_mut().expect("seeded").push(next_c);
+                        chars.next();
+                        continue;
+                    }
+                }
+                segments.last_mut().expect("seeded").push('\\');
+            }
+            '*' => segments.push(String::new()),
+            other => segments.last_mut().expect("seeded").push(other),
+        }
+    }
+    if segments.len() == 1 {
+        return item == segments[0];
+    }
+    let first = &segments[0];
+    let last = segments.last().expect("seeded");
+    let Some(after_first) = item.strip_prefix(first.as_str()) else {
+        return false;
+    };
+    // The trailing literal must fit; middle literals appear in order in
+    // the region strictly before it (moto glues the literals with `.*`
+    // and fullmatches).
+    if after_first.len() < last.len() {
+        return false;
+    }
+    let middle_area = &after_first[..after_first.len() - last.len()];
+    let mut cursor = 0usize;
+    for segment in &segments[1..segments.len() - 1] {
+        match middle_area[cursor..].find(segment.as_str()) {
+            Some(pos) => cursor += pos + segment.len(),
+            None => return false,
+        }
+    }
+    true
+}
+
 fn anything_but(excluded: &Value, event_value: &Value) -> bool {
     match event_value {
         Value::Array(arr) => match excluded {
@@ -149,22 +274,59 @@ fn anything_but(excluded: &Value, event_value: &Value) -> bool {
             // (era parity: `if not any(v in excluded for v in event_value)`
             // — era's scalar branch adds the residual case below).
             Value::Array(ex) => arr.iter().any(|v| !ex.contains(v)),
+            Value::Object(obj) => arr.iter().any(|v| !named_filter_matches(obj, v)),
             _ => arr.iter().any(|v| v != excluded),
         },
         _ => match excluded {
-            Value::Object(obj) => {
-                if let Some(prefix) = obj.get("prefix").and_then(|p| p.as_str()) {
-                    event_value.as_str().map(|s| !s.starts_with(prefix)) == Some(true)
-                } else if let Some(suffix) = obj.get("suffix").and_then(|s| s.as_str()) {
-                    event_value.as_str().map(|s| !s.ends_with(suffix)) == Some(true)
-                } else {
-                    false
-                }
-            }
+            Value::Object(obj) => !named_filter_matches(obj, event_value),
             Value::Array(ex) => !ex.contains(event_value),
             _ => event_value != excluded,
         },
     }
+}
+
+/// moto `cidr`: the value is an IP inside `ip_network(filter_value)`,
+/// strict (host bits set in the base raise → no match). Scalar targets
+/// only (moto's `ip_network` rejects lists the same way).
+fn cidr_matches(value: &Value, network: &Value) -> bool {
+    let (Some(address), Some(spec)) = (value.as_str(), network.as_str()) else {
+        return false;
+    };
+    let (base_str, prefix_str) = spec.split_once('/').unwrap_or((spec, ""));
+    let (Ok(address), Ok(base)) = (address.parse::<std::net::IpAddr>(), base_str.parse::<std::net::IpAddr>())
+    else {
+        return false;
+    };
+    if std::mem::discriminant(&address) != std::mem::discriminant(&base) {
+        return false;
+    }
+    let bits: u32 = match base {
+        std::net::IpAddr::V4(_) => 32,
+        std::net::IpAddr::V6(_) => 128,
+    };
+    let prefix: u32 = match prefix_str.parse::<u32>() {
+        // ip_network without a prefix takes the full netmask.
+        _ if prefix_str.is_empty() => bits,
+        Ok(len) if len <= bits => len,
+        _ => return false,
+    };
+    let as_bits = |ip: &std::net::IpAddr| -> u128 {
+        match ip {
+            std::net::IpAddr::V4(v4) => u32::from(*v4) as u128,
+            std::net::IpAddr::V6(v6) => u128::from(*v6),
+        }
+    };
+    let net_mask = if prefix == 0 {
+        0
+    } else {
+        u128::MAX << (bits - prefix)
+    };
+    let (base_bits, address_bits) = (as_bits(&base), as_bits(&address));
+    // Strict: host bits set → ip_network raises → moto returns false.
+    if base_bits & net_mask != base_bits {
+        return false;
+    }
+    base_bits == (address_bits & net_mask)
 }
 
 /// Python-style alternating (op, value) numeric list: [">", 1, "<", 5].
@@ -250,5 +412,76 @@ mod tests {
         let pattern = json!({"detail": {"state": [{"anything-but": "a"}]}});
         assert!(matches_pattern(&pattern, &json!({"detail": {"state": ["a", "b"]}})));
         assert!(!matches_pattern(&pattern, &json!({"detail": {"state": ["a", "a"]}})));
+    }
+
+    // -- moto named filter set (F3, agent-221 finding 3) -----------------------
+
+    #[test]
+    fn equals_ignore_case_and_caseless_prefix_suffix() {
+        let eq = json!({"source": [{"equals-ignore-case": "My.App"}]});
+        assert!(matches_pattern(&eq, &json!({"source": "my.app"})));
+        assert!(matches_pattern(&eq, &json!({"source": "MY.APP"})));
+        assert!(!matches_pattern(&eq, &json!({"source": "my.app2"})));
+        // ...and as the value form of prefix/suffix.
+        let pfx = json!({"detail": {"kind": [{"prefix": {"equals-ignore-case": "CREAT"}}]}});
+        assert!(matches_pattern(&pfx, &json!({"detail": {"kind": "created"}})));
+        assert!(!matches_pattern(&pfx, &json!({"detail": {"kind": "deleted"}})));
+        let sfx = json!({"detail": {"kind": [{"suffix": {"equals-ignore-case": "ED"}}]}});
+        assert!(matches_pattern(&sfx, &json!({"detail": {"kind": "Created"}})));
+        assert!(!matches_pattern(&sfx, &json!({"detail": {"kind": "delete"}})));
+    }
+
+    #[test]
+    fn list_valued_prefix_and_suffix() {
+        let pattern = json!({"source": [{"prefix": ["my.a", "your.b"]}]});
+        assert!(matches_pattern(&pattern, &json!({"source": "your.bucket"})));
+        assert!(!matches_pattern(&pattern, &json!({"source": "other.bucket"})));
+        let pattern = json!({"source": [{"suffix": [".png", ".jpg"]}]});
+        assert!(matches_pattern(&pattern, &json!({"source": "pic.jpg"})));
+        assert!(!matches_pattern(&pattern, &json!({"source": "pic.gif"})));
+    }
+
+    #[test]
+    fn cidr_named_filter() {
+        let pattern = json!({"detail": {"source_ip": [{"cidr": "203.0.113.0/24"}]}});
+        assert!(matches_pattern(&pattern, &json!({"detail": {"source_ip": "203.0.113.9"}})));
+        assert!(!matches_pattern(&pattern, &json!({"detail": {"source_ip": "203.0.114.1"}})));
+        // Non-IP values and foreign families never match.
+        assert!(!matches_pattern(&pattern, &json!({"detail": {"source_ip": "none"}})));
+        assert!(
+            !matches_pattern(
+                &json!({"detail": {"source_ip": [{"cidr": "2001:db8::/32"}]}}),
+                &json!({"detail": {"source_ip": "203.0.113.9"}})
+            )
+        );
+    }
+
+    #[test]
+    fn wildcard_named_filter() {
+        let pattern = json!({"detail": {"path": [{"wildcard": "/tmp/*"}]}});
+        assert!(matches_pattern(&pattern, &json!({"detail": {"path": "/tmp/logs/app"}})));
+        assert!(!matches_pattern(&pattern, &json!({"detail": {"path": "/var/tmp/x"}})));
+        // Escaped stars are literal; list targets OR together.
+        assert!(matches_pattern(
+            &json!({"detail": {"path": [{"wildcard": ["C:\\\\*", "id-*"]}]}}),
+            &json!({"detail": {"path": "id-42"}})
+        ));
+        assert!(!matches_pattern(
+            &json!({"detail": {"path": [{"wildcard": "a\\*b"}]}}),
+            &json!({"detail": {"path": "axxb"}})
+        ));
+        assert!(matches_pattern(
+            &json!({"detail": {"path": [{"wildcard": "a\\*b"}]}}),
+            &json!({"detail": {"path": "a*b"}})
+        ));
+        // Per-element evaluation on array event values (moto any(evaluate(i))).
+        assert!(matches_pattern(
+            &pattern,
+            &json!({"detail": {"path": ["/var/tmp", "/tmp/x"]}})
+        ));
+        assert!(!matches_pattern(
+            &pattern,
+            &json!({"detail": {"path": ["/var/tmp", "/var/x"]}})
+        ));
     }
 }
