@@ -38,7 +38,7 @@ jobs:
             echo ""
             echo "  Add a file to prompts/YYYYMMDD-HHMMSS-<slug>.md documenting"
             echo "  the human prompts and key assistant decisions in this PR."
-            echo "  See prompts/PROMPTLOG.md for format."
+            echo "  See .claude/skills/promptlog.md for format."
             exit 1
           fi
           echo "✓ Prompt log present: $PROMPTS"
