@@ -99,32 +99,43 @@ pub fn start(native: Arc<NativeHandlers>) {
         .ok();
 }
 
+/// Run one guarded poll cycle: a panic in any handler (queue state races,
+/// malformed queue URLs, runtime crashes) must never kill the engine
+/// thread — the poll loop survives and retries on the next tick.
+fn poll_guarded<F: FnOnce()>(f: F) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+}
+
 fn run(native: Arc<NativeHandlers>) {
     let mut engine = Engine::default();
     loop {
-        let snapshot = native.lambda.esm_snapshot();
-        let mut active: HashSet<MappingKey> = HashSet::new();
-        for entry in snapshot {
-            let mapping = &entry.mapping;
-            if !mapping.enabled || mapping.state != "Enabled" {
-                continue;
-            }
-            active.insert((entry.account, entry.region.clone(), mapping.uuid.clone()));
-            match classify_arn(&mapping.event_source_arn) {
-                Some(Source::Sqs { queue_arn }) => engine.poll_sqs(&native, &entry, &queue_arn),
-                Some(Source::Kinesis { stream_name }) => {
-                    engine.poll_kinesis(&native, &entry, &stream_name)
-                }
-                Some(Source::DynamoDb { table_name }) => {
-                    engine.poll_ddb_stream(&native, &entry, &table_name)
-                }
-                None => continue,
-            }
-        }
-        // Drop cursor state of mappings that vanished from the snapshot.
-        engine.prune(&active);
+        poll_guarded(|| poll_snapshot(&native, &mut engine));
         std::thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
     }
+}
+
+fn poll_snapshot(native: &Arc<NativeHandlers>, engine: &mut Engine) {
+    let snapshot = native.lambda.esm_snapshot();
+    let mut active: HashSet<MappingKey> = HashSet::new();
+    for entry in snapshot {
+        let mapping = &entry.mapping;
+        if !mapping.enabled || mapping.state != "Enabled" {
+            continue;
+        }
+        active.insert((entry.account, entry.region.clone(), mapping.uuid.clone()));
+        match classify_arn(&mapping.event_source_arn) {
+            Some(Source::Sqs { queue_arn }) => engine.poll_sqs(native, &entry, &queue_arn),
+            Some(Source::Kinesis { stream_name }) => {
+                engine.poll_kinesis(native, &entry, &stream_name)
+            }
+            Some(Source::DynamoDb { table_name }) => {
+                engine.poll_ddb_stream(native, &entry, &table_name)
+            }
+            None => continue,
+        }
+    }
+    // Drop cursor state of mappings that vanished from the snapshot.
+    engine.prune(&active);
 }
 
 enum Source {
@@ -628,6 +639,10 @@ impl Engine {
                     "QueueUrl": queue_url,
                     "MaxNumberOfMessages": mapping.batch_size,
                     "WaitTimeSeconds": 0,
+                    // Real delivery: carry the system attributes and the
+                    // message attributes into the polled records.
+                    "AttributeNames": ["All"],
+                    "MessageAttributeNames": ["All"],
                 }),
                 body: Bytes::new(),
             },
@@ -869,7 +884,9 @@ fn sqs_filter_doc(msg: &Value) -> Value {
     })
 }
 
-/// One SQS record in a lambda event (moto's `_send_sqs_message` record).
+/// One SQS record in a lambda event (era `event_source.py` `_poll_sqs`
+/// record row, including the real attributes and converted message
+/// attributes).
 fn sqs_record(
     _mapping: &lambda::models::EventSourceMapping,
     msg: &Value,
@@ -881,8 +898,8 @@ fn sqs_record(
         attributes = Value::Object(attrs.clone());
     }
     if let Some(obj) = attributes.as_object_mut() {
-        // ApproximateReceiveCount is emitted on delivery; default to 1 like
-        // moto's hardcoded record when absent.
+        // ApproximateReceiveCount comes from the wire per received message.
+        // Keep the auto-fill for bridged messages that skip the receive path.
         obj.entry("ApproximateReceiveCount")
             .or_insert_with(|| json!("1"));
     }
@@ -891,7 +908,7 @@ fn sqs_record(
         "receiptHandle": msg["ReceiptHandle"],
         "body": msg["Body"],
         "attributes": attributes,
-        "messageAttributes": {},
+        "messageAttributes": convert_message_attributes(msg.get("MessageAttributes")),
         "md5OfBody": msg["MD5OfBody"],
         "eventSource": "aws:sqs",
         "eventSourceARN": queue_arn,
@@ -909,6 +926,28 @@ fn sqs_record(
         }
     }
     record
+}
+
+/// Convert SQS wire message attributes into the lambda event row (era
+/// `event_source.py::_convert_message_attributes`): structured wire objects
+/// (`{DataType, StringValue, ...}`) pass through, bare scalars are wrapped
+/// into a String-typed row.
+fn convert_message_attributes(attrs: Option<&Value>) -> Value {
+    let mut out = serde_json::Map::new();
+    let Some(map) = attrs.and_then(Value::as_object) else {
+        return Value::Object(out);
+    };
+    for (key, value) in map {
+        if let Value::Object(_) = value {
+            out.insert(key.clone(), value.clone());
+        } else {
+            out.insert(
+                key.clone(),
+                json!({"stringValue": value.to_string(), "dataType": "String"}),
+            );
+        }
+    }
+    Value::Object(out)
 }
 
 fn delete_sqs_message(
@@ -967,9 +1006,11 @@ fn change_sqs_visibility(
 
 // -- Filter matching -----------------------------------------------------------
 
-/// ESM filter match: the pattern is an AND of keys; value arrays mean "one
-/// of" (membership), objects recurse (subset match), everything else
-/// compares for equality. `None` pattern matches everything.
+/// ESM filter match: the pattern is an AND of keys; value arrays run
+/// EventBridge operator semantics (membership, prefix/suffix, numeric,
+/// exists, anything-but — identical to rule patterns via the shared
+/// `events::pattern` matcher); nested objects recurse. `None` pattern
+/// matches everything.
 fn filter_matches(criteria: Option<&Value>, doc: &Value) -> bool {
     let Some(criteria) = criteria else {
         return true;
@@ -993,15 +1034,24 @@ fn filter_matches(criteria: Option<&Value>, doc: &Value) -> bool {
     })
 }
 
-/// Subset match with ESM semantics: `"key": [...]` lists match any listed
-/// value, nested objects recur, missing keys never match.
+/// Subset match with ESM semantics: `"key": [...]` lists carry the
+/// EventBridge operators (shared matcher), `{"exists": false}` lists match
+/// absent keys (era `event_source.py::_match_pattern`), nested objects
+/// recur, otherwise-present keys never match absent targets.
 fn filter_match(pattern: &Value, doc: &Value) -> bool {
     match (pattern, doc) {
         (Value::Object(rules), Value::Object(obj)) => rules.iter().all(|(k, sub)| {
-            doc_lookup(obj, k)
-                .as_ref()
-                .map(|target| filter_match_leaf(sub, target))
-                .unwrap_or(false)
+            match doc_lookup(obj, k) {
+                Some(target) => filter_match_leaf(sub, &target),
+                // Absent key: only an "exists": false list passes (the era
+                // filter never matched other shapes against missing keys).
+                None => sub
+                    .as_array()
+                    .is_some_and(|list| {
+                        list.iter()
+                            .any(|pv| pv.get("exists").and_then(Value::as_bool) == Some(false))
+                    }),
+            }
         }),
         _ => filter_match_leaf(pattern, doc),
     }
@@ -1022,9 +1072,29 @@ fn doc_lookup(obj: &serde_json::Map<String, Value>, key: &str) -> Option<Value> 
     }
 }
 
+/// Leaf comparison with the EventBridge operator semantics. `{"exists":
+/// true}` is satisfied by the key resolving at all (era filters should not
+/// reject present keys); the rest of the list run the shared matcher.
 fn filter_match_leaf(pattern: &Value, target: &Value) -> bool {
     match (pattern, target) {
-        (Value::Array(list), _) => list.iter().any(|v| v == target),
+        (Value::Array(list), _) => {
+            if list
+                .iter()
+                .any(|pv| pv.get("exists").and_then(Value::as_bool) == Some(true))
+            {
+                return true;
+            }
+            // Shared EventBridge operators (prefix/suffix/numeric/exists/
+            // anything-but) plus era's equality fallbacks: string patterns
+            // match numeric fields ("42" == 42) and bare object elements
+            // compare for equality.
+            events::pattern::list_match(list, target)
+                || list.iter().any(|pv| {
+                    (pv.as_object().is_some() && pv == target)
+                        || (target.as_f64().is_some()
+                            && pv.as_str().is_some_and(|s| s == target.to_string()))
+                })
+        }
         (Value::Object(_), Value::Object(_)) => filter_match(pattern, target),
         _ => pattern == target,
     }
@@ -1158,6 +1228,11 @@ mod tests {
 
     // -- engine bookkeeping --------------------------------------------------
 
+    // Park keeps the SQS receive accounting alive (visibility 0 releases),
+    // which is what lets the queue's redrive policy move exhausted
+    // messages to the DLQ instead of parking them forever; on the wire
+    // side redriving preserves the original MessageId.
+
     #[test]
     fn engine_prune_drops_state_of_deleted_mappings() {
         let mut engine = Engine::default();
@@ -1185,5 +1260,148 @@ mod tests {
             .contains_key(&(dead.0, dead.1.clone(), dead.2.clone(), "".into())));
         assert!(engine.sqs_frontier.contains_key(&live));
         assert!(!engine.sqs_frontier.contains_key(&dead));
+    }
+
+    // -- SQS record payload (F1) --------------------------------------------
+
+    fn test_mapping() -> lambda::models::EventSourceMapping {
+        lambda::models::EventSourceMapping {
+            uuid: "u".into(),
+            function_arn: String::new(),
+            event_source_arn: String::new(),
+            state: "Enabled".into(),
+            state_transition_reason: String::new(),
+            last_modified: 0.0,
+            batch_size: 10,
+            enabled: true,
+            starting_position: None,
+            filter_criteria: None,
+            function_response_types: None,
+            bisect_batch_on_function_error: false,
+            maximum_retry_attempts: -1,
+        }
+    }
+
+    #[test]
+    fn sqs_record_carries_message_attributes_and_real_receive_count() {
+        let msg = serde_json::json!({
+            "MessageId": "m1",
+            "ReceiptHandle": "rh",
+            "Body": "{}",
+            "MD5OfBody": "d41d8cd98f00b204e9800998ecf8427e",
+            "Attributes": {
+                "SentTimestamp": "1545082649183",
+                "ApproximateReceiveCount": "3",
+                "ApproximateFirstReceiveTimestamp": "1545082649185",
+            },
+            "MessageAttributes": {
+                "color": {"dataType": "String", "stringValue": "red"},
+                "count": {"DataType": "Number", "StringValue": "7"},
+            },
+        });
+        let record = sqs_record(&test_mapping(), &msg,
+            "arn:aws:sqs:us-east-1:123456789012:q", "us-east-1");
+        assert_eq!(
+            record["attributes"]["ApproximateReceiveCount"], json!("3"),
+            "the wire receive count must flow into the event verbatim"
+        );
+        // Wire rows pass through; crudely-typed scalars wrap into a String row
+        // (era `_convert_message_attributes`).
+        assert_eq!(
+            record["messageAttributes"]["count"],
+            json!({"DataType": "Number", "StringValue": "7"})
+        );
+        assert_eq!(
+            record["messageAttributes"]["color"],
+            json!({"dataType": "String", "stringValue": "red"})
+        );
+    }
+
+    #[test]
+    fn sqs_record_defaults_receive_count_without_wire_attributes() {
+        // Bridged messages (no receive path) keep moto's default of 1.
+        let msg = msg("m2");
+        let record = sqs_record(&test_mapping(), &msg,
+            "arn:aws:sqs:us-east-1:123456789012:q", "us-east-1");
+        assert_eq!(record["attributes"]["ApproximateReceiveCount"], json!("1"));
+        assert_eq!(record["messageAttributes"], json!({}));
+    }
+
+    // -- filter operators (F2) -----------------------------------------------
+
+    fn filter_apply(pattern: &str, msg_doc: &Value) -> bool {
+        let criteria = json!({"Filters": [{"Pattern": pattern}]});
+        filter_matches(Some(&criteria), msg_doc)
+    }
+
+    #[test]
+    fn esm_filter_operators_prefix_numeric_exists() {
+        let doc_with_body = sqs_filter_doc(&serde_json::json!({
+            "MessageId": "m", "Body": "{\"statusCode\": \"200 OK\", \"amount\": 42, \"kind\": \"x\"}"
+        }));
+
+        // prefix operator against a nested body field
+        assert!(filter_apply(
+            "{\"body\": {\"statusCode\": [{\"prefix\": \"200\"}]}}",
+            &doc_with_body
+        ));
+        assert!(!filter_apply(
+            "{\"body\": {\"statusCode\": [{\"prefix\": \"404\"}]}}",
+            &doc_with_body
+        ));
+
+        // numeric operator
+        assert!(filter_apply(
+            "{\"body\": {\"amount\": [{\"numeric\": [\">\", 10]}]}}",
+            &doc_with_body
+        ));
+        assert!(!filter_apply(
+            "{\"body\": {\"amount\": [{\"numeric\": [\">\", 42]}]}}",
+            &doc_with_body
+        ));
+
+        // exists operator: present keys match with exists:true; an absent
+        // key passes only through an exists:false list (era filter rule).
+        assert!(filter_apply("{\"body\": {\"kind\": [{\"exists\": true}]}}", &doc_with_body));
+        assert!(filter_apply(
+            "{\"body\": {\"missing\": [{\"exists\": false}]}}",
+            &doc_with_body
+        ));
+        assert!(!filter_apply(
+            "{\"body\": {\"missing\": [{\"exists\": true}]}}",
+            &doc_with_body
+        ));
+
+        // plain membership still works after the operator port.
+        assert!(filter_apply("{\"body\": {\"kind\": [\"x\"]}}", &doc_with_body));
+        assert!(!filter_apply("{\"body\": {\"kind\": [\"y\"]}}", &doc_with_body));
+    }
+
+    #[test]
+    fn esm_filter_exists_false_matches_absent_keys() {
+        let doc = sqs_filter_doc(&serde_json::json!({
+            "MessageId": "m", "Body": "{\"a\": 1}"
+        }));
+        // Absent key + exists:false list → match (era _match_pattern).
+        assert!(filter_apply("{\"body\": {\"b\": [{\"exists\": false}]}}", &doc));
+        // Present key + exists:false → no match.
+        assert!(!filter_apply("{\"body\": {\"a\": [{\"exists\": false}]}}", &doc));
+    }
+
+    // -- guarded poll loop (F10) ----------------------------------------------
+
+    #[test]
+    fn poll_guard_survives_a_panicking_cycle() {
+        // A panic inside a poll cycle is contained: the engine loop keeps
+        // running on the next tick instead of dying with the thread.
+        let mut ran_after = false;
+        poll_guarded(|| panic!("engine poll boom"));
+        ran_after = true;
+        assert!(ran_after, "execution must continue past the guarded poll");
+        let escaped = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            poll_guarded(|| panic!("guarded"));
+        }))
+        .is_err();
+        assert!(!escaped, "poll_guarded must swallow the unwind itself");
     }
 }
