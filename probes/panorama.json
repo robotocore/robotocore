@@ -1,6 +1,6 @@
 {
   "service": "panorama",
-  "generated_at": "2026-10-25T05:04:36.390292+00:00",
+  "generated_at": "2026-10-25T19:44:10.394673+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 32,

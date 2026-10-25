@@ -1,6 +1,6 @@
 {
   "service": "servicecatalog",
-  "generated_at": "2026-10-22T07:02:28.113990+00:00",
+  "generated_at": "2026-10-25T19:44:59.185312+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 90,
@@ -93,7 +93,7 @@
     {
       "operation": "CreateTagOption",
       "status": "working",
-      "message": "likely implemented (DuplicateResourceException: TagOption with Key 'probe-test-value' and Value 'probe-test-)"
+      "message": "OK"
     },
     {
       "operation": "DeleteConstraint",

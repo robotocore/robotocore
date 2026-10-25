@@ -1,6 +1,6 @@
 {
   "service": "backup",
-  "generated_at": "2026-10-22T06:59:30.108653+00:00",
+  "generated_at": "2026-10-25T19:41:55.589199+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 99,
@@ -23,7 +23,7 @@
     {
       "operation": "CreateBackupPlan",
       "status": "working",
-      "message": "likely implemented (AlreadyExistsException: Backup plan with the same plan document already exists)"
+      "message": "OK"
     },
     {
       "operation": "CreateBackupSelection",
@@ -48,7 +48,7 @@
     {
       "operation": "CreateLogicallyAirGappedBackupVault",
       "status": "working",
-      "message": "likely implemented (AlreadyExistsException: Logically air-gapped vault probe-test-value already exists)"
+      "message": "OK"
     },
     {
       "operation": "CreateReportPlan",

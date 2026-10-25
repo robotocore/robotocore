@@ -1,10 +1,53 @@
 # Changelog
 
 This file follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Robotocore releases use CalVer (`YYYY.M.D[.N]`) — every push to `main`
-auto-tags and publishes a versioned + `:latest` Docker image. Each release
-gets a top-level section here; the project source of truth for the
-maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
+Robotocore releases historically use CalVer (`YYYY.M.D[.N]`) and now carry
+semver majors; pushes to `main` auto-tag and publish versioned + `:latest`
+Docker images. Each release gets a top-level section here; the project
+source of truth for the maintenance policy is [`CLAUDE.md`](CLAUDE.md)
+under *Changelog discipline*.
+
+## 2.0.0
+
+The Python 2.x line is retired: robotocore 2.0 is a **pure-Rust twin**
+(axum gateway + the `rotocore` crate) — the server ships no Python, no
+moto sidecar, and no second process. Nothing is bridged: 158 of 158
+registered services answer natively with moto-fidelity recorded per op
+(9,653 working of 10,268 botocore ops; every deny is a recorded decision
+in `tooling/surface-absence.json`).
+
+### Added
+
+- **Full lambda language support.** python/nodejs/custom run in-process;
+  every official AWS runtime image (python, nodejs, java, dotnet, go,
+  ruby, provided) executes under `LAMBDA_EXECUTOR=docker`; EventBridge
+  scheduled rules fire; ESM carries MessageAttributes + FilterCriteria
+  operators; Task dispatch fans out to sqs/sns/dynamodb/states.
+- **Two-image release model:** tiny distroless default (python-family
+  runtimes in-image), Debian-slim `runtimes` (+node/ruby) and
+  `java-and-dotnet` variants (OpenJDK 21 + .NET SDK 8).
+- **Real security primitives:** KMS re-keyed to true AES-256-GCM
+  ciphertext blobs with the moto wire layout and `EncryptionContext`
+  bound as AAD; IAM policy evaluation (Effect/NotAction/conditions/
+  variables/permissions-boundaries/cross-account combining).
+- **Business-fidelity gates are machines, not docs:**
+  `make parity` = probe-freshness → parity → coverage-gate →
+  (nightly) error-census, where probe corpora may not lag their
+  implementations and every recorded deny must live-verify 501
+  `NotImplemented` (crash mirrors verified byte-exact against the moto
+  fork).
+
+### Changed
+
+- The workflow modernization drops the python lanes; the
+  `java-and-dotnet` image variant publishes alongside `:latest` and
+  `:runtimes` from the release lane.
+
+### Fixed
+
+See the 2026.10.x entries below (crash-fidelity canon, CFN mirror
+rollback cascade, lambda docker executor hardening, iam/kms/sfn/events
+semantic fixes from the adversarial review waves).
 
 ## 2026.10.24 (unreleased)
 

@@ -1436,7 +1436,7 @@ dependencies = [
 
 [[package]]
 name = "robotocore-rust"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "axum",
  "base64",
@@ -1485,7 +1485,7 @@ dependencies = [
 
 [[package]]
 name = "rotocore"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "base64",
  "bytes",
@@ -1793,7 +1793,7 @@ dependencies = [
 
 [[package]]
 name = "sqs"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "base64",
  "bytes",

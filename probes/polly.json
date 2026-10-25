@@ -1,15 +1,20 @@
 {
   "service": "polly",
-  "generated_at": "2026-10-25T06:16:02.124822+00:00",
+  "generated_at": "2026-10-25T19:44:14.171236+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 5,
-    "needs_params": 0,
+    "working": 9,
+    "needs_params": 1,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
   },
   "operations": [
+    {
+      "operation": "DeleteLexicon",
+      "status": "working",
+      "message": "likely implemented (LexiconNotFoundException: Lexicon not found)"
+    },
     {
       "operation": "DescribeVoices",
       "status": "working",
@@ -34,6 +39,26 @@
       "operation": "ListSpeechSynthesisTasks",
       "status": "working",
       "message": "OK"
+    },
+    {
+      "operation": "PutLexicon",
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
+    },
+    {
+      "operation": "StartSpeechSynthesisStream",
+      "status": "needs_params",
+      "message": "client-side probe gap (AttributeError: 'Polly' object has no attribute 'start_speech_synthesis_stre)"
+    },
+    {
+      "operation": "StartSpeechSynthesisTask",
+      "status": "working",
+      "message": "likely implemented (LexiconNotFoundException: Lexicon not found)"
+    },
+    {
+      "operation": "SynthesizeSpeech",
+      "status": "working",
+      "message": "likely implemented (LexiconNotFoundException: Lexicon not found)"
     }
   ]
 }

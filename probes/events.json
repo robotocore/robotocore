@@ -1,15 +1,100 @@
 {
   "service": "events",
-  "generated_at": "2026-10-25T08:19:43.631178+00:00",
+  "generated_at": "2026-10-25T19:43:21.187460+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 22,
-    "needs_params": 0,
+    "working": 55,
+    "needs_params": 1,
     "not_implemented": 0,
-    "500_error": 0,
+    "500_error": 1,
     "timeout": 0
   },
   "operations": [
+    {
+      "operation": "ActivateEventSource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CancelReplay",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateApiDestination",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateArchive",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateConnection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateEndpoint",
+      "status": "needs_params",
+      "message": "client-side validation (never contacted server)"
+    },
+    {
+      "operation": "CreateEventBus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePartnerEventSource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeactivateEventSource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeauthorizeConnection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteApiDestination",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteArchive",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteConnection",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteEndpoint",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteEventBus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeletePartnerEventSource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteRule",
+      "status": "working",
+      "message": "OK"
+    },
     {
       "operation": "DescribeApiDestination",
       "status": "working",
@@ -52,6 +137,16 @@
     },
     {
       "operation": "DescribeRule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DisableRule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "EnableRule",
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     },
@@ -117,6 +212,86 @@
     },
     {
       "operation": "ListTargetsByRule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutEvents",
+      "status": "500_error",
+      "message": "exception: MissingDependencyException: Missing Dependency: This operation requires an additional de"
+    },
+    {
+      "operation": "PutPartnerEvents",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutPermission",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutRule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutTargets",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "RemovePermission",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RemoveTargets",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartReplay",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TestEventPattern",
+      "status": "working",
+      "message": "likely implemented (InvalidEventPatternExpression: Event pattern is not valid JSON)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateApiDestination",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateArchive",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateConnection",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateEndpoint",
+      "status": "working",
+      "message": "OK (required-only fill)"
+    },
+    {
+      "operation": "UpdateEventBus",
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     }

@@ -1,7 +1,7 @@
 {
   "service": "quicksight",
-  "generated_at": "2026-10-25T05:52:01.680045+00:00",
-  "endpoint": "http://localhost:4800",
+  "generated_at": "2026-10-25T19:44:22.443887+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 224,
     "needs_params": 5,

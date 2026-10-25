@@ -1,6 +1,6 @@
 {
   "service": "securityhub",
-  "generated_at": "2026-10-22T07:02:26.353367+00:00",
+  "generated_at": "2026-10-25T19:44:57.389036+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 102,
@@ -83,7 +83,7 @@
     {
       "operation": "CreateActionTarget",
       "status": "working",
-      "message": "likely implemented (ResourceConflictException: The action target arn:aws:securityhub:us-east-1:123456789012)"
+      "message": "OK"
     },
     {
       "operation": "CreateAggregatorV2",
@@ -188,7 +188,7 @@
     {
       "operation": "DescribeHub",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidAccessException: Account is not subscribed to AWS Security Hub)"
     },
     {
       "operation": "DescribeOrganizationConfiguration",
@@ -208,7 +208,7 @@
     {
       "operation": "DescribeSecurityHubV2",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidAccessException: Account is not subscribed to AWS Security Hub V2)"
     },
     {
       "operation": "DescribeStandards",
@@ -233,7 +233,7 @@
     {
       "operation": "DisableSecurityHub",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidAccessException: Account is not subscribed to AWS Security Hub)"
     },
     {
       "operation": "DisableSecurityHubV2",
@@ -258,7 +258,7 @@
     {
       "operation": "EnableImportFindingsForProduct",
       "status": "working",
-      "message": "likely implemented (ResourceConflictException: The product subscription for arn:aws:securityhub:us-east-1:1)"
+      "message": "OK"
     },
     {
       "operation": "EnableOrganizationAdminAccount",

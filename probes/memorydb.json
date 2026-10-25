@@ -1,12 +1,13 @@
 {
   "service": "memorydb",
-  "generated_at": "2026-10-20T08:13:39.788432+00:00",
-  "endpoint": "http://localhost:4599",
+  "generated_at": "2026-10-25T19:44:02.850150+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 28,
-    "needs_params": 0,
+    "needs_params": 1,
     "not_implemented": 15,
-    "500_error": 1
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -27,7 +28,7 @@
     {
       "operation": "CreateCluster",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (SubnetGroupNotFoundFault: Subnet group probe-test-value not found.)"
     },
     {
       "operation": "CreateMultiRegionCluster",
@@ -42,12 +43,12 @@
     {
       "operation": "CreateSnapshot",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ClusterNotFoundFault: Cluster not found: probe-test-value)"
     },
     {
       "operation": "CreateSubnetGroup",
       "status": "working",
-      "message": "likely implemented (InvalidSubnetError: Subnet [''] not found.)"
+      "message": "likely implemented (InvalidSubnetError: Subnet [''probe-test-value''] not found.)"
     },
     {
       "operation": "CreateUser",
@@ -72,7 +73,7 @@
     {
       "operation": "DeleteSnapshot",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (SnapshotNotFoundFault: probe-test-value)"
     },
     {
       "operation": "DeleteSubnetGroup",
@@ -86,13 +87,13 @@
     },
     {
       "operation": "DescribeACLs",
-      "status": "500_error",
-      "message": "exception: 'MemoryDB' object has no attribute 'describe_ac_ls'"
+      "status": "needs_params",
+      "message": "client-side probe gap (AttributeError: 'MemoryDB' object has no attribute 'describe_ac_ls')"
     },
     {
       "operation": "DescribeClusters",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ClusterNotFoundFault: Cluster probe-test-value not found)"
     },
     {
       "operation": "DescribeEngineVersions",
@@ -122,7 +123,7 @@
     {
       "operation": "DescribeParameterGroups",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ParameterGroupNotFoundFault: Parameter group probe-test-value not found.)"
     },
     {
       "operation": "DescribeParameters",
@@ -147,17 +148,17 @@
     {
       "operation": "DescribeSnapshots",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (SnapshotNotFoundFault: Snapshot with name probe-test-value not found)"
     },
     {
       "operation": "DescribeSubnetGroups",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (SubnetGroupNotFoundFault: Subnet group probe-test-value not found.)"
     },
     {
       "operation": "DescribeUsers",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (UserNotFoundFault: User probe-test-value not found.)"
     },
     {
       "operation": "FailoverShard",
@@ -207,7 +208,7 @@
     {
       "operation": "UpdateCluster",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ClusterNotFoundFault: Cluster not found.)"
     },
     {
       "operation": "UpdateMultiRegionCluster",

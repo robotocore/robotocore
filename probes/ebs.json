@@ -1,6 +1,6 @@
 {
   "service": "ebs",
-  "generated_at": "2026-10-22T07:00:09.968545+00:00",
+  "generated_at": "2026-10-25T19:42:35.505831+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 6,

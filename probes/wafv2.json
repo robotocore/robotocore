@@ -1,12 +1,13 @@
 {
   "service": "wafv2",
-  "generated_at": "2026-10-20T08:08:42.360276+00:00",
-  "endpoint": "http://localhost:4599",
+  "generated_at": "2026-10-25T19:45:16.823270+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 49,
-    "needs_params": 4,
+    "working": 53,
+    "needs_params": 1,
     "not_implemented": 1,
-    "500_error": 1
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -21,8 +22,8 @@
     },
     {
       "operation": "CreateAPIKey",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateIPSet",
@@ -152,7 +153,7 @@
     {
       "operation": "GetRuleGroup",
       "status": "working",
-      "message": "likely implemented (AcessDeniedException: Critical information is missing in your request: GetRuleGrou)"
+      "message": "likely implemented (WAFNonexistentItemException: AWS WAF couldn\u2019t perform the operation because your resource)"
     },
     {
       "operation": "GetSampledRequests",
@@ -231,13 +232,13 @@
     },
     {
       "operation": "ListWebACLs",
-      "status": "500_error",
-      "message": "exception: 'WAFV2' object has no attribute 'list_web_ac_ls'"
+      "status": "needs_params",
+      "message": "client-side probe gap (AttributeError: 'WAFV2' object has no attribute 'list_web_ac_ls')"
     },
     {
       "operation": "PutLoggingConfiguration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutManagedRuleSetVersions",
@@ -251,13 +252,13 @@
     },
     {
       "operation": "TagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateIPSet",

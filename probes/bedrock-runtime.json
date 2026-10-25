@@ -1,7 +1,7 @@
 {
   "service": "bedrock-runtime",
-  "generated_at": "2026-10-24T17:31:59.536594+00:00",
-  "endpoint": "http://localhost:4794",
+  "generated_at": "2026-10-25T19:41:58.377905+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 1,
     "needs_params": 3,

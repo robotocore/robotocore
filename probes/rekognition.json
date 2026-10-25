@@ -1,6 +1,6 @@
 {
   "service": "rekognition",
-  "generated_at": "2026-10-22T07:02:01.295189+00:00",
+  "generated_at": "2026-10-25T19:44:30.370405+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 65,
@@ -43,7 +43,7 @@
     {
       "operation": "CreateProject",
       "status": "working",
-      "message": "likely implemented (ResourceInUseException: The project probe-test-value already exists.)"
+      "message": "OK"
     },
     {
       "operation": "CreateProjectVersion",

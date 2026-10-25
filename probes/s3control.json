@@ -1,6 +1,6 @@
 {
   "service": "s3control",
-  "generated_at": "2026-10-25T05:04:40.963423+00:00",
+  "generated_at": "2026-10-25T19:44:37.954289+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 84,
@@ -108,22 +108,22 @@
     {
       "operation": "DeleteBucketLifecycleConfiguration",
       "status": "working",
-      "message": "implemented (NoSuchBucket)"
+      "message": "OK"
     },
     {
       "operation": "DeleteBucketPolicy",
       "status": "working",
-      "message": "implemented (NoSuchBucket)"
+      "message": "OK"
     },
     {
       "operation": "DeleteBucketReplication",
       "status": "working",
-      "message": "implemented (NoSuchBucket)"
+      "message": "OK"
     },
     {
       "operation": "DeleteBucketTagging",
       "status": "working",
-      "message": "implemented (NoSuchBucket)"
+      "message": "OK"
     },
     {
       "operation": "DeleteJobTagging",
@@ -243,7 +243,7 @@
     {
       "operation": "GetBucketLifecycleConfiguration",
       "status": "working",
-      "message": "implemented (NoSuchBucket)"
+      "message": "OK"
     },
     {
       "operation": "GetBucketPolicy",
@@ -253,7 +253,7 @@
     {
       "operation": "GetBucketReplication",
       "status": "working",
-      "message": "implemented (NoSuchBucket)"
+      "message": "OK"
     },
     {
       "operation": "GetBucketTagging",
@@ -263,7 +263,7 @@
     {
       "operation": "GetBucketVersioning",
       "status": "working",
-      "message": "implemented (NoSuchBucket)"
+      "message": "OK"
     },
     {
       "operation": "GetDataAccess",
@@ -408,22 +408,22 @@
     {
       "operation": "PutBucketLifecycleConfiguration",
       "status": "working",
-      "message": "implemented (NoSuchBucket)"
+      "message": "OK"
     },
     {
       "operation": "PutBucketPolicy",
       "status": "working",
-      "message": "implemented (NoSuchBucket)"
+      "message": "OK"
     },
     {
       "operation": "PutBucketReplication",
       "status": "working",
-      "message": "implemented (NoSuchBucket)"
+      "message": "OK"
     },
     {
       "operation": "PutBucketTagging",
       "status": "working",
-      "message": "implemented (NoSuchBucket)"
+      "message": "OK"
     },
     {
       "operation": "PutBucketVersioning",

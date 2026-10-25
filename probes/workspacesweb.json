@@ -1,6 +1,6 @@
 {
   "service": "workspacesweb",
-  "generated_at": "2026-10-22T07:02:45.881928+00:00",
+  "generated_at": "2026-10-25T19:45:19.462788+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 31,

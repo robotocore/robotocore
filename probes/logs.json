@@ -1,12 +1,13 @@
 {
   "service": "logs",
-  "generated_at": "2026-10-20T06:49:48.943031+00:00",
+  "generated_at": "2026-10-25T19:43:55.128884+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 97,
-    "needs_params": 10,
+    "working": 106,
+    "needs_params": 0,
     "not_implemented": 0,
-    "500_error": 1
+    "500_error": 0,
+    "timeout": 2
   },
   "operations": [
     {
@@ -67,7 +68,7 @@
     {
       "operation": "DeleteAccountPolicy",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteDataProtectionPolicy",
@@ -162,7 +163,7 @@
     {
       "operation": "DescribeAccountPolicies",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeConfigurationTemplates",
@@ -192,12 +193,12 @@
     {
       "operation": "DescribeExportTasks",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeFieldIndexes",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "DescribeImportTaskBatches",
@@ -211,8 +212,8 @@
     },
     {
       "operation": "DescribeIndexPolicies",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "DescribeLogGroups",
@@ -316,8 +317,8 @@
     },
     {
       "operation": "GetLogObject",
-      "status": "500_error",
-      "message": "exception: Could not connect to the endpoint URL: \"http://streaming-loc"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://streaming-loc)"
     },
     {
       "operation": "GetLogRecord",
@@ -397,7 +398,7 @@
     {
       "operation": "PutAccountPolicy",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "OK"
     },
     {
       "operation": "PutBearerTokenAuthentication",
@@ -412,12 +413,12 @@
     {
       "operation": "PutDeliveryDestination",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "OK"
     },
     {
       "operation": "PutDeliveryDestinationPolicy",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "PutDeliverySource",
@@ -441,13 +442,13 @@
     },
     {
       "operation": "PutIntegration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutLogEvents",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutLogGroupDeletionProtection",
@@ -456,18 +457,18 @@
     },
     {
       "operation": "PutMetricFilter",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutQueryDefinition",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "PutResourcePolicy",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "OK"
     },
     {
       "operation": "PutRetentionPolicy",
@@ -481,13 +482,13 @@
     },
     {
       "operation": "PutTransformer",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "StartLiveTail",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://streaming-loc)"
     },
     {
       "operation": "StartQuery",
@@ -511,18 +512,18 @@
     },
     {
       "operation": "TestMetricFilter",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "TestTransformer",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "UntagLogGroup",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UntagResource",
@@ -532,7 +533,7 @@
     {
       "operation": "UpdateAnomaly",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateDeliveryConfiguration",

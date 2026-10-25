@@ -1,12 +1,13 @@
 {
   "service": "signer",
-  "generated_at": "2026-10-20T08:08:33.880407+00:00",
-  "endpoint": "http://localhost:4599",
+  "generated_at": "2026-10-25T19:45:03.445782+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 17,
-    "needs_params": 1,
+    "working": 18,
+    "needs_params": 0,
     "not_implemented": 0,
-    "500_error": 1
+    "500_error": 0,
+    "timeout": 1
   },
   "operations": [
     {
@@ -26,8 +27,8 @@
     },
     {
       "operation": "GetRevocationStatus",
-      "status": "500_error",
-      "message": "exception: Could not connect to the endpoint URL: \"http://data-localhos"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://data-localhos)"
     },
     {
       "operation": "GetSigningPlatform",
@@ -101,8 +102,8 @@
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     }
   ]
 }

@@ -1,12 +1,12 @@
 {
   "service": "sesv2",
-  "generated_at": "2026-10-25T05:40:45.321199+00:00",
-  "endpoint": "http://localhost:4798",
+  "generated_at": "2026-10-25T19:45:02.409581+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 110,
+    "working": 108,
     "needs_params": 0,
     "not_implemented": 0,
-    "500_error": 0,
+    "500_error": 2,
     "timeout": 0
   },
   "operations": [
@@ -492,8 +492,8 @@
     },
     {
       "operation": "SendBulkEmail",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: MissingDependencyException: Missing Dependency: This operation requires an additional de"
     },
     {
       "operation": "SendCustomVerificationEmail",
@@ -502,8 +502,8 @@
     },
     {
       "operation": "SendEmail",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "exception: MissingDependencyException: Missing Dependency: This operation requires an additional de"
     },
     {
       "operation": "TagResource",

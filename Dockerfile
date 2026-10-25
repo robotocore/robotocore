@@ -43,7 +43,7 @@ RUN cargo build --locked --release && strip target/release/robotocore-rust
 # default must stay the last stage so untargeted builds keep emitting it.
 FROM debian:trixie-slim AS runtimes
 
-ARG ROBOTOCORE_VERSION=1.0.0
+ARG ROBOTOCORE_VERSION=2.0.0
 ENV ROBOTOCORE_VERSION=${ROBOTOCORE_VERSION}
 # Explicit ENV belt (also governs docker exec paths): the trixie base
 # image does set a PATH env — spelling it out here pins the same value in
@@ -119,7 +119,7 @@ ENV DOTNET_NOLOGO=1
 # busybox below.
 FROM gcr.io/distroless/python3-debian12 AS runtime
 
-ARG ROBOTOCORE_VERSION=1.0.0
+ARG ROBOTOCORE_VERSION=2.0.0
 ENV ROBOTOCORE_VERSION=${ROBOTOCORE_VERSION}
 # Pin the same PATH the other stages spell out so the bare-name lookups in
 # the exec paths (crates/lambda find_python3, server.rs which()) resolve the

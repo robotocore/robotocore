@@ -1,6 +1,6 @@
 {
   "service": "redshift",
-  "generated_at": "2026-10-22T07:01:59.824905+00:00",
+  "generated_at": "2026-10-25T19:44:28.872837+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 127,
@@ -18,7 +18,7 @@
     {
       "operation": "AddPartner",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ClusterNotFound: Cluster probe-test-value not found.)"
     },
     {
       "operation": "AssociateDataShareConsumer",
@@ -38,7 +38,7 @@
     {
       "operation": "AuthorizeEndpointAccess",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ClusterNotFound: Cluster probe-test-value not found.)"
     },
     {
       "operation": "AuthorizeSnapshotAccess",
@@ -58,7 +58,7 @@
     {
       "operation": "CancelResize",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ClusterNotFound: Cluster probe-test-value not found.)"
     },
     {
       "operation": "CopyClusterSnapshot",
@@ -73,7 +73,7 @@
     {
       "operation": "CreateCluster",
       "status": "working",
-      "message": "likely implemented (ClusterAlreadyExists: Cluster already exists)"
+      "message": "OK"
     },
     {
       "operation": "CreateClusterParameterGroup",
@@ -103,7 +103,7 @@
     {
       "operation": "CreateEndpointAccess",
       "status": "working",
-      "message": "likely implemented (EndpointAlreadyExists: Endpoint probe-test-value already exists.)"
+      "message": "OK"
     },
     {
       "operation": "CreateEventSubscription",
@@ -218,7 +218,7 @@
     {
       "operation": "DeletePartner",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (PartnerNotFound: Partner probe-test-value not found.)"
     },
     {
       "operation": "DeleteRedshiftIdcApplication",
@@ -228,7 +228,7 @@
     {
       "operation": "DeleteResourcePolicy",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundFault)"
     },
     {
       "operation": "DeleteScheduledAction",
@@ -473,7 +473,7 @@
     {
       "operation": "DisableSnapshotCopy",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (SnapshotCopyAlreadyDisabledFault: Snapshot Copy is already disabled on Cluster probe-test-valu)"
     },
     {
       "operation": "DisassociateDataShareConsumer",
@@ -693,7 +693,7 @@
     {
       "operation": "RevokeEndpointAccess",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (EndpointAuthorizationNotFound: Endpoint authorization not found for cluster probe-test-valu)"
     },
     {
       "operation": "RevokeSnapshotAccess",

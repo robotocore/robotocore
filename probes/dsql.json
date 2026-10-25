@@ -1,6 +1,6 @@
 {
   "service": "dsql",
-  "generated_at": "2026-10-22T07:00:08.720870+00:00",
+  "generated_at": "2026-10-25T19:42:34.257820+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 11,

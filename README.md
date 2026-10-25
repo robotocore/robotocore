@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://robotocore.github.io/robotocore/coverage.html">
-    <img src="docs/coverage.svg" alt="AWS service coverage — 158 services, 92% of operations implemented" width="640">
+    <img src="docs/coverage.svg" alt="AWS service coverage — 158 services, 94% of operations implemented" width="640">
   </a>
 </p>
 
@@ -290,7 +290,7 @@ The twin ships 1173 stock AMIs, and Canonical's two `ubuntu/images/…` AMIs ans
 
 robotocore (named for [botocore](https://github.com/boto/botocore)) is a **digital twin of AWS** — a faithful local replica that responds to real AWS API calls. Point any AWS SDK, CLI, or AI agent at `http://localhost:4566` and it behaves like AWS.
 
-- **158 AWS services, 10,200+ operations** — S3, Lambda, DynamoDB, SQS, SNS, IAM, CloudFormation, and 151 more (92% of all AWS API operations covered)
+- **158 AWS services, 10,268 operations** — S3, Lambda, DynamoDB, SQS, SNS, IAM, CloudFormation, and 152 more (94% of the AWS API surface covered)
 - **Behavioral fidelity** — Lambda actually executes, SQS has real visibility timeouts, SigV4 auth works
 - **Multi-account** — unlimited isolated AWS accounts, all in one container
 - **Single container** — one `docker run` command, no config, no cloud
@@ -493,7 +493,7 @@ cfn    = boto3.client("cloudformation", **SESSION)
 
 ### What works
 
-All 158 services are answered natively in-process — there are no backend-less services left, so no service-level `501 NotImplemented`. At the operation level the twin covers 92% of the AWS surface (9,458 of 10,268 operations); a not-yet-operational operation answers `501 NotImplemented`. The native services add behavioral fidelity on top of wire correctness: Lambda execution, SQS visibility timeouts, SigV4 auth, IAM policy evaluation, CloudFormation resource orchestration.
+All 158 services are answered natively in-process — there are no backend-less services left, so no service-level `501 NotImplemented`. At the operation level the twin covers 94% of the AWS surface (9,676 of 10,268 operations; every remaining op is a recorded, live-verified 501 deny); a not-yet-operational operation answers `501 NotImplemented`. The native services add behavioral fidelity on top of wire correctness: Lambda execution, SQS visibility timeouts, SigV4 auth, IAM policy evaluation, CloudFormation resource orchestration.
 
 ### Health check
 

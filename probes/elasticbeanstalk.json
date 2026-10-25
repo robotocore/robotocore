@@ -1,12 +1,13 @@
 {
   "service": "elasticbeanstalk",
-  "generated_at": "2026-10-20T06:49:16.509540+00:00",
+  "generated_at": "2026-10-25T19:43:17.051050+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 45,
-    "needs_params": 0,
+    "needs_params": 1,
     "not_implemented": 0,
-    "500_error": 1
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -201,8 +202,8 @@
     },
     {
       "operation": "SwapEnvironmentCNAMEs",
-      "status": "500_error",
-      "message": "exception: 'ElasticBeanstalk' object has no attribute 'swap_environment"
+      "status": "needs_params",
+      "message": "client-side probe gap (AttributeError: 'ElasticBeanstalk' object has no attribute 'swap_environment)"
     },
     {
       "operation": "UpdateApplication",

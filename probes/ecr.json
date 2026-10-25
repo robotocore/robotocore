@@ -1,6 +1,6 @@
 {
   "service": "ecr",
-  "generated_at": "2026-10-22T07:00:47.507719+00:00",
+  "generated_at": "2026-10-25T19:43:13.097568+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 57,
@@ -63,7 +63,7 @@
     {
       "operation": "DeleteRegistryPolicy",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (RegistryPolicyNotFoundException: Registry policy does not exist in the registry with id '1234)"
     },
     {
       "operation": "DeleteRepository",

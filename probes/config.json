@@ -1,6 +1,6 @@
 {
   "service": "config",
-  "generated_at": "2026-10-22T06:59:50.801342+00:00",
+  "generated_at": "2026-10-25T19:42:16.481696+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 97,
@@ -33,7 +33,7 @@
     {
       "operation": "DeleteConfigRule",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (NoSuchConfigRuleException: Config rule probe-test-value does not exist.)"
     },
     {
       "operation": "DeleteConfigurationAggregator",
@@ -48,7 +48,7 @@
     {
       "operation": "DeleteConformancePack",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (NoSuchConformancePackException: Conformance pack probe-test-value does not exist)"
     },
     {
       "operation": "DeleteDeliveryChannel",
@@ -63,12 +63,12 @@
     {
       "operation": "DeleteOrganizationConfigRule",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (NoSuchOrganizationConfigRuleException: Organization config rule probe-test-value does not exist)"
     },
     {
       "operation": "DeleteOrganizationConformancePack",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (NoSuchOrganizationConformancePackException: Organization conformance pack probe-test-value does not exis)"
     },
     {
       "operation": "DeletePendingAggregationRequest",

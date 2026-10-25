@@ -1,18 +1,19 @@
 {
   "service": "lakeformation",
-  "generated_at": "2026-10-20T06:49:46.134011+00:00",
+  "generated_at": "2026-10-25T19:43:49.858489+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 49,
-    "needs_params": 10,
+    "working": 55,
+    "needs_params": 4,
     "not_implemented": 1,
-    "500_error": 1
+    "500_error": 0,
+    "timeout": 1
   },
   "operations": [
     {
       "operation": "AddLFTagsToResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "AssumeDecoratedRoleWithSAML",
@@ -46,8 +47,8 @@
     },
     {
       "operation": "CreateLFTag",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateLFTagExpression",
@@ -67,7 +68,7 @@
     {
       "operation": "DeleteDataCellsFilter",
       "status": "working",
-      "message": "likely implemented (EntityNotFoundException: Entity not found)"
+      "message": "OK"
     },
     {
       "operation": "DeleteLFTag",
@@ -91,8 +92,8 @@
     },
     {
       "operation": "DeleteObjectsOnCancel",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeregisterResource",
@@ -122,7 +123,7 @@
     {
       "operation": "GetDataCellsFilter",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (EntityNotFoundException: Entity not found)"
     },
     {
       "operation": "GetDataLakePrincipal",
@@ -176,8 +177,8 @@
     },
     {
       "operation": "GetTemporaryGluePartitionCredentials",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetTemporaryGlueTableCredentials",
@@ -251,8 +252,8 @@
     },
     {
       "operation": "RemoveLFTagsFromResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "RevokePermissions",
@@ -271,8 +272,8 @@
     },
     {
       "operation": "StartQueryPlanning",
-      "status": "500_error",
-      "message": "exception: Could not connect to the endpoint URL: \"http://query-localho"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://query-localho)"
     },
     {
       "operation": "StartTransaction",
@@ -282,7 +283,7 @@
     {
       "operation": "UpdateDataCellsFilter",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (EntityNotFoundException: Entity not found)"
     },
     {
       "operation": "UpdateLFTag",
@@ -306,8 +307,8 @@
     },
     {
       "operation": "UpdateTableObjects",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateTableStorageOptimizer",
