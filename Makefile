@@ -30,11 +30,18 @@ compat-test-hot: ## Compatibility tests (assumes server already running)
 	uv run pytest tests/compatibility/ -n$(N) --dist=loadfile -q --tb=short
 
 parity: ## Full rust-only parity run against the golden baseline
+	$(MAKE) probe-freshness
 	uv run python scripts/harness/parity.py --update-expectations
 	$(MAKE) coverage-gate
 
 coverage-gate: ## Regenerate coverage artifacts and fail on budget regressions
 	uv run python scripts/coverage.py --gate
+
+probe-freshness: ## Fail when a probe corpus lags its implementation merge
+	uv run python scripts/probe_freshness.py
+
+error-census: ## Live wire census: every recorded deny must answer 501 NotImplemented
+	uv run python scripts/error_census.py
 
 absence-manifest: ## Rebuild tooling/surface-absence.json (every deny is a recorded decision)
 	uv run python scripts/build_surface_absence.py

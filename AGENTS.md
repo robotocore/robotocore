@@ -164,11 +164,42 @@ account_id = str(uuid.uuid4().int)[:12].zfill(12)
 
 Non-numeric access keys (e.g. `"test"`) route to the default account `123456789012`.
 
-**Per-request override (added by fix-lane F4):** a request can pin its account with an
+**Per-request override:** a request can pin its account with an
 `X-Robotocore-Account: <12 digits>` header, which wins over any credentials on that
 request. It mirrors moto's `x-moto-account-id` header priority (`moto/core/responses.py`
 `get_current_account`: `MOTO_ACCOUNT_ID` env var → account header → access-key lookup →
 default account); requests carrying none of these resolve to the default account.
+
+---
+
+## Port-lane merge protocol (process)
+
+Lessons from the 2026-10-24 review waves, now mechanical:
+
+1. **The pinned fork is the oracle, not the porter.** Every service port must
+   cite the fork module it mirrors and diff sampled ops against its live
+   `moto_server` before merge (`tooling/crash-matrix-2026-10-24/crash_matrix.py`
+   is the reference runner). Self-authored unit tests are necessary, not
+   sufficient: they certify intent, not fidelity.
+2. **Probes may not lag arms.** `make probe-freshness` fails when
+   `probes/<svc>.json` is older than the newest commit touching that service's
+   implementation. It runs as the first step of `make parity`; a port lane is
+   not done until its own branch's scratch twin has been re-probed and the
+   manifest/coverage artifacts regenerated (`scripts/build_surface_absence.py`,
+   `coverage.py --gate`).
+3. **The deny contract is enforced, not documented.**
+   `make error-census` live-calls every manifest deny row from an isolated
+   account and fails on any row answering anything but the twin-wide 501
+   `NotImplemented` envelope (crash-mirrors are the recorded exception).
+   Run it in the nightly lane and after any envelope change.
+4. **Every port lane ships its own adversary.** A lane is review-sized only
+   if another agent re-derives the lane's claims against the oracle and the
+   running twin (the wave practice this AGENTS.md section exists for), before
+   the parent merges the lane.
+5. **No portability constants:** endpoints default to env-derived values
+   (`ENDPOINT_URL`, `GATEWAY_PORT`); a fallback constant must log when it is
+   used. The full compat lane must pass with `ENDPOINT_URL` pointed at a
+   non-default port; hardcoded `localhost:4566` inside suites is a defect.
 
 ---
 
