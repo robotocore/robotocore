@@ -118,10 +118,16 @@ pub fn list_match(pattern_values: &[Value], event_value: &Value) -> bool {
                         return true;
                     }
                 }
-            } else if obj.get("exists").and_then(|e| e.as_bool()) == Some(false)
-                && event_value.is_null()
-            {
-                return true;
+            } else if let Some(expected) = obj.get("exists").and_then(|e| e.as_bool()) {
+                // An `exists` leaf tests the presence of the event value
+                // itself, in both directions (moto
+                // `_does_item_match_named_filter`: `exists = item is not
+                // UNDEFINED`; era `_match_value_list`: a non-None value
+                // satisfies `exists: true`). Explicit JSON null counts as
+                // absent (era parity: `event.get(key) is None`).
+                if expected != event_value.is_null() {
+                    return true;
+                }
             }
         } else if event_value == pv {
             return true;
@@ -193,4 +199,31 @@ pub fn resolve_json_path(path: &str, event: &Value) -> Option<Value> {
         cur = cur.get(part)?.clone();
     }
     Some(cur)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    // -- exists leaves (F1, agent-221 finding 1) ------------------------------
+
+    #[test]
+    fn exists_true_matches_present_values() {
+        let pattern = json!({"detail": {"state": [{"exists": true}]}});
+        assert!(matches_pattern(&pattern, &json!({"detail": {"state": "running"}})));
+        assert!(matches_pattern(&pattern, &json!({"detail": {"state": 0}})));
+        // Absent key: `exists: true` must not match.
+        assert!(!matches_pattern(&pattern, &json!({"detail": {}})));
+        // Explicit null counts as absent (era parity).
+        assert!(!matches_pattern(&pattern, &json!({"detail": {"state": null}})));
+    }
+
+    #[test]
+    fn exists_false_matches_absent_and_null() {
+        let pattern = json!({"detail": {"state": [{"exists": false}]}});
+        assert!(matches_pattern(&pattern, &json!({"detail": {}})));
+        assert!(matches_pattern(&pattern, &json!({"detail": {"state": null}})));
+        assert!(!matches_pattern(&pattern, &json!({"detail": {"state": "on"}})));
+    }
 }
