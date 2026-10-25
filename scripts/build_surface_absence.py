@@ -100,9 +100,14 @@ OVERRIDES: dict[tuple[str, str], dict] = {
         "evidence": (
             "stale probe row: the twin arm serves the op — crates/s3/src/"
             'handler.rs:538 (`"PutObjectAcl" => self.put_object_acl(&req)`); '
-            "fork handler moto/s3/responses.py:2516 put_object_acl; live "
-            "twin answers 200 (verified 2026-10-24), so the probe 501 "
-            "predates the arm — probe sweep re-run pending"
+            "fork handler moto/s3/responses.py:2111 put_object_acl; fresh-"
+            "session verification answers 200 (verified 2026-10-24 and "
+            "re-verified 2026-10-25), while the fleet-sweep probe still "
+            "records an error envelope: after a PutObject probe on the "
+            "same botocore session the request resolves through the "
+            "empty-op catch-all at crates/s3/src/handler.rs:636 (400 "
+            "NotImplemented, 'The operation  is not implemented') — a "
+            "probe-client artifact, not twin absence"
         ),
     },
     ("s3", "UploadPartCopy"): {
@@ -111,9 +116,12 @@ OVERRIDES: dict[tuple[str, str], dict] = {
             "stale probe row: the twin copy machinery serves the op — "
             "crates/s3/src/handler.rs:1918 (PUT with uploadId and "
             "x-amz-copy-source routes to the copy path); fork handler "
-            "moto/s3/responses.py:2578 upload_part_copy; the live twin "
-            "answers a modeled NoSuchKey for copy semantics (verified "
-            "2026-10-24) — probe sweep re-run pending"
+            "moto/s3/responses.py:2578 upload_part_copy; fresh-session "
+            "verification answers 200 with CopyPartResult (verified "
+            "2026-10-24 and re-verified 2026-10-25), while the fleet sweep "
+            "reproduces the same single-session degradation the "
+            "PutObjectAcl row shows (400 NotImplemented via the empty-op "
+            "catch-all, handler.rs:636) — a probe artifact, not absence"
         ),
     },
     ("timestreaminfluxdb", "UntagResource"): {
