@@ -8,6 +8,7 @@
 //! over loopback HTTP (the same service handlers real AWS SDKs hit), the
 //! way the Python moto sidecar resolved resources; see `mirror.rs`.
 
+pub mod custom;
 pub mod engine;
 pub mod mirror;
 pub mod ops;

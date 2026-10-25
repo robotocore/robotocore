@@ -97,6 +97,11 @@ pub struct ResourceInfo {
     pub resource_type: String,
     pub physical_id: String,
     pub attributes: HashMap<String, Value>,
+    /// Custom resources still waiting on their cfnresponse callback: any
+    /// GetAtt resolves empty instead of erroring, like moto's
+    /// `CustomModel.get_cfn_attribute` (returns `self.data.get(attr)`,
+    /// i.e. None, while the promise is pending).
+    pub pending_custom: bool,
 }
 
 pub type ResolveResult = Result<Value, String>;
@@ -335,6 +340,13 @@ fn resolve_getatt(fn_value: &Value, ctx: &ResolveCtx) -> ResolveResult {
         if let Some(v) = res.attributes.get(&output_key) {
             return Ok(v.clone());
         }
+    }
+    // A pending custom resource answers any attribute like moto's
+    // CustomModel.get_cfn_attribute (`custom_model.py:140-146` returns
+    // self.data.get(attr) — None while the promise is unfinished); the
+    // real value lands with the cfnresponse callback.
+    if res.pending_custom {
+        return Ok(Value::String(String::new()));
     }
     // Real CFN fails the deploy on an unresolvable attribute instead of
     // silently fabricating an empty/fake member string.
