@@ -529,12 +529,16 @@ fn is_iso_timestamp(value: &str) -> bool {
 }
 
 fn wait_seconds(obj: &Map<String, Value>, input: &Value) -> f64 {
+    // Era `_execute_wait` caps waits for tests:
+    // `time.sleep(min(state_def["Seconds"], 1))` — "In testing, we don't
+    // actually wait long". The cap applies to Seconds and SecondsPath alike;
+    // a Timestamp wait never blocks.
     if let Some(secs) = obj.get("Seconds").and_then(|v| v.as_f64()) {
-        return secs.clamp(0.0, 300.0);
+        return secs.clamp(0.0, 1.0);
     }
     if let Some(p) = obj.get("SecondsPath").and_then(|v| v.as_str()) {
         if let Some(v) = resolve_json_path(p, input) {
-            return v.as_f64().unwrap_or(0.0).clamp(0.0, 300.0);
+            return v.as_f64().unwrap_or(0.0).clamp(0.0, 1.0);
         }
     }
     0.0
@@ -1918,5 +1922,47 @@ mod tests {
         assert_eq!(out, json!("prod"), "routing fell through to Default: {out}");
         let out = run(&def, json!({"stage": "api-dev"})).expect("falls to Default");
         assert_eq!(out, json!("other"), "got {out}");
+    }
+
+    #[test]
+    fn test_wait_caps_seconds_for_tests() {
+        // Era `_execute_wait`: `time.sleep(min(state_def["Seconds"], 1))` —
+        // a 300s Wait must finish in about a second.
+        use std::time::Instant;
+        let def = json!({
+            "StartAt": "W",
+            "States": {
+                "W": {"Type": "Wait", "Seconds": 300, "Next": "Done"},
+                "Done": {"Type": "Pass", "Result": "done", "End": true},
+            }
+        });
+        let started = Instant::now();
+        let out = run(&def, json!({})).expect("wait completes");
+        assert_eq!(out, json!("done"));
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(3),
+            "Wait Seconds=300 must cap at the era's 1s, was {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn test_wait_caps_seconds_path_resolutions() {
+        use std::time::Instant;
+        let def = json!({
+            "StartAt": "W",
+            "States": {
+                "W": {"Type": "Wait", "SecondsPath": "$.secs", "Next": "Done"},
+                "Done": {"Type": "Pass", "Result": "done", "End": true},
+            }
+        });
+        let started = Instant::now();
+        let out = run(&def, json!({"secs": 42})).expect("wait completes");
+        assert_eq!(out, json!("done"), "Done's Result replaces the output");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(3),
+            "SecondsPath resolution must cap at the era's 1s, was {:?}",
+            started.elapsed()
+        );
     }
 }
