@@ -97,6 +97,42 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Runtimes variant: Debian-slim runner + Node.js 20 + Ruby 3.3
+      - name: Build and push runtimes Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: runtimes
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            ROBOTOCORE_VERSION=${{ steps.version.outputs.VERSION }}
+          tags: |
+            robotocore/robotocore:${{ steps.version.outputs.VERSION }}-runtimes
+            robotocore/robotocore:runtimes
+            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}-runtimes
+            ghcr.io/${{ github.repository }}:runtimes
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # java-and-dotnet variant: runtimes + OpenJDK 21 + .NET SDK 8
+      - name: Build and push java-and-dotnet Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: java-and-dotnet
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            ROBOTOCORE_VERSION=${{ steps.version.outputs.VERSION }}
+          tags: |
+            robotocore/robotocore:${{ steps.version.outputs.VERSION }}-java-and-dotnet
+            robotocore/robotocore:java-and-dotnet
+            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}-java-and-dotnet
+            ghcr.io/${{ github.repository }}:java-and-dotnet
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       # Push the tag after a successful build
       - name: Push git tag
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
