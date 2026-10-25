@@ -249,11 +249,14 @@ fn ok_json(v: &Value) -> Response {
     Response::json(200, serde_json::to_vec(v).unwrap_or_default())
 }
 
+/// moto's ResourceNotFoundError is a JsonRESTError: code 400, and the
+/// message is whatever the raise site passed — the pool text is moto's
+/// verbatim `User pool <pool_id> does not exist.`
+/// (fork cognitoidp exceptions.py, models.py:1072).
 fn pool_missing(pool_id: &str) -> Response {
-    err_status(
+    err(
         "ResourceNotFoundException",
         &format!("User pool {pool_id} does not exist."),
-        404,
     )
 }
 
@@ -264,12 +267,10 @@ fn pool_not_found_msg(pool_id: &str) -> Response {
     )
 }
 
-fn user_missing(username: &str) -> Response {
-    err_status(
-        "UserNotFoundException",
-        &format!("User {username} does not exist."),
-        404,
-    )
+/// moto's admin_get_user raises with the fixed text `User does not exist.`
+/// (fork models.py:1418) — no username interpolation, HTTP 400.
+fn user_missing(_username: &str) -> Response {
+    err("UserNotFoundException", "User does not exist.")
 }
 
 fn user_missing_simple(username: &str) -> Response {
@@ -279,12 +280,10 @@ fn user_missing_simple(username: &str) -> Response {
     )
 }
 
+/// moto's group lookups raise `ResourceNotFoundError(group_name)` — the
+/// verbatim message is the bare name (fork models.py get_group), HTTP 400.
 fn group_missing(group_name: &str) -> Response {
-    err_status(
-        "ResourceNotFoundException",
-        &format!("Group {group_name} does not exist."),
-        404,
-    )
+    err("ResourceNotFoundException", group_name)
 }
 
 fn group_not_found_msg(group_name: &str) -> Response {
@@ -294,12 +293,11 @@ fn group_not_found_msg(group_name: &str) -> Response {
     )
 }
 
+/// moto's client lookups raise `ResourceNotFoundError(client_id)` — the
+/// verbatim message is the bare id (fork models.py describe_user_pool_client),
+/// HTTP 400.
 fn client_missing(client_id: &str) -> Response {
-    err_status(
-        "ResourceNotFoundException",
-        &format!("Client {client_id} does not exist."),
-        404,
-    )
+    err("ResourceNotFoundException", client_id)
 }
 
 /// `str(uuid.uuid4())[:n]` (dashes included, like the native provider).
@@ -519,7 +517,8 @@ fn pool_ref<'a>(s: &'a State, pool_id: &str) -> Option<&'a Pool> {
     s.pools.iter().find(|(k, _)| *k == pool_id).map(|(_, v)| v)
 }
 
-/// `require_pool`/`_require_pool` — missing pools are a 404.
+/// `require_pool`/`_require_pool` — missing pools are a 400
+/// (`ResourceNotFoundException`, moto's JsonRESTError default).
 fn pool_mut<'a>(s: &'a mut State, pool_id: &str) -> Option<&'a mut Pool> {
     s.pools
         .iter_mut()
@@ -2068,7 +2067,7 @@ fn update_user_pool_domain(s: &mut State, p: &Value) -> Response {
         return e;
     }
     if s.domains.iter().all(|(d, _)| *d != domain) {
-        return err_status("ResourceNotFoundException", &domain, 404);
+        return err_status("ResourceNotFoundException", &domain, 400);
     }
     pool_mut(s, &pool_id).unwrap().pool["CustomDomainConfig"] = p["CustomDomainConfig"].clone();
     ok_json(&json!({
@@ -2129,7 +2128,8 @@ fn create_identity_provider(s: &mut State, p: &Value) -> Response {
         return e;
     }
     let mut cfg = p.as_object().cloned().unwrap_or_default();
-    cfg.remove("UserPoolId");
+    // moto pops only ProviderName and passes the raw parameters as
+    // extended_config, so UserPoolId stays in the stored/extended config.
     cfg.remove("ProviderName");
     cfg.insert("CreationDate".into(), json!(now()));
     cfg.insert("LastModifiedDate".into(), json!(now()));
@@ -2179,7 +2179,7 @@ fn describe_identity_provider(s: &State, p: &Value) -> Response {
     };
     match idp_store_config(pl, name) {
         Some(cfg) => ok_json(&json!({ "IdentityProvider": idp_record(cfg) })),
-        None => err_status("ResourceNotFoundException", name, 404),
+        None => err_status("ResourceNotFoundException", name, 400),
     }
 }
 
@@ -2191,11 +2191,14 @@ fn update_identity_provider(s: &mut State, p: &Value) -> Response {
     }
     let pl = pool_mut(s, &pool_id).unwrap();
     let Some(cfg) = pl.idps.get_mut(&name) else {
-        return err_status("ResourceNotFoundException", &name, 404);
+        return err_status("ResourceNotFoundException", &name, 400);
     };
     if let (Some(obj), Some(patch)) = (cfg.as_object_mut(), p.as_object()) {
         for (k, v) in patch {
-            if k != "UserPoolId" && k != "ProviderName" && k != "ProviderType" {
+            // moto passes the whole request through extended_config.update(),
+            // so UserPoolId lands in the stored config; sibling ProviderName/
+            // ProviderType stay excluded from the extended view.
+            if k != "ProviderName" && k != "ProviderType" {
                 obj.insert(k.clone(), v.clone());
             }
         }
@@ -2211,7 +2214,7 @@ fn delete_identity_provider(s: &mut State, p: &Value) -> Response {
     }
     let pl = pool_mut(s, &pool_id).unwrap();
     if !pl.idps.contains_key(&name) {
-        return err_status("ResourceNotFoundException", &name, 404);
+        return err_status("ResourceNotFoundException", &name, 400);
     }
     pl.idps.remove(&name);
     ok_json(&json!({}))
@@ -3334,7 +3337,7 @@ fn get_identity_provider_by_identifier(s: &mut State, p: &Value) -> Response {
             return ok_json(&json!({ "IdentityProvider": idp_record(cfg) }));
         }
     }
-    err_status("ResourceNotFoundException", &idp_identifier, 404)
+    err_status("ResourceNotFoundException", &idp_identifier, 400)
 }
 
 // ---------------------------------------------------------------------------
@@ -3854,7 +3857,7 @@ mod tests {
         r = req("DescribeUserPool", json!({"UserPoolId": &pool_id}));
         r.account = acct;
         let resp = dispatch(&r).unwrap();
-        assert_eq!(resp.status, 404);
+        assert_eq!(resp.status, 400);
         assert_eq!(body(&resp)["__type"], "ResourceNotFoundException");
     }
 
@@ -3948,13 +3951,18 @@ mod tests {
         let b = body(&dispatch(&r).unwrap());
         assert_eq!(b["Users"][0]["Username"], "u1");
 
-        // missing user 404
+        // missing user 400 (moto's admin_get_user text)
         r = req(
             "AdminGetUser",
             json!({"UserPoolId": &pool_id, "Username": "nope"}),
         );
         r.account = acct;
-        assert_eq!(dispatch(&r).unwrap().status, 404);
+        let resp = dispatch(&r).unwrap();
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            body(&resp)["message"],
+            json!("User does not exist.")
+        );
     }
 
     #[test]
@@ -4087,7 +4095,7 @@ mod tests {
             json!({"UserPoolId": &pool_id, "ProviderName": "OIDC"}),
         );
         r.account = acct;
-        assert_eq!(dispatch(&r).unwrap().status, 404);
+        assert_eq!(dispatch(&r).unwrap().status, 400);
 
         // resource server
         r = req(
