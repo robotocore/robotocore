@@ -59,6 +59,29 @@ KNOWN_PARAMS: dict[str, dict[str, dict]] = {
             }],
         },
     },
+    # fsx ids are length/pattern-strict (fsvol-0123456789abcdef0 etc.);
+    # auto-fill's generic probe ids fail botocore's client-side validation,
+    # so these twin-501 ops never reached the server and were bucketed
+    # needs_params. Seed pattern-valid ids so the probe contacts the twin
+    # and records the actual NotImplemented 501 (verified 2026-10-25).
+    "fsx": {
+        "RestoreVolumeFromSnapshot": {
+            "VolumeId": "fsvol-0123456789abcdef0",
+            "SnapshotId": "fssnap-0123456789abcdef0",
+        },
+        "UpdateVolume": {"VolumeId": "fsvol-0123456789abcdef0"},
+        "CopySnapshotAndUpdateVolume": {
+            "VolumeId": "fsvol-0123456789abcdef0",
+            "SourceSnapshotARN": (
+                "arn:aws:fsx:us-east-1:123456789012:snapshot/fssnap-0123456789abcdef0"
+            ),
+        },
+        "CreateSnapshot": {
+            "Name": "probe-snapshot-name",
+            "VolumeId": "fsvol-0123456789abcdef0",
+        },
+        "DeleteVolume": {"VolumeId": "fsvol-0123456789abcdef0"},
+    },
 }
 
 _ENUM_FALLBACK = "probe-test"

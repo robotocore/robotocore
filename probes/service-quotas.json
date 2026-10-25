@@ -1,59 +1,59 @@
 {
   "service": "service-quotas",
-  "generated_at": "2026-10-22T07:02:26.748079+00:00",
+  "generated_at": "2026-10-25T01:42:16.741438+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 2,
+    "working": 26,
     "needs_params": 0,
-    "not_implemented": 24,
+    "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
   },
   "operations": [
     {
       "operation": "AssociateServiceQuotaTemplate",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateSupportCase",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteServiceQuotaIncreaseRequestFromTemplate",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )"
     },
     {
       "operation": "DisassociateServiceQuotaTemplate",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetAWSDefaultServiceQuota",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )"
     },
     {
       "operation": "GetAssociationForServiceQuotaTemplate",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetAutoManagementConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: Automatic Management is not enabled. Start it first.)"
     },
     {
       "operation": "GetQuotaUtilizationReport",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: Quota utilization report with ID probe-report-id-id cannot b)"
     },
     {
       "operation": "GetRequestedServiceQuotaChange",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: Quota increase request with ID probe-request-id-id cannot be)"
     },
     {
       "operation": "GetServiceQuota",
@@ -62,8 +62,8 @@
     },
     {
       "operation": "GetServiceQuotaIncreaseRequestFromTemplate",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )"
     },
     {
       "operation": "ListAWSDefaultServiceQuotas",
@@ -72,73 +72,73 @@
     },
     {
       "operation": "ListRequestedServiceQuotaChangeHistory",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (InvalidPaginationTokenException: The NextToken value is invalid.)"
     },
     {
       "operation": "ListRequestedServiceQuotaChangeHistoryByQuota",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )"
     },
     {
       "operation": "ListServiceQuotaIncreaseRequestsInTemplate",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (InvalidPaginationTokenException: The NextToken value is invalid.)"
     },
     {
       "operation": "ListServiceQuotas",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )"
     },
     {
       "operation": "ListServices",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (InvalidPaginationTokenException: The NextToken value is invalid.)"
     },
     {
       "operation": "ListTagsForResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutServiceQuotaIncreaseRequestIntoTemplate",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )"
     },
     {
       "operation": "RequestServiceQuotaIncrease",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )"
     },
     {
       "operation": "StartAutoManagement",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartQuotaUtilizationReport",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StopAutoManagement",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "TagResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UntagResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateAutoManagement",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: Automatic Management is not enabled. Start it first.)"
     }
   ]
 }

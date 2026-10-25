@@ -19152,7 +19152,7 @@
   "total": 44
  },
  "cognito-idp": {
-  "covered": 70,
+  "covered": 121,
   "ops": {
    "AddCustomAttributes": {
     "absence": null,
@@ -19166,16 +19166,11 @@
     }
    },
    "AddUserPoolClientSecret": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `add_user_pool_client_secret` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented via required-only (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -19237,16 +19232,11 @@
     }
    },
    "AdminDisableProviderForUser": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `admin_disable_provider_for_user` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -19275,32 +19265,22 @@
     }
    },
    "AdminForgetDevice": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `admin_forget_device` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "AdminGetDevice": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `admin_get_device` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -19329,32 +19309,22 @@
     }
    },
    "AdminLinkProviderForUser": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `admin_link_provider_for_user` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "AdminListDevices": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `admin_list_devices` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -19372,16 +19342,11 @@
     }
    },
    "AdminListUserAuthEvents": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `admin_list_user_auth_events` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -19443,48 +19408,33 @@
     }
    },
    "AdminSetUserSettings": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `admin_set_user_settings` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "AdminUpdateAuthEventFeedback": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `admin_update_auth_event_feedback` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "AdminUpdateDeviceStatus": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `admin_update_device_status` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -19535,32 +19485,22 @@
     }
    },
    "CompleteWebAuthnRegistration": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `complete_web_authn_registration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-9462)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "ConfirmDevice": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `confirm_device` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-9462)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -19611,16 +19551,11 @@
     }
    },
    "CreateManagedLoginBranding": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `create_managed_login_branding` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -19649,16 +19584,11 @@
     }
    },
    "CreateUserImportJob": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `create_user_import_job` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -19720,32 +19650,22 @@
     }
    },
    "DeleteManagedLoginBranding": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `delete_managed_login_branding` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DeleteResourceServer": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `delete_resource_server` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -19763,32 +19683,22 @@
     }
    },
    "DeleteUser": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `delete_user` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-9462)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DeleteUserAttributes": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `delete_user_attributes` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NotAuthorizedException: Invalid access token.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -19844,16 +19754,11 @@
     }
    },
    "DeleteWebAuthnCredential": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `delete_web_authn_credential` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-9462)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -19871,32 +19776,22 @@
     }
    },
    "DescribeManagedLoginBranding": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `describe_managed_login_branding` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DescribeManagedLoginBrandingByClient": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `describe_managed_login_branding_by_client` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -19914,16 +19809,11 @@
     }
    },
    "DescribeRiskConfiguration": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `describe_risk_configuration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -19941,16 +19831,11 @@
     }
    },
    "DescribeUserImportJob": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `describe_user_import_job` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -19990,16 +19875,11 @@
     }
    },
    "ForgetDevice": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `forget_device` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-9462)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -20017,32 +19897,22 @@
     }
    },
    "GetCSVHeader": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `get_csvheader` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "GetDevice": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `get_device` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-9462)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -20060,80 +19930,55 @@
     }
    },
    "GetIdentityProviderByIdentifier": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `get_identity_provider_by_identifier` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "GetLogDeliveryConfiguration": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `get_log_delivery_configuration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "GetSigningCertificate": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `get_signing_certificate` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "GetTokensFromRefreshToken": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `get_tokens_from_refresh_token` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented via required-only (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "GetUICustomization": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `get_uicustomization` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -20151,32 +19996,22 @@
     }
    },
    "GetUserAttributeVerificationCode": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `get_user_attribute_verification_code` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NotAuthorizedException: Invalid access token.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "GetUserAuthFactors": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `get_user_auth_factors` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NotAuthorizedException: Invalid access token.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -20216,16 +20051,11 @@
     }
    },
    "ListDevices": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `list_devices` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-9462)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -20287,32 +20117,22 @@
     }
    },
    "ListUserImportJobs": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `list_user_import_jobs` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "ListUserPoolClientSecrets": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `list_user_pool_client_secrets` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -20363,32 +20183,22 @@
     }
    },
    "ListWebAuthnCredentials": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `list_web_authn_credentials` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-9462)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "ResendConfirmationCode": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `resend_confirmation_code` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -20406,64 +20216,44 @@
     }
    },
    "RevokeToken": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `revoke_token` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "OK (required-only fill)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "SetLogDeliveryConfiguration": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `set_log_delivery_configuration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "SetRiskConfiguration": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `set_risk_configuration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "SetUICustomization": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `set_uicustomization` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -20473,7 +20263,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NotAuthorizedException: probe-token-6564)",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-9462)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -20492,16 +20282,11 @@
     }
    },
    "SetUserSettings": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `set_user_settings` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NotAuthorizedException: Invalid access token.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -20519,48 +20304,33 @@
     }
    },
    "StartUserImportJob": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `start_user_import_job` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "StartWebAuthnRegistration": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `start_web_authn_registration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-9462)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "StopUserImportJob": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `stop_user_import_job` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -20589,32 +20359,22 @@
     }
    },
    "UpdateAuthEventFeedback": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `update_auth_event_feedback` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "UpdateDeviceStatus": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `update_device_status` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-9462)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -20643,32 +20403,22 @@
     }
    },
    "UpdateManagedLoginBranding": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `update_managed_login_branding` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "UpdateResourceServer": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `update_resource_server` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -20741,16 +20491,11 @@
     }
    },
    "VerifyUserAttribute": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cognitoidp/responses.py has no `verify_user_attribute` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NotAuthorizedException: Invalid access token.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -29063,131 +28808,91 @@
   "total": 20
  },
  "directconnect": {
-  "covered": 10,
+  "covered": 62,
   "ops": {
    "AcceptDirectConnectGatewayAssociationProposal": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `accept_direct_connect_gateway_association_proposal` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: probe-direct-connect-gateway-id-id does not match any Direct)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "AllocateConnectionOnInterconnect": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `allocate_connection_on_interconnect` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: probe-interconnect-id-id does not match any interconnects in)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "AllocateHostedConnection": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `allocate_hosted_connection` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "AllocatePrivateVirtualInterface": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `allocate_private_virtual_interface` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "AllocatePublicVirtualInterface": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `allocate_public_virtual_interface` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "AllocateTransitVirtualInterface": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `allocate_transit_virtual_interface` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "AssociateConnectionWithLag": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `associate_connection_with_lag` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (LagNotFound: probe-lag-id-id does not match any LAGs in region us-east-1.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "AssociateHostedConnection": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `associate_hosted_connection` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (ConnectionNotFound: probe-parent-connection-id-id does not match any connections)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -29205,112 +28910,77 @@
     }
    },
    "AssociateVirtualInterface": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `associate_virtual_interface` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "ConfirmConnection": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `confirm_connection` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "ConfirmCustomerAgreement": {
-    "absence": {
-     "class": "modeled_deny",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "twin deny arm at rotocore/src/services/directconnect/mod.rs:792; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `confirm_customer_agreement` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_modeled_deny",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "ConfirmPrivateVirtualInterface": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `confirm_private_virtual_interface` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: probe-virtual-interface-id-id does not match any virtual int)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "ConfirmPublicVirtualInterface": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `confirm_public_virtual_interface` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: probe-virtual-interface-id-id does not match any virtual int)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "ConfirmTransitVirtualInterface": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `confirm_transit_virtual_interface` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: probe-virtual-interface-id-id does not match any virtual int)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "CreateBGPPeer": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `create_bgppeer` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: probe-virtual-interface-id-id does not match any virtual int)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -29328,64 +28998,44 @@
     }
    },
    "CreateDirectConnectGateway": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `create_direct_connect_gateway` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "CreateDirectConnectGatewayAssociation": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `create_direct_connect_gateway_association` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: probe-direct-connect-gateway-id-id does not match any Direct)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "CreateDirectConnectGatewayAssociationProposal": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `create_direct_connect_gateway_association_proposal` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: probe-direct-connect-gateway-id-id does not match any Direct)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "CreateInterconnect": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `create_interconnect` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -29403,64 +29053,44 @@
     }
    },
    "CreatePrivateVirtualInterface": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `create_private_virtual_interface` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "CreatePublicVirtualInterface": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `create_public_virtual_interface` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "CreateTransitVirtualInterface": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `create_transit_virtual_interface` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DeleteBGPPeer": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `delete_bgppeer` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: probe-virtual-interface-id-id does not match any virtual int)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -29478,112 +29108,77 @@
     }
    },
    "DeleteDirectConnectGateway": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `delete_direct_connect_gateway` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: probe-direct-connect-gateway-id-id does not match any Direct)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DeleteDirectConnectGatewayAssociation": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `delete_direct_connect_gateway_association` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: The specified association does not exist.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DeleteDirectConnectGatewayAssociationProposal": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `delete_direct_connect_gateway_association_proposal` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: The proposal probe-proposal-id-id is not present.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DeleteInterconnect": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `delete_interconnect` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: probe-interconnect-id-id does not match any interconnects in)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DeleteLag": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `delete_lag` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (LagNotFound: probe-lag-id-id does not match any LAGs in region us-east-1.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DeleteVirtualInterface": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `delete_virtual_interface` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: probe-virtual-interface-id-id does not match any virtual int)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DescribeConnectionLoa": {
-    "absence": {
-     "class": "modeled_deny",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "twin deny arm at rotocore/src/services/directconnect/mod.rs:794; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `describe_connection_loa` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_modeled_deny",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -29601,144 +29196,99 @@
     }
    },
    "DescribeConnectionsOnInterconnect": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `describe_connections_on_interconnect` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: probe-interconnect-id-id does not match any interconnects in)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DescribeCustomerMetadata": {
-    "absence": {
-     "class": "modeled_deny",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "twin deny arm at rotocore/src/services/directconnect/mod.rs:791; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `describe_customer_metadata` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_modeled_deny",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DescribeDirectConnectGatewayAssociationProposals": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `describe_direct_connect_gateway_association_proposals` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: The proposal probe-proposal-id-id is not present.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DescribeDirectConnectGatewayAssociations": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `describe_direct_connect_gateway_associations` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: The association probe-association-id-id is not present.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DescribeDirectConnectGatewayAttachments": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `describe_direct_connect_gateway_attachments` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DescribeDirectConnectGateways": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `describe_direct_connect_gateways` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DescribeHostedConnections": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `describe_hosted_connections` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DescribeInterconnectLoa": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `describe_interconnect_loa` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: probe-interconnect-id-id does not match any interconnects in)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DescribeInterconnects": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `describe_interconnects` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: probe-interconnect-id-id does not match any interconnects in)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -29756,48 +29306,33 @@
     }
    },
    "DescribeLoa": {
-    "absence": {
-     "class": "modeled_deny",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "twin deny arm at rotocore/src/services/directconnect/mod.rs:793; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `describe_loa` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_modeled_deny",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DescribeLocations": {
-    "absence": {
-     "class": "modeled_deny",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "twin deny arm at rotocore/src/services/directconnect/mod.rs:789; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `describe_locations` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_modeled_deny",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DescribeRouterConfiguration": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `describe_router_configuration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: probe-virtual-interface-id-id does not match any virtual int)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -29815,48 +29350,33 @@
     }
    },
    "DescribeVirtualGateways": {
-    "absence": {
-     "class": "modeled_deny",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "twin deny arm at rotocore/src/services/directconnect/mod.rs:790; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `describe_virtual_gateways` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_modeled_deny",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DescribeVirtualInterfaces": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `describe_virtual_interfaces` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: probe-virtual-interface-id-id does not match any virtual int)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DisassociateConnectionFromLag": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `disassociate_connection_from_lag` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (LagNotFound: probe-lag-id-id does not match any LAGs in region us-east-1.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -29874,48 +29394,33 @@
     }
    },
    "ListVirtualInterfaceTestHistory": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `list_virtual_interface_test_history` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "StartBgpFailoverTest": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `start_bgp_failover_test` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: probe-virtual-interface-id-id does not match any virtual int)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "StopBgpFailoverTest": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `stop_bgp_failover_test` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: probe-virtual-interface-id-id does not match any virtual int)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -29955,64 +29460,44 @@
     }
    },
    "UpdateDirectConnectGateway": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `update_direct_connect_gateway` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: probe-direct-connect-gateway-id-id does not match any Direct)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "UpdateDirectConnectGatewayAssociation": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `update_direct_connect_gateway_association` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: The association probe-association-id-id is not present.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "UpdateLag": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `update_lag` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (LagNotFound: probe-lag-id-id does not match any LAGs in region us-east-1.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "UpdateVirtualInterfaceAttributes": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): directconnect/responses.py has no `update_virtual_interface_attributes` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DirectConnectClientException: probe-virtual-interface-id-id does not match any virtual int)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -49272,7 +48757,7 @@
   "total": 63
  },
  "fsx": {
-  "covered": 30,
+  "covered": 44,
   "ops": {
    "AssociateFileSystemAliases": {
     "absence": null,
@@ -49286,62 +48771,52 @@
     }
    },
    "CancelDataRepositoryTask": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): fsx/responses.py has no `cancel_data_repository_task` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (DataRepositoryTaskNotFound: Data repository task 'probe-task-id-id' does not exist)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
-     "unit": false
+     "unit": true
     }
    },
    "CopyBackup": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): fsx/responses.py has no `copy_backup` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (BackupNotFound: Backup 'probe-source-backup-id-id' does not exist.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
-     "unit": false
+     "unit": true
     }
    },
    "CopySnapshotAndUpdateVolume": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "modeled_deny",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "twin unit test pins the deny at rotocore/src/services/fsx/mod.rs:2848; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): fsx/responses.py has no `copy_snapshot_and_update_volume` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_modeled_deny",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "CreateAndAttachS3AccessPoint": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): fsx/responses.py has no `create_and_attach_s3_access_point` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented via required-only (BadRequest)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
-     "unit": false
+     "unit": true
     }
    },
    "CreateBackup": {
@@ -49367,35 +48842,25 @@
     }
    },
    "CreateDataRepositoryTask": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): fsx/responses.py has no `create_data_repository_task` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (FileSystemNotFound: File system 'probe-file-system-id-id' does not exist.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
-     "unit": false
+     "unit": true
     }
    },
    "CreateFileCache": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): fsx/responses.py has no `create_file_cache` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
-     "unit": false
+     "unit": true
     }
    },
    "CreateFileSystem": {
@@ -49422,10 +48887,10 @@
    },
    "CreateSnapshot": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (VolumeNotFound: Volume 'fsvol-0123456789abcdef0' does not exist.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -49487,19 +48952,14 @@
     }
    },
    "DeleteFileCache": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): fsx/responses.py has no `delete_file_cache` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (FileCacheNotFound: File cache 'probe-file-cache-id-id' does not exist)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
-     "unit": false
+     "unit": true
     }
    },
    "DeleteFileSystem": {
@@ -49537,10 +48997,10 @@
    },
    "DeleteVolume": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (VolumeNotFound: Volume 'fsvol-0123456789abcdef0' does not exist.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -49572,7 +49032,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (InvalidToken: Invalid Token: Invalid token)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -49616,7 +49076,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (InvalidToken: Invalid Token: Invalid token)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -49668,19 +49128,14 @@
     }
    },
    "DetachAndDeleteS3AccessPoint": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): fsx/responses.py has no `detach_and_delete_s3_access_point` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (S3AccessPointAttachmentNotFound: No S3 access point attachment probe-test-value found)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
-     "unit": false
+     "unit": true
     }
    },
    "DisassociateFileSystemAliases": {
@@ -49706,46 +49161,41 @@
     }
    },
    "ReleaseFileSystemNfsV3Locks": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): fsx/responses.py has no `release_file_system_nfs_v3_locks` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (FileSystemNotFound: File system 'probe-file-system-id-id' does not exist.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
-     "unit": false
+     "unit": true
     }
    },
    "RestoreVolumeFromSnapshot": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "modeled_deny",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "twin unit test pins the deny at rotocore/src/services/fsx/mod.rs:2849; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): fsx/responses.py has no `restore_volume_from_snapshot` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_modeled_deny",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "StartMisconfiguredStateRecovery": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): fsx/responses.py has no `start_misconfigured_state_recovery` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (FileSystemNotFound: File system 'probe-file-system-id-id' does not exist.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
-     "unit": false
+     "unit": true
     }
    },
    "TagResource": {
@@ -49782,19 +49232,14 @@
     }
    },
    "UpdateFileCache": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): fsx/responses.py has no `update_file_cache` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (FileCacheNotFound: File cache 'probe-file-cache-id-id' does not exist)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
-     "unit": false
+     "unit": true
     }
    },
    "UpdateFileSystem": {
@@ -49809,19 +49254,14 @@
     }
    },
    "UpdateSharedVpcConfiguration": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): fsx/responses.py has no `update_shared_vpc_configuration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (BadRequest: Invalid value 'probe-test-value' for EnableFsxRouteTableUpda)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
-     "unit": false
+     "unit": true
     }
    },
    "UpdateSnapshot": {
@@ -49836,27 +49276,27 @@
     }
    },
    "UpdateStorageVirtualMachine": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): fsx/responses.py has no `update_storage_virtual_machine` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented via required-only (StorageVirtualMachineNotFound)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
-     "unit": false
+     "unit": true
     }
    },
    "UpdateVolume": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "modeled_deny",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "twin unit test pins the deny at rotocore/src/services/fsx/mod.rs:2850; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): fsx/responses.py has no `update_volume` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_modeled_deny",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -92615,7 +92055,7 @@
     "absence": {
      "class": "legacy_gap",
      "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "stale probe row: the twin arm serves the op \u2014 crates/s3/src/handler.rs:538 (`\"PutObjectAcl\" => self.put_object_acl(&req)`); fork handler moto/s3/responses.py:2516 put_object_acl; live twin answers 200 (verified 2026-10-24), so the probe 501 predates the arm \u2014 probe sweep re-run pending",
+     "evidence": "stale probe row: the twin arm serves the op \u2014 crates/s3/src/handler.rs:538 (`\"PutObjectAcl\" => self.put_object_acl(&req)`); fork handler moto/s3/responses.py:2111 put_object_acl; fresh-session verification answers 200 (verified 2026-10-24 and re-verified 2026-10-25), while the fleet-sweep probe still records an error envelope: after a PutObject probe on the same botocore session the request resolves through the empty-op catch-all at crates/s3/src/handler.rs:636 (400 NotImplemented, 'The operation  is not implemented') \u2014 a probe-client artifact, not twin absence",
      "status": "not_implemented"
     },
     "bucket": "legacy_gap",
@@ -92763,7 +92203,7 @@
     "absence": {
      "class": "legacy_gap",
      "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "stale probe row: the twin copy machinery serves the op \u2014 crates/s3/src/handler.rs:1918 (PUT with uploadId and x-amz-copy-source routes to the copy path); fork handler moto/s3/responses.py:2578 upload_part_copy; the live twin answers a modeled NoSuchKey for copy semantics (verified 2026-10-24) \u2014 probe sweep re-run pending",
+     "evidence": "stale probe row: the twin copy machinery serves the op \u2014 crates/s3/src/handler.rs:1918 (PUT with uploadId and x-amz-copy-source routes to the copy path); fork handler moto/s3/responses.py:2578 upload_part_copy; fresh-session verification answers 200 with CopyPartResult (verified 2026-10-24 and re-verified 2026-10-25), while the fleet sweep reproduces the same single-session degradation the PutObjectAcl row shows (400 NotImplemented via the empty-op catch-all, handler.rs:636) \u2014 a probe artifact, not absence",
      "status": "not_implemented"
     },
     "bucket": "legacy_gap",
@@ -100637,147 +100077,102 @@
   "total": 107
  },
  "service-quotas": {
-  "covered": 2,
+  "covered": 26,
   "ops": {
    "AssociateServiceQuotaTemplate": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `associate_service_quota_template` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "CreateSupportCase": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `create_support_case` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DeleteServiceQuotaIncreaseRequestFromTemplate": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `delete_service_quota_increase_request_from_template` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DisassociateServiceQuotaTemplate": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `disassociate_service_quota_template` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "GetAWSDefaultServiceQuota": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `get_awsdefault_service_quota` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "GetAssociationForServiceQuotaTemplate": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `get_association_for_service_quota_template` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "GetAutoManagementConfiguration": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `get_auto_management_configuration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NoSuchResourceException: Automatic Management is not enabled. Start it first.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "GetQuotaUtilizationReport": {
-    "absence": {
-     "class": "modeled_deny",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "twin unit test pins the deny at rotocore/src/services/servicequotas/mod.rs:1391; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `get_quota_utilization_report` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_modeled_deny",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NoSuchResourceException: Quota utilization report with ID probe-report-id-id cannot b)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "GetRequestedServiceQuotaChange": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `get_requested_service_quota_change` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NoSuchResourceException: Quota increase request with ID probe-request-id-id cannot be)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -100795,16 +100190,11 @@
     }
    },
    "GetServiceQuotaIncreaseRequestFromTemplate": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `get_service_quota_increase_request_from_template` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -100822,224 +100212,154 @@
     }
    },
    "ListRequestedServiceQuotaChangeHistory": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `list_requested_service_quota_change_history` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (InvalidPaginationTokenException: The NextToken value is invalid.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "ListRequestedServiceQuotaChangeHistoryByQuota": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `list_requested_service_quota_change_history_by_quota` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "ListServiceQuotaIncreaseRequestsInTemplate": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `list_service_quota_increase_requests_in_template` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (InvalidPaginationTokenException: The NextToken value is invalid.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "ListServiceQuotas": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `list_service_quotas` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "ListServices": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `list_services` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (InvalidPaginationTokenException: The NextToken value is invalid.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "ListTagsForResource": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `list_tags_for_resource` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "PutServiceQuotaIncreaseRequestIntoTemplate": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `put_service_quota_increase_request_into_template` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "RequestServiceQuotaIncrease": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `request_service_quota_increase` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "StartAutoManagement": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `start_auto_management` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "StartQuotaUtilizationReport": {
-    "absence": {
-     "class": "modeled_deny",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "twin unit test pins the deny at rotocore/src/services/servicequotas/mod.rs:1380; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `start_quota_utilization_report` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_modeled_deny",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "StopAutoManagement": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `stop_auto_management` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "TagResource": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `tag_resource` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "UntagResource": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `untag_resource` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "UpdateAutoManagement": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): servicequotas/responses.py has no `update_auto_management` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (NoSuchResourceException: Automatic Management is not enabled. Start it first.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -107747,19 +107067,14 @@
   "total": 146
  },
  "ssoadmin": {
-  "covered": 28,
+  "covered": 76,
   "ops": {
    "AddRegion": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `add_region` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -107799,64 +107114,44 @@
     }
    },
    "CreateApplication": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `create_application` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
     }
    },
    "CreateApplicationAssignment": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `create_application_assignment` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "CreateInstance": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `create_instance` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "CreateInstanceAccessControlAttributeConfiguration": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `create_instance_access_control_attribute_configuration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -107874,16 +107169,11 @@
     }
    },
    "CreateTrustedTokenIssuer": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `create_trusted_token_issuer` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -107901,80 +107191,55 @@
     }
    },
    "DeleteApplication": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `delete_application` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DeleteApplicationAccessScope": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `delete_application_access_scope` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DeleteApplicationAssignment": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `delete_application_assignment` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DeleteApplicationAuthenticationMethod": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `delete_application_authentication_method` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DeleteApplicationGrant": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `delete_application_grant` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -107992,32 +107257,22 @@
     }
    },
    "DeleteInstance": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `delete_instance` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DeleteInstanceAccessControlAttributeConfiguration": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `delete_instance_access_control_attribute_configuration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -108035,32 +107290,22 @@
     }
    },
    "DeletePermissionsBoundaryFromPermissionSet": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `delete_permissions_boundary_from_permission_set` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DeleteTrustedTokenIssuer": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `delete_trusted_token_issuer` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -108089,32 +107334,22 @@
     }
    },
    "DescribeApplication": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `describe_application` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DescribeApplicationAssignment": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `describe_application_assignment` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -108137,32 +107372,22 @@
     }
    },
    "DescribeInstance": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `describe_instance` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DescribeInstanceAccessControlAttributeConfiguration": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `describe_instance_access_control_attribute_configuration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -108180,48 +107405,33 @@
     }
    },
    "DescribePermissionSetProvisioningStatus": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `describe_permission_set_provisioning_status` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DescribeRegion": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `describe_region` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DescribeTrustedTokenIssuer": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `describe_trusted_token_issuer` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -108250,80 +107460,55 @@
     }
    },
    "GetApplicationAccessScope": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `get_application_access_scope` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "GetApplicationAssignmentConfiguration": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `get_application_assignment_configuration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "GetApplicationAuthenticationMethod": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `get_application_authentication_method` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "GetApplicationGrant": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `get_application_grant` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "GetApplicationSessionConfiguration": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `get_application_session_configuration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -108341,48 +107526,33 @@
     }
    },
    "GetPermissionsBoundaryForPermissionSet": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `get_permissions_boundary_for_permission_set` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "ListAccountAssignmentCreationStatus": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `list_account_assignment_creation_status` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "ListAccountAssignmentDeletionStatus": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `list_account_assignment_deletion_status` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -108422,80 +107592,55 @@
     }
    },
    "ListApplicationAccessScopes": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `list_application_access_scopes` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "ListApplicationAssignments": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `list_application_assignments` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "ListApplicationAssignmentsForPrincipal": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `list_application_assignments_for_principal` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "ListApplicationAuthenticationMethods": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `list_application_authentication_methods` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "ListApplicationGrants": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `list_application_grants` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -108518,16 +107663,11 @@
     }
    },
    "ListApplications": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `list_applications` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -108567,16 +107707,11 @@
     }
    },
    "ListPermissionSetProvisioningStatus": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `list_permission_set_provisioning_status` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -108605,16 +107740,11 @@
     }
    },
    "ListRegions": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `list_regions` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -108632,16 +107762,11 @@
     }
    },
    "ListTrustedTokenIssuers": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `list_trusted_token_issuers` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -108659,48 +107784,33 @@
     }
    },
    "PutApplicationAccessScope": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `put_application_access_scope` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "PutApplicationAssignmentConfiguration": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `put_application_assignment_configuration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "PutApplicationAuthenticationMethod": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `put_application_authentication_method` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -108718,16 +107828,11 @@
     }
    },
    "PutApplicationSessionConfiguration": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `put_application_session_configuration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -108745,32 +107850,22 @@
     }
    },
    "PutPermissionsBoundaryToPermissionSet": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `put_permissions_boundary_to_permission_set` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "RemoveRegion": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `remove_region` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -108799,16 +107894,11 @@
     }
    },
    "UpdateApplication": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `update_application` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -108826,16 +107916,11 @@
     }
    },
    "UpdateInstanceAccessControlAttributeConfiguration": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `update_instance_access_control_attribute_configuration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -108853,16 +107938,11 @@
     }
    },
    "UpdateTrustedTokenIssuer": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `update_trusted_token_issuer` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -113079,12 +112159,12 @@
    },
    "ListServiceNetworkVpcAssociations": {
     "absence": {
-     "class": "legacy_gap",
+     "class": "absent_no_handler",
      "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "genuine fork-present residual: moto implements it \u2014 fork handler moto/vpclattice/responses.py:223 list_service_network_vpc_associations; the twin resolves the route (rotocore/src/services/vpclattice.rs ROUTES) but arms no match arm, so the moto-style fall-through at vpclattice.rs:764 answers 501 \u2014 verified live 2026-10-24; needs the wave port",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `list_service_network_vpc_associations` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
      "status": "not_implemented"
     },
-    "bucket": "legacy_gap",
+    "bucket": "absent_no_handler",
     "conformance": null,
     "probe_message": "not implemented (501)",
     "probe_status": "not_implemented",

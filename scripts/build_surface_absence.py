@@ -100,9 +100,14 @@ OVERRIDES: dict[tuple[str, str], dict] = {
         "evidence": (
             "stale probe row: the twin arm serves the op — crates/s3/src/"
             'handler.rs:538 (`"PutObjectAcl" => self.put_object_acl(&req)`); '
-            "fork handler moto/s3/responses.py:2516 put_object_acl; live "
-            "twin answers 200 (verified 2026-10-24), so the probe 501 "
-            "predates the arm — probe sweep re-run pending"
+            "fork handler moto/s3/responses.py:2111 put_object_acl; fresh-"
+            "session verification answers 200 (verified 2026-10-24 and "
+            "re-verified 2026-10-25), while the fleet-sweep probe still "
+            "records an error envelope: after a PutObject probe on the "
+            "same botocore session the request resolves through the "
+            "empty-op catch-all at crates/s3/src/handler.rs:636 (400 "
+            "NotImplemented, 'The operation  is not implemented') — a "
+            "probe-client artifact, not twin absence"
         ),
     },
     ("s3", "UploadPartCopy"): {
@@ -111,9 +116,12 @@ OVERRIDES: dict[tuple[str, str], dict] = {
             "stale probe row: the twin copy machinery serves the op — "
             "crates/s3/src/handler.rs:1918 (PUT with uploadId and "
             "x-amz-copy-source routes to the copy path); fork handler "
-            "moto/s3/responses.py:2578 upload_part_copy; the live twin "
-            "answers a modeled NoSuchKey for copy semantics (verified "
-            "2026-10-24) — probe sweep re-run pending"
+            "moto/s3/responses.py:2578 upload_part_copy; fresh-session "
+            "verification answers 200 with CopyPartResult (verified "
+            "2026-10-24 and re-verified 2026-10-25), while the fleet sweep "
+            "reproduces the same single-session degradation the "
+            "PutObjectAcl row shows (400 NotImplemented via the empty-op "
+            "catch-all, handler.rs:636) — a probe artifact, not absence"
         ),
     },
     ("timestreaminfluxdb", "UntagResource"): {
@@ -124,18 +132,6 @@ OVERRIDES: dict[tuple[str, str], dict] = {
             "untag_resource; the twin has no arm (rotocore/src/services/"
             "timestreaminfluxdb.rs names no UntagResource deny) and "
             "answers 501 — verified live 2026-10-24; needs the wave port"
-        ),
-    },
-    ("vpclattice", "ListServiceNetworkVpcAssociations"): {
-        "class": "legacy_gap",
-        "evidence": (
-            "genuine fork-present residual: moto implements it — fork "
-            "handler moto/vpclattice/responses.py:223 "
-            "list_service_network_vpc_associations; the twin resolves the "
-            "route (rotocore/src/services/vpclattice.rs ROUTES) but arms "
-            "no match arm, so the moto-style fall-through at "
-            "vpclattice.rs:764 answers 501 — verified live 2026-10-24; "
-            "needs the wave port"
         ),
     },
 }
@@ -214,6 +210,55 @@ def _fn_span(lines: list[str], idx: int) -> tuple[int, int] | None:
     return (fn_start, len(lines) - 1)
 
 
+_ARM_HEAD = re.compile(r'^\s*(?:"(?:[^"\\]|\\.)*"|other\b|_\b)')
+_FALL_HEAD = re.compile(r"^\s*(?:other|_)\s*=>")
+ARM_DENY = r"not_implemented\(|NotImplemented|\.status\(501\)"
+
+
+def _arm_span(lines: list[str], idx: int) -> tuple[int, int] | None:
+    """Span (0-based, inclusive) of the match arm that opens on line idx
+    (a quoted-pattern or other/_ head); None otherwise.
+
+    A quoted head without `=>` may open a multi-line pipe pattern
+    (`"A"` newline `| "B" => …`), so the span scans on until the arm's
+    terminating comma — or a bare `}` for a comma-less last arm — at
+    balanced bracket depth, keeping a multi-line arm body inside the span.
+    """
+    if not _ARM_HEAD.match(lines[idx]):
+        return None
+    depth = 0
+    for i in range(idx, len(lines)):
+        row = lines[i]
+        depth += (
+            row.count("{") + row.count("[") + row.count("(")
+        ) - (row.count("}") + row.count("]") + row.count(")"))
+        if depth == 0 and (
+            row.rstrip().endswith(",") or (i > idx and row.rstrip() in ("}", "};"))
+        ):
+            return (idx, i)
+    return (idx, len(lines) - 1)
+
+
+def _arm_in_pattern(lines: list[str], span: tuple[int, int], idx: int) -> bool:
+    """Whether line idx lies in the pattern area of the arm `span` (at or
+    before the arm's first `=>` line)."""
+    for i in range(span[0], span[1] + 1):
+        if "=>" in lines[i]:
+            return span[0] <= idx <= i
+    return False
+
+
+def _enclosing_arm(lines: list[str], idx: int) -> tuple[int, int] | None:
+    """Match-arm span that contains line idx, whichever head opens it."""
+    i = idx
+    while i >= 0:
+        span = _arm_span(lines, i)
+        if span and span[0] <= idx <= span[1]:
+            return span
+        i -= 1
+    return None
+
+
 def deny_evidence(svc: str, op: str) -> str | None:
     """First deny-recording idiom the twin sources show for op, cited."""
     lit = f'"{op}"'
@@ -269,29 +314,49 @@ def deny_evidence(svc: str, op: str) -> str | None:
                     or "is_none()" in body
                 ):
                     return f"twin unit test pins the deny at {rel}:{ln}"
-            # D2 — arm context: a deny marker within the next 10 lines
-            window = "\n".join(lines[ln - 1 : ln + 9])
-            if re.search(r"not_implemented\(|NotImplemented|\.status\(501\)", window):
+            # D2 — arm context: deny only through the arm the op itself
+            # maps through: the literal sits in the enclosing arm's
+            # PATTERN area (single- or multi-pattern head; multi-line pipe
+            # patterns included), or inside the `other =>`/`_ =>`
+            # fall-through arm whose span carries the literal, and the deny
+            # marker occurs within that arm's span. A marker in a
+            # serving-arm *neighbor* — the match's fall-through or a
+            # sibling arm that begins after the literal's own serving arm
+            # has already answered — must not model the op as denied (the
+            # six directconnect wave-12 serving arms sit directly above the
+            # same match's fall-through).
+            span = None
+            outer = _enclosing_arm(lines, ln - 1)
+            if outer is not None and (
+                _arm_in_pattern(lines, outer, ln - 1) or _FALL_HEAD.match(lines[outer[0]])
+            ):
+                span = outer
+            if span is not None and re.search(
+                ARM_DENY, "\n".join(lines[span[0] : span[1] + 1])
+            ):
                 return f"twin deny arm at {rel}:{ln}"
     return None
 
 
+# The pinned moto fork checkout on this machine — the deployed fork identity
+# the FORK_ID citations name (docs/moto-parity-progress.md wave-2 ruling).
+# The legacy ~/.moto-venv site-packages copy is deliberately NOT consulted
+# any more: it has drifted ahead of the git pin (it already carries
+# vpclattice.list_service_network_vpc_associations, which the pinned fork
+# does not), so every runtime-truth question must resolve against the pin.
+PINNED_FORK = (
+    Path.home()
+    / ".cache/uv/git-v1/checkouts/eacacc220fef84f0/2016563fd/moto"
+)
+
+
 def fork_path() -> Path | None:
-    """Locate the moto fork checkout, when available on this machine."""
+    """Locate the pinned moto fork checkout, when available."""
     argv = sys.argv
     if "--fork" in argv:
         p = Path(argv[argv.index("--fork") + 1])
         return p if p.is_dir() else None
-    try:
-        import moto  # type: ignore
-
-        return Path(moto.__file__).parent
-    except Exception:
-        pass
-    for pat in sorted(Path.home().glob(".moto-venv/lib/python*/site-packages/moto")):
-        if pat.is_dir():
-            return pat
-    return None
+    return PINNED_FORK if PINNED_FORK.is_dir() else None
 
 
 def moto_module_dir(fork: Path | None, svc: str) -> Path | None:

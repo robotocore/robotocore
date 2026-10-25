@@ -1,11 +1,11 @@
 {
   "service": "fsx",
-  "generated_at": "2026-10-22T07:00:56.997183+00:00",
+  "generated_at": "2026-10-25T02:03:14.193770+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 30,
-    "needs_params": 5,
-    "not_implemented": 12,
+    "working": 44,
+    "needs_params": 0,
+    "not_implemented": 3,
     "500_error": 1,
     "timeout": 0
   },
@@ -17,23 +17,23 @@
     },
     {
       "operation": "CancelDataRepositoryTask",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DataRepositoryTaskNotFound: Data repository task 'probe-task-id-id' does not exist)"
     },
     {
       "operation": "CopyBackup",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (BackupNotFound: Backup 'probe-source-backup-id-id' does not exist.)"
     },
     {
       "operation": "CopySnapshotAndUpdateVolume",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "CreateAndAttachS3AccessPoint",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented via required-only (BadRequest)"
     },
     {
       "operation": "CreateBackup",
@@ -47,13 +47,13 @@
     },
     {
       "operation": "CreateDataRepositoryTask",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-file-system-id-id' does not exist.)"
     },
     {
       "operation": "CreateFileCache",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateFileSystem",
@@ -67,8 +67,8 @@
     },
     {
       "operation": "CreateSnapshot",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (VolumeNotFound: Volume 'fsvol-0123456789abcdef0' does not exist.)"
     },
     {
       "operation": "CreateStorageVirtualMachine",
@@ -97,8 +97,8 @@
     },
     {
       "operation": "DeleteFileCache",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (FileCacheNotFound: File cache 'probe-file-cache-id-id' does not exist)"
     },
     {
       "operation": "DeleteFileSystem",
@@ -117,8 +117,8 @@
     },
     {
       "operation": "DeleteVolume",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (VolumeNotFound: Volume 'fsvol-0123456789abcdef0' does not exist.)"
     },
     {
       "operation": "DescribeBackups",
@@ -133,7 +133,7 @@
     {
       "operation": "DescribeDataRepositoryTasks",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
     },
     {
       "operation": "DescribeFileCaches",
@@ -153,7 +153,7 @@
     {
       "operation": "DescribeS3AccessPointAttachments",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
     },
     {
       "operation": "DescribeSharedVpcConfiguration",
@@ -177,8 +177,8 @@
     },
     {
       "operation": "DetachAndDeleteS3AccessPoint",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (S3AccessPointAttachmentNotFound: No S3 access point attachment probe-test-value found)"
     },
     {
       "operation": "DisassociateFileSystemAliases",
@@ -192,18 +192,18 @@
     },
     {
       "operation": "ReleaseFileSystemNfsV3Locks",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-file-system-id-id' does not exist.)"
     },
     {
       "operation": "RestoreVolumeFromSnapshot",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "StartMisconfiguredStateRecovery",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-file-system-id-id' does not exist.)"
     },
     {
       "operation": "TagResource",
@@ -222,8 +222,8 @@
     },
     {
       "operation": "UpdateFileCache",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (FileCacheNotFound: File cache 'probe-file-cache-id-id' does not exist)"
     },
     {
       "operation": "UpdateFileSystem",
@@ -232,8 +232,8 @@
     },
     {
       "operation": "UpdateSharedVpcConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (BadRequest: Invalid value 'probe-test-value' for EnableFsxRouteTableUpda)"
     },
     {
       "operation": "UpdateSnapshot",
@@ -242,13 +242,13 @@
     },
     {
       "operation": "UpdateStorageVirtualMachine",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented via required-only (StorageVirtualMachineNotFound)"
     },
     {
       "operation": "UpdateVolume",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     }
   ]
 }
