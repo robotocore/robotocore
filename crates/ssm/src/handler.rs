@@ -360,6 +360,28 @@ impl SsmHandler {
                 "Invalid request: tags and overwrite can't be used together. To create a parameter with tags, please remove overwrite flag. To update tags for an existing parameter, please use AddTagsToResource or RemoveTagsFromResource.");
         }
 
+        // moto: reject reserved parameter namespaces ("aws"/"ssm" prefixes,
+        // case-insensitive). Mirrors models.py put_parameter.
+        let lower_name = raw_name.to_lowercase();
+        let stripped = lower_name.trim_start_matches('/');
+        if stripped.starts_with("aws") || stripped.starts_with("ssm") {
+            let is_path = raw_name.matches('/').count() > 1;
+            if lower_name.starts_with("/aws") && is_path {
+                return AwsResponse::error(
+                    400,
+                    "AccessDeniedException",
+                    &format!("No access to reserved parameter name: {raw_name}."),
+                );
+            }
+            if !is_path {
+                return err_validation(
+                    "Parameter name: can't be prefixed with \"aws\" or \"ssm\" (case-insensitive).",
+                );
+            }
+            return err_validation(
+                "Parameter name: can't be prefixed with \"ssm\" (case-insensitive). If formed as a path, it can consist of sub-paths divided by slash symbol; each sub-path can be formed as a mix of letters, numbers and the following 3 symbols .-_");
+        }
+
         if let Some(existing) = state.get_parameter(&name) {
             if !overwrite {
                 return AwsResponse::error(
@@ -5086,6 +5108,63 @@ mod tests {
             body(&resp)["__type"].as_str().unwrap_or("").to_string(),
             body(&resp)["message"].as_str().unwrap_or("").to_string(),
         )
+    }
+
+    #[test]
+    fn test_put_parameter_reserved_names() {
+        let handler = SsmHandler::default();
+
+        // Bare names with an aws/ssm prefix (case-insensitive) are rejected.
+        for name in ["aws-x", "AWSx", "ssmY", "ssm-1", "aws", "ssm"] {
+            let resp = handler.handle(make_req(
+                "PutParameter",
+                json!({ "Name": name, "Value": "v", "Type": "String" }),
+            ));
+            let (code, message) = error_of(resp);
+            assert_eq!(code, "ValidationException", "bare name {name}");
+            assert_eq!(
+                message,
+                "Parameter name: can't be prefixed with \"aws\" or \"ssm\" (case-insensitive).",
+                "bare name {name}"
+            );
+        }
+
+        // Paths under /aws (case-insensitive) answer AccessDeniedException.
+        for name in ["/aws/x", "/AWS/x"] {
+            let resp = SsmHandler::default().handle(make_req(
+                "PutParameter",
+                json!({ "Name": name, "Value": "v", "Type": "String" }),
+            ));
+            let (code, message) = error_of(resp);
+            assert_eq!(code, "AccessDeniedException", "reserved path {name}");
+            assert_eq!(
+                message,
+                format!("No access to reserved parameter name: {name}.")
+            );
+        }
+
+        // Path forms starting with ssm use the long sub-path error.
+        for name in ["ssm/a/b", "Ssm/x/y"] {
+            let resp = SsmHandler::default().handle(make_req(
+                "PutParameter",
+                json!({ "Name": name, "Value": "v", "Type": "String" }),
+            ));
+            let (code, message) = error_of(resp);
+            assert_eq!(code, "ValidationException", "ssm path {name}");
+            assert_eq!(
+                message,
+                "Parameter name: can't be prefixed with \"ssm\" (case-insensitive). If formed as a path, it can consist of sub-paths divided by slash symbol; each sub-path can be formed as a mix of letters, numbers and the following 3 symbols .-_"
+            );
+        }
+
+        // Names that merely CONTAIN aws/ssm as a sub-path are fine.
+        for name in ["/o/aws/x", "/o/ssm", "/ohm/x"] {
+            let resp = SsmHandler::default().handle(make_req(
+                "PutParameter",
+                json!({ "Name": name, "Value": "v", "Type": "String" }),
+            ));
+            assert_eq!(resp.status, 200, "allowed name {name}: {}", body(&resp));
+        }
     }
 
     #[test]
