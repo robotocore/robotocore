@@ -143,25 +143,49 @@ fn insert_nested(cur: &mut Value, parts: &[&str], value: Value) {
     }
 }
 
-/// Apply ResultPath semantics: merge the state output into the state input.
+/// Apply ResultPath semantics exactly like the Python era's
+/// `_apply_result_path(original, result, result_path)`:
+///
+/// ```python
+/// if result_path is None:
+///     return original  # Discard result
+/// if result_path == "$":
+///     return result  # Replace entirely
+/// if not result_path.startswith("$."):
+///     return result
+/// # Set nested path
+/// output = copy.deepcopy(original) if isinstance(original, dict) else {}
+/// ```
+///
+/// So `ResultPath: null` keeps the input (the result is thrown away), `"$"`
+/// replaces the input entirely (no merging!), and a nested path inserts the
+/// result into a copy of the input.
 fn apply_result_path(path: Option<&str>, input: &Value, state_out: Value) -> Value {
     match path {
-        None => state_out,
-        Some("$") => {
-            let mut merged = input.clone();
-            if let (Some(dst), Some(src)) = (merged.as_object_mut(), state_out.as_object()) {
-                for (k, v) in src {
-                    dst.insert(k.clone(), v.clone());
-                }
-            }
-            merged
-        }
+        None => input.clone(),
+        Some("$") => state_out,
         Some(p) if p.starts_with("$.") => {
-            let mut merged = input.clone();
+            let mut merged = if input.is_object() {
+                input.clone()
+            } else {
+                json!({})
+            };
             insert_at_path(&mut merged, p, state_out);
             merged
         }
         Some(_) => state_out,
+    }
+}
+
+/// Normalise the state's ResultPath member to the era `state_def.get(
+/// "ResultPath", "$")` shape: absent (or non-string) falls back to `"$"`,
+/// an explicit `null` becomes `None` (which discards the result).
+fn result_path_spec(obj: &Map<String, Value>) -> Option<&str> {
+    match obj.get("ResultPath") {
+        None => Some("$"),
+        Some(Value::String(s)) => Some(s.as_str()),
+        Some(Value::Null) => None,
+        Some(_) => Some("$"),
     }
 }
 
@@ -485,11 +509,8 @@ pub fn run_flow(
                         outputs.push(out);
                     }
                 }
-                let merged = apply_result_path(
-                    obj.get("ResultPath").and_then(|p| p.as_str()),
-                    &input,
-                    Value::Array(outputs),
-                );
+                let merged =
+                    apply_result_path(result_path_spec(&obj), &input, Value::Array(outputs));
                 ctx.emit_exited("Parallel", &name, &merged);
                 if is_end || next_state.is_none() {
                     return Ok(merged);
@@ -511,11 +532,8 @@ pub fn run_flow(
                         }
                     }
                 }
-                let merged = apply_result_path(
-                    obj.get("ResultPath").and_then(|p| p.as_str()),
-                    &input,
-                    Value::Array(outputs),
-                );
+                let merged =
+                    apply_result_path(result_path_spec(&obj), &input, Value::Array(outputs));
                 ctx.emit_exited("Map", &name, &merged);
                 if is_end || next_state.is_none() {
                     return Ok(merged);
@@ -550,11 +568,7 @@ pub fn run_flow(
                         None => input.clone(),
                     }
                 };
-                let merged = apply_result_path(
-                    obj.get("ResultPath").and_then(|p| p.as_str()),
-                    &input,
-                    raw_out,
-                );
+                let merged = apply_result_path(result_path_spec(&obj), &input, raw_out);
                 ctx.emit_exited("Task", &name, &merged);
                 if is_end || next_state.is_none() {
                     return Ok(merged);
@@ -571,11 +585,7 @@ pub fn run_flow(
                     } else {
                         input.clone()
                     };
-                let merged = apply_result_path(
-                    obj.get("ResultPath").and_then(|p| p.as_str()),
-                    &input,
-                    processed,
-                );
+                let merged = apply_result_path(result_path_spec(&obj), &input, processed);
                 let merged =
                     apply_output_path(obj.get("OutputPath").and_then(|p| p.as_str()), merged);
                 ctx.emit_exited(&state_type, &name, &merged);
@@ -669,5 +679,30 @@ mod tests {
             &input,
             false
         ));
+    }
+
+    #[test]
+    fn test_result_path_discard_replace_and_merge() {
+        let input = json!({"original": "data", "flag": true});
+        // ResultPath "$" — the result replaces the input entirely and keys
+        // from the input do NOT leak through (era `_apply_result_path`).
+        let replaced = apply_result_path(Some("$"), &input, json!({"completed": true}));
+        assert_eq!(replaced, json!({"completed": true}));
+        // ResultPath null (None) — input passes through untouched.
+        let discarded = apply_result_path(None, &input, json!({"ignored": 1}));
+        assert_eq!(discarded, input);
+        // Nested path merges into a copy of the input.
+        let merged = apply_result_path(Some("$.extra"), &input, json!({"added": true}));
+        assert_eq!(
+            merged,
+            json!({"original": "data", "flag": true, "extra": {"added": true}})
+        );
+        // Non-object input is started from a fresh object (era: not a dict
+        // -> {}).
+        let from_scalar = apply_result_path(Some("$.x"), &json!("scalar"), json!(7));
+        assert_eq!(from_scalar, json!({"x": 7}));
+        // Non-`$`-prefixed path falls back to replacing with the result.
+        let other = apply_result_path(Some("weird"), &input, json!(1));
+        assert_eq!(other, json!(1));
     }
 }
