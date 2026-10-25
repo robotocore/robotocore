@@ -3,14 +3,15 @@
 pub fn lambda_rest_ops() -> &'static [(&'static str, &'static str, &'static str)] {
     &[
         (
+            "POST",
+            "/2015-03-31/functions/{FunctionName}/invocations",
+            "Invoke",
+        ),
+        ("POST", "/2015-03-31/functions/{FunctionName}/invoke-async/", "InvokeAsync"),
+        (
             "GET",
             "/2015-03-31/functions/{FunctionName}/configuration",
             "GetFunctionConfiguration",
-        ),
-        (
-            "POST",
-            "/2015-03-31/functions/{FunctionName}/invoke-async/",
-            "InvokeAsync",
         ),
         (
             "PUT",
@@ -50,6 +51,23 @@ pub fn lambda_rest_ops() -> &'static [(&'static str, &'static str, &'static str)
         ),
         ("GET", "/2015-03-31/functions/", "ListFunctions"),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `POST …/functions/{FunctionName}/invocations` names the `Invoke`
+    /// operation through the gateway's spec-table resolver (the inline path
+    /// resolver in crates/lambda also maps it; the table row keeps the audit
+    /// and introspection naming aligned for requests resolved here).
+    #[test]
+    fn invoke_row_resolves_for_post_invocations() {
+        let row = lambda_rest_ops()
+            .iter()
+            .find(|(m, u, _)| *m == "POST" && *u == "/2015-03-31/functions/{FunctionName}/invocations");
+        assert_eq!(row.map(|r| r.2), Some("Invoke"));
+    }
 }
 
 pub fn s3_rest_ops() -> &'static [(&'static str, &'static str, &'static str)] {
