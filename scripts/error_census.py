@@ -43,10 +43,32 @@ ENDPOINT = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
 MANIFEST = ROOT / "tooling" / "surface-absence.json"
 
 
+
+# Manifest keys use the twin's registry names; botocore's client names
+# differ for fourteen of them. Without this map the census silently skips
+# those rows — a census with silent gaps defeats itself.
+BOTOCORE_NAME_MAP = {
+    "acmpca": "acm-pca",
+    "applicationautoscaling": "application-autoscaling",
+    "cognitoidentity": "cognito-identity",
+    "emrcontainers": "emr-containers",
+    "emrserverless": "emr-serverless",
+    "rdsdata": "rds-data",
+    "redshiftdata": "redshift-data",
+    "servicecatalogappregistry": "servicecatalog-appregistry",
+    "ssoadmin": "sso-admin",
+    "timestreaminfluxdb": "timestream-influxdb",
+    "timestreamquery": "timestream-query",
+    "timestreamwrite": "timestream-write",
+    "vpclattice": "vpc-lattice",
+    "workspacesweb": "workspaces-web",
+}
+
+
 def make_client(service: str):
     """Same client recipe the probe runner uses for every service."""
     return boto3.client(
-        service,
+        BOTOCORE_NAME_MAP.get(service, service),
         endpoint_url=ENDPOINT,
         region_name="us-east-1",
         aws_access_key_id="999999999999",

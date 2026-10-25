@@ -212,11 +212,11 @@ mod tests {
 
     #[test]
     fn tick_fires_due_scheduled_rules_with_the_scheduled_event() {
-        let arn = "arn:aws:ecs:us-east-1:123456789012:cluster/fp5-sched-target";
+        let arn = "arn:aws:ecs-fp5-probe:us-east-1:123456789012:cluster/fp5-sched-target";
         // Recording hook: the re-registration is harmless (in-process tests
         // and the gateway never register this kind differently).
         crate::register_hook(
-            "ecs",
+            "ecs-fp5-probe",
             Arc::new(|arn: &str, payload: &str, _a: u64, _r: &str| {
                 probe_log().lock().push(format!("{arn}|{payload}"));
                 Ok(())

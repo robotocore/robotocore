@@ -107,6 +107,19 @@ impl ParsedResponse {
     }
 }
 
+/// Nibble table for the percent-decoder (avoids slicing the input as
+/// `&str`, which panics when `%` is followed by a multi-byte character —
+/// the form parser walks byte offsets, and `input[i+1..i+3]` can land
+/// inside a codepoint).
+fn hex_val(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}
+
 /// Percent-decode one `application/x-www-form-urlencoded` token: `%XX`
 /// escapes plus `+` meaning space, in a single pass so a literal plus
 /// (encoded as `%2B`) survives and a raw `+` becomes a space.
@@ -120,14 +133,15 @@ fn decode_form_value(input: &str) -> Result<String, Box<dyn std::error::Error>> 
                 out.push(b' ');
                 i += 1;
             }
-            b'%' if i + 2 < bytes.len() + 1 && i + 2 < bytes.len() => {
-                let hex = &input[i + 1..i + 3];
-                match u8::from_str_radix(hex, 16) {
-                    Ok(v) => {
-                        out.push(v);
+            b'%' if i + 2 < bytes.len() => {
+                match (hex_val(bytes[i + 1]), hex_val(bytes[i + 2])) {
+                    (Some(hi), Some(lo)) => {
+                        out.push(hi << 4 | lo);
                         i += 3;
                     }
-                    Err(_) => {
+                    // Not a valid escape: keep the literal '%' — the raw
+                    // bytes survive per token like the python decoder.
+                    _ => {
                         out.push(b'%');
                         i += 1;
                     }
@@ -423,6 +437,35 @@ fn segments_match(spec: &str, req: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_percent_decode_survives_multibyte_after_percent() {
+        // The fuzzer's crash case: `%` directly followed by a multi-byte
+        // character must not panic (decode walks byte offsets; the old
+        // implementation sliced the buffer as &str and landed mid-codepoint).
+        // Live payload from the fuzz lane: Action=ListQueues&x=%\xE6\x97\xA5x.
+        // The raw bytes survive token-transparently, no panic.
+        let v = decode_form_value("%\u{65e5}x").unwrap();
+        assert_eq!(v, "%\u{65e5}x");
+    }
+
+    #[test]
+    fn test_percent_decode_invalid_escape_keeps_literal() {
+        // `%zz` is not a valid escape: both literal bytes survive.
+        let v = decode_form_value("%zz").unwrap();
+        assert_eq!(v, "%zz");
+        // `%2B` still decodes to the byte 0x2B ('+'), and a raw plus to space.
+        assert_eq!(decode_form_value("a%2Bb+%2B").unwrap(), "a+b +");
+    }
+
+    #[test]
+    fn test_percent_decode_truncated_escape_at_end() {
+        // The classic tail cases: '%' or '%A' at end-of-body stay literal.
+        let v = decode_form_value("x%").unwrap();
+        assert_eq!(v, "x%");
+        let v = decode_form_value("x%A").unwrap();
+        assert_eq!(v, "x%A");
+    }
 
     #[test]
     fn test_parse_query_protocol() {

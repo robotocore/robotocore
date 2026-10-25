@@ -44,6 +44,12 @@ fn arn_service_kind(arn: &str) -> &'static str {
         "inspector" => "inspector",
         "codebuild" => "codebuild",
         "codepipeline" => "codepipeline",
+        // Test-only probe kinds (suite isolation): the scheduler and the
+        // handler DLQ suites register differently-behaving hooks on these
+        // kinds, and the hook map is last-write-wins — sharing "ecs" made
+        // the suites' outcomes order-dependent.
+        "ecs-fp5-probe" => "ecs-fp5-probe",
+        "ecs-fp6-dlq" => "ecs-fp6-dlq",
         _ => "unknown",
     }
 }
@@ -1782,6 +1788,21 @@ mod tests {
             .collect()
     }
 
+    /// DLQ deliveries race the drain: the target dispatch may land its
+    /// record after the first drain ran (async hook spawn on the dispatch
+    /// thread). Poll the bridge briefly so a landed-but-not-yet-flushed
+    /// delivery is observed deterministically instead of flaking.
+    fn drain_bridge_queue_until(name: &str, want_len: usize) -> Vec<Value> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            let got = drain_bridge_queue(name);
+            if got.len() >= want_len || std::time::Instant::now() > deadline {
+                return got;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
     fn put_failing_lambda_rule(
         handler: &EventsHandler,
         rule: &str,
@@ -1794,7 +1815,7 @@ mod tests {
         // plainly failing hook kind instead so the DLQ path is exercised.
         // Re-registering is harmless: every caller installs the same hook.
         crate::register_hook(
-            "ecs",
+            "ecs-fp6-dlq",
             std::sync::Arc::new(|_arn: &str, _p: &str, _a: u64, _r: &str| {
                 Err("hook delivery failed".to_string())
             }),
@@ -1810,7 +1831,7 @@ mod tests {
         handler.handle(make_req("PutRule", rule_params));
         let target = json!({
             "Id": "t1",
-            "Arn": "arn:aws:ecs:us-east-1:123456789012:task/fp6-target",
+            "Arn": "arn:aws:ecs-fp6-dlq:us-east-1:123456789012:task/fp6-target",
         });
         let target = if rule_dlq {
             target
@@ -1841,7 +1862,7 @@ mod tests {
         let rule = "fp6-err-rule";
         let queue = "fp6-err-dlq";
         put_failing_lambda_rule(&handler, rule, queue, false);
-        let records = drain_bridge_queue(queue);
+        let records = drain_bridge_queue_until(queue, 1);
         assert_eq!(
             records.len(),
             1,
@@ -1868,7 +1889,7 @@ mod tests {
         let rule = "fp6-rule-dlq-rule";
         let queue = "fp6-rule-dlq";
         put_failing_lambda_rule(&handler, rule, queue, true);
-        let records = drain_bridge_queue(queue);
+        let records = drain_bridge_queue_until(queue, 1);
         assert_eq!(
             records.len(),
             1,
