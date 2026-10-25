@@ -7,7 +7,7 @@
 
 use crate::handler::{global_state, EventsHandler};
 use crate::models::Rule;
-use serde_json::{json, Value};
+use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -161,6 +161,7 @@ mod tests {
     use super::*;
     use crate::handler::EventsHandler;
     use crate::protocol::AwsRequest;
+    use serde_json::Value;
 
     fn make_req(operation: &str, params: Value) -> AwsRequest {
         AwsRequest {

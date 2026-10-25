@@ -1086,11 +1086,11 @@ fn filter_match_leaf(pattern: &Value, target: &Value) -> bool {
             // anything-but) plus era's equality fallbacks: string patterns
             // match numeric fields ("42" == 42) and bare object elements
             // compare for equality.
+            let target_repr = target.to_string();
             events::pattern::list_match(list, target)
                 || list.iter().any(|pv| {
                     (pv.as_object().is_some() && pv == target)
-                        || (target.as_f64().is_some()
-                            && pv.as_str().is_some_and(|s| s == target.to_string()))
+                        || (target.as_f64().is_some() && pv.as_str() == Some(target_repr.as_str()))
                 })
         }
         (Value::Object(_), Value::Object(_)) => filter_match(pattern, target),
@@ -1416,10 +1416,12 @@ mod tests {
     fn poll_guard_survives_a_panicking_cycle() {
         // A panic inside a poll cycle is contained: the engine loop keeps
         // running on the next tick instead of dying with the thread.
-        let mut ran_after = false;
+        let mut cycles = 0;
         poll_guarded(|| panic!("engine poll boom"));
-        ran_after = true;
-        assert!(ran_after, "execution must continue past the guarded poll");
+        cycles += 1;
+        poll_guarded(|| ());
+        cycles += 1;
+        assert_eq!(cycles, 2, "execution continues past a panicking poll");
         let escaped = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             poll_guarded(|| panic!("guarded"));
         }))
