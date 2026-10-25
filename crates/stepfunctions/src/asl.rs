@@ -275,15 +275,67 @@ fn build_context(name: &str, ctx: &Ctx) -> Value {
     })
 }
 
-fn compare_numeric(
-    resolved: &Value,
-    expected: &Value,
-    f: impl Fn(f64, f64) -> bool,
-) -> Option<bool> {
-    match (resolved.as_f64(), expected.as_f64()) {
-        (Some(a), Some(b)) => Some(f(a, b)),
-        _ => Some(false),
+/// Numeric compare with era's guard (`isinstance(value, (int, float)) and
+/// ...`): both operands must be numeric, any other type fails the rule.
+fn numeric_cmp(value: &Value, expected: &Value, f: impl Fn(f64, f64) -> bool) -> bool {
+    match (value.as_f64(), expected.as_f64()) {
+        (Some(a), Some(b)) => f(a, b),
+        _ => false,
     }
+}
+
+/// String compare guarding the value type like era `isinstance(value, str)
+/// and value > rule[...]`.
+fn string_cmp(value: &Value, expected: &Value, f: impl Fn(&str, &str) -> bool) -> bool {
+    match (value.as_str(), expected.as_str()) {
+        (Some(a), Some(b)) => f(a, b),
+        _ => false,
+    }
+}
+
+/// Bool expectations hold the negation/affirmation flag for the Is* family.
+fn is_flag(expected: &Value) -> bool {
+    expected.as_bool().unwrap_or(false)
+}
+
+/// Era `_evaluate_choice_rule` comparator ladder, in the era source's own
+/// order: each rule is evaluated by the FIRST operator it carries.
+const CHOICE_COMPARATORS: &[&str] = &[
+    "StringEquals",
+    "StringEqualsPath",
+    "StringGreaterThan",
+    "StringLessThan",
+    "StringMatches",
+    "NumericEquals",
+    "NumericGreaterThan",
+    "NumericGreaterThanEquals",
+    "NumericLessThan",
+    "NumericLessThanEquals",
+    "BooleanEquals",
+    "IsPresent",
+    "IsNull",
+    "IsString",
+    "IsNumeric",
+    "IsBoolean",
+    "IsTimestamp",
+    "StringLessThanEquals",
+    "StringGreaterThanEquals",
+    "TimestampEquals",
+    "TimestampGreaterThan",
+    "TimestampGreaterThanEquals",
+    "TimestampLessThan",
+    "TimestampLessThanEquals",
+    "NumericEqualsPath",
+    "NumericGreaterThanPath",
+    "NumericLessThanPath",
+];
+
+/// Resolve a Choice rule path the era way: `_resolve_path` returns None for
+/// a missing path and for a null leaf alike, so both land as JSON null.
+fn choice_value(path: &str, input: &Value) -> Value {
+    resolve_json_path(path, input)
+        .filter(|v| !v.is_null())
+        .unwrap_or(Value::Null)
 }
 
 /// Evaluate one Choice rule; returns true when it matches. Only top-level
@@ -308,62 +360,172 @@ fn eval_choice(rule: &Value, input: &Value, top_level: bool) -> bool {
         }
     }
 
-    if let Some(variable) = obj.get("Variable").and_then(|v| v.as_str()) {
-        let resolved = resolve_json_path(variable, input).unwrap_or(Value::Null);
-        for (op, expected) in obj.iter() {
-            let matched = match op.as_str() {
-                "NumericEquals" => {
-                    let a = resolved.as_f64().unwrap_or(f64::NAN);
-                    let b = expected.as_f64().unwrap_or(f64::NAN);
-                    Some(a == b)
-                }
-                "NumericGreaterThan" => compare_numeric(&resolved, expected, |a, b| a > b),
-                "NumericGreaterThanEquals" => compare_numeric(&resolved, expected, |a, b| a >= b),
-                "NumericLessThan" => compare_numeric(&resolved, expected, |a, b| a < b),
-                "NumericLessThanEquals" => compare_numeric(&resolved, expected, |a, b| a <= b),
-                "StringEquals" => {
-                    let a = resolved.as_str();
-                    let b = expected.as_str();
-                    a.zip(b).map(|(x, y)| x == y).or(Some(false))
-                }
-                "BooleanEquals" => resolved
-                    .as_bool()
-                    .zip(expected.as_bool())
-                    .map(|(x, y)| x == y)
-                    .or(Some(false)),
-                "IsNull" => {
-                    let expect_is_null = expected.as_bool().unwrap_or(false);
-                    let is_null = resolved.is_null();
-                    Some(is_null == expect_is_null)
-                }
-                "IsString" | "IsNumeric" | "IsBoolean" | "IsArray" | "IsObject" => None,
-                "IsPresent" => {
-                    // A json pointer missing from input resolved to Null above;
-                    // real presence is tracked by the caller-provided value.
-                    let present = resolve_json_path(variable, input).is_some();
-                    Some(present == expected.as_bool().unwrap_or(false))
-                }
-                _ => None,
-            };
-            if Some(false) == matched {
-                return false;
-            }
+    // Era: `variable = rule.get("Variable", "$"); value = _resolve_path(data,
+    // variable)` — one comparator per rule, picked by the ladder above.
+    let Some(op) = CHOICE_COMPARATORS.iter().find(|op| obj.contains_key(**op)) else {
+        return if top_level {
+            obj.get("Next").is_some()
+        } else {
+            true
+        };
+    };
+    let expected = &obj[*op];
+    let variable = obj.get("Variable").and_then(|v| v.as_str()).unwrap_or("$");
+    let value = choice_value(variable, input);
+    let matched = match *op {
+        "StringEquals" => value == *expected,
+        "StringEqualsPath" => expected
+            .as_str()
+            .map(|p| {
+                let other = choice_value(p, input);
+                value == other
+            })
+            .unwrap_or(false),
+        "StringGreaterThan" => string_cmp(&value, expected, |a, b| a > b),
+        "StringLessThan" => string_cmp(&value, expected, |a, b| a < b),
+        "StringGreaterThanEquals" => string_cmp(&value, expected, |a, b| a >= b),
+        "StringLessThanEquals" => string_cmp(&value, expected, |a, b| a <= b),
+        "StringMatches" => value
+            .as_str()
+            .zip(expected.as_str())
+            .map(|(v, pattern)| fnmatch(v, pattern))
+            .unwrap_or(false),
+        "NumericEquals" => numeric_cmp(&value, expected, |a, b| a == b),
+        "NumericGreaterThan" => numeric_cmp(&value, expected, |a, b| a > b),
+        "NumericGreaterThanEquals" => numeric_cmp(&value, expected, |a, b| a >= b),
+        "NumericLessThan" => numeric_cmp(&value, expected, |a, b| a < b),
+        "NumericLessThanEquals" => numeric_cmp(&value, expected, |a, b| a <= b),
+        "BooleanEquals" => value
+            .as_bool()
+            .zip(expected.as_bool())
+            .map(|(a, b)| a == b)
+            .unwrap_or(false),
+        "IsPresent" => (!value.is_null()) == is_flag(expected),
+        "IsNull" => value.is_null() == is_flag(expected),
+        "IsString" => value.is_string() == is_flag(expected),
+        "IsNumeric" => value.is_number() == is_flag(expected),
+        "IsBoolean" => value.is_boolean() == is_flag(expected),
+        "IsTimestamp" => value.as_str().map(is_iso_timestamp).unwrap_or(false) == is_flag(expected),
+        // Era timestamp comparisons are plain lexicographic string compares.
+        "TimestampEquals" => string_cmp(&value, expected, |a, b| a == b),
+        "TimestampGreaterThan" => string_cmp(&value, expected, |a, b| a > b),
+        "TimestampGreaterThanEquals" => string_cmp(&value, expected, |a, b| a >= b),
+        "TimestampLessThan" => string_cmp(&value, expected, |a, b| a < b),
+        "TimestampLessThanEquals" => string_cmp(&value, expected, |a, b| a <= b),
+        "NumericEqualsPath" => expected
+            .as_str()
+            .map(|p| numeric_cmp(&value, &choice_value(p, input), |a, b| a == b))
+            .unwrap_or(false),
+        "NumericGreaterThanPath" => expected
+            .as_str()
+            .map(|p| numeric_cmp(&value, &choice_value(p, input), |a, b| a > b))
+            .unwrap_or(false),
+        "NumericLessThanPath" => expected
+            .as_str()
+            .map(|p| numeric_cmp(&value, &choice_value(p, input), |a, b| a < b))
+            .unwrap_or(false),
+        other => {
+            debug_assert!(!CHOICE_COMPARATORS.contains(&other));
+            false
         }
-    } else if !(obj.contains_key("And")
-        || obj.contains_key("Or")
-        || obj.contains_key("Not")
-        || obj.get("Next").is_some())
+    };
+
+    // A rule matches when its comparators held; nested rules have no Next of
+    // their own (the surrounding And/Or/Not uses their result), while a
+    // top-level rule still needs its Next target to route to.
+    if !top_level {
+        return matched;
+    }
+    matched && obj.get("Next").is_some()
+}
+
+/// fnmatch (the repo-runs-on-POSIX form of `fnmatch.fnmatch`): `*`, `?` and
+/// `[...]` classes with `!` negation, `]` as a first member literal.
+fn fnmatch(text: &str, pattern: &str) -> bool {
+    fn inner(t: &[u8], p: &[u8]) -> bool {
+        if p.is_empty() {
+            return t.is_empty();
+        }
+        match p[0] {
+            b'*' => (0..=t.len()).any(|i| inner(&t[i..], &p[1..])),
+            b'?' => !t.is_empty() && inner(&t[1..], &p[1..]),
+            b'[' => {
+                if t.is_empty() {
+                    return false;
+                }
+                let c = t[0];
+                let mut i = 1;
+                let negated = if i < p.len() && (p[i] == b'!' || p[i] == b'^') {
+                    i += 1;
+                    true
+                } else {
+                    false
+                };
+                // A leading `]` in the class is a literal member.
+                let mut j = if i < p.len() && p[i] == b']' {
+                    i + 1
+                } else {
+                    i
+                };
+                while j < p.len() && p[j] != b']' {
+                    j += 1;
+                }
+                if j >= p.len() {
+                    // Unterminated class: fnmatch treats `[` literally.
+                    return c == b'[' && inner(&t[1..], &p[1..]);
+                }
+                let members = &p[i..j];
+                if members.contains(&c) != negated {
+                    inner(&t[1..], &p[j + 1..])
+                } else {
+                    false
+                }
+            }
+            c => !t.is_empty() && t[0] == c && inner(&t[1..], &p[1..]),
+        }
+    }
+    inner(text.as_bytes(), pattern.as_bytes())
+}
+
+/// Era `_is_iso_timestamp`:
+/// `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$`.
+fn is_iso_timestamp(value: &str) -> bool {
+    let b = value.as_bytes();
+    let digits = |i: usize, n: usize| b[i..i + n].iter().all(|c| c.is_ascii_digit());
+    if b.len() < 20
+        || !digits(0, 4)
+        || b[4] != b'-'
+        || !digits(5, 2)
+        || b[7] != b'-'
+        || !digits(8, 2)
+        || b[10] != b'T'
+        || !digits(11, 2)
+        || b[13] != b':'
+        || !digits(14, 2)
+        || b[16] != b':'
+        || !digits(17, 2)
     {
         return false;
     }
-
-    // A rule matches when all its comparators held and it points somewhere.
-    // Nested rules have no Next of their own: they match once the comparators
-    // held (the surrounding And/Or/Not uses their result).
-    if !top_level {
-        return true;
+    let mut i = 19;
+    if i < b.len() && b[i] == b'.' {
+        let start = i + 1;
+        while i + 1 < b.len() && b[i + 1].is_ascii_digit() {
+            i += 1;
+        }
+        if i + 1 == start {
+            return false;
+        }
+        i += 1;
     }
-    obj.get("Next").and_then(|n| n.as_str()).is_some()
+    if i < b.len() && b[i] == b'Z' {
+        return i + 1 == b.len();
+    }
+    i + 6 == b.len()
+        && (b[i] == b'+' || b[i] == b'-')
+        && digits(i + 1, 2)
+        && b[i + 3] == b':'
+        && digits(i + 4, 2)
 }
 
 fn wait_seconds(obj: &Map<String, Value>, input: &Value) -> f64 {
@@ -1500,5 +1662,261 @@ mod tests {
         assert_eq!(out, json!([{"echo": true}, {"echo": true}]), "got {out}");
         let out = run(&def, json!({"items": []})).expect("empty map");
         assert_eq!(out, json!([]), "got {out}");
+    }
+
+    // ---- Choice operator set expansion (era `_evaluate_choice_rule`
+    // comparator ladder) ----
+
+    /// Build a bare comparator rule (no Next), like a nested And/Or/Not leaf.
+    fn comparator_rule(variable: &str, op: &str, expected: Value) -> Value {
+        let mut obj = Map::new();
+        obj.insert("Variable".to_string(), json!(variable));
+        obj.insert(op.to_string(), expected);
+        Value::Object(obj)
+    }
+
+    #[test]
+    fn test_choice_string_comparators() {
+        let input = json!({"a": "apple", "b": "banana"});
+        let b = "banana";
+        // Strict comparators exclude the equal boundary; the *_Equals forms
+        // include it.
+        assert!(eval_choice(
+            &comparator_rule("$.b", "StringGreaterThan", json!("apple")),
+            &input,
+            false
+        ));
+        assert!(eval_choice(
+            &comparator_rule("$.b", "StringGreaterThanEquals", json!("banana")),
+            &input,
+            false
+        ));
+        assert!(!eval_choice(
+            &comparator_rule("$.b", "StringGreaterThan", json!("banana")),
+            &input,
+            false
+        ));
+        assert!(!eval_choice(
+            &comparator_rule("$.a", "StringLessThan", json!("apple")),
+            &input,
+            false
+        ));
+        assert!(eval_choice(
+            &comparator_rule("$.a", "StringLessThanEquals", json!("banana")),
+            &input,
+            false
+        ));
+        let _ = b;
+        // Equality against a full string.
+        assert!(eval_choice(
+            &comparator_rule("$.a", "StringEquals", json!("apple")),
+            &input,
+            false
+        ));
+        // StringEqualsPath compares two resolved values: $.a ("apple")
+        // against $.a is equal; $.a against $.b ("banana") is not.
+        assert!(eval_choice(
+            &comparator_rule("$.a", "StringEqualsPath", json!("$.a")),
+            &input,
+            false
+        ));
+        // A missing path resolves to null, which is not equal to "apple".
+        assert!(!eval_choice(
+            &comparator_rule("$.a", "StringEqualsPath", json!("$.missing")),
+            &input,
+            false
+        ));
+        // StringMatches (fnmatch): stars, ?, classes, negation.
+        assert!(eval_choice(
+            &comparator_rule("$.a", "StringMatches", json!("app*")),
+            &input,
+            false
+        ));
+        assert!(eval_choice(
+            &comparator_rule("$.a", "StringMatches", json!("?????")),
+            &input,
+            false
+        ));
+        assert!(eval_choice(
+            &comparator_rule("$.a", "StringMatches", json!("[ab]pple")),
+            &input,
+            false
+        ));
+        assert!(eval_choice(
+            &comparator_rule("$.a", "StringMatches", json!("[!bc]pple")),
+            &input,
+            false
+        ));
+        assert!(!eval_choice(
+            &comparator_rule("$.a", "StringMatches", json!("banana")),
+            &input,
+            false
+        ));
+        // The numeric-on-string type guard lives in
+        // test_choice_numeric_and_path_comparators.
+    }
+
+    #[test]
+    fn test_choice_numeric_and_path_comparators() {
+        let input = json!({"n": 5, "m": 7});
+        assert!(eval_choice(
+            &comparator_rule("$.n", "NumericGreaterThan", json!(4)),
+            &input,
+            false
+        ));
+        assert!(eval_choice(
+            &comparator_rule("$.n", "NumericLessThanEquals", json!(5)),
+            &input,
+            false
+        ));
+        assert!(!eval_choice(
+            &comparator_rule("$.n", "NumericGreaterThan", json!(5)),
+            &input,
+            false
+        ));
+        // Path comparators resolve both operands against the input.
+        assert!(eval_choice(
+            &comparator_rule("$.n", "NumericEqualsPath", json!("$.n")),
+            &input,
+            false
+        ));
+        assert!(!eval_choice(
+            &comparator_rule("$.n", "NumericGreaterThanPath", json!("$.m")),
+            &input,
+            false
+        ));
+        assert!(eval_choice(
+            &comparator_rule("$.n", "NumericLessThanPath", json!("$.m")),
+            &input,
+            false
+        ));
+        // Non-numeric operands fail (era both_numeric guard).
+        assert!(!eval_choice(
+            &comparator_rule("$.missing", "NumericEqualsPath", json!("$.m")),
+            &input,
+            false
+        ));
+        // A bool value is not numeric in the twin's JSON type system.
+        assert!(!eval_choice(
+            &comparator_rule("$.flag", "NumericEquals", json!(1)),
+            &json!({"flag": true}),
+            false
+        ));
+    }
+
+    #[test]
+    fn test_choice_is_family_and_timestamp_comparators() {
+        let input = json!({"s": "str", "n": 1, "b": true, "nullv": Value::Null});
+        assert!(eval_choice(
+            &comparator_rule("$.s", "IsString", json!(true)),
+            &input,
+            false
+        ));
+        assert!(!eval_choice(
+            &comparator_rule("$.n", "IsString", json!(true)),
+            &input,
+            false
+        ));
+        assert!(eval_choice(
+            &comparator_rule("$.n", "IsNumeric", json!(true)),
+            &input,
+            false
+        ));
+        assert!(eval_choice(
+            &comparator_rule("$.b", "IsBoolean", json!(true)),
+            &input,
+            false
+        ));
+        assert!(!eval_choice(
+            &comparator_rule("$.n", "IsBoolean", json!(true)),
+            &input,
+            false
+        ));
+        // Era conflation: a missing path and an explicit null both resolve to
+        // null, so neither is present and both are null.
+        assert!(eval_choice(
+            &comparator_rule("$.missing", "IsPresent", json!(false)),
+            &input,
+            false
+        ));
+        assert!(!eval_choice(
+            &comparator_rule("$.missing", "IsPresent", json!(true)),
+            &input,
+            false
+        ));
+        assert!(eval_choice(
+            &comparator_rule("$.nullv", "IsNull", json!(true)),
+            &input,
+            false
+        ));
+        assert!(eval_choice(
+            &comparator_rule("$.missing", "IsNull", json!(true)),
+            &input,
+            false
+        ));
+        // Timestamp family: plain lexicographic string comparisons.
+        assert!(eval_choice(
+            &comparator_rule("$.ts", "IsTimestamp", json!(true)),
+            &json!({"ts": "2026-10-25T07:34:04Z"}),
+            false
+        ));
+        assert!(!eval_choice(
+            &comparator_rule("$.s", "IsTimestamp", json!(true)),
+            &input,
+            false
+        ));
+        assert!(eval_choice(
+            &comparator_rule("$.ts", "TimestampEquals", json!("2026-10-25T07:34:04Z")),
+            &json!({"ts": "2026-10-25T07:34:04Z"}),
+            false
+        ));
+        assert!(eval_choice(
+            &comparator_rule("$.ts", "TimestampLessThan", json!("2027-01-01T00:00:00Z")),
+            &json!({"ts": "2026-10-25T07:34:04Z"}),
+            false
+        ));
+        assert!(eval_choice(
+            &comparator_rule(
+                "$.ts",
+                "TimestampGreaterThanEquals",
+                json!("2026-10-25T07:34:04Z")
+            ),
+            &json!({"ts": "2026-10-25T07:34:04Z"}),
+            false
+        ));
+        assert!(!eval_choice(
+            &comparator_rule(
+                "$.ts",
+                "TimestampGreaterThan",
+                json!("2027-01-01T00:00:00Z")
+            ),
+            &json!({"ts": "2026-10-25T07:34:04Z"}),
+            false
+        ));
+    }
+
+    #[test]
+    fn test_choice_routes_on_expanded_operator() {
+        // End-to-end: StringMatches drives the actual routing.
+        let def = json!({
+            "StartAt": "Route",
+            "States": {
+                "Route": {
+                    "Type": "Choice",
+                    "Choices": [{
+                        "Variable": "$.stage",
+                        "StringMatches": "*-prod",
+                        "Next": "Prod",
+                    }],
+                    "Default": "Other",
+                },
+                "Prod": {"Type": "Pass", "Result": "prod", "End": true},
+                "Other": {"Type": "Pass", "Result": "other", "End": true},
+            }
+        });
+        let out = run(&def, json!({"stage": "api-prod"})).expect("matches prod");
+        assert_eq!(out, json!("prod"), "routing fell through to Default: {out}");
+        let out = run(&def, json!({"stage": "api-dev"})).expect("falls to Default");
+        assert_eq!(out, json!("other"), "got {out}");
     }
 }
