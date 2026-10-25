@@ -9,6 +9,7 @@ use crate::models::{
     now_iso, random_id, IamState, LoginProfile, OidcProvider, SamlProvider, ServerCert,
     SigningCert, SshKey, User, VirtualMfa,
 };
+use crate::policy::{self, Decision};
 use crate::protocol::{get_param, AwsRequest, AwsResponse};
 
 use crate::models::{Group, Policy, Role};
@@ -3660,38 +3661,137 @@ impl IamHandler {
     fn simulate_policy(&self, req: &AwsRequest, principal: bool) -> AwsResponse {
         let state = self.get_state(req.account);
         let actions = string_vec(req, "ActionNames");
-        let mut docs: Vec<(String, String)> = Vec::new();
-        if principal {
-            let source_arn = get_param(req, "PolicySourceArn").unwrap_or_default();
-            // attached managed policies
-            docs = self.docs_for_principal(&state, &source_arn);
-        } else {
-            let inputs = string_vec(req, "PolicyInputList");
-            for (i, doc) in inputs.iter().enumerate() {
-                docs.push((format!("PolicyInputList.{}", i + 1), doc.clone()));
-            }
-        }
         if actions.is_empty() {
             return err(400, "MissingParameterValue", "ActionNames is required");
         }
+        // Policy documents: custom inputs or the principal's attached/in-
+        // line policies. Unparseable documents are skipped (they simply
+        // never contribute an allow).
+        let mut docs: Vec<(String, Value)> = Vec::new();
+        if principal {
+            let source_arn = get_param(req, "PolicySourceArn").unwrap_or_default();
+            for (id, doc) in self.docs_for_principal(&state, &source_arn) {
+                if let Ok(v) = serde_json::from_str::<Value>(&doc) {
+                    docs.push((id, v));
+                }
+            }
+        } else {
+            for (i, doc) in string_vec(req, "PolicyInputList").iter().enumerate() {
+                if let Ok(v) = serde_json::from_str::<Value>(doc) {
+                    docs.push((format!("PolicyInputList.{}", i + 1), v));
+                }
+            }
+        }
+        // Optional permission boundary (intersection semantics).
+        let mut boundary: Vec<(String, Value)> = Vec::new();
+        for (i, doc) in string_vec(req, "PermissionsBoundaryPolicyInputList")
+            .iter()
+            .enumerate()
+        {
+            if let Ok(v) = serde_json::from_str::<Value>(doc) {
+                boundary.push((format!("PermissionsBoundary.{}", i + 1), v));
+            }
+        }
+        let resource_arns = string_vec(req, "ResourceArns");
+        let context = parse_context_entries(&req.params);
+        let rp_doc =
+            get_param(req, "ResourcePolicy").and_then(|d| serde_json::from_str::<Value>(&d).ok());
+        let caller_arn = get_param(req, "CallerArn");
+        // ResourceOwner is "self" or an account id (optionally "aws:<id>").
+        let owner_account = match get_param(req, "ResourceOwner").as_deref() {
+            None | Some("") | Some("self") => caller_arn
+                .as_deref()
+                .and_then(policy::arn_account)
+                .map(String::from),
+            Some(owner) => policy::arn_account(owner.trim_start_matches("aws:")).map(String::from),
+        };
+        let caller_account = caller_arn
+            .as_deref()
+            .and_then(policy::arn_account)
+            .map(String::from);
+        let cross_account = match (&caller_account, &owner_account) {
+            (Some(caller), Some(owner)) => caller != owner,
+            // Without a caller to compare against, resource-policy denies
+            // still apply; use same-account (single-side allow) semantics.
+            _ => false,
+        };
+
         let mut body = String::from("<EvaluationResults>");
         for action in &actions {
-            let matched = docs.iter().enumerate()
-                .filter(|(_, (_, doc))| action_matches(doc, action))
-                .map(|(i, _)| format!(
-                    "<member><SourcePolicyId>{}</SourcePolicyId><SourcePolicyType>IAM Policy</SourcePolicyType></member>",
-                    docs[i].0))
-                .collect::<Vec<_>>()
-                .join("");
-            let decision = if matched.is_empty() {
-                "implicitDeny"
+            // One evaluation result per (action, resource) pair; with no
+            // ResourceArns the simulation evaluates against "*".
+            let resources: Vec<&str> = if resource_arns.is_empty() {
+                vec!["*"]
             } else {
-                "allowed"
+                resource_arns.iter().map(String::as_str).collect()
             };
-            body.push_str(&format!(
-                "<member><EvalActionName>{}</EvalActionName><EvalResourceName>*</EvalResourceName><EvalDecision>{}</EvalDecision><MatchedStatements>{}</MatchedStatements><MissingContextValues></MissingContextValues></member>",
-                xml_escape(action), decision, matched
-            ));
+            for resource in resources {
+                let mut eval = policy::evaluate_policy_docs(&docs, action, resource, &context);
+                if !boundary.is_empty() && eval.decision == Decision::Allowed {
+                    let boundary_eval =
+                        policy::evaluate_policy_docs(&boundary, action, resource, &context);
+                    eval.decision = if boundary_eval.decision == Decision::ExplicitDeny {
+                        Decision::ExplicitDeny
+                    } else if boundary_eval.decision == Decision::Allowed {
+                        Decision::Allowed
+                    } else {
+                        Decision::ImplicitDeny
+                    };
+                }
+                if let Some(rp_value) = &rp_doc {
+                    let rp_eval = policy::evaluate_resource_policy(
+                        rp_value,
+                        caller_arn.as_deref(),
+                        action,
+                        resource,
+                        &context,
+                    );
+                    eval = eval.combine_with_resource_policy(Some(&rp_eval), cross_account);
+                } else if cross_account {
+                    // Cross-account access cannot be granted by identity
+                    // policies alone: without a resource-policy allow the
+                    // resource side contributes an implicit deny.
+                    eval.decision = Decision::ImplicitDeny;
+                }
+                let decision = match eval.decision {
+                    Decision::Allowed => "allowed",
+                    Decision::ExplicitDeny => "explicitDeny",
+                    Decision::ImplicitDeny => "implicitDeny",
+                };
+                let matched = eval
+                    .matched
+                    .iter()
+                    .map(|id| {
+                        format!(
+                            "<member><SourcePolicyId>{}</SourcePolicyId><SourcePolicyType>IAM Policy</SourcePolicyType></member>",
+                            xml_escape(id)
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("");
+                let missing = if eval.missing_context.is_empty() {
+                    String::new()
+                } else {
+                    let mut m = String::from("<member>");
+                    let keys = eval
+                        .missing_context
+                        .iter()
+                        .map(|k| xml_escape(k))
+                        .collect::<Vec<_>>()
+                        .join("</member><member>");
+                    m.push_str(&keys);
+                    m.push_str("</member>");
+                    m
+                };
+                body.push_str(&format!(
+                    "<member><EvalActionName>{}</EvalActionName><EvalResourceName>{}</EvalResourceName><EvalDecision>{}</EvalDecision><MatchedStatements>{}</MatchedStatements><MissingContextValues>{}</MissingContextValues></member>",
+                    xml_escape(action),
+                    xml_escape(resource),
+                    decision,
+                    matched,
+                    missing
+                ));
+            }
         }
         body.push_str("</EvaluationResults>");
         AwsResponse::xml(
@@ -4199,62 +4299,84 @@ fn summary_entries(
     ]
 }
 
-/// Whether an action string matches a statement's action (with basic globbing).
-fn action_matches(doc: &str, action: &str) -> bool {
-    let value: Value = match serde_json::from_str(doc) {
-        Ok(v) => v,
-        Err(_) => return false,
-    };
-    let statements = value
-        .get("Statement")
-        .cloned()
-        .unwrap_or_else(|| value.get("statement").cloned().unwrap_or(json!([])));
-    let stmt_list: Vec<Value> = if statements.is_array() {
-        statements.as_array().cloned().unwrap_or_default()
-    } else {
-        vec![statements]
-    };
-    for stmt in &stmt_list {
-        if stmt
-            .get("Effect")
-            .and_then(|e| e.as_str())
-            .map(|e| e != "Allow")
-            .unwrap_or(false)
-        {
-            continue;
-        }
-        let actions_in_stmt = match stmt.get("Action") {
-            Some(Value::String(s)) => vec![s.clone()],
-            Some(Value::Array(a)) => a
-                .iter()
-                .filter_map(|x| x.as_str().map(String::from))
-                .collect(),
-            _ => continue,
+/// Context keys/values from ContextEntries. Handles both the JSON-object
+/// shape (members per the IAM API: ContextKeyName/ContextKeyValues) and
+/// the flat query-protocol shape (`ContextEntries.member.1.ContextKeyName=`).
+/// A legacy `ContextKey` field name is tolerated as an alias.
+fn parse_context_entries(params: &Value) -> policy::ContextValues {
+    let mut context = policy::ContextValues::new();
+    let empty = serde_json::Map::new();
+    let map = params.as_object().unwrap_or(&empty);
+
+    let add_entry = |cx: &mut policy::ContextValues, entry: &Value| {
+        let Some(key) = entry
+            .get("ContextKeyName")
+            .or_else(|| entry.get("ContextKey"))
+            .and_then(Value::as_str)
+        else {
+            return;
         };
-        for pattern in actions_in_stmt {
-            if glob_match(&pattern.to_lowercase(), &action.to_lowercase()) {
-                return true;
+        let values = match entry.get("ContextKeyValues") {
+            Some(Value::Array(arr)) => arr
+                .iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect::<Vec<String>>(),
+            Some(Value::String(s)) => vec![s.clone()],
+            _ => Vec::new(),
+        };
+        cx.insert(key.to_string(), values);
+    };
+
+    if let Some(entries) = map.get("ContextEntries").and_then(Value::as_array) {
+        for entry in entries {
+            add_entry(&mut context, entry);
+        }
+        return context;
+    }
+    if let Some(entries) = map
+        .get("ContextEntries")
+        .and_then(|v| v.get("member"))
+        .and_then(Value::as_array)
+    {
+        // Wrapped single-member form: {"ContextEntries": {"member": [...]}}.
+        for entry in entries {
+            add_entry(&mut context, entry);
+        }
+        return context;
+    }
+    // Flat query form: ContextEntries.member.<n>.ContextKeyName / .ContextKeyValues
+    let mut indices: Vec<usize> = Vec::new();
+    for key in map.keys() {
+        if let Some(rest) = key.strip_prefix("ContextEntries.member.") {
+            if let Some((idx, _)) = rest.split_once('.') {
+                if let Ok(n) = idx.parse::<usize>() {
+                    indices.push(n);
+                }
             }
         }
     }
-    false
+    indices.sort();
+    indices.dedup();
+    for n in &indices {
+        let base = format!("ContextEntries.member.{n}");
+        let mut entry = serde_json::Map::new();
+        if let Some(Value::String(key)) = map.get(&format!("{base}.ContextKeyName")) {
+            entry.insert("ContextKeyName".into(), json!(key));
+        } else if let Some(Value::String(key)) = map.get(&format!("{base}.ContextKey")) {
+            entry.insert("ContextKeyName".into(), json!(key));
+        }
+        if let Some(vals) = map.get(&format!("{base}.ContextKeyValues")) {
+            entry.insert("ContextKeyValues".into(), vals.clone());
+        }
+        add_entry(&mut context, &Value::Object(entry));
+    }
+    context
 }
 
 impl Default for IamHandler {
     fn default() -> Self {
         Self::new()
     }
-}
-
-fn glob_match(pattern: &str, text: &str) -> bool {
-    if pattern == "*" {
-        return true;
-    }
-    let (prefix, suffix) = match pattern.split_once('*') {
-        Some((p, s)) => (p, s),
-        None => return pattern == text,
-    };
-    text.len() >= prefix.len() + suffix.len() && text.starts_with(prefix) && text.ends_with(suffix)
 }
 
 /// Extract Condition keys from a policy JSON document.
@@ -4452,5 +4574,329 @@ mod tests {
         assert_eq!(resp.status, 404);
         assert!(resp.body.contains("<Code>NoSuchEntity</Code>"));
         assert!(resp.body.contains("<Type>Sender</Type>"));
+    }
+
+    const DENY_OVERRIDE_POLICY: &str = r#"{"Version":"2012-10-17","Statement":[
+        {"Effect":"Allow","Action":"s3:*","Resource":"*"},
+        {"Effect":"Deny","Action":"s3:DeleteObject","Resource":"*"}]}"#;
+
+    #[test]
+    fn test_simulate_custom_policy_deny_overrides_allow() {
+        let handler = IamHandler::new();
+        // Non-denied action: allowed via the Allow statement.
+        let resp = handler.handle(make_req(
+            "SimulateCustomPolicy",
+            json!({
+                "ActionNames": ["s3:GetObject"],
+                "PolicyInputList": [DENY_OVERRIDE_POLICY],
+            }),
+        ));
+        assert_eq!(resp.status, 200);
+        assert!(resp.body.contains("<EvalDecision>allowed</EvalDecision>"));
+
+        // Denied action: explicitDeny even though another statement allows.
+        let resp = handler.handle(make_req(
+            "SimulateCustomPolicy",
+            json!({
+                "ActionNames": ["s3:DeleteObject"],
+                "PolicyInputList": [DENY_OVERRIDE_POLICY],
+            }),
+        ));
+        assert!(resp
+            .body
+            .contains("<EvalDecision>explicitDeny</EvalDecision>"));
+
+        // Unrelated action: implicitDeny (no statement applies).
+        let resp = handler.handle(make_req(
+            "SimulateCustomPolicy",
+            json!({
+                "ActionNames": ["ec2:RunInstances"],
+                "PolicyInputList": [DENY_OVERRIDE_POLICY],
+            }),
+        ));
+        assert!(resp
+            .body
+            .contains("<EvalDecision>implicitDeny</EvalDecision>"));
+
+        // Multi-star action glob: s3:*elete* also catches the delete.
+        let resp = handler.handle(make_req(
+            "SimulateCustomPolicy",
+            json!({
+                "ActionNames": ["s3:DeleteObject"],
+                "PolicyInputList": [r#"{"Statement":[
+                    {"Effect":"Allow","Action":"s3:*","Resource":"*"},
+                    {"Effect":"Deny","Action":"s3:*elete*","Resource":"*"}]}"#],
+            }),
+        ));
+        assert!(resp
+            .body
+            .contains("<EvalDecision>explicitDeny</EvalDecision>"));
+    }
+
+    #[test]
+    fn test_simulate_custom_policy_across_multiple_docs() {
+        let handler = IamHandler::new();
+        let resp = handler.handle(make_req(
+            "SimulateCustomPolicy",
+            json!({
+                "ActionNames": ["ec2:TerminateInstances", "ec2:DescribeInstances"],
+                "PolicyInputList": [
+                    r#"{"Statement":[{"Effect":"Allow","Action":"ec2:Describe*","Resource":"*"}]}"#,
+                    r#"{"Statement":[{"Effect":"Deny","Action":"ec2:TerminateInstances","Resource":"*"}]}"#,
+                ],
+            }),
+        ));
+        // The deny reference names the owning policy doc.
+        assert!(resp
+            .body
+            .contains("<SourcePolicyId>PolicyInputList.2</SourcePolicyId>"));
+        assert!(resp
+            .body
+            .contains("<EvalDecision>explicitDeny</EvalDecision>"));
+        assert!(resp.body.contains("<EvalDecision>allowed</EvalDecision>"));
+    }
+
+    #[test]
+    fn test_simulate_custom_policy_resource_arns() {
+        let handler = IamHandler::new();
+        let resp = handler.handle(make_req(
+            "SimulateCustomPolicy",
+            json!({
+                "ActionNames": ["s3:GetObject"],
+                "ResourceArns": ["arn:aws:s3:::team-bucket/x"],
+                "PolicyInputList": [
+                    r#"{"Statement":[{"Effect":"Allow","Action":"s3:GetObject","Resource":"arn:aws:s3:::team-bucket/*"}]}"#,
+                ],
+            }),
+        ));
+        assert!(resp
+            .body
+            .contains("<EvalResourceName>arn:aws:s3:::team-bucket/x</EvalResourceName>"));
+        assert!(resp.body.contains("<EvalDecision>allowed</EvalDecision>"));
+
+        // A second resource not covered by the statement: implicit deny.
+        let resp = handler.handle(make_req(
+            "SimulateCustomPolicy",
+            json!({
+                "ActionNames": ["s3:GetObject"],
+                "ResourceArns": ["arn:aws:s3:::other-bucket/x"],
+                "PolicyInputList": [
+                    r#"{"Statement":[{"Effect":"Allow","Action":"s3:GetObject","Resource":"arn:aws:s3:::team-bucket/*"}]}"#,
+                ],
+            }),
+        ));
+        assert!(resp
+            .body
+            .contains("<EvalDecision>implicitDeny</EvalDecision>"));
+    }
+
+    #[test]
+    fn test_simulate_conditions_and_missing_context() {
+        let handler = IamHandler::new();
+        let policy = r#"{"Statement":[{
+            "Effect":"Allow","Action":"s3:GetObject","Resource":"*",
+            "Condition":{"StringEquals":{"aws:RequestedRegion":["eu-west-1"]}}}]}"#;
+
+        // Matching ContextEntries (JSON-array shape) → allowed.
+        let resp = handler.handle(make_req(
+            "SimulateCustomPolicy",
+            json!({
+                "ActionNames": ["s3:GetObject"],
+                "PolicyInputList": [policy],
+                "ContextEntries": [
+                    {"ContextKeyName": "aws:RequestedRegion", "ContextKeyValues": ["eu-west-1"], "ContextKeyType": "string"}
+                ],
+            }),
+        ));
+        assert!(resp.body.contains("<EvalDecision>allowed</EvalDecision>"));
+        assert!(resp
+            .body
+            .contains("<MissingContextValues></MissingContextValues>"));
+
+        // Mismatching context → implicit deny.
+        let resp = handler.handle(make_req(
+            "SimulateCustomPolicy",
+            json!({
+                "ActionNames": ["s3:GetObject"],
+                "PolicyInputList": [policy],
+                "ContextEntries": [
+                    {"ContextKeyName": "aws:RequestedRegion", "ContextKeyValues": ["us-east-1"], "ContextKeyType": "string"}
+                ],
+            }),
+        ));
+        assert!(resp
+            .body
+            .contains("<EvalDecision>implicitDeny</EvalDecision>"));
+
+        // Flat query-protocol shape, canonical member names, non-matching value.
+        let mut params = serde_json::Map::new();
+        params.insert("ActionNames".into(), json!(["s3:GetObject"]));
+        params.insert("PolicyInputList".into(), json!([policy]));
+        params.insert(
+            "ContextEntries.member.1.ContextKeyName".into(),
+            json!("aws:RequestedRegion"),
+        );
+        params.insert(
+            "ContextEntries.member.1.ContextKeyValues".into(),
+            json!(["us-east-1"]),
+        );
+        let resp = handler.handle(make_req("SimulateCustomPolicy", Value::Object(params)));
+        assert!(resp
+            .body
+            .contains("<EvalDecision>implicitDeny</EvalDecision>"));
+        assert!(resp
+            .body
+            .contains("<MissingContextValues></MissingContextValues>"));
+
+        // Flat shape tolerating the legacy ContextKey alias.
+        let mut params = serde_json::Map::new();
+        params.insert("ActionNames".into(), json!(["s3:GetObject"]));
+        params.insert("PolicyInputList".into(), json!([policy]));
+        params.insert(
+            "ContextEntries.member.1.ContextKey".into(),
+            json!("aws:RequestedRegion"),
+        );
+        params.insert(
+            "ContextEntries.member.1.ContextKeyValues".into(),
+            json!(["eu-west-1"]),
+        );
+        let resp = handler.handle(make_req("SimulateCustomPolicy", Value::Object(params)));
+        assert!(resp.body.contains("<EvalDecision>allowed</EvalDecision>"));
+
+        // No ContextEntries at all: the key is reported as missing context.
+        let resp = handler.handle(make_req(
+            "SimulateCustomPolicy",
+            json!({"ActionNames": ["s3:GetObject"], "PolicyInputList": [policy]}),
+        ));
+        assert!(resp
+            .body
+            .contains("<EvalDecision>implicitDeny</EvalDecision>"));
+        assert!(resp.body.contains(
+            "<MissingContextValues><member>aws:RequestedRegion</member></MissingContextValues>"
+        ));
+    }
+
+    #[test]
+    fn test_simulate_custom_policy_cross_account_resource_policy() {
+        let handler = IamHandler::new();
+        let resource_policy = r#"{"Statement":[
+            {"Effect":"Allow","Principal":{"AWS":"555566667777"},"Action":"s3:GetObject","Resource":"arn:aws:s3:::shared/*"},
+            {"Effect":"Deny","Principal":{"AWS":"555566667777"},"Action":"s3:PutObject","Resource":"arn:aws:s3:::shared/*"}]}"#;
+        let base = |resource_owner: &str| {
+            json!({
+                "ActionNames": ["s3:GetObject", "s3:PutObject"],
+                "PolicyInputList": [r#"{"Statement":[{"Effect":"Allow","Action":"s3:*","Resource":"*"}]}"#],
+                "ResourceArns": ["arn:aws:s3:::shared/data"],
+                "ResourcePolicy": resource_policy,
+                "CallerArn": "arn:aws:iam::555566667777:user/traveler",
+                "ResourceOwner": resource_owner,
+            })
+        };
+
+        // Cross account: identity allow + resource-policy allow → allowed
+        // for GetObject; PutObject is explicitly denied by the resource
+        // policy even though the caller's identity policies allow it.
+        let resp = handler.handle(make_req(
+            "SimulateCustomPolicy",
+            base("arn:aws:iam::111122223333:root"),
+        ));
+        assert!(resp.body.contains("<EvalDecision>allowed</EvalDecision>"));
+        assert!(resp
+            .body
+            .contains("<EvalDecision>explicitDeny</EvalDecision>"));
+
+        // Same account: single-side allow is enough on both actions.
+        let resp = handler.handle(make_req(
+            "SimulateCustomPolicy",
+            base("arn:aws:iam::555566667777:root"),
+        ));
+        assert!(resp
+            .body
+            .contains("<SourcePolicyId>ResourcePolicy</SourcePolicyId>"));
+        assert!(resp.body.contains("<EvalDecision>allowed</EvalDecision>"));
+    }
+
+    #[test]
+    fn test_simulate_cross_account_needs_resource_policy() {
+        let handler = IamHandler::new();
+        // Identity policy allows everything; the owner is another account
+        // and NO resource policy: the resource side implicitly denies
+        // cross-account access (identity allows cannot grant it alone).
+        let resp = handler.handle(make_req(
+            "SimulateCustomPolicy",
+            json!({
+                "ActionNames": ["sqs:SendMessage"],
+                "PolicyInputList": [r#"{"Statement":[{"Effect":"Allow","Action":"sqs:*","Resource":"*"}]}"#],
+                "ResourceArns": ["arn:aws:sqs:us-east-1:999988887777:q"],
+                "ResourceOwner": "arn:aws:iam::999988887777:root",
+                "CallerArn": "arn:aws:iam::111122223333:user/outsider",
+            }),
+        ));
+        assert!(resp
+            .body
+            .contains("<EvalDecision>implicitDeny</EvalDecision>"));
+        assert!(!resp.body.contains("<EvalDecision>allowed</EvalDecision>"));
+
+        // A resource-based allow for that account opens it up.
+        let resp = handler.handle(make_req(
+            "SimulateCustomPolicy",
+            json!({
+                "ActionNames": ["sqs:SendMessage"],
+                "PolicyInputList": [r#"{"Statement":[{"Effect":"Allow","Action":"sqs:*","Resource":"*"}]}"#],
+                "ResourceArns": ["arn:aws:sqs:us-east-1:999988887777:q"],
+                "ResourceOwner": "arn:aws:iam::999988887777:root",
+                "CallerArn": "arn:aws:iam::111122223333:user/outsider",
+                "ResourcePolicy": r#"{"Statement":[{"Effect":"Allow","Principal":{"AWS":"111122223333"},"Action":"sqs:SendMessage","Resource":"arn:aws:sqs:us-east-1:999988887777:q"}]}"#,
+            }),
+        ));
+        assert!(resp.body.contains("<EvalDecision>allowed</EvalDecision>"));
+    }
+
+    #[test]
+    fn test_simulate_principal_policy_role_end_to_end() {
+        let handler = IamHandler::new();
+        handler.handle(make_req(
+            "CreateRole",
+            json!({
+                "RoleName": "worker",
+                "AssumeRolePolicyDocument": r#"{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]}"#,
+            }),
+        ));
+        handler.handle(make_req(
+            "CreatePolicy",
+            json!({
+                "PolicyName": "reader",
+                "PolicyDocument": r#"{"Statement":[{"Effect":"Allow","Action":"s3:GetObject","Resource":"*"}]}"#,
+            }),
+        ));
+        handler.handle(make_req(
+            "AttachRolePolicy",
+            json!({"RoleName": "worker", "PolicyArn": "arn:aws:iam::123456789012:policy/reader"}),
+        ));
+        handler.handle(make_req(
+            "PutRolePolicy",
+            json!({
+                "RoleName": "worker",
+                "PolicyName": "deny-s3-objects",
+                "PolicyDocument": r#"{"Statement":[{"Effect":"Deny","Action":"s3:*utObject","Resource":"*"}]}"#,
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "SimulatePrincipalPolicy",
+            json!({
+                "PolicySourceArn": "arn:aws:iam::123456789012:role/worker",
+                "ActionNames": ["s3:GetObject", "s3:PutObject"]
+            }),
+        ));
+        assert_eq!(resp.status, 200);
+        // Inline deny s3:*utObject (PutObject only) beats the managed policy's allows for
+        // PutObject; GetObject stays allowed via the attached policy.
+        assert!(resp.body.contains("<EvalDecision>allowed</EvalDecision>"));
+        assert!(resp
+            .body
+            .contains("<EvalDecision>explicitDeny</EvalDecision>"));
+        assert!(resp
+            .body
+            .contains("<SourcePolicyId>AttachedPolicy1</SourcePolicyId>"));
     }
 }
