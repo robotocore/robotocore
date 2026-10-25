@@ -3,12 +3,16 @@
 //! Supports the state types the compatibility suite exercises: Pass
 //! (Result/Parameters/ResultPath), Choice (comparators + Default), Fail,
 //! Succeed, Wait, Parallel (branches), Map (inline Iterator) and Task
-//! (treated as a pass-through). Executions run on a detached thread so
-//! StopExecution can abort them while they are waiting.
+//! (treated as a pass-through). Errors flow through the era `_handle_error`
+//! path: Retry blocks re-execute the state with capped backoff, Catch blocks
+//! route a `{"Error", "Cause"}` payload to the catcher's Next state.
+//! Executions run on a detached thread so StopExecution can abort them while
+//! they are waiting.
 
 use crate::models::Execution;
 use parking_lot::Mutex;
 use serde_json::{json, Map, Value};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// AWS ends an execution once its event history reaches this size; a
@@ -400,6 +404,11 @@ fn apply_output_path(path: Option<&str>, input: Value) -> Value {
 }
 
 /// Run one state-graph flow; returns the flow output value.
+///
+/// Mirrors the era `ASLExecutor.execute` loop: each visited state is executed
+/// through `execute_state`, a raised error flows through `recover_from_error`
+/// (the era `_handle_error` Retry/Catch path) and the resulting output becomes
+/// the flowing data of the next state.
 pub fn run_flow(
     ctx: &Ctx,
     states: &Map<String, Value>,
@@ -407,10 +416,16 @@ pub fn run_flow(
     input: Value,
 ) -> Result<Value, FlowError> {
     let mut current = start_at;
+    let mut data = input;
+    // Retry attempt counters keyed by state name — one map per flow level
+    // (era keeps `self._retry_counts` on the executing ASLExecutor, so nested
+    // Parallel / Map sub-flows count their retries independently).
+    let mut retry_counts: HashMap<String, u32> = HashMap::new();
+
     loop {
         if ctx.exec.is_aborted() {
             // Aborted executions leave the engine without changing state.
-            return Ok(input);
+            return Ok(data);
         }
         if ctx.exec.events.read().len() >= MAX_EVENT_HISTORY {
             return Err(FlowError::new(
@@ -432,170 +447,247 @@ pub fn run_flow(
             .unwrap_or("Pass")
             .to_string();
         let name = current.clone();
-        let is_end = obj.get("End").and_then(|v| v.as_bool()).unwrap_or(false);
-        let next_state = obj.get("Next").and_then(|v| v.as_str()).map(String::from);
 
-        ctx.emit_entered(&state_type, &name, &input);
+        ctx.emit_entered(&state_type, &name, &data);
 
-        match state_type.as_str() {
-            "Fail" => {
-                let error = obj
-                    .get("Error")
-                    .and_then(|e| e.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let cause = obj
-                    .get("Cause")
-                    .and_then(|e| e.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                return Err(FlowError { error, cause });
+        let (output, next_state) = match execute_state(ctx, &name, &obj, &data) {
+            Ok(ok) => ok,
+            Err(e) => recover_from_error(ctx, &mut retry_counts, &name, &obj, &data, e)?,
+        };
+
+        ctx.emit_exited(&state_type, &name, &output);
+
+        if obj.get("End").and_then(|v| v.as_bool()).unwrap_or(false) || next_state.is_none() {
+            return Ok(output);
+        }
+        data = output;
+        current = next_state.expect("next_state checked above");
+    }
+}
+
+/// Execute a single state attempt (era `_execute_state`): run the state's own
+/// logic on `data` and return `(state_output, next_state_name)`. Any raised
+/// error flows back to the caller, which drives Retry/Catch around it.
+fn execute_state(
+    ctx: &Ctx,
+    name: &str,
+    obj: &Map<String, Value>,
+    data: &Value,
+) -> Result<(Value, Option<String>), FlowError> {
+    let state_type = obj.get("Type").and_then(|t| t.as_str()).unwrap_or("Pass");
+    let next_state = obj
+        .get("Next")
+        .and_then(|v| v.as_str())
+        .map(|v| v.to_string());
+    match state_type {
+        "Fail" => {
+            let error = obj
+                .get("Error")
+                .and_then(|e| e.as_str())
+                .unwrap_or("")
+                .to_string();
+            let cause = obj
+                .get("Cause")
+                .and_then(|e| e.as_str())
+                .unwrap_or("")
+                .to_string();
+            Err(FlowError { error, cause })
+        }
+        "Succeed" => Ok((data.clone(), None)),
+        "Wait" => {
+            let seconds = wait_seconds(obj, data);
+            if seconds > 0.0 {
+                sleep_with_abort(&ctx.exec, seconds);
             }
-            "Succeed" => {
-                return Ok(input);
+            if ctx.exec.is_aborted() {
+                // Aborted: leave the engine, the loop-top check stops the flow.
+                return Ok((data.clone(), None));
             }
-            "Wait" => {
-                let seconds = wait_seconds(&obj, &input);
-                if seconds > 0.0 {
-                    sleep_with_abort(&ctx.exec, seconds);
-                }
-                if ctx.exec.is_aborted() {
-                    return Ok(input);
-                }
-                ctx.emit_exited("Wait", &name, &input);
-                match next_state {
-                    Some(n) => current = n,
-                    None if is_end => return Ok(input),
-                    None => {
-                        return Err(FlowError::new(
-                            "States.NoArcMatched",
-                            format!("State {name} has neither End nor Next"),
-                        ))
+            Ok((data.clone(), next_state))
+        }
+        "Choice" => {
+            let mut target: Option<String> = None;
+            if let Some(choices) = obj.get("Choices").and_then(|c| c.as_array()) {
+                for rule in choices {
+                    if eval_choice(rule, data, true) {
+                        target = rule.get("Next").and_then(|n| n.as_str()).map(String::from);
+                        break;
                     }
                 }
             }
-            "Choice" => {
-                let mut target: Option<String> = None;
-                if let Some(choices) = obj.get("Choices").and_then(|c| c.as_array()) {
-                    for rule in choices {
-                        if eval_choice(rule, &input, true) {
-                            target = rule.get("Next").and_then(|n| n.as_str()).map(String::from);
-                            break;
-                        }
-                    }
-                }
-                if target.is_none() {
-                    if let Some(default) = obj.get("Default").and_then(|d| d.as_str()) {
-                        target = Some(default.to_string());
-                    }
-                }
-                ctx.emit_exited("Choice", &name, &input);
-                match target {
-                    Some(n) => current = n,
-                    None => {
-                        return Err(FlowError::new(
-                            "States.NoChoiceMatched",
-                            format!("An error occurred while executing the state '{name}'"),
-                        ))
-                    }
+            if target.is_none() {
+                if let Some(default) = obj.get("Default").and_then(|d| d.as_str()) {
+                    target = Some(default.to_string());
                 }
             }
-            "Parallel" => {
-                let mut outputs: Vec<Value> = Vec::new();
-                if let Some(branches) = obj.get("Branches").and_then(|b| b.as_array()) {
-                    for branch in branches {
-                        let (b_states, b_start) = sub_flow_states(branch)?;
-                        let out = run_flow(ctx, &b_states, b_start, input.clone())?;
+            match target {
+                Some(next) => Ok((data.clone(), Some(next))),
+                None => Err(FlowError::new(
+                    "States.NoChoiceMatched",
+                    format!("An error occurred while executing the state '{name}'"),
+                )),
+            }
+        }
+        "Parallel" => {
+            let mut outputs: Vec<Value> = Vec::new();
+            if let Some(branches) = obj.get("Branches").and_then(|b| b.as_array()) {
+                for branch in branches {
+                    let (b_states, b_start) = sub_flow_states(branch)?;
+                    let out = run_flow(ctx, &b_states, b_start, data.clone())?;
+                    outputs.push(out);
+                }
+            }
+            let merged = apply_result_path(result_path_spec(obj), data, Value::Array(outputs));
+            Ok((merged, next_state))
+        }
+        "Map" => {
+            let items = match obj.get("ItemsPath").and_then(|p| p.as_str()) {
+                Some(path) => resolve_json_path(path, data).unwrap_or(Value::Null),
+                None => data.clone(),
+            };
+            let mut outputs: Vec<Value> = Vec::new();
+            if let Value::Array(array) = items {
+                if let Some(iterator) = obj.get("Iterator") {
+                    let (it_states, it_start) = sub_flow_states(iterator)?;
+                    for item in array {
+                        let out = run_flow(ctx, &it_states, it_start.clone(), item)?;
                         outputs.push(out);
                     }
                 }
-                let merged =
-                    apply_result_path(result_path_spec(&obj), &input, Value::Array(outputs));
-                ctx.emit_exited("Parallel", &name, &merged);
-                if is_end || next_state.is_none() {
-                    return Ok(merged);
-                }
-                current = next_state.unwrap();
             }
-            "Map" => {
-                let items = match obj.get("ItemsPath").and_then(|p| p.as_str()) {
-                    Some(path) => resolve_json_path(path, &input).unwrap_or(Value::Null),
-                    None => input.clone(),
-                };
-                let mut outputs: Vec<Value> = Vec::new();
-                if let Value::Array(array) = items {
-                    if let Some(iterator) = obj.get("Iterator") {
-                        let (it_states, it_start) = sub_flow_states(iterator)?;
-                        for item in array {
-                            let out = run_flow(ctx, &it_states, it_start.clone(), item)?;
-                            outputs.push(out);
-                        }
-                    }
-                }
-                let merged =
-                    apply_result_path(result_path_spec(&obj), &input, Value::Array(outputs));
-                ctx.emit_exited("Map", &name, &merged);
-                if is_end || next_state.is_none() {
-                    return Ok(merged);
-                }
-                current = next_state.unwrap();
-            }
-            "Task" => {
-                // Lambda integrations run the function synchronously (the
-                // execution already runs on a detached thread); other
-                // resources complete with the current input like before.
-                let resource = obj
-                    .get("Resource")
-                    .and_then(|r| r.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-                let raw_out = if !resource.ends_with(".waitForTaskCallback")
-                    && (resource.starts_with("arn:aws:lambda:") || resource.contains(":function:"))
-                {
-                    // Ground truth (python asl.py::_dispatch_task): dict
-                    // input is the event; scalars are wrapped under "input".
-                    let event = if input.is_object() {
-                        input.clone()
-                    } else {
-                        json!({ "input": input })
-                    };
-                    invoke_lambda_resource(&resource, &event, &input)?
-                } else if let Some(sdk_fn) = lambda_sdk_invoke(&resource, &input) {
-                    sdk_fn?
+            let merged = apply_result_path(result_path_spec(obj), data, Value::Array(outputs));
+            Ok((merged, next_state))
+        }
+        "Task" => {
+            // Lambda integrations run the function synchronously (the
+            // execution already runs on a detached thread); other
+            // resources complete with the current input like before.
+            let resource = obj
+                .get("Resource")
+                .and_then(|r| r.as_str())
+                .unwrap_or_default()
+                .to_string();
+            let raw_out = if !resource.ends_with(".waitForTaskCallback")
+                && (resource.starts_with("arn:aws:lambda:") || resource.contains(":function:"))
+            {
+                // Ground truth (python asl.py::_dispatch_task): dict
+                // input is the event; scalars are wrapped under "input".
+                let event = if data.is_object() {
+                    data.clone()
                 } else {
-                    match obj.get("Result") {
-                        Some(r) => r.clone(),
-                        None => input.clone(),
-                    }
+                    json!({ "input": data })
                 };
-                let merged = apply_result_path(result_path_spec(&obj), &input, raw_out);
-                ctx.emit_exited("Task", &name, &merged);
-                if is_end || next_state.is_none() {
-                    return Ok(merged);
+                invoke_lambda_resource(&resource, &event, data)?
+            } else if let Some(sdk_fn) = lambda_sdk_invoke(&resource, data) {
+                sdk_fn?
+            } else {
+                match obj.get("Result") {
+                    Some(r) => r.clone(),
+                    None => data.clone(),
                 }
-                current = next_state.unwrap();
-            }
-            // "Pass" and anything unrecognised passes through.
-            _ => {
-                let processed =
-                    if let Some(params) = obj.get("Parameters").and_then(|p| p.as_object()) {
-                        eval_parameters(params, &input)
-                    } else if let Some(result) = obj.get("Result") {
-                        result.clone()
-                    } else {
-                        input.clone()
-                    };
-                let merged = apply_result_path(result_path_spec(&obj), &input, processed);
-                let merged =
-                    apply_output_path(obj.get("OutputPath").and_then(|p| p.as_str()), merged);
-                ctx.emit_exited(&state_type, &name, &merged);
-                if is_end || next_state.is_none() {
-                    return Ok(merged);
-                }
-                current = next_state.unwrap();
-            }
+            };
+            let merged = apply_result_path(result_path_spec(obj), data, raw_out);
+            Ok((merged, next_state))
+        }
+        // "Pass" and anything unrecognised passes through.
+        _ => {
+            let processed = if let Some(params) = obj.get("Parameters").and_then(|p| p.as_object())
+            {
+                eval_parameters(params, data)
+            } else if let Some(result) = obj.get("Result") {
+                result.clone()
+            } else {
+                data.clone()
+            };
+            let merged = apply_result_path(result_path_spec(obj), data, processed);
+            let merged = apply_output_path(obj.get("OutputPath").and_then(|p| p.as_str()), merged);
+            Ok((merged, next_state))
         }
     }
+}
+
+/// Era Retry/Catch matcher: `"States.ALL" in error_equals or error in
+/// error_equals` (`_handle_error` runs this against Retry and Catch blocks).
+fn error_equals_match(error_equals: Option<&Value>, error: &str) -> bool {
+    error_equals
+        .and_then(|v| v.as_array())
+        .map(|list| {
+            list.iter()
+                .any(|e| e.as_str() == Some("States.ALL") || e.as_str() == Some(error))
+        })
+        .unwrap_or(false)
+}
+
+/// Era `_handle_error`: check Retry blocks first — the first matching retrier
+/// re-executes the state synchronously (with capped backoff between attempts)
+/// until `MaxAttempts` is reached — then Catch blocks, where the first
+/// matching catcher's `Next` carries a `{"Error", "Cause"}` merged into the
+/// state input at the catcher's `ResultPath`.
+fn recover_from_error(
+    ctx: &Ctx,
+    retry_counts: &mut HashMap<String, u32>,
+    name: &str,
+    obj: &Map<String, Value>,
+    data: &Value,
+    err: FlowError,
+) -> Result<(Value, Option<String>), FlowError> {
+    if let Some(retriers) = obj.get("Retry").and_then(|r| r.as_array()) {
+        if let Some(retrier) = retriers
+            .iter()
+            .find(|r| error_equals_match(r.get("ErrorEquals"), &err.error))
+        {
+            let max_attempts = retrier
+                .get("MaxAttempts")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(3.0) as u32;
+            let interval = retrier
+                .get("IntervalSeconds")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(1.0);
+            let backoff = retrier
+                .get("BackoffRate")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(2.0);
+            let count = retry_counts.get(name).copied().unwrap_or(0);
+            if count < max_attempts {
+                retry_counts.insert(name.to_string(), count + 1);
+                // Wait with backoff, capped for tests (era:
+                // `time.sleep(min(wait_time, 0.1))`).
+                let wait_time = interval * backoff.powi(count as i32);
+                sleep_with_abort(&ctx.exec, wait_time.min(0.1));
+                // Re-execute the state; a repeated failure recurses through
+                // the same Retry/Catch handling (era `_handle_error`).
+                return match execute_state(ctx, name, obj, data) {
+                    Ok(ok) => Ok(ok),
+                    Err(e) => recover_from_error(ctx, retry_counts, name, obj, data, e),
+                };
+            }
+            // Retries exhausted, fall through to the Catch blocks.
+        }
+    }
+
+    if let Some(catchers) = obj.get("Catch").and_then(|c| c.as_array()) {
+        if let Some(catch) = catchers
+            .iter()
+            .find(|c| error_equals_match(c.get("ErrorEquals"), &err.error))
+        {
+            let error_output = json!({ "Error": err.error, "Cause": err.cause });
+            let result_path = match catch.get("ResultPath") {
+                None => Some("$"),
+                Some(Value::String(s)) => Some(s.as_str()),
+                Some(Value::Null) => None,
+                Some(_) => None,
+            };
+            let output = apply_result_path(result_path, data, error_output);
+            // Era: `return catch.get("Next"), output` — a catcher without a
+            // Next leaves next_state None, which the caller re-raises.
+            return match catch.get("Next").and_then(|n| n.as_str()).map(String::from) {
+                Some(next) => Ok((output, Some(next))),
+                None => Err(err),
+            };
+        }
+    }
+    Err(err)
 }
 
 /// Kick off an execution on a detached thread: emits ExecutionStarted, walks
@@ -704,5 +796,292 @@ mod tests {
         // Non-`$`-prefixed path falls back to replacing with the result.
         let other = apply_result_path(Some("weird"), &input, json!(1));
         assert_eq!(other, json!(1));
+    }
+
+    // ---- Retry/Catch engine (era `_handle_error`) ----
+
+    use crate::models::Execution;
+
+    fn test_ctx() -> (Ctx, Arc<Execution>) {
+        let exec = Arc::new(Execution {
+            arn: "arn:aws:states:us-east-1:123456789012:execution:t:tester".into(),
+            name: "tester".into(),
+            sm_arn: "arn:aws:states:us-east-1:123456789012:stateMachine:t".into(),
+            input: "{}".into(),
+            start_date: 0.0,
+            status: parking_lot::RwLock::new("RUNNING".into()),
+            stop_date: parking_lot::RwLock::new(None),
+            output: parking_lot::RwLock::new(None),
+            error: parking_lot::RwLock::new(None),
+            cause: parking_lot::RwLock::new(None),
+            events: parking_lot::RwLock::new(Vec::new()),
+        });
+        (Ctx::new(exec.clone()), exec)
+    }
+
+    fn run(def: &Value, input: Value) -> Result<Value, FlowError> {
+        let (ctx, _exec) = test_ctx();
+        let states = def
+            .get("States")
+            .and_then(|s| s.as_object())
+            .cloned()
+            .unwrap_or_default();
+        let start_at = def
+            .get("StartAt")
+            .and_then(|s| s.as_str())
+            .unwrap_or_default()
+            .to_string();
+        run_flow(&ctx, &states, start_at, input)
+    }
+
+    /// Build a zip artifact the same way the lambda crate's bridge tests do
+    /// (a real zipfile assembled by python3, which the runtime unpacks).
+    fn make_zip(code: &str) -> Vec<u8> {
+        let dir = std::env::temp_dir().join(format!("sfn-asl-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let zpath = dir.join("t.zip");
+        let snippet = "import io, sys, zipfile\nbuf = io.BytesIO()\nze = zipfile.ZipFile(buf, 'w')\nze.writestr(sys.argv[3], sys.argv[2])\nze.close()\nopen(sys.argv[1], 'wb').write(buf.getvalue())\n";
+        let st = std::process::Command::new("python3")
+            .arg("-c")
+            .arg(snippet)
+            .arg(zpath.as_os_str())
+            .arg(code)
+            .arg("lambda_function.py")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .expect("python3 failed");
+        assert!(st.status.success(), "zip maker failed");
+        let zip = std::fs::read(&zpath).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        zip
+    }
+
+    /// Register a lambda in an isolated account that raises until its
+    /// invocation count reaches `fail_below`, then returns the count.
+    fn register_counting_function(
+        account: u64,
+        region: &str,
+        name: &str,
+        counter_path: &str,
+        fail_below: u32,
+    ) {
+        let code = format!(
+            "import os\n\
+             COUNT_FILE = {counter_path:?}\n\
+             FAIL_BELOW = {fail_below}\n\
+             def handler(event, context):\n\
+             \x20   n = 0\n\
+             \x20   if os.path.exists(COUNT_FILE):\n\
+             \x20       with open(COUNT_FILE) as f:\n\
+             \x20           n = int(f.read())\n\
+             \x20   n += 1\n\
+             \x20   with open(COUNT_FILE, 'w') as f:\n\
+             \x20       f.write(str(n))\n\
+             \x20   if n < FAIL_BELOW:\n\
+             \x20       raise RuntimeError('not ready')\n\
+             \x20   return {{'attempts': n}}\n"
+        );
+        let func = lambda::models::LambdaFunction::new(account, region, name.to_string());
+        *func.handler.write() = "lambda_function.handler".into();
+        *func.code_zip.write() = make_zip(&code);
+        let state = lambda::models::LambdaState::new();
+        state.functions.write().insert(
+            name.to_string(),
+            lambda::models::FunctionEntry {
+                latest: Some(std::sync::Arc::new(func)),
+                versions: Vec::new(),
+            },
+        );
+        lambda::bridge::register_state(account, region, &state);
+    }
+
+    #[test]
+    fn test_catch_routes_to_next_state_with_error_payload() {
+        let def = json!({
+            "StartAt": "Boom",
+            "States": {
+                "Boom": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "Parameters": {"Payload": {"v": 1}},
+                    "Catch": [{
+                        "ErrorEquals": ["States.ALL"],
+                        "Next": "Handle",
+                        "ResultPath": "$.cause",
+                    }],
+                },
+                "Handle": {
+                    "Type": "Pass",
+                    "Result": "handled",
+                    "End": true,
+                },
+            }
+        });
+        let out = run(&def, json!({"v": 1})).expect("catch routes the task error");
+        // The Handle Pass replaces the input with its Result — the point of
+        // this test is that the flow CONTINUED at Handle instead of failing.
+        assert_eq!(out, json!("handled"));
+    }
+
+    #[test]
+    fn test_catch_merges_error_and_cause_into_result_path() {
+        let def = json!({
+            "StartAt": "Boom",
+            "States": {
+                "Boom": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "Parameters": {"Payload": {"v": 1}},
+                    "Catch": [{
+                        "ErrorEquals": ["States.ALL"],
+                        "Next": "Handle",
+                        "ResultPath": "$.cause",
+                    }],
+                },
+                // Echo the (possibly merged) input.
+                "Handle": {"Type": "Pass", "End": true},
+            }
+        });
+        let out = run(&def, json!({"v": 1})).expect("catch routes the task error");
+        assert_eq!(
+            out,
+            json!({
+                "v": 1,
+                "cause": {
+                    "Error": "Lambda.ServiceException",
+                    "Cause": "FunctionName is required",
+                },
+            })
+        );
+    }
+
+    #[test]
+    fn test_retry_exhaustion_falls_through_to_catch() {
+        let def = json!({
+            "StartAt": "Boom",
+            "States": {
+                "Boom": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "Retry": [{
+                        "ErrorEquals": ["States.ALL"],
+                        "MaxAttempts": 2,
+                        "IntervalSeconds": 0.05,
+                        "BackoffRate": 1.0,
+                    }],
+                    "Catch": [{"ErrorEquals": ["States.ALL"], "Next": "Handle"}],
+                },
+                "Handle": {"Type": "Pass", "End": true},
+            }
+        });
+        let out = run(&def, json!({})).expect("retries exhaust into the catcher");
+        // The catcher has no ResultPath, so the era default "$" replaces the
+        // input with the {"Error", "Cause"} payload: proving the exhausted
+        // retries fell through to Catch (instead of failing the flow).
+        assert_eq!(
+            out["Error"],
+            json!("Lambda.ServiceException"),
+            "exhausted retries must land in the Catch block: {out}"
+        );
+    }
+
+    #[test]
+    fn test_retry_recovers_transient_task_failure() {
+        let counter = std::env::temp_dir()
+            .join(format!("sfn-retry-{}.cnt", uuid::Uuid::new_v4().simple()))
+            .to_string_lossy()
+            .to_string();
+        let (account, region, name) = (834234000001u64, "sfn-retry-test", "flaky-fn");
+        register_counting_function(account, region, name, &counter, 3);
+        let def = json!({
+            "StartAt": "Flaky",
+            "States": {
+                "Flaky": {
+                    "Type": "Task",
+                    "Resource": format!("arn:aws:lambda:{region}:{account}:function:{name}"),
+                    "Retry": [{
+                        "ErrorEquals": ["Lambda.Unknown"],
+                        "MaxAttempts": 3,
+                        "IntervalSeconds": 0.05,
+                        "BackoffRate": 1.0,
+                    }],
+                    "End": true,
+                },
+            }
+        });
+        let out = run(&def, json!({})).expect("retry re-executes until success");
+        assert_eq!(out, json!({"attempts": 3}), "handler ran 3 times: {out}");
+        let _ = std::fs::remove_file(&counter);
+    }
+
+    #[test]
+    fn test_uncaught_error_fails_the_flow() {
+        let def = json!({
+            "StartAt": "Boom",
+            "States": {
+                "Boom": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "Parameters": {"Payload": {"v": 1}},
+                    "Next": "Never",
+                },
+                "Never": {"Type": "Pass", "End": true},
+            }
+        });
+        let err = run(&def, json!({})).expect_err("task error without Catch fails");
+        assert_eq!(err.error, "Lambda.ServiceException");
+        assert_eq!(err.cause, "FunctionName is required");
+    }
+
+    #[test]
+    fn test_retry_counter_is_per_flow_and_per_state() {
+        // The era keys retry counts on the executor: two parallel branches
+        // hitting the same retrier error share no counters. Exercise that by
+        // an always-failing SDK invoke inside each branch with its own Catch.
+        let def = json!({
+            "StartAt": "Par",
+            "States": {
+                "Par": {
+                    "Type": "Parallel",
+                    "Branches": [
+                        {
+                            "StartAt": "BoomA",
+                            "States": {
+                                "BoomA": {
+                                    "Type": "Task",
+                                    "Resource": "arn:aws:states:::lambda:invoke",
+                                    "Retry": [{
+                                        "ErrorEquals": ["States.ALL"],
+                                        "MaxAttempts": 1,
+                                        "IntervalSeconds": 0.05,
+                                    }],
+                                    "Catch": [{"ErrorEquals": ["States.ALL"], "Next": "FallA"}],
+                                },
+                                "FallA": {"Type": "Pass", "Result": "a", "End": true},
+                            },
+                        },
+                        {
+                            "StartAt": "BoomB",
+                            "States": {
+                                "BoomB": {
+                                    "Type": "Task",
+                                    "Resource": "arn:aws:states:::lambda:invoke",
+                                    "Retry": [{
+                                        "ErrorEquals": ["States.ALL"],
+                                        "MaxAttempts": 1,
+                                        "IntervalSeconds": 0.05,
+                                    }],
+                                    "Catch": [{"ErrorEquals": ["States.ALL"], "Next": "FallB"}],
+                                },
+                                "FallB": {"Type": "Pass", "Result": "b", "End": true},
+                            },
+                        },
+                    ],
+                    "End": true,
+                },
+            }
+        });
+        let out = run(&def, json!({})).expect("branch retries stay isolated");
+        assert_eq!(out, json!(["a", "b"]), "both branches completed: {out}");
     }
 }
