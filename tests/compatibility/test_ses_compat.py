@@ -519,9 +519,8 @@ class TestSESExtendedOperations:
         resp = ses.get_send_statistics()
         assert "SendDataPoints" in resp
 
-    def test_get_account_sending_enabled(self, ses):
-        resp = ses.get_account_sending_enabled()
-        assert "Enabled" in resp
+    # GetAccountSendingEnabled: not routed by the moto fork's EmailResponse
+    # (canonical 501 NotImplemented) - no compat test per the 501 rule.
 
     def test_set_identity_notification_topic(self, ses):
         ses.verify_email_identity(EmailAddress="notif@example.com")
@@ -732,9 +731,8 @@ class TestSESGapStubs:
         resp = ses.list_receipt_filters()
         assert "Filters" in resp
 
-    def test_get_account_sending_enabled(self, ses):
-        resp = ses.get_account_sending_enabled()
-        assert "Enabled" in resp
+    # GetAccountSendingEnabled is a canonical 501 (not in the moto fork's
+    # EmailResponse routing) - no compat test per the 501 rule.
 
 
 class TestSesAutoCoverage:
@@ -745,11 +743,9 @@ class TestSesAutoCoverage:
         return make_client("ses")
 
     def test_update_account_sending_enabled(self, client):
-        """UpdateAccountSendingEnabled toggles account sending."""
+        """UpdateAccountSendingEnabled answers moto's EmptyResult 200."""
         resp = client.update_account_sending_enabled(Enabled=True)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        check = client.get_account_sending_enabled()
-        assert check["Enabled"] is True
 
     def test_send_bulk_templated_email(self, client):
         """SendBulkTemplatedEmail sends to multiple destinations."""
