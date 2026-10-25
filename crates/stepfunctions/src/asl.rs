@@ -193,22 +193,86 @@ fn result_path_spec(obj: &Map<String, Value>) -> Option<&str> {
     }
 }
 
-/// Apply a Parameters object: plain keys pass through; `key.$` entries are
-/// resolved against the state input.
-fn eval_parameters(params: &Map<String, Value>, input: &Value) -> Value {
+/// Apply a Parameters template exactly like era `_resolve_parameters`:
+/// `key.$` entries resolve their value against `input` — `States.*`
+/// prefixed strings are intrinsic function calls (the era routes them to
+/// `evaluate_intrinsic`; unresolved here, they stay null), `$$` references
+/// resolve against the Context Object (top-level only: nested recursion
+/// carries no context, like the era), `$.`-paths resolve against the state
+/// input, and any other string is a literal value. Non-string `.$` values
+/// pass through untouched; nested objects and lists of objects recurse
+/// (also without the context).
+fn eval_parameters(params: &Map<String, Value>, input: &Value, context: Option<&Value>) -> Value {
     let mut out = Map::new();
     for (k, v) in params {
         if let Some(expr) = k.strip_suffix(".$") {
-            let resolved = v.as_str().unwrap_or("$");
-            out.insert(
-                expr.to_string(),
-                resolve_json_path(resolved, input).unwrap_or(Value::Null),
-            );
+            let resolved = match v {
+                Value::String(s) => evaluate_param_ref(s, input, context),
+                // Era: `else: result[real_key] = value` (non-string passes
+                // through as-is).
+                other => other.clone(),
+            };
+            out.insert(expr.to_string(), resolved);
         } else {
-            out.insert(k.clone(), v.clone());
+            out.insert(
+                k.clone(),
+                match v {
+                    Value::Array(items) => Value::Array(
+                        items
+                            .iter()
+                            .map(|item| match item {
+                                Value::Object(o) => eval_parameters(o, input, None),
+                                other => other.clone(),
+                            })
+                            .collect(),
+                    ),
+                    Value::Object(o) => eval_parameters(o, input, None),
+                    other => other.clone(),
+                },
+            );
         }
     }
     Value::Object(out)
+}
+
+/// One dynamic `key.$` value from era `_resolve_parameters`.
+fn evaluate_param_ref(value: &str, input: &Value, context: Option<&Value>) -> Value {
+    if value.starts_with("States.") {
+        // Era: `result[real_key] = evaluate_intrinsic(value, input_data)`.
+        // Intrinsic evaluation is not part of this lane's findings — an
+        // unevaluated intrinsic expression resolves to null.
+        Value::Null
+    } else if let Some(rest) = value.strip_prefix("$$") {
+        // Context Object reference, resolved against the built context when
+        // one is in scope (era passes it only at the top call level).
+        match context {
+            Some(ctx) => resolve_json_path(&format!("${rest}"), ctx).unwrap_or(Value::Null),
+            None => Value::Null,
+        }
+    } else if value.starts_with("$") {
+        resolve_json_path(value, input).unwrap_or(Value::Null)
+    } else {
+        json!(value)
+    }
+}
+
+/// Era `_build_context` — the Context Object behind `$$` references.
+fn build_context(name: &str, ctx: &Ctx) -> Value {
+    json!({
+        "Execution": {
+            "Id": ctx.exec.arn,
+            "Name": ctx.exec.arn.rsplit(':').next().unwrap_or_default(),
+            "StartTime": "",
+        },
+        "State": {
+            "Name": name,
+            "EnteredTime": "",
+        },
+        "StateMachine": {
+            "Id": "",
+            "Name": "",
+        },
+    })
 }
 
 fn compare_numeric(
@@ -392,15 +456,58 @@ fn lambda_sdk_invoke(resource: &str, input: &Value) -> Option<Result<Value, Flow
     })())
 }
 
-/// Apply OutputPath to a state output.
-fn apply_output_path(path: Option<&str>, input: Value) -> Value {
-    if let Some("$") = path {
-        return input;
+/// Era `_apply_path(value, path)` for OutputPath-style slicing: an absent
+/// path or "$" keeps the value, `$.a.b` resolves (a missing path is null,
+/// like era `_resolve_path`'s None), JSON null yields an empty object, and
+/// non-path strings pass through.
+fn apply_output_path(path: Option<&Value>, input: Value) -> Value {
+    match path {
+        Some(Value::String(p)) if p == "$" => input,
+        Some(Value::String(p)) if p.starts_with("$") => {
+            resolve_json_path(p, &input).unwrap_or(Value::Null)
+        }
+        Some(Value::Null) => json!({}),
+        _ => input,
     }
-    if let Some(p) = path.and_then(|p| resolve_json_path(p, &input)) {
-        return p;
+}
+
+/// Era `_apply_path(data, state_def.get("InputPath", "$"))` for the state
+/// input, with the same cases as `apply_output_path` but applied to `data`.
+fn apply_input_path(data: &Value, path: Option<&Value>) -> Value {
+    match path {
+        Some(Value::String(p)) if p == "$" => data.clone(),
+        Some(Value::String(p)) if p.starts_with("$") => {
+            resolve_json_path(p, data).unwrap_or(Value::Null)
+        }
+        Some(Value::Null) => json!({}),
+        _ => data.clone(),
     }
-    input
+}
+
+/// Era `_execute_state` result tail for the states that produce a result
+/// (Task, Wait, Parallel, Map, Pass): ResultSelector resolves the result
+/// against itself, ResultPath then merges it into the result base — the
+/// flowing state input `data`, or the preprocessed input when InputPath was
+/// null — and OutputPath slices the merged output.
+fn postprocess_output(
+    obj: &Map<String, Value>,
+    data: &Value,
+    effective: &Value,
+    result: Value,
+) -> Value {
+    let result = match obj.get("ResultSelector") {
+        Some(Value::Object(rs)) => eval_parameters(rs, &result, None),
+        _ => result,
+    };
+    // Era: `result_base = effective_input if state_def.get("InputPath") is
+    // None else data` — with the key absent, `effective_input` is `data`
+    // anyway (the default InputPath is "$").
+    let base = match obj.get("InputPath") {
+        None | Some(Value::Null) => effective,
+        Some(_) => data,
+    };
+    let out = apply_result_path(result_path_spec(obj), base, result);
+    apply_output_path(obj.get("OutputPath"), out)
 }
 
 /// Run one state-graph flow; returns the flow output value.
@@ -465,9 +572,10 @@ pub fn run_flow(
     }
 }
 
-/// Execute a single state attempt (era `_execute_state`): run the state's own
-/// logic on `data` and return `(state_output, next_state_name)`. Any raised
-/// error flows back to the caller, which drives Retry/Catch around it.
+/// Execute a single state attempt (era `_execute_state`): pre-process the
+/// input (InputPath, Parameters), run the state's own logic on it and return
+/// `(state_output, next_state_name)`. Any raised error flows back to the
+/// caller, which drives Retry/Catch around it.
 fn execute_state(
     ctx: &Ctx,
     name: &str,
@@ -479,37 +587,46 @@ fn execute_state(
         .get("Next")
         .and_then(|v| v.as_str())
         .map(|v| v.to_string());
+
+    // Input pre-processing (era `_execute_state` head), applied to every
+    // state type: InputPath slices the flowing data, then Parameters
+    // builds the effective input with the Context Object in scope.
+    let effective = apply_input_path(data, obj.get("InputPath"));
+    let effective = match obj.get("Parameters") {
+        Some(Value::Object(params)) => {
+            let context = build_context(name, ctx);
+            eval_parameters(params, &effective, Some(&context))
+        }
+        _ => effective,
+    };
+
     match state_type {
         "Fail" => {
-            let error = obj
-                .get("Error")
-                .and_then(|e| e.as_str())
-                .unwrap_or("")
-                .to_string();
-            let cause = obj
-                .get("Cause")
-                .and_then(|e| e.as_str())
-                .unwrap_or("")
-                .to_string();
+            // Era Fail: dynamic ErrorPath/CausePath resolve from the
+            // preprocessed input; defaults are "States.Fail" and "".
+            let error = resolve_error_field(obj, &effective, "Error", "ErrorPath", "States.Fail");
+            let cause = resolve_error_field(obj, &effective, "Cause", "CausePath", "");
             Err(FlowError { error, cause })
         }
-        "Succeed" => Ok((data.clone(), None)),
+        "Succeed" => Ok((apply_output_path(obj.get("OutputPath"), effective), None)),
         "Wait" => {
-            let seconds = wait_seconds(obj, data);
+            let seconds = wait_seconds(obj, &effective);
             if seconds > 0.0 {
                 sleep_with_abort(&ctx.exec, seconds);
             }
             if ctx.exec.is_aborted() {
                 // Aborted: leave the engine, the loop-top check stops the flow.
-                return Ok((data.clone(), None));
+                return Ok((effective, None));
             }
-            Ok((data.clone(), next_state))
+            // Era Wait: `result = effective_input` flows through the tail.
+            let output = postprocess_output(obj, data, &effective, effective.clone());
+            Ok((output, next_state))
         }
         "Choice" => {
             let mut target: Option<String> = None;
             if let Some(choices) = obj.get("Choices").and_then(|c| c.as_array()) {
                 for rule in choices {
-                    if eval_choice(rule, data, true) {
+                    if eval_choice(rule, &effective, true) {
                         target = rule.get("Next").and_then(|n| n.as_str()).map(String::from);
                         break;
                     }
@@ -521,6 +638,8 @@ fn execute_state(
                 }
             }
             match target {
+                // Era: `return data, ...` — the Choice state passes the
+                // unprocessed data through, only routing.
                 Some(next) => Ok((data.clone(), Some(next))),
                 None => Err(FlowError::new(
                     "States.NoChoiceMatched",
@@ -533,17 +652,17 @@ fn execute_state(
             if let Some(branches) = obj.get("Branches").and_then(|b| b.as_array()) {
                 for branch in branches {
                     let (b_states, b_start) = sub_flow_states(branch)?;
-                    let out = run_flow(ctx, &b_states, b_start, data.clone())?;
+                    let out = run_flow(ctx, &b_states, b_start, effective.clone())?;
                     outputs.push(out);
                 }
             }
-            let merged = apply_result_path(result_path_spec(obj), data, Value::Array(outputs));
-            Ok((merged, next_state))
+            let output = postprocess_output(obj, data, &effective, Value::Array(outputs));
+            Ok((output, next_state))
         }
         "Map" => {
             let items = match obj.get("ItemsPath").and_then(|p| p.as_str()) {
-                Some(path) => resolve_json_path(path, data).unwrap_or(Value::Null),
-                None => data.clone(),
+                Some(path) => resolve_json_path(path, &effective).unwrap_or(Value::Null),
+                None => effective.clone(),
             };
             let mut outputs: Vec<Value> = Vec::new();
             if let Value::Array(array) = items {
@@ -555,8 +674,8 @@ fn execute_state(
                     }
                 }
             }
-            let merged = apply_result_path(result_path_spec(obj), data, Value::Array(outputs));
-            Ok((merged, next_state))
+            let output = postprocess_output(obj, data, &effective, Value::Array(outputs));
+            Ok((output, next_state))
         }
         "Task" => {
             // Lambda integrations run the function synchronously (the
@@ -572,38 +691,62 @@ fn execute_state(
             {
                 // Ground truth (python asl.py::_dispatch_task): dict
                 // input is the event; scalars are wrapped under "input".
-                let event = if data.is_object() {
-                    data.clone()
+                let event = if effective.is_object() {
+                    effective.clone()
                 } else {
-                    json!({ "input": data })
+                    json!({ "input": effective })
                 };
-                invoke_lambda_resource(&resource, &event, data)?
-            } else if let Some(sdk_fn) = lambda_sdk_invoke(&resource, data) {
+                invoke_lambda_resource(&resource, &event, &effective)?
+            } else if let Some(sdk_fn) = lambda_sdk_invoke(&resource, &effective) {
                 sdk_fn?
             } else {
                 match obj.get("Result") {
                     Some(r) => r.clone(),
-                    None => data.clone(),
+                    None => effective.clone(),
                 }
             };
-            let merged = apply_result_path(result_path_spec(obj), data, raw_out);
-            Ok((merged, next_state))
+            let output = postprocess_output(obj, data, &effective, raw_out);
+            Ok((output, next_state))
         }
         // "Pass" and anything unrecognised passes through.
         _ => {
-            let processed = if let Some(params) = obj.get("Parameters").and_then(|p| p.as_object())
-            {
-                eval_parameters(params, data)
-            } else if let Some(result) = obj.get("Result") {
-                result.clone()
-            } else {
-                data.clone()
+            let result = match obj.get("Result") {
+                Some(r) => r.clone(),
+                None => effective.clone(),
             };
-            let merged = apply_result_path(result_path_spec(obj), data, processed);
-            let merged = apply_output_path(obj.get("OutputPath").and_then(|p| p.as_str()), merged);
-            Ok((merged, next_state))
+            Ok((
+                postprocess_output(obj, data, &effective, result),
+                next_state,
+            ))
         }
     }
+}
+
+/// Era Fail-state error/cause resolution: a static `Error`/`Cause` value or
+/// a dynamic `ErrorPath`/`CausePath` resolved from the preprocessed input;
+/// non-string resolutions stringify, null falls back to the given default.
+fn resolve_error_field(
+    obj: &Map<String, Value>,
+    input: &Value,
+    static_key: &str,
+    path_key: &str,
+    default: &str,
+) -> String {
+    if let Some(path) = obj.get(path_key).and_then(|v| v.as_str()) {
+        return match resolve_json_path(path, input) {
+            Some(Value::String(s)) => s,
+            // Era: `str(cause) if cause is not None else default` — a null
+            // resolution behaves like a missing one (era `_resolve_path`
+            // returns None for both) and falls through to the static
+            // default.
+            Some(Value::Null) | None => default.to_string(),
+            Some(other) => serde_json::to_string(&other).unwrap_or_else(|_| default.to_string()),
+        };
+    }
+    obj.get(static_key)
+        .and_then(|v| v.as_str())
+        .unwrap_or(default)
+        .to_string()
 }
 
 /// Era Retry/Catch matcher: `"States.ALL" in error_equals or error in
@@ -856,8 +999,29 @@ mod tests {
         zip
     }
 
-    /// Register a lambda in an isolated account that raises until its
-    /// invocation count reaches `fail_below`, then returns the count.
+    /// Register a lambda in an isolated account with the given python code.
+    fn register_python_function(account: u64, region: &str, name: &str, code: &str) {
+        let func = lambda::models::LambdaFunction::new(account, region, name.to_string());
+        *func.handler.write() = "lambda_function.handler".into();
+        *func.code_zip.write() = make_zip(code);
+        let state = lambda::models::LambdaState::new();
+        state.functions.write().insert(
+            name.to_string(),
+            lambda::models::FunctionEntry {
+                latest: Some(std::sync::Arc::new(func)),
+                versions: Vec::new(),
+            },
+        );
+        lambda::bridge::register_state(account, region, &state);
+    }
+
+    /// Register a lambda that echoes its event verbatim.
+    fn register_echo_function(account: u64, region: &str, name: &str) {
+        register_python_function(account, region, name, "def handler(e, c): return e");
+    }
+
+    /// Register a lambda that raises until its invocation count reaches
+    /// `fail_below`, then returns the count.
     fn register_counting_function(
         account: u64,
         region: &str,
@@ -881,18 +1045,7 @@ mod tests {
              \x20       raise RuntimeError('not ready')\n\
              \x20   return {{'attempts': n}}\n"
         );
-        let func = lambda::models::LambdaFunction::new(account, region, name.to_string());
-        *func.handler.write() = "lambda_function.handler".into();
-        *func.code_zip.write() = make_zip(&code);
-        let state = lambda::models::LambdaState::new();
-        state.functions.write().insert(
-            name.to_string(),
-            lambda::models::FunctionEntry {
-                latest: Some(std::sync::Arc::new(func)),
-                versions: Vec::new(),
-            },
-        );
-        lambda::bridge::register_state(account, region, &state);
+        register_python_function(account, region, name, &code);
     }
 
     #[test]
@@ -1083,5 +1236,201 @@ mod tests {
         });
         let out = run(&def, json!({})).expect("branch retries stay isolated");
         assert_eq!(out, json!(["a", "b"]), "both branches completed: {out}");
+    }
+
+    // ---- Input pre-processing for all state types (era `_execute_state`
+    // head) ----
+
+    #[test]
+    fn test_input_path_applies_to_wait_state() {
+        let def = json!({
+            "StartAt": "Wait",
+            "States": {
+                "Wait": {
+                    "Type": "Wait",
+                    "InputPath": "$.msg",
+                    "Next": "Echo",
+                },
+                "Echo": {"Type": "Pass", "End": true},
+            }
+        });
+        let out = run(&def, json!({"msg": {"payload": 1}, "other": true})).expect("flow completes");
+        // The Wait carries its post-InputPath effective input forward; the
+        // Pass echoes it (era `_execute_state` slices every state's input).
+        assert_eq!(out, json!({"payload": 1}));
+    }
+
+    #[test]
+    fn test_input_path_applies_to_choice_state() {
+        let def = json!({
+            "StartAt": "Route",
+            "States": {
+                "Route": {
+                    "Type": "Choice",
+                    "InputPath": "$.msg",
+                    "Choices": [{
+                        "Variable": "$.kind",
+                        "StringEquals": "paid",
+                        "Next": "Paid",
+                    }],
+                    "Default": "Free",
+                },
+                "Paid": {"Type": "Pass", "Result": "paid", "Next": "Done"},
+                "Free": {"Type": "Pass", "Result": "free", "Next": "Done"},
+                "Done": {"Type": "Pass", "End": true},
+            }
+        });
+        let out = run(&def, json!({"msg": {"kind": "paid"}, "junk": true}))
+            .expect("choice matches on the preprocessed input");
+        assert_eq!(out, json!("paid"));
+    }
+
+    #[test]
+    fn test_task_dispatch_receives_parameters_resolved_input() {
+        let (account, region, name) = (847009000001u64, "sfn-params-test", "echo-fn");
+        register_echo_function(account, region, name);
+        let def = json!({
+            "StartAt": "Task",
+            "States": {
+                "Task": {
+                    "Type": "Task",
+                    "Resource": format!("arn:aws:lambda:{region}:{account}:function:{name}"),
+                    "InputPath": "$.event",
+                    "Parameters": {"captured.$": "$.waldo"},
+                    "End": true,
+                }
+            }
+        });
+        let out = run(&def, json!({"event": {"waldo": "found", "extra": 1}}))
+            .expect("task runs against the preprocessed parameters");
+        // The event sent to the function is the Parameters template resolved
+        // against the InputPath-sliced input — anything else is a leak.
+        assert_eq!(out, json!({"captured": "found"}), "got {out}");
+    }
+
+    #[test]
+    fn test_result_selector_selects_from_result() {
+        let (account, region, name) = (847009000002u64, "sfn-selector-test", "echo-fn");
+        register_echo_function(account, region, name);
+        let def = json!({
+            "StartAt": "Task",
+            "States": {
+                "Task": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke".to_string(),
+                    "Parameters": {
+                        "FunctionName": format!("arn:aws:lambda:{region}:{account}:function:{name}"),
+                        "Payload": {"waldo": "found", "junk": 1},
+                    },
+                    "ResultSelector": {"picked.$": "$.waldo"},
+                    "End": true,
+                }
+            }
+        });
+        let out = run(&def, json!({})).expect("result selector applies to the Task result");
+        assert_eq!(out, json!({"picked": "found"}), "got {out}");
+    }
+
+    #[test]
+    fn test_context_object_reference_in_parameters() {
+        let def = json!({
+            "StartAt": "P",
+            "States": {
+                "P": {
+                    "Type": "Pass",
+                    "Parameters": {
+                        "execId.$": "$$.Execution.Id",
+                        "stateName.$": "$$.State.Name",
+                    },
+                    "End": true,
+                }
+            }
+        });
+        let out = run(&def, json!({})).expect("context references resolve");
+        assert_eq!(
+            out["execId"],
+            json!("arn:aws:states:us-east-1:123456789012:execution:t:tester")
+        );
+        assert_eq!(out["stateName"], json!("P"));
+    }
+
+    #[test]
+    fn test_dollar_value_literals_pass_through() {
+        let def = json!({
+            "StartAt": "P",
+            "States": {
+                "P": {
+                    "Type": "Pass",
+                    "Parameters": {
+                        "literal.$": "plain-string",
+                        "obj.$": {"k": "v"},
+                        "num.$": 42,
+                        "pathVal.$": "$.real",
+                        "intrinsic.$": "States.Format('x', $.real)",
+                    },
+                    "End": true,
+                }
+            }
+        });
+        let out = run(&def, json!({"real": 7})).expect("parameters resolve");
+        // Era branch split: strings not starting with $ are literal values;
+        // non-string `.$` values pass through untouched.
+        assert_eq!(
+            out,
+            json!({
+                "literal": "plain-string",
+                "obj": {"k": "v"},
+                "num": 42,
+                "pathVal": 7,
+                // Intrinsic evaluation is not part of this lane's findings;
+                // unresolved expressions stay null (their previous behavior).
+                "intrinsic": Value::Null,
+            })
+        );
+    }
+
+    #[test]
+    fn test_output_path_missing_resolves_null() {
+        let def = json!({
+            "StartAt": "P",
+            "States": {"P": {"Type": "Pass", "OutputPath": "$.missing", "End": true}}
+        });
+        let out = run(&def, json!({"a": 1})).expect("flow completes");
+        // Era `_resolve_path` yields None for a missing OutputPath target,
+        // so the state output is JSON null.
+        assert_eq!(out, Value::Null);
+    }
+
+    #[test]
+    fn test_output_path_null_yields_empty_object() {
+        let def = json!({
+            "StartAt": "P",
+            "States": {"P": {"Type": "Pass", "OutputPath": Value::Null, "End": true}}
+        });
+        let out = run(&def, json!({"a": 1})).expect("flow completes");
+        assert_eq!(out, json!({}));
+    }
+
+    #[test]
+    fn test_fail_error_path_resolves_from_input() {
+        let def = json!({
+            "StartAt": "FailHere",
+            "States": {
+                "FailHere": {
+                    "Type": "Fail",
+                    "ErrorPath": "$.err",
+                    "CausePath": "$.why",
+                }
+            }
+        });
+        let err =
+            run(&def, json!({"err": "DynamicError", "why": "because"})).expect_err("Fail raises");
+        assert_eq!(err.error, "DynamicError");
+        assert_eq!(err.cause, "because");
+        // Non-string resolutions stringify (era `str(...)` fallback).
+        let err = run(&def, json!({"err": 42, "why": Value::Null})).expect_err("Fail raises");
+        assert_eq!(err.error, "42");
+        // Null causeresolution falls back to the era default (empty cause).
+        assert_eq!(err.cause, "");
     }
 }
