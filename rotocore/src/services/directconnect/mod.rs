@@ -19,8 +19,10 @@
 //! - `DeleteConnection` marks the record `deleted` instead of dropping it,
 //! - `CreateLag` spawns `numberOfConnections` child connections named
 //!   `Requested Connection <n> for Lag <lag id>` (also registered at the
-//!   top level); `CreateLag` with a `connectionId` is moto's unguarded
-//!   `NotImplementedError` crash → a 500 `InternalError`,
+//!   top level); `CreateLag` with a `connectionId` (or without a
+//!   `numberOfConnections`) is moto's unmodeled
+//!   NotImplementedError/TypeError crash → werkzeug's canonical
+//!   500 HTML crash page,
 //! - `MacSecKey` records render `{secretARN, ckn, state, startOn}` (never
 //!   `cak`); a missing `secretARN` coalesces to `mock_secret_arn`,
 //! - associating a MacSec key with a LAG id (`dxlag-`) keys the LAG and
@@ -1007,23 +1009,22 @@ fn disassociate_mac_sec_key(st: &mut DxStore, body: &Value, region: &str) -> Res
 }
 
 /// moto's `create_lag`: spawns children named
-/// `Requested Connection <n> for Lag <lag id>`; a `connectionId` member is
-/// moto's unguarded `NotImplementedError` → 500 `InternalError`.
+/// `Requested Connection <n> for Lag <lag id>`; the crashes are unmodeled
+/// exceptions from the fork (`NotImplementedError` for a `connectionId`
+/// member, `TypeError` from `range(None)` without `numberOfConnections`) —
+/// both escape to werkzeug and serve the canonical 500 HTML crash page.
 fn create_lag(st: &mut DxStore, account: u64, region: &str, body: &Value) -> Response {
-    // moto: `if connection_id:` — an empty member keeps the code path.
+    // moto: `if connection_id:` raises NotImplementedError
+    // (`creating a lag with a connection_id is not currently supported by
+    // moto`); an empty member keeps the code path.
     if truthy_str(body, "connectionId").is_some() {
-        return internal_error_500(
-            "creating a lag with a connection_id is not currently supported by moto",
-        );
+        return crate::proto::moto_crash_response();
     }
     let number_of_connections = match body.get("numberOfConnections").and_then(Value::as_i64) {
         Some(n) => n,
-        // moto: `range(None)` TypeError crash (the suite always sends a count).
-        None => {
-            return internal_error_500(
-                "RangeError: 'NoneType' object cannot be interpreted as an integer",
-            )
-        }
+        // moto: `range(None)` raises `TypeError: 'NoneType' object cannot
+        // be interpreted as an integer` (fork models.py:375).
+        None => return crate::proto::moto_crash_response(),
     };
     let request_mac_sec = body.get("requestMACSec").cloned().unwrap_or(Value::Null);
     let mac_sec = if truthy(&request_mac_sec) {
@@ -2606,11 +2607,6 @@ fn gateway_not_found(gateway_id: &str) -> Response {
     ))
 }
 
-/// moto's crash-shaped 500 for its unguarded `NotImplementedError`.
-fn internal_error_500(message: &str) -> Response {
-    json_error(500, "InternalError", message)
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -3085,27 +3081,49 @@ mod tests {
     }
 
     #[test]
-    fn lag_with_connection_id_is_moto_500() {
+    fn lag_crashes_are_moto_crash_pages() {
+        // A CreateLag with a connectionId is moto's unmodeled
+        // NotImplementedError: werkzeug's canonical 500 HTML crash page.
         let account = next_account();
         let created = create_connection(account, "lagcid");
         let cid = created["connectionId"].as_str().unwrap().to_string();
+        let request = Request {
+            service: "directconnect".to_string(),
+            operation: "CreateLag".to_string(),
+            method: "POST".to_string(),
+            path: "/".to_string(),
+            query_string: String::new(),
+            headers: HashMap::new(),
+            body: Bytes::from(
+                serde_json::to_vec(&json!({
+                    "numberOfConnections": 1,
+                    "location": "L",
+                    "connectionsBandwidth": "B",
+                    "lagName": "x",
+                    "connectionId": cid,
+                }))
+                .unwrap(),
+            ),
+            account,
+            region: "us-east-1".to_string(),
+        };
+        let resp = dispatch(&request).unwrap();
+        assert_eq!(resp.status, 500);
+        assert_eq!(
+            resp.body.to_vec(),
+            crate::proto::moto_crash_response().body.to_vec()
+        );
+
+        // A missing numberOfConnections is moto's `range(None)` TypeError,
+        // the same canonical crash page (python's wording:
+        // 'NoneType' object cannot be interpreted as an integer).
         let (status, body) = send(
             account,
             "CreateLag",
-            json!({
-                "numberOfConnections": 1,
-                "location": "L",
-                "connectionsBandwidth": "B",
-                "lagName": "x",
-                "connectionId": cid,
-            }),
+            json!({"location": "L", "connectionsBandwidth": "B", "lagName": "y"}),
         );
         assert_eq!(status, 500);
-        assert_eq!(body["__type"], "InternalError");
-        assert_eq!(
-            body["message"],
-            "creating a lag with a connection_id is not currently supported by moto"
-        );
+        assert_eq!(body, json!({}));
     }
 
     #[test]
