@@ -13,10 +13,12 @@
 //!
 //! Contract: probes/workspaces.json (per-operation moto-era behavior) and
 //! tests/compatibility/test_workspaces_compat.py. moto's unguarded dict
-//! indexes (`self.workspace_directories[id]`) crash with a 500
-//! `InternalError` on unknown ids — kept as recorded in the probe for
-//! DeregisterWorkspaceDirectory, ModifyClientProperties,
-//! ModifySelfservicePermissions and UpdateWorkspaceImagePermission;
+//! indexes (`self.workspace_directories[id]`) crash with an unmodeled
+//! `KeyError`, which werkzeug answers with the canonical 500 HTML crash
+//! page (not a JSON envelope) — reproduced by
+//! `moto_crash_response` for DeregisterWorkspaceDirectory,
+//! ModifyClientProperties, ModifySelfservicePermissions,
+//! UpdateWorkspaceImagePermission and CreateTags' known-prefix lookup;
 //! everything else raises moto's typed `ResourceNotFoundException` /
 //! `ValidationException`.
 
@@ -1082,8 +1084,8 @@ fn deregister_workspace_directory(st: &mut WorkspacesStore, body: &Value) -> Res
     if st.workspace_directories.remove(directory_id).is_some() {
         ok_empty()
     } else {
-        // moto indexes `self.workspace_directories[directory_id]` — a
-        // KeyError crash, recorded as InternalError in the probe.
+        // moto indexes `self.workspace_directories[directory_id]` — an
+        // unmodeled KeyError crash answered by werkzeug's canonical page.
         internal_error_key(directory_id)
     }
 }
@@ -1415,8 +1417,8 @@ fn describe_workspace_images(req: &Request, st: &mut WorkspacesStore, body: &Val
 fn update_workspace_image_permission(st: &mut WorkspacesStore, body: &Value) -> Response {
     let image_id = as_str(body, "ImageId");
     let Some(image) = st.workspace_images.get_mut(image_id) else {
-        // moto indexes `self.workspace_images[image_id]` — crash as
-        // recorded in the probe.
+        // moto indexes `self.workspace_images[image_id]` — an unmodeled
+        // KeyError crash answered by werkzeug's canonical page.
         return internal_error_key(image_id);
     };
     let shared_account_id = as_str(body, "SharedAccountId");
@@ -2226,10 +2228,10 @@ fn already_exists(message: &str) -> Response {
     json_error(400, "ResourceAlreadyExistsException", message)
 }
 
-/// moto's unguarded indexing crashes with KeyError('<key>') turned into a
-/// 500 InternalError, as recorded in probes/workspaces.json.
-fn internal_error_key(key: &str) -> Response {
-    json_error(500, "InternalError", &format!("'{key}'"))
+/// moto's unguarded indexing raises an unmodeled KeyError that werkzeug
+/// answers with the canonical 500 HTML crash page — not a JSON envelope.
+fn internal_error_key(_key: &str) -> Response {
+    crate::proto::moto_crash_response()
 }
 
 // ---------------------------------------------------------------------------
@@ -2459,14 +2461,15 @@ mod tests {
         assert_eq!(status, 400);
         assert_eq!(body["__type"], "ValidationException");
 
-        // Unknown id crashes just like moto's indexing.
+        // Unknown id crashes just like moto's indexing (werkzeug's crash
+        // page, no AWS envelope).
         let (status, body) = send(
             account,
             "DeregisterWorkspaceDirectory",
             json!({ "DirectoryId": "d-nonexistent1234" }),
         );
         assert_eq!(status, 500);
-        assert_eq!(body["__type"], "InternalError");
+        assert_eq!(body, json!({}));
 
         // A registered directory deregisters cleanly.
         let (status, _) = send(
@@ -2499,8 +2502,10 @@ mod tests {
                 op,
                 json!({"ResourceId": "d-0000000000", "ClientProperties": {}}),
             );
+            // Known-prefix ids hit moto's unguarded index — the canonical
+            // crash page, not an AWS envelope.
             assert_eq!(status, 500, "{op}");
-            assert_eq!(body["__type"], "InternalError");
+            assert_eq!(body, json!({}), "{op}");
         }
 
         let (_, _) = send(
@@ -3152,14 +3157,15 @@ mod tests {
         );
         assert_eq!(status, 200);
 
-        // Known-prefix unknown id -> moto's InternalError crash.
+        // Known-prefix unknown id -> moto's unguarded index crash (the
+        // canonical werkzeug crash page, no AWS envelope).
         let (status, body) = send(
             account,
             "CreateTags",
             json!({"ResourceId": "ws-fake12345", "Tags": [{"Key": "k", "Value": "v"}]}),
         );
         assert_eq!(status, 500);
-        assert_eq!(body["__type"], "InternalError");
+        assert_eq!(body, json!({}));
 
         // DeleteTags succeeds everywhere; keys disappear.
         let (status, _) = send(
