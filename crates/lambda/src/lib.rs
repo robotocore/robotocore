@@ -27,6 +27,13 @@ impl DefaultLambdaHandler {
     pub fn handle(&self, req: AwsRequest) -> AwsResponse {
         self.inner.handle(req)
     }
+
+    /// Request-scoped dispatch-timeout hint for the gateway (see
+    /// `LambdaHandler::request_timeout_hint`): `Some(secs)` raises the
+    /// blanket around a docker-mode lambda invoke.
+    pub fn request_timeout_hint(&self, req: &AwsRequest) -> Option<u64> {
+        self.inner.request_timeout_hint(req)
+    }
 }
 
 impl Default for DefaultLambdaHandler {
