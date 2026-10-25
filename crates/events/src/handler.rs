@@ -6,7 +6,7 @@ use crate::protocol::{AwsRequest, AwsResponse};
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 /// Process-global EventBridge state registry, shared by every handler
@@ -294,18 +294,63 @@ impl EventsHandler {
             .cloned()
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
-        if let Some(rule) = state.get_rule(&key.0, &key.1) {
-            let mut existing = rule.targets.write();
+        // moto `EventsBackend.put_targets` raises for a missing rule; the
+        // twin used to report all-green failed-entry totals for one.
+        let Some(rule) = state.get_rule(&key.0, &key.1) else {
+            return AwsResponse::error(
+                400,
+                "ResourceNotFoundException",
+                &format!("Rule {} does not exist on EventBus {}.", key.1, key.0),
+            );
+        };
+        // era `_put_targets`: a rule carries at most 5 targets. Updates of
+        // existing target ids always fit; net-new entries beyond the cap
+        // fail as `LimitExceededException` entries (HTTP 200). Only the
+        // entries that fit are stored.
+        const MAX_TARGETS: usize = 5;
+        let mut failed: Vec<Value> = Vec::new();
+        let mut allowed_targets: Vec<Value> = Vec::new();
+        {
+            let existing = rule.targets.read();
+            let existing_ids: HashSet<&str> = existing
+                .iter()
+                .filter_map(|t| t.get("Id").and_then(Value::as_str))
+                .collect();
+            let mut allowed = MAX_TARGETS.saturating_sub(existing_ids.len());
             for target in targets {
-                let new_id = target.get("Id").and_then(|i| i.as_str());
-                existing.retain(|t| {
-                    let old_id = t.get("Id").and_then(|i| i.as_str());
-                    old_id.is_none() || old_id != new_id
-                });
-                existing.push(target);
+                let id = target
+                    .get("Id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                if existing_ids.contains(id.as_str()) {
+                    allowed_targets.push(target);
+                } else if allowed > 0 {
+                    allowed -= 1;
+                    allowed_targets.push(target);
+                } else {
+                    failed.push(json!({
+                        "TargetId": id,
+                        "ErrorCode": "LimitExceededException",
+                        "ErrorMessage":
+                            "The requested resource exceeds the maximum number allowed.",
+                    }));
+                }
             }
         }
-        AwsResponse::json(200, json!({ "FailedEntryCount": 0, "FailedEntries": [] }))
+        let mut existing = rule.targets.write();
+        for target in allowed_targets {
+            let new_id = target.get("Id").and_then(Value::as_str);
+            existing.retain(|t| {
+                let old_id = t.get("Id").and_then(Value::as_str);
+                old_id.is_none() || old_id != new_id
+            });
+            existing.push(target);
+        }
+        AwsResponse::json(
+            200,
+            json!({ "FailedEntryCount": failed.len(), "FailedEntries": failed }),
+        )
     }
 
     fn remove_targets(&self, req: &AwsRequest) -> AwsResponse {
@@ -321,24 +366,36 @@ impl EventsHandler {
             })
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
-        if let Some(rule) = state.get_rule(&key.0, &key.1) {
-            rule.targets.write().retain(|t| {
-                t.get("Id")
-                    .and_then(|i| i.as_str())
-                    .map(|i| !ids.contains(&i.to_string()))
-                    .unwrap_or(true)
-            });
-        }
+        let Some(rule) = state.get_rule(&key.0, &key.1) else {
+            return AwsResponse::error(
+                400,
+                "ResourceNotFoundException",
+                &format!("Rule {} does not exist on EventBus {}.", key.1, key.0),
+            );
+        };
+        rule.targets.write().retain(|t| {
+            t.get("Id")
+                .and_then(|i| i.as_str())
+                .map(|i| !ids.contains(&i.to_string()))
+                .unwrap_or(true)
+        });
         AwsResponse::json(200, json!({ "FailedEntryCount": 0, "FailedEntries": [] }))
     }
 
     fn list_targets_by_rule(&self, req: &AwsRequest) -> AwsResponse {
         let key = Self::rule_key(req);
         let state = self.get_state(req.account, &req.region);
-        let targets = state
-            .get_rule(&key.0, &key.1)
-            .map(|r| r.targets.read().clone())
-            .unwrap_or_default();
+        // moto `responses.list_targets_by_rule`: KeyError on a missing rule
+        // renders as ResourceNotFoundException ("Rule <name> does not
+        // exist.").
+        let Some(rule) = state.get_rule(&key.0, &key.1) else {
+            return AwsResponse::error(
+                400,
+                "ResourceNotFoundException",
+                &format!("Rule {} does not exist.", key.1),
+            );
+        };
+        let targets = rule.targets.read().clone();
         AwsResponse::json(200, json!({ "Targets": targets, "NextToken": Value::Null }))
     }
 
@@ -1826,6 +1883,87 @@ mod tests {
         let handler = EventsHandler::new();
         let resp = handler.handle(make_req("DeleteRule", json!({"Name": "fp5-ghost-rule"})));
         assert_eq!(resp.status, 200, "deleting a missing rule succeeds (era/moto)");
+    }
+
+    // -- target ops on missing rules + 5-target cap (F6, agent-221 finding 6) --
+
+    fn fp6_target(id: &str) -> Value {
+        json!({
+            "Id": id,
+            "Arn": format!("arn:aws:sqs:us-east-1:123456789012:fp6-q-{id}"),
+        })
+    }
+
+    fn listed_target_ids(handler: &EventsHandler, rule: &str) -> Vec<String> {
+        body(&handler.handle(make_req("ListTargetsByRule", json!({"Rule": rule}))))["Targets"]
+            .as_array()
+            .expect("Targets list")
+            .iter()
+            .filter_map(|t| t["Id"].as_str().map(String::from))
+            .collect()
+    }
+
+    #[test]
+    fn target_ops_on_missing_rule_are_resource_not_found() {
+        let handler = EventsHandler::new();
+        for (op, params) in [
+            ("PutTargets", json!({"Rule": "fp6-ghost", "Targets": [fp6_target("x")]})),
+            ("RemoveTargets", json!({"Rule": "fp6-ghost", "Ids": ["x"]})),
+        ] {
+            let resp = handler.handle(make_req(op, params));
+            assert_eq!(resp.status, 400, "{op} must fail on a missing rule");
+            let json = body(&resp);
+            assert_eq!(json["__type"], "ResourceNotFoundException");
+            assert_eq!(
+                json["message"],
+                "Rule fp6-ghost does not exist on EventBus default."
+            );
+        }
+        let resp = handler.handle(make_req("ListTargetsByRule", json!({"Rule": "fp6-ghost"})));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            body(&resp)["__type"],
+            "ResourceNotFoundException",
+            "moto: Rule <name> does not exist."
+        );
+    }
+
+    #[test]
+    fn put_targets_enforces_the_five_target_cap() {
+        let handler = EventsHandler::new();
+        handler.handle(make_req(
+            "PutRule",
+            json!({"Name": "fp6-cap-rule", "EventPattern": "{}"}),
+        ));
+        let targets: Vec<Value> = (0..6).map(|i| fp6_target(&format!("t{i}"))).collect();
+        let resp = handler
+            .handle(make_req("PutTargets", json!({"Rule": "fp6-cap-rule", "Targets": targets})));
+        let json = body(&resp);
+        assert_eq!(json["FailedEntryCount"], 1);
+        assert_eq!(json["FailedEntries"][0]["TargetId"], "t5");
+        assert_eq!(json["FailedEntries"][0]["ErrorCode"], "LimitExceededException");
+        assert_eq!(listed_target_ids(&handler, "fp6-cap-rule").len(), 5);
+
+        // Updating an existing entry stays inside the cap.
+        let mut update = fp6_target("t1");
+        update["Arn"] = json!("arn:aws:sqs:us-east-1:123456789012:fp6-updated");
+        let resp = handler.handle(make_req(
+            "PutTargets",
+            json!({"Rule": "fp6-cap-rule", "Targets": [update]}),
+        ));
+        assert_eq!(body(&resp)["FailedEntryCount"], 0);
+        assert_eq!(
+            listed_target_ids(&handler, "fp6-cap-rule").len(),
+            5,
+            "update must replace, not add"
+        );
+
+        // A net-new entry on a full rule is refused.
+        let resp = handler
+            .handle(make_req("PutTargets", json!({"Rule": "fp6-cap-rule", "Targets": [fp6_target("t9")]})));
+        let json = body(&resp);
+        assert_eq!(json["FailedEntryCount"], 1);
+        assert_eq!(json["FailedEntries"][0]["ErrorCode"], "LimitExceededException");
     }
 
     // -- rule state ops on missing rules (F4, agent-221 finding 4) -------------
