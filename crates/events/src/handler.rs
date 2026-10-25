@@ -169,6 +169,14 @@ impl EventsHandler {
             .filter(|s| !s.is_empty())
             .unwrap_or("ENABLED")
             .to_string();
+        // moto `EventsBackend.put_rule` carries the existing rule's targets
+        // into the replacement (moto/models.py put_rule: `targets =
+        // existing_rule.targets if existing_rule else []`); resetting them
+        // silently dropped every delivery route on a re-put.
+        let existing_targets = state
+            .get_rule(&bus, &name)
+            .map(|existing| existing.targets.read().clone())
+            .unwrap_or_default();
         let rule = Arc::new(Rule {
             name: name.clone(),
             bus_name: bus.clone(),
@@ -188,7 +196,7 @@ impl EventsHandler {
                 .and_then(|v| if v.is_null() { None } else { Some(v.clone()) })
                 .filter(|v| v.as_object().is_some()),
             created: now_f(),
-            targets: RwLock::new(Vec::new()),
+            targets: RwLock::new(existing_targets),
         });
         state
             .rules
@@ -1887,6 +1895,50 @@ mod tests {
         let handler = EventsHandler::new();
         let resp = handler.handle(make_req("DeleteRule", json!({"Name": "fp5-ghost-rule"})));
         assert_eq!(resp.status, 200, "deleting a missing rule succeeds (era/moto)");
+    }
+
+    // -- PutRule target preservation on overwrite (F8, agent-221 finding 8) ----
+
+    #[test]
+    fn put_rule_over_an_existing_rule_keeps_targets() {
+        let handler = EventsHandler::new();
+        handler.handle(make_req(
+            "PutRule",
+            json!({"Name": "fp8-repeat-rule", "EventPattern": "{}"}),
+        ));
+        handler.handle(make_req("PutTargets", json!({
+            "Rule": "fp8-repeat-rule",
+            "Targets": [fp6_target("t1")],
+        })));
+        let resp = handler.handle(make_req(
+            "PutRule",
+            json!({
+                "Name": "fp8-repeat-rule",
+                "EventPattern": json!({"source": ["fp8.re"]}).to_string(),
+                "State": "ENABLED",
+            }),
+        ));
+        assert_eq!(body(&resp)["RuleArn"].is_string(), true);
+        // moto: the re-put keeps the existing rule's targets.
+        let targets = handler.handle(make_req(
+            "ListTargetsByRule",
+            json!({"Rule": "fp8-repeat-rule"}),
+        ));
+        let parsed = body(&targets);
+        let ids: Vec<&str> = parsed["Targets"]
+            .as_array()
+            .expect("Targets list")
+            .iter()
+            .filter_map(|t| t["Id"].as_str())
+            .collect();
+        assert_eq!(ids, vec!["t1"], "targets must survive a PutRule overwrite");
+
+        // Cleanup.
+        handler.handle(make_req(
+            "RemoveTargets",
+            json!({"Rule": "fp8-repeat-rule", "Ids": ["t1"]}),
+        ));
+        handler.handle(make_req("DeleteRule", json!({"Name": "fp8-repeat-rule"})));
     }
 
     // -- ListRules bus defaulting (F7, agent-221 finding 7) --------------------
