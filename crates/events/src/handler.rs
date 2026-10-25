@@ -250,10 +250,20 @@ impl EventsHandler {
     fn set_rule_state(&self, req: &AwsRequest, state: &str) -> AwsResponse {
         let key = Self::rule_key(req);
         let state_store = self.get_state(req.account, &req.region);
-        if let Some(rule) = state_store.get_rule(&key.0, &key.1) {
-            *rule.state.write() = state.to_string();
+        match state_store.get_rule(&key.0, &key.1) {
+            Some(rule) => {
+                *rule.state.write() = state.to_string();
+                AwsResponse::json(200, json!({}))
+            }
+            // era `_enable_rule`/`_disable_rule` and moto
+            // `responses.enable_rule`/`disable_rule` both reject a missing
+            // rule; a silent 200 left clients believing the rule existed.
+            None => AwsResponse::error(
+                400,
+                "ResourceNotFoundException",
+                &format!("Rule {} does not exist.", key.1),
+            ),
         }
-        AwsResponse::json(200, json!({}))
     }
 
     fn list_rules(&self, req: &AwsRequest) -> AwsResponse {
@@ -1770,7 +1780,40 @@ mod tests {
         assert_eq!(EventsHandler::build_target_input(&target, &event), "b1");
     }
 
+    // -- rule state ops on missing rules (F4, agent-221 finding 4) -------------
+
+    #[test]
+    fn enable_disable_missing_rule_is_resource_not_found() {
+        let handler = EventsHandler::new();
+        for op in ["EnableRule", "DisableRule"] {
+            let resp = handler.handle(make_req(op, json!({"Name": "fp4-no-such-rule"})));
+            assert_eq!(resp.status, 400, "{op} must fail on a missing rule");
+            let json = body(&resp);
+            assert_eq!(json["__type"], "ResourceNotFoundException");
+            assert_eq!(
+                json["message"],
+                "Rule fp4-no-such-rule does not exist.",
+            );
+        }
+        // Sanity: the ops still flip state for an existing rule.
+        handler.handle(make_req(
+            "PutRule",
+            json!({"Name": "fp4-real-rule", "EventPattern": "{}"}),
+        ));
+        handler.handle(make_req("DisableRule", json!({"Name": "fp4-real-rule"})));
+        assert_eq!(
+            body(&handler.handle(make_req("DescribeRule", json!({"Name": "fp4-real-rule"}))))["State"],
+            "DISABLED"
+        );
+        handler.handle(make_req("EnableRule", json!({"Name": "fp4-real-rule"})));
+        assert_eq!(
+            body(&handler.handle(make_req("DescribeRule", json!({"Name": "fp4-real-rule"}))))["State"],
+            "ENABLED"
+        );
+    }
+
     // -- target DLQ record shape (F6) -----------------------------------------
+
 
     fn drain_bridge_queue(name: &str) -> Vec<Value> {
         let mut queue = sqs::models::Queue::new(
