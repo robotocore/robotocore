@@ -29,7 +29,10 @@ fn arn_service_kind(arn: &str) -> &'static str {
     match arn.split(':').nth(2).unwrap_or_default() {
         "states" => "stepfunctions",
         "lambda" => "lambda",
-        "sns" => "sns",
+        // EventBridge → SNS deliveries carry the subject "EventBridge
+        // Notification" (era `_invoke_sns_target`). The subjectless "sns"
+        // hook stays reserved for other origins (S3 notifications).
+        "sns" => "eventbridge-sns",
         "kinesis" => "kinesis",
         "firehose" => "firehose",
         "logs" => "cloudwatch-logs",
@@ -44,6 +47,11 @@ fn arn_service_kind(arn: &str) -> &'static str {
         _ => "unknown",
     }
 }
+
+/// Rules on a bus may forward to each other: the hop count is capped so an
+/// accidental or deliberate bus cycle (A → B → A) terminates after this
+/// many forwards.
+const MAX_BUS_RECURSION: usize = 10;
 
 fn now_f() -> f64 {
     (chrono::Utc::now().timestamp_millis() as f64) / 1000.0
@@ -73,7 +81,7 @@ pub fn publish_event_to_bus(event: &Value, account: u64, region: &str) {
             .collect()
     };
     for rule in matching {
-        EventsHandler::dispatch_to_targets(&rule, event, account, region);
+        EventsHandler::dispatch_to_targets(&rule, event, account, region, 0);
     }
 }
 
@@ -158,6 +166,11 @@ impl EventsHandler {
                 .and_then(|v| v.as_str())
                 .map(String::from),
             schedule_expression,
+            dead_letter_config: req
+                .params
+                .get("DeadLetterConfig")
+                .and_then(|v| if v.is_null() { None } else { Some(v.clone()) })
+                .filter(|v| v.as_object().is_some()),
             created: now_f(),
             targets: RwLock::new(Vec::new()),
         });
@@ -373,10 +386,32 @@ impl EventsHandler {
         if let Some(input) = target.get("Input").and_then(|i| i.as_str()) {
             return input.to_string();
         }
+        if let Some(input_path) = target.get("InputPath").and_then(|i| i.as_str()) {
+            // Same JSONPath resolver the InputPathsMap uses: a bare string
+            // (or an unmatched path — era `_resolve_jsonpath` yields "null")
+            // is passed through as-is, other values as JSON literals.
+            return match input_path {
+                "$" => event.to_string(),
+                p if p.starts_with("$.") => match crate::pattern::resolve_json_path(p, event) {
+                    Some(resolved) => match resolved {
+                        Value::String(s) => s,
+                        other => other.to_string(),
+                    },
+                    None => "null".to_string(),
+                },
+                _ => event.to_string(),
+            };
+        }
         event.to_string()
     }
 
-    fn dispatch_to_targets(rule: &Arc<Rule>, event: &Value, account: u64, region: &str) {
+    pub(crate) fn dispatch_to_targets(
+        rule: &Arc<Rule>,
+        event: &Value,
+        account: u64,
+        region: &str,
+        depth: usize,
+    ) {
         let targets = rule.targets.read().clone();
         for target in targets {
             let arn = target
@@ -387,8 +422,8 @@ impl EventsHandler {
                 continue;
             }
             let payload = Self::build_target_input(&target, event);
-            if let Err(err) = Self::invoke_target(arn, &payload, event, account, region) {
-                Self::send_to_dlq(&target, rule.name.as_str(), event, arn, &err);
+            if let Err(err) = Self::invoke_target(arn, &payload, event, account, region, depth) {
+                Self::send_to_dlq(&target, rule, event, &err);
             }
         }
     }
@@ -401,6 +436,7 @@ impl EventsHandler {
         event: &Value,
         account: u64,
         region: &str,
+        depth: usize,
     ) -> Result<(), String> {
         if arn.contains(":sqs:") {
             sqs::bridge::deliver_to_arn(arn, payload);
@@ -409,6 +445,11 @@ impl EventsHandler {
         if arn.contains(":events:") {
             // Cross-bus forwarding: match the payload (full event JSON) against
             // every rule of the destination bus and dispatch recursively.
+            // The hop count is capped so a bus cycle (A → B → A) terminates
+            // instead of recursing forever.
+            if depth >= MAX_BUS_RECURSION {
+                return Ok(());
+            }
             let bus_name = arn.rsplit('/').next().unwrap_or("default").to_string();
             let bus_account = event
                 .get("account")
@@ -436,23 +477,33 @@ impl EventsHandler {
                 .cloned()
                 .collect();
             for rule in matching {
-                Self::dispatch_to_targets(&rule, &event_value, bus_account, bus_region);
+                Self::dispatch_to_targets(&rule, &event_value, bus_account, bus_region, depth + 1);
             }
             return Ok(());
         }
         match crate::bridge::hook(arn_service_kind(arn), arn, payload, account, region) {
             Some(result) => result,
-            // No dispatch implementation registered: simulated/target-unwired
-            // no-op (the Python provider logs these invocations only).
+            // No dispatch implementation registered: the destination ARN is
+            // dropped. Unknown target services (ssm, redshift, codebuild, … —
+            // the "simulated targets") and unwired kinds are silent no-ops,
+            // exactly like the Python provider's log-only target types; only
+            // an Err from a registered hook reaches the DLQ.
             None => Ok(()),
         }
     }
 
     /// Route a failed target invocation to its dead-letter queue when the
-    /// target carries a `DeadLetterConfig` with an SQS ARN.
-    fn send_to_dlq(target: &Value, rule_name: &str, event: &Value, arn: &str, error: &str) {
-        let Some(dlq_arn) = target
+    /// target carries a `DeadLetterConfig` with an SQS ARN. A rule-level
+    /// `DeadLetterConfig` is the fallback (era `_dispatch_to_targets`:
+    /// `target.dead_letter_config or rule.dead_letter_config`).
+    fn send_to_dlq(target: &Value, rule: &Arc<Rule>, event: &Value, error: &str) {
+        let dlq = target
             .get("DeadLetterConfig")
+            .filter(|c| !c.is_null())
+            .or_else(|| rule.dead_letter_config.as_ref())
+            .cloned();
+        let Some(dlq_arn) = dlq
+            .as_ref()
             .and_then(|c| c.get("Arn"))
             .and_then(|a| a.as_str())
             .filter(|a| a.contains(":sqs:"))
@@ -463,11 +514,11 @@ impl EventsHandler {
             .get("Id")
             .and_then(|i| i.as_str())
             .unwrap_or_default();
+        // Era `_send_to_dlq` record shape: event, rule, target id, error.
         let body = json!({
             "event": event,
-            "rule": rule_name,
+            "rule": rule.name.as_str(),
             "target": target_id,
-            "targetArn": arn,
             "error": error,
         });
         sqs::bridge::deliver_to_arn(dlq_arn, &serde_json::to_string(&body).unwrap_or_default());
@@ -547,7 +598,7 @@ impl EventsHandler {
                 .cloned()
                 .collect();
             for rule in matching {
-                Self::dispatch_to_targets(&rule, &event, req.account, &req.region);
+                Self::dispatch_to_targets(&rule, &event, req.account, &req.region, 0);
             }
             results.push(json!({ "EventId": event["id"] }));
         }
@@ -1678,5 +1729,271 @@ mod tests {
         assert!(matches_pattern(&pattern, &event));
         let bad: Value = serde_json::json!({"source": "other.app", "detail": {"amount": 20}});
         assert!(!matches_pattern(&pattern, &bad));
+    }
+
+    // -- InputPath (F3) -------------------------------------------------------
+
+    #[test]
+    fn test_target_input_path_resolves_via_json_path() {
+        let event = json!({"version": "0", "detail": {"bucket": "b1", "kind": "created"}});
+        let mut target = json!({"InputPath": "$.detail"});
+        assert_eq!(
+            EventsHandler::build_target_input(&target, &event),
+            json!({"bucket": "b1", "kind": "created"}).to_string()
+        );
+        // Explicit Input wins over InputPath (era elif chain).
+        target["Input"] = json!("static");
+        assert_eq!(EventsHandler::build_target_input(&target, &event), "static");
+        // Unmatched path resolves to the literal "null" (era jsonpath).
+        assert_eq!(
+            EventsHandler::build_target_input(&json!({"InputPath": "$.detail.x.y"}), &event),
+            "null"
+        );
+        // A bare string result stays unquoted.
+        let target = json!({"InputPath": "$.detail.bucket"});
+        assert_eq!(EventsHandler::build_target_input(&target, &event), "b1");
+    }
+
+    // -- target DLQ record shape (F6) -----------------------------------------
+
+    fn drain_bridge_queue(name: &str) -> Vec<Value> {
+        let mut queue = sqs::models::Queue::new(
+            name.to_string(),
+            "us-east-1".to_string(),
+            "123456789012".to_string(),
+            format!("http://localhost:4566/123456789012/{name}"),
+            format!("arn:aws:sqs:us-east-1:123456789012:{name}"),
+        );
+        sqs::bridge::drain_pending(123456789012, "us-east-1", name, &mut queue);
+        queue
+            .messages
+            .iter()
+            .map(|m| serde_json::from_str(&m.body).unwrap_or(Value::Null))
+            .collect()
+    }
+
+    fn put_failing_lambda_rule(
+        handler: &EventsHandler,
+        rule: &str,
+        dlq_queue: &str,
+        rule_dlq: bool,
+    ) {
+        // Isolation: the bridge pending buffer is process-global.
+        sqs::bridge::clear_pending(123456789012, "us-east-1", dlq_queue);
+        // The gateway registers the real "lambda" hook; unit tests register a
+        // plainly failing hook kind instead so the DLQ path is exercised.
+        // Re-registering is harmless: every caller installs the same hook.
+        crate::register_hook(
+            "ecs",
+            std::sync::Arc::new(|_arn: &str, _p: &str, _a: u64, _r: &str| {
+                Err("hook delivery failed".to_string())
+            }),
+        );
+        let dlq_arn = format!("arn:aws:sqs:us-east-1:123456789012:{dlq_queue}");
+        let mut rule_params = json!({
+            "Name": rule,
+            "EventPattern": json!({"source": [format!("fp6.{rule}")]}).to_string(),
+        });
+        if rule_dlq {
+            rule_params["DeadLetterConfig"] = json!({"Arn": dlq_arn});
+        }
+        handler.handle(make_req("PutRule", rule_params));
+        let target = json!({
+            "Id": "t1",
+            "Arn": "arn:aws:ecs:us-east-1:123456789012:task/fp6-target",
+        });
+        let target = if rule_dlq {
+            target
+        } else {
+            let mut t = target;
+            t["DeadLetterConfig"] = json!({"Arn": dlq_arn});
+            t
+        };
+        handler.handle(make_req(
+            "PutTargets",
+            json!({"Rule": rule, "Targets": [target]}),
+        ));
+        publish_event_to_bus(
+            &json!({
+                "version": "0",
+                "id": "evt",
+                "source": format!("fp6.{rule}"),
+                "detail": {},
+            }),
+            123456789012,
+            "us-east-1",
+        );
+    }
+
+    #[test]
+    fn test_failed_target_dlq_record_shape() {
+        let handler = EventsHandler::new();
+        let rule = "fp6-err-rule";
+        let queue = "fp6-err-dlq";
+        put_failing_lambda_rule(&handler, rule, queue, false);
+        let records = drain_bridge_queue(queue);
+        assert_eq!(
+            records.len(),
+            1,
+            "the failed lambda target must land on the DLQ"
+        );
+        let record = &records[0];
+        // Era `_send_to_dlq` shape: event, rule, target, error — no targetArn.
+        let keys: Vec<&String> = record.as_object().unwrap().keys().collect();
+        assert_eq!(keys.len(), 4);
+        for key in ["event", "rule", "target", "error"] {
+            assert!(record.get(key).is_some(), "DLQ record must carry {key}");
+        }
+        assert!(
+            record.get("targetArn").is_none(),
+            "targetArn is era-hostile"
+        );
+        assert_eq!(record["rule"], rule);
+        assert_eq!(record["target"], "t1");
+    }
+
+    #[test]
+    fn test_rule_level_dead_letter_config_fallback() {
+        let handler = EventsHandler::new();
+        let rule = "fp6-rule-dlq-rule";
+        let queue = "fp6-rule-dlq";
+        put_failing_lambda_rule(&handler, rule, queue, true);
+        let records = drain_bridge_queue(queue);
+        assert_eq!(
+            records.len(),
+            1,
+            "rule-level DeadLetterConfig catches failures"
+        );
+        assert_eq!(records[0]["rule"], rule);
+        // And DescribeRule surfaces the rule-level config.
+        let described = body(&handler.handle(make_req("DescribeRule", json!({"Name": rule}))));
+        assert_eq!(
+            described["DeadLetterConfig"]["Arn"],
+            json!(format!("arn:aws:sqs:us-east-1:123456789012:{queue}"))
+        );
+    }
+
+    #[test]
+    fn test_invalid_rule_dlq_arn_is_ignored() {
+        let handler = EventsHandler::new();
+        let rule = "fp6-non-sqs-dlq";
+        handler.handle(make_req(
+            "PutRule",
+            json!({
+                "Name": rule,
+                "EventPattern": json!({"source": [format!("fp6.{rule}")]}).to_string(),
+                "DeadLetterConfig": {"Arn": "arn:aws:logs:us-east-1:123456789012:log-group:x"},
+            }),
+        ));
+        handler.handle(make_req(
+            "PutTargets",
+            json!({
+                "Rule": rule,
+                "Targets": [{"Id": "t1", "Arn": "arn:aws:lambda:us-east-1:123456789012:function:nope"}],
+            }),
+        ));
+        publish_event_to_bus(
+            &json!({"version": "0", "id": "e", "source": format!("fp6.{rule}"), "detail": {}}),
+            123456789012,
+            "us-east-1",
+        );
+        // Non-SQS DLQ ARNs never deliver (era `_send_to_dlq` guard).
+        assert!(drain_bridge_queue("fp6-non-sqs-dlq").is_empty());
+    }
+
+    // -- cross-bus recursion cap (F9) ------------------------------------------
+
+    #[test]
+    fn test_bus_cycle_terminates_at_depth_cap() {
+        let handler = EventsHandler::new();
+        // Isolation: the bridge pending buffer is process-global.
+        sqs::bridge::clear_pending(123456789012, "us-east-1", "fp9-bus-a-q");
+        sqs::bridge::clear_pending(123456789012, "us-east-1", "fp9-bus-b-q");
+        let a = "fp9-bus-a";
+        let b = "fp9-bus-b";
+        let qa = "fp9-bus-a-q";
+        let qb = "fp9-bus-b-q";
+        handler.handle(make_req("CreateEventBus", json!({"Name": a})));
+        handler.handle(make_req("CreateEventBus", json!({"Name": b})));
+        for (bus, rule, queue, forward) in [(a, "fp9-ra", qa, b), (b, "fp9-rb", qb, a)] {
+            handler.handle(make_req(
+                "PutRule",
+                json!({
+                    "Name": rule,
+                    "EventBusName": bus,
+                    "EventPattern": json!({"source": ["fp9.recursion"]}).to_string(),
+                }),
+            ));
+            handler.handle(make_req(
+                "PutTargets",
+                json!({
+                    "Rule": rule,
+                    "EventBusName": bus,
+                    "Targets": [
+                        {"Id": "q", "Arn": format!("arn:aws:sqs:us-east-1:123456789012:{queue}")},
+                        {"Id": "next", "Arn": format!("arn:aws:events:us-east-1:123456789012:event-bus/{forward}")},
+                    ],
+                }),
+            ));
+        }
+        let resp = handler.handle(make_req("PutEvents", json!({
+            "Entries": [{"Source": "fp9.recursion", "DetailType": "d", "Detail": "{}", "EventBusName": a}]
+        })));
+        assert_eq!(body(&resp)["FailedEntryCount"], 0);
+
+        let a_deliveries = drain_bridge_queue(qa).len();
+        let b_deliveries = drain_bridge_queue(qb).len();
+        // The cycle hops between the buses up to the depth cap and stops:
+        // qa@even depths (0,2,...,10) → 6, qb@odd (1,3,...,9) → 5. Without
+        // the cap both counts diverge forever (and the test would hang).
+        assert_eq!(a_deliveries, 6, "even-depth deliveries before the cap");
+        assert_eq!(b_deliveries, 5, "odd-depth deliveries before the cap");
+
+        // Clean the pair of queues (the drain already consumed them).
+        handler.handle(make_req(
+            "DeleteRule",
+            json!({"Name": "fp9-ra", "EventBusName": a}),
+        ));
+        handler.handle(make_req(
+            "DeleteRule",
+            json!({"Name": "fp9-rb", "EventBusName": b}),
+        ));
+        handler.handle(make_req("DeleteEventBus", json!({"Name": a})));
+        handler.handle(make_req("DeleteEventBus", json!({"Name": b})));
+    }
+
+    // -- unknown destination ARN drop (F12) ------------------------------------
+
+    #[test]
+    fn test_unknown_destination_arn_is_dropped_silently() {
+        let handler = EventsHandler::new();
+        let rule = "fp12-unknown-dest";
+        let queue = "fp12-unknown-dlq";
+        // Target a service with no registered hook AND no rule DLQ: the
+        // destination is a silent no-op (era log-only "simulated targets"),
+        // never a DLQ record.
+        handler.handle(make_req(
+            "PutRule",
+            json!({
+                "Name": rule,
+                "EventPattern": json!({"source": [format!("fp12.{rule}")]}).to_string(),
+            }),
+        ));
+        handler.handle(make_req("PutTargets", json!({
+            "Rule": rule,
+            "Targets": [{"Id": "t1", "Arn": "arn:aws:ssm:us-east-1:123456789012:parameter/somewhere"}],
+        })));
+        // Registered-hook error → DLQ; unwired kind → drop. Sanity: the same
+        // publish to an unwired destination produces no delivery at all.
+        publish_event_to_bus(
+            &json!({"version": "0", "id": "e", "source": format!("fp12.{rule}"), "detail": {}}),
+            123456789012,
+            "us-east-1",
+        );
+        assert!(
+            drain_bridge_queue(queue).is_empty(),
+            "unwired destination ARNs are dropped without DLQ traffic"
+        );
+        handler.handle(make_req("DeleteRule", json!({"Name": rule})));
     }
 }
