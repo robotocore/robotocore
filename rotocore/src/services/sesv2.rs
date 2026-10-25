@@ -125,9 +125,21 @@ pub fn dispatch(req: &Request) -> Response {
     let body = parse_json_body(&req.body);
     let op = derive_op(&req.method, &req.path);
     if op.is_empty() {
-        return ok_json(json!({}));
+        return unmodeled_route();
     }
     handle(req, &body, &op)
+}
+
+/// Answer for a method+path the routing table does not model.
+///
+/// Fail closed, mirroring moto: its `SESV2Response` dispatch resolves the
+/// action from the botocore model's method/requestUri table and, when
+/// nothing matches, returns `404` with an empty body (`moto/core/responses.py`
+/// `call_action`: `if not action: return 404, headers, ""`). Never answer a
+/// route miss with a 200-derived body — a silent `{}` turns a broken route or
+/// wrong verb into a fake success.
+fn unmodeled_route() -> Response {
+    Response::new(404, "text/plain", "")
 }
 
 /// `(method, segments, op)` — paths as sent by botocore, with the leading
@@ -193,7 +205,10 @@ fn op_table() -> Vec<(&'static str, &'static str, &'static str)> {
         ("PUT", "v2/email/dedicated-ips/{IP}/pool", "PutDedicatedIpInPool"),
         ("PUT", "v2/email/dedicated-ips/{IP}/warmup", "PutDedicatedIpWarmupAttributes"),
         ("GET", "v2/email/account", "GetAccount"),
-        ("PUT", "v2/email/account/details", "PutAccountDetails"),
+        // botocore models PutAccountDetails as POST /v2/email/account/details
+        // (moto derives its route the same way from that model), unlike the
+        // sibling account PUT rows around it.
+        ("POST", "v2/email/account/details", "PutAccountDetails"),
         ("PUT", "v2/email/account/sending", "PutAccountSendingAttributes"),
         ("PUT", "v2/email/account/suppression", "PutAccountSuppressionAttributes"),
         ("PUT", "v2/email/account/vdm", "PutAccountVdmAttributes"),
@@ -1355,7 +1370,9 @@ fn handler_8(req: &Request, body: &Value, op: &str, slot: Slot<SesV2State>) -> R
             ok_json(json!({}))
         }
         "ListRecommendations" => ok_json(json!({ "Recommendations": [] })),
-        _ => ok_json(json!({})),
+        // Reachable only when a table row gains no handler arm — fail closed
+        // like a derive_op miss instead of faking a success.
+        _ => unmodeled_route(),
     }
 }
 
@@ -1584,5 +1601,192 @@ mod tests {
             "PutAccountSendingAttributes"
         );
         assert_eq!(derive_op("GET", "/v2/email/export-jobs/j1"), "GetExportJob");
+    }
+
+    /// The botocore sesv2 model (`botocore/data/sesv2/2019-09-27/service-2.json`,
+    /// as pinned by the repo's test rig — uv.lock botocore 1.42.72): every
+    /// operation the client can emit. This is the same source moto derives its
+    /// runtime route table from (`moto/core/responses.py `_get_method_urls``,
+    /// `BaseResponse.uri_to_regexp`), so a table row that disagrees with one of
+    /// these requestUris is a route moto serves but the twin silently misses.
+    const BOTOCORE_SESV2_ROUTES: &[(&str, &str, &str)] = &[
+        ("POST", "/v2/email/metrics/batch", "BatchGetMetricData"),
+        ("PUT", "/v2/email/export-jobs/{JobId}/cancel", "CancelExportJob"),
+        ("POST", "/v2/email/configuration-sets", "CreateConfigurationSet"),
+        ("POST", "/v2/email/configuration-sets/{ConfigurationSetName}/event-destinations", "CreateConfigurationSetEventDestination"),
+        ("POST", "/v2/email/contact-lists/{ContactListName}/contacts", "CreateContact"),
+        ("POST", "/v2/email/contact-lists", "CreateContactList"),
+        ("POST", "/v2/email/custom-verification-email-templates", "CreateCustomVerificationEmailTemplate"),
+        ("POST", "/v2/email/dedicated-ip-pools", "CreateDedicatedIpPool"),
+        ("POST", "/v2/email/deliverability-dashboard/test", "CreateDeliverabilityTestReport"),
+        ("POST", "/v2/email/identities", "CreateEmailIdentity"),
+        ("POST", "/v2/email/identities/{EmailIdentity}/policies/{PolicyName}", "CreateEmailIdentityPolicy"),
+        ("POST", "/v2/email/templates", "CreateEmailTemplate"),
+        ("POST", "/v2/email/export-jobs", "CreateExportJob"),
+        ("POST", "/v2/email/import-jobs", "CreateImportJob"),
+        ("POST", "/v2/email/multi-region-endpoints", "CreateMultiRegionEndpoint"),
+        ("POST", "/v2/email/tenants", "CreateTenant"),
+        ("POST", "/v2/email/tenants/resources", "CreateTenantResourceAssociation"),
+        ("DELETE", "/v2/email/configuration-sets/{ConfigurationSetName}", "DeleteConfigurationSet"),
+        ("DELETE", "/v2/email/configuration-sets/{ConfigurationSetName}/event-destinations/{EventDestinationName}", "DeleteConfigurationSetEventDestination"),
+        ("DELETE", "/v2/email/contact-lists/{ContactListName}/contacts/{EmailAddress}", "DeleteContact"),
+        ("DELETE", "/v2/email/contact-lists/{ContactListName}", "DeleteContactList"),
+        ("DELETE", "/v2/email/custom-verification-email-templates/{TemplateName}", "DeleteCustomVerificationEmailTemplate"),
+        ("DELETE", "/v2/email/dedicated-ip-pools/{PoolName}", "DeleteDedicatedIpPool"),
+        ("DELETE", "/v2/email/identities/{EmailIdentity}", "DeleteEmailIdentity"),
+        ("DELETE", "/v2/email/identities/{EmailIdentity}/policies/{PolicyName}", "DeleteEmailIdentityPolicy"),
+        ("DELETE", "/v2/email/templates/{TemplateName}", "DeleteEmailTemplate"),
+        ("DELETE", "/v2/email/multi-region-endpoints/{EndpointName}", "DeleteMultiRegionEndpoint"),
+        ("DELETE", "/v2/email/suppression/addresses/{EmailAddress}", "DeleteSuppressedDestination"),
+        ("POST", "/v2/email/tenants/delete", "DeleteTenant"),
+        ("POST", "/v2/email/tenants/resources/delete", "DeleteTenantResourceAssociation"),
+        ("GET", "/v2/email/account", "GetAccount"),
+        ("GET", "/v2/email/deliverability-dashboard/blacklist-report", "GetBlacklistReports"),
+        ("GET", "/v2/email/configuration-sets/{ConfigurationSetName}", "GetConfigurationSet"),
+        ("GET", "/v2/email/configuration-sets/{ConfigurationSetName}/event-destinations", "GetConfigurationSetEventDestinations"),
+        ("GET", "/v2/email/contact-lists/{ContactListName}/contacts/{EmailAddress}", "GetContact"),
+        ("GET", "/v2/email/contact-lists/{ContactListName}", "GetContactList"),
+        ("GET", "/v2/email/custom-verification-email-templates/{TemplateName}", "GetCustomVerificationEmailTemplate"),
+        ("GET", "/v2/email/dedicated-ips/{IP}", "GetDedicatedIp"),
+        ("GET", "/v2/email/dedicated-ip-pools/{PoolName}", "GetDedicatedIpPool"),
+        ("GET", "/v2/email/dedicated-ips", "GetDedicatedIps"),
+        ("GET", "/v2/email/deliverability-dashboard", "GetDeliverabilityDashboardOptions"),
+        ("GET", "/v2/email/deliverability-dashboard/test-reports/{ReportId}", "GetDeliverabilityTestReport"),
+        ("GET", "/v2/email/deliverability-dashboard/campaigns/{CampaignId}", "GetDomainDeliverabilityCampaign"),
+        ("GET", "/v2/email/deliverability-dashboard/statistics-report/{Domain}", "GetDomainStatisticsReport"),
+        ("POST", "/v2/email/email-address-insights/", "GetEmailAddressInsights"),
+        ("GET", "/v2/email/identities/{EmailIdentity}", "GetEmailIdentity"),
+        ("GET", "/v2/email/identities/{EmailIdentity}/policies", "GetEmailIdentityPolicies"),
+        ("GET", "/v2/email/templates/{TemplateName}", "GetEmailTemplate"),
+        ("GET", "/v2/email/export-jobs/{JobId}", "GetExportJob"),
+        ("GET", "/v2/email/import-jobs/{JobId}", "GetImportJob"),
+        ("GET", "/v2/email/insights/{MessageId}/", "GetMessageInsights"),
+        ("GET", "/v2/email/multi-region-endpoints/{EndpointName}", "GetMultiRegionEndpoint"),
+        ("GET", "/v2/email/reputation/entities/{ReputationEntityType}/{ReputationEntityReference}", "GetReputationEntity"),
+        ("GET", "/v2/email/suppression/addresses/{EmailAddress}", "GetSuppressedDestination"),
+        ("POST", "/v2/email/tenants/get", "GetTenant"),
+        ("GET", "/v2/email/configuration-sets", "ListConfigurationSets"),
+        ("GET", "/v2/email/contact-lists", "ListContactLists"),
+        ("POST", "/v2/email/contact-lists/{ContactListName}/contacts/list", "ListContacts"),
+        ("GET", "/v2/email/custom-verification-email-templates", "ListCustomVerificationEmailTemplates"),
+        ("GET", "/v2/email/dedicated-ip-pools", "ListDedicatedIpPools"),
+        ("GET", "/v2/email/deliverability-dashboard/test-reports", "ListDeliverabilityTestReports"),
+        ("GET", "/v2/email/deliverability-dashboard/domains/{SubscribedDomain}/campaigns", "ListDomainDeliverabilityCampaigns"),
+        ("GET", "/v2/email/identities", "ListEmailIdentities"),
+        ("GET", "/v2/email/templates", "ListEmailTemplates"),
+        ("POST", "/v2/email/list-export-jobs", "ListExportJobs"),
+        ("POST", "/v2/email/import-jobs/list", "ListImportJobs"),
+        ("GET", "/v2/email/multi-region-endpoints", "ListMultiRegionEndpoints"),
+        ("POST", "/v2/email/vdm/recommendations", "ListRecommendations"),
+        ("POST", "/v2/email/reputation/entities", "ListReputationEntities"),
+        ("POST", "/v2/email/resources/tenants/list", "ListResourceTenants"),
+        ("GET", "/v2/email/suppression/addresses", "ListSuppressedDestinations"),
+        ("GET", "/v2/email/tags", "ListTagsForResource"),
+        ("POST", "/v2/email/tenants/resources/list", "ListTenantResources"),
+        ("POST", "/v2/email/tenants/list", "ListTenants"),
+        ("PUT", "/v2/email/account/dedicated-ips/warmup", "PutAccountDedicatedIpWarmupAttributes"),
+        ("POST", "/v2/email/account/details", "PutAccountDetails"),
+        ("PUT", "/v2/email/account/sending", "PutAccountSendingAttributes"),
+        ("PUT", "/v2/email/account/suppression", "PutAccountSuppressionAttributes"),
+        ("PUT", "/v2/email/account/vdm", "PutAccountVdmAttributes"),
+        ("PUT", "/v2/email/configuration-sets/{ConfigurationSetName}/archiving-options", "PutConfigurationSetArchivingOptions"),
+        ("PUT", "/v2/email/configuration-sets/{ConfigurationSetName}/delivery-options", "PutConfigurationSetDeliveryOptions"),
+        ("PUT", "/v2/email/configuration-sets/{ConfigurationSetName}/reputation-options", "PutConfigurationSetReputationOptions"),
+        ("PUT", "/v2/email/configuration-sets/{ConfigurationSetName}/sending", "PutConfigurationSetSendingOptions"),
+        ("PUT", "/v2/email/configuration-sets/{ConfigurationSetName}/suppression-options", "PutConfigurationSetSuppressionOptions"),
+        ("PUT", "/v2/email/configuration-sets/{ConfigurationSetName}/tracking-options", "PutConfigurationSetTrackingOptions"),
+        ("PUT", "/v2/email/configuration-sets/{ConfigurationSetName}/vdm-options", "PutConfigurationSetVdmOptions"),
+        ("PUT", "/v2/email/dedicated-ips/{IP}/pool", "PutDedicatedIpInPool"),
+        ("PUT", "/v2/email/dedicated-ip-pools/{PoolName}/scaling", "PutDedicatedIpPoolScalingAttributes"),
+        ("PUT", "/v2/email/dedicated-ips/{IP}/warmup", "PutDedicatedIpWarmupAttributes"),
+        ("PUT", "/v2/email/deliverability-dashboard", "PutDeliverabilityDashboardOption"),
+        ("PUT", "/v2/email/identities/{EmailIdentity}/configuration-set", "PutEmailIdentityConfigurationSetAttributes"),
+        ("PUT", "/v2/email/identities/{EmailIdentity}/dkim", "PutEmailIdentityDkimAttributes"),
+        ("PUT", "/v2/email/identities/{EmailIdentity}/dkim/signing", "PutEmailIdentityDkimSigningAttributes"),
+        ("PUT", "/v2/email/identities/{EmailIdentity}/feedback", "PutEmailIdentityFeedbackAttributes"),
+        ("PUT", "/v2/email/identities/{EmailIdentity}/mail-from", "PutEmailIdentityMailFromAttributes"),
+        ("PUT", "/v2/email/suppression/addresses", "PutSuppressedDestination"),
+        ("POST", "/v2/email/outbound-bulk-emails", "SendBulkEmail"),
+        ("POST", "/v2/email/outbound-custom-verification-emails", "SendCustomVerificationEmail"),
+        ("POST", "/v2/email/outbound-emails", "SendEmail"),
+        ("POST", "/v2/email/tags", "TagResource"),
+        ("POST", "/v2/email/templates/{TemplateName}/render", "TestRenderEmailTemplate"),
+        ("DELETE", "/v2/email/tags", "UntagResource"),
+        ("PUT", "/v2/email/configuration-sets/{ConfigurationSetName}/event-destinations/{EventDestinationName}", "UpdateConfigurationSetEventDestination"),
+        ("PUT", "/v2/email/contact-lists/{ContactListName}/contacts/{EmailAddress}", "UpdateContact"),
+        ("PUT", "/v2/email/contact-lists/{ContactListName}", "UpdateContactList"),
+        ("PUT", "/v2/email/custom-verification-email-templates/{TemplateName}", "UpdateCustomVerificationEmailTemplate"),
+        ("PUT", "/v2/email/identities/{EmailIdentity}/policies/{PolicyName}", "UpdateEmailIdentityPolicy"),
+        ("PUT", "/v2/email/templates/{TemplateName}", "UpdateEmailTemplate"),
+        ("PUT", "/v2/email/reputation/entities/{ReputationEntityType}/{ReputationEntityReference}/customer-managed-status", "UpdateReputationEntityCustomerManagedStatus"),
+        ("PUT", "/v2/email/reputation/entities/{ReputationEntityType}/{ReputationEntityReference}/policy", "UpdateReputationEntityPolicy"),
+    ];
+
+    /// Every botocore-requestUri ↔ table row, exhaustively, in both directions:
+    /// the model's route (exactly as botocore emits it — leading `/`, trailing
+    /// `/` where the model spells one) must derive its operation, and the table
+    /// must not carry any row the model does not.
+    #[test]
+    fn op_table_matches_botocore_request_uris_exhaustively() {
+        for (method, uri, op) in BOTOCORE_SESV2_ROUTES {
+            assert_eq!(
+                derive_op(method, uri),
+                *op,
+                "botocore route {method} {uri} must derive {op}"
+            );
+        }
+        let modeled: std::collections::HashSet<(String, String)> = BOTOCORE_SESV2_ROUTES
+            .iter()
+            .map(|(m, u, _)| ((*m).to_string(), u.trim_matches('/').to_string()))
+            .collect();
+        let mut served = std::collections::HashSet::new();
+        for (method, path, _op) in op_table() {
+            let key = (
+                method.to_string(),
+                format!("/{path}").trim_matches('/').to_string(),
+            );
+            assert!(
+                served.insert(key.clone()),
+                "duplicate table row {method} {path}"
+            );
+            assert!(
+                modeled.contains(&key),
+                "table row {method} {path} is not in the botocore model"
+            );
+        }
+        for (method, uri, op) in BOTOCORE_SESV2_ROUTES {
+            let key = ((*method).to_string(), (*uri).trim_matches('/').to_string());
+            assert!(
+                served.contains(&key),
+                "botocore route {op} ({method} {uri}) is not served by the table"
+            );
+        }
+    }
+
+    /// A route miss fails closed, mirroring moto's wire behavior for SESv2's
+    /// unmatched method+path (pinned fork: `PUT /v2/email/account/details` —
+    /// a modeled path with the wrong verb — answers HTTP 404 with an empty
+    /// body, per `moto/core/responses.py` `call_action`).
+    #[test]
+    fn unmodeled_routes_fail_closed() {
+        let ctx = fresh_ctx();
+        // unmodeled path shape (botocore can only send modeled ones)
+        let r = dispatch(&ctx.req("GET", "/v2/email/list-configuration-sets", json!({})));
+        assert_eq!(r.status, 404);
+        assert!(r.body.is_empty());
+        let r = dispatch(&ctx.req("POST", "/v2/email/configuration-sets/cs1/nop", json!({})));
+        assert_eq!(r.status, 404);
+        // modeled path with the wrong verb — PutAccountDetails is POST-only
+        let r = dispatch(&ctx.req("PUT", "/v2/email/account/details", json!({})));
+        assert_eq!(r.status, 404);
+        // and the modeled POST verb reaches the real handler (persists state)
+        let ok = dispatch(&ctx.req(
+            "POST",
+            "/v2/email/account/details",
+            json!({ "MailType": "TRANSACTIONAL" }),
+        ));
+        assert_eq!(ok.status, 200);
+        let account = parsed(&dispatch(&ctx.req("GET", "/v2/email/account", json!({}))));
+        assert_eq!(account["MailType"], "TRANSACTIONAL");
     }
 }
