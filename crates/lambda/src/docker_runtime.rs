@@ -14,6 +14,17 @@
 //!   - `LAMBDA_DOCKER_NETWORK`: docker network for Lambda containers
 //!   - `LAMBDA_DOCKER_DNS`: custom DNS for Lambda containers
 //!
+//! Cold-pull budget: the mapped images live on `public.ecr.aws`, and the
+//! first invocation of a runtime pays the image pull inside the same
+//! `docker run` CLI window as the invoke itself — `Timeout + 10` overall for
+//! the detached-run handshake, `Timeout + 15` for the loose-bridge families
+//! (see [`DockerLambdaExecutor::docker_invocation`]). A cold multi-hundred-
+//! MB pull can outlive that budget on the very first invoke: the failure
+//! surfaces as the python-era run-error shape (Runtime.ExitError/Unhandled
+//! with the CLI stderr), not as a hang — so pre-warm a runtime's image
+//! (`docker pull <image>`) before invoking when a cold source is expected.
+//! After the pull, every later invocation only waits on the container.
+//!
 //! Design lineage: port of the python-era `DockerLambdaExecutor`
 //! (`src/robotocore/services/lambda_/docker_executor.py`, 7d909e8c PR #111,
 //! evolving the container-pool executors of #41/#75). One deliberate
@@ -1735,7 +1746,9 @@ impl DockerLambdaExecutor {
     /// handshake, and force-removes the container on every path — `--rm`
     /// alone would leave it waiting for the next event. The python-era
     /// budgets are preserved: `timeout + 10` overall (docker run window),
-    /// `timeout + 5` per curl, `docker rm -f` on timeout.
+    /// `timeout + 5` per curl, `docker rm -f` on timeout. That same window
+    /// also bounds a cold image pull — see the module's cold-pull budget
+    /// note.
     #[allow(clippy::too_many_arguments)]
     fn docker_invocation(
         &self,
