@@ -117,21 +117,20 @@ struct Backup {
     volume_id: Option<String>,
     resource_arn: String,
     lifecycle: String,
-    typ: String,
     source_backup_id: Option<String>,
     source_backup_region: Option<String>,
     creation_time: f64,
 }
 
 impl Backup {
-    /// moto's `Backup.to_dict()` drops `None` members but keeps empty lists.
+    /// moto's `Backup.to_dict()` drops `None` members but keeps empty lists;
+    /// it exposes only eight members — no `Type`.
     fn to_dict(&self, tags: Vec<Value>) -> Value {
         let mut out = json!({
             "BackupId": self.backup_id,
             "FileSystemId": self.file_system_id,
             "VolumeId": self.volume_id,
             "Lifecycle": self.lifecycle,
-            "Type": self.typ,
             "SourceBackupId": self.source_backup_id,
             "SourceBackupRegion": self.source_backup_region,
             "CreationTime": self.creation_time,
@@ -513,9 +512,9 @@ fn merge_config(given: Option<&Value>, stored: &mut Option<Value>) {
 fn delete_file_system(st: &mut FsxStore, body: &Value) -> Response {
     let id = as_str(body, "FileSystemId").to_string();
     // moto indexes `self.file_systems[file_system_id]` unguarded: the
-    // KeyError surfaces as a 500 whose message is the bare id.
+    // KeyError escapes to werkzeug and serves the canonical crash page.
     let Some(fs) = st.file_systems.get(&id) else {
-        return internal_error_500(&format!("'{id}'"));
+        return crate::proto::moto_crash_response();
     };
     let fs_type = fs.file_system_type.clone();
     st.file_systems.remove(&id);
@@ -617,7 +616,6 @@ fn create_backup(st: &mut FsxStore, account: u64, region: &str, body: &Value) ->
         volume_id: str_opt(body.get("VolumeId")),
         resource_arn: format!("arn:aws:fsx:{region}:{account}:backup/{backup_id}"),
         lifecycle: "CREATING".to_string(),
-        typ: "USER_INITIATED".to_string(),
         source_backup_id: None,
         source_backup_region: None,
         creation_time: now_unix(),
@@ -651,23 +649,44 @@ fn describe_backups(st: &mut FsxStore, body: &Value) -> Response {
             .collect()
     };
     let filters = filter_map(body.get("Filters"));
-    // moto consults seven attribute pairs; its Backup model only carries
-    // file_system_id and volume_id, so the other five never match — which
-    // is exactly what the `no_attr` lookup produces here.
-    let filtered = filter_resources(
-        collected,
-        &filters,
-        &[
-            ("file-system-id", backup_attr_file_system_id),
-            ("volume-id", backup_attr_volume_id),
-            ("backup-type", no_attr),
-            ("file-system-type", no_attr),
-            ("data-repository-type", no_attr),
-            ("file-cache-id", no_attr),
-            ("file-cache-type", no_attr),
-        ],
-    );
-    let items: Vec<(String, Value)> = filtered
+    // moto consults seven attribute pairs in this order; the Backup model
+    // only defines file_system_id and volume_id, and its filter_resources
+    // walks the pairs with an unguarded getattr (fork utilities/utils.py) —
+    // so a filter on any of the other five names raises AttributeError as
+    // soon as a live aggregate reaches that pair, which werkzeug answers
+    // with its crash page. A present-but-empty valued filter is falsy in
+    // moto and drops every resource before a crash pair is consulted.
+    let attrs: [(&str, Option<AttrFn<Backup>>); 7] = [
+        ("file-system-id", Some(backup_attr_file_system_id)),
+        ("backup-type", None),
+        ("file-system-type", None),
+        ("volume-id", Some(backup_attr_volume_id)),
+        ("data-repository-type", None),
+        ("file-cache-id", None),
+        ("file-cache-type", None),
+    ];
+    let mut survivors: Vec<&Backup> = collected;
+    for (name, attr) in &attrs {
+        let Some(values) = filters.get(*name) else {
+            continue;
+        };
+        let Some(values) = values.as_array().filter(|l| !l.is_empty()) else {
+            // `values = filters.get(name) or None` falsiness removes all.
+            survivors.clear();
+            break;
+        };
+        match attr {
+            None => {
+                if !survivors.is_empty() {
+                    return crate::proto::moto_crash_response();
+                }
+            }
+            Some(attr) => survivors.retain(|b| {
+                attr(b).is_some_and(|v| values.iter().any(|x| x.as_str() == Some(v.as_str())))
+            }),
+        }
+    }
+    let items: Vec<(String, Value)> = survivors
         .into_iter()
         .map(|b| {
             (
@@ -1714,7 +1733,6 @@ fn copy_backup(req: &Request) -> Response {
         volume_id: source.volume_id.clone(),
         resource_arn: format!("arn:aws:fsx:{region}:{account}:backup/{backup_id}"),
         lifecycle: "COPYING".to_string(),
-        typ: source.typ.clone(),
         source_backup_id: Some(source_backup_id.clone()),
         source_backup_region: Some(source_region.clone()),
         creation_time: now_unix(),
@@ -2218,17 +2236,29 @@ mod tests {
     }
 
     #[test]
-    fn delete_file_system_unknown_id_is_moto_500() {
-        // moto indexes the map unguarded: the KeyError message is the id.
+    fn delete_file_system_unknown_id_is_moto_crash_page() {
+        // moto indexes the map unguarded: the KeyError escapes to werkzeug
+        // and serves the canonical crash HTML, not an AWS error envelope.
         let account = next_account();
-        let (status, body) = send(
+        let request = Request {
+            service: "fsx".to_string(),
+            operation: "DeleteFileSystem".to_string(),
+            method: "POST".to_string(),
+            path: "/".to_string(),
+            query_string: String::new(),
+            headers: HashMap::new(),
+            body: Bytes::from(
+                serde_json::to_vec(&json!({ "FileSystemId": "probe-test-value" })).unwrap(),
+            ),
             account,
-            "DeleteFileSystem",
-            json!({ "FileSystemId": "probe-test-value" }),
+            region: "us-east-1".to_string(),
+        };
+        let resp = dispatch(&request).unwrap();
+        assert_eq!(resp.status, 500);
+        assert_eq!(
+            resp.body.to_vec(),
+            crate::proto::moto_crash_response().body.to_vec()
         );
-        assert_eq!(status, 500);
-        assert_eq!(body["__type"], "InternalError");
-        assert_eq!(body["message"], "'probe-test-value'");
     }
 
     #[test]
@@ -2322,6 +2352,75 @@ mod tests {
         );
         assert_eq!(status, 400);
         assert_eq!(body["__type"], "ResourceNotFoundException");
+    }
+
+    #[test]
+    fn describe_backups_filter_semantics_match_moto() {
+        let account = next_account();
+        let fs_id = make_lustre_fs(account);
+        let (_, _) = send(account, "CreateBackup", json!({ "FileSystemId": fs_id }));
+
+        let (status, body) = send(
+            account,
+            "DescribeBackups",
+            json!({ "Filters": [{"Name": "file-system-id", "Values": [fs_id]}] }),
+        );
+        assert_eq!(status, 200);
+        assert_eq!(body["Backups"].as_array().unwrap().len(), 1);
+
+        let (status, body) = send(
+            account,
+            "DescribeBackups",
+            json!({ "Filters": [{"Name": "file-system-id", "Values": ["fs-other"]}] }),
+        );
+        assert_eq!(status, 200);
+        assert!(body["Backups"].as_array().unwrap().is_empty());
+
+        // The five attributes the Backup model does not define crash moto's
+        // unguarded getattr whenever a live aggregate reaches that pair.
+        for name in [
+            "backup-type",
+            "file-system-type",
+            "data-repository-type",
+            "file-cache-id",
+            "file-cache-type",
+        ] {
+            let (status, body) = send(
+                account,
+                "DescribeBackups",
+                json!({ "Filters": [{"Name": name, "Values": ["whatever"]}] }),
+            );
+            assert_eq!(status, 500, "{name}");
+            assert_eq!(
+                body, json!({}),
+                "{name} must be the crash page, not an AWS envelope"
+            );
+        }
+
+        // An empty-valued existing filter drops everything first (moto's
+        // truthiness), so no crash pair is consulted.
+        let (status, body) = send(
+            account,
+            "DescribeBackups",
+            json!({ "Filters": [{"Name": "backup-type", "Values": []}] }),
+        );
+        assert_eq!(status, 200);
+        assert!(body["Backups"].as_array().unwrap().is_empty());
+
+        // A filter that removes every aggregate before the crash pair is
+        // reached leaves nothing to consult: empty response, no crash.
+        let (status, body) = send(
+            account,
+            "DescribeBackups",
+            json!({
+                "Filters": [
+                    {"Name": "file-system-id", "Values": ["fs-other"]},
+                    {"Name": "backup-type", "Values": ["USER_INITIATED"]},
+                ]
+            }),
+        );
+        assert_eq!(status, 200);
+        assert!(body["Backups"].as_array().unwrap().is_empty());
     }
 
     #[test]
@@ -3162,7 +3261,9 @@ mod tests {
         let copy_id = backup["BackupId"].as_str().unwrap().to_string();
         assert!(copy_id.starts_with("backup-"));
         assert_eq!(backup["Lifecycle"], "COPYING");
-        assert_eq!(backup["Type"], "USER_INITIATED");
+        // moto's to_dict has no Type member — a fabricated field would be a
+        // fabricate-type leak on every backup response.
+        assert!(backup.get("Type").is_none());
         assert_eq!(backup["SourceBackupId"], json!(source_id));
         assert_eq!(backup["FileSystem"]["FileSystemId"], json!(fs_id));
 
