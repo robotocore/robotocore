@@ -2,10 +2,10 @@
  "comment": "surface-absence manifest (generated) \u2014 every not_implemented probe row is a recorded decision; see docs/botocore-surface-plan.md \u00a73d; rebuild deterministically via scripts/build_surface_absence.py",
  "counts": {
   "absent_moto_crash_faithful": 1,
-  "absent_no_handler": 235,
+  "absent_no_handler": 232,
   "legacy_gap": 3,
   "modeled_deny": 79,
-  "not_implemented": 318
+  "not_implemented": 315
  },
  "services": {
   "account": {
@@ -244,19 +244,19 @@
    "DescribeTypeRegistration": {
     "class": "modeled_deny",
     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-    "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3399; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `describe_type_registration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3788; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `describe_type_registration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
     "status": "not_implemented"
    },
    "RegisterType": {
     "class": "modeled_deny",
     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-    "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3399; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `register_type` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3788; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `register_type` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
     "status": "not_implemented"
    },
    "SetTypeConfiguration": {
     "class": "modeled_deny",
     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-    "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3399; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `set_type_configuration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3788; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `set_type_configuration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
     "status": "not_implemented"
    }
   },
@@ -995,26 +995,6 @@
     "class": "absent_no_handler",
     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): osis/responses.py has no `validate_pipeline` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-    "status": "not_implemented"
-   }
-  },
-  "polly": {
-   "GetSpeechSynthesisTask": {
-    "class": "absent_no_handler",
-    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): polly/responses.py has no `get_speech_synthesis_task` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-    "status": "not_implemented"
-   },
-   "ListSpeechSynthesisTasks": {
-    "class": "absent_no_handler",
-    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): polly/responses.py has no `list_speech_synthesis_tasks` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-    "status": "not_implemented"
-   },
-   "StartSpeechSynthesisTask": {
-    "class": "absent_no_handler",
-    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): polly/responses.py has no `start_speech_synthesis_task` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
     "status": "not_implemented"
    }
   },

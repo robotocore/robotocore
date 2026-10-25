@@ -38,7 +38,8 @@ _spec.loader.exec_module(probe)
 import boto3  # noqa: E402
 import botocore  # noqa: E402
 
-ENDPOINT = "http://localhost:4566"
+import os
+ENDPOINT = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
 MANIFEST = ROOT / "tooling" / "surface-absence.json"
 
 
@@ -69,6 +70,12 @@ def verdict_for(status: str, klass: str) -> tuple[bool, str]:
         return True, "PASS"
     if klass == "absent_moto_crash_faithful" and status == "500_error":
         return True, "PASS (crash-faithful rows mirror moto's raw 500)"
+    if klass == "legacy_gap" and status == "working":
+        # closed-gap rows: the manifest text keeps the history and the twin
+        # legitimately serves them now; a probe refresh clears these.
+        return True, "PASS (closed gap, probe refresh pending)"
+    if klass == "legacy_gap" and status == "not_implemented":
+        return False, "STILL ABSENT — legacy gap not yet closed"
     if status == "working":
         return False, "REGRESSION — manifest records a deny but the twin answers"
     if status == "needs_params":
@@ -127,7 +134,8 @@ def main() -> int:
         for r in results:
             flag = "ok  " if r["ok"] else "FAIL"
             print(f"{flag} {r['service']}.{r['op']} class={r['class']} live={r['live_status']} -> {r['verdict']}")
-        print(f"census: {ok_n}/{len(results)} rows conform to the recorded deny contract")
+        extra = f" (+{skipped_model} skipped unknown botocore names)" if skipped_model else ""
+        print(f"census: {ok_n}/{len(results)} rows conform to the recorded deny contract{extra}")
     return 0 if failures == 0 else 1
 
 

@@ -12478,7 +12478,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (ValidationError)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -12489,7 +12489,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (ValidationError)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -12808,7 +12808,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -12819,7 +12819,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "implemented (ValidationError)",
+    "probe_message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -12852,7 +12852,7 @@
     "absence": {
      "class": "modeled_deny",
      "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3399; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `describe_type_registration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3788; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `describe_type_registration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
      "status": "not_implemented"
     },
     "bucket": "absent_modeled_deny",
@@ -12978,7 +12978,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (ValidationError)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -12989,7 +12989,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -13264,7 +13264,7 @@
     "absence": {
      "class": "modeled_deny",
      "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3399; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `register_type` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3788; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `register_type` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
      "status": "not_implemented"
     },
     "bucket": "absent_modeled_deny",
@@ -13302,7 +13302,7 @@
     "absence": {
      "class": "modeled_deny",
      "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3399; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `set_type_configuration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3788; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `set_type_configuration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
      "status": "not_implemented"
     },
     "bucket": "absent_modeled_deny",
@@ -13351,7 +13351,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "implemented (ValidationError)",
+    "probe_message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -13395,7 +13395,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -13406,7 +13406,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -80440,19 +80440,8 @@
   "total": 10
  },
  "polly": {
-  "covered": 6,
+  "covered": 5,
   "ops": {
-   "DeleteLexicon": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "likely implemented (LexiconNotFoundException: Lexicon not found)",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
    "DescribeVoices": {
     "absence": null,
     "bucket": "working",
@@ -80476,16 +80465,11 @@
     }
    },
    "GetSpeechSynthesisTask": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): polly/responses.py has no `get_speech_synthesis_task` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "likely implemented (SynthesisTaskNotFoundException: Speech synthesis task not found)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -80503,64 +80487,10 @@
     }
    },
    "ListSpeechSynthesisTasks": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): polly/responses.py has no `list_speech_synthesis_tasks` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
-    "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "PutLexicon": {
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "implemented (InvalidParameterValue)",
-    "probe_status": "working",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "StartSpeechSynthesisStream": {
-    "absence": null,
-    "bucket": "absent_crash_faithful",
-    "conformance": null,
-    "probe_message": "exception: 'Polly' object has no attribute 'start_speech_synthesis_stre",
-    "probe_status": "500_error",
-    "screens": {
-     "probe": true,
-     "unit": false
-    }
-   },
-   "StartSpeechSynthesisTask": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): polly/responses.py has no `start_speech_synthesis_task` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
-    "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
-    "screens": {
-     "probe": true,
-     "unit": true
-    }
-   },
-   "SynthesizeSpeech": {
-    "absence": null,
-    "bucket": "working",
-    "conformance": null,
-    "probe_message": "implemented (InvalidParameterValue)",
+    "probe_message": "OK",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -80568,7 +80498,7 @@
     }
    }
   },
-  "total": 10
+  "total": 5
  },
  "quicksight": {
   "covered": 224,
@@ -80577,7 +80507,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (ResourceNotFoundException)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -80588,7 +80518,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (ResourceNotFoundException)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -80599,7 +80529,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (ResourceNotFoundException)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -80643,7 +80573,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (ResourceExistsException: Analysis probe-analysis-id-id already exists)",
+    "probe_message": "OK",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -102933,14 +102863,14 @@
   "total": 71
  },
  "sesv2": {
-  "covered": 109,
+  "covered": 110,
   "ops": {
    "BatchGetMetricData": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true

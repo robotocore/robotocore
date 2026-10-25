@@ -438,6 +438,14 @@ def main():
     counts = result["counts"]
     results = result["operations"]
 
+    # Single-service mode writes the corpus artifact like --all-services
+    # does: agents and gates converge on probes/<svc>.json as the only
+    # source of truth, so a fresh probe without a write is a lie.
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"{args.service}.json"
+    path.write_text(json.dumps(result, indent=2) + "\n")
+
     if args.json:
         print(json.dumps(result, indent=2))
     else:

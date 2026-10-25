@@ -41,7 +41,7 @@ probe-freshness: ## Fail when a probe corpus lags its implementation merge
 	uv run python scripts/probe_freshness.py
 
 error-census: ## Live wire census: every recorded deny must answer 501 NotImplemented
-	uv run python scripts/error_census.py
+	uv run python scripts/error_census.py --all
 
 absence-manifest: ## Rebuild tooling/surface-absence.json (every deny is a recorded decision)
 	uv run python scripts/build_surface_absence.py
