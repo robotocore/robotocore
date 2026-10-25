@@ -456,9 +456,17 @@ fn security_groups_exist(req: &Request, ids: &[String]) -> bool {
 /// Single-group existence probe (moto validates each SG id).
 fn sg_exists(req: &Request, id: &str) -> bool {
     let body = LoopbackBody::Form(format!(
-        "Action=DescribeSecurityGroups&Version=2016-11-15&Filter.1.Name=group-id&Filter.1.Values.member.1={id}"
+        // The gateway's EC2 accepts AWS's canonical filter encoding
+        // (`Filter.1.Value.1`); a `Values.member.1` filter fails to match.
+        "Action=DescribeSecurityGroups&Version=2016-11-15&Filter.1.Name=group-id&Filter.1.Value.1={id}"
     ));
-    matches!(loopback(req, "ec2", &body), Some((200, _)))
+    // moto raises InvalidSecurityGroupError whenever the EC2 backend has no
+    // such group id, so existence means the id actually appears in the
+    // response's securityGroups list — not merely a 200 answer.
+    matches!(
+        super::elbv2::loopback(req, "ec2", &body),
+        Some((200, xml)) if xml.contains(&format!("<groupId>{id}</groupId>"))
+    )
 }
 
 /// EC2 instance states; missing ids do not appear in the map.
