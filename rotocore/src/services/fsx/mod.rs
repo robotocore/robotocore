@@ -2392,7 +2392,8 @@ mod tests {
             );
             assert_eq!(status, 500, "{name}");
             assert_eq!(
-                body, json!({}),
+                body,
+                json!({}),
                 "{name} must be the crash page, not an AWS envelope"
             );
         }

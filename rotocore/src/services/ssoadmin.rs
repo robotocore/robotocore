@@ -518,8 +518,7 @@ fn paginated_key(item: &Value, attrs: &[&str]) -> String {
 /// parameters exist, and its decoder tolerates the missing checksum).
 fn encode_resume_token(parts: &[String]) -> String {
     let doc = json!({ "uniqueAttributes": parts.join("|") });
-    base64::engine::general_purpose::STANDARD
-        .encode(serde_json::to_vec(&doc).unwrap_or_default())
+    base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(&doc).unwrap_or_default())
 }
 
 /// base64(JSON) -> the joined `uniqueAttributes` string.
@@ -956,7 +955,12 @@ fn handle(st: &mut State, p: &Value, req: &Request) -> Response {
                     (
                         paginated_key(
                             &item,
-                            &["AccountId", "PermissionSetArn", "PrincipalId", "PrincipalType"],
+                            &[
+                                "AccountId",
+                                "PermissionSetArn",
+                                "PrincipalId",
+                                "PrincipalType",
+                            ],
                         ),
                         item,
                     )
@@ -1002,7 +1006,12 @@ fn handle(st: &mut State, p: &Value, req: &Request) -> Response {
                     (
                         paginated_key(
                             &item,
-                            &["AccountId", "PermissionSetArn", "PrincipalId", "PrincipalType"],
+                            &[
+                                "AccountId",
+                                "PermissionSetArn",
+                                "PrincipalId",
+                                "PrincipalType",
+                            ],
                         ),
                         item,
                     )
@@ -3184,10 +3193,7 @@ mod tests {
             &json!({"InstanceArn": &inst, "MaxResults": 1}),
             &req("ListPermissionSets"),
         ));
-        assert_eq!(
-            page1["PermissionSets"],
-            json!([json!(a)])
-        );
+        assert_eq!(page1["PermissionSets"], json!([json!(a)]));
         let token = page1["NextToken"].as_str().unwrap().to_string();
 
         // The token is base64 of {"uniqueAttributes": "<next arn>"}.
@@ -3395,7 +3401,10 @@ mod tests {
             }),
             &req("ListAccountAssignmentsForPrincipal"),
         ));
-        assert_eq!(mismatched["AccountAssignments"].as_array().unwrap().len(), 0);
+        assert_eq!(
+            mismatched["AccountAssignments"].as_array().unwrap().len(),
+            0
+        );
 
         // MaxResults walks two pages.
         let page1 = body(&handle(

@@ -3959,10 +3959,7 @@ mod tests {
         r.account = acct;
         let resp = dispatch(&r).unwrap();
         assert_eq!(resp.status, 400);
-        assert_eq!(
-            body(&resp)["message"],
-            json!("User does not exist.")
-        );
+        assert_eq!(body(&resp)["message"], json!("User does not exist."));
     }
 
     #[test]
