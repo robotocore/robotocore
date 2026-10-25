@@ -1,54 +1,54 @@
 {
   "service": "directconnect",
-  "generated_at": "2026-10-22T07:00:05.583050+00:00",
+  "generated_at": "2026-10-25T01:42:13.370154+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 10,
+    "working": 62,
     "needs_params": 0,
-    "not_implemented": 52,
+    "not_implemented": 0,
     "500_error": 1,
     "timeout": 0
   },
   "operations": [
     {
       "operation": "AcceptDirectConnectGatewayAssociationProposal",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: probe-direct-connect-gateway-id-id does not match any Direct)"
     },
     {
       "operation": "AllocateConnectionOnInterconnect",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: probe-interconnect-id-id does not match any interconnects in)"
     },
     {
       "operation": "AllocateHostedConnection",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)"
     },
     {
       "operation": "AllocatePrivateVirtualInterface",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)"
     },
     {
       "operation": "AllocatePublicVirtualInterface",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)"
     },
     {
       "operation": "AllocateTransitVirtualInterface",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)"
     },
     {
       "operation": "AssociateConnectionWithLag",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (LagNotFound: probe-lag-id-id does not match any LAGs in region us-east-1.)"
     },
     {
       "operation": "AssociateHostedConnection",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ConnectionNotFound: probe-parent-connection-id-id does not match any connections)"
     },
     {
       "operation": "AssociateMacSecKey",
@@ -57,38 +57,38 @@
     },
     {
       "operation": "AssociateVirtualInterface",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)"
     },
     {
       "operation": "ConfirmConnection",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)"
     },
     {
       "operation": "ConfirmCustomerAgreement",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ConfirmPrivateVirtualInterface",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: probe-virtual-interface-id-id does not match any virtual int)"
     },
     {
       "operation": "ConfirmPublicVirtualInterface",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: probe-virtual-interface-id-id does not match any virtual int)"
     },
     {
       "operation": "ConfirmTransitVirtualInterface",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: probe-virtual-interface-id-id does not match any virtual int)"
     },
     {
       "operation": "CreateBGPPeer",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: probe-virtual-interface-id-id does not match any virtual int)"
     },
     {
       "operation": "CreateConnection",
@@ -97,23 +97,23 @@
     },
     {
       "operation": "CreateDirectConnectGateway",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateDirectConnectGatewayAssociation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: probe-direct-connect-gateway-id-id does not match any Direct)"
     },
     {
       "operation": "CreateDirectConnectGatewayAssociationProposal",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: probe-direct-connect-gateway-id-id does not match any Direct)"
     },
     {
       "operation": "CreateInterconnect",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateLag",
@@ -122,23 +122,23 @@
     },
     {
       "operation": "CreatePrivateVirtualInterface",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)"
     },
     {
       "operation": "CreatePublicVirtualInterface",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)"
     },
     {
       "operation": "CreateTransitVirtualInterface",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)"
     },
     {
       "operation": "DeleteBGPPeer",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: probe-virtual-interface-id-id does not match any virtual int)"
     },
     {
       "operation": "DeleteConnection",
@@ -147,38 +147,38 @@
     },
     {
       "operation": "DeleteDirectConnectGateway",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: probe-direct-connect-gateway-id-id does not match any Direct)"
     },
     {
       "operation": "DeleteDirectConnectGatewayAssociation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: The specified association does not exist.)"
     },
     {
       "operation": "DeleteDirectConnectGatewayAssociationProposal",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: The proposal probe-proposal-id-id is not present.)"
     },
     {
       "operation": "DeleteInterconnect",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: probe-interconnect-id-id does not match any interconnects in)"
     },
     {
       "operation": "DeleteLag",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (LagNotFound: probe-lag-id-id does not match any LAGs in region us-east-1.)"
     },
     {
       "operation": "DeleteVirtualInterface",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: probe-virtual-interface-id-id does not match any virtual int)"
     },
     {
       "operation": "DescribeConnectionLoa",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)"
     },
     {
       "operation": "DescribeConnections",
@@ -187,48 +187,48 @@
     },
     {
       "operation": "DescribeConnectionsOnInterconnect",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: probe-interconnect-id-id does not match any interconnects in)"
     },
     {
       "operation": "DescribeCustomerMetadata",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeDirectConnectGatewayAssociationProposals",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: The proposal probe-proposal-id-id is not present.)"
     },
     {
       "operation": "DescribeDirectConnectGatewayAssociations",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: The association probe-association-id-id is not present.)"
     },
     {
       "operation": "DescribeDirectConnectGatewayAttachments",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeDirectConnectGateways",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeHostedConnections",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)"
     },
     {
       "operation": "DescribeInterconnectLoa",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: probe-interconnect-id-id does not match any interconnects in)"
     },
     {
       "operation": "DescribeInterconnects",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: probe-interconnect-id-id does not match any interconnects in)"
     },
     {
       "operation": "DescribeLags",
@@ -237,18 +237,18 @@
     },
     {
       "operation": "DescribeLoa",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ConnectionNotFound: probe-connection-id-id does not match any connections in reg)"
     },
     {
       "operation": "DescribeLocations",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeRouterConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: probe-virtual-interface-id-id does not match any virtual int)"
     },
     {
       "operation": "DescribeTags",
@@ -257,18 +257,18 @@
     },
     {
       "operation": "DescribeVirtualGateways",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeVirtualInterfaces",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: probe-virtual-interface-id-id does not match any virtual int)"
     },
     {
       "operation": "DisassociateConnectionFromLag",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (LagNotFound: probe-lag-id-id does not match any LAGs in region us-east-1.)"
     },
     {
       "operation": "DisassociateMacSecKey",
@@ -277,18 +277,18 @@
     },
     {
       "operation": "ListVirtualInterfaceTestHistory",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartBgpFailoverTest",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: probe-virtual-interface-id-id does not match any virtual int)"
     },
     {
       "operation": "StopBgpFailoverTest",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: probe-virtual-interface-id-id does not match any virtual int)"
     },
     {
       "operation": "TagResource",
@@ -307,23 +307,23 @@
     },
     {
       "operation": "UpdateDirectConnectGateway",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: probe-direct-connect-gateway-id-id does not match any Direct)"
     },
     {
       "operation": "UpdateDirectConnectGatewayAssociation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: The association probe-association-id-id is not present.)"
     },
     {
       "operation": "UpdateLag",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (LagNotFound: probe-lag-id-id does not match any LAGs in region us-east-1.)"
     },
     {
       "operation": "UpdateVirtualInterfaceAttributes",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DirectConnectClientException: probe-virtual-interface-id-id does not match any virtual int)"
     }
   ]
 }

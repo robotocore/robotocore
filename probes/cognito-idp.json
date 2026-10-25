@@ -1,11 +1,11 @@
 {
   "service": "cognito-idp",
-  "generated_at": "2026-10-22T06:59:48.010975+00:00",
+  "generated_at": "2026-10-25T01:42:12.617289+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 70,
+    "working": 121,
     "needs_params": 0,
-    "not_implemented": 52,
+    "not_implemented": 1,
     "500_error": 0,
     "timeout": 0
   },
@@ -17,8 +17,8 @@
     },
     {
       "operation": "AddUserPoolClientSecret",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "AdminAddUserToGroup",
@@ -47,8 +47,8 @@
     },
     {
       "operation": "AdminDisableProviderForUser",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "AdminDisableUser",
@@ -62,13 +62,13 @@
     },
     {
       "operation": "AdminForgetDevice",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "AdminGetDevice",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "AdminGetUser",
@@ -82,13 +82,13 @@
     },
     {
       "operation": "AdminLinkProviderForUser",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "AdminListDevices",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "AdminListGroupsForUser",
@@ -97,8 +97,8 @@
     },
     {
       "operation": "AdminListUserAuthEvents",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "AdminRemoveUserFromGroup",
@@ -127,18 +127,18 @@
     },
     {
       "operation": "AdminSetUserSettings",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "AdminUpdateAuthEventFeedback",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "AdminUpdateDeviceStatus",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "AdminUpdateUserAttributes",
@@ -162,13 +162,13 @@
     },
     {
       "operation": "CompleteWebAuthnRegistration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: probe-token-9462)"
     },
     {
       "operation": "ConfirmDevice",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: probe-token-9462)"
     },
     {
       "operation": "ConfirmForgotPassword",
@@ -192,8 +192,8 @@
     },
     {
       "operation": "CreateManagedLoginBranding",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateResourceServer",
@@ -207,8 +207,8 @@
     },
     {
       "operation": "CreateUserImportJob",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateUserPool",
@@ -237,13 +237,13 @@
     },
     {
       "operation": "DeleteManagedLoginBranding",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteResourceServer",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteTerms",
@@ -252,13 +252,13 @@
     },
     {
       "operation": "DeleteUser",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: probe-token-9462)"
     },
     {
       "operation": "DeleteUserAttributes",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: Invalid access token.)"
     },
     {
       "operation": "DeleteUserPool",
@@ -282,8 +282,8 @@
     },
     {
       "operation": "DeleteWebAuthnCredential",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: probe-token-9462)"
     },
     {
       "operation": "DescribeIdentityProvider",
@@ -292,13 +292,13 @@
     },
     {
       "operation": "DescribeManagedLoginBranding",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeManagedLoginBrandingByClient",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeResourceServer",
@@ -307,8 +307,8 @@
     },
     {
       "operation": "DescribeRiskConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeTerms",
@@ -317,8 +317,8 @@
     },
     {
       "operation": "DescribeUserImportJob",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeUserPool",
@@ -337,8 +337,8 @@
     },
     {
       "operation": "ForgetDevice",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: probe-token-9462)"
     },
     {
       "operation": "ForgotPassword",
@@ -347,13 +347,13 @@
     },
     {
       "operation": "GetCSVHeader",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetDevice",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: probe-token-9462)"
     },
     {
       "operation": "GetGroup",
@@ -362,28 +362,28 @@
     },
     {
       "operation": "GetIdentityProviderByIdentifier",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetLogDeliveryConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetSigningCertificate",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetTokensFromRefreshToken",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "GetUICustomization",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetUser",
@@ -392,13 +392,13 @@
     },
     {
       "operation": "GetUserAttributeVerificationCode",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: Invalid access token.)"
     },
     {
       "operation": "GetUserAuthFactors",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: Invalid access token.)"
     },
     {
       "operation": "GetUserPoolMfaConfig",
@@ -417,8 +417,8 @@
     },
     {
       "operation": "ListDevices",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: probe-token-9462)"
     },
     {
       "operation": "ListGroups",
@@ -447,13 +447,13 @@
     },
     {
       "operation": "ListUserImportJobs",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListUserPoolClientSecrets",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListUserPoolClients",
@@ -477,13 +477,13 @@
     },
     {
       "operation": "ListWebAuthnCredentials",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: probe-token-9462)"
     },
     {
       "operation": "ResendConfirmationCode",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "RespondToAuthChallenge",
@@ -492,28 +492,28 @@
     },
     {
       "operation": "RevokeToken",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "SetLogDeliveryConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "SetRiskConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "SetUICustomization",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "SetUserMFAPreference",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-6564)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-9462)"
     },
     {
       "operation": "SetUserPoolMfaConfig",
@@ -522,8 +522,8 @@
     },
     {
       "operation": "SetUserSettings",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: Invalid access token.)"
     },
     {
       "operation": "SignUp",
@@ -532,18 +532,18 @@
     },
     {
       "operation": "StartUserImportJob",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "StartWebAuthnRegistration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: probe-token-9462)"
     },
     {
       "operation": "StopUserImportJob",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "TagResource",
@@ -557,13 +557,13 @@
     },
     {
       "operation": "UpdateAuthEventFeedback",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateDeviceStatus",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: probe-token-9462)"
     },
     {
       "operation": "UpdateGroup",
@@ -577,13 +577,13 @@
     },
     {
       "operation": "UpdateManagedLoginBranding",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateResourceServer",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateTerms",
@@ -617,8 +617,8 @@
     },
     {
       "operation": "VerifyUserAttribute",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: Invalid access token.)"
     }
   ]
 }
