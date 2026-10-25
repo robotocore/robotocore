@@ -372,6 +372,12 @@ pub(crate) fn ensure_dotnet_bridge(tfm: &str) -> Option<std::path::PathBuf> {
 /// passed `parts[0]` to `os.path.join` and a csproj `<AssemblyName>` with no
 /// further vetting — the escape/injection hole this module closes (the
 /// mapped dotnet images have no SDK, so that build runs on the twin host).
+///
+/// `$(...)` MSBuild fragments are rejected too: XML escaping does not
+/// neutralize MSBuild property expressions, so a caller-supplied
+/// `<AssemblyName>$(Foo)</AssemblyName>` would be *evaluated* by the twin's
+/// SDK build. Control characters below 0x20 (except tab/lf/cr) are rejected
+/// as well — they are never legitimate csproj text or file names.
 pub(crate) fn dotnet_assembly_violation(assembly: &str) -> Option<&'static str> {
     if assembly.is_empty() {
         return Some("empty assembly name");
@@ -387,6 +393,15 @@ pub(crate) fn dotnet_assembly_violation(assembly: &str) -> Option<&'static str> 
     }
     if assembly.chars().any(|c| "<>&\"'".contains(c)) {
         return Some("XML metacharacter");
+    }
+    if assembly.contains("$(") {
+        return Some("MSBuild property expression");
+    }
+    if assembly
+        .chars()
+        .any(|c| c < '\u{20}' && c != '\t' && c != '\n' && c != '\r')
+    {
+        return Some("control character");
     }
     None
 }
@@ -3469,13 +3484,32 @@ mod tests {
 
     /// The dotnet handler's assembly component is the only piece that lands
     /// in a filesystem path or a generated csproj: every separator, dot
-    /// segment, leading dot and csproj/XML metacharacter is rejected. The
-    /// python era (`runtimes/dotnet.py`) vetted nothing — that gap is the
+    /// segment, leading dot, csproj/XML metacharacter, MSBuild `$(...)`
+    /// fragment and sub-0x20 control character is rejected (XML escaping
+    /// does not neutralize MSBuild property expressions, so `$(...)` would be
+    /// *evaluated* by the twin-run SDK build). Tab/lf/cr stay accepted — the
+    /// only sub-0x20 whitespace the era tolerated. The python era
+    /// (`runtimes/dotnet.py`) vetted nothing — that gap is the
     /// csproj-injection/path-traversal hole this guard closes.
     #[test]
     fn dotnet_assembly_violation_rejects_unsafe_names() {
         for bad in [
-            "", ".hidden", "..", "a..b", "sub/dir", "sub\\dir", "a<b", "a>b", "a&b", "a\"b", "a'b",
+            "",
+            ".hidden",
+            "..",
+            "a..b",
+            "sub/dir",
+            "sub\\dir",
+            "a<b",
+            "a>b",
+            "a&b",
+            "a\"b",
+            "a'b",
+            "a$(d)b",
+            "$(TestAssembly)",
+            "a\u{1}b",
+            "a\u{7}b",
+            "a\u{1f}b",
         ] {
             assert!(
                 dotnet_assembly_violation(bad).is_some(),
