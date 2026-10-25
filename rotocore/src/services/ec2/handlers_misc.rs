@@ -2509,9 +2509,26 @@ fn tgw_rest_route(req: &Request, op: &str, params: &P) -> Response {
                 )
             }
             "DescribeTransitGatewayConnects" => {
+                let ids: Vec<String> = params
+                    .list("TransitGatewayAttachmentIds")
+                    .iter()
+                    .chain(params.list("TransitGatewayAttachmentId").iter())
+                    .map(|s| s.to_string())
+                    .collect();
+                let fs = super::handlers::filters(params);
                 let mut items = String::new();
                 for a in &state.tgw_attachments {
                     if a.resource_type != "connect" {
+                        continue;
+                    }
+                    if !ids.is_empty() && !ids.contains(&a.id) {
+                        continue;
+                    }
+                    if !super::handlers::filter_passes(&fs, |f| match f {
+                        "transit-gateway-attachment-id" => vec![a.id.clone()],
+                        "state" => vec![a.state.clone()],
+                        other => tag_candidates(&a.tags, other),
+                    }) {
                         continue;
                     }
                     items.push_str(&format!(

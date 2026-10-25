@@ -60,7 +60,7 @@
  "emrcontainers": 3913,
  "emrserverless": 6875,
  "es": 10000,
- "events": 9825,
+ "events": 10000,
  "firehose": 10000,
  "forecast": 10000,
  "fsx": 9167,
