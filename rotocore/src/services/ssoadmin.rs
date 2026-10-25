@@ -30,6 +30,7 @@
 
 use crate::store;
 use crate::{Request, Response};
+use base64::Engine as _;
 use once_cell::sync::Lazy;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -451,6 +452,104 @@ fn status_filter(p: &Value) -> impl Fn() -> bool + '_ {
     move || wanted.is_empty() || wanted == "SUCCEEDED"
 }
 
+/// moto's `paginate` semantics (unique_attribute-driven, limit_default 100):
+/// slice `[start, start + max_results)` off the ordered list; emit a next
+/// token describing the first item AFTER the page when more remain.
+/// Each caller keys its item with python-`str()` renders of the operation's
+/// `unique_attribute` members joined with `|` (see `paginated_key`).
+fn paginate_keyed(
+    items: Vec<(String, Value)>,
+    max_results: Option<i64>,
+    starting_token: Option<&str>,
+) -> Result<(Vec<Value>, Value), Response> {
+    let limit = match max_results {
+        Some(n) if n > 0 => n as usize,
+        // moto: falsy limit falls back to limit_default 100.
+        _ => 100,
+    };
+    let start = match starting_token {
+        None => 0usize,
+        Some(token) => {
+            let predicate = decode_resume_token(token)?;
+            items
+                .iter()
+                .position(|(key, _)| *key == predicate)
+                .ok_or_else(|| invalid_token("Resource not found!"))?
+        }
+    };
+    let end = (start + limit).min(items.len());
+    let page: Vec<Value> = items[start..end].iter().map(|(_, v)| v.clone()).collect();
+    let next = if !page.is_empty() && end < items.len() {
+        Value::String(encode_resume_token(&[items[end].0.clone()]))
+    } else {
+        Value::Null
+    };
+    Ok((page, next))
+}
+
+/// python-`str()` of a wire member for the resume-token key: strings pass
+/// through, everything else renders like moto's `str()` (null members
+/// become `None`).
+fn py_str(v: &Value) -> String {
+    match v.as_str() {
+        Some(s) => s.to_string(),
+        None => match v {
+            Value::Null => "None".to_string(),
+            Value::Bool(b) => b.to_string(),
+            Value::Number(n) => n.to_string(),
+            other => other.to_string(),
+        },
+    }
+}
+
+/// The resume-token key for a paginated wire item: the operation's
+/// `unique_attribute` values rendered like python's `getattr`-based token
+/// builder (`"|".join(str(item[attr]) ...)`).
+fn paginated_key(item: &Value, attrs: &[&str]) -> String {
+    attrs
+        .iter()
+        .map(|attr| py_str(item.get(*attr).unwrap_or(&Value::Null)))
+        .collect::<Vec<_>>()
+        .join("|")
+}
+
+/// base64 of `{"uniqueAttributes": "a|b"}` — moto's `TokenEncoder` output
+/// without the parameterChecksum (the fork only adds it when input
+/// parameters exist, and its decoder tolerates the missing checksum).
+fn encode_resume_token(parts: &[String]) -> String {
+    let doc = json!({ "uniqueAttributes": parts.join("|") });
+    base64::engine::general_purpose::STANDARD
+        .encode(serde_json::to_vec(&doc).unwrap_or_default())
+}
+
+/// base64(JSON) -> the joined `uniqueAttributes` string.
+fn decode_resume_token(token: &str) -> Result<String, Response> {
+    base64::engine::general_purpose::STANDARD
+        .decode(token.as_bytes())
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+        .and_then(|value| {
+            value
+                .get("uniqueAttributes")
+                .and_then(Value::as_str)
+                .map(String::from)
+        })
+        .ok_or_else(|| invalid_token("Invalid token"))
+}
+
+fn max_results(p: &Value) -> Option<i64> {
+    p.get("MaxResults").and_then(Value::as_i64)
+}
+
+fn next_token(p: &Value) -> Option<&str> {
+    p.get("NextToken").and_then(Value::as_str)
+}
+
+/// moto's `InvalidToken` (an `AWSError`, code 400).
+fn invalid_token(message: &str) -> Response {
+    error_response("InvalidToken", &format!("Invalid Token: {message}"))
+}
+
 fn handle(st: &mut State, p: &Value, req: &Request) -> Response {
     match req.operation.as_str() {
         "ListInstances" => ok(&json!({"Instances": st.instances})),
@@ -473,7 +572,11 @@ fn handle(st: &mut State, p: &Value, req: &Request) -> Response {
                 p.get("Name").and_then(Value::as_str),
                 p.get("Description").and_then(Value::as_str),
                 &arn,
-                param(p, "SessionDuration"),
+                // moto reads SessionDuration with a 3600 default (an int,
+                // not a string, when the member is absent).
+                p.get("SessionDuration")
+                    .cloned()
+                    .unwrap_or_else(|| json!(3600)),
                 param(p, "RelayState"),
             );
             body["CreatedDate"] = json!(epoch());
@@ -502,13 +605,19 @@ fn handle(st: &mut State, p: &Value, req: &Request) -> Response {
         }
         "ListPermissionSets" => {
             let instance_arn = body_str(p, "InstanceArn");
-            let arns: Vec<Value> = st
+            let items: Vec<(String, Value)> = st
                 .permission_sets
                 .iter()
                 .filter(|ps| ps.instance_arn == instance_arn)
-                .map(|ps| ps.body["PermissionSetArn"].clone())
+                .map(|ps| {
+                    let arn = ps.body["PermissionSetArn"].clone();
+                    (arn.as_str().unwrap_or_default().to_string(), arn)
+                })
                 .collect();
-            ok(&json!({"PermissionSets": arns, "NextToken": Value::Null}))
+            match paginate_keyed(items, max_results(p), next_token(p)) {
+                Ok((page, next)) => ok(&json!({"PermissionSets": page, "NextToken": next})),
+                Err(resp) => resp,
+            }
         }
         "ListPermissionSetsProvisionedToAccount" => {
             // moto reads the instance provisioning record and ignores
@@ -619,12 +728,20 @@ fn handle(st: &mut State, p: &Value, req: &Request) -> Response {
             let ps = body_str(p, "PermissionSetArn");
             match find_ps(st, instance_arn, ps) {
                 Some(i) => {
-                    let list: Vec<Value> = st.permission_sets[i]
+                    let items: Vec<(String, Value)> = st.permission_sets[i]
                         .managed_policies
                         .iter()
-                        .map(|(arn, name)| json!({"Arn": arn, "Name": name}))
+                        .map(|(arn, name)| {
+                            let item = json!({"Arn": arn, "Name": name});
+                            (arn.clone(), item)
+                        })
                         .collect();
-                    ok(&json!({"AttachedManagedPolicies": list, "NextToken": Value::Null}))
+                    match paginate_keyed(items, max_results(p), next_token(p)) {
+                        Ok((page, next)) => {
+                            ok(&json!({"AttachedManagedPolicies": page, "NextToken": next}))
+                        }
+                        Err(resp) => resp,
+                    }
                 }
                 None => ps_not_found(ps),
             }
@@ -697,12 +814,22 @@ fn handle(st: &mut State, p: &Value, req: &Request) -> Response {
             let ps = body_str(p, "PermissionSetArn");
             match find_ps(st, instance_arn, ps) {
                 Some(i) => {
-                    let list: Vec<Value> = st.permission_sets[i]
+                    let items: Vec<(String, Value)> = st.permission_sets[i]
                         .customer_policies
                         .iter()
-                        .map(|(name, path)| json!({"Name": name, "Path": path}))
+                        .map(|(name, path)| {
+                            let item = json!({"Name": name, "Path": path});
+                            let key = format!("{name}|{}", wire_str(path.as_deref()));
+                            (key, item)
+                        })
                         .collect();
-                    ok(&json!({"CustomerManagedPolicyReferences": list, "NextToken": Value::Null}))
+                    match paginate_keyed(items, max_results(p), next_token(p)) {
+                        Ok((page, next)) => ok(&json!({
+                            "CustomerManagedPolicyReferences": page,
+                            "NextToken": next,
+                        })),
+                        Err(resp) => resp,
+                    }
                 }
                 None => ps_not_found(ps),
             }
@@ -806,37 +933,85 @@ fn handle(st: &mut State, p: &Value, req: &Request) -> Response {
             }
         }
         "ListAccountAssignments" => {
+            let instance_arn = param(p, "InstanceArn");
             let account_id = param(p, "AccountId");
             let ps = param(p, "PermissionSetArn");
-            let out: Vec<Value> = st
+            let items: Vec<(String, Value)> = st
                 .assignments
                 .iter()
-                .filter(|a| a.target_id == account_id && a.permission_set_arn == ps)
+                // moto filters on all three: instance_arn, target_id and
+                // permission_set_arn (a foreign instance yields nothing).
+                .filter(|a| {
+                    a.instance_arn == instance_arn.as_str().unwrap_or("")
+                        && a.target_id == account_id
+                        && a.permission_set_arn == ps
+                })
                 .map(|a| {
-                    json!({
+                    let item = json!({
                         "AccountId": a.target_id,
                         "PermissionSetArn": a.permission_set_arn,
                         "PrincipalType": a.principal_type,
                         "PrincipalId": a.principal_id,
-                    })
+                    });
+                    (
+                        paginated_key(
+                            &item,
+                            &["AccountId", "PermissionSetArn", "PrincipalId", "PrincipalType"],
+                        ),
+                        item,
+                    )
                 })
                 .collect();
-            ok(&json!({"AccountAssignments": out, "NextToken": Value::Null}))
+            match paginate_keyed(items, max_results(p), next_token(p)) {
+                Ok((page, next)) => ok(&json!({"AccountAssignments": page, "NextToken": next})),
+                Err(resp) => resp,
+            }
         }
         "ListAccountAssignmentsForPrincipal" => {
-            let out: Vec<Value> = st
+            // moto's four-term filter (models.py): a Filter.AccountId must
+            // match the assignment's target_id (its default is the target
+            // id itself, so an absent filter matches everything), plus
+            // principal_id, principal_type and instance_arn.
+            let filter_account_id = p
+                .get("Filter")
+                .and_then(|f| f.get("AccountId"))
+                .filter(|v| !v.is_null())
+                .cloned();
+            let instance_arn = param(p, "InstanceArn");
+            let principal_id = param(p, "PrincipalId");
+            let principal_type = param(p, "PrincipalType");
+            let items: Vec<(String, Value)> = st
                 .assignments
                 .iter()
+                .filter(|a| {
+                    filter_account_id
+                        .clone()
+                        .unwrap_or_else(|| a.target_id.clone())
+                        == a.target_id
+                        && principal_id == a.principal_id
+                        && principal_type == a.principal_type
+                        && instance_arn.as_str().unwrap_or_default() == a.instance_arn
+                })
                 .map(|a| {
-                    json!({
+                    let item = json!({
                         "AccountId": a.target_id,
                         "PermissionSetArn": a.permission_set_arn,
                         "PrincipalId": a.principal_id,
                         "PrincipalType": a.principal_type,
-                    })
+                    });
+                    (
+                        paginated_key(
+                            &item,
+                            &["AccountId", "PermissionSetArn", "PrincipalId", "PrincipalType"],
+                        ),
+                        item,
+                    )
                 })
                 .collect();
-            ok(&json!({"AccountAssignments": out, "NextToken": Value::Null}))
+            match paginate_keyed(items, max_results(p), next_token(p)) {
+                Ok((page, next)) => ok(&json!({"AccountAssignments": page, "NextToken": next})),
+                Err(resp) => resp,
+            }
         }
         "ListTagsForResource" => {
             let arn = body_str(p, "ResourceARN");
@@ -883,12 +1058,12 @@ fn handle(st: &mut State, p: &Value, req: &Request) -> Response {
                         .to_string();
                     // moto's handler builds the status itself: TargetType and
                     // TargetId are ignored — the permission set is provisioned
-                    // to the caller's account. The record is kept so the
-                    // botocore status lookups resolve it afterwards.
+                    // to the caller's account. The built body has no
+                    // FailureReason member. The record is kept so the botocore
+                    // status lookups resolve it afterwards.
                     let status = json!({
                         "AccountId": req.account.to_string(),
                         "CreatedDate": epoch(),
-                        "FailureReason": Value::Null,
                         "PermissionSetArn": ps,
                         "RequestId": uuid::Uuid::new_v4().to_string(),
                         "Status": "SUCCEEDED",
@@ -1789,6 +1964,12 @@ mod tests {
             Some(path) => format!("arn:aws:iam::aws:policy{path}{name}"),
             None => format!("arn:aws:iam::aws:policy/{name}"),
         }
+    }
+
+    /// A hand-built resume token: base64 of `{"uniqueAttributes": attrs}`.
+    fn token_for(attrs: &str) -> String {
+        base64::engine::general_purpose::STANDARD
+            .encode(serde_json::to_vec(&json!({ "uniqueAttributes": attrs })).unwrap())
     }
 
     fn attach_managed(st: &mut State, inst: &str, ps: &str, policy: &str) -> Response {
@@ -2984,5 +3165,290 @@ mod tests {
             listed["AccountAssignmentsDeletionStatus"][0]["RequestId"],
             created_id
         );
+    }
+
+    /// moto's `@paginate` semantics: MaxResults slices the list and the
+    /// NextToken names the first item AFTER the page (base64 JSON of
+    /// `uniqueAttributes`); a bad or unmatched token is moto's
+    /// `InvalidToken` 400.
+    #[test]
+    fn paginated_lists_honor_max_results_and_next_token() {
+        let st = &mut fresh_state(111_000_000_016);
+        let inst = instance_arn(st);
+        let a = create_permission_set(st, "a");
+        let b = create_permission_set(st, "b");
+        let c = create_permission_set(st, "c");
+
+        let page1 = body(&handle(
+            st,
+            &json!({"InstanceArn": &inst, "MaxResults": 1}),
+            &req("ListPermissionSets"),
+        ));
+        assert_eq!(
+            page1["PermissionSets"],
+            json!([json!(a)])
+        );
+        let token = page1["NextToken"].as_str().unwrap().to_string();
+
+        // The token is base64 of {"uniqueAttributes": "<next arn>"}.
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(token.as_bytes())
+            .unwrap();
+        let doc: Value = serde_json::from_slice(&decoded).unwrap();
+        assert_eq!(doc["uniqueAttributes"], json!(b));
+
+        let page2 = body(&handle(
+            st,
+            &json!({"InstanceArn": &inst, "MaxResults": 1, "NextToken": &token}),
+            &req("ListPermissionSets"),
+        ));
+        assert_eq!(page2["PermissionSets"], json!([json!(b)]));
+
+        let page3 = body(&handle(
+            st,
+            &json!({"InstanceArn": &inst, "MaxResults": 1, "NextToken": page2["NextToken"]}),
+            &req("ListPermissionSets"),
+        ));
+        assert_eq!(page3["PermissionSets"], json!([json!(c)]));
+        assert!(page3["NextToken"].is_null());
+
+        // A token naming nothing is moto's InvalidToken.
+        let bad = handle(
+            st,
+            &json!({"InstanceArn": &inst, "NextToken": token_for("missing|arn")}),
+            &req("ListPermissionSets"),
+        );
+        assert_eq!(bad.status, 400);
+        let e = body(&bad);
+        assert_eq!(e["__type"], "InvalidToken");
+        assert_eq!(e["message"], "Invalid Token: Resource not found!");
+
+        // A garbage token is also InvalidToken.
+        let garbage = handle(
+            st,
+            &json!({"InstanceArn": &inst, "NextToken": "garbage!!"}),
+            &req("ListPermissionSets"),
+        );
+        let e = body(&garbage);
+        assert_eq!(e["__type"], "InvalidToken");
+
+        // A falsy MaxResults falls back to moto's limit_default 100.
+        let all = body(&handle(
+            st,
+            &json!({"InstanceArn": &inst, "MaxResults": 0}),
+            &req("ListPermissionSets"),
+        ));
+        assert_eq!(all["PermissionSets"].as_array().unwrap().len(), 3);
+        assert!(all["NextToken"].is_null());
+
+        // The same paginator drives the managed-policy list.
+        attach_managed(st, &inst, &a, &policy_arn("AmazonEC2ReadOnlyAccess"));
+        attach_managed(st, &inst, &a, &policy_arn("AmazonS3ReadOnlyAccess"));
+        let listed = body(&handle(
+            st,
+            &json!({
+                "InstanceArn": &inst,
+                "PermissionSetArn": &a,
+                "MaxResults": 1,
+            }),
+            &req("ListManagedPoliciesInPermissionSet"),
+        ));
+        assert_eq!(
+            listed["AttachedManagedPolicies"][0]["Name"],
+            "AmazonEC2ReadOnlyAccess"
+        );
+        assert!(listed["NextToken"].is_string());
+    }
+
+    /// ListAccountAssignments filters on the instance ARN too (moto's
+    /// three-term filter) and paginates on the four-attribute token.
+    #[test]
+    fn list_account_assignments_instance_scope_and_pages() {
+        let st = &mut fresh_state(111_000_000_016);
+        let inst = instance_arn(st);
+        let other = format!("{inst}/x");
+        let ps = create_permission_set(st, "a");
+        for (principal, ps_arn, target) in [
+            ("u-1", ps.clone(), "123456789012"),
+            ("u-2", ps.clone(), "123456789012"),
+            ("u-3", ps.clone(), "123456789012"),
+        ] {
+            handle(
+                st,
+                &json!({
+                    "InstanceArn": &inst,
+                    "PermissionSetArn": ps_arn,
+                    "PrincipalId": principal,
+                    "PrincipalType": "USER",
+                    "TargetId": target,
+                    "TargetType": "AWS_ACCOUNT",
+                }),
+                &req("CreateAccountAssignment"),
+            );
+        }
+        // A different permission set never leaks into ps-a's rows and a
+        // foreign instance arn never leaks in either.
+        let page = body(&handle(
+            st,
+            &json!({
+                "InstanceArn": &other,
+                "AccountId": "123456789012",
+                "PermissionSetArn": &ps,
+            }),
+            &req("ListAccountAssignments"),
+        ));
+        assert_eq!(page["AccountAssignments"].as_array().unwrap().len(), 0);
+
+        let page1 = body(&handle(
+            st,
+            &json!({
+                "InstanceArn": &inst,
+                "AccountId": "123456789012",
+                "PermissionSetArn": &ps,
+                "MaxResults": 2,
+            }),
+            &req("ListAccountAssignments"),
+        ));
+        assert_eq!(page1["AccountAssignments"].as_array().unwrap().len(), 2);
+        assert!(page1["NextToken"].is_string());
+
+        let page2 = body(&handle(
+            st,
+            &json!({
+                "InstanceArn": &inst,
+                "AccountId": "123456789012",
+                "PermissionSetArn": &ps,
+                "NextToken": page1["NextToken"],
+            }),
+            &req("ListAccountAssignments"),
+        ));
+        assert_eq!(page2["AccountAssignments"].as_array().unwrap().len(), 1);
+        assert!(page2["NextToken"].is_null());
+    }
+
+    /// moto's four-term filter on ListAccountAssignmentsForPrincipal: the
+    /// requested principal, principal type, instance and optional
+    /// Filter.AccountId all reduce the output (and nothing leaks across).
+    #[test]
+    fn list_account_assignments_for_principal_filter() {
+        let st = &mut fresh_state(111_000_000_017);
+        let inst = instance_arn(st);
+        let ps = create_permission_set(st, "a");
+        for (pid, ptype, target) in [
+            ("u-1", "USER", "111111111111"),
+            ("g-1", "GROUP", "111111111111"),
+            ("u-1", "USER", "222222222222"),
+        ] {
+            handle(
+                st,
+                &json!({
+                    "InstanceArn": &inst,
+                    "PermissionSetArn": &ps,
+                    "PrincipalId": pid,
+                    "PrincipalType": ptype,
+                    "TargetId": target,
+                    "TargetType": "ACCOUNT",
+                }),
+                &req("CreateAccountAssignment"),
+            );
+        }
+
+        // A foreign instance yields nothing (no cross-instance leak).
+        let foreign = body(&handle(
+            st,
+            &json!({"InstanceArn": "arn:aws:sso:::instance/ssoins-ghost", "PrincipalId": "u-1", "PrincipalType": "USER"}),
+            &req("ListAccountAssignmentsForPrincipal"),
+        ));
+        assert_eq!(foreign["AccountAssignments"].as_array().unwrap().len(), 0);
+
+        let listed = body(&handle(
+            st,
+            &json!({"InstanceArn": &inst, "PrincipalId": "u-1", "PrincipalType": "USER"}),
+            &req("ListAccountAssignmentsForPrincipal"),
+        ));
+        let rows = listed["AccountAssignments"].as_array().unwrap();
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().all(|r| r["PrincipalId"] == json!("u-1")));
+
+        // Filter.AccountId must match the target id.
+        let filtered = body(&handle(
+            st,
+            &json!({
+                "InstanceArn": &inst,
+                "PrincipalId": "u-1",
+                "PrincipalType": "USER",
+                "Filter": {"AccountId": "222222222222"},
+            }),
+            &req("ListAccountAssignmentsForPrincipal"),
+        ));
+        let rows = filtered["AccountAssignments"].as_array().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["AccountId"], "222222222222");
+
+        let mismatched = body(&handle(
+            st,
+            &json!({
+                "InstanceArn": &inst,
+                "PrincipalId": "u-1",
+                "PrincipalType": "USER",
+                "Filter": {"AccountId": "999999999999"},
+            }),
+            &req("ListAccountAssignmentsForPrincipal"),
+        ));
+        assert_eq!(mismatched["AccountAssignments"].as_array().unwrap().len(), 0);
+
+        // MaxResults walks two pages.
+        let page1 = body(&handle(
+            st,
+            &json!({
+                "InstanceArn": &inst,
+                "PrincipalId": "u-1",
+                "PrincipalType": "USER",
+                "MaxResults": 1,
+            }),
+            &req("ListAccountAssignmentsForPrincipal"),
+        ));
+        assert_eq!(page1["AccountAssignments"].as_array().unwrap().len(), 1);
+        let page2 = body(&handle(
+            st,
+            &json!({
+                "InstanceArn": &inst,
+                "PrincipalId": "u-1",
+                "PrincipalType": "USER",
+                "NextToken": page1["NextToken"],
+            }),
+            &req("ListAccountAssignmentsForPrincipal"),
+        ));
+        assert_eq!(page2["AccountAssignments"].as_array().unwrap().len(), 1);
+    }
+
+    /// moto reads SessionDuration with a 3600 default (an int) and renders
+    /// the provisioning status without a fabricated FailureReason member.
+    #[test]
+    fn permission_set_default_duration_and_provision_status() {
+        let st = &mut fresh_state(111_000_000_018);
+        let created = body(&handle(
+            st,
+            &json!({"InstanceArn": instance_arn(st), "Name": "a"}),
+            &req("CreatePermissionSet"),
+        ));
+        assert_eq!(created["PermissionSet"]["SessionDuration"], 3600);
+
+        let given = body(&handle(
+            st,
+            &json!({"InstanceArn": instance_arn(st), "Name": "b", "SessionDuration": "PT1H"}),
+            &req("CreatePermissionSet"),
+        ));
+        assert_eq!(given["PermissionSet"]["SessionDuration"], "PT1H");
+
+        let inst = instance_arn(st);
+        let ps = created["PermissionSet"]["PermissionSetArn"].clone();
+        let provisioned = body(&handle(
+            st,
+            &json!({"InstanceArn": &inst, "PermissionSetArn": &ps}),
+            &req("ProvisionPermissionSet"),
+        ));
+        let status = &provisioned["PermissionSetProvisioningStatus"];
+        assert!(!status.as_object().unwrap().contains_key("FailureReason"));
     }
 }
