@@ -1,7 +1,7 @@
 {
   "service": "ssm",
-  "generated_at": "2026-10-22T07:02:35.146051+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-25T08:07:49.905206+00:00",
+  "endpoint": "http://localhost:4805",
   "counts": {
     "working": 119,
     "needs_params": 27,
@@ -63,7 +63,7 @@
     {
       "operation": "CreateOpsMetadata",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "CreatePatchBaseline",
@@ -133,7 +133,7 @@
     {
       "operation": "DeleteResourcePolicy",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (DoesNotExistException: arn:aws:ssm:us-east-1:123456789012:thing/probe-test does not)"
     },
     {
       "operation": "DeregisterManagedInstance",
@@ -293,7 +293,7 @@
     {
       "operation": "DescribeParameters",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "DescribePatchBaselines",
@@ -438,7 +438,7 @@
     {
       "operation": "GetParametersByPath",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "GetPatchBaseline",
