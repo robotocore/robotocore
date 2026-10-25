@@ -94,9 +94,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-logs-compat-rust
-          path: |
-            /tmp/ci_rust.log
-            /tmp/ci_sidecar.log
+          path: /tmp/ci_rust.log
 
   # ── pytest rigs against the rust server ───────────────────────────────────
   # The python driver stays as THE test rig; the server under test is the
@@ -148,9 +146,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-logs-compat-${{ matrix.shard }}
-          path: |
-            /tmp/ci_rust.log
-            /tmp/ci_sidecar.log
+          path: /tmp/ci_rust.log
 
   # Roll-up so the "compatibility-tests" branch protection rule resolves.
   # The matrix shards report as "compat: a-g" etc., not "compatibility-tests".
@@ -200,9 +196,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-logs-cross-service
-          path: |
-            /tmp/ci_rust.log
-            /tmp/ci_sidecar.log
+          path: /tmp/ci_rust.log
 
   iac-tests:
     name: "iac: CloudFormation + SAM + Serverless"
@@ -240,9 +234,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-logs-iac
-          path: |
-            /tmp/ci_rust.log
-            /tmp/ci_sidecar.log
+          path: /tmp/ci_rust.log
 
   # ── Docker + final gates ───────────────────────────────────────────────────
 

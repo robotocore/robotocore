@@ -44,7 +44,7 @@ jobs:
       - run: uv sync
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
-      - name: Start rust server (+ moto sidecar)
+      - name: Start rust server (rotocore native)
         run: RUST_PORT=4566 LOG_PREFIX=app bash scripts/start_parity_servers.sh
       - name: Run app integration tests
         env:
@@ -64,6 +64,4 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-log-${{ matrix.app }}
-          path: |
-            /tmp/app_rust.log
-            /tmp/app_sidecar.log
+          path: /tmp/app_rust.log

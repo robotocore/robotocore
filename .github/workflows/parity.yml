@@ -28,7 +28,7 @@ jobs:
           python-version: "3.12"
       - name: Install test environment
         run: uv sync
-      - name: Start rust server (+ moto sidecar)
+      - name: Start rust server (rotocore native)
         run: LOG_PREFIX=parity bash scripts/start_parity_servers.sh
       # Exit code 2 = expectations drift vs .parity/expectations_current.json
       # (any non-zero exit fails the job). Promote new baselines locally with

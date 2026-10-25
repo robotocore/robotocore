@@ -37,7 +37,7 @@ jobs:
       - run: uv sync
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
-      - name: Start rust server (+ moto sidecar)
+      - name: Start rust server (rotocore native)
         run: RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
       - name: Run Terraform IaC tests
         run: >
@@ -54,9 +54,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-log-iac-terraform
-          path: |
-            /tmp/iac_rust.log
-            /tmp/iac_sidecar.log
+          path: /tmp/iac_rust.log
 
   cloudformation:
     runs-on: ubuntu-latest
@@ -71,7 +69,7 @@ jobs:
       - run: uv sync
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
-      - name: Start rust server (+ moto sidecar)
+      - name: Start rust server (rotocore native)
         run: RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
       - name: Run CloudFormation IaC tests
         run: >
@@ -88,9 +86,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-log-iac-cloudformation
-          path: |
-            /tmp/iac_rust.log
-            /tmp/iac_sidecar.log
+          path: /tmp/iac_rust.log
 
   cdk:
     runs-on: ubuntu-latest
@@ -109,7 +105,7 @@ jobs:
       - run: uv sync
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
-      - name: Start rust server (+ moto sidecar)
+      - name: Start rust server (rotocore native)
         run: RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
       - name: Run CDK IaC tests
         run: >
@@ -126,9 +122,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-log-iac-cdk
-          path: |
-            /tmp/iac_rust.log
-            /tmp/iac_sidecar.log
+          path: /tmp/iac_rust.log
 
   pulumi:
     runs-on: ubuntu-latest
@@ -144,7 +138,7 @@ jobs:
       - run: uv sync
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
-      - name: Start rust server (+ moto sidecar)
+      - name: Start rust server (rotocore native)
         run: RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
       - name: Run Pulumi IaC tests
         run: >
@@ -161,9 +155,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-log-iac-pulumi
-          path: |
-            /tmp/iac_rust.log
-            /tmp/iac_sidecar.log
+          path: /tmp/iac_rust.log
 
   serverless:
     runs-on: ubuntu-latest
@@ -182,7 +174,7 @@ jobs:
       - run: uv sync
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
-      - name: Start rust server (+ moto sidecar)
+      - name: Start rust server (rotocore native)
         run: RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
       - name: Run Serverless Framework IaC tests
         run: >
@@ -199,9 +191,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-log-iac-serverless
-          path: |
-            /tmp/iac_rust.log
-            /tmp/iac_sidecar.log
+          path: /tmp/iac_rust.log
 
   sam:
     runs-on: ubuntu-latest
@@ -220,7 +210,7 @@ jobs:
       - run: uv sync
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
-      - name: Start rust server (+ moto sidecar)
+      - name: Start rust server (rotocore native)
         run: RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
       - name: Run SAM IaC tests
         run: >
@@ -237,6 +227,4 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-log-iac-sam
-          path: |
-            /tmp/iac_rust.log
-            /tmp/iac_sidecar.log
+          path: /tmp/iac_rust.log
