@@ -87,11 +87,14 @@ fn in_seconds(secs: i64) -> chrono::DateTime<chrono::Utc> {
 }
 
 fn vault_not_found() -> Response {
-    crate::proto::json_error(404, "VaultNotFound", "Vault not found")
+    // moto renders glacier errors as JsonRESTError whose RESTError base
+    // defaults to HTTP 400 (fork moto/core/exceptions.py:92); wire-verified
+    // 2026-10-25: DescribeVault on a missing vault answers 400 + VaultNotFound.
+    crate::proto::json_error(400, "VaultNotFound", "Vault not found")
 }
 
 fn resource_not_found(message: &str) -> Response {
-    crate::proto::json_error(404, "ResourceNotFoundException", message)
+    crate::proto::json_error(400, "ResourceNotFoundException", message)
 }
 
 fn headers_response(status: u16, headers: Vec<(&str, String)>) -> Response {
@@ -317,21 +320,21 @@ impl GlacierState {
     }
 
     fn create_vault(&mut self, name: &str) -> Response {
-        if !self.vaults.contains_key(name) {
-            self.vaults.insert(
-                name.to_string(),
-                Vault {
-                    name: name.to_string(),
-                    arn: format!(
-                        "arn:aws:glacier:{region}:{account}:vaults/{name}",
-                        region = self.region,
-                        account = self.account
-                    ),
-                    creation_date: now_stamp(),
-                    ..Vault::default()
-                },
-            );
-        }
+        // moto replaces the vault unconditionally (fork glacier/models.py:239),
+        // so re-creating an existing vault resets its archives/notifications.
+        self.vaults.insert(
+            name.to_string(),
+            Vault {
+                name: name.to_string(),
+                arn: format!(
+                    "arn:aws:glacier:{region}:{account}:vaults/{name}",
+                    region = self.region,
+                    account = self.account
+                ),
+                creation_date: now_stamp(),
+                ..Vault::default()
+            },
+        );
         Response::new(201, "application/json", "")
     }
 
@@ -1193,6 +1196,7 @@ mod tests {
     #[test]
     fn unknown_vault_describe_fails() {
         let acct = 123456789018;
+        // moto: JsonRESTError base status 400 (fork core/exceptions.py:92)
         assert_eq!(
             dispatch(&mkreq(
                 acct,
@@ -1202,7 +1206,7 @@ mod tests {
                 &[]
             ))
             .status,
-            404
+            400
         );
     }
 }

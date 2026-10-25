@@ -2873,7 +2873,10 @@ fn handle(s: &mut State, op: &str, p: &Map<String, Value>, req: &Request) -> Res
         // ---------------------------------------------------------------
         "CreateGroup" => {
             let name = body_s(p, "GroupName").unwrap_or_default().to_string();
-            let description = body_s(p, "Description").unwrap_or_default().to_string();
+            // moto stores an Optional description; an omitted Description
+            // serializes as JSON null (fork quicksight/data_models.py:87
+            // QuicksightGroup.to_json), which botocore then drops.
+            let description = body_v(p, "Description").cloned().unwrap_or(Value::Null);
             let namespace = body_s(p, "Namespace").unwrap_or_default().to_string();
             let key = State::group_key(account, &namespace, &name);
             s.groups.insert(
@@ -3046,7 +3049,13 @@ fn handle(s: &mut State, op: &str, p: &Map<String, Value>, req: &Request) -> Res
         // ---------------------------------------------------------------
         "RegisterUser" => {
             let namespace = body_s(p, "Namespace").unwrap_or_default().to_string();
-            let username = body_s(p, "UserName").unwrap_or_default().to_string();
+            // moto keys the user id and builds the Arn with the raw UserName
+            // value, so an omitted user_name renders the Python f-string
+            // literal "None" (fork quicksight/models.py:34 _create_id and
+            // data_models.py:107), while to_json emits "UserName": null.
+            let username = body_v(p, "UserName")
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_else(|| "None".to_string());
             let key = format!("{account}:{namespace}:{username}");
             s.users.insert(
                 key.clone(),
@@ -3058,7 +3067,7 @@ fn handle(s: &mut State, op: &str, p: &Map<String, Value>, req: &Request) -> Res
                     ),
                     "email": body_s(p, "Email"),
                     "identity_type": body_s(p, "IdentityType"),
-                    "username": username.clone(),
+                    "username": body_v(p, "UserName").cloned().unwrap_or(Value::Null),
                     "role": body_s(p, "UserRole"),
                     "active": false,
                     "principal_id": format!("{:010x}", chrono::Utc::now().timestamp_micros() % 1_000_000_000_000),
