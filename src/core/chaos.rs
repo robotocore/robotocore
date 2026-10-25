@@ -18,7 +18,8 @@
 //! | `DELETE /_robotocore/chaos/rules/{rule_id}` | 200 `{"status": "deleted", ...}` or 404 `{"error": "Rule not found"}` |
 //! | `POST /_robotocore/chaos/rules/clear` | 200 `{"status": "cleared", "count": N}` |
 //!
-//! Injected faults: `latency_ms` sleeps then dispatch proceeds; an
+//! Injected faults: `latency_ms` sleeps then dispatch proceeds (capped at
+//! `MAX_RULE_LATENCY_MS`, 10s — the sleep is inline); an
 //! `error_code` short-circuits with protocol-aware bodies — XML
 //! `ErrorResponse` for rest-xml/query/ec2 services, `{"__type": ...}` JSON
 //! otherwise — plus the `x-robotocore-chaos: {rule_id}` header.
@@ -79,6 +80,13 @@ pub struct FaultRule {
     match_count: i64,
     op_pattern: Option<Regex>,
 }
+
+/// Upper bound on a rule's `latency_ms`. The sleep runs inline before
+/// dispatch (python `time.sleep` semantics port), so a caller-supplied
+/// wall-clock-like value (e.g. milliseconds pasted as seconds) would pin
+/// the request task for hours. 10s keeps chaos injections dramatic but
+/// bounded; the compat chaos suite's largest latency (500ms) is unaffected.
+pub const MAX_RULE_LATENCY_MS: i64 = 10_000;
 
 impl FaultRule {
     fn now_epoch() -> f64 {
@@ -149,7 +157,14 @@ impl FaultRule {
             .filter(|s| !s.is_empty())
             .map(str::to_string)
             .unwrap_or_else(|| format!("Injected by chaos rule {rule_id}"));
-        let latency_ms = data.get("latency_ms").and_then(Value::as_i64).unwrap_or(0);
+        // Defensive cap (see MAX_RULE_LATENCY_MS): clamped down, not
+        // rejected, so a probe with an absurd latency still gets a rule —
+        // python had no cap, values within [0, 10_000] are identical.
+        let latency_ms = data
+            .get("latency_ms")
+            .and_then(Value::as_i64)
+            .unwrap_or(0)
+            .clamp(0, MAX_RULE_LATENCY_MS);
         // python: `max(0.0, min(1.0, probability))`
         let probability = data
             .get("probability")
@@ -866,6 +881,19 @@ mod tests {
     fn probability_is_clamped() {
         assert!(rule_from(json!({"probability": 5.0})).probability <= 1.0);
         assert!(rule_from(json!({"probability": -3.0})).probability >= 0.0);
+    }
+
+    #[test]
+    fn latency_ms_is_capped() {
+        // MAX_RULE_LATENCY_MS: the sleep would run inline before dispatch,
+        // so a wall-clock-like value (or a careless huge number) must not
+        // freeze the shared twin for minutes. Negative values clamp to 0.
+        assert_eq!(
+            rule_from(json!({"latency_ms": 999_999})).latency_ms,
+            MAX_RULE_LATENCY_MS
+        );
+        assert_eq!(rule_from(json!({"latency_ms": -5})).latency_ms, 0);
+        assert_eq!(rule_from(json!({"latency_ms": 500})).latency_ms, 500);
     }
 
     #[test]
