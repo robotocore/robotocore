@@ -9,7 +9,11 @@ docker build -t robotocore .
 docker image ls robotocore --format "{{.Repository}} {{.Size}}"
 ```
 
-The image is pure Rust (no Python, no package manager, distroless-style runtime).
+The image's runtime base is distroless python3-debian12 (no package manager,
+no shell): the Rust gateway binary plus a Python 3.11 interpreter for the
+in-process python-family Lambda executor, and a static busybox healthcheck.
+`--target runtimes` adds Node.js/Ruby, `--target java-and-dotnet` adds
+JDK 21/.NET 8.
 
 ## Run
 
