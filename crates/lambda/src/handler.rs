@@ -713,6 +713,40 @@ impl LambdaHandler {
     // Invocation
     // ---------------------------------------------------------------
 
+    /// Request-scoped blanket-timeout hint for the gateway's blocking
+    /// dispatch wrapper (src/core/server.rs wraps every handler call in a
+    /// timeout). The docker path budgets `Timeout + 10` for one detached
+    /// handshake (+5 per runtime-interface curl, +15 loose bridges), longer
+    /// than the gateway's 30s default blanket: an Invoke against a
+    /// docker-servable runtime would otherwise 504 while the container was
+    /// still inside its own budget. On that path the hint returns
+    /// `Timeout + 15` (floor 30); `None` keeps the gateway default. Docker
+    /// mode only — the local executors never wager anything like this on
+    /// the dispatch blanket.
+    pub fn request_timeout_hint(&self, req: &AwsRequest) -> Option<u64> {
+        self.request_timeout_hint_for_mode(req, &crate::docker_runtime::executor_mode())
+    }
+
+    /// Mode-injected variant of [`Self::request_timeout_hint`]: unit tests
+    /// drive the docker path without touching process-wide env
+    /// (`LAMBDA_EXECUTOR`), so no test can spark a real docker run.
+    fn request_timeout_hint_for_mode(&self, req: &AwsRequest, mode: &str) -> Option<u64> {
+        if mode != "docker" {
+            return None;
+        }
+        // Only the three operations that execute the function synchronously
+        // over HTTP; everything else returns too fast to matter.
+        let op = resolve_operation(&req.method, &req.path);
+        if !matches!(op, "Invoke" | "InvokeAsync" | "InvokeWithResponseStream") {
+            return None;
+        }
+        let state = self.state_for(req.account, &req.region);
+        let func = resolve_fn(&state, req, &req.path_fn_name()).ok()?;
+        crate::docker_runtime::runtime_image(&func.runtime.read().clone())?;
+        let timeout = (*func.timeout.read()).max(1);
+        Some((u64::from(timeout) + 15).max(30))
+    }
+
     /// Execute the resolved function; return the ExecResult or an error.
     fn execute(
         state: &LambdaState,
@@ -2919,5 +2953,85 @@ mod tests {
             .insert("x-amz-invocation-type".to_string(), "Event".to_string());
         let resp = handler.handle(req);
         assert_eq!(resp.status, 202);
+    }
+
+    // ------------------------------------------------------------------
+    // Request-scoped dispatch-timeout hint (docker blanket)
+    // ------------------------------------------------------------------
+
+    /// The hint is mode-injected (never reads LAMBDA_EXECUTOR) so unit
+    /// tests cannot spark a real docker invocation: docker mode + Invoke +
+    /// a mapped runtime asks for max(30, Timeout + 15).
+    #[test]
+    fn request_timeout_hint_docker_invoke_once() {
+        static GUARD: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+        let _g = GUARD.lock();
+        let handler = LambdaHandler::new();
+        handler.handle(make_req(
+            "POST",
+            json!({"FunctionName": "hint-func", "Runtime": "python3.12", "Timeout": 15, "Code": {"ZipFile": ""}}),
+            "/2015-03-31/functions",
+        ));
+        let req = make_req(
+            "POST",
+            json!({}),
+            "/2015-03-31/functions/hint-func/invocations",
+        );
+        // 15s timeout + 15 grace = 30s floor.
+        assert_eq!(
+            handler.request_timeout_hint_for_mode(&req, "docker"),
+            Some(30)
+        );
+        // Raise the stored timeout past the floor: docker mode serves it.
+        handler.handle(make_req(
+            "PUT",
+            json!({"Timeout": 900}),
+            "/2015-03-31/functions/hint-func/configuration",
+        ));
+        let req = make_req(
+            "POST",
+            json!({}),
+            "/2015-03-31/functions/hint-func/invocations",
+        );
+        assert_eq!(
+            handler.request_timeout_hint_for_mode(&req, "docker"),
+            Some(915)
+        );
+        // Default (local) mode keeps the gateway blanket.
+        assert_eq!(handler.request_timeout_hint_for_mode(&req, "local"), None);
+    }
+
+    /// Non-executing operations, unknown functions and docker mode without
+    /// a mapped runtime never raise the blanket.
+    #[test]
+    fn request_timeout_hint_none_for_uninvolved_requests() {
+        let handler = LambdaHandler::new();
+        handler.handle(make_req(
+            "POST",
+            json!({"FunctionName": "hint-func2", "Runtime": "python3.12", "Code": {"ZipFile": ""}}),
+            "/2015-03-31/functions",
+        ));
+        // ListFunctions: fast regardless of docker mode.
+        let req = make_req("GET", json!({}), "/2015-03-31/functions");
+        assert_eq!(handler.request_timeout_hint_for_mode(&req, "docker"), None);
+        // Invoke against a runtime with no mapped image.
+        handler.handle(make_req(
+            "POST",
+            json!({"FunctionName": "hint-func3", "Runtime": "cobol99", "Code": {"ZipFile": ""}}),
+            "/2015-03-31/functions",
+        ));
+        let req = make_req(
+            "POST",
+            json!({}),
+            "/2015-03-31/functions/hint-func3/invocations",
+        );
+        assert_eq!(handler.request_timeout_hint_for_mode(&req, "docker"), None);
+        // Invoke against a function that does not exist.
+        let req = make_req(
+            "POST",
+            json!({}),
+            "/2015-03-31/functions/no-such-func/invocations",
+        );
+        assert_eq!(handler.request_timeout_hint_for_mode(&req, "docker"), None);
     }
 }

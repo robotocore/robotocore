@@ -34,6 +34,14 @@ pub trait ServiceHandler: Send + Sync {
         &self,
         req: &ParsedRequest,
     ) -> Result<ParsedResponse, Box<dyn std::error::Error>>;
+
+    /// Request-scoped override for the blocking dispatch blanket timeout
+    /// (seconds). `None` keeps the server default. Default: none — only
+    /// handlers with per-request execution budgets (docker-mode lambda
+    /// invokes) raise it.
+    fn request_timeout_secs(&self, _req: &ParsedRequest) -> Option<u64> {
+        None
+    }
 }
 
 /// Synchronous wrapper for async STS handler
@@ -472,24 +480,31 @@ pub struct LambdaServiceHandler {
     inner: Arc<lambda::DefaultLambdaHandler>,
 }
 
-impl ServiceHandler for LambdaServiceHandler {
-    fn handle_sync(
-        &self,
-        req: &ParsedRequest,
-    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
-        let params = serde_json::to_value(&req.params).unwrap_or_default();
-        let lambda_req = lambda::protocol::AwsRequest {
+impl LambdaServiceHandler {
+    /// Protocol bridge: core ParsedRequest → the lambda crate's AwsRequest
+    /// (shape shared by dispatch and the timeout hint).
+    fn to_lambda_req(req: &ParsedRequest) -> lambda::protocol::AwsRequest {
+        lambda::protocol::AwsRequest {
             service: req.service.clone(),
             operation: req.operation.clone(),
             account: req.account,
             region: req.region.clone(),
-            params,
+            params: serde_json::to_value(&req.params).unwrap_or_default(),
             body: req.body.clone(),
             method: req.method.clone(),
             path: req.path.clone(),
             query_string: req.query_string.clone(),
             headers: req.headers.clone(),
-        };
+        }
+    }
+}
+
+impl ServiceHandler for LambdaServiceHandler {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+        let lambda_req = Self::to_lambda_req(req);
         let resp = self.inner.handle(lambda_req);
         let mut headers = std::collections::HashMap::new();
         for (k, v) in resp.headers {
@@ -502,6 +517,13 @@ impl ServiceHandler for LambdaServiceHandler {
             raw: Some(resp.body),
             raw_bytes: None,
         })
+    }
+
+    fn request_timeout_secs(&self, req: &ParsedRequest) -> Option<u64> {
+        // Docker-mode lambda invokes budget function Timeout+10..15 for one
+        // execution — raise this request's blanket accordingly (floor 30)
+        // instead of 504ing a container that is still inside its own budget.
+        self.inner.request_timeout_hint(&Self::to_lambda_req(req))
     }
 }
 
@@ -1381,11 +1403,16 @@ pub async fn catch_all_handler(
         }
     };
 
-    // Handle request with a timeout to catch runaway tasks
+    // Handle request with a timeout to catch runaway tasks. The blanket is
+    // the server default of 30s, raised per request for handlers whose
+    // execution budget can exceed it (docker-mode lambda invokes ask for
+    // function Timeout + 15; see ServiceHandler::request_timeout_secs).
     let handler = handler.clone();
     let parsed_req = Arc::new(parsed_req);
     let service = service.clone();
-    let timeout_secs: u64 = 30;
+    let timeout_secs: u64 = handler
+        .request_timeout_secs(parsed_req.as_ref())
+        .unwrap_or(30);
 
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(timeout_secs),
@@ -2847,5 +2874,72 @@ mod tests {
             other.headers().get("x-amzn-errortype").unwrap(),
             "InternalError"
         );
+    }
+
+    // ------------------------------------------------------------------
+    // Request-scoped dispatch blanket (docker lambda invokes)
+    // ------------------------------------------------------------------
+
+    static HINT_ENV_GUARD: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn lambda_invoke_blanket_is_30s_by_default_and_raised_in_docker_mode() {
+        let _guard = HINT_ENV_GUARD.lock();
+        let handler = LambdaServiceHandler {
+            inner: Arc::new(lambda::DefaultLambdaHandler::new()),
+        };
+        let mut create = ParsedRequest {
+            service: "lambda".to_string(),
+            operation: "CreateFunction".to_string(),
+            params: [
+                ("FunctionName".to_string(), json!("blanket-fn")),
+                ("Runtime".to_string(), json!("python3.12")),
+                ("Timeout".to_string(), json!(900)),
+            ]
+            .into_iter()
+            .collect(),
+            body: bytes::Bytes::new(),
+            region: "us-east-1".to_string(),
+            account: 123456789012,
+            method: "POST".to_string(),
+            path: "/2015-03-31/functions".to_string(),
+            query_string: String::new(),
+            headers: HashMap::new(),
+        };
+        create.headers.insert(
+            "content-type".to_string(),
+            "application/x-amz-json-1.1".to_string(),
+        );
+        let resp = handler.handle_sync(&create).unwrap();
+        assert_eq!(resp.status.as_u16(), 201, "body: {:?}", resp.raw);
+        let invoke = ParsedRequest {
+            service: "lambda".to_string(),
+            operation: "Invoke".to_string(),
+            params: [("FunctionName".to_string(), json!("blanket-fn"))]
+                .into_iter()
+                .collect(),
+            body: bytes::Bytes::from_static(b"{}"),
+            region: "us-east-1".to_string(),
+            account: 123456789012,
+            method: "POST".to_string(),
+            path: "/2015-03-31/functions/blanket-fn/invocations".to_string(),
+            query_string: String::new(),
+            headers: HashMap::new(),
+        };
+        // Default (local) mode: the 30s gateway blanket stands.
+        assert_eq!(handler.request_timeout_secs(&invoke), None);
+        // Docker mode with a 900s function budget: the blanket rises to
+        // Timeout + 15, or a container still inside its own budget would
+        // 504 at the dispatch wrapper.
+        let saved = std::env::var("LAMBDA_EXECUTOR").ok();
+        std::env::set_var("LAMBDA_EXECUTOR", "docker");
+        let hint = handler.request_timeout_secs(&invoke);
+        match saved {
+            Some(v) => std::env::set_var("LAMBDA_EXECUTOR", v),
+            None => std::env::remove_var("LAMBDA_EXECUTOR"),
+        }
+        assert_eq!(hint, Some(915), "docker invoke blanket = Timeout + 15");
+        // Non-lambda handlers never raise the blanket.
+        assert_eq!(StsFunctionHandler.request_timeout_secs(&invoke), None);
     }
 }

@@ -14,6 +14,17 @@
 //!   - `LAMBDA_DOCKER_NETWORK`: docker network for Lambda containers
 //!   - `LAMBDA_DOCKER_DNS`: custom DNS for Lambda containers
 //!
+//! Cold-pull budget: the mapped images live on `public.ecr.aws`, and the
+//! first invocation of a runtime pays the image pull inside the same
+//! `docker run` CLI window as the invoke itself — `Timeout + 10` overall for
+//! the detached-run handshake, `Timeout + 15` for the loose-bridge families
+//! (see [`DockerLambdaExecutor::docker_invocation`]). A cold multi-hundred-
+//! MB pull can outlive that budget on the very first invoke: the failure
+//! surfaces as the python-era run-error shape (Runtime.ExitError/Unhandled
+//! with the CLI stderr), not as a hang — so pre-warm a runtime's image
+//! (`docker pull <image>`) before invoking when a cold source is expected.
+//! After the pull, every later invocation only waits on the container.
+//!
 //! Design lineage: port of the python-era `DockerLambdaExecutor`
 //! (`src/robotocore/services/lambda_/docker_executor.py`, 7d909e8c PR #111,
 //! evolving the container-pool executors of #41/#75). One deliberate
@@ -44,6 +55,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::Write;
 use std::process::{Child, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -308,17 +320,28 @@ pub(crate) fn ensure_dotnet_bridge(tfm: &str) -> Option<std::path::PathBuf> {
         parking_lot::Mutex::new(None);
     let mut guard = CACHE.lock();
     if let Some(entry) = guard.as_mut() {
-        if let Some(cached) = entry.get(tfm) {
-            return cached.clone();
+        if let Some(cached) = entry.get(tfm).cloned().flatten() {
+            // Pruned-bridge guard: a next-start twin's sweep reaps tempo
+            // roots older than STALE_EXTRACT_DIR_AGE, so this process's
+            // bridge dir (and its publish output) can disappear mid-life. A
+            // dangling cached path must not leak out — drop the entry and
+            // rebuild (or degrade) on the fresh pass.
+            if cached.join("RobotocoreDotnetBridge.dll").is_file() {
+                return Some(cached);
+            }
+            entry.remove(tfm);
+        } else if entry.contains_key(tfm) {
+            // Cached failure (no SDK / failed build): repeat it like before.
+            return None;
         }
     }
     let dir = loose_bridge_dir();
     let out_dir = dir.join(format!("publish-{tfm}"));
     let dll = out_dir.join("RobotocoreDotnetBridge.dll");
+    let proj = dir.join("RobotocoreDotnetBridge.csproj");
     let result = if dll.exists() {
         Some(out_dir.clone())
     } else {
-        let proj = dir.join("RobotocoreDotnetBridge.csproj");
         let which = std::env::var_os("PATH").map(|paths| {
             std::env::split_paths(&paths)
                 .map(|p| p.join("dotnet"))
@@ -372,6 +395,12 @@ pub(crate) fn ensure_dotnet_bridge(tfm: &str) -> Option<std::path::PathBuf> {
 /// passed `parts[0]` to `os.path.join` and a csproj `<AssemblyName>` with no
 /// further vetting — the escape/injection hole this module closes (the
 /// mapped dotnet images have no SDK, so that build runs on the twin host).
+///
+/// `$(...)` MSBuild fragments are rejected too: XML escaping does not
+/// neutralize MSBuild property expressions, so a caller-supplied
+/// `<AssemblyName>$(Foo)</AssemblyName>` would be *evaluated* by the twin's
+/// SDK build. Control characters below 0x20 (except tab/lf/cr) are rejected
+/// as well — they are never legitimate csproj text or file names.
 pub(crate) fn dotnet_assembly_violation(assembly: &str) -> Option<&'static str> {
     if assembly.is_empty() {
         return Some("empty assembly name");
@@ -387,6 +416,15 @@ pub(crate) fn dotnet_assembly_violation(assembly: &str) -> Option<&'static str> 
     }
     if assembly.chars().any(|c| "<>&\"'".contains(c)) {
         return Some("XML metacharacter");
+    }
+    if assembly.contains("$(") {
+        return Some("MSBuild property expression");
+    }
+    if assembly
+        .chars()
+        .any(|c| c < '\u{20}' && c != '\t' && c != '\n' && c != '\r')
+    {
+        return Some("control character");
     }
     None
 }
@@ -812,11 +850,20 @@ pub fn build_docker_run_cmd(
 // ============================================================================
 
 /// Where the bridge assets live on the twin (written once per process).
+///
+/// Pruned-bridge guard: the startup sweep reaps `robotocore-lambda-bridges`
+/// entries older than [`STALE_EXTRACT_DIR_AGE`], so this process's dir can
+/// disappear mid-life. The cached path is re-validated and recreated on
+/// demand — a concurrent twin's sweep must cost the older twin at most one
+/// rebuilt bridge, never a ghost mount.
 pub(crate) fn loose_bridge_dir() -> std::path::PathBuf {
     static DIR: parking_lot::Mutex<Option<std::path::PathBuf>> = parking_lot::Mutex::new(None);
     let mut guard = DIR.lock();
     if let Some(dir) = &*guard {
-        return dir.clone();
+        if dir.is_dir() {
+            return dir.clone();
+        }
+        *guard = None;
     }
     let dir = std::env::temp_dir()
         .join("robotocore-lambda-bridges")
@@ -1222,7 +1269,13 @@ pub fn try_execute_docker(
     }
     runtime_image(runtime)?;
     let executor = get_docker_executor();
-    if !executor.docker_available {
+    // Per-invoke daemon re-probe (5s cap): the construction-time snapshot
+    // can go stale when the daemon dies after this twin started — fall back
+    // to the LOCAL executors instead of wedging the docker path, and
+    // re-adopt a daemon that comes back after a startup dip.
+    // `Runtime.InvalidRuntime` stays the shape for runtimes with no local
+    // executor (execute_family's unmapped-family contract below).
+    if !executor.reprobe_docker_available() {
         return None;
     }
     Some(executor.execute(
@@ -1365,32 +1418,103 @@ pub(crate) trait DockerCli: Send + Sync {
     /// Combined stdout+stderr of a container (function + rapid logs).
     fn container_logs(&self, container_name: &str) -> String;
 
-    /// Container ids of leftover `robotocore-lambda-*` containers — the
-    /// list half of the startup sweep ([`sweep_list_cmd`]); the removal half
-    /// is [`DockerCli::force_remove_container`].
+    /// Names of leftover `robotocore-lambda-{function}-{uuid8}` containers —
+    /// the list half of the startup sweep ([`sweep_list_cmd`]) with the
+    /// in-process prefix match of [`straggler_names`] already applied; the
+    /// removal half is [`DockerCli::force_remove_container`].
     fn lambda_straggler_containers(&self) -> Vec<String>;
+
+    /// Daemon-liveness probe (`docker info`-style). The real impl bounds the
+    /// round-trip by [`DOCKER_DAEMON_PROBE_CAP`]; the mock scripts a verdict
+    /// so the per-invoke re-probe is testable without a daemon.
+    fn daemon_available(&self) -> bool;
 }
 
 const DOCKER: &str = "docker";
 const RUNTIME_INTERFACE_INVOKE_URL: &str =
     "http://localhost:8080/2015-03-31/functions/function/invocations";
 
+/// Per-invoke cap on the daemon re-probe (`docker info`): a healthy daemon
+/// answers in well under a second, but a wedged CLI/daemon must not stretch
+/// an invoke by more than this window; beyond it the invocation falls back
+/// to the local executors.
+pub(crate) const DOCKER_DAEMON_PROBE_CAP: u64 = 5;
+
 /// Name prefix of every Lambda container this executor spawns
-/// (`robotocore-lambda-{function}-{uuid8}`). Also the startup sweep's filter.
+/// (`robotocore-lambda-{function}-{uuid8}`). Also the startup sweep's filter
+/// anchor.
 pub(crate) const LAMBDA_CONTAINER_PREFIX: &str = "robotocore-lambda-";
 
-/// Argv listing leftover Lambda containers (`docker ps -q --filter
-/// name=robotocore-lambda-`), the first half of the `xargs -r docker rm -f`
-/// sweep, spelled out as this module's argv-only convention (no shell).
+/// Argv listing leftover Lambda containers: `docker ps -a --filter
+/// name=robotocore-lambda- --format {{.Names}}`, the first half of the
+/// startup sweep's `docker rm -f` removal, argv-only as this module's
+/// convention (no shell). `-a` reaches every container state — docker only
+/// lists *running* containers without it, so Created-state husks (e.g. a
+/// `--rm` bridge container frozen before its entrypoint started) would
+/// otherwise survive the sweep and pile up across restarts. `-q` must NOT
+/// ride along: the CLI honors `--format` over `-q` with only a warning,
+/// and the sweep needs the NAMES for the in-process exact-shape match
+/// ([`straggler_names`]); the docker `name=` filter matches substrings,
+/// not prefixes, so that match is what anchors the prefix.
 pub(crate) fn sweep_list_cmd() -> Vec<String> {
     vec![
         DOCKER.to_string(),
         "ps".to_string(),
-        "-q".to_string(),
+        "-a".to_string(),
         "--filter".to_string(),
         format!("name={LAMBDA_CONTAINER_PREFIX}"),
+        "--format".to_string(),
+        "{{.Names}}".to_string(),
     ]
 }
+
+/// The sweep's in-process exact-shape match over `sweep_list_cmd` output
+/// (one container name per line): docker's `name=` filter is substring-
+/// based, so every candidate is checked in-process against the names this
+/// executor's family actually owns — the executor's
+/// `robotocore-lambda-{function}-{uuid8}` shape and the era's
+/// `robotocore-lambda-bridge-fn-*` husks. Neighbors whose name merely
+/// *contains* the prefix (e.g. `simulator-robotocore-lambda-proxy`) or a
+/// bare `robotocore-lambda-proxy` (no executor suffix shape) survive.
+/// Names double as `docker rm -f` operands.
+pub(crate) fn straggler_names(list_stdout: &str) -> Vec<String> {
+    list_stdout
+        .lines()
+        .map(str::trim)
+        .filter(|name| !name.is_empty() && is_lambda_straggler_name(name))
+        .map(str::to_string)
+        .collect()
+}
+
+/// The executor names its containers `robotocore-lambda-{function}-{uuid8}`
+/// with an 8-hex tail, and the bridge-era one-shot containers were named
+/// `robotocore-lambda-bridge-fn-*`; a sweeper candidate must match one of
+/// those exact shapes to qualify.
+fn is_lambda_straggler_name(name: &str) -> bool {
+    let Some(rest) = name.strip_prefix(LAMBDA_CONTAINER_PREFIX) else {
+        return false;
+    };
+    if rest.starts_with("bridge-fn-") {
+        return true;
+    }
+    match rest.rsplit_once('-') {
+        Some((_, tail)) => tail.len() == 8 && tail.chars().all(|c| c.is_ascii_hexdigit()),
+        None => false,
+    }
+}
+
+/// The temp roots this crate's executors own under `std::env::temp_dir()`,
+/// all of them startup-pruned by [`DockerLambdaExecutor::sweep_stragglers`]:
+/// per-invocation docker extraction dirs, the dotnet host-SDK staging root,
+/// the per-process loose-bridge sources, the python/custom `-exec` work
+/// dirs and the node `-node` work dirs.
+pub(crate) const TEMP_PRUNE_ROOTS: [&str; 5] = [
+    "robotocore-lambda-docker",
+    "robotocore-lambda-build",
+    "robotocore-lambda-bridges",
+    "robotocore-lambda-exec",
+    "robotocore-lambda-node",
+];
 
 /// Age beyond which a per-invocation extraction dir under
 /// /tmp/robotocore-lambda-docker counts as crashed-process debris: live ones
@@ -1502,9 +1626,13 @@ impl DockerCli for RealCli {
 
     fn lambda_straggler_containers(&self) -> Vec<String> {
         match run_subprocess(&sweep_list_cmd(), None, 10) {
-            Ok(out) => out.stdout.split_whitespace().map(str::to_string).collect(),
+            Ok(out) => straggler_names(&out.stdout),
             Err(_) => Vec::new(),
         }
+    }
+
+    fn daemon_available(&self) -> bool {
+        docker_available(DOCKER_DAEMON_PROBE_CAP)
     }
 }
 
@@ -1516,8 +1644,12 @@ pub struct DockerLambdaExecutor {
     pub(crate) gateway_port: u16,
     pub(crate) docker_network: Option<String>,
     pub(crate) docker_dns: Option<String>,
-    /// Snapshotted at construction like the python-era `__init__`.
-    pub(crate) docker_available: bool,
+    /// Daemon-liveness signal. Probed at construction like the python-era
+    /// `__init__` and re-probed per invocation
+    /// ([`DockerLambdaExecutor::reprobe_docker_available`]) so a daemon that
+    /// dies mid-life falls back to the local executors instead of wedging
+    /// the docker path.
+    pub(crate) docker_available: AtomicBool,
     pub(crate) cli: Arc<dyn DockerCli>,
 }
 
@@ -1539,13 +1671,14 @@ impl DockerLambdaExecutor {
         let docker_dns = std::env::var("LAMBDA_DOCKER_DNS")
             .ok()
             .filter(|s| !s.is_empty());
-        let docker_available = docker_available(5);
+        let cli: Arc<dyn DockerCli> = Arc::new(RealCli);
+        let docker_available = cli.daemon_available();
         let executor = Self {
             gateway_port,
             docker_network,
             docker_dns,
-            docker_available,
-            cli: Arc::new(RealCli),
+            docker_available: AtomicBool::new(docker_available),
+            cli,
         };
         if docker_available {
             // Leak-bounded startup sweep: a twin killed mid-invocation leaves
@@ -1559,10 +1692,26 @@ impl DockerLambdaExecutor {
         executor
     }
 
+    /// Re-probe the daemon (capped at [`DOCKER_DAEMON_PROBE_CAP`]) and record
+    /// the fresh verdict on the executor. Called per invocation: the
+    /// construction-time snapshot can go stale when the daemon dies after
+    /// this twin started — a stale-true snapshot would spend every invoke's
+    /// whole budget on docker CLI errors, while a stale-false snapshot would
+    /// never re-adopt a daemon that came back. Either way the invocation
+    /// then takes the local-executor fallback (see
+    /// [`try_execute_docker`]), where `Runtime.InvalidRuntime` remains the
+    /// shape for runtimes with no local executor.
+    pub(crate) fn reprobe_docker_available(&self) -> bool {
+        let ok = self.cli.daemon_available();
+        self.docker_available.store(ok, AtomicOrdering::Release);
+        ok
+    }
+
     /// Leak-bounded straggler sweep: list-run the leftover
-    /// `robotocore-lambda-*` containers ([`sweep_list_cmd`]) into
-    /// [`DockerCli::force_remove_container`] (the `xargs -r docker rm -f`
-    /// halves), then prune extraction dirs older than
+    /// `robotocore-lambda-*` containers ([`sweep_list_cmd`] + in-process
+    /// prefix match, every container state covered) into
+    /// [`DockerCli::force_remove_container`], then prune every executor
+    /// tempo root ([`TEMP_PRUNE_ROOTS`]) of entries older than
     /// [`STALE_EXTRACT_DIR_AGE`]. Runs once per executor construction
     /// (python-era `__init__` took no such step; this bounds leaks from a
     /// twin killed mid-invocation, whose `--rm` containers the runtime
@@ -1572,10 +1721,10 @@ impl DockerLambdaExecutor {
         for container in self.cli.lambda_straggler_containers() {
             self.cli.force_remove_container(&container);
         }
-        prune_stale_extract_dirs(
-            &std::env::temp_dir().join("robotocore-lambda-docker"),
-            STALE_EXTRACT_DIR_AGE,
-        );
+        let base = std::env::temp_dir();
+        for root in TEMP_PRUNE_ROOTS {
+            prune_stale_extract_dirs(&base.join(root), STALE_EXTRACT_DIR_AGE);
+        }
     }
 
     /// Execute a Lambda function in a Docker container.
@@ -1600,7 +1749,7 @@ impl DockerLambdaExecutor {
         account_id: &str,
         code_dir: Option<&std::path::Path>,
     ) -> ExecResult {
-        if !self.docker_available {
+        if !self.docker_available.load(AtomicOrdering::Acquire) {
             return self.execute_local_fallback(
                 runtime,
                 code_zip,
@@ -1720,7 +1869,9 @@ impl DockerLambdaExecutor {
     /// handshake, and force-removes the container on every path — `--rm`
     /// alone would leave it waiting for the next event. The python-era
     /// budgets are preserved: `timeout + 10` overall (docker run window),
-    /// `timeout + 5` per curl, `docker rm -f` on timeout.
+    /// `timeout + 5` per curl, `docker rm -f` on timeout. That same window
+    /// also bounds a cold image pull — see the module's cold-pull budget
+    /// note.
     #[allow(clippy::too_many_arguments)]
     fn docker_invocation(
         &self,
@@ -2306,6 +2457,8 @@ mod tests {
         rms: parking_lot::Mutex<Vec<String>>,
         logs_back: parking_lot::Mutex<String>,
         lists: parking_lot::Mutex<VecDeque<Vec<String>>>,
+        /// Scripted daemon-probe verdicts; unscripted probes read healthy.
+        probe_back: parking_lot::Mutex<VecDeque<bool>>,
     }
 
     impl MockCli {
@@ -2319,6 +2472,7 @@ mod tests {
                     rms: parking_lot::Mutex::new(Vec::new()),
                     logs_back: parking_lot::Mutex::new(String::new()),
                     lists: parking_lot::Mutex::new(VecDeque::new()),
+                    probe_back: parking_lot::Mutex::new(VecDeque::new()),
                 }),
             }
         }
@@ -2332,6 +2486,12 @@ mod tests {
                     .map(|c| c.to_string())
                     .collect::<Vec<String>>(),
             );
+        }
+
+        /// Script the per-invoke daemon-probe verdicts (consumed in order;
+        /// unscripted probes read healthy).
+        fn script_probes(&self, verdicts: &[bool]) {
+            *self.st.probe_back.lock() = verdicts.iter().copied().collect();
         }
 
         /// Script one healthy container start (docker run -d → id on stdout).
@@ -2410,6 +2570,10 @@ mod tests {
         fn lambda_straggler_containers(&self) -> Vec<String> {
             self.st.lists.lock().pop_front().unwrap_or_default()
         }
+
+        fn daemon_available(&self) -> bool {
+            self.st.probe_back.lock().pop_front().unwrap_or(true)
+        }
     }
 
     fn mk_executor(cli: &MockCli, docker_available: bool) -> DockerLambdaExecutor {
@@ -2417,7 +2581,7 @@ mod tests {
             gateway_port: 4566,
             docker_network: None,
             docker_dns: None,
-            docker_available,
+            docker_available: AtomicBool::new(docker_available),
             cli: Arc::new(cli.clone()),
         }
     }
@@ -2931,7 +3095,7 @@ mod tests {
         let _g = GUARD.lock();
         let cli = MockCli::new();
         let ex = mk_executor(&cli, false);
-        assert!(!ex.docker_available);
+        assert!(!ex.docker_available.load(AtomicOrdering::Acquire));
         // Falls back to the real local python shim: with a garbage deployment
         // package the shim reports the unpack failure as a handled error.
         let res = run_execute(&ex, "python3.12", r#"{}"#);
@@ -3469,13 +3633,32 @@ mod tests {
 
     /// The dotnet handler's assembly component is the only piece that lands
     /// in a filesystem path or a generated csproj: every separator, dot
-    /// segment, leading dot and csproj/XML metacharacter is rejected. The
-    /// python era (`runtimes/dotnet.py`) vetted nothing — that gap is the
+    /// segment, leading dot, csproj/XML metacharacter, MSBuild `$(...)`
+    /// fragment and sub-0x20 control character is rejected (XML escaping
+    /// does not neutralize MSBuild property expressions, so `$(...)` would be
+    /// *evaluated* by the twin-run SDK build). Tab/lf/cr stay accepted — the
+    /// only sub-0x20 whitespace the era tolerated. The python era
+    /// (`runtimes/dotnet.py`) vetted nothing — that gap is the
     /// csproj-injection/path-traversal hole this guard closes.
     #[test]
     fn dotnet_assembly_violation_rejects_unsafe_names() {
         for bad in [
-            "", ".hidden", "..", "a..b", "sub/dir", "sub\\dir", "a<b", "a>b", "a&b", "a\"b", "a'b",
+            "",
+            ".hidden",
+            "..",
+            "a..b",
+            "sub/dir",
+            "sub\\dir",
+            "a<b",
+            "a>b",
+            "a&b",
+            "a\"b",
+            "a'b",
+            "a$(d)b",
+            "$(TestAssembly)",
+            "a\u{1}b",
+            "a\u{7}b",
+            "a\u{1f}b",
         ] {
             assert!(
                 dotnet_assembly_violation(bad).is_some(),
@@ -3638,7 +3821,11 @@ mod tests {
     }
 
     /// The sweep's list half is argv-only (no shell pipeline):
-    /// `docker ps -q --filter name=robotocore-lambda-`.
+    /// `docker ps -a --filter name=robotocore-lambda- --format {{.Names}}`.
+    /// `-a` covers every container state (Created-state husks included) and
+    /// `{{.Names}}` exposes names for the in-process shape match. `-q` must
+    /// not ride along: the CLI honors `--format` over `-q` only with a
+    /// warning and answers with ids, defeating the exact-shape filter.
     #[test]
     fn sweep_list_cmd_filters_lambda_container_prefix() {
         assert_eq!(
@@ -3646,10 +3833,154 @@ mod tests {
             vec![
                 "docker".to_string(),
                 "ps".to_string(),
-                "-q".to_string(),
+                "-a".to_string(),
                 "--filter".to_string(),
                 "name=robotocore-lambda-".to_string(),
+                "--format".to_string(),
+                "{{.Names}}".to_string(),
             ]
+        );
+    }
+
+    /// Docker's `name=` filter matches substrings, not prefixes: the sweep's
+    /// in-process pass keeps only the executor's own shapes
+    /// (`robotocore-lambda-{function}-{8hex}` and the bridge-era
+    /// `robotocore-lambda-bridge-fn-*` husk shape). A neighbor like
+    /// `simulator-robotocore-lambda-proxy` — or a bare `robotocore-lambda-
+    /// proxy` missing both surfix shapes — survives.
+    #[test]
+    fn straggler_names_prefix_match_excludes_neighbors() {
+        let stdout = "\
+robotocore-lambda-fn1-12345678
+robotocore-lambda-bridge-fn-deadbeef
+robotocore-lambda-bridge-fn-f2test1
+simulator-robotocore-lambda-proxy
+robotocore-lambda-proxy
+robotocore-lambda-fn1-12123456789
+robotocore-lambda-fn1-123456g8
+Other-Container-1
+";
+        assert_eq!(
+            straggler_names(stdout),
+            vec![
+                "robotocore-lambda-fn1-12345678".to_string(),
+                "robotocore-lambda-bridge-fn-deadbeef".to_string(),
+                "robotocore-lambda-bridge-fn-f2test1".to_string(),
+            ]
+        );
+        assert!(straggler_names("").is_empty());
+    }
+
+    /// Every executor-owned temp root is startup-pruned: stale entries
+    /// removed, fresh entries (live concurrent twins) survive in each root.
+    #[test]
+    fn prune_stale_temp_roots_covers_executor_roots() {
+        let base =
+            std::env::temp_dir().join(format!("lam-roots-{}", uuid::Uuid::new_v4().simple()));
+        let backdated = std::time::SystemTime::now()
+            - STALE_EXTRACT_DIR_AGE
+            - std::time::Duration::from_secs(10);
+        for root in TEMP_PRUNE_ROOTS {
+            let stale_dir = base
+                .join(root)
+                .join(format!("stale-{}", uuid::Uuid::new_v4().simple()));
+            let fresh_dir = base
+                .join(root)
+                .join(format!("fresh-{}", uuid::Uuid::new_v4().simple()));
+            std::fs::create_dir_all(&stale_dir).unwrap();
+            std::fs::create_dir_all(&fresh_dir).unwrap();
+            let handle = std::fs::File::open(&stale_dir).unwrap();
+            if std::fs::File::set_times(&handle, std::fs::FileTimes::new().set_modified(backdated))
+                .is_err()
+            {
+                // Platform cannot backdate directory times: quit cleanly.
+                let _ = std::fs::remove_dir_all(&base);
+                return;
+            }
+            drop(handle);
+            prune_stale_extract_dirs(&base.join(root), STALE_EXTRACT_DIR_AGE);
+            assert!(
+                !stale_dir.exists(),
+                "stale entry under {root} must be pruned"
+            );
+            assert!(fresh_dir.exists(), "fresh entry under {root} must survive");
+        }
+        // The roots the brief pins (docker extraction, dotnet staging,
+        // loose-bridges, python/custom -exec, node -node).
+        for root in [
+            "robotocore-lambda-docker",
+            "robotocore-lambda-build",
+            "robotocore-lambda-bridges",
+            "robotocore-lambda-exec",
+            "robotocore-lambda-node",
+        ] {
+            assert!(
+                TEMP_PRUNE_ROOTS.contains(&root),
+                "executor tempo root {root} must be startup-pruned"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Daemon death mid-life: the per-invoke probe (5s cap) answers false,
+    /// the executor's fresh verdict drops, and the invocation falls back to
+    /// the LOCAL executors instead of spending the budget on docker CLI
+    /// errors — no docker run, no rm.
+    #[test]
+    fn daemon_death_mid_life_falls_back_to_local() {
+        let _g = GUARD.lock();
+        let cli = MockCli::new();
+        cli.script_probes(&[false]);
+        let ex = mk_executor(&cli, true);
+        ex.reprobe_docker_available();
+        assert!(!ex.docker_available.load(AtomicOrdering::Acquire));
+        let res = run_execute(&ex, "python3.12", r#"{}"#);
+        // Local shim outcome (not a docker error shape): garbage zip →
+        // handled BadZipFile, plus zero container lifecycle calls.
+        assert_eq!(res.function_error.as_deref(), Some("Handled"));
+        let payload: Value = serde_json::from_str(&res.payload).unwrap();
+        assert_eq!(payload["errorType"], "BadZipFile");
+        assert!(
+            cli.run_calls().is_empty(),
+            "no docker run after probe death"
+        );
+        assert!(cli.exec_calls().is_empty());
+        assert!(cli.rm_calls().is_empty());
+    }
+
+    /// Daemon recovery: an executor built during a startup dip (snapshot
+    /// false) re-adopts a healthy daemon per invoke and docker executes.
+    #[test]
+    fn daemon_recovery_after_startup_dip_adopts_docker() {
+        let _g = GUARD.lock();
+        let cli = MockCli::new();
+        cli.script_probes(&[true]);
+        cli.run_starts();
+        cli.exec_results(&[Ok(mock_output(0, r#"{"ok": true}"#, ""))]);
+        let ex = mk_executor(&cli, false);
+        assert!(ex.reprobe_docker_available());
+        assert!(ex.docker_available.load(AtomicOrdering::Acquire));
+        let res = run_execute(&ex, "nodejs20.x", r#"{}"#);
+        assert_eq!(res.function_error, None, "logs: {}", res.logs);
+        let payload: Value = serde_json::from_str(&res.payload).unwrap();
+        assert_eq!(payload["ok"], true);
+        assert_eq!(cli.run_calls().len(), 1, "docker path ran after re-adopt");
+    }
+
+    /// A genuinely unmapped runtime with a dead daemon stays on the
+    /// local-family contract: Runtime.InvalidRuntime (the docker executor
+    /// is simply absent for that family).
+    #[test]
+    fn daemon_death_keeps_invalid_runtime_for_unmapped_family() {
+        let _g = GUARD.lock();
+        let cli = MockCli::new();
+        cli.script_probes(&[false]);
+        let ex = mk_executor(&cli, true);
+        ex.reprobe_docker_available();
+        let res = run_execute(&ex, "cobol99", r#"{}"#);
+        assert_eq!(
+            res.function_error.as_deref(),
+            Some("Runtime.InvalidRuntime")
         );
     }
 
