@@ -1983,11 +1983,11 @@ pub fn build_router(
         .route("/_robotocore/runtimes", get(runtimes_handler))
         .route("/_robotocore/services", get(services_handler))
         .route("/_robotocore/usage/errors", get(usage_errors_handler))
-        // State save/load/reset (Cloud Pods-style snapshots)
-        .route(
-            "/_robotocore/state/save",
-            get(state_save_handler).post(state_save_handler),
-        )
+        // State save/load/reset (Cloud Pods-style snapshots). Python-era
+        // gateway exposed save/load as POST-only (`gateway/app.py:1353-1354`);
+        // keep the methods tight so audit logs can't be tricked into random
+        // GET-triggered writes either.
+        .route("/_robotocore/state/save", post(state_save_handler))
         .route("/_robotocore/state/load", post(state_load_handler))
         .route("/_robotocore/state/reset", post(state_reset_handler))
         .route(
@@ -2104,7 +2104,11 @@ fn services_filter(params: &serde_json::Value, query: Option<&str>) -> Option<Ve
     parsed.filter(|v| !v.is_empty())
 }
 
-/// Save handler: `GET|POST /_robotocore/state/save`.
+/// Save handler: `POST /_robotocore/state/save`.
+///
+/// Snapshot `name`s are validated python-era style
+/// (`state::validate_snapshot_name`, state/manager.py:545-561): traversal
+/// names answer 400.
 pub async fn state_save_handler(
     State(state): State<Arc<AppState>>,
     uri: Uri,
@@ -2146,6 +2150,11 @@ pub async fn state_save_handler(
                     )
                         .into_response()
                 }
+                Err(e) if e.kind() == std::io::ErrorKind::InvalidInput => (
+                    StatusCode::BAD_REQUEST,
+                    axum::Json(json!({"error": e.to_string()})),
+                )
+                    .into_response(),
                 Err(e) => (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     axum::Json(json!({"error": format!("Could not save state: {e}")})),
@@ -2181,6 +2190,10 @@ pub async fn state_save_handler(
 }
 
 /// Load handler: `POST /_robotocore/state/load`.
+///
+/// Snapshot `name`s are validated python-era style
+/// (`state::validate_snapshot_name`): traversal names answer 400 instead of
+/// writing/reading outside the given directory.
 pub async fn state_load_handler(
     State(state): State<Arc<AppState>>,
     body: axum::body::Bytes,
@@ -2200,10 +2213,21 @@ pub async fn state_load_handler(
     let services = services_filter(&params, None);
 
     // Source resolution order: path-based file, then in-memory name, then default.
-    let loaded = match (&path, &name) {
-        (Some(dir), file_name) => {
-            crate::core::state::load_from_path(dir, file_name.as_deref()).map(|v| ("file", v))
-        }
+    let loaded = match (&path, name.as_deref()) {
+        (Some(dir), file_name) => match crate::core::state::load_from_path(dir, file_name) {
+            Ok(Some(v)) => Some(("file", v)),
+            Ok(None) => None,
+            Err(e) if e.kind() == std::io::ErrorKind::InvalidInput => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    axum::Json(json!({ "error": e.to_string() })),
+                )
+                    .into_response();
+            }
+            // An unreadable directory stays "no state found" — the twin
+            // answered that shape before the traversal guard existed.
+            Err(_) => None,
+        },
         (None, Some(n)) => state
             .named_snapshots
             .get(n)
