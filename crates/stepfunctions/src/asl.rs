@@ -660,18 +660,26 @@ fn execute_state(
             Ok((output, next_state))
         }
         "Map" => {
+            // Era `_execute_map`: ItemsPath resolves against the
+            // preprocessed input (default "$"), and a non-list result is
+            // wrapped into a one-element list:
+            // `if not isinstance(items, list): items = [items]`.
             let items = match obj.get("ItemsPath").and_then(|p| p.as_str()) {
                 Some(path) => resolve_json_path(path, &effective).unwrap_or(Value::Null),
                 None => effective.clone(),
             };
+            let items: Vec<Value> = match items {
+                Value::Array(array) => array,
+                other => vec![other],
+            };
             let mut outputs: Vec<Value> = Vec::new();
-            if let Value::Array(array) = items {
-                if let Some(iterator) = obj.get("Iterator") {
-                    let (it_states, it_start) = sub_flow_states(iterator)?;
-                    for item in array {
-                        let out = run_flow(ctx, &it_states, it_start.clone(), item)?;
-                        outputs.push(out);
-                    }
+            // Era iterator selection: `state_def.get("Iterator") or
+            // state_def.get("ItemProcessor", {})`.
+            if let Some(iterator) = obj.get("Iterator").or_else(|| obj.get("ItemProcessor")) {
+                let (it_states, it_start) = sub_flow_states(iterator)?;
+                for item in items {
+                    let out = run_flow(ctx, &it_states, it_start.clone(), item)?;
+                    outputs.push(out);
                 }
             }
             let output = postprocess_output(obj, data, &effective, Value::Array(outputs));
@@ -1432,5 +1440,65 @@ mod tests {
         assert_eq!(err.error, "42");
         // Null causeresolution falls back to the era default (empty cause).
         assert_eq!(err.cause, "");
+    }
+
+    // ---- Map non-list item wrapping + ItemProcessor (era `_execute_map`)
+    // ----
+
+    fn map_definition() -> Value {
+        json!({
+            "StartAt": "Iterate",
+            "States": {
+                "Iterate": {
+                    "Type": "Map",
+                    "ItemProcessor": {
+                        "StartAt": "PassItem",
+                        "States": {
+                            "PassItem": {
+                                "Type": "Pass",
+                                "Result": {"echo": true},
+                                "End": true,
+                            }
+                        },
+                    },
+                    "End": true,
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn test_map_wraps_non_list_item() {
+        // An ItemsPath resolving to a non-list (object or null) is wrapped
+        // into a one-element list (era `[items]`).
+        let mut def = map_definition();
+        def["States"]["Iterate"]["ItemsPath"] = json!("$.item");
+        let out = run(&def, json!({"item": {"k": 1}})).expect("map runs once");
+        assert_eq!(out, json!([{"echo": true}]), "got {out}");
+        // Null resoluting also wraps (era: [None]) and the item flows in.
+        let out = run(&def, json!({"no_item": true})).expect("map runs on null");
+        assert_eq!(out, json!([{"echo": true}]), "got {out}");
+    }
+
+    #[test]
+    fn test_map_without_items_path_uses_whole_input() {
+        // Era: `items_path = state_def.get("ItemsPath", "$")` — the whole
+        // preprocessed input is the single iterated item.
+        let def = map_definition();
+        let out = run(&def, json!({"id": 7})).expect("map runs once");
+        assert_eq!(out, json!([{"echo": true}]), "got {out}");
+    }
+
+    #[test]
+    fn test_map_iterator_and_item_processor_both_work() {
+        // Era: `state_def.get("Iterator") or state_def.get("ItemProcessor")`
+        // — both container forms drive the iterations.
+        let mut def = map_definition();
+        def["States"]["Iterate"]["ItemsPath"] = json!("$.items");
+        def["States"]["Iterate"]["Iterator"] = def["States"]["Iterate"]["ItemProcessor"].clone();
+        let out = run(&def, json!({"items": [1, 2]})).expect("map uses Iterator");
+        assert_eq!(out, json!([{"echo": true}, {"echo": true}]), "got {out}");
+        let out = run(&def, json!({"items": []})).expect("empty map");
+        assert_eq!(out, json!([]), "got {out}");
     }
 }
