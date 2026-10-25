@@ -26,8 +26,6 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: recursive
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
@@ -61,8 +59,6 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: recursive
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
@@ -93,8 +89,6 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: recursive
       - uses: actions/setup-node@v6
         with:
           node-version: 20
@@ -129,8 +123,6 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: recursive
       - uses: pulumi/actions@v7
       - uses: astral-sh/setup-uv@v7
         with:
@@ -162,8 +154,6 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: recursive
       - uses: actions/setup-node@v6
         with:
           node-version: 20
@@ -198,8 +188,6 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: recursive
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"

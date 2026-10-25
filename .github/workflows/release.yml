@@ -32,7 +32,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          submodules: recursive
           fetch-depth: 0  # need full history for CalVer tags
 
       # Multi-arch Docker build
