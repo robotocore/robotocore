@@ -708,6 +708,16 @@ impl KmsHandler {
             Some(k) => k,
             None => return Self::not_found(),
         };
+        let has_bytes = req.params.get("NumberOfBytes").is_some();
+        let has_spec = req.params.get("KeySpec").is_some();
+        if has_bytes && has_spec {
+            // moto responses.py:585-588 — mutual exclusion.
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                "Please specify either number of bytes or key spec.",
+            );
+        }
         let length = match req.params.get("NumberOfBytes").and_then(|v| v.as_u64()) {
             Some(n) if (1..=1024).contains(&n) => n as usize,
             Some(_) => {
@@ -717,11 +727,30 @@ impl KmsHandler {
                     "The NumberOfBytes parameter must be between 1 and 1024",
                 )
             }
-            None => match pstr(req, "KeySpec").as_deref() {
-                Some("AES_128") => 16,
-                Some("AES_256") | None => 32,
-                _ => 32,
-            },
+            None => {
+                if !has_spec {
+                    // moto responses.py:580-583 — neither parameter is an
+                    // error, not a silent default.
+                    return AwsResponse::error(
+                        400,
+                        "ValidationException",
+                        "Please specify either number of bytes or key spec.",
+                    );
+                }
+                match pstr(req, "KeySpec").as_deref() {
+                    Some("AES_128") => 16,
+                    Some("AES_256") => 32,
+                    // moto responses.py:574-579 — unknown KeySpec values are
+                    // a member-enum validation error, not a silent default.
+                    _ => {
+                        return AwsResponse::error(
+                            400,
+                            "ValidationException",
+                            "1 validation error detected: Value at 'keySpec' failed to satisfy constraint: Member must satisfy enum value set: [AES_256, AES_128]",
+                        )
+                    }
+                }
+            }
         };
         let plaintext: Vec<u8> = (0..length).map(|_| rand::random::<u8>()).collect();
         let entries = context_entries(req.params.get("EncryptionContext"));
@@ -1731,10 +1760,30 @@ mod tests {
         let pt = B64.decode(body["Plaintext"].as_str().unwrap()).unwrap();
         assert_eq!(pt.len(), 32);
 
+        // moto responses.py:574-588 — spec/bytes trio validations.
+        let resp = handler.handle(make_req(
+            "GenerateDataKey",
+            json!({"KeyId": key_id, "KeySpec": "AES_9"}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp.body.contains("enum value set"), "{}", resp.body);
+
+        let resp = handler.handle(make_req("GenerateDataKey", json!({"KeyId": key_id})));
+        assert_eq!(resp.status, 400);
+        assert!(resp.body.contains("either number of bytes or key spec"));
+
+        let resp = handler.handle(make_req(
+            "GenerateDataKey",
+            json!({"KeyId": key_id, "KeySpec": "AES_256", "NumberOfBytes": 5}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp.body.contains("either number of bytes or key spec"));
+
         let resp = handler.handle(make_req(
             "GenerateDataKey",
             json!({"KeyId": key_id, "NumberOfBytes": 64}),
         ));
+        assert_eq!(resp.status, 200);
         let body: Value = serde_json::from_str(&resp.body).unwrap();
         let pt = B64.decode(body["Plaintext"].as_str().unwrap()).unwrap();
         assert_eq!(pt.len(), 64);

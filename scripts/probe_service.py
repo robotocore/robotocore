@@ -480,7 +480,18 @@ def main():
                 if r["status"] == "500_error":
                     print(f"  ! {r['operation']}: {r['message']}")
 
-    return 0 if counts["500_error"] == 0 else 1
+        # Wave-4 finding 6: a hanging handler is the most distinct artifact
+        # the contract cares about; --all-services already treats timeouts
+        # as failures — make the single-service writer agree, and print the
+        # rows like every other bucket.
+        if counts.get("timeout"):
+            print(f"\nTimeouts ({counts['timeout']}):")
+            for r in results:
+                if r["status"] == "timeout":
+                    print(f"  ~ {r['operation']}: {r['message']}")
+
+    fail = counts["500_error"] + counts.get("timeout", 0)
+    return 0 if fail == 0 else 1
 
 
 if __name__ == "__main__":

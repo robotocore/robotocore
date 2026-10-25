@@ -54,19 +54,43 @@ def probe_name_from_file(path: Path) -> str:
     return path.stem
 
 
+# Probe/service names whose implementation lives under a different stem
+# or outside rotocore/src/services (caught by the wave-4 skip-audit — a
+# gate that permanently skips corpora can never see their staleness).
+IMPL_PATH_OVERRIDES: dict[str, list[str]] = {
+    "cognitoidentity": ["rotocore/src/services/cognito_identity.rs"],
+    "iotdata": ["rotocore/src/services/iot_data.rs"],
+    "apigatewaymanagementapi": ["rotocore/src/services/apigw_management.rs"],
+    "service-quotas": ["rotocore/src/services/servicequotas/"],
+    "es": ["rotocore/src/services/opensearch.rs",
+           "rotocore/src/services/opensearch/"],
+    "neptune": ["rotocore/src/services/rds.rs"],
+    "logs": ["crates/cloudwatch-logs/src/",
+             "rotocore/src/services/cloudwatch_logs.rs"],
+    "sts": ["src/core/services/sts.rs"],
+}
+
+
 def service_dirs_for(name: str) -> list[str]:
     """Candidate implementation paths for a probe/service name.
 
     Probe names use AWS hyphenation (service-quotas, cognito-idp) while the
     engine uses snake case mod files (servicequotas/mod.rs, cognito_idp.rs,
-    directconnect/mod.rs, lambda/ dir...). Try both spellings per location.
+    directconnect/mod.rs, lambda/ dir...). Try both spellings per location,
+    plus the explicit override table for corpus names whose implementation
+    lives under a different file stem.
     """
+    overrides = IMPL_PATH_OVERRIDES.get(name)
+    if overrides:
+        return list(overrides)
     variants = {name, name.replace("-", "_"), name.replace("_", "-")}
+    # deslashed variant too (service-quotas dir is servicequotas/)
+    variants.add(name.replace("-", "").replace("_", ""))
     patterns: list[str] = []
     for v in sorted(variants):
         patterns.append(f"rotocore/src/services/{v}.rs")
         patterns.append(f"rotocore/src/services/{v}/")
-        patterns.append(f"crates/{v.replace('-', '')}/src/")
+        patterns.append(f"crates/{v}/src/")
     return patterns
 
 
@@ -100,7 +124,9 @@ def main() -> int:
         name = probe_name_from_file(probe_file)
         probe_time = parse_generated_at(probe_file)
         if probe_time is None:
-            skipped.append(name)
+            # Wave-4 finding 2: a truncated/corrupt artifact must NOT
+            # silently pass the gate — treat it as stale.
+            stale.append((name, probe_time, None))
             continue
         impl_time, _ = latest_impl_time(name)
         if impl_time is None:
@@ -122,7 +148,12 @@ def main() -> int:
 
     if args.refresh_commands and stale:
         for name, _t, _i in stale:
-            print(f"  ENDPOINT_URL=http://localhost:4566 uv run python -m scripts.probe_service --service {name}")
+            # --all is mandatory: without it probe_service writes a
+            # List/Describe/Get-only artifact whose fresh generated_at
+            # silently shrank the corpus (wave-4 finding 1). The writer
+            # is not atomic (finding 2): refresh runs should still be
+            # followed by `make error-census` and a `git diff` review.
+            print(f"  ENDPOINT_URL=http://localhost:4566 uv run python -m scripts.probe_service --service {name} --all")
 
     return 1 if stale else 0
 

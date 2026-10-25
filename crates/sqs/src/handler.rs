@@ -169,10 +169,46 @@ impl DefaultSqsHandler {
         }
     }
 
+    /// Host port for minted QueueUrls. moto derives the URL from the
+    /// request's netloc (`moto/sqs/models.py:535 def url`); the gateway
+    /// strips the Host header before the crate sees the request, so the
+    /// port follows `SQS_PUBLIC_BASE`'s explicit port, then `RUST_PORT`,
+    /// then the documented canonical 4566 — logged once per process
+    /// (portability rule: AGENTS.md merge protocol item 5).
+    fn queue_host_port() -> u16 {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static FALLBACK_LOGGED: AtomicBool = AtomicBool::new(false);
+        if let Ok(base) = std::env::var("SQS_PUBLIC_BASE") {
+            if let Some(p) = base
+                .split("://")
+                .last()
+                .and_then(|h| h.split('/').next())
+                .and_then(|h| h.rsplit(':').next())
+                .and_then(|p| p.parse().ok())
+            {
+                return p;
+            }
+        }
+        if let Ok(p) = std::env::var("RUST_PORT") {
+            if let Ok(port) = p.parse() {
+                return port;
+            }
+        }
+        if !FALLBACK_LOGGED.swap(true, Ordering::Relaxed) {
+            eprintln!(
+                "[sqs] QueueUrls minted with the canonical :4566 fallback (set SQS_PUBLIC_BASE or RUST_PORT to override)"
+            );
+        }
+        4566
+    }
+
     fn queue_url_for(queue_name: &str, account: u64, region: &str) -> String {
         format!(
-            "http://sqs.{}.localhost.robotocore.cloud:4566/{}/{}",
-            region, account, queue_name
+            "http://sqs.{}.localhost.robotocore.cloud:{}/{}/{}",
+            region,
+            Self::queue_host_port(),
+            account,
+            queue_name
         )
     }
 

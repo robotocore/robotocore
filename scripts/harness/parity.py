@@ -495,16 +495,25 @@ def main():
     EXPECTATIONS = load_expectations(expectations_path)
     report = run_all_rust_only(services, state_path.parent, EXPECTATIONS)
     signal.alarm(0)  # cancel the alarm
-    if args.update_expectations:
-        if report.get("aborted"):
-            log("[skip] aborted run — nothing promoted to the baseline")
-        else:
-            write_expectations(report, expectations_path)
     next_work = derive_next_work(report)
     print_rust_only_summary(report, next_work)
     save_state(report, next_work, state_path, mode="rust-only")
-    if report.get("expectations_drift"):
+    drift = bool(report.get("expectations_drift"))
+    if drift:
         log("[!!] baseline regression detected (see EXPECTATIONS DRIFT above)")
+    if args.update_expectations:
+        # Ratchet-down guard (wave-4 finding 4): a regressed run must not
+        # lower the committed baseline — write only when the report shows no
+        # drift, exactly like scripts/coverage.py::gate's budget handling.
+        # An upward move is the promotion case and writes as before.
+        if drift:
+            log("[skip] update-expectations suppressed while a regression is "
+                "open — fix or hand-confirm the drift before promoting.")
+        elif report.get("aborted"):
+            log("[skip] aborted run — nothing promoted to the baseline")
+        else:
+            write_expectations(report, expectations_path)
+    if drift:
         raise SystemExit(2)
 
 
