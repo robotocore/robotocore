@@ -2589,6 +2589,23 @@ fn extract_account_from_request(headers: &HeaderMap, query_string: &str, body: &
         }
     }
 
+    // SigV2 presigned query requests (SimpleDB, botocore's only SigV2
+    // service, signs GETs too) carry the access key as an `AWSAccessKeyId`
+    // query parameter — no Authorization header. moto resolves the account
+    // from it exactly this way (`moto/core/responses.py get_access_key`:
+    // Authorization header first, then `querystring["AWSAccessKeyId"]`), so
+    // per-account isolation holds for SigV2 GETs like it does for SigV2
+    // form posts below.
+    if let Some(v) = query_string.split('&').find_map(|kv| {
+        let (k, v) = kv.split_once('=')?;
+        (k == "AWSAccessKeyId" && !v.is_empty()).then(|| v.to_string())
+    }) {
+        let key = urlencoding::decode(&v).unwrap_or_default();
+        if !key.is_empty() {
+            return parse_account_from_key(&key);
+        }
+    }
+
     // SigV2 bodies (SimpleDB is the only SigV2 service) carry the access
     // key in the form body: AWSAccessKeyId=KEY&... moto derives the account
     // the same way (moto/core/responses.py get_account_id_from), so the
@@ -2799,6 +2816,20 @@ mod tests {
             b"Action=CreateDomain&AWSAccessKeyId=222222222222&Signature=x%3D",
         );
         assert_eq!(account, 222222222222);
+    }
+
+    #[test]
+    fn test_extract_account_from_sigv2_presigned_query() {
+        // SigV2 GETs (SimpleDB) carry AWSAccessKeyId in the query string
+        // instead of a form body — moto's get_access_key resolves the
+        // account from querystring["AWSAccessKeyId"] the same way.
+        let headers = HeaderMap::new();
+        let account = extract_account_from_request(
+            &headers,
+            "Action=ListDomains&AWSAccessKeyId=322222222223&Signature=vWj1",
+            b"",
+        );
+        assert_eq!(account, 322222222223);
     }
 
     #[test]
