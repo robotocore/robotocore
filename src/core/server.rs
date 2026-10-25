@@ -1821,9 +1821,10 @@ pub async fn config_handler() -> impl IntoResponse {
 /// non-whitelisted keys, `{"status": "updated", "updated": {...}}` on
 /// success.
 ///
-/// Values are stored in the runtime-config override table; settings whose
-/// consumers are not ported to the rust gateway yet are accepted but have
-/// no consumer (see `core::runtime_config`).
+/// Values are stored in the runtime-config override table and reflected by
+/// future `runtime_config::get(key)` readers. Only keys with a live
+/// consumer are accepted: whitelisted-but-unconsumed keys answer 400 rather
+/// than a silent no-op (see `core::runtime_config::CONSUMED_SETTINGS`).
 pub async fn config_update_handler(body: axum::body::Bytes) -> Response {
     const DISABLED: &str = "Runtime config updates are disabled. Set ENABLE_CONFIG_UPDATES=1.";
     if !crate::core::runtime_config::updates_enabled() {
@@ -1870,6 +1871,23 @@ pub async fn config_update_handler(body: axum::body::Bytes) -> Response {
                 axum::Json(
                     json!({ "error": format!("Setting {key} cannot be changed at runtime") }),
                 ),
+            )
+                .into_response();
+        }
+        // Only keys with a live rust consumer may be stored. Accepting
+        // ENFORCE_IAM-style keys with no reader would be a silent bypass:
+        // the 200 would claim enforcement changed while nothing reads the
+        // override (see `core::runtime_config::CONSUMED_SETTINGS`).
+        if !crate::core::runtime_config::CONSUMED_SETTINGS
+            .iter()
+            .any(|k| *k == key)
+        {
+            return (
+                StatusCode::BAD_REQUEST,
+                axum::Json(json!({ "error": format!(
+                    "Setting {key} has no consumer in the rust gateway; \
+                     updates are rejected instead of silently ignored"
+                )})),
             )
                 .into_response();
         }
@@ -2668,6 +2686,55 @@ fn error_response(status: StatusCode, message: &str) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    async fn config_update(body: &str) -> Response {
+        std::env::set_var("ENABLE_CONFIG_UPDATES", "1");
+        config_update_handler(axum::body::Bytes::from(body.to_string())).await
+    }
+
+    async fn config_body_value(resp: Response) -> Value {
+        let bytes = BodyExt::collect(resp.into_body()).await.unwrap().to_bytes();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    #[tokio::test]
+    async fn config_update_rejects_whitelisted_key_with_no_consumer() {
+        // ENFORCE_IAM stays whitelisted (python parity) but nothing in the
+        // rust gateway reads it: accepting it would be a silent bypass, so
+        // the endpoint must answer 400 instead of a lying 200.
+        let resp = config_update(r#"{"ENFORCE_IAM": "1"}"#).await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = config_body_value(resp).await;
+        assert!(body["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("no consumer"));
+    }
+
+    #[tokio::test]
+    async fn config_update_rejects_unknown_key() {
+        let resp = config_update(r#"{"NOT_A_SETTING": "1"}"#).await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = config_body_value(resp).await;
+        assert_eq!(
+            body["error"],
+            "Setting NOT_A_SETTING cannot be changed at runtime"
+        );
+    }
+
+    #[tokio::test]
+    async fn config_update_rejects_non_object_body() {
+        for body in [
+            r#"[]"#,
+            r#""string""#,
+            // invalid JSON
+            r#"{"DEBUG": "1""#,
+            "",
+        ] {
+            let resp = config_update(body).await;
+            assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "body: {body}");
+        }
+    }
 
     #[test]
     fn test_extract_service_from_target_header() {
