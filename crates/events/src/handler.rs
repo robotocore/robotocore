@@ -153,13 +153,23 @@ impl EventsHandler {
                 "EventPattern or ScheduleExpression must be specified.",
             );
         }
+        // The caller's State param must stick (era parity: moto's
+        // `Rule.__init__` does `self.state = state or "ENABLED"`), so a
+        // rule put with State="DISABLED" stays silent in the scheduler.
+        let rule_state = req
+            .params
+            .get("State")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .unwrap_or("ENABLED")
+            .to_string();
         let rule = Arc::new(Rule {
             name: name.clone(),
             bus_name: bus.clone(),
             arn,
             description,
             event_pattern,
-            state: RwLock::new("ENABLED".to_string()),
+            state: RwLock::new(rule_state),
             role_arn: req
                 .params
                 .get("RoleArn")

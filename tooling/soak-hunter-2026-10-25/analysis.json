@@ -1,0 +1,140 @@
+{
+  "rss": {
+    "n_samples": 31,
+    "start_mb": 12.22265625,
+    "end_mb": 19.6171875,
+    "peak_mb": 19.6171875,
+    "slope_mb_per_hour": 5.762,
+    "leak_verdict": "within-budget"
+  },
+  "threads_fds": {
+    "start": {
+      "threads": 20,
+      "fds": 16
+    },
+    "end": {
+      "threads": 25,
+      "fds": 20
+    }
+  },
+  "containers": {
+    "live_leftover": []
+  },
+  "tmp_dirs": {
+    "docker": 0,
+    "exec": 0,
+    "build": 0,
+    "node": 0,
+    "bridges": 0
+  },
+  "scheduler": {
+    "sweeps": 5,
+    "scheduled_deliveries": 158,
+    "per_rule": {
+      "soak-sched-cron-0/2-a": 13,
+      "soak-sched-busbill-a": 25,
+      "soak-sched-rate-1m-a": 25,
+      "soak-sched-cron-wildmin-a": 5,
+      "soak-sched-cron-annual-a": 5,
+      "soak-sched-cron-monthly-a": 5,
+      "soak-sched-cron-hourly-a": 1,
+      "soak-sched-busbill-b": 25,
+      "soak-sched-cron-0/2-b": 13,
+      "soak-sched-rate-1m-b": 25,
+      "soak-sched-cron-wildmin-b": 5,
+      "soak-sched-cron-monthly-b": 5,
+      "soak-sched-cron-hourly-b": 1,
+      "soak-sched-cron-annual-b": 5
+    },
+    "other": 52
+  },
+  "lambda": {
+    "waves": 30,
+    "fail_waves": 0,
+    "total_invokes_ok": 54,
+    "wave_ms_first": 2011,
+    "wave_ms_last": 12911
+  },
+  "workload": {
+    "ss_errors": 0,
+    "chain_events": 1,
+    "chain_failures": 0
+  },
+  "live_errors_endpoint": {
+    "by_error_type": {},
+    "by_status_code": {},
+    "recent_errors": [],
+    "total_errors": 0
+  },
+  "audit_5xx": [],
+  "latency_first_checkpoint": {
+    "t": 302.2,
+    "kind": "latency_checkpoint",
+    "minute": 5.0,
+    "sqs_send": {
+      "n": 857,
+      "p50": 1.0,
+      "p95": 1.3
+    },
+    "sqs_receive": {
+      "n": 857,
+      "p50": 0.6,
+      "p95": 0.9
+    },
+    "s3_put": {
+      "n": 857,
+      "p50": 1.4,
+      "p95": 2.0
+    },
+    "s3_get": {
+      "n": 857,
+      "p50": 0.9,
+      "p95": 1.2
+    },
+    "ddb_put": {
+      "n": 859,
+      "p50": 1.0,
+      "p95": 1.2
+    },
+    "ddb_get": {
+      "n": 859,
+      "p50": 0.6,
+      "p95": 1.0
+    }
+  },
+  "latency_last_checkpoint": {
+    "t": 1502.2,
+    "kind": "latency_checkpoint",
+    "minute": 25.0,
+    "sqs_send": {
+      "n": 4264,
+      "p50": 0.9,
+      "p95": 1.1
+    },
+    "sqs_receive": {
+      "n": 4264,
+      "p50": 0.6,
+      "p95": 0.9
+    },
+    "s3_put": {
+      "n": 4261,
+      "p50": 1.3,
+      "p95": 1.8
+    },
+    "s3_get": {
+      "n": 4261,
+      "p50": 0.8,
+      "p95": 1.0
+    },
+    "ddb_put": {
+      "n": 4270,
+      "p50": 1.0,
+      "p95": 1.2
+    },
+    "ddb_get": {
+      "n": 4270,
+      "p50": 0.6,
+      "p95": 0.9
+    }
+  }
+}
