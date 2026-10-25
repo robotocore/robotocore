@@ -1,70 +1,15 @@
 {
   "service": "kms",
-  "generated_at": "2026-10-22T07:01:22.443180+00:00",
+  "generated_at": "2026-10-25T08:19:43.971924+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 53,
+    "working": 13,
     "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
   },
   "operations": [
-    {
-      "operation": "CancelKeyDeletion",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "ConnectCustomKeyStore",
-      "status": "working",
-      "message": "likely implemented (CustomKeyStoreNotFoundException: The custom key store does not exist)"
-    },
-    {
-      "operation": "CreateAlias",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "CreateCustomKeyStore",
-      "status": "working",
-      "message": "OK (required-only fill)"
-    },
-    {
-      "operation": "CreateGrant",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "CreateKey",
-      "status": "working",
-      "message": "OK"
-    },
-    {
-      "operation": "Decrypt",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "DeleteAlias",
-      "status": "working",
-      "message": "OK"
-    },
-    {
-      "operation": "DeleteCustomKeyStore",
-      "status": "working",
-      "message": "likely implemented (CustomKeyStoreNotFoundException: The custom key store does not exist)"
-    },
-    {
-      "operation": "DeleteImportedKeyMaterial",
-      "status": "working",
-      "message": "implemented via required-only (NotFoundException)"
-    },
-    {
-      "operation": "DeriveSharedSecret",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
     {
       "operation": "DescribeCustomKeyStores",
       "status": "working",
@@ -74,66 +19,6 @@
       "operation": "DescribeKey",
       "status": "working",
       "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "DisableKey",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "DisableKeyRotation",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "DisconnectCustomKeyStore",
-      "status": "working",
-      "message": "likely implemented (CustomKeyStoreNotFoundException: The custom key store does not exist)"
-    },
-    {
-      "operation": "EnableKey",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "EnableKeyRotation",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "Encrypt",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "GenerateDataKey",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "GenerateDataKeyPair",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "GenerateDataKeyPairWithoutPlaintext",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "GenerateDataKeyWithoutPlaintext",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "GenerateMac",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "GenerateRandom",
-      "status": "working",
-      "message": "OK"
     },
     {
       "operation": "GetKeyPolicy",
@@ -154,11 +39,6 @@
       "operation": "GetPublicKey",
       "status": "working",
       "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "ImportKeyMaterial",
-      "status": "working",
-      "message": "implemented via required-only (NotFoundException)"
     },
     {
       "operation": "ListAliases",
@@ -194,86 +74,6 @@
       "operation": "ListRetirableGrants",
       "status": "working",
       "message": "OK"
-    },
-    {
-      "operation": "PutKeyPolicy",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "ReEncrypt",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "ReplicateKey",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "RetireGrant",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "RevokeGrant",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "RotateKeyOnDemand",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "ScheduleKeyDeletion",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "Sign",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "TagResource",
-      "status": "working",
-      "message": "OK"
-    },
-    {
-      "operation": "UntagResource",
-      "status": "working",
-      "message": "OK"
-    },
-    {
-      "operation": "UpdateAlias",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "UpdateCustomKeyStore",
-      "status": "working",
-      "message": "implemented via required-only (CustomKeyStoreNotFoundException)"
-    },
-    {
-      "operation": "UpdateKeyDescription",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "UpdatePrimaryRegion",
-      "status": "working",
-      "message": "OK"
-    },
-    {
-      "operation": "Verify",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
-    },
-    {
-      "operation": "VerifyMac",
-      "status": "working",
-      "message": "implemented (NotFoundException)"
     }
   ]
 }

@@ -1,50 +1,15 @@
 {
   "service": "stepfunctions",
-  "generated_at": "2026-10-25T05:04:43.657464+00:00",
+  "generated_at": "2026-10-25T08:19:47.960249+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 35,
+    "working": 15,
     "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
-    "timeout": 2
+    "timeout": 0
   },
   "operations": [
-    {
-      "operation": "CreateActivity",
-      "status": "working",
-      "message": "OK"
-    },
-    {
-      "operation": "CreateStateMachine",
-      "status": "working",
-      "message": "OK"
-    },
-    {
-      "operation": "CreateStateMachineAlias",
-      "status": "working",
-      "message": "OK"
-    },
-    {
-      "operation": "DeleteActivity",
-      "status": "working",
-      "message": "likely implemented (ActivityDoesNotExist: Activity arn:aws:stepfunctions:us-east-1:123456789012:thing/)"
-    },
-    {
-      "operation": "DeleteStateMachine",
-      "status": "working",
-      "message": "likely implemented (StateMachineDoesNotExist: State machine arn:aws:stepfunctions:us-east-1:123456789012:t)"
-    },
-    {
-      "operation": "DeleteStateMachineAlias",
-      "status": "working",
-      "message": "OK"
-    },
-    {
-      "operation": "DeleteStateMachineVersion",
-      "status": "working",
-      "message": "implemented (ValidationException)"
-    },
     {
       "operation": "DescribeActivity",
       "status": "working",
@@ -117,81 +82,6 @@
     },
     {
       "operation": "ListTagsForResource",
-      "status": "working",
-      "message": "OK"
-    },
-    {
-      "operation": "PublishStateMachineVersion",
-      "status": "working",
-      "message": "likely implemented (StateMachineDoesNotExist: State machine arn:aws:stepfunctions:us-east-1:123456789012:t)"
-    },
-    {
-      "operation": "RedriveExecution",
-      "status": "working",
-      "message": "likely implemented (ExecutionDoesNotExist: Execution arn:aws:stepfunctions:us-east-1:123456789012:thing)"
-    },
-    {
-      "operation": "SendTaskFailure",
-      "status": "working",
-      "message": "likely implemented (TaskDoesNotExist: Task token not found: probe-token-2578)"
-    },
-    {
-      "operation": "SendTaskHeartbeat",
-      "status": "working",
-      "message": "likely implemented (TaskDoesNotExist: Task token not found: probe-token-2578)"
-    },
-    {
-      "operation": "SendTaskSuccess",
-      "status": "working",
-      "message": "likely implemented (TaskDoesNotExist: Task token not found: probe-token-2578)"
-    },
-    {
-      "operation": "StartExecution",
-      "status": "working",
-      "message": "likely implemented (StateMachineDoesNotExist: State machine arn:aws:stepfunctions:us-east-1:123456789012:t)"
-    },
-    {
-      "operation": "StartSyncExecution",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://sync-localhos)"
-    },
-    {
-      "operation": "StopExecution",
-      "status": "working",
-      "message": "likely implemented (ExecutionDoesNotExist: Execution arn:aws:stepfunctions:us-east-1:123456789012:thing)"
-    },
-    {
-      "operation": "TagResource",
-      "status": "working",
-      "message": "OK"
-    },
-    {
-      "operation": "TestState",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://sync-localhos)"
-    },
-    {
-      "operation": "UntagResource",
-      "status": "working",
-      "message": "OK"
-    },
-    {
-      "operation": "UpdateMapRun",
-      "status": "working",
-      "message": "OK"
-    },
-    {
-      "operation": "UpdateStateMachine",
-      "status": "working",
-      "message": "likely implemented (StateMachineDoesNotExist: State machine arn:aws:stepfunctions:us-east-1:123456789012:t)"
-    },
-    {
-      "operation": "UpdateStateMachineAlias",
-      "status": "working",
-      "message": "likely implemented (ResourceNotFound: Resource not found: 'arn:aws:stepfunctions:us-east-1:1234567)"
-    },
-    {
-      "operation": "ValidateStateMachineDefinition",
       "status": "working",
       "message": "OK"
     }
