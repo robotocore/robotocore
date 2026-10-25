@@ -194,7 +194,6 @@ def sample_once(containers):
     rows = {}
     for line in out.splitlines():
         import re as _re
-        parts = row = {}
         cols = line.split(None, 2)
         if len(cols) != 3:
             continue
