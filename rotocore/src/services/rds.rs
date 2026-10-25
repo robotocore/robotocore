@@ -2795,9 +2795,14 @@ fn request_id() -> String {
 }
 
 fn response_xml(op: &str, inner: Option<String>) -> Response {
+    // moto's ActionResult always renders the operation-result wrapper for
+    // query-protocol ops, empty when the operation produces no members
+    // (moto_server-verified: RemoveFromGlobalCluster miss answers
+    // `<RemoveFromGlobalClusterResult/>` after the empty GlobalCluster
+    // member is skipped).
     let mut body = match inner {
         Some(s) => format!("<{op}Result>{s}</{op}Result>"),
-        None => String::new(),
+        None => format!("<{op}Result/>"),
     };
     let rid = request_id();
     body.push_str(&format!(
