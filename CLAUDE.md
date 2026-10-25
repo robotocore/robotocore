@@ -61,7 +61,7 @@ robotocore/
 │       ├── introspection.rs   # audit log, usage errors, counters
 │       ├── state.rs           # in-memory state + save/load
 │       └── services/          # native core handlers (sts, s3, sqs, ...)
-├── rotocore/                  # "moto in Rust" — far-service backends (74 services)
+├── rotocore/                  # "moto in Rust" — far-service backends (141 services)
 ├── crates/                    # per-service crates (sqs, s3, dynamodb, lambda, ...)
 ├── bindings/                  # language bindings: python/, typescript/, go/, rust/ + tools/
 ├── tests/
@@ -115,7 +115,7 @@ service changes.
 
 ## Service Coverage
 
-157 AWS services are registered in the gateway table. Availability is
+158 AWS services are registered in the gateway table. Availability is
 derived from the real tables, not a static claim — ask the twin:
 
 ```bash
@@ -125,8 +125,8 @@ s=json.load(sys.stdin)['services']
 print(dict(collections.Counter(x['status'] for x in s)))"
 ```
 
-`native` = a Rust backend answers in-process (gateway core + rotocore,
-currently 92). `absent` = requests answer 501 NotImplemented.
+`native` = a Rust backend answers in-process (gateway core + rotocore —
+currently all 158). `absent` = requests answer 501 NotImplemented.
 
 ## Adding a New Native Service (Checklist)
 
@@ -180,7 +180,6 @@ When behavior diverges from real AWS (or the compat suite disagrees):
 - **Commit after every logical phase** — don't accumulate a massive diff
 - **Run the cheap gates before committing** (workspace lib tests + clippy -D warnings); run compat suites only after meaningful changes
 - **Push in batches** (the maintainer's call for pacing CI — currently ~100 commits per push)
-- **Prompt log**: notable sessions add a prompt log entry in `prompts/` (see `prompts/PROMPTLOG.md`)
 
 ### Changelog discipline
 - **Update `CHANGELOG.md` in the same branch** as any user-visible change: new feature/endpoint/env var, behavior change, breaking change, fidelity fix
@@ -199,5 +198,4 @@ When behavior diverges from real AWS (or the compat suite disagrees):
 
 - `docs/coverage.html` — browsable per-service coverage view
 - `probes/<service>.json` — checked-in probe results (operation -> status)
-- `.parity/expectations_current.json` — golden parity baseline (89 suites, promoted from the rust lane)
-- `prompts/PROMPTLOG.md` — prompt-log format spec
+- `.parity/expectations_current.json` — golden parity baseline (180 suites, promoted from the rust lane)
