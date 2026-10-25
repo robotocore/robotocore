@@ -2,6 +2,7 @@
 //!
 //! JSON protocol (x-amz-json-1.1) with target prefix "TrentService".
 
+pub mod cipher;
 pub mod handler;
 pub mod models;
 pub mod protocol;
