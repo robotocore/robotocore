@@ -2,12 +2,15 @@
 //!
 //! Supports the state types the compatibility suite exercises: Pass
 //! (Result/Parameters/ResultPath), Choice (comparators + Default), Fail,
-//! Succeed, Wait, Parallel (branches), Map (inline Iterator) and Task
-//! (treated as a pass-through). Errors flow through the era `_handle_error`
-//! path: Retry blocks re-execute the state with capped backoff, Catch blocks
-//! route a `{"Error", "Cause"}` payload to the catcher's Next state.
-//! Executions run on a detached thread so StopExecution can abort them while
-//! they are waiting.
+//! Succeed, Wait, Parallel (branches), Map (inline Iterator + ItemProcessor)
+//! and Task (lambda plus the era `_dispatch_task` SDK routing through the
+//! per-service state bridges: sqs:sendMessage, sns:publish, dynamodb put/get
+//! /delete/update/query, lambda:invoke and states:startExecution — unknown
+//! resources fail with `States.TaskFailed` like the era). Errors flow through
+//! the era `_handle_error` path: Retry blocks re-execute the state with
+//! capped backoff, Catch blocks route a `{"Error", "Cause"}` payload to the
+//! catcher's Next state. Executions run on a detached thread so
+//! StopExecution can abort them while they are waiting.
 
 use crate::models::Execution;
 use parking_lot::Mutex;
@@ -595,31 +598,604 @@ fn invoke_lambda_resource(
     }
 }
 
-/// Recognise `arn:aws:states:::lambda:invoke[.waitForTaskCallback]` SDK
-/// integrations; runs the addressed function with the provided payload.
-fn lambda_sdk_invoke(resource: &str, input: &Value) -> Option<Result<Value, FlowError>> {
-    let service_resource = resource.strip_prefix("arn:aws:states:::")?;
-    let (service, action) = match service_resource.split_once(':') {
-        Some((s, a)) => (s, a.trim_end_matches(".waitForTaskCallback")),
-        None => return None,
-    };
-    if service != "lambda" || !matches!(action, "invoke") {
-        return None;
+/// Route a Task state's `Resource` to its integration. Era `_execute_task`
+/// trims the `.waitForTaskCallback` suffix for the callback pattern and then
+/// calls this logic (asl.py `_dispatch_task`, quoted verbatim):
+///
+/// ```python
+/// def _dispatch_task(self, resource: str, input_data: Any) -> Any:
+///     """Route task to the appropriate service integration."""
+///     # Lambda invocation
+///     if resource.startswith("arn:aws:lambda:") or ":function:" in resource:
+///         return self._invoke_lambda(resource, input_data)
+///
+///     # SDK integrations: arn:aws:states:::service:action
+///     if resource.startswith("arn:aws:states:::"):
+///         service_action = resource[len("arn:aws:states:::") :]
+///         service, _, action = service_action.partition(":")
+///
+///         if service == "sqs" and action == "sendMessage":
+///             return self._invoke_sqs_send(input_data)
+///         elif service == "sns" and action == "publish":
+///             return self._invoke_sns_publish(input_data)
+///         elif service == "dynamodb":
+///             return self._invoke_dynamodb(action, input_data)
+///         elif service == "lambda" and action == "invoke":
+///             fn_arn = input_data.get("FunctionName", "")
+///             payload = input_data.get("Payload", input_data)
+///             return self._invoke_lambda(fn_arn, payload)
+///         elif service == "states" and action == "startExecution":
+///             return self._invoke_step_functions(input_data)
+///         else:
+///             logger.warning(f"Unknown SDK integration: {service}:{action}")
+///             raise ASLExecutionError(
+///                 "States.TaskFailed",
+///                 f"Unknown SDK integration: {service}:{action}",
+///             )
+///
+///     logger.warning(f"Unknown Task resource: {resource}")
+///     raise ASLExecutionError(
+///         "States.TaskFailed", f"Unknown Task resource: {resource}"
+///     )
+/// ```
+///
+/// The SQS/SNS/DynamoDB/nested-state routings dispatch through the
+/// per-service state bridges (the era reached into the live backends
+/// exactly the same way). Callback-pattern tasks keep this twin's
+/// long-standing behaviour of completing with the state input until the
+/// SendTask* API wakes the engine — the waiting half of the callback
+/// pattern is outside this lane's findings.
+fn dispatch_task(ctx: &Ctx, resource: &str, input: &Value) -> Result<Value, FlowError> {
+    const CALLBACK_SUFFIX: &str = ".waitForTaskCallback";
+    let is_callback = resource.ends_with(CALLBACK_SUFFIX);
+    let resource = resource.trim_end_matches(CALLBACK_SUFFIX);
+
+    if (resource.starts_with("arn:aws:lambda:") || resource.contains(":function:")) && !is_callback
+    {
+        // Ground truth (python asl.py::_dispatch_task): dict input is the
+        // event; scalars are wrapped under "input".
+        let event = if input.is_object() {
+            input.clone()
+        } else {
+            json!({ "input": input })
+        };
+        return invoke_lambda_resource(resource, &event, input);
     }
-    Some((|| {
-        let fn_arn = input
-            .get("FunctionName")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default();
-        if fn_arn.is_empty() {
+
+    let Some(service_resource) = resource.strip_prefix("arn:aws:states:::") else {
+        return Err(FlowError::new(
+            "States.TaskFailed",
+            format!("Unknown Task resource: {resource}"),
+        ));
+    };
+    let (service, action) = match service_resource.split_once(':') {
+        Some((s, a)) => (s, a),
+        None => {
             return Err(FlowError::new(
-                "Lambda.ServiceException",
-                "FunctionName is required".to_string(),
-            ));
+                "States.TaskFailed",
+                format!("Unknown SDK integration: {service_resource}"),
+            ))
         }
-        let payload = input.get("Payload").unwrap_or(input);
-        invoke_lambda_resource(fn_arn, payload, payload)
-    })())
+    };
+    match (service, action) {
+        ("sqs", "sendMessage") => dispatch_sqs_send(ctx, input),
+        ("sns", "publish") => dispatch_sns_publish(ctx, input),
+        ("dynamodb", ddb_action) => dispatch_dynamodb(ctx, ddb_action, input),
+        // Era: `lambda:invoke` routes a FunctionName + Payload payload to the
+        // lambda invocation (no FunctionName requirement of its own).
+        ("lambda", "invoke") => {
+            let fn_arn = input
+                .get("FunctionName")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let payload = input.get("Payload").unwrap_or(input);
+            invoke_lambda_resource(fn_arn, payload, payload)
+        }
+        ("states", "startExecution") => dispatch_states_start_execution(ctx, input),
+        _ => Err(FlowError::new(
+            "States.TaskFailed",
+            format!("Unknown SDK integration: {service}:{action}"),
+        )),
+    }
+}
+
+/// (account, region) of the flow's execution, parsed from the state machine
+/// ARN the execution record points at.
+fn flow_scope(ctx: &Ctx) -> (u64, String) {
+    // arn:aws:states:<region>:<account>:stateMachine:<name>
+    let parts: Vec<&str> = ctx.exec.sm_arn.split(':').collect();
+    (
+        parts
+            .get(4)
+            .and_then(|p| p.parse::<u64>().ok())
+            .unwrap_or(123456789012),
+        parts
+            .get(3)
+            .map(|p| (*p).to_string())
+            .unwrap_or_else(|| "us-east-1".to_string()),
+    )
+}
+
+/// Era `_invoke_sqs_send`: QueueUrl + MessageBody (dict bodies are JSON
+/// stringified) push a real SQS message and answer MessageId plus
+/// Md5OfMessageBody. The message lands through the SQS crate's
+/// cross-service buffer, so a later receive on that queue sees it.
+fn dispatch_sqs_send(ctx: &Ctx, input: &Value) -> Result<Value, FlowError> {
+    let (account, region) = flow_scope(ctx);
+    let queue_url = input
+        .get("QueueUrl")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    let Some((url_account, queue_name)) = queue_url_account_name(queue_url) else {
+        // Era: `store.get_queue_by_url` misses -> SQS.QueueDoesNotExist.
+        return Err(FlowError::new(
+            "SQS.QueueDoesNotExist",
+            format!("Queue not found: {queue_url}"),
+        ));
+    };
+    let body = match input.get("MessageBody").cloned() {
+        Some(Value::String(s)) => s,
+        Some(value) => serde_json::to_string(&value).unwrap_or_default(),
+        None => String::new(),
+    };
+    if !sqs::bridge::deliver_to_queue(
+        if url_account == 0 {
+            account
+        } else {
+            url_account
+        },
+        region.as_str(),
+        &queue_name,
+        &body,
+    ) {
+        return Err(FlowError::new(
+            "SQS.QueueDoesNotExist",
+            format!("Queue not found: {queue_url}"),
+        ));
+    }
+    let message_id = uuid::Uuid::new_v4().to_string();
+    let md5_of_body = format!("{:x}", md5::compute(body.as_bytes()));
+    Ok(json!({ "MessageId": message_id, "Md5OfMessageBody": md5_of_body }))
+}
+
+/// Split an SQS QueueUrl of the twin's `http(s)://host/<account>/<name>`
+/// shape into (account, queue name).
+fn queue_url_account_name(url: &str) -> Option<(u64, String)> {
+    let after_scheme = url.split("://").nth(1)?;
+    let mut halves = after_scheme.splitn(2, '/');
+    let _host = halves.next()?;
+    let mut segments = halves.next()?.splitn(2, '/');
+    let account = segments.next()?.parse::<u64>().ok()?;
+    let name = segments.next()?;
+    (!name.is_empty()).then(|| (account, name.to_string()))
+}
+
+/// Era `_invoke_sns_publish`: TopicArn + Message (dict messages are JSON
+/// stringified) publish through the real SNS handler so the topic's
+/// subscribers receive the notification, and answer MessageId.
+fn dispatch_sns_publish(ctx: &Ctx, input: &Value) -> Result<Value, FlowError> {
+    let (account, region) = flow_scope(ctx);
+    let topic_arn = input
+        .get("TopicArn")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let message = match input.get("Message").cloned() {
+        Some(Value::String(s)) => s,
+        Some(value) => serde_json::to_string(&value).unwrap_or_default(),
+        None => String::new(),
+    };
+    let resp = sns::DefaultSnsHandler::new().handle(sns::AwsRequest {
+        service: "sns".to_string(),
+        operation: "Publish".to_string(),
+        account,
+        region,
+        params: json!({ "TopicArn": topic_arn, "Message": message }),
+        body: bytes::Bytes::new(),
+    });
+    if resp.status >= 400 {
+        // Era: topic lookup miss -> SNS.NotFound.
+        return Err(FlowError::new(
+            "SNS.NotFound",
+            format!("Topic not found: {topic_arn}"),
+        ));
+    }
+    let message_id = xml_text(&resp.body, "MessageId").unwrap_or_default();
+    Ok(json!({ "MessageId": message_id }))
+}
+
+/// Extract a text node from a query-protocol XML response body.
+fn xml_text(body: &str, tag: &str) -> Option<String> {
+    let open = format!("<{tag}>");
+    let close = format!("</{tag}>");
+    let start = body.find(&open)? + open.len();
+    let end = body[start..].find(&close)? + start;
+    Some(body[start..end].to_string())
+}
+
+/// Era `_invoke_dynamodb`: putItem/getItem/deleteItem/updateItem/query run
+/// against the live DynamoDB tables of the flow's (account, region), with
+/// every failure answering `DynamoDB.AmazonDynamoDBException`; an unknown
+/// action logs and echoes the input like the era.
+fn dispatch_dynamodb(ctx: &Ctx, action: &str, input: &Value) -> Result<Value, FlowError> {
+    let (account, region) = flow_scope(ctx);
+    let ddb_error = |msg: String| FlowError::new("DynamoDB.AmazonDynamoDBException", msg);
+    let table_name = input
+        .get("TableName")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let Some(table) = dynamodb::bridge::get_table(account, region.as_str(), &table_name) else {
+        return Err(ddb_error(format!("Table not found: {table_name}")));
+    };
+    match action {
+        "putItem" => {
+            // Era `_dynamodb_put_item`: already-typed items pass through
+            // verbatim, plain items convert (`_is_ddb_typed` / to
+            // `_to_dynamodb_item`).
+            let raw_item = input.get("Item").cloned().unwrap_or(json!({}));
+            let item = if is_ddb_typed(&raw_item) {
+                raw_item
+            } else {
+                to_dynamodb_item(&raw_item)
+            };
+            let attrs = attrs_map(&item);
+            let key = dynamodb::models::compute_key_from_attrs(&table.key_schema, &attrs)
+                .ok_or_else(|| {
+                    ddb_error("The provided key element does not match the schema".to_string())
+                })?;
+            table
+                .items
+                .write()
+                .insert(key, std::sync::Arc::new(dynamodb::models::Item::new(attrs)));
+            Ok(json!({}))
+        }
+        "getItem" => {
+            let key = input
+                .get("Key")
+                .cloned()
+                .unwrap_or(json!({}))
+                .as_object()
+                .cloned()
+                .unwrap_or_default();
+            let key = dynamodb::models::compute_key_from_attrs(
+                &table.key_schema,
+                &key.into_iter().collect(),
+            )
+            .ok_or_else(|| {
+                ddb_error("The provided key element does not match the schema".to_string())
+            })?;
+            match table.items.read().get(&key) {
+                Some(item) => {
+                    Ok(json!({ "Item": from_dynamodb_item(&to_value(item.attributes.clone())) }))
+                }
+                // Era: a lost key answers {"Item": {}}.
+                None => Ok(json!({ "Item": {} })),
+            }
+        }
+        "deleteItem" => {
+            let key = input
+                .get("Key")
+                .cloned()
+                .unwrap_or(json!({}))
+                .as_object()
+                .cloned()
+                .unwrap_or_default();
+            let key = dynamodb::models::compute_key_from_attrs(
+                &table.key_schema,
+                &key.into_iter().collect(),
+            )
+            .ok_or_else(|| {
+                ddb_error("The provided key element does not match the schema".to_string())
+            })?;
+            table.items.write().remove(&key);
+            Ok(json!({}))
+        }
+        "updateItem" => {
+            let key = input
+                .get("Key")
+                .cloned()
+                .unwrap_or(json!({}))
+                .as_object()
+                .cloned()
+                .unwrap_or_default();
+            let key = dynamodb::models::compute_key_from_attrs(
+                &table.key_schema,
+                &key.into_iter().collect(),
+            )
+            .ok_or_else(|| {
+                ddb_error("The provided key element does not match the schema".to_string())
+            })?;
+            // Era: `backend.update_item(table_name, ddb_key, update_expression=...,
+            // expression_attribute_values=..., expression_attribute_names=...)`.
+            let update_expr = input
+                .get("UpdateExpression")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            let names: std::collections::HashMap<String, String> = input
+                .get("ExpressionAttributeNames")
+                .and_then(|v| v.as_object())
+                .map(|o| {
+                    o.iter()
+                        .map(|(k, v)| (k.clone(), v.as_str().unwrap_or_default().to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let values: std::collections::HashMap<String, Value> = input
+                .get("ExpressionAttributeValues")
+                .and_then(|v| v.as_object())
+                .map(|o| o.clone().into_iter().collect())
+                .unwrap_or_default();
+            let mut attrs = table
+                .items
+                .read()
+                .get(&key)
+                .map(|item| {
+                    to_value(item.attributes.clone())
+                        .as_object()
+                        .cloned()
+                        .unwrap_or_default()
+                })
+                .unwrap_or_default();
+            dynamodb::expr::apply_update(&mut attrs, &update_expr, &names, &values)
+                .map_err(ddb_error)?;
+            table.items.write().insert(
+                key,
+                std::sync::Arc::new(dynamodb::models::Item::new(attrs_map(&Value::Object(
+                    attrs,
+                )))),
+            );
+            Ok(json!({}))
+        }
+        "query" => {
+            // Era: `backend.query(...)` -> Items + Count. The twin evaluates
+            // the key condition across the table's items.
+            let key_condition = input
+                .get("KeyConditionExpression")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            let names: std::collections::HashMap<String, String> = input
+                .get("ExpressionAttributeNames")
+                .and_then(|v| v.as_object())
+                .map(|o| {
+                    o.iter()
+                        .map(|(k, v)| (k.clone(), v.as_str().unwrap_or_default().to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let values: std::collections::HashMap<String, Value> = input
+                .get("ExpressionAttributeValues")
+                .and_then(|v| v.as_object())
+                .map(|o| o.clone().into_iter().collect())
+                .unwrap_or_default();
+            let mut items: Vec<Value> = Vec::new();
+            match table.items.read().values().next() {
+                None => {}
+                Some(_) => {
+                    let snapshot: Vec<
+                        std::collections::HashMap<String, dynamodb::models::AttrValue>,
+                    > = table
+                        .items
+                        .read()
+                        .values()
+                        .map(|item| item.attributes.clone())
+                        .collect();
+                    for attrs in snapshot {
+                        let item_json = to_value(attrs);
+                        let keep = if key_condition.is_empty() {
+                            true
+                        } else {
+                            dynamodb::expr::eval_condition(
+                                &key_condition,
+                                &item_json,
+                                &names,
+                                &values,
+                            )
+                            .map_err(ddb_error)?
+                        };
+                        if keep {
+                            items.push(from_dynamodb_item(&item_json));
+                        }
+                    }
+                    items.sort_by_key(value_to_string);
+                }
+            }
+            let count = items.len();
+            Ok(json!({ "Items": items, "Count": count }))
+        }
+        // Era: unknown action logs a warning and echoes the input.
+        _ => Ok(input.clone()),
+    }
+}
+
+/// `Map<String, Value>` -> the dynamodb crate's item attribute map.
+fn attrs_map(attrs: &Value) -> std::collections::HashMap<String, dynamodb::models::AttrValue> {
+    attrs
+        .as_object()
+        .map(|o| o.clone().into_iter().collect())
+        .unwrap_or_default()
+}
+
+/// The dynamodb crate's attribute map -> a JSON value.
+fn to_value(attrs: std::collections::HashMap<String, dynamodb::models::AttrValue>) -> Value {
+    Value::Object(attrs.into_iter().collect())
+}
+
+/// Era `_is_ddb_typed`: "Check if item already uses DynamoDB typed format
+/// ({"S": "val"})".
+fn is_ddb_type_tag(v: &Value) -> bool {
+    v.as_object().is_some_and(|o| {
+        o.len() == 1
+            && o.keys().next().is_some_and(|k| {
+                matches!(
+                    k.as_str(),
+                    "S" | "N" | "B" | "BOOL" | "NULL" | "L" | "M" | "SS" | "NS" | "BS"
+                )
+            })
+    })
+}
+
+fn is_ddb_typed(item: &Value) -> bool {
+    item.as_object()
+        .is_some_and(|o| o.values().any(is_ddb_type_tag))
+}
+
+/// Era `_to_dynamodb_item`: already-typed values pass, plain values convert.
+fn to_dynamodb_item(item: &Value) -> Value {
+    let mut out = Map::new();
+    if let Some(o) = item.as_object() {
+        for (key, value) in o {
+            out.insert(
+                key.clone(),
+                if is_ddb_type_tag(value) {
+                    value.clone()
+                } else {
+                    to_ddb_value(value)
+                },
+            );
+        }
+    }
+    Value::Object(out)
+}
+
+/// Era `_to_ddb_value`: str -> S, bool -> BOOL, number -> N, null -> NULL,
+/// list -> L, dict -> M.
+fn to_ddb_value(value: &Value) -> Value {
+    match value {
+        Value::String(s) => json!({ "S": s }),
+        Value::Bool(b) => json!({ "BOOL": b }),
+        Value::Number(n) => json!({ "N": n.to_string() }),
+        Value::Null => json!({ "NULL": true }),
+        Value::Array(items) => {
+            let list: Vec<Value> = items.iter().map(to_ddb_value).collect();
+            json!({ "L": list })
+        }
+        Value::Object(o) => {
+            let mut obj = Map::new();
+            for (key, v) in o {
+                obj.insert(key.clone(), to_ddb_value(v));
+            }
+            json!({ "M": obj })
+        }
+    }
+}
+
+/// Era `_from_dynamodb_item`: typed values back to plain, unknown shapes pass
+/// through verbatim.
+fn from_dynamodb_item(attrs: &Value) -> Value {
+    let mut out = Map::new();
+    if let Some(o) = attrs.as_object() {
+        for (key, value) in o {
+            out.insert(key.clone(), from_ddb_value(value));
+        }
+    }
+    Value::Object(out)
+}
+
+fn from_ddb_value(value: &Value) -> Value {
+    let Some(o) = value.as_object() else {
+        return value.clone();
+    };
+    if o.len() != 1 {
+        return value.clone();
+    }
+    let (tag, inner) = o.iter().next().unwrap();
+    match (tag.as_str(), inner) {
+        ("S", Value::String(s)) => json!(s),
+        // Era: `int(n) if "." not in str(n) else float(n)`.
+        // Era: `int(n) if "." not in str(n) else float(n)` — the number
+        // travels as an inner tagged string.
+        ("N", Value::String(text)) => {
+            if text.contains('.') {
+                json!(text.parse::<f64>().unwrap_or(0.0))
+            } else {
+                json!(text.parse::<i64>().unwrap_or(0))
+            }
+        }
+        ("N", other) => json!(other.to_string()),
+        ("BOOL", b) => json!(b),
+        ("NULL", _) => Value::Null,
+        ("L", Value::Array(items)) => Value::Array(items.iter().map(from_ddb_value).collect()),
+        ("M", obj) => from_dynamodb_item(obj),
+        ("SS", Value::Array(items)) => Value::Array(items.clone()),
+        ("NS", Value::Array(items)) => Value::Array(
+            items
+                .iter()
+                .map(|n| {
+                    let text = n.as_str().unwrap_or_default();
+                    if text.contains('.') {
+                        json!(text.parse::<f64>().unwrap_or(0.0))
+                    } else {
+                        json!(text.parse::<i64>().unwrap_or(0))
+                    }
+                })
+                .collect(),
+        ),
+        _ => value.clone(),
+    }
+}
+
+/// Era `_invoke_step_functions` via `_start_execution_internal`: a nested
+/// execution runs the addressed state machine synchronously in an
+/// unregistered child record and answers {"executionArn", "output"} /
+/// {"executionArn", "error", "cause"} / {"error": "..."} for a miss; it
+/// never fails the task.
+fn dispatch_states_start_execution(ctx: &Ctx, input: &Value) -> Result<Value, FlowError> {
+    let (account, region) = flow_scope(ctx);
+    let sm_arn = input
+        .get("StateMachineArn")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    // Era: `sf_input = input_data.get("Input", input_data)`.
+    let sf_input = input.get("Input").cloned().unwrap_or_else(|| input.clone());
+    let handler = crate::handler::StepfunctionsHandler::new();
+    let state = handler.get_state(account, region.as_str());
+    let Some(machine) = state.get_machine(&sm_arn) else {
+        return Ok(json!({ "error": format!("State machine not found: {sm_arn}") }));
+    };
+    let name = uuid::Uuid::new_v4().to_string();
+    // Era: `exec_arn = f"{sm_arn.replace(':stateMachine:', ':execution:')}:{name}"`.
+    let exec_arn = format!("{}:{name}", sm_arn.replace(":stateMachine:", ":execution:"));
+    let child = Arc::new(Execution {
+        arn: exec_arn.clone(),
+        name: name.clone(),
+        sm_arn: sm_arn.clone(),
+        input: value_to_string(&sf_input),
+        start_date: now_f(),
+        status: parking_lot::RwLock::new("RUNNING".to_string()),
+        stop_date: parking_lot::RwLock::new(None),
+        output: parking_lot::RwLock::new(None),
+        error: parking_lot::RwLock::new(None),
+        cause: parking_lot::RwLock::new(None),
+        events: parking_lot::RwLock::new(Vec::new()),
+    });
+    // The child record stays unregistered (only registered executions show
+    // up in DescribeExecution), like the era's throwaway nested history.
+    let child_ctx = Ctx::new(child);
+    let def: Value = serde_json::from_str(&machine.definition_string()).unwrap_or(Value::Null);
+    let states = def
+        .get("States")
+        .and_then(|s| s.as_object())
+        .cloned()
+        .unwrap_or_default();
+    let start_at = def
+        .get("StartAt")
+        .and_then(|s| s.as_str())
+        .unwrap_or_default()
+        .to_string();
+    // Era: `executor.execute(input_data if isinstance(input_data, dict) else {})`.
+    let child_input = if sf_input.is_object() {
+        sf_input.clone()
+    } else {
+        json!({})
+    };
+    match run_flow(&child_ctx, &states, start_at, child_input) {
+        Ok(output) => Ok(json!({ "executionArn": exec_arn, "output": output })),
+        Err(e) => Ok(json!({ "executionArn": exec_arn, "error": e.error, "cause": e.cause })),
+    }
 }
 
 /// Era `_apply_path(value, path)` for OutputPath-style slicing: an absent
@@ -853,32 +1429,15 @@ fn execute_state(
         }
         "Task" => {
             // Lambda integrations run the function synchronously (the
-            // execution already runs on a detached thread); other
-            // resources complete with the current input like before.
+            // execution already runs on a detached thread); SDK
+            // integrations dispatch through the per-service state
+            // bridges (era `_dispatch_task`).
             let resource = obj
                 .get("Resource")
                 .and_then(|r| r.as_str())
                 .unwrap_or_default()
                 .to_string();
-            let raw_out = if !resource.ends_with(".waitForTaskCallback")
-                && (resource.starts_with("arn:aws:lambda:") || resource.contains(":function:"))
-            {
-                // Ground truth (python asl.py::_dispatch_task): dict
-                // input is the event; scalars are wrapped under "input".
-                let event = if effective.is_object() {
-                    effective.clone()
-                } else {
-                    json!({ "input": effective })
-                };
-                invoke_lambda_resource(&resource, &event, &effective)?
-            } else if let Some(sdk_fn) = lambda_sdk_invoke(&resource, &effective) {
-                sdk_fn?
-            } else {
-                match obj.get("Result") {
-                    Some(r) => r.clone(),
-                    None => effective.clone(),
-                }
-            };
+            let raw_out = dispatch_task(ctx, &resource, &effective)?;
             let output = postprocess_output(obj, data, &effective, raw_out);
             Ok((output, next_state))
         }
@@ -1119,11 +1678,11 @@ mod tests {
 
     use crate::models::Execution;
 
-    fn test_ctx() -> (Ctx, Arc<Execution>) {
+    fn test_ctx_for(account: u64, region: &str) -> (Ctx, Arc<Execution>) {
         let exec = Arc::new(Execution {
-            arn: "arn:aws:states:us-east-1:123456789012:execution:t:tester".into(),
+            arn: format!("arn:aws:states:{region}:{account}:execution:t:tester"),
             name: "tester".into(),
-            sm_arn: "arn:aws:states:us-east-1:123456789012:stateMachine:t".into(),
+            sm_arn: format!("arn:aws:states:{region}:{account}:stateMachine:t"),
             input: "{}".into(),
             start_date: 0.0,
             status: parking_lot::RwLock::new("RUNNING".into()),
@@ -1136,8 +1695,16 @@ mod tests {
         (Ctx::new(exec.clone()), exec)
     }
 
-    fn run(def: &Value, input: Value) -> Result<Value, FlowError> {
-        let (ctx, _exec) = test_ctx();
+    fn test_ctx() -> (Ctx, Arc<Execution>) {
+        test_ctx_for(123456789012, "us-east-1")
+    }
+
+    fn run_for(account: u64, region: &str, def: &Value, input: Value) -> Result<Value, FlowError> {
+        let (ctx, _exec) = test_ctx_for(account, region);
+        run_with(&ctx, def, input)
+    }
+
+    fn run_with(ctx: &Ctx, def: &Value, input: Value) -> Result<Value, FlowError> {
         let states = def
             .get("States")
             .and_then(|s| s.as_object())
@@ -1148,7 +1715,12 @@ mod tests {
             .and_then(|s| s.as_str())
             .unwrap_or_default()
             .to_string();
-        run_flow(&ctx, &states, start_at, input)
+        run_flow(ctx, &states, start_at, input)
+    }
+
+    fn run(def: &Value, input: Value) -> Result<Value, FlowError> {
+        let (ctx, _exec) = test_ctx();
+        run_with(&ctx, def, input)
     }
 
     /// Build a zip artifact the same way the lambda crate's bridge tests do
@@ -1276,7 +1848,9 @@ mod tests {
                 "v": 1,
                 "cause": {
                     "Error": "Lambda.ServiceException",
-                    "Cause": "FunctionName is required",
+                    // Era: `Function not found: {function_name}` with the
+                    // empty FunctionName.
+                    "Cause": "Function not found: ",
                 },
             })
         );
@@ -1357,7 +1931,7 @@ mod tests {
         });
         let err = run(&def, json!({})).expect_err("task error without Catch fails");
         assert_eq!(err.error, "Lambda.ServiceException");
-        assert_eq!(err.cause, "FunctionName is required");
+        assert_eq!(err.cause, "Function not found: ");
     }
 
     #[test]
@@ -1964,5 +2538,409 @@ mod tests {
             "SecondsPath resolution must cap at the era's 1s, was {:?}",
             started.elapsed()
         );
+    }
+
+    // ---- Task dispatch beyond lambda (era `_dispatch_task` routings) ----
+
+    fn aws_req(service: &str, operation: &str, params: Value) -> sqs::AwsRequest {
+        sqs::AwsRequest {
+            service: service.to_string(),
+            operation: operation.to_string(),
+            account: 847009000003,
+            region: "us-east-1".to_string(),
+            params,
+            body: bytes::Bytes::new(),
+        }
+    }
+
+    #[test]
+    fn test_sdk_sqs_send_message_routes_via_bridge() {
+        let handler = sqs::DefaultSqsHandler::new();
+        let resp = sqs::SqsHandler::handle(
+            &handler,
+            aws_req(
+                "sqs",
+                "CreateQueue",
+                json!({"QueueName": "sfn-dispatch-queue"}),
+            ),
+        );
+        let queue_url = serde_json::from_str::<Value>(&resp.body).unwrap()["QueueUrl"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let def = json!({
+            "StartAt": "Send",
+            "States": {
+                "Send": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::sqs:sendMessage",
+                    "Parameters": {
+                        "QueueUrl": queue_url,
+                        "MessageBody": "from-stepfunctions",
+                    },
+                    "End": true,
+                }
+            }
+        });
+        let out = run_for(847009000003, "us-east-1", &def, json!({}))
+            .expect("sqs:sendMessage dispatches");
+        // Era `_invoke_sqs_send`: MessageId + Md5OfMessageBody.
+        assert!(
+            out.get("MessageId").and_then(|v| v.as_str()).is_some(),
+            "got {out}"
+        );
+        assert_eq!(
+            out["Md5OfMessageBody"],
+            json!(format!("{:x}", md5::compute(b"from-stepfunctions"))),
+            "got {out}"
+        );
+        // The message is receivable on that queue (drained at receive time).
+        let recv = sqs::SqsHandler::handle(
+            &handler,
+            aws_req(
+                "sqs",
+                "ReceiveMessage",
+                json!({"QueueUrl": queue_url, "MaxNumberOfMessages": 10}),
+            ),
+        );
+        let messages = serde_json::from_str::<Value>(&recv.body).unwrap()["Messages"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(messages.len(), 1, "got {:?}", recv.body);
+        assert_eq!(messages[0]["Body"], json!("from-stepfunctions"));
+    }
+
+    #[test]
+    fn test_sdk_sqs_send_missing_queue_url_fails() {
+        let def = json!({
+            "StartAt": "Send",
+            "States": {
+                "Send": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::sqs:sendMessage",
+                    "Parameters": {"MessageBody": "x"},
+                    "End": true,
+                }
+            }
+        });
+        // A queue URL is required; an unparseable one reads as a missing
+        // queue (era `SQS.QueueDoesNotExist`).
+        let expanded = json!({
+            "StartAt": "Send",
+            "States": {
+                "Send": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::sqs:sendMessage",
+                    "Parameters": {"QueueUrl": "not-a-queue-url", "MessageBody": "x"},
+                    "End": true,
+                }
+            }
+        });
+        let err = run_for(847009000003, "us-east-1", &expanded, json!({}))
+            .expect_err("missing queue fails the task");
+        assert_eq!(err.error, "SQS.QueueDoesNotExist", "got {:?}", err);
+        let _ = def;
+    }
+
+    #[test]
+    fn test_sdk_dynamodb_put_and_get_item_roundtrip() {
+        use dynamodb::models::{DynamoDbState, Table};
+        let account = 847009000004u64;
+        let region = "sfn-ddb-test";
+        let state = DynamoDbState::new();
+        let table = Table::new(
+            "sfn-ddb-table".to_string(),
+            account,
+            region.to_string(),
+            vec![dynamodb::models::KeySchema {
+                attribute_name: "id".to_string(),
+                key_type: "HASH".to_string(),
+            }],
+            Vec::new(),
+            "PAY_PER_REQUEST".to_string(),
+        );
+        state.put_table(std::sync::Arc::new(table));
+        dynamodb::bridge::register_state(account, region, &state);
+
+        let def = json!({
+            "StartAt": "Put",
+            "States": {
+                "Put": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::dynamodb:putItem",
+                    "Parameters": {
+                        "TableName": "sfn-ddb-table",
+                        "Item": {"id": {"S": "u1"}, "score": {"N": "42"}},
+                    },
+                    "ResultPath": Value::Null,
+                    "Next": "Get",
+                },
+                "Get": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::dynamodb:getItem",
+                    "Parameters": {
+                        "TableName": "sfn-ddb-table",
+                        "Key": {"id": {"S": "u1"}},
+                    },
+                    "End": true,
+                }
+            }
+        });
+        let out = run_for(account, region, &def, json!({})).expect("dynamodb put+get dispatches");
+        // Era `_from_dynamodb_item`: numbers round-trip without their
+        // {"N": ...} wrapper.
+        assert_eq!(out["Item"], json!({"id": "u1", "score": 42}), "got {out}");
+    }
+
+    #[test]
+    fn test_sdk_dynamodb_query_and_delete() {
+        use dynamodb::models::{DynamoDbState, Table};
+        let account = 847009000005u64;
+        let region = "sfn-ddb-query";
+        let state = DynamoDbState::new();
+        let table = Table::new(
+            "sfn-ddb-q".to_string(),
+            account,
+            region.to_string(),
+            vec![dynamodb::models::KeySchema {
+                attribute_name: "id".to_string(),
+                key_type: "HASH".to_string(),
+            }],
+            Vec::new(),
+            "PAY_PER_REQUEST".to_string(),
+        );
+        state.put_table(std::sync::Arc::new(table));
+        dynamodb::bridge::register_state(account, region, &state);
+
+        let def = json!({
+            "StartAt": "Put",
+            "States": {
+                "Put": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::dynamodb:putItem",
+                    "Parameters": {
+                        "TableName": "sfn-ddb-q",
+                        "Item": {"id": {"S": "u1"}, "grp": {"S": "a"}},
+                    },
+                    "ResultPath": Value::Null,
+                    "Next": "Query",
+                },
+                "Query": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::dynamodb:query",
+                    "Parameters": {
+                        "TableName": "sfn-ddb-q",
+                        // The key condition covers every typed item here.
+                        "KeyConditionExpression": "id = :id",
+                        "ExpressionAttributeValues": {":id": {"S": "u1"}},
+                    },
+                    "End": true,
+                }
+            }
+        });
+        let out = run_for(account, region, &def, json!({})).expect("dynamodb query dispatches");
+        assert_eq!(out["Count"], json!(1), "got {out}");
+        assert_eq!(out["Items"][0]["grp"], json!("a"), "got {out}");
+    }
+
+    #[test]
+    fn test_sdk_sns_publish_routes_through_sns_handler() {
+        let sns_handler = sns::DefaultSnsHandler::new();
+        let create = sns_handler.handle(sns::AwsRequest {
+            service: "sns".to_string(),
+            operation: "CreateTopic".to_string(),
+            account: 847009000006,
+            region: "us-east-1".to_string(),
+            params: json!({"Name": "sfn-topic"}),
+            body: bytes::Bytes::new(),
+        });
+        assert_eq!(create.status, 200, "topic created: {}", create.body);
+        let def = json!({
+            "StartAt": "Publish",
+            "States": {
+                "Publish": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::sns:publish",
+                    "Parameters": {
+                        "TopicArn": "arn:aws:sns:us-east-1:847009000006:sfn-topic",
+                        "Message": "hello",
+                    },
+                    "End": true,
+                }
+            }
+        });
+        let out =
+            run_for(847009000006, "us-east-1", &def, json!({})).expect("sns:publish dispatches");
+        assert!(
+            out.get("MessageId")
+                .and_then(|v| v.as_str())
+                .map(|s| !s.is_empty())
+                .unwrap_or(false),
+            "got {out}"
+        );
+        // A missing topic is era `SNS.NotFound`.
+        let def = json!({
+            "StartAt": "Publish",
+            "States": {
+                "Publish": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::sns:publish",
+                    "Parameters": {
+                        "TopicArn": "arn:aws:sns:us-east-1:847009000006:no-such-topic",
+                        "Message": "hello",
+                    },
+                    "End": true,
+                }
+            }
+        });
+        let err = run_for(847009000006, "us-east-1", &def, json!({}))
+            .expect_err("missing topic fails the task");
+        assert_eq!(err.error, "SNS.NotFound", "got {:?}", err);
+    }
+
+    #[test]
+    fn test_sdk_states_start_execution_runs_nested_machine() {
+        // A child state machine under the same account; the parent machine
+        // dispatches arn:aws:states:::states:startExecution.
+        let handler = crate::handler::StepfunctionsHandler::new();
+        let create = handler.handle(crate::AwsRequest {
+            service: "stepfunctions".to_string(),
+            operation: "CreateStateMachine".to_string(),
+            account: 123456789012,
+            region: "us-east-1".to_string(),
+            params: json!({
+                "stateMachineName": "nested-child",
+                "roleArn": "arn:aws:iam::123456789012:role/sfn-role",
+                "definition": json!({"StartAt": "P", "States": {"P": {"Type": "Pass", "Result": {"child": true}, "End": true}}}).to_string(),
+            }),
+            body: bytes::Bytes::new(),
+        });
+        assert_eq!(create.status, 200, "child created: {}", create.body);
+        let def = json!({
+            "StartAt": "Spawn",
+            "States": {
+                "Spawn": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::states:startExecution",
+                    "Parameters": {
+                        "StateMachineArn": "arn:aws:states:us-east-1:123456789012:stateMachine:nested-child",
+                        "Input": {"x": 1},
+                    },
+                    "End": true,
+                }
+            }
+        });
+        let out = run(&def, json!({})).expect("nested execution runs");
+        // Era `_start_execution_internal`: {"executionArn", "output"}.
+        assert_eq!(
+            out["output"],
+            json!({"child": true}),
+            "nested output carried: {out}"
+        );
+        assert!(
+            out.get("executionArn").and_then(|v| v.as_str()).is_some(),
+            "got {out}"
+        );
+    }
+
+    #[test]
+    fn test_sdk_states_start_execution_missing_machine_echoes_error() {
+        let def = json!({
+            "StartAt": "Spawn",
+            "States": {
+                "Spawn": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::states:startExecution",
+                    "Parameters": {
+                        "StateMachineArn": "arn:aws:states:us-east-1:123456789012:stateMachine:no-such-machine",
+                    },
+                    "End": true,
+                }
+            }
+        });
+        let out = run(&def, json!({})).expect("a nested miss never fails the task");
+        assert_eq!(
+            out["error"],
+            json!("State machine not found: arn:aws:states:us-east-1:123456789012:stateMachine:no-such-machine"),
+            "got {out}"
+        );
+    }
+
+    #[test]
+    fn test_unknown_task_resource_fails_with_states_task_failed() {
+        let def = json!({
+            "StartAt": "Boom",
+            "States": {
+                "Boom": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:fooservice:whatever",
+                    "End": true,
+                }
+            }
+        });
+        // Era: `raise ASLExecutionError("States.TaskFailed", f"Unknown Task
+        // resource: {resource}")`.
+        let err = run(&def, json!({})).expect_err("unknown resource fails");
+        assert_eq!(err.error, "States.TaskFailed", "got {:?}", err);
+        assert_eq!(
+            err.cause,
+            "Unknown Task resource: arn:aws:fooservice:whatever"
+        );
+    }
+
+    #[test]
+    fn test_unknown_sdk_integration_fails() {
+        let def = json!({
+            "StartAt": "Boom",
+            "States": {
+                "Boom": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::echo:shout",
+                    "End": true,
+                }
+            }
+        });
+        let err = run(&def, json!({})).expect_err("unknown SDK pair fails");
+        assert_eq!(err.error, "States.TaskFailed", "got {:?}", err);
+        assert_eq!(err.cause, "Unknown SDK integration: echo:shout");
+    }
+
+    #[test]
+    fn test_sdk_lambda_invoke_api_and_missing_function() {
+        // Era `lambda:invoke`: FunctionName + Payload route to invoke_lambda.
+        let (account, region, name) = (847009000007u64, "sfn-sdk-lambda", "echo-fn");
+        register_echo_function(account, region, name);
+        let def = json!({
+            "StartAt": "Invoke",
+            "States": {
+                "Invoke": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "Parameters": {
+                        "FunctionName": format!("arn:aws:lambda:{region}:{account}:function:{name}"),
+                        "Payload": {"goto": "here"},
+                    },
+                    "End": true,
+                }
+            }
+        });
+        let out = run(&def, json!({})).expect("sdk invoke dispatches");
+        assert_eq!(out, json!({"goto": "here"}), "got {out}");
+        // A missing function is era's not-found ServiceException.
+        let def = json!({
+            "StartAt": "Invoke",
+            "States": {
+                "Invoke": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "Parameters": {"FunctionName": "", "Payload": {}},
+                    "End": true,
+                }
+            }
+        });
+        let err = run(&def, json!({})).expect_err("empty FunctionName fails");
+        assert_eq!(err.error, "Lambda.ServiceException", "got {:?}", err);
+        assert_eq!(err.cause, "Function not found: ");
     }
 }

@@ -1739,10 +1739,14 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "chrono",
+ "dynamodb",
  "lambda",
+ "md5",
  "parking_lot",
  "serde",
  "serde_json",
+ "sns",
+ "sqs",
  "uuid",
 ]
 
