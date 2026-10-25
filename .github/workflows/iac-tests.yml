@@ -38,7 +38,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
       - name: Start rust server (+ moto sidecar)
-        run: RUST_ONLY=1 RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
+        run: RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
       - name: Run Terraform IaC tests
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -72,7 +72,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
       - name: Start rust server (+ moto sidecar)
-        run: RUST_ONLY=1 RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
+        run: RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
       - name: Run CloudFormation IaC tests
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -110,7 +110,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
       - name: Start rust server (+ moto sidecar)
-        run: RUST_ONLY=1 RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
+        run: RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
       - name: Run CDK IaC tests
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -145,7 +145,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
       - name: Start rust server (+ moto sidecar)
-        run: RUST_ONLY=1 RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
+        run: RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
       - name: Run Pulumi IaC tests
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -183,7 +183,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
       - name: Start rust server (+ moto sidecar)
-        run: RUST_ONLY=1 RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
+        run: RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
       - name: Run Serverless Framework IaC tests
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -221,7 +221,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
       - name: Start rust server (+ moto sidecar)
-        run: RUST_ONLY=1 RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
+        run: RUST_PORT=4566 LOG_PREFIX=iac bash scripts/start_parity_servers.sh
       - name: Run SAM IaC tests
         run: >
           ENDPOINT_URL=http://localhost:4566

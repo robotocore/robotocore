@@ -37,7 +37,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
       - name: Start rust server (+ moto sidecar)
-        run: RUST_ONLY=1 RUST_PORT=4566 LOG_PREFIX=nightly bash scripts/start_parity_servers.sh
+        run: RUST_PORT=4566 LOG_PREFIX=nightly bash scripts/start_parity_servers.sh
       - name: Run all IaC tests
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -73,7 +73,7 @@ jobs:
           python-version: "3.12"
       - run: uv sync
       - name: Start rust server (+ moto sidecar)
-        run: RUST_ONLY=1 LOG_PREFIX=parity bash scripts/start_parity_servers.sh
+        run: LOG_PREFIX=parity bash scripts/start_parity_servers.sh
       - name: Run parity harness (rust-only)
         run: uv run python scripts/harness/parity.py --rust-only
 
