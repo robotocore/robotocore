@@ -720,9 +720,15 @@ impl DefaultSqsHandler {
                     if msg.receive_count > max_receive {
                         if let Some(dlq) = store.get_queue_by_arn(&dlq_arn) {
                             let mut moved = msg.clone();
-                            moved.message_id = Uuid::new_v4().to_string();
+                            // Real SQS preserves the original MessageId
+                            // across the dead-letter move; only the receipt
+                            // handle is re-minted for the DLQ scope.
+                            let dlq_url = {
+                                let dl = dlq.read();
+                                dl.url.clone()
+                            };
                             moved.receipt_handle =
-                                Self::generate_receipt_handle(&moved.message_id, queue_url);
+                                Self::generate_receipt_handle(&moved.message_id, &dlq_url);
                             moved.receive_count = 0;
                             moved.first_receive_timestamp = None;
                             moved.visibility_until = None;
