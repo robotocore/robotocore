@@ -1903,14 +1903,18 @@ pub async fn config_update_handler(body: axum::body::Bytes) -> Response {
 
 /// Audit endpoint: `?limit=N` recent call records.
 pub async fn audit_handler(uri: Uri) -> impl IntoResponse {
-    // Python: `?limit=N` (int required; anything non-numeric is a 400)
+    // Python: `limit = int(request.query_params.get("limit", "100"))` —
+    // `int()` trims whitespace and accepts `+`/`-` signs, so `/audit?limit=
+    // %205` or `?limit=-1` were accepted there, not 400s. Negative values
+    // keep python slicing semantics (recent_entries): `-1` returns all
+    // entries except the oldest one.
     let limit = match uri.query().and_then(|q| {
         q.split('&').find_map(|kv| {
             let (k, v) = kv.split_once('=')?;
             (k == "limit").then_some(v)
         })
     }) {
-        Some(v) => match v.parse::<usize>() {
+        Some(v) => match parse_audit_limit(v) {
             Ok(n) => n,
             Err(_) => {
                 return (
@@ -1929,6 +1933,21 @@ pub async fn audit_handler(uri: Uri) -> impl IntoResponse {
             "count": entries.len(),
         })),
     )
+}
+
+/// Python-parity `int()` of the raw `?limit=` query value: percent-decode
+/// (`%20`), treat a bare `+` as space (urllib `parse_qs` does), trim, then
+/// `i64` so signs parse. Anything non-numeric is rejected like python's
+/// `int()` raising `ValueError`.
+fn parse_audit_limit(raw: &str) -> Result<i64, ()> {
+    let decoded = urlencoding::decode(raw)
+        .map(|c| c.into_owned())
+        .unwrap_or_default();
+    decoded
+        .replace('+', " ")
+        .trim()
+        .parse::<i64>()
+        .map_err(|_| ())
 }
 
 /// Per-service protocol listing: `GET /_robotocore/services`.
@@ -2944,6 +2963,21 @@ mod tests {
         let method = Method::POST;
         let service = extract_service(&method, &uri, &headers, b"Action=NotARealOp").unwrap();
         assert_eq!(service, "sts");
+    }
+
+    #[test]
+    fn test_parse_audit_limit_python_int_parity() {
+        // python `int()` accepted these forms; the old usize parse rejected
+        // signed and space-padded values.
+        assert_eq!(parse_audit_limit("5").unwrap_or_default(), 5);
+        assert_eq!(parse_audit_limit("+5").unwrap_or_default(), 5);
+        assert_eq!(parse_audit_limit("%205").unwrap_or_default(), 5);
+        // urllib `parse_qs` maps a bare `+` to a space, so `+ 5` trims to 5.
+        assert_eq!(parse_audit_limit("%2B5").unwrap_or_default(), 5);
+        assert_eq!(parse_audit_limit("-1").unwrap_or_default(), -1);
+        assert!(parse_audit_limit("abc").is_err());
+        assert!(parse_audit_limit("").is_err());
+        assert!(parse_audit_limit("5a").is_err());
     }
 
     #[test]
