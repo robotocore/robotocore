@@ -1346,13 +1346,25 @@ pub async fn catch_all_handler(
             // mirror calls), so run the sync dispatch on the blocking
             // thread pool — never on the async workers, which must stay
             // free to accept/serve those loopback calls.
+            let mut rot_headers = parsed_req.headers.clone();
+            if !rot_req_headers_have_host(&rot_headers) {
+                // Axum strips Host from HeaderMap; recover it from the
+                // authority so backends that must call back to *this*
+                // twin (the cfnresponse receiver URL, cf
+                // mirror::callback_base) answer the address the caller
+                // actually hit — env values still take precedence inside
+                // rotocore, and the hardcoded 4566 fallback logs.
+                if let Some(authority) = uri.authority() {
+                    rot_headers.insert("host".to_string(), authority.as_str().to_string());
+                }
+            }
             let rot_req = rotocore::Request {
                 service: service.clone(),
                 operation: parsed_req.operation.clone(),
                 method: parsed_req.method.clone(),
                 path: parsed_req.path.clone(),
                 query_string: parsed_req.query_string.clone(),
-                headers: parsed_req.headers.clone(),
+                headers: rot_headers,
                 body: parsed_req.body.clone(),
                 account: parsed_req.account,
                 region: parsed_req.region.clone(),
@@ -1579,6 +1591,12 @@ fn refine_service_for_body(service: &str, body: &[u8]) -> String {
     } else {
         service.to_string()
     }
+}
+
+/// Axum strips `Host` from HeaderMap; detect its presence so the
+/// rotocore dispatch layer can recover it from the URI authority.
+fn rot_req_headers_have_host(headers: &HashMap<String, String>) -> bool {
+    headers.keys().any(|k| k.eq_ignore_ascii_case("host"))
 }
 
 fn opt_op(operation: &str) -> Option<&str> {

@@ -233,6 +233,14 @@ fn path_patterns() -> Vec<(Regex, &'static str)> {
             Regex::new(r"^/opensearch/[a-z0-9-]+/[A-Za-z0-9-]+").unwrap(),
             "opensearch",
         ),
+        // The cfnresponse receiver the CustomResource shim PUTs to (moto
+        // urls.py:7 `{0}/cloudformation_(?P<region>[^/]+)/cfnresponse`) —
+        // unsigned (no credentials ride the shim request), so it must
+        // resolve by path before the auth-scope check.
+        (
+            Regex::new(r"^/cloudformation_[^/]+/cfnresponse").unwrap(),
+            "cloudformation",
+        ),
     ]
 }
 

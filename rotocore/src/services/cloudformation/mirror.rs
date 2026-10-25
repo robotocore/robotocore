@@ -10,6 +10,8 @@
 //! - JSON services (dynamodb/ssm/events/kms/logs/secretsmanager/kinesis/
 //!   stepfunctions/ecs): POST with an `X-Amz-Target` header and a JSON body.
 //! - lambda: POST `/2015-03-31/functions` with `X-Amz-Target`.
+//! - lambda invoke: POST `/2015-03-31/functions/{fn}/invocations` with the
+//!   event JSON as the raw body (the CustomResource ServiceToken call).
 //! - s3: PUT/DELETE directly on `/{bucket}`.
 
 use serde_json::{json, Value};
@@ -42,19 +44,113 @@ fn strip_slashes(mut s: String) -> String {
 }
 
 /// Base URL of the robotocore server used for the mirror.
+///
+/// Precedence: `ROBOTOCORE_CALLBACK_URL` env (docker-host override, like
+/// moto's `settings.moto_server_host()`/`moto_server_port()`), else the
+/// request authority of the request being served (the fleet runs per-lane
+/// twins on non-default ports — a hardcoded endpoint would answer the
+/// wrong server), else `RUST_PORT` (the parity lane), else the default
+/// single-server endpoint. The final hardcoded fallback logs every use
+/// (no-portability-constants rule: a fallback constant must log when it
+/// is used).
 pub fn callback_base() -> String {
-    let base = std::env::var("ROBOTOCORE_CALLBACK_URL")
+    if let Some(base) = std::env::var("ROBOTOCORE_CALLBACK_URL")
         .ok()
         .filter(|s| !s.is_empty())
+    {
+        return strip_slashes(base);
+    }
+    if let Some(authority) = thread_local_authority() {
+        let base = if authority.contains("://") {
+            authority
+        } else {
+            format!("http://{authority}")
+        };
+        return strip_slashes(base);
+    }
+    std::env::var("RUST_PORT")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(|port| format!("http://127.0.0.1:{port}"))
         .unwrap_or_else(|| {
-            // Match the Python sidecar's fallback: RUST_PORT (the parity
-            // lane), otherwise the default single-server endpoint.
-            match std::env::var("RUST_PORT") {
-                Ok(port) if !port.is_empty() => format!("http://127.0.0.1:{port}"),
-                _ => "http://127.0.0.1:4566".to_string(),
-            }
-        });
-    strip_slashes(base)
+            log_fallback_once();
+            "http://127.0.0.1:4566".to_string()
+        })
+}
+
+thread_local! {
+    /// `host[:port]` of the request currently being served. ops::handle
+    /// records it per request so the mirror's loopback calls and the
+    /// custom-resource ResponseURL answer the same twin the caller hit.
+    static REQUEST_AUTHORITY: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Record the incoming request's host authority for this dispatch thread.
+/// `auth` is the raw `Host` header value (`localhost:4790`) or an explicit
+/// base URL.
+pub fn set_request_authority(auth: Option<&str>) {
+    REQUEST_AUTHORITY.with(|slot| {
+        *slot.borrow_mut() = auth
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(String::from);
+    });
+}
+
+fn thread_local_authority() -> Option<String> {
+    REQUEST_AUTHORITY.with(|slot| slot.borrow().clone())
+}
+
+/// The hardcoded-endpoint fallback must be visible: log it (once per
+/// process is enough — the condition that fires it does not change
+/// mid-flight).
+fn log_fallback_once() {
+    static LOGGED: OnceLock<()> = OnceLock::new();
+    if LOGGED.get().is_none() {
+        let _ = LOGGED.set(());
+        eprintln!(
+            "[cloudformation-mirror] callback_base: no ROBOTOCORE_CALLBACK_URL / request \
+             authority / RUST_PORT — falling back to hardcoded http://127.0.0.1:4566"
+        );
+    }
+}
+
+/// ResponseURL the custom-resource event carries (moto
+/// `custom_model.py:63-74` builds `{host}/cloudformation_{region}/cfnresponse?stack={stack_id}`
+/// from the server's own host/port settings).
+pub fn custom_response_url(region: &str, stack_id: &str) -> String {
+    format!(
+        "{}/cloudformation_{region}/cfnresponse?stack={stack_id}",
+        callback_base()
+    )
+}
+
+/// Invoke a lambda function with a raw (non-proxy) event — the
+/// CustomResource ServiceToken call (`custom_model.py:89` invokes the
+/// function with the event JSON as the payload). Blocking; callers that
+/// need moto's fire-and-forget semantics run it in a spawned thread —
+/// which cannot read the request-authority thread-local, so callers pass
+/// the base captured on the dispatch thread (same resolution chain as
+/// [`callback_base`]).
+pub fn invoke_lambda_raw_at(
+    base: &str,
+    fn_name: &str,
+    event: &Value,
+    account: &str,
+    region: &str,
+) -> MirrorCall {
+    let url = format!("{base}/2015-03-31/functions/{fn_name}/invocations");
+    let mut headers = base_headers(account, region, "lambda");
+    headers.push(("Content-Type".to_string(), "application/json".to_string()));
+    let req = with_headers(client().post(&url), &headers);
+    send(req, event.to_string().as_bytes())
+}
+
+/// Same invoke with the base resolved on the *current* thread (ctx-free
+/// callers like tests).
+pub fn invoke_lambda_raw(fn_name: &str, event: &Value, account: &str, region: &str) -> MirrorCall {
+    invoke_lambda_raw_at(&callback_base(), fn_name, event, account, region)
 }
 
 fn client() -> ureq::Agent {
@@ -1011,6 +1107,23 @@ pub fn delete_lambda_function(name: &str, account: &str, region: &str) {
         account,
         region,
     );
+}
+
+/// Existence probe for the CustomResource ServiceToken (moto's
+/// `custom_model.py:52` `backend.get_function(service_token)` raises when
+/// the lambda is unknown, failing the whole create). `GET
+/// /2015-03-31/functions/{name}` — 200 means the function exists.
+pub fn get_lambda_function(name: &str, account: &str, region: &str) -> bool {
+    let url = format!("{}/2015-03-31/functions/{name}", callback_base());
+    let headers = base_headers(account, region, "lambda");
+    let req = with_headers(client().get(&url), &headers);
+    match req.call() {
+        Ok(resp) => resp.status() == 200,
+        Err(ureq::Error::Status(404, _)) => false,
+        // Transport-level failures are not "absent": don't fail the arm on
+        // them (the invoke itself will surface any real problem).
+        Err(_) => true,
+    }
 }
 
 /// Inline source handling: if the value is already base64 of a zip (PK

@@ -3,6 +3,7 @@
 //! `src/robotocore/services/cloudformation/provider.py` plus the moto
 //! wire shapes the compatibility suite pins.
 
+use super::custom;
 use super::engine::{self, ResolveCtx};
 use super::mirror;
 use super::store;
@@ -56,6 +57,15 @@ fn validation_error(message: impl Into<String>) -> CfnError {
 type OpResult = Result<Response, CfnError>;
 
 pub fn handle(req: &Request) -> Response {
+    // Record the request authority so the mirror (loopback resource
+    // creation, custom-resource ResponseURL) answers the same twin the
+    // caller hit, then serve the custom-resource callback route before
+    // the query dispatch (moto urls.py:7 routes it by path, credentials
+    // or not).
+    mirror::set_request_authority(req.headers.get("host").map(String::as_str));
+    if custom::cfnresponse_region(&req.path).is_some() {
+        return handle_cfnresponse(req);
+    }
     let params = form_params(req);
     let action = param(&params, "Action").to_string();
     let account = account_str(req);
@@ -1097,8 +1107,26 @@ fn deploy_stack(
                     resource_type: rtype.to_string(),
                     physical_id: phys_str,
                     attributes: attrs,
+                    ..Default::default()
                 },
             );
+            continue;
+        }
+
+        // Custom resources arm a promise and hand it to the ServiceToken
+        // lambda (moto custom_model.py:31-106); the promise stays pending
+        // until its cfnresponse callback finalizes it (custom.rs).
+        if custom::is_custom_type(rtype) {
+            deploy_custom_resource(
+                stack,
+                &logical_id,
+                rtype,
+                &resolved,
+                &mut ctx,
+                deletion_policy,
+                region,
+                account,
+            )?;
             continue;
         }
 
@@ -1133,13 +1161,354 @@ fn deploy_stack(
                 resource_type: rtype.to_string(),
                 physical_id: phys_str,
                 attributes: attrs,
+                ..Default::default()
             },
         );
     }
 
+    // A stack with an unfinished custom resource promise isn't complete:
+    // moto leaves it CREATE_IN_PROGRESS and only `verify_readiness`
+    // (models.py:562-565) completes it when the last callback lands.
+    // Outputs (Fn::GetAtt into the callback Data) resolve then too.
+    if pending_custom_stack(stack) {
+        return Ok(());
+    }
     resolve_outputs(store, stack, template, &ctx, region);
     let _ = account_num;
     Ok(())
+}
+
+/// True while the stack still awaits a custom-resource cfnresponse
+/// callback (the resource record sits at CREATE_IN_PROGRESS).
+fn pending_custom_stack(stack: &CfnStack) -> bool {
+    stack
+        .resources
+        .iter()
+        .any(|r| r.status == "CREATE_IN_PROGRESS" && custom::is_custom_type(&r.resource_type))
+}
+
+/// Register a pending custom resource and fire the ServiceToken lambda
+/// with the moto event shape (fire-and-forget, like moto's
+/// `threading.Thread(target=fn.invoke, ...)` — custom_model.py:89-90).
+/// Finalization happens on the cfnresponse receiver request.
+#[allow(clippy::too_many_arguments)]
+fn deploy_custom_resource(
+    stack: &mut CfnStack,
+    logical_id: &str,
+    rtype: &str,
+    resolved: &Value,
+    ctx: &mut ResolveCtx,
+    deletion_policy: String,
+    region: &str,
+    account: &str,
+) -> Result<(), String> {
+    let token = custom::service_token(resolved)
+        .map_err(|e| format!("Resource {logical_id} ({rtype}) failed: {e}"))?;
+    // Fail fast on an unknown ServiceToken: moto's
+    // `lambda_backend.get_function(service_token)` raises during
+    // create_from_cloudformation_json, failing the whole create.
+    let fn_name = custom::service_token_fn_name(&token).to_string();
+    if !mirror::get_lambda_function(&fn_name, account, region) {
+        return Err(format!(
+            "Resource {logical_id} ({rtype}) failed: ServiceToken '{token}' not found"
+        ));
+    }
+
+    let physical = custom::moto_physical_name(&stack.stack_name, logical_id);
+    add_event(
+        stack,
+        logical_id,
+        rtype,
+        &physical,
+        "CREATE_IN_PROGRESS",
+        None,
+    );
+    stack.resources.push(CfnResource {
+        logical_id: logical_id.to_string(),
+        resource_type: rtype.to_string(),
+        properties: resolved.clone(),
+        physical_id: Some(physical.clone()),
+        // Callback Data lands on finalize; GetAtt resolves empty until
+        // then (custom_model.py:140-146 returns None for unset attrs).
+        attributes: HashMap::new(),
+        status: "CREATE_IN_PROGRESS".to_string(),
+        deletion_policy,
+    });
+    ctx.resources.insert(
+        logical_id.to_string(),
+        engine::ResourceInfo {
+            resource_type: rtype.to_string(),
+            physical_id: physical.clone(),
+            attributes: HashMap::new(),
+            pending_custom: true,
+        },
+    );
+
+    // Capture the callback base on the dispatch thread: the spawned
+    // invoke thread cannot read the request-authority thread-local.
+    let callback_base = mirror::callback_base();
+    let event = custom::build_event(
+        // moto hardcodes "Create" — CustomModel only implements
+        // create_from_cloudformation_json.
+        "Create",
+        &token,
+        &mirror::custom_response_url(region, &stack.stack_id),
+        &stack.stack_id,
+        logical_id,
+        rtype,
+        &physical,
+        resolved,
+    );
+
+    eprintln!(
+        "[cloudformation] custom resource {logical_id} ({rtype}): invoking ServiceToken \
+         lambda {fn_name} at {callback_base} (dispatched like moto custom_model.py:89)"
+    );
+    let account_owned = account.to_string();
+    let region_owned = region.to_string();
+    std::thread::spawn(move || {
+        let resp = mirror::invoke_lambda_raw_at(
+            &callback_base,
+            &fn_name,
+            &event,
+            &account_owned,
+            &region_owned,
+        );
+        if !resp.ok() {
+            eprintln!(
+                "[cloudformation] custom resource ServiceToken lambda invoke failed: \
+                 status {:?} — the cfnresponse promise stays pending",
+                resp.status
+            );
+        }
+    });
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// cfnresponse receiver (moto urls.py:7 + responses.py:129-178)
+// ---------------------------------------------------------------------------
+
+/// Accept the cfnresponse shim's HTTP callback and finalize the custom
+/// resource from its payload. moto's receiver (`process_cfn_response`)
+/// keys `Status`/`StackId`/`LogicalResourceId`/`Data` off the request and
+/// returns `{}` — deploy proceeds on SUCCESS, and once no pending
+/// promise is left the stack completes (`verify_readiness`).
+///
+/// Region+account: the unsigned shim request carries no credentials, so
+/// both come from the stack ARN (region falls back to the
+/// `/cloudformation_{region}/` path segment, moto's URL capture) — the
+/// per-account store lookup then pins the right twin state.
+fn handle_cfnresponse(req: &Request) -> Response {
+    let payload = custom::CfnResponsePayload::from_body(&req.body, &req.query_string);
+    let (region, account) = stack_coordinates(&payload.stack_id).unwrap_or_else(|| {
+        (
+            custom::cfnresponse_region(&req.path).unwrap_or_else(|| req.region.clone()),
+            account_str(req),
+        )
+    });
+    let outcome = crate::services::cloudformation::store::with_store(
+        account.parse().unwrap_or(123456789012),
+        &region,
+        |store| finalize_cfnresponse(store, region.as_str(), account.as_str(), &payload),
+    );
+    match outcome {
+        Ok(()) => Response::new(200, "application/json", "{}"),
+        Err(msg) => {
+            eprintln!("[cloudformation] cfnresponse rejected: {msg}");
+            Response::new(200, "application/json", "{}")
+        }
+    }
+}
+
+/// (region, account) out of a stack ARN —
+/// `arn:aws:cloudformation:{region}:{account}:stack/{name}/{id}`.
+fn stack_coordinates(stack_id: &str) -> Option<(String, String)> {
+    let rest = stack_id.strip_prefix("arn:")?;
+    let mut parts = rest.splitn(6, ':');
+    let _partition = parts.next()?;
+    let _service = parts.next().filter(|s| *s == "cloudformation")?;
+    let region = parts.next()?;
+    let account = parts.next()?;
+    if region.is_empty() || account.is_empty() {
+        return None;
+    }
+    Some((region.to_string(), account.to_string()))
+}
+
+/// Apply one cfnresponse payload against the stack record. Sets
+/// Data → resource attributes, the PhysicalResourceId, and events —
+/// `process_cfn_response` (responses.py:174-178) stores the outputs and
+/// `set_data` marks the promise finished. Non-SUCCESS callbacks record a
+/// FAILURE per the fleet brief (the pinned fork otherwise simply ignores
+/// them, leaving the promise pending forever). The caller owns the store
+/// lock (no nested acquisition, like `check_import_references`).
+fn finalize_cfnresponse(
+    store: &mut store::CfnStore,
+    region: &str,
+    account: &str,
+    payload: &custom::CfnResponsePayload,
+) -> Result<(), String> {
+    if payload.logical_id.is_empty() {
+        return Err("LogicalResourceId missing".to_string());
+    }
+    let stack_id = payload.stack_id.clone();
+    let Some(stack_pos) = store.stacks.iter().position(|s| s.stack_id == stack_id) else {
+        return Err(format!("StackId '{stack_id}' not found"));
+    };
+    let (stack_status, updating) = {
+        let stack = &store.stacks[stack_pos];
+        (stack.status.clone(), stack.status == "UPDATE_IN_PROGRESS")
+    };
+    if !matches!(
+        stack_status.as_str(),
+        "CREATE_IN_PROGRESS" | "UPDATE_IN_PROGRESS"
+    ) {
+        // Late/eager duplicate callback for an already-finalized stack.
+        return Ok(());
+    }
+    let phase = if updating { "UPDATE" } else { "CREATE" };
+    let logical_id = payload.logical_id.clone();
+
+    // Record-level finalization, then the stack-level flips.
+    let (rtype, physical, success) = {
+        let Some(resource) = store.stacks[stack_pos]
+            .resources
+            .iter_mut()
+            .find(|r| r.logical_id == logical_id)
+        else {
+            return Err(format!(
+                "LogicalResourceId '{logical_id}' not found on stack '{stack_id}'"
+            ));
+        };
+        if resource.status != "CREATE_IN_PROGRESS" {
+            // Already finalized (duplicate callback) or not a promise.
+            return Ok(());
+        }
+        if payload.status != "SUCCESS" {
+            // FAILED: the promise reports a failure — status falls to
+            // *_FAILED and the reason rides the failure event (the pinned
+            // fork simply ignores non-SUCCESS callbacks; real CFN rolls
+            // the stack back — out of scope for the async receiver).
+            resource.status = format!("{phase}_FAILED");
+        } else {
+            // Data becomes the resource's attributes (every key answers
+            // GetAtt — custom_model.py:140-146); the promise is finished.
+            resource.attributes = payload.data.clone();
+            resource.status = "CREATE_COMPLETE".to_string();
+        }
+        // PhysicalResourceId from the payload; the moto-shaped generated
+        // name (custom_model.py:39-41) is the default.
+        resource.physical_id = Some(if payload.physical_id.is_empty() {
+            resource.physical_id.clone().unwrap_or_default()
+        } else {
+            payload.physical_id.clone()
+        });
+        let physical = resource.physical_id.clone().unwrap_or_default();
+        (
+            resource.resource_type.clone(),
+            physical,
+            payload.status == "SUCCESS",
+        )
+    };
+
+    if success {
+        add_event(
+            &mut store.stacks[stack_pos],
+            &logical_id,
+            &rtype,
+            &physical,
+            "CREATE_COMPLETE",
+            None,
+        );
+        // verify_readiness (models.py:562-565): complete when the last
+        // promise lands. Outputs referencing callback Data resolve now.
+        let pending = store.stacks[stack_pos]
+            .resources
+            .iter()
+            .any(|r| r.status == "CREATE_IN_PROGRESS" && custom::is_custom_type(&r.resource_type));
+        if !pending {
+            let mut stack = std::mem::replace(
+                &mut store.stacks[stack_pos],
+                CfnStack::new(String::new(), String::new(), String::new()),
+            );
+            finalize_pending_stack(store, &mut stack, region, account);
+            store.stacks[stack_pos] = stack;
+        }
+    } else {
+        let reason = if payload.reason.is_empty() {
+            "Custom resource reported no reason".to_string()
+        } else {
+            payload.reason.clone()
+        };
+        let status = format!("{phase}_FAILED");
+        let stack = &mut store.stacks[stack_pos];
+        add_event(
+            stack,
+            &logical_id,
+            &rtype,
+            &physical,
+            &status,
+            Some(reason.clone()),
+        );
+        stack.status = status.clone();
+        stack.status_reason = reason.clone();
+        add_stack_event(stack, &status, Some(reason.clone()));
+        eprintln!(
+            "[cloudformation] custom resource {logical_id} on {stack_id}: {status} ({reason})"
+        );
+    }
+    Ok(())
+}
+
+/// Complete a stack whose custom-resource promises all finished: resolve
+/// the outputs the deploy step deferred (Fn::GetAtt into callback Data),
+/// register exports, and flip the status to COMPLETE with the stack
+/// event — moto's `mark_creation_complete`
+/// (models.py:567-569) emits CREATE_COMPLETE on readiness.
+fn finalize_pending_stack(
+    store: &mut store::CfnStore,
+    stack: &mut CfnStack,
+    region: &str,
+    account: &str,
+) {
+    let template = match engine::parse_template(&stack.template_body) {
+        Ok(mut t) => {
+            expand_sam(&mut t);
+            t
+        }
+        Err(e) => {
+            eprintln!(
+                "[cloudformation] finalize: template re-parse failed for stack '{}': {e}",
+                stack.stack_name
+            );
+            return;
+        }
+    };
+    let imports = store.export_map();
+    let mut ctx = make_ctx(stack, &template, region, account, imports);
+    if let Ok(conds) = engine::evaluate_conditions(&template, &ctx) {
+        ctx.conditions = conds;
+    }
+    // Context resources from the finished records — callback Data rides
+    // in the resource attributes now.
+    for r in &stack.resources {
+        ctx.resources.insert(
+            r.logical_id.clone(),
+            engine::ResourceInfo {
+                resource_type: r.resource_type.clone(),
+                physical_id: r.physical_id.clone().unwrap_or_default(),
+                attributes: r.attributes.clone(),
+                ..Default::default()
+            },
+        );
+    }
+    resolve_outputs(store, stack, &template, &ctx, region);
+    if stack.status.ends_with("_IN_PROGRESS") {
+        let done = stack.status.replace("_IN_PROGRESS", "_COMPLETE");
+        stack.status = done.clone();
+        add_stack_event(stack, &done, None);
+    }
 }
 
 /// Parse a CFN TemplateURL into (bucket, key) — mirrors moto's
@@ -1467,6 +1836,12 @@ fn create_stack(params: &HashMap<String, String>, region: &str, account: &str) -
             account,
             account_num,
         ) {
+            Ok(()) if pending_custom_stack(&stack) => {
+                // Unfinished custom-resource promises: moto leaves the stack
+                // CREATE_IN_PROGRESS and completes it when the last
+                // cfnresponse callback lands (models.py:562-565
+                // verify_readiness). Stack events + outputs resolve there.
+            }
             Ok(()) => {
                 stack.status = "CREATE_COMPLETE".to_string();
                 add_event(
@@ -1646,6 +2021,11 @@ fn update_stack(params: &HashMap<String, String>, region: &str, account: &str) -
         })();
 
         match result {
+            Ok(()) if pending_custom_stack(&stack) => {
+                // Custom update: wait for the promise's cfnresponse
+                // callback (models.py:562-565 verify_readiness shape) —
+                // the UPDATE_IN_PROGRESS status already set above stands.
+            }
             Ok(()) => {
                 stack.status = "UPDATE_COMPLETE".to_string();
                 add_stack_event(&mut stack, "UPDATE_COMPLETE", None);
@@ -2275,6 +2655,11 @@ fn execute_change_set(params: &HashMap<String, String>, region: &str, account: &
                 account,
                 account_num,
             ) {
+                Ok(()) if pending_custom_stack(&stack) => {
+                    // Custom resource via change set: hold at
+                    // CREATE_IN_PROGRESS until the cfnresponse callback
+                    // (models.py:562-565 verify_readiness shape).
+                }
                 Ok(()) => {
                     stack.status = "CREATE_COMPLETE".to_string();
                     add_stack_event(&mut stack, "CREATE_COMPLETE", None);
@@ -2316,6 +2701,10 @@ fn execute_change_set(params: &HashMap<String, String>, region: &str, account: &
                 account,
                 account_num,
             ) {
+                Ok(()) if pending_custom_stack(&stack) => {
+                    // Custom update via change set: wait for the callback
+                    // (the UPDATE_IN_PROGRESS status set above stands).
+                }
                 Ok(()) => {
                     stack.status = "UPDATE_COMPLETE".to_string();
                     add_stack_event(&mut stack, "UPDATE_COMPLETE", None);
@@ -3408,5 +3797,230 @@ fn stub_action(
             format!("The {action} action has not been implemented"),
         )
         .status(501)),
+    }
+}
+
+#[cfg(test)]
+mod cfnresponse_finalize_tests {
+    //! Unit tests for the cfnreceiver finalize semantics (moto
+    //! responses.py:174-178 over the robotocore store records).
+    use super::*;
+
+    // Unique spot so tests running in parallel cannot collide with each
+    // other or live suites.
+    const ACCOUNT_NUM: u64 = 424242424242;
+    const ACCOUNT_ID: &str = "424242424242";
+    const REGION: &str = "us-cfn-custom-finalize";
+
+    fn pending_stack(name: &str) -> CfnStack {
+        let stack_id = store::new_stack_id(name, REGION, ACCOUNT_ID);
+        let mut stack = CfnStack::new(stack_id.clone(), name.to_string(), template());
+        stack.template_body = template();
+        stack.resources.push(CfnResource {
+            logical_id: "CustomInfo".to_string(),
+            resource_type: "Custom::Info".to_string(),
+            properties: json!({"ServiceToken": "arn:aws:lambda:r:1:function:shim"}),
+            physical_id: Some(custom::moto_physical_name(name, "CustomInfo")),
+            attributes: HashMap::new(),
+            status: "CREATE_IN_PROGRESS".to_string(),
+            deletion_policy: "Delete".to_string(),
+        });
+        stack.resources.push(CfnResource {
+            logical_id: "Queue".to_string(),
+            resource_type: "AWS::SQS::Queue".to_string(),
+            properties: json!({}),
+            physical_id: Some(format!("cfn-queue-{name}")),
+            attributes: HashMap::new(),
+            status: "CREATE_COMPLETE".to_string(),
+            deletion_policy: "Delete".to_string(),
+        });
+        let sid = stack.stack_id.clone();
+        add_event(
+            &mut stack,
+            name,
+            "AWS::CloudFormation::Stack",
+            &sid,
+            "CREATE_IN_PROGRESS",
+            None,
+        );
+        stack
+    }
+
+    fn template() -> String {
+        json!({
+            "Outputs": {
+                "InfoKey": {"Value": {"Fn::GetAtt": ["CustomInfo", "info_value"]}}
+            }
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn success_finalizes_resource_and_stack() {
+        with_store(ACCOUNT_NUM, REGION, |store| {
+            let sid = {
+                let stack = pending_stack("final-ok");
+                let sid = stack.stack_id.clone();
+                store.stacks.push(stack);
+                sid
+            };
+            let payload = custom::CfnResponsePayload::from_json(
+                &json!({
+                    "Status": "SUCCESS",
+                    "StackId": sid,
+                    "LogicalResourceId": "CustomInfo",
+                    "PhysicalResourceId": "CustomResourceXyz",
+                    "Data": {"info_value": "resultfromthirdpartysystem"},
+                }),
+                "",
+            );
+            finalize_cfnresponse(store, REGION, "", &payload).unwrap();
+            let stack = store.stacks.last().unwrap();
+            assert_eq!(stack.status, "CREATE_COMPLETE");
+            let res = stack.resource("CustomInfo").unwrap();
+            assert_eq!(res.status, "CREATE_COMPLETE");
+            // The callback's PhysicalResourceId finalizes the record.
+            assert_eq!(res.physical_id.as_deref(), Some("CustomResourceXyz"));
+            assert_eq!(
+                res.attributes.get("info_value").and_then(Value::as_str),
+                Some("resultfromthirdpartysystem")
+            );
+            // Deferred outputs resolved against the callback Data.
+            let (_, out) = stack.outputs.last().unwrap();
+            assert_eq!(out["OutputValue"], "resultfromthirdpartysystem");
+            // Events: resource promise completed, stack completed.
+            assert!(stack
+                .events
+                .iter()
+                .any(|e| e.logical_id == "CustomInfo" && e.resource_status == "CREATE_COMPLETE"));
+            assert!(stack
+                .events
+                .iter()
+                .any(|e| e.logical_id == "final-ok" && e.resource_status == "CREATE_COMPLETE"));
+        });
+    }
+
+    #[test]
+    fn success_without_physical_keeps_moto_default() {
+        with_store(ACCOUNT_NUM, REGION, |store| {
+            let stack = pending_stack("final-nophys");
+            let sid = stack.stack_id.clone();
+            let default_phys = stack
+                .resource("CustomInfo")
+                .and_then(|r| r.physical_id.clone())
+                .unwrap();
+            store.stacks.push(stack);
+            let payload = custom::CfnResponsePayload::from_json(
+                &json!({
+                    "Status": "SUCCESS",
+                    "StackId": sid,
+                    "LogicalResourceId": "CustomInfo",
+                    "Data": {},
+                }),
+                "",
+            );
+            finalize_cfnresponse(store, REGION, "", &payload).unwrap();
+            let stack = store.stacks.last().unwrap();
+            // moto keeps the generated resource name
+            // (custom_model.py:39-41 physical_resource_id = resource_name).
+            let res = stack.resource("CustomInfo").unwrap();
+            assert_eq!(res.physical_id.as_deref(), Some(default_phys.as_str()));
+            assert!(default_phys.starts_with("final-nophys-CustomInfo-"));
+        });
+    }
+
+    #[test]
+    fn failed_records_failure_event_and_reason() {
+        with_store(ACCOUNT_NUM, REGION, |store| {
+            let stack = pending_stack("final-fail");
+            let sid = stack.stack_id.clone();
+            store.stacks.push(stack);
+            let payload = custom::CfnResponsePayload::from_json(
+                &json!({
+                    "Status": "FAILED",
+                    "StackId": sid,
+                    "LogicalResourceId": "CustomInfo",
+                    "Reason": "module raised",
+                    "PhysicalResourceId": "log-stream-1",
+                }),
+                "",
+            );
+            finalize_cfnresponse(store, REGION, "", &payload).unwrap();
+            let stack = store.stacks.last().unwrap();
+            assert_eq!(stack.status, "CREATE_FAILED");
+            assert_eq!(stack.status_reason, "module raised");
+            let res = stack.resource("CustomInfo").unwrap();
+            assert_eq!(res.status, "CREATE_FAILED");
+            // FAILED callbacks fix the physical id but carry no data.
+            assert_eq!(res.physical_id.as_deref(), Some("log-stream-1"));
+            assert!(stack.events.iter().any(|e| e.logical_id == "CustomInfo"
+                && e.resource_status == "CREATE_FAILED"
+                && e.resource_status_reason.as_deref() == Some("module raised")));
+            assert!(stack
+                .events
+                .iter()
+                .any(|e| e.resource_status == "CREATE_FAILED"));
+        });
+    }
+
+    #[test]
+    fn unknown_stack_and_resource_reported() {
+        with_store(ACCOUNT_NUM, REGION, |store| {
+            let stack = pending_stack("final-missing");
+            let sid = stack.stack_id.clone();
+            store.stacks.push(stack);
+            let bogus = custom::CfnResponsePayload::from_json(
+                &json!({"Status": "SUCCESS", "StackId": "arn:aws:cloudformation:nowhere:1:stack/x/y", "LogicalResourceId": "CustomInfo"}),
+                "",
+            );
+            assert!(finalize_cfnresponse(store, REGION, "", &bogus).is_err());
+            let bogus_res = custom::CfnResponsePayload::from_json(
+                &json!({"Status": "SUCCESS", "StackId": sid, "LogicalResourceId": "Nope"}),
+                "",
+            );
+            assert!(finalize_cfnresponse(store, REGION, "", &bogus_res).is_err());
+        });
+    }
+
+    #[test]
+    fn pending_getatt_resolves_empty_then_data() {
+        // While pending: any attribute resolves empty (moto
+        // CustomModel.get_cfn_attribute → None → empty in the string
+        // engine).
+        let empty = CfnStack::new(
+            "test-stack".to_string(),
+            "test-stack".to_string(),
+            String::new(),
+        );
+        let mut ctx = make_ctx(&empty, &Value::Null, REGION, "", HashMap::new());
+        ctx.resources.insert(
+            "CustomInfo".to_string(),
+            engine::ResourceInfo {
+                resource_type: "Custom::Info".to_string(),
+                physical_id: "p".to_string(),
+                attributes: HashMap::new(),
+                pending_custom: true,
+            },
+        );
+        let got = engine::resolve_intrinsics(
+            &json!({"Fn::GetAtt": ["CustomInfo", "info_value"]}),
+            &ctx,
+            0,
+        );
+        assert_eq!(got.ok(), Some(json!("")));
+
+        // After the callback the data lands and resolves.
+        ctx.resources.get_mut("CustomInfo").unwrap().pending_custom = false;
+        ctx.resources
+            .get_mut("CustomInfo")
+            .unwrap()
+            .attributes
+            .insert("info_value".to_string(), json!("special value"));
+        let got = engine::resolve_intrinsics(
+            &json!({"Fn::GetAtt": ["CustomInfo", "info_value"]}),
+            &ctx,
+            0,
+        );
+        assert_eq!(got.ok(), Some(json!("special value")));
     }
 }
