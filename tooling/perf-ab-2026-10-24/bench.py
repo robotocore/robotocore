@@ -186,30 +186,7 @@ def rss_mb(pid):
         return None
     return None
 
-_sampler_ctl = {"stop": False, "peak_mem": {}, "cpu_sum": {}, "samples": 0}
-
-def _parse_docker_stats_row(row):
-    # Name  CPUPerc  MemUsage like "12.34%  123.4MiB / 10GiB"
-    parts = row.split(None, 2)
-    if len(parts) != 3:
-        return None
-    try:
-        cpu = float(parts[1].rstrip("%"))
-        mem_text = parts[2].split("/")
-        mem = float(mem_part if False else parts[2].split("/")[0].strip())
-        unit = mem
-        for suf, mul in (("GiB", 1024), ("MB", 1), ("MiB", 1.048576), ("kB", 1.0/1024), ("KiB", 1.0/1048.576)):
-            if mem > 100000:  # already numeric? no
-                pass
-        # use regex instead
-        import re as _re
-        m = _re.match(r"([0-9.]+)([A-Za-z]+)", parts[2].split("/")[0].strip())
-        val = float(m.group(1)); unit = m.group(2)
-        mult = {"GiB": 1024.0, "g": 1024.0, "MiB": 1.0, "m": 1.0, "MB": 1.0, "M": 1.0, "kB": 1/1024.0, "K": 1.0/1024.0}
-        mem_mb = val * mult.get(unit, 1.0)
-        return parts[0], cpu, mem_mb
-    except Exception:
-        return None
+_sampler_ctl = {"stop": False, "peak_mem": {}, "cpu_avg": {}, "samples": 0}
 
 def sample_once(containers):
     out = subprocess.run(["docker", "stats", "--no-stream", "--format", "{{.Name}} {{.CPUPerc}} {{.MemUsage}}", *containers],
@@ -217,7 +194,6 @@ def sample_once(containers):
     rows = {}
     for line in out.splitlines():
         import re as _re
-        parts = row = {}
         cols = line.split(None, 2)
         if len(cols) != 3:
             continue
