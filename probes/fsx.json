@@ -1,6 +1,6 @@
 {
   "service": "fsx",
-  "generated_at": "2026-10-25T02:03:14.193770+00:00",
+  "generated_at": "2026-10-25T05:04:33.558212+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 44,
@@ -103,7 +103,7 @@
     {
       "operation": "DeleteFileSystem",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-file-system-id-id')"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "DeleteSnapshot",

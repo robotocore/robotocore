@@ -1,6 +1,6 @@
 {
   "service": "directconnect",
-  "generated_at": "2026-10-25T01:42:13.370154+00:00",
+  "generated_at": "2026-10-25T05:03:51.910052+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 62,
@@ -118,7 +118,7 @@
     {
       "operation": "CreateLag",
       "status": "500_error",
-      "message": "server crash (InternalError: creating a lag with a connection_id is not currently support)"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "CreatePrivateVirtualInterface",

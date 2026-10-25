@@ -1,10 +1,10 @@
 {
   "service": "events",
-  "generated_at": "2026-10-21T07:07:02.170748+00:00",
+  "generated_at": "2026-10-25T05:13:42.126602+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 52,
-    "needs_params": 5,
+    "working": 56,
+    "needs_params": 1,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -118,7 +118,7 @@
     {
       "operation": "DescribeEventBus",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeEventSource",
@@ -133,7 +133,7 @@
     {
       "operation": "DescribeReplay",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeRule",
@@ -217,38 +217,38 @@
     },
     {
       "operation": "PutEvents",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutPartnerEvents",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutPermission",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "PutRule",
       "status": "working",
-      "message": "implemented (InvalidParameter)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutTargets",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "RemovePermission",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "RemoveTargets",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartReplay",
@@ -288,12 +288,12 @@
     {
       "operation": "UpdateEndpoint",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "UpdateEventBus",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     }
   ]
 }

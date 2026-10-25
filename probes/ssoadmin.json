@@ -1,6 +1,6 @@
 {
   "service": "ssoadmin",
-  "generated_at": "2026-10-25T01:42:17.707431+00:00",
+  "generated_at": "2026-10-25T05:04:43.167266+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 76,
@@ -233,12 +233,12 @@
     {
       "operation": "ListAccountAssignments",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
     },
     {
       "operation": "ListAccountAssignmentsForPrincipal",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
     },
     {
       "operation": "ListAccountsForProvisionedPermissionSet",
@@ -303,7 +303,7 @@
     {
       "operation": "ListPermissionSets",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
     },
     {
       "operation": "ListPermissionSetsProvisionedToAccount",

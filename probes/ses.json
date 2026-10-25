@@ -1,11 +1,11 @@
 {
   "service": "ses",
-  "generated_at": "2026-10-24T17:31:26.026679+00:00",
-  "endpoint": "http://localhost:4794",
+  "generated_at": "2026-10-25T05:04:41.932546+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 55,
+    "working": 54,
     "needs_params": 0,
-    "not_implemented": 16,
+    "not_implemented": 17,
     "500_error": 0,
     "timeout": 0
   },
@@ -23,7 +23,7 @@
     {
       "operation": "CreateConfigurationSetEventDestination",
       "status": "working",
-      "message": "likely implemented (EventDestinationAlreadyExists: Duplicate Event destination Name.)"
+      "message": "OK"
     },
     {
       "operation": "CreateConfigurationSetTrackingOptions",
@@ -132,8 +132,8 @@
     },
     {
       "operation": "GetAccountSendingEnabled",
-      "status": "working",
-      "message": "OK"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "GetCustomVerificationEmailTemplate",

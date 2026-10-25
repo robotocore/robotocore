@@ -2,10 +2,10 @@
  "comment": "surface-absence manifest (generated) \u2014 every not_implemented probe row is a recorded decision; see docs/botocore-surface-plan.md \u00a73d; rebuild deterministically via scripts/build_surface_absence.py",
  "counts": {
   "absent_moto_crash_faithful": 1,
-  "absent_no_handler": 234,
+  "absent_no_handler": 235,
   "legacy_gap": 3,
   "modeled_deny": 79,
-  "not_implemented": 317
+  "not_implemented": 318
  },
  "services": {
   "account": {
@@ -1547,6 +1547,12 @@
     "class": "modeled_deny",
     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
     "evidence": "twin unit test pins the deny at rotocore/src/services/ses/mod.rs:1915; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ses/responses.py has no `delete_verified_email_address` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "GetAccountSendingEnabled": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ses/responses.py has no `get_account_sending_enabled` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
     "status": "not_implemented"
    },
    "GetIdentityPolicies": {

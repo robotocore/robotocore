@@ -1,7 +1,7 @@
 {
   "service": "workspaces",
-  "generated_at": "2026-10-23T03:56:58.753345+00:00",
-  "endpoint": "http://127.0.0.1:4773",
+  "generated_at": "2026-10-25T05:04:44.932098+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 83,
     "needs_params": 4,
@@ -143,7 +143,7 @@
     {
       "operation": "DeregisterWorkspaceDirectory",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-directory-id-id')"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "DescribeAccount",
@@ -328,7 +328,7 @@
     {
       "operation": "ModifyClientProperties",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-resource-id-id')"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "ModifyEndpointEncryptionMode",
@@ -343,7 +343,7 @@
     {
       "operation": "ModifySelfservicePermissions",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-resource-id-id')"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "ModifyStreamingProperties",
@@ -458,7 +458,7 @@
     {
       "operation": "UpdateWorkspaceImagePermission",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-image-id-id')"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "UpdateWorkspacesPool",

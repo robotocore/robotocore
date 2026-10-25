@@ -31009,9 +31009,13 @@
         "ListRules",
         "ListTagsForResource",
         "ListTargetsByRule",
+        "PutEvents",
+        "PutPartnerEvents",
         "PutPermission",
         "PutRule",
+        "PutTargets",
         "RemovePermission",
+        "RemoveTargets",
         "StartReplay",
         "TagResource",
         "TestEventPattern",
@@ -31022,7 +31026,7 @@
         "UpdateEndpoint",
         "UpdateEventBus"
       ],
-      "implemented_count": 52,
+      "implemented_count": 56,
       "native_ops": [
         "ActivateEventSource",
         "CancelReplay",
@@ -31064,9 +31068,13 @@
         "ListRules",
         "ListTagsForResource",
         "ListTargetsByRule",
+        "PutEvents",
+        "PutPartnerEvents",
         "PutPermission",
         "PutRule",
+        "PutTargets",
         "RemovePermission",
+        "RemoveTargets",
         "StartReplay",
         "TagResource",
         "TestEventPattern",
@@ -31077,7 +31085,7 @@
         "UpdateEndpoint",
         "UpdateEventBus"
       ],
-      "native_count": 52,
+      "native_count": 56,
       "moto_ops": [],
       "moto_count": 0,
       "delegates_to_moto": false,
@@ -31142,9 +31150,9 @@
       ],
       "tested_count": 57,
       "test_method_count": 112,
-      "impl_pct": 91.22807017543859,
+      "impl_pct": 98.24561403508771,
       "test_pct": 100.0,
-      "needs_params_count": 5,
+      "needs_params_count": 1,
       "not_implemented_count": 0,
       "error_count": 0,
       "probed": true
@@ -54706,6 +54714,7 @@
         "CreateDBProxy",
         "CreateDBProxyEndpoint",
         "CreateDBSecurityGroup",
+        "CreateDBShardGroup",
         "CreateDBSnapshot",
         "CreateDBSubnetGroup",
         "CreateEventSubscription",
@@ -54814,6 +54823,7 @@
         "RebootDBInstance",
         "RebootDBShardGroup",
         "RegisterDBProxyTargets",
+        "RemoveFromGlobalCluster",
         "RemoveRoleFromDBCluster",
         "RemoveRoleFromDBInstance",
         "RemoveSourceIdentifierFromSubscription",
@@ -54840,7 +54850,7 @@
         "SwitchoverGlobalCluster",
         "SwitchoverReadReplica"
       ],
-      "implemented_count": 158,
+      "implemented_count": 160,
       "native_ops": [
         "AddRoleToDBCluster",
         "AddRoleToDBInstance",
@@ -54867,6 +54877,7 @@
         "CreateDBProxy",
         "CreateDBProxyEndpoint",
         "CreateDBSecurityGroup",
+        "CreateDBShardGroup",
         "CreateDBSnapshot",
         "CreateDBSubnetGroup",
         "CreateEventSubscription",
@@ -54975,6 +54986,7 @@
         "RebootDBInstance",
         "RebootDBShardGroup",
         "RegisterDBProxyTargets",
+        "RemoveFromGlobalCluster",
         "RemoveRoleFromDBCluster",
         "RemoveRoleFromDBInstance",
         "RemoveSourceIdentifierFromSubscription",
@@ -55001,7 +55013,7 @@
         "SwitchoverGlobalCluster",
         "SwitchoverReadReplica"
       ],
-      "native_count": 158,
+      "native_count": 160,
       "moto_ops": [],
       "moto_count": 0,
       "delegates_to_moto": false,
@@ -55063,11 +55075,11 @@
       ],
       "tested_count": 54,
       "test_method_count": 326,
-      "impl_pct": 98.13664596273291,
+      "impl_pct": 99.37888198757764,
       "test_pct": 33.54037267080746,
-      "needs_params_count": 1,
+      "needs_params_count": 0,
       "not_implemented_count": 1,
-      "error_count": 1,
+      "error_count": 0,
       "probed": true
     },
     "rdsdata": {
@@ -66257,7 +66269,6 @@
         "DescribeConfigurationSet",
         "DescribeReceiptRule",
         "DescribeReceiptRuleSet",
-        "GetAccountSendingEnabled",
         "GetCustomVerificationEmailTemplate",
         "GetIdentityDkimAttributes",
         "GetIdentityMailFromDomainAttributes",
@@ -66294,7 +66305,7 @@
         "VerifyEmailAddress",
         "VerifyEmailIdentity"
       ],
-      "implemented_count": 55,
+      "implemented_count": 54,
       "native_ops": [
         "CloneReceiptRuleSet",
         "CreateConfigurationSet",
@@ -66315,7 +66326,6 @@
         "DescribeConfigurationSet",
         "DescribeReceiptRule",
         "DescribeReceiptRuleSet",
-        "GetAccountSendingEnabled",
         "GetCustomVerificationEmailTemplate",
         "GetIdentityDkimAttributes",
         "GetIdentityMailFromDomainAttributes",
@@ -66352,7 +66362,7 @@
         "VerifyEmailAddress",
         "VerifyEmailIdentity"
       ],
-      "native_count": 55,
+      "native_count": 54,
       "moto_ops": [],
       "moto_count": 0,
       "delegates_to_moto": false,
@@ -66414,10 +66424,10 @@
       ],
       "tested_count": 54,
       "test_method_count": 90,
-      "impl_pct": 77.46478873239437,
+      "impl_pct": 76.05633802816901,
       "test_pct": 76.05633802816901,
       "needs_params_count": 0,
-      "not_implemented_count": 16,
+      "not_implemented_count": 17,
       "error_count": 0,
       "probed": true
     },
@@ -69567,6 +69577,7 @@
       "implemented_ops": [
         "CreateActivity",
         "CreateStateMachine",
+        "CreateStateMachineAlias",
         "DeleteActivity",
         "DeleteStateMachine",
         "DeleteStateMachineAlias",
@@ -69600,10 +69611,11 @@
         "UpdateStateMachineAlias",
         "ValidateStateMachineDefinition"
       ],
-      "implemented_count": 34,
+      "implemented_count": 35,
       "native_ops": [
         "CreateActivity",
         "CreateStateMachine",
+        "CreateStateMachineAlias",
         "DeleteActivity",
         "DeleteStateMachine",
         "DeleteStateMachineAlias",
@@ -69637,7 +69649,7 @@
         "UpdateStateMachineAlias",
         "ValidateStateMachineDefinition"
       ],
-      "native_count": 34,
+      "native_count": 35,
       "moto_ops": [],
       "moto_count": 0,
       "delegates_to_moto": false,
@@ -69682,11 +69694,11 @@
       ],
       "tested_count": 37,
       "test_method_count": 73,
-      "impl_pct": 91.8918918918919,
+      "impl_pct": 94.5945945945946,
       "test_pct": 100.0,
-      "needs_params_count": 1,
+      "needs_params_count": 0,
       "not_implemented_count": 0,
-      "error_count": 2,
+      "error_count": 0,
       "probed": true
     },
     "sts": {
@@ -73386,22 +73398,22 @@
     "native_services": 158,
     "absent_services": 0,
     "total_aws_operations": 10268,
-    "total_implemented": 9647,
+    "total_implemented": 9653,
     "total_tested": 8355,
     "total_test_methods": 12516,
     "unmapped_test_methods": 438,
-    "impl_pct": 93.95208414491624,
+    "impl_pct": 94.01051811453058,
     "test_pct": 81.3693026879626,
     "probed_services": 158,
-    "needs_params_operations": 260,
-    "not_implemented_operations": 317,
-    "error_operations": 44,
+    "needs_params_operations": 254,
+    "not_implemented_operations": 318,
+    "error_operations": 41,
     "absence": {
       "manifest": "tooling/surface-absence.json",
-      "rows": 317,
+      "rows": 318,
       "classes": {
         "absent_moto_crash_faithful": 1,
-        "absent_no_handler": 234,
+        "absent_no_handler": 235,
         "legacy_gap": 3,
         "modeled_deny": 79
       }
@@ -73409,10 +73421,10 @@
   },
   "source": {
     "endpoint": "http://localhost:4566",
-    "probes_dir": "/home/termag/termag/projects/robotocore/probes",
+    "probes_dir": "/home/termag/termag/projects/robotocore/.worktrees/v1-refresh/probes",
     "generated_by": "scripts/generate_parity_report.py",
     "note": "Destructive operations (TerminateInstances, DeleteBucket, DeleteVpc, \u2026) are excluded from probes \u2014 see SKIP_OPERATIONS in scripts/probe_service.py"
   },
-  "generated_at": "2026-10-25T02:38:14.578922+00:00",
-  "commit": "218d4a83"
+  "generated_at": "2026-10-25T05:20:14.747084+00:00",
+  "commit": "91a001e2"
 }

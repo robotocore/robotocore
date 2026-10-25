@@ -1,6 +1,6 @@
 {
   "service": "cognito-idp",
-  "generated_at": "2026-10-25T01:42:12.617289+00:00",
+  "generated_at": "2026-10-25T05:03:51.101693+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 121,
@@ -163,12 +163,12 @@
     {
       "operation": "CompleteWebAuthnRegistration",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-9462)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-3333)"
     },
     {
       "operation": "ConfirmDevice",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-9462)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-3333)"
     },
     {
       "operation": "ConfirmForgotPassword",
@@ -253,7 +253,7 @@
     {
       "operation": "DeleteUser",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-9462)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-3333)"
     },
     {
       "operation": "DeleteUserAttributes",
@@ -283,7 +283,7 @@
     {
       "operation": "DeleteWebAuthnCredential",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-9462)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-3333)"
     },
     {
       "operation": "DescribeIdentityProvider",
@@ -338,7 +338,7 @@
     {
       "operation": "ForgetDevice",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-9462)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-3333)"
     },
     {
       "operation": "ForgotPassword",
@@ -353,7 +353,7 @@
     {
       "operation": "GetDevice",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-9462)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-3333)"
     },
     {
       "operation": "GetGroup",
@@ -418,7 +418,7 @@
     {
       "operation": "ListDevices",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-9462)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-3333)"
     },
     {
       "operation": "ListGroups",
@@ -478,7 +478,7 @@
     {
       "operation": "ListWebAuthnCredentials",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-9462)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-3333)"
     },
     {
       "operation": "ResendConfirmationCode",
@@ -513,7 +513,7 @@
     {
       "operation": "SetUserMFAPreference",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-9462)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-3333)"
     },
     {
       "operation": "SetUserPoolMfaConfig",
@@ -538,7 +538,7 @@
     {
       "operation": "StartWebAuthnRegistration",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-9462)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-3333)"
     },
     {
       "operation": "StopUserImportJob",
@@ -563,7 +563,7 @@
     {
       "operation": "UpdateDeviceStatus",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-9462)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-3333)"
     },
     {
       "operation": "UpdateGroup",

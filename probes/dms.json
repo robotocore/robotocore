@@ -1,7 +1,7 @@
 {
   "service": "dms",
-  "generated_at": "2026-10-24T17:31:21.756475+00:00",
-  "endpoint": "http://localhost:4794",
+  "generated_at": "2026-10-25T05:03:53.782485+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 114,
     "needs_params": 1,

@@ -1,7 +1,7 @@
 {
   "service": "elb",
-  "generated_at": "2026-10-24T17:31:22.119989+00:00",
-  "endpoint": "http://localhost:4794",
+  "generated_at": "2026-10-25T05:04:30.082729+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 22,
     "needs_params": 0,

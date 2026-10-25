@@ -1,7 +1,7 @@
 {
   "service": "emr",
-  "generated_at": "2026-10-24T17:31:22.987818+00:00",
-  "endpoint": "http://localhost:4794",
+  "generated_at": "2026-10-25T05:04:31.685572+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 56,
     "needs_params": 0,
