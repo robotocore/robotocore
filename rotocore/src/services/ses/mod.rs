@@ -581,7 +581,6 @@ fn handle(req: &Request, op: &str) -> Option<OpResult> {
             empty()
         }
         "SendCustomVerificationEmail" => op_send_custom_verification_email(state, &p),
-        "GetAccountSendingEnabled" => Ok(tag("Enabled", "true")),
         "UpdateAccountSendingEnabled" => empty(),
         // not routed by the moto fork's EmailResponse — canonical 501.
         _ => return Some(Err(SesError::not_implemented(op))),
