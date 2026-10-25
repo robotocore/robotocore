@@ -270,14 +270,18 @@ impl EventsHandler {
 
     fn list_rules(&self, req: &AwsRequest) -> AwsResponse {
         let name_prefix = Self::param_str(req, &["NamePrefix"]);
-        let bus = Self::param_str(req, &["EventBusName"]);
+        // era `_list_rules` defaults the bus to "default"; the twin scanned
+        // every bus' rules when EventBusName was omitted.
+        let bus = match req.params.get("EventBusName").and_then(|v| v.as_str()) {
+            Some(b) if !b.is_empty() => b.to_string(),
+            _ => "default".to_string(),
+        };
         let state = self.get_state(req.account, &req.region);
         let rules: Vec<Value> = state
             .rules
             .read()
             .values()
-            .filter(|r| r.name.starts_with(&name_prefix))
-            .filter(|r| bus.is_empty() || r.bus_name == bus)
+            .filter(|r| r.name.starts_with(&name_prefix) && r.bus_name == bus)
             .map(|r| r.to_value())
             .collect();
         AwsResponse::json(200, json!({ "Rules": rules, "NextToken": Value::Null }))
@@ -1883,6 +1887,51 @@ mod tests {
         let handler = EventsHandler::new();
         let resp = handler.handle(make_req("DeleteRule", json!({"Name": "fp5-ghost-rule"})));
         assert_eq!(resp.status, 200, "deleting a missing rule succeeds (era/moto)");
+    }
+
+    // -- ListRules bus defaulting (F7, agent-221 finding 7) --------------------
+
+    #[test]
+    fn list_rules_without_bus_scans_only_the_default_bus() {
+        let handler = EventsHandler::new();
+        handler.handle(make_req("CreateEventBus", json!({"Name": "fp7-side-bus"})));
+        handler.handle(make_req(
+            "PutRule",
+            json!({"Name": "fp7-default-rule", "EventPattern": "{}"}),
+        ));
+        handler.handle(make_req(
+            "PutRule",
+            json!({"Name": "fp7-side-rule", "EventBusName": "fp7-side-bus", "EventPattern": "{}"}),
+        ));
+        let resp = handler.handle(make_req("ListRules", json!({})));
+        let json = body(&resp);
+        assert_eq!(resp.status, 200);
+        let names: Vec<&str> = json["Rules"]
+            .as_array()
+            .expect("Rules list")
+            .iter()
+            .filter_map(|r| r["Name"].as_str())
+            .collect();
+        assert!(names.contains(&"fp7-default-rule"), "default bus rules listed");
+        assert!(
+            !names.contains(&"fp7-side-rule"),
+            "no EventBusName must not leak rules from other buses"
+        );
+        // And with a prefix.
+        let resp = handler.handle(make_req("ListRules", json!({"NamePrefix": "fp7-def"})));
+        let json = body(&resp);
+        assert_eq!(json["Rules"].as_array().expect("Rules list").len(), 1);
+
+        // Cleanup.
+        handler.handle(make_req(
+            "DeleteRule",
+            json!({"Name": "fp7-default-rule"}),
+        ));
+        handler.handle(make_req(
+            "DeleteRule",
+            json!({"Name": "fp7-side-rule", "EventBusName": "fp7-side-bus"}),
+        ));
+        handler.handle(make_req("DeleteEventBus", json!({"Name": "fp7-side-bus"})));
     }
 
     // -- target ops on missing rules + 5-target cap (F6, agent-221 finding 6) --
