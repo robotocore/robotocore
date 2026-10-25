@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://robotocore.github.io/robotocore/coverage.html">
-    <img src="docs/coverage.svg" alt="AWS service coverage — 158 services, 88% of operations implemented" width="640">
+    <img src="docs/coverage.svg" alt="AWS service coverage — 158 services, 92% of operations implemented" width="640">
   </a>
 </p>
 
@@ -25,7 +25,7 @@
 </p>
 
 <p align="center">
-  Built <em>entirely</em> with AI by <a href="https://github.com/JackDanger">Jack Danger</a> | <a href="https://jackdanger.com/promptlog/">All prompts saved</a> in <a href="prompts/"><code>prompts/</code></a>
+  Built <em>entirely</em> with AI by <a href="https://github.com/JackDanger">Jack Danger</a> | <a href="https://jackdanger.com/promptlog/">All prompts saved</a>
 </p>
 
 ---
@@ -222,7 +222,7 @@ Error modify AMI attributes: operation error EC2: ModifyImageAttribute, https re
 
 An AuthFailure this late in a build means one call path escaped — use the env var rather than adding more plugin fields.
 
-#### Pin the source AMI to EBS-backed
+#### Pin the source AMI, and filter it to EBS-backed
 
 `source_ami_filter` with `most_recent = true` can match an AMI that an earlier test created with **CreateImage**. Packer then hard-fails:
 
@@ -230,9 +230,11 @@ An AuthFailure this late in a build means one call path escaped — use the env 
 The provided source AMI has an invalid root device type.
 ```
 
-Add `root-device-type` and `virtualization-type` to the filter. Verified — unfiltered, `most_recent` selected a created AMI and the build failed; with the filters it selected the stock image `ami-1e749f67` and the build succeeded. This filter is correct against real AWS too, so it is good practice regardless.
+Add `root-device-type` and `virtualization-type` to the filter. Verified — unfiltered, `most_recent` selected a created AMI and the build failed; with the filters it selected the stock image `ami-1e749f67` and the build succeeded. These two filters are correct against real AWS too, so they are good practice regardless.
 
 Created images reporting `standard` is a bug in the twin, fixed separately; the filter is the defense that does not depend on the fix.
+
+Second, pin the stock image's **exact name**. Real AWS and moto glob `*` in filter values; the twin's `name:` filter compares names for literal equality, so the wildcarded pattern `ubuntu-trusty-14.04-amd64-server-*` — the usual real-AWS idiom — matches 0 images and Packer aborts before the build. The exact stock name below matches exactly one image.
 
 ```hcl
 packer {
@@ -253,7 +255,7 @@ source "amazon-ebs" "twin" {
   communicator               = "none"
   source_ami_filter {
     filters = {
-      name                = "ubuntu/images/hvm-ssd/ubuntu-trusty-14.04-amd64-server-*"
+      name                = "ubuntu/images/hvm-ssd/ubuntu-trusty-14.04-amd64-server-20170727"
       root-device-type    = "ebs"
       virtualization-type = "hvm"
     }
@@ -280,7 +282,7 @@ The AMI persists — `aws ec2 describe-images --image-ids ami-...` returns state
 
 **Limits:** `communicator = "none"` is required. Provisioners need a real SSH session to a booted instance; the twin returns instance metadata but runs no guest OS. Use the twin to exercise the build's AWS API path — keypair, security group, run, stop, snapshot, tag, share, terminate — not to test shell provisioning.
 
-The twin ships 1174 stock AMIs, including Canonical's (owner `099720109477`), so `source_ami_filter` resolves against real-looking names and owner IDs.
+The twin ships 1173 stock AMIs, and Canonical's two `ubuntu/images/…` AMIs answer when you filter by owner `099720109477`, so `source_ami_filter` resolves against real-looking names and owner IDs. Two wire-level differences from real AWS to know about: `DescribeImages` responses omit the `OwnerId` member (stock AMIs carry the alias `amazon` instead, and owner filtering still happens server-side, so the `owners` setting above works), and the `name:` filter does not glob wildcards yet — see the pinned exact name above.
 
 ---
 
@@ -288,7 +290,7 @@ The twin ships 1174 stock AMIs, including Canonical's (owner `099720109477`), so
 
 robotocore (named for [botocore](https://github.com/boto/botocore)) is a **digital twin of AWS** — a faithful local replica that responds to real AWS API calls. Point any AWS SDK, CLI, or AI agent at `http://localhost:4566` and it behaves like AWS.
 
-- **158 AWS services, 10,200+ operations** — S3, Lambda, DynamoDB, SQS, SNS, IAM, CloudFormation, and 151 more (88% of all AWS API operations covered)
+- **158 AWS services, 10,200+ operations** — S3, Lambda, DynamoDB, SQS, SNS, IAM, CloudFormation, and 151 more (92% of all AWS API operations covered)
 - **Behavioral fidelity** — Lambda actually executes, SQS has real visibility timeouts, SigV4 auth works
 - **Multi-account** — unlimited isolated AWS accounts, all in one container
 - **Single container** — one `docker run` command, no config, no cloud
@@ -491,7 +493,7 @@ cfn    = boto3.client("cloudformation", **SESSION)
 
 ### What works
 
-Every operation of the 92 native services works (the AWS API surface listed above). Services without a Rust backend yet answer `501 NotImplemented`. The native services add behavioral fidelity on top of wire correctness: Lambda execution, SQS visibility timeouts, SigV4 auth, IAM policy evaluation, CloudFormation resource orchestration.
+All 158 services are answered natively in-process — there are no backend-less services left, so no service-level `501 NotImplemented`. At the operation level the twin covers 92% of the AWS surface (9,458 of 10,268 operations); a not-yet-operational operation answers `501 NotImplemented`. The native services add behavioral fidelity on top of wire correctness: Lambda execution, SQS visibility timeouts, SigV4 auth, IAM policy evaluation, CloudFormation resource orchestration.
 
 ### Health check
 
@@ -564,7 +566,7 @@ robotocore is a Rust (axum) server. Requests arrive on port 4566 and are answere
 │  │   ▼                         ▼               │  │
 │  │  Gateway core handlers    rotocore crate    │
 │  │  (src/core/services/,     (rotocore/src/,   │
-│  │   crates/*)                74 far services) │
+│  │   crates/*)                141 far services)│
 │  │                                             │  │
 │  │  In-Memory State (per-account, per-region)  │  │
 │  └─────────────────────────────────────────────┘  │
@@ -575,7 +577,7 @@ robotocore is a Rust (axum) server. Requests arrive on port 4566 and are answere
 1. AWS SDK sends a signed HTTP request to `localhost:4566`
 2. Router identifies the service from `Authorization` header, `X-Amz-Target`, URL path, or `Host` header
 3. Account ID is parsed from the `Credential` field of the `Authorization` header (the 12-digit access key ID)
-4. A native backend handles the request, or — for services not ported yet — the gateway answers `501 NotImplemented`
+4. A native backend handles every request; for an individual operation that is not implemented yet, the gateway answers `501 NotImplemented`
 5. Response is serialized in the correct AWS wire format (query, JSON, REST-XML, etc.)
 
 ---
@@ -664,7 +666,7 @@ Contributions are welcome. The project is built on Moto — when we find a bug i
 
 See [CLAUDE.md](CLAUDE.md) for detailed architecture notes and conventions (readable by both humans and AI coding agents).
 
-The [`prompts/`](prompts/) directory contains a log of the AI prompts and reasoning used to build this project — a [prompt log](https://jackdanger.com/promptlog/). If you're reviewing a change and want to understand *why* a particular approach was taken (not just what the code does), that's the place to look. If you're an agent picking up this codebase, it's also a useful record of which patterns have been tried, what worked, and what didn't.
+The AI prompts and reasoning used to build this project are logged at [jackdanger.com/promptlog](https://jackdanger.com/promptlog/). If you're reviewing a change and want to understand *why* a particular approach was taken (not just what the code does), that's the place to look. It's also a useful record for agents picking up this codebase — which patterns have been tried, what worked, and what didn't.
 
 ---
 
