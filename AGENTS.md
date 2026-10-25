@@ -313,11 +313,15 @@ the running server can actually execute:
   reachable from the server; the compat suites for ruby/java/dotnet are
   then served for real.
 
-The Docker image model mirrors this: the default image stays tiny
-(distroless, local python-family runtimes only), a `runtimes` target bakes
-node+ruby into the server's runtime, and a `java-and-dotnet` variant target
-adds OpenJDK 21 + .NET SDK 8 (`docker build --target java-and-dotnet .`,
-`docker compose --profile java-dotnet up`).
+The Docker image model mirrors this: the default image is a distroless
+python3 runner (`gcr.io/distroless/python3-debian12`, bookworm — carries
+`/usr/bin/python3`, Python 3.11) so the in-process python family really runs
+from the image itself (158MB, up from 119MB when the base was python-free
+and python-family invocations failed with `Runtime.InternalError`); a
+`runtimes` target bakes node+ruby into the server's runtime (node family
+executes for real, 402MB, node v20.19.2 in trixie); a `java-and-dotnet`
+variant target adds OpenJDK 21 + .NET SDK 8 (`docker build --target
+java-and-dotnet .`, `docker compose --profile java-dotnet up`).
 
 ### Secrets Manager
 

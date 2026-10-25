@@ -1,14 +1,15 @@
 # syntax=docker/dockerfile:1
-# Robotocore — pure-Rust AWS emulator image (no Python).
+# Robotocore — AWS twin: pure-Rust gateway on a distroless python3 runner.
 #
-# Stage 1 builds the `robotocore-rust` binary with cargo. The distroless
-# stage (`runtime`, kept LAST: plain `docker build .` emits the final stage)
-# ships only the stripped binary plus a static busybox used solely for the
-# HTTP healthcheck (distroless has no shell, curl or wget of its own). Two
-# optional variant stages are declared above it — `runtimes` (same runner
-# on a Debian-slim base + Node.js/Ruby on PATH) and `java-and-dotnet`
-# (runtimes + OpenJDK 21 + .NET SDK 8) — neither is part of an untargeted
-# build; build them explicitly with `--target`.
+# Stage 1 builds the `robotocore-rust` binary with cargo. The default stage
+# (`runtime`, kept LAST: plain `docker build .` emits the final stage) is a
+# distroless python3 base (bookworm) shipping the stripped binary, a python
+# interpreter for the in-process python-family Lambda executor, and a static
+# busybox used solely for the HTTP healthcheck (distroless has no shell,
+# curl or wget of its own). Two optional variant stages are declared above
+# it — `runtimes` (same runner on a Debian-slim base + Node.js/Ruby on
+# PATH) and `java-and-dotnet` (runtimes + OpenJDK 21 + .NET SDK 8) — neither
+# is part of an untargeted build; build them explicitly with `--target`.
 
 FROM rust:1.99-slim-bookworm AS builder
 
@@ -56,7 +57,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Same stripped binary the distroless image ships.
 COPY --from=builder /app/target/release/robotocore-rust /server/robotocore-rust
-# Static busybox binary, only for the healthcheck below.
+# Same glibc busybox:1.36.1 the stage always copied: the trixie base's
+# glibc (>= 2.38) satisfies the dynamic /bin/busybox artifact, unlike the
+# bookworm default stage's musl busybox (see below).
 COPY --from=busybox:1.36.1 /bin/busybox /busybox
 
 EXPOSE 4566
@@ -100,15 +103,39 @@ ENV JAVA_HOME=/usr/lib/jvm/default-java
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
 ENV DOTNET_NOLOGO=1
 
-# ---- default stage: tiny distroless image (keep exactly as-is) ----
-FROM gcr.io/distroless/cc AS runtime
+# ---- default stage: distroless python3 runner (bookworm) ----
+# The python-wise default: base it on gcr.io/distroless/python3-debian12 so
+# the in-process Lambda shim (crates/lambda/src/runtime.rs find_python3 -> a
+# bare `python3` on PATH) can actually execute python-family handlers from
+# the image itself — the behavior the default image claims on
+# /_robotocore/runtimes (available includes "python") and the example in
+# AGENTS.md (create+invoke a python lambda straight from `docker run`).
+# The base is bookworm — the same distro line the builder's
+# rust:1.99-slim-bookworm compiles against (so the binary links against the
+# same ELF interpreter/libc set it was built with; verified live) — and
+# carries /usr/bin/python3 (alias to python3.11) plus the libpython/ssl
+# runtime libs, while staying distroless: no shell, no package manager.
+# The only executables are python, our server binary and the healthcheck
+# busybox below.
+FROM gcr.io/distroless/python3-debian12 AS runtime
 
 ARG ROBOTOCORE_VERSION=1.0.0
 ENV ROBOTOCORE_VERSION=${ROBOTOCORE_VERSION}
+# Pin the same PATH the other stages spell out so the bare-name lookups in
+# the exec paths (crates/lambda find_python3, server.rs which()) resolve the
+# same on `docker run` and `docker exec` — this distroless base defines no
+# PATH in its config.
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 COPY --from=builder /app/target/release/robotocore-rust /server/robotocore-rust
-# Static busybox binary, only for the healthcheck below.
-COPY --from=busybox:1.36.1 /bin/busybox /busybox
+# Healthcheck busybox sourced from the `-musl` tag on purpose: on aarch64
+# the busybox:1.36.1 glibc artifact is NOT static (/bin/busybox requires
+# glibc >= 2.38), which a bookworm-class base like this one (or a
+# bookworm-pinned cc) cannot satisfy — the old default only served the
+# healthcheck because untagged `gcr.io/distroless/cc` currently tracks
+# trixie (glibc 2.41). The musl variant is truly static and runs on every
+# base and arch.
+COPY --from=busybox:1.36.1-musl /bin/busybox /busybox
 
 EXPOSE 4566
 
