@@ -17,6 +17,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: recursive
       - uses: actions/setup-node@v6
         with:
           node-version: 20
@@ -34,8 +36,8 @@ jobs:
       - run: uv sync
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
-      - name: Start rust server (rotocore native)
-        run: RUST_PORT=4566 LOG_PREFIX=nightly bash scripts/start_parity_servers.sh
+      - name: Start rust server (+ moto sidecar)
+        run: RUST_ONLY=1 RUST_PORT=4566 LOG_PREFIX=nightly bash scripts/start_parity_servers.sh
       - name: Run all IaC tests
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -51,7 +53,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: nightly-server-log-iac
-          path: /tmp/nightly_rust.log
+          path: |
+            /tmp/nightly_rust.log
+            /tmp/nightly_sidecar.log
 
   full-parity:
     name: "nightly: parity + compatibility (rust-only)"
@@ -62,12 +66,14 @@ jobs:
       LOG_PREFIX: parity
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: recursive
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
       - run: uv sync
-      - name: Start rust server (rotocore native)
-        run: LOG_PREFIX=parity bash scripts/start_parity_servers.sh
+      - name: Start rust server (+ moto sidecar)
+        run: RUST_ONLY=1 LOG_PREFIX=parity bash scripts/start_parity_servers.sh
       - name: Run parity harness (rust-only)
         run: uv run python scripts/harness/parity.py --rust-only
 

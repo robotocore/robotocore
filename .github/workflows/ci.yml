@@ -38,7 +38,7 @@ jobs:
             echo ""
             echo "  Add a file to prompts/YYYYMMDD-HHMMSS-<slug>.md documenting"
             echo "  the human prompts and key assistant decisions in this PR."
-            echo "  See .claude/skills/promptlog.md for format."
+            echo "  See prompts/PROMPTLOG.md for format."
             exit 1
           fi
           echo "✓ Prompt log present: $PROMPTS"
@@ -79,12 +79,14 @@ jobs:
       LOG_PREFIX: ci
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: recursive
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
       - run: uv sync
       - name: Start rust server (rotocore native)
-        run: RUST_PORT=4566 LOG_PREFIX=ci bash scripts/start_parity_servers.sh
+        run: RUST_ONLY=1 RUST_PORT=4566 LOG_PREFIX=ci bash scripts/start_parity_servers.sh
       - name: Run parity harness (rust-only)
         run: uv run python scripts/harness/parity.py --rust-only
       - name: Upload server logs
@@ -92,7 +94,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-logs-compat-rust
-          path: /tmp/ci_rust.log
+          path: |
+            /tmp/ci_rust.log
+            /tmp/ci_sidecar.log
 
   # ── pytest rigs against the rust server ───────────────────────────────────
   # The python driver stays as THE test rig; the server under test is the
@@ -117,6 +121,8 @@ jobs:
             pattern: "tests/compatibility/test_[s-z]*.py"
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: recursive
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
@@ -124,7 +130,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
       - name: Start rust server (rotocore native)
-        run: RUST_PORT=4566 LOG_PREFIX=ci bash scripts/start_parity_servers.sh
+        run: RUST_ONLY=1 RUST_PORT=4566 LOG_PREFIX=ci bash scripts/start_parity_servers.sh
       - name: Run per-service compatibility tests (${{ matrix.shard }})
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -142,7 +148,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-logs-compat-${{ matrix.shard }}
-          path: /tmp/ci_rust.log
+          path: |
+            /tmp/ci_rust.log
+            /tmp/ci_sidecar.log
 
   # Roll-up so the "compatibility-tests" branch protection rule resolves.
   # The matrix shards report as "compat: a-g" etc., not "compatibility-tests".
@@ -164,6 +172,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: recursive
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
@@ -171,7 +181,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
       - name: Start rust server (rotocore native)
-        run: RUST_PORT=4566 LOG_PREFIX=ci bash scripts/start_parity_servers.sh
+        run: RUST_ONLY=1 RUST_PORT=4566 LOG_PREFIX=ci bash scripts/start_parity_servers.sh
       - name: Run cross-service integration tests
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -190,7 +200,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-logs-cross-service
-          path: /tmp/ci_rust.log
+          path: |
+            /tmp/ci_rust.log
+            /tmp/ci_sidecar.log
 
   iac-tests:
     name: "iac: CloudFormation + SAM + Serverless"
@@ -198,6 +210,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: recursive
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
@@ -205,7 +219,7 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
       - name: Start rust server (rotocore native)
-        run: RUST_PORT=4566 LOG_PREFIX=ci bash scripts/start_parity_servers.sh
+        run: RUST_ONLY=1 RUST_PORT=4566 LOG_PREFIX=ci bash scripts/start_parity_servers.sh
       - name: Run IaC tests (CFN, SAM, Serverless)
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -226,7 +240,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-logs-iac
-          path: /tmp/ci_rust.log
+          path: |
+            /tmp/ci_rust.log
+            /tmp/ci_sidecar.log
 
   # ── Docker + final gates ───────────────────────────────────────────────────
 

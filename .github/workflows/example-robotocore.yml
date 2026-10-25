@@ -15,6 +15,7 @@ jobs:
         id: robotocore
         uses: ./.github/actions/setup-robotocore
         with:
+          services: "s3,sqs,dynamodb,lambda"
           wait-timeout: "60"
 
       - name: Verify Robotocore is running
@@ -51,6 +52,7 @@ jobs:
         uses: ./.github/actions/setup-robotocore
         with:
           iam-enforcement: "true"
+          persistence: "true"
           configuration: |
             DEBUG=1
             AUDIT_LOG_SIZE=500

@@ -23,12 +23,14 @@ jobs:
       artifact-id: ${{ steps.upload.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
 
-      - run: uv sync
+      - run: uv sync --extra dev
 
       - name: Build site
         run: |
