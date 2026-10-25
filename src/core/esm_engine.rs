@@ -1045,12 +1045,10 @@ fn filter_match(pattern: &Value, doc: &Value) -> bool {
                 Some(target) => filter_match_leaf(sub, &target),
                 // Absent key: only an "exists": false list passes (the era
                 // filter never matched other shapes against missing keys).
-                None => sub
-                    .as_array()
-                    .is_some_and(|list| {
-                        list.iter()
-                            .any(|pv| pv.get("exists").and_then(Value::as_bool) == Some(false))
-                    }),
+                None => sub.as_array().is_some_and(|list| {
+                    list.iter()
+                        .any(|pv| pv.get("exists").and_then(Value::as_bool) == Some(false))
+                }),
             }
         }),
         _ => filter_match_leaf(pattern, doc),
@@ -1299,10 +1297,15 @@ mod tests {
                 "count": {"DataType": "Number", "StringValue": "7"},
             },
         });
-        let record = sqs_record(&test_mapping(), &msg,
-            "arn:aws:sqs:us-east-1:123456789012:q", "us-east-1");
+        let record = sqs_record(
+            &test_mapping(),
+            &msg,
+            "arn:aws:sqs:us-east-1:123456789012:q",
+            "us-east-1",
+        );
         assert_eq!(
-            record["attributes"]["ApproximateReceiveCount"], json!("3"),
+            record["attributes"]["ApproximateReceiveCount"],
+            json!("3"),
             "the wire receive count must flow into the event verbatim"
         );
         // Wire rows pass through; crudely-typed scalars wrap into a String row
@@ -1321,8 +1324,12 @@ mod tests {
     fn sqs_record_defaults_receive_count_without_wire_attributes() {
         // Bridged messages (no receive path) keep moto's default of 1.
         let msg = msg("m2");
-        let record = sqs_record(&test_mapping(), &msg,
-            "arn:aws:sqs:us-east-1:123456789012:q", "us-east-1");
+        let record = sqs_record(
+            &test_mapping(),
+            &msg,
+            "arn:aws:sqs:us-east-1:123456789012:q",
+            "us-east-1",
+        );
         assert_eq!(record["attributes"]["ApproximateReceiveCount"], json!("1"));
         assert_eq!(record["messageAttributes"], json!({}));
     }
@@ -1362,7 +1369,10 @@ mod tests {
 
         // exists operator: present keys match with exists:true; an absent
         // key passes only through an exists:false list (era filter rule).
-        assert!(filter_apply("{\"body\": {\"kind\": [{\"exists\": true}]}}", &doc_with_body));
+        assert!(filter_apply(
+            "{\"body\": {\"kind\": [{\"exists\": true}]}}",
+            &doc_with_body
+        ));
         assert!(filter_apply(
             "{\"body\": {\"missing\": [{\"exists\": false}]}}",
             &doc_with_body
@@ -1373,8 +1383,14 @@ mod tests {
         ));
 
         // plain membership still works after the operator port.
-        assert!(filter_apply("{\"body\": {\"kind\": [\"x\"]}}", &doc_with_body));
-        assert!(!filter_apply("{\"body\": {\"kind\": [\"y\"]}}", &doc_with_body));
+        assert!(filter_apply(
+            "{\"body\": {\"kind\": [\"x\"]}}",
+            &doc_with_body
+        ));
+        assert!(!filter_apply(
+            "{\"body\": {\"kind\": [\"y\"]}}",
+            &doc_with_body
+        ));
     }
 
     #[test]
@@ -1383,9 +1399,15 @@ mod tests {
             "MessageId": "m", "Body": "{\"a\": 1}"
         }));
         // Absent key + exists:false list → match (era _match_pattern).
-        assert!(filter_apply("{\"body\": {\"b\": [{\"exists\": false}]}}", &doc));
+        assert!(filter_apply(
+            "{\"body\": {\"b\": [{\"exists\": false}]}}",
+            &doc
+        ));
         // Present key + exists:false → no match.
-        assert!(!filter_apply("{\"body\": {\"a\": [{\"exists\": false}]}}", &doc));
+        assert!(!filter_apply(
+            "{\"body\": {\"a\": [{\"exists\": false}]}}",
+            &doc
+        ));
     }
 
     // -- guarded poll loop (F10) ----------------------------------------------

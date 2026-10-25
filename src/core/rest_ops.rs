@@ -7,7 +7,11 @@ pub fn lambda_rest_ops() -> &'static [(&'static str, &'static str, &'static str)
             "/2015-03-31/functions/{FunctionName}/invocations",
             "Invoke",
         ),
-        ("POST", "/2015-03-31/functions/{FunctionName}/invoke-async/", "InvokeAsync"),
+        (
+            "POST",
+            "/2015-03-31/functions/{FunctionName}/invoke-async/",
+            "InvokeAsync",
+        ),
         (
             "GET",
             "/2015-03-31/functions/{FunctionName}/configuration",
@@ -63,9 +67,9 @@ mod tests {
     /// and introspection naming aligned for requests resolved here).
     #[test]
     fn invoke_row_resolves_for_post_invocations() {
-        let row = lambda_rest_ops()
-            .iter()
-            .find(|(m, u, _)| *m == "POST" && *u == "/2015-03-31/functions/{FunctionName}/invocations");
+        let row = lambda_rest_ops().iter().find(|(m, u, _)| {
+            *m == "POST" && *u == "/2015-03-31/functions/{FunctionName}/invocations"
+        });
         assert_eq!(row.map(|r| r.2), Some("Invoke"));
     }
 }
