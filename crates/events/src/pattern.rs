@@ -143,8 +143,13 @@ pub fn list_match(pattern_values: &[Value], event_value: &Value) -> bool {
 fn anything_but(excluded: &Value, event_value: &Value) -> bool {
     match event_value {
         Value::Array(arr) => match excluded {
-            Value::Array(ex) => !arr.iter().any(|v| ex.contains(v)),
-            _ => !arr.iter().any(|v| v == excluded),
+            // moto evaluates the exclusion per element (`any(evaluate(i))`):
+            // an array event value matches when ANY element differs. The
+            // previous all-elements-differ reading inverted the operator
+            // (era parity: `if not any(v in excluded for v in event_value)`
+            // — era's scalar branch adds the residual case below).
+            Value::Array(ex) => arr.iter().any(|v| !ex.contains(v)),
+            _ => arr.iter().any(|v| v != excluded),
         },
         _ => match excluded {
             Value::Object(obj) => {
@@ -225,5 +230,25 @@ mod tests {
         assert!(matches_pattern(&pattern, &json!({"detail": {}})));
         assert!(matches_pattern(&pattern, &json!({"detail": {"state": null}})));
         assert!(!matches_pattern(&pattern, &json!({"detail": {"state": "on"}})));
+    }
+
+    // -- anything-but on array values (F2, agent-221 finding 2) ----------------
+
+    #[test]
+    fn anything_but_matches_arrays_with_any_excluded_element() {
+        let pattern = json!({"detail": {"state": [{"anything-but": ["a"]}]}});
+        // moto/event-bridge: any element differing ⇒ match.
+        assert!(matches_pattern(&pattern, &json!({"detail": {"state": ["a", "b"]}})));
+        assert!(matches_pattern(&pattern, &json!({"detail": {"state": ["b", "c"]}})));
+        // Every element excluded: no match.
+        assert!(!matches_pattern(&pattern, &json!({"detail": {"state": ["a"]}})));
+        assert!(!matches_pattern(&pattern, &json!({"detail": {"state": ["a", "a"]}})));
+    }
+
+    #[test]
+    fn anything_but_scalar_exclusion_on_arrays() {
+        let pattern = json!({"detail": {"state": [{"anything-but": "a"}]}});
+        assert!(matches_pattern(&pattern, &json!({"detail": {"state": ["a", "b"]}})));
+        assert!(!matches_pattern(&pattern, &json!({"detail": {"state": ["a", "a"]}})));
     }
 }
