@@ -3,12 +3,14 @@
 //! moto's Kinesis backend pushes its stream metrics straight into the
 //! CloudWatch backend of the same account/region (`moto/kinesis/models.py
 //! ::KinesisBackend._send_stream_metrics` calls `cloudwatch_backends[..]
-//! .put_metric_data(...)`). The twin's crates stay acyclic — the kinesis
-//! crate cannot depend on this one — so the live handler registers here
-//! when it is constructed (first registration wins, mirroring the
-//! events-hook rule in `src/core/cross_service.rs`) and other crates push
-//! datapoints through [`ingest_kinesis_put_metrics`]. Without a handler in
-//! the process the ingest is a no-op (unit tests without CloudWatch).
+//! .put_metric_data(...)`). Dependency direction: cloudwatch must not
+//! depend on its producers (kinesis depends on this crate since commit
+//! 542dee75), so the serving handler registers here when it is
+//! constructed (first registration wins, mirroring the events-hook rule
+//! in `src/core/cross_service.rs`) and cross-crate ingest targets the
+//! live store: producers push datapoints through
+//! [`ingest_kinesis_put_metrics`]. Without a handler in the process the
+//! ingest is a no-op (unit tests without CloudWatch).
 
 use parking_lot::RwLock;
 use serde_json::json;
@@ -31,6 +33,29 @@ pub fn register_handler(handler: &Arc<CloudwatchHandler>) {
     if reg.is_none() {
         *reg = Some(Arc::clone(handler));
     }
+}
+
+/// Test helper: unbind the process-global registry so a test can re-bind
+/// its own handler. Not `#[cfg(test)]` on purpose — kinesis's tests need
+/// it too and run against this crate built without `cfg(test)`.
+///
+/// Contract: call it as the first line of any test that claims the
+/// registry, and re-register immediately after (`DefaultCloudwatchHandler::
+/// new()` auto-registers). Tests relying on the binding must be sole
+/// registrants in their binary — other tests only ever push datapoints
+/// through the registered handler (never reset or rebind), so binding
+/// order decides which handler sees those datapoints, and per-account
+/// scoping keeps the assertions independent.
+pub fn reset_registry() {
+    *registered().write() = None;
+}
+
+/// Test helper: whatever handler the registry currently holds (if any),
+/// for cross-crate tests that assert against the live ingest target.
+/// Not `#[cfg(test)]` — same reason as [`reset_registry`].
+#[doc(hidden)]
+pub fn test_registered_handler() -> Option<Arc<CloudwatchHandler>> {
+    registered().read().clone()
 }
 
 /// Push one datapoint set into the live handler the way a real PutMetricData
@@ -58,7 +83,7 @@ pub fn ingest_kinesis_put_metrics(
     incoming_records: u64,
 ) {
     let dimensions = json!([{ "Name": "StreamName", "Value": stream_name }]);
-    let _ = put_metric_data(AwsRequest {
+    let resp = put_metric_data(AwsRequest {
         service: "cloudwatch".to_string(),
         operation: "PutMetricData".to_string(),
         account,
@@ -82,6 +107,14 @@ pub fn ingest_kinesis_put_metrics(
         }),
         body: bytes::Bytes::new(),
     });
+    if resp.status != 200 {
+        // This crate carries no `tracing` dependency, so — like the
+        // lambda/sqs crates — surface the dropped ingest on stderr.
+        eprintln!(
+            "cloudwatch::bridge: kinesis ingest not accepted (status={}, body={})",
+            resp.status, resp.body
+        );
+    }
 }
 
 #[cfg(test)]
@@ -106,8 +139,10 @@ mod tests {
 
     #[test]
     fn kinesis_ingest_lands_in_the_cloudwatch_store() {
-        // The registration binds to the first handler in the process; using
-        // the shared handler keeps the datapoints visible to this test.
+        // The registry is process-global and first-wins; reset it so this
+        // test binds its own handler no matter which test ran before it in
+        // this binary (sole registrant contract above).
+        reset_registry();
         let handler = Arc::new(CloudwatchHandler::new());
         register_handler(&handler);
 
