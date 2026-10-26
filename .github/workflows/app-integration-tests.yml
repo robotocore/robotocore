@@ -36,16 +36,14 @@ jobs:
           - user_auth
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: recursive
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
       - run: uv sync
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
-      - name: Start rust server (+ moto sidecar)
-        run: RUST_ONLY=1 RUST_PORT=4566 LOG_PREFIX=app bash scripts/start_parity_servers.sh
+      - name: Start rust server (rotocore native)
+        run: RUST_PORT=4566 LOG_PREFIX=app bash scripts/start_parity_servers.sh
       - name: Run app integration tests
         env:
           AWS_ENDPOINT_URL: http://localhost:4566
@@ -64,6 +62,4 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-log-${{ matrix.app }}
-          path: |
-            /tmp/app_rust.log
-            /tmp/app_sidecar.log
+          path: /tmp/app_rust.log

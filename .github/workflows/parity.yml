@@ -21,15 +21,13 @@ jobs:
       LOG_PREFIX: parity
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: recursive
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
       - name: Install test environment
         run: uv sync
-      - name: Start rust server (+ moto sidecar)
-        run: RUST_ONLY=1 LOG_PREFIX=parity bash scripts/start_parity_servers.sh
+      - name: Start rust server (rotocore native)
+        run: LOG_PREFIX=parity bash scripts/start_parity_servers.sh
       # Exit code 2 = expectations drift vs .parity/expectations_current.json
       # (any non-zero exit fails the job). Promote new baselines locally with
       # `--update-expectations` from a clean run, never in CI.
