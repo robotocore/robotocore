@@ -10,7 +10,7 @@ pub mod protocol;
 pub mod scheduler;
 pub mod snapshot;
 
-pub use bridge::{hook, register_hook};
+pub use bridge::{emit_cloudtrail_api_call, hook, register_hook};
 pub use handler::publish_event_to_bus;
 pub use protocol::{AwsRequest, AwsResponse};
 

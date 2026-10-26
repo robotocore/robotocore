@@ -324,6 +324,29 @@ pub fn register(handlers: &NativeHandlers) {
         }),
     );
 
+    // CloudTrail management events: successful mutating API calls on the
+    // emit-enabled services publish the standard "AWS API Call via
+    // CloudTrail" envelope onto the default bus (issue #347). The producers
+    // live in rotocore's service handlers, which cannot depend on the events
+    // crate directly, so the emit closes over the events handler the same way
+    // the target hooks above do — the registry indirection is the
+    // gateway-populated seam (`rotocore::cloudtrail_emit`).
+    rotocore::cloudtrail_emit::register_emitter(Arc::new(
+        |account: u64,
+         region: &str,
+         event_source: &str,
+         event_name: &str,
+         request_parameters_json: &str| {
+            events::bridge::emit_cloudtrail_api_call(
+                account,
+                region,
+                event_source,
+                event_name,
+                request_parameters_json,
+            );
+        },
+    ));
+
     // Event source mappings are driven by the gateway's own ESM engine
     // (src/core/esm_engine.rs), started from the binary entrypoint — no
     // additional poller is needed here.

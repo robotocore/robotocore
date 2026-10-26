@@ -17,6 +17,11 @@ pub mod proto;
 pub mod services;
 pub mod store;
 
+// CloudTrail management-event emit indirection (issue #347): the gateway
+// binds the events crate's publisher here; service handlers fire through
+// `cloudtrail_emit::emit_cloudtrail_api_call`.
+pub mod cloudtrail_emit;
+
 use bytes::Bytes;
 
 /// A request routed into rotocore (mirrors the moto sidecar's inputs).
