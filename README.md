@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://robotocore.github.io/robotocore/coverage.html">
-    <img src="docs/coverage.svg" alt="AWS service coverage — 158 services, 94% of operations implemented" width="640">
+    <img src="docs/coverage.svg" alt="AWS service coverage — 160 services, 96% of operations implemented" width="640">
   </a>
 </p>
 
@@ -16,7 +16,7 @@
 <p align="center">
   <a href="#quick-start">Quick Start</a> ·
   <a href="#what-is-robotocore">What is robotocore?</a> ·
-  <a href="#supported-services">158 Services</a> ·
+  <a href="#supported-services">160 Services</a> ·
   <a href="#accounts--regions">Accounts & Regions</a> ·
   <a href="#infrastructure-as-code">Infrastructure as Code</a> ·
   <a href="#for-ai-agents">For AI Agents</a> ·
@@ -290,7 +290,7 @@ The twin ships 1173 stock AMIs, and Canonical's two `ubuntu/images/…` AMIs ans
 
 robotocore (named for [botocore](https://github.com/boto/botocore)) is a **digital twin of AWS** — a faithful local replica that responds to real AWS API calls. Point any AWS SDK, CLI, or AI agent at `http://localhost:4566` and it behaves like AWS.
 
-- **158 AWS services, 10,268 operations** — S3, Lambda, DynamoDB, SQS, SNS, IAM, CloudFormation, and 152 more (94% of the AWS API surface covered)
+- **160 AWS services, 10,391 operations** — S3, Lambda, DynamoDB, SQS, SNS, IAM, CloudFormation, and 154 more (95.6% of the AWS API surface covered)
 - **Behavioral fidelity** — Lambda actually executes, SQS has real visibility timeouts, SigV4 auth works
 - **Multi-account** — unlimited isolated AWS accounts, all in one container
 - **Single container** — one `docker run` command, no config, no cloud
@@ -302,14 +302,14 @@ Built by [Jack Danger](https://github.com/jackdanger). Entirely in Rust — the 
 
 ## Supported Services
 
-**158 services**, every one answered natively in-process — there is no sidecar, proxy, or fallback runtime left. The running twin is the authoritative map:
+**160 services**, every one answered natively in-process — there is no sidecar, proxy, or fallback runtime left. The running twin is the authoritative map:
 
 ```bash
 curl -s http://localhost:4566/_robotocore/services | python3 -c "
 import json, sys, collections
 s = json.load(sys.stdin)['services']
 print(len(s), dict(collections.Counter(x['status'] for x in s)))"
-# 158 {'native': 158}
+# 160 {'native': 160}
 ```
 
 What "native" means in practice: most surface areas are ported moto backends with full behavioral fidelity recorded against the pinned moto fork (`probes/` corpus, 9.5k+ op regimes; every deny is a recorded decision — see `tooling/surface-absence.json`).
@@ -493,7 +493,7 @@ cfn    = boto3.client("cloudformation", **SESSION)
 
 ### What works
 
-All 158 services are answered natively in-process — there are no backend-less services left, so no service-level `501 NotImplemented`. At the operation level the twin covers 94% of the AWS surface (9,676 of 10,268 operations; every remaining op is a recorded, live-verified 501 deny); a not-yet-operational operation answers `501 NotImplemented`. The native services add behavioral fidelity on top of wire correctness: Lambda execution, SQS visibility timeouts, SigV4 auth, IAM policy evaluation, CloudFormation resource orchestration.
+All 160 services are answered natively in-process — there are no backend-less services left, so no service-level `501 NotImplemented`. At the operation level the twin covers 95.6% of the AWS surface (9,929 of 10,391 operations; every remaining op is a recorded, live-verified 501 deny); a not-yet-operational operation answers `501 NotImplemented`. The native services add behavioral fidelity on top of wire correctness: Lambda execution, SQS visibility timeouts, SigV4 auth, IAM policy evaluation, CloudFormation resource orchestration.
 
 ### Health check
 

@@ -11,9 +11,9 @@ under *Changelog discipline*.
 
 The Python 2.x line is retired: robotocore 2.0 is a **pure-Rust twin**
 (axum gateway + the `rotocore` crate) — the server ships no Python, no
-moto sidecar, and no second process. Nothing is bridged: 158 of 158
+moto sidecar, and no second process. Nothing is bridged: 160 of 160
 registered services answer natively with moto-fidelity recorded per op
-(9,893 working of 10,268 botocore ops; 340 denies — every deny is a
+(9,929 implemented of 10,391 botocore ops; 406 denies — every deny is a
 recorded decision in `tooling/surface-absence.json`).
 
 ### Bedrock AgentCore (issue #371, 2026-10-26)
@@ -113,6 +113,11 @@ recorded decision in `tooling/surface-absence.json`).
   BatchCheckLayerAvailability; `GetDownloadUrlForLayer` mirrors moto's
   `NotImplementedError` absence with the 501 genuine-gap envelope), and
   the round-2 lanes `fx2-*`; plus this documentation/comment truth lane.
+- CloudTrail → EventBridge events for elbv2/autoscaling/ec2 mutations
+  (#347).
+- SSM SendCommand InstanceIds records per-instance invocations (#347).
+- Cognito per-pool JWKS, RS256-signed tokens and OIDC discovery (#347).
+- x-era Powertools redundant-parentheses fix (#283, verified at tip).
 
 ### Documented divergences in 2.0.0
 

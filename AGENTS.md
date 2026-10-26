@@ -219,7 +219,7 @@ for x in s: print(f\"{x['name']:32} {x['status']}\")
 
 **Native providers** (a Rust backend answers in-process): 160 of 160 registered services — athena, cloudfront, connect, ec2, elb, elbv2, emr, glue, iot, redshift, the bedrock-agentcore + bedrock-agentcore-control pair, and the whole list the endpoint above prints, including the gateway core's S3, SQS, SNS, DynamoDB, Lambda, IAM, KMS, SSM, Secrets Manager, Step Functions, STS, CloudWatch, CloudWatch Logs, EventBridge, Kinesis, Firehose, ECR, ECS, API Gateway v1/v2, AppSync, Batch, Cognito User Pools, Config, SES v2, Support, X-Ray.
 
-At the operation level the twin covers 94% of the AWS surface (9,676 of 10,268 operations per the parity report); an operation that is not implemented answers `501 NotImplemented`, which the gateway reports as genuine absence rather than an error.
+At the operation level the twin covers 95.6% of the AWS surface (9,929 of 10,391 operations per the parity report); an operation that is not implemented answers `501 NotImplemented`, which the gateway reports as genuine absence rather than an error.
 
 ---
 
@@ -458,7 +458,7 @@ print(d['counts'])
 m = {o['operation']: o['status'] for o in d['operations']}
 print(m['RunInstances'], m['CreateImage'])
 "
-# {'working': 449, 'needs_params': 6, 'not_implemented': 278, '500_error': 19}
+# {'working': 752, 'needs_params': 0, 'not_implemented': 0, '500_error': 0, 'timeout': 0}
 # working working
 ```
 
