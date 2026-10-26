@@ -13,12 +13,19 @@
 //!   request tags match.
 //! - `ImportCertificate` keeps the caller's PEM and answers GetCertificate
 //!   with `chain + AWS_ROOT_CA`.
+//! - Certificates without a CN import fine (moto 5.2.2 #9912); with the PEM
+//!   unparsed, `DomainName`/`Subject` render moto's no-CN-no-SAN fallback
+//!   shape (`""` / `"CN="`).
+//! - `RequestCertificate` merges partial `Options` over the default
+//!   CTLogging/Export pair instead of replacing them (moto 5.2.2 #10030).
 //! - Tag stage/validation mirrors moto's `TagHolder`.
 //!
 //! Known divergences (no suite coverage): imported-cert metadata (CN, SANs,
 //! serial, validity) is derived from the request rather than parsed out of the
-//! PEM, and Export of a PRIVATE cert returns the stored key without PKCS#8
-//! passphrase encryption.
+//! PEM — so moto's first-SAN `DomainName` fallback for CN-less certs reduces
+//! to `""` here — and Export of a PRIVATE cert returns the stored key without
+//! PKCS#8 passphrase encryption. Both moto 5.2.2 tolerance behaviors are
+//! pinned by `acm_import_without_cn` / `acm_request_cert_defaults`.
 
 use crate::proto::{error_response, json_error, parse_json_body};
 use crate::store;
@@ -495,6 +502,10 @@ fn op_request_certificate(body: &Value, account: u64, region: &str) -> OpResult 
             }
         }
         let arn = make_arn(account, region);
+        // Partial Options preserve the default members: synthetic_bundle reads
+        // each option per-key with its default fallback (CTLogging ENABLED,
+        // Export DISABLED) rather than adopting the request object wholesale —
+        // moto 5.2.2 #10030 fixed exactly that replace-over-write regression.
         let mut bundle =
             synthetic_bundle(arn.clone(), domain, sans, kind, status, body.get("Options"));
         add_tags(&mut bundle.tags, &parse_tags(body.get("Tags")))?;
@@ -1196,5 +1207,109 @@ mod tests {
         let encoded = b64_encode(payload);
         let decoded = b64_decode(&encoded).unwrap();
         assert_eq!(decoded, payload);
+    }
+
+    #[test]
+    fn acm_import_without_cn() {
+        // CN is optional per the CAB Forum baseline (moto 5.2.2 #9912,
+        // `test_import_certificate_without_cn`): importing succeeds and the
+        // description keeps moto's fallback shape. robotocore does not parse
+        // the stored PEM, so "no CN" and "any PEM" are indistinguishable and
+        // the metadata lands on moto's no-CN-no-SAN fallback.
+        const CN_LESS_CERT: &str =
+            "-----BEGIN CERTIFICATE-----\nQUJDREVG\n-----END CERTIFICATE-----";
+        let cert = b64_encode(CN_LESS_CERT.as_bytes());
+        let key = b64_encode(b"testkey");
+        let resp = run(
+            "ImportCertificate",
+            json!({"Certificate": cert, "PrivateKey": key}),
+        );
+        assert_eq!(status_of(&resp), 200);
+        let arn = body_of(&resp)["CertificateArn"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let detail =
+            &body_of(&run("DescribeCertificate", json!({"CertificateArn": arn})))["Certificate"];
+        assert_eq!(detail["Type"], "IMPORTED");
+        assert_eq!(detail["Status"], "ISSUED");
+        assert_eq!(detail["DomainName"], "");
+        assert_eq!(detail["Subject"], "CN=");
+        assert_eq!(detail["Issuer"], "");
+    }
+
+    #[test]
+    fn acm_request_cert_defaults() {
+        // Partial Options merge over the default pair (moto 5.2.2 #10030,
+        // `test_request_certificate_options_without_export_defaults_to_disabled`).
+        let arn = body_of(&run(
+            "RequestCertificate",
+            json!({
+                "DomainName": "opts-merge.example.com",
+                "Options": {"CertificateTransparencyLoggingPreference": "DISABLED"},
+            }),
+        ))["CertificateArn"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let cert =
+            &body_of(&run("DescribeCertificate", json!({"CertificateArn": arn})))["Certificate"];
+        assert_eq!(
+            cert["Options"]["CertificateTransparencyLoggingPreference"],
+            "DISABLED"
+        );
+        assert_eq!(cert["Options"]["Export"], "DISABLED");
+        let summary = &body_of(&run("ListCertificates", json!({})))["CertificateSummaryList"];
+        let listed = summary
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["CertificateArn"] == arn.as_str())
+            .expect("summary row for merged-options cert");
+        assert_eq!(listed["Exported"], false);
+
+        // No Options member at all keeps both defaults.
+        let arn = body_of(&run(
+            "RequestCertificate",
+            json!({"DomainName": "opts-plain.example.com"}),
+        ))["CertificateArn"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let cert =
+            &body_of(&run("DescribeCertificate", json!({"CertificateArn": arn})))["Certificate"];
+        assert_eq!(
+            cert["Options"]["CertificateTransparencyLoggingPreference"],
+            "ENABLED"
+        );
+        assert_eq!(cert["Options"]["Export"], "DISABLED");
+
+        // Options with only Export keeps the CTLogging default.
+        let arn = body_of(&run(
+            "RequestCertificate",
+            json!({
+                "DomainName": "opts-export.example.com",
+                "Options": {"Export": "ENABLED"},
+            }),
+        ))["CertificateArn"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let cert =
+            &body_of(&run("DescribeCertificate", json!({"CertificateArn": arn})))["Certificate"];
+        assert_eq!(cert["Options"]["Export"], "ENABLED");
+        assert_eq!(
+            cert["Options"]["CertificateTransparencyLoggingPreference"],
+            "ENABLED"
+        );
+        let summary = &body_of(&run("ListCertificates", json!({})))["CertificateSummaryList"];
+        let listed = summary
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["CertificateArn"] == arn.as_str())
+            .expect("summary row for exportable cert");
+        assert_eq!(listed["Exported"], true);
     }
 }
