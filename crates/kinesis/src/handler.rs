@@ -380,16 +380,29 @@ impl KinesisHandler {
         let data = base64::engine::general_purpose::STANDARD
             .decode(data_b64)
             .unwrap_or_default();
+        let data_len = data.len();
         let explicit = req.params.get("ExplicitHashKey").and_then(|v| v.as_str());
         match stream.put_record(partition_key, data, explicit) {
-            Some((shard, record)) => AwsResponse::json(
-                200,
-                json!({
-                    "ShardId": shard.shard_id,
-                    "SequenceNumber": record.sequence_number,
-                    "EncryptionType": "NONE",
-                }),
-            ),
+            Some((shard, record)) => {
+                // moto 5.2.4 KinesisBackend.put_record → _send_stream_metrics:
+                // IncomingBytes = len(record data) + len(partition key),
+                // IncomingRecords = 1, dimensioned by StreamName only.
+                cloudwatch::bridge::ingest_kinesis_put_metrics(
+                    req.account,
+                    &req.region,
+                    name,
+                    (data_len + partition_key.chars().count()) as u64,
+                    1,
+                );
+                AwsResponse::json(
+                    200,
+                    json!({
+                        "ShardId": shard.shard_id,
+                        "SequenceNumber": record.sequence_number,
+                        "EncryptionType": "NONE",
+                    }),
+                )
+            }
             None => AwsResponse::error(
                 400,
                 "ResourceNotFoundException",
@@ -415,6 +428,10 @@ impl KinesisHandler {
             .and_then(|v| v.as_array())
             .cloned()
             .unwrap_or_default();
+        // moto accounts every input record into the call's aggregated
+        // datapoint (data size + partition-key size), successful or not.
+        let record_count = records_input.len();
+        let mut incoming_bytes: u64 = 0;
         let mut result_records = Vec::with_capacity(records_input.len());
         for rec in records_input {
             let partition_key = rec
@@ -425,6 +442,7 @@ impl KinesisHandler {
             let data = base64::engine::general_purpose::STANDARD
                 .decode(data_b64)
                 .unwrap_or_default();
+            incoming_bytes += (data.len() + partition_key.chars().count()) as u64;
             let explicit = rec.get("ExplicitHashKey").and_then(|v| v.as_str());
             if let Some((shard, record)) = stream.put_record(partition_key, data, explicit) {
                 result_records.push(json!({
@@ -433,6 +451,16 @@ impl KinesisHandler {
                 }));
             }
         }
+        // moto 5.2.4 KinesisBackend.put_records → _send_stream_metrics: one
+        // aggregated datapoint pair for the whole call — IncomingBytes =
+        // summed record sizes, IncomingRecords = number of records sent.
+        cloudwatch::bridge::ingest_kinesis_put_metrics(
+            req.account,
+            &req.region,
+            name,
+            incoming_bytes,
+            record_count as u64,
+        );
         AwsResponse::json(
             200,
             json!({
@@ -1917,6 +1945,133 @@ mod tests {
         )));
         assert_eq!(unknown["StreamNames"].as_array().unwrap().len(), 0);
         assert_eq!(unknown["HasMoreStreams"], false);
+    }
+
+    /// moto 5.2.4: put_record/put_records push IncomingBytes +
+    /// IncomingRecords metrics to CloudWatch (namespace AWS/Kinesis,
+    /// StreamName dimension, one aggregated datapoint pair per call).
+    #[test]
+    fn kput_emits_cloudwatch_metrics() {
+        // The cloudwatch handler registers itself into the process-global
+        // ingest bridge on construction; account scoping keeps the
+        // datapoints isolated from other tests sharing this process.
+        let cw = cloudwatch::DefaultCloudwatchHandler::new();
+        let handler = KinesisHandler::new();
+        let account: u64 = 447089000321;
+        let req = |operation: &str, params: Value| AwsRequest {
+            service: "kinesis".to_string(),
+            operation: operation.to_string(),
+            account,
+            region: "us-east-1".to_string(),
+            params,
+            body: Bytes::new(),
+        };
+        let cw_req = |operation: &str, params: Value| cloudwatch::AwsRequest {
+            service: "cloudwatch".to_string(),
+            operation: operation.to_string(),
+            account,
+            region: "us-east-1".to_string(),
+            params,
+            body: Bytes::new(),
+        };
+
+        handler.handle(req("CreateStream", json!({"StreamName": "cw-stream"})));
+        // "hello" (5 bytes) + "pk1" (3 chars) = 8 incoming bytes, 1 record.
+        handler.handle(req(
+            "PutRecord",
+            json!({
+                "StreamName": "cw-stream",
+                "Data": encode_data("hello"),
+                "PartitionKey": "pk1"
+            }),
+        ));
+        // ("alpha" 5 + "pk1" 3) + ("beta" 4 + "pk2" 3) = 15 bytes, 2 records.
+        handler.handle(req(
+            "PutRecords",
+            json!({
+                "StreamName": "cw-stream",
+                "Records": [
+                    {"Data": encode_data("alpha"), "PartitionKey": "pk1"},
+                    {"Data": encode_data("beta"), "PartitionKey": "pk2"},
+                ],
+            }),
+        ));
+        // A put to a missing stream lands nowhere, so metrics must stay off.
+        let missing = handler.handle(req(
+            "PutRecord",
+            json!({
+                "StreamName": "no-such-stream",
+                "Data": encode_data("ghost"),
+                "PartitionKey": "pk"
+            }),
+        ));
+        assert_eq!(missing.status, 400);
+
+        let cw_parse =
+            |resp: &cloudwatch::AwsResponse| serde_json::from_str::<Value>(&resp.body).unwrap();
+
+        let list = cw_parse(&cw.handle(cw_req("ListMetrics", json!({"Namespace": "AWS/Kinesis"}))));
+        let metrics = list["Metrics"].as_array().unwrap();
+        assert_eq!(metrics.len(), 2, "got {metrics:?}");
+        for m in metrics {
+            assert_eq!(m["Namespace"], json!("AWS/Kinesis"));
+            let dims = m["Dimensions"].as_array().unwrap();
+            assert_eq!(dims.len(), 1);
+            assert_eq!(dims[0], json!({"Name": "StreamName", "Value": "cw-stream"}));
+        }
+        let names: Vec<&str> = metrics
+            .iter()
+            .map(|m| m["MetricName"].as_str().unwrap())
+            .collect();
+        assert!(names.contains(&"IncomingBytes"), "got {metrics:?}");
+        assert!(names.contains(&"IncomingRecords"), "got {metrics:?}");
+
+        // StartTime/EndTime are read as epoch milliseconds by the handler.
+        let start = chrono::Utc::now().timestamp_millis() - 3_600_000;
+        let end = chrono::Utc::now().timestamp_millis() + 3_600_000;
+        let stats = |metric: &str, statistics: Value| {
+            cw_parse(&cw.handle(cw_req(
+                "GetMetricStatistics",
+                json!({
+                    "Namespace": "AWS/Kinesis",
+                    "MetricName": metric,
+                    "Statistics": statistics,
+                    "Period": 60,
+                    "StartTime": start,
+                    "EndTime": end,
+                }),
+            )))
+        };
+
+        // Two puts in one 60s bucket: 2 datapoints, summed values.
+        let bytes = stats("IncomingBytes", json!(["Sum", "SampleCount"]));
+        assert_eq!(bytes["Datapoints"].as_array().unwrap().len(), 1, "{bytes}");
+        assert_eq!(bytes["Datapoints"][0]["Sum"], json!(23.0));
+        assert_eq!(bytes["Datapoints"][0]["SampleCount"], json!(2.0));
+        assert_eq!(bytes["Datapoints"][0]["Unit"], json!("Bytes"));
+
+        // IncomingRecords: 1 (put_record) + 2 (put_records) datapoint values.
+        let records = stats("IncomingRecords", json!(["Sum", "SampleCount"]));
+        assert_eq!(records["Datapoints"][0]["Sum"], json!(3.0));
+        assert_eq!(records["Datapoints"][0]["SampleCount"], json!(2.0));
+        assert_eq!(records["Datapoints"][0]["Unit"], json!("Count"));
+
+        // Per-account scoping: another account sees none of these metrics.
+        let other = cw_parse(&cw.handle(cloudwatch::AwsRequest {
+            account: 447089000322,
+            ..cw_req(
+                "GetMetricStatistics",
+                json!({
+                    "Namespace": "AWS/Kinesis",
+                    "MetricName": "IncomingBytes",
+                    "Statistics": ["Sum"],
+                    "Period": 60,
+                    "StartTime": start,
+                    "EndTime": end,
+                }),
+            )
+        }));
+        assert_eq!(other["Datapoints"].as_array().unwrap().len(), 0);
     }
 
     #[test]

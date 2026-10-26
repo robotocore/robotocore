@@ -13,3 +13,6 @@ chrono = { version = "0.4", features = ["serde"] }
 parking_lot = "0.12"
 base64 = "0.22"
 md5 = "0.7"
+# Cross-service metric push (moto 5.2.4: put_record/put_records publish
+# IncomingBytes/IncomingRecords to CloudWatch) via cloudwatch's ingest bridge.
+cloudwatch = { path = "../cloudwatch" }
