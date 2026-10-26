@@ -2346,6 +2346,114 @@ fn visibility_cap_change_message_visibility_batch_over_limit_rows() {
     assert_eq!(counts.1, 1, "the rejected entries stay in flight");
 }
 
+/// moto resolves the queue only inside the per-row backend change
+/// (`change_message_visibility` -> `get_queue`, moto/sqs/models.py:1082):
+/// rows that fail the per-entry parse or the cap check answer 200 Failed
+/// rows and never touch the queue. Live-verified against the pinned fork:
+/// both an over-cap-only and a missing-VisibilityTimeout ghost-queue batch
+/// answer 200 with the Failed rows (the reviewer's ITEM-1 option (a)),
+/// replacing the twin's previous eager NonExistentQueue resolution.
+#[test]
+fn visibility_batch_ghost_queue_failed_rows_never_resolve_queue() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "vis-batch-ghost-rows");
+    let ghost = format!("{}x", queue_url);
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &ghost,
+            "Entries": [
+                {"Id": "cap", "ReceiptHandle": "bogus", "VisibilityTimeout": 50000},
+                {"Id": "novis", "ReceiptHandle": "bogus"},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 200, "per-row parse failures must beat the queue lookup");
+    assert!(
+        !resp.body.contains("NonExistentQueue"),
+        "a batch whose every row fails parsing must never resolve the queue, got {}",
+        resp.body
+    );
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    assert_eq!(data["Successful"].as_array().map(|a| a.len()), Some(0));
+    let failed = data["Failed"].as_array().expect("Failed array");
+    assert_eq!(failed.len(), 2, "both rows fail parsing, in entry order");
+    for row in failed {
+        assert_eq!(row["SenderFault"], true);
+        assert_eq!(row["Code"], "InvalidParameterValue");
+        assert_eq!(row["Message"], "Visibility timeout invalid");
+    }
+}
+
+/// A parse-OK row resolves the queue; on a nonexistent queue moto raises the
+/// global QueueDoesNotExist and the Failed rows collected for earlier
+/// parse-failing entries are discarded (live-verified: both
+/// [over-cap, valid] and [missing-VisibilityTimeout, valid] ghost-queue
+/// mixes answer 400 NonExistentQueue).
+#[test]
+fn visibility_batch_ghost_queue_valid_row_answers_nonexistent_discarding_rows() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "vis-batch-ghost-valid");
+    let ghost = format!("{}x", queue_url);
+
+    for (label, entries) in [
+        ("over-cap then valid", json!([
+            {"Id": "cap", "ReceiptHandle": "bogus", "VisibilityTimeout": 50000},
+            {"Id": "ok", "ReceiptHandle": "bogus", "VisibilityTimeout": 30},
+        ])),
+        ("missing-visibility then valid", json!([
+            {"Id": "novis", "ReceiptHandle": "bogus"},
+            {"Id": "ok", "ReceiptHandle": "bogus", "VisibilityTimeout": 30},
+        ])),
+    ] {
+        let resp = handler.handle(make_request(
+            "ChangeMessageVisibilityBatch",
+            json!({"QueueUrl": &ghost, "Entries": entries}),
+        ));
+        assert_eq!(resp.status, 400, "{label} must answer 400");
+        assert!(
+            resp.body.contains("AWS.SimpleQueueService.NonExistentQueue"),
+            "{label}: the valid row resolves the queue and wins over prior rows, got {}",
+            resp.body
+        );
+    }
+}
+
+/// Per-entry ReceiptHandleIsInvalid rows carry moto's live-verified shape —
+/// SenderFault true and the ServiceException message text
+/// ("The input receipt handle is invalid.",
+/// moto/sqs/models.py:1128-1136).
+#[test]
+fn visibility_batch_invalid_handle_row_shape() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "vis-batch-bogus-handle");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "bad", "ReceiptHandle": "no-such-handle", "VisibilityTimeout": 30},
+                {"Id": "good", "ReceiptHandle": handles[0]["ReceiptHandle"], "VisibilityTimeout": 30},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 200);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    let successful = data["Successful"].as_array().expect("Successful array");
+    assert_eq!(successful.len(), 1);
+    assert_eq!(successful[0]["Id"], "good");
+
+    let failed = data["Failed"].as_array().expect("Failed array");
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0]["Id"], "bad");
+    assert_eq!(failed[0]["SenderFault"], true);
+    assert_eq!(failed[0]["Code"], "ReceiptHandleIsInvalid");
+    assert_eq!(failed[0]["Message"], "The input receipt handle is invalid.");
+}
+
 /// The rewired happy path: valid entries still delete, through the same
 /// helper that rejects the invalid ones.
 #[test]

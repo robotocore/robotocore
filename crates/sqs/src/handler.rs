@@ -583,10 +583,6 @@ impl DefaultSqsHandler {
 
         let queue_name = self.extract_queue_name_from_url(&queue_url)?;
         let store = self.get_store(account, region);
-        let queue_opt = store.get_queue(&queue_name);
-        let queue_arc = queue_opt.ok_or_else(|| {
-            SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
-        })?;
 
         let mut successful: Vec<Value> = Vec::new();
         let mut failed: Vec<Value> = Vec::new();
@@ -608,7 +604,7 @@ impl DefaultSqsHandler {
             // anything above the cap answers a per-entry Failed row
             // (live-verified shape: SenderFault true / Code
             // InvalidParameterValue / Message "Visibility timeout
-            // invalid"), and a u32-overflowing value takes the same row.
+            // invalid"), and a u64-overflowing value takes the same row.
             let visibility = Self::visibility_timeout_of(entry.get("VisibilityTimeout"));
             let visibility = match visibility {
                 Some(v) if v <= Self::MAX_VISIBILITY_TIMEOUT => v,
@@ -622,14 +618,37 @@ impl DefaultSqsHandler {
                     continue;
                 }
             };
+
+            // moto resolves the queue only inside the per-row backend call
+            // (`change_message_visibility` -> `get_queue`,
+            // moto/sqs/models.py:1082): QueueDoesNotExist propagates out of
+            // the WHOLE batch as the global NonExistentQueue error and
+            // discards the Failed rows already collected for earlier
+            // parse-failing entries (live-verified: a [over-cap, valid]
+            // ghost-queue batch answers 400 NonExistentQueue, not the
+            // earlier row). Rows that fail the per-entry parse or the cap
+            // assert never reach that lookup, so they answer 200 Failed
+            // rows even on a nonexistent queue (live-verified: an
+            // over-cap-only / missing-VisibilityTimeout ghost-queue batch
+            // answers 200 — the queue is never resolved; the twin's
+            // previous eager resolution answered NonExistentQueue there).
+            let queue_arc = store.get_queue(&queue_name).ok_or_else(|| {
+                SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
+            })?;
+
             let mut q = queue_arc.write();
             if q.change_message_visibility(&receipt_handle, visibility as u32) {
                 successful.push(json!({ "Id": id }));
             } else {
+                // moto rows per-entry ReceiptHandleIsInvalid with
+                // SenderFault true and the ServiceException message
+                // `getattr(e, "message", "")` yields
+                // (moto/sqs/models.py:1128-1136; live-verified).
                 failed.push(json!({
                     "Id": id,
+                    "SenderFault": true,
                     "Code": "ReceiptHandleIsInvalid",
-                    "Message": "The specified receipt handle is not valid."
+                    "Message": "The input receipt handle is invalid."
                 }));
             }
         }
