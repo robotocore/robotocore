@@ -1,9 +1,448 @@
 //! Unit and integration tests for SQS handler
 
+use crate::bridge;
 use crate::handler::DefaultSqsHandler;
+use crate::models::{Queue, SqsStore};
 use crate::protocol::{AwsRequest, SqsHandler};
 use bytes::Bytes;
 use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::sync::mpsc;
+use std::sync::Arc;
+use std::thread;
+use std::time::{Duration, Instant};
+
+/// Collect thread results, capping the wait so a lock-order regression
+/// (wedged worker) fails the test instead of hanging the harness.
+fn recv_all_until(
+    rx: &mpsc::Receiver<(u16, String)>,
+    count: usize,
+    cap: Duration,
+) -> Vec<(u16, String)> {
+    let deadline = Instant::now() + cap;
+    let mut out = Vec::new();
+    while out.len() < count {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        match rx.recv_timeout(remaining) {
+            Ok(v) => out.push(v),
+            Err(_) => break,
+        }
+    }
+    out
+}
+
+fn dlq_arn_of(queue_name: &str) -> String {
+    format!("arn:aws:sqs:us-east-1:123456789012:{}", queue_name)
+}
+
+/// Drain up to `max` messages from `queue_url`, repeat-waiting until at
+/// least `count` arrive or the poll budget runs out.
+fn drain_until(handler: &DefaultSqsHandler, url: &str, count: usize) -> Vec<Value> {
+    let mut seen = Vec::new();
+    for _ in 0..20 {
+        if seen.len() >= count {
+            break;
+        }
+        let resp = handler.handle(make_request(
+            "ReceiveMessage",
+            json!({
+                "QueueUrl": url,
+                "MaxNumberOfMessages": 10,
+                "WaitTimeSeconds": 1,
+            }),
+        ));
+        let data: Value = serde_json::from_str(&resp.body).unwrap_or(Value::Null);
+        seen.extend(
+            data.get("Messages")
+                .and_then(|m| m.as_array())
+                .cloned()
+                .unwrap_or_default(),
+        );
+    }
+    seen
+}
+
+/// Mirrored StartMessageMoveTask calls (X->Y racing Y->X) must both finish
+/// instead of deadlocking on the nested queue write locks; the harness
+/// joins both threads under a 2s cap.
+#[test]
+fn test_mirrored_message_move_task_never_wedges() {
+    let handler = Arc::new(DefaultSqsHandler::new());
+    let name_a = "lock-move-a";
+    let name_b = "lock-move-b";
+    let arn_a = dlq_arn_of(name_a);
+    let arn_b = dlq_arn_of(name_b);
+    let mut urls = HashMap::new();
+    for name in [name_a, name_b] {
+        let resp = handler.handle(make_request("CreateQueue", json!({"QueueName": name})));
+        assert_eq!(resp.status, 200);
+        urls.insert(
+            name.to_string(),
+            serde_json::from_str::<Value>(&resp.body).unwrap()["QueueUrl"]
+                .as_str()
+                .unwrap()
+                .to_string(),
+        );
+    }
+    // Both queues carry a visible message each: either direction of the
+    // mirrored pair has work to move, so both threads contend for both
+    // queues' write locks.
+    for (name, body) in [(name_a, "from-a"), (name_b, "from-b")] {
+        let url = urls[name].clone();
+        let resp = handler.handle(make_request(
+            "SendMessage",
+            json!({"QueueUrl": url, "MessageBody": body}),
+        ));
+        assert_eq!(resp.status, 200);
+    }
+
+    let (tx, rx) = mpsc::channel();
+    for (source_arn, dest_arn) in [(&arn_a, &arn_b), (&arn_b, &arn_a)] {
+        let handler = Arc::clone(&handler);
+        let payload = json!({
+            "SourceArn": source_arn,
+            "DestinationArn": dest_arn,
+        });
+        let tx = tx.clone();
+        thread::spawn(move || {
+            let resp = handler.handle(make_request("StartMessageMoveTask", payload));
+            let _ = tx.send((resp.status, resp.body));
+        });
+    }
+    drop(tx);
+
+    let results = recv_all_until(&rx, 2, Duration::from_secs(2));
+    assert_eq!(
+        results.len(),
+        2,
+        "mirrored StartMessageMoveTask deadlocked: both threads must finish"
+    );
+    for (status, _body) in &results {
+        assert_eq!(*status, 200);
+    }
+
+    // No message was lost by the mirrored moves: both originals still
+    // exist across the two queues (possibly re-homed with fresh ids).
+    let mut total = 0;
+    for url in urls.values() {
+        let data = drain_until(&handler, url, 10);
+        total += data.len();
+    }
+    assert_eq!(total, 2, "both messages survive mirrored move tasks");
+}
+
+/// Two hundred same-name CreateQueue calls issued concurrently must all
+/// succeed and share one queue object (insert-if-absent), whose stored
+/// messages stay exactly what was sent afterwards.
+#[test]
+fn test_create_queue_race_same_name_200_pairs() {
+    let handler = Arc::new(DefaultSqsHandler::new());
+    let name = "lock-create-race";
+    let pairs = 200usize;
+    let barrier = Arc::new(std::sync::Barrier::new(pairs));
+    let (tx, rx) = mpsc::channel();
+    for _ in 0..pairs {
+        let handler = Arc::clone(&handler);
+        let barrier = Arc::clone(&barrier);
+        let tx = tx.clone();
+        thread::spawn(move || {
+            barrier.wait();
+            let resp = handler.handle(make_request("CreateQueue", json!({"QueueName": name})));
+            let parsed: Value = serde_json::from_str(&resp.body).unwrap_or(Value::Null);
+            let _ = tx.send((
+                resp.status,
+                parsed["QueueUrl"].as_str().unwrap_or("").to_string(),
+            ));
+        });
+    }
+    drop(tx);
+    let results = recv_all_until(&rx, pairs, Duration::from_secs(10));
+    assert_eq!(results.len(), pairs, "every racing create must respond");
+    for (status, _) in &results {
+        assert_eq!(*status, 200);
+    }
+    let mut urls: Vec<&String> = results.iter().map(|(_, u)| u).collect();
+    urls.sort();
+    urls.dedup();
+    assert_eq!(
+        urls.len(),
+        1,
+        "all racing creates must converge on one QueueUrl"
+    );
+
+    // The store keeps exactly one queue behind that URL and it behaves as
+    // the single live object: one send, one receive, nothing duplicated.
+    let store_arc = handler
+        .stores
+        .read()
+        .get(&(123456789012, "us-east-1".to_string()))
+        .cloned()
+        .unwrap();
+    assert_eq!(
+        store_arc
+            .list_queues()
+            .iter()
+            .filter(|n| n.as_str() == name)
+            .count(),
+        1,
+        "exactly one map entry survives the race"
+    );
+    let queue_url = &urls[0];
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": queue_url, "MessageBody": "post-race"}),
+    ));
+    let data = drain_until(&handler, queue_url, 1);
+    assert_eq!(data.len(), 1);
+    assert_eq!(data[0]["Body"], "post-race");
+}
+
+/// Redrive decided out of the receive's lock scope double-moves messages
+/// with VisibilityTimeout=0: two racing polls both bump receive_count and
+/// both pass `receive_count > maxReceiveCount`. With the move inside the
+/// receive's critical section, every exhausted message moves exactly once.
+#[test]
+fn test_redrive_double_move_visibility_zero() {
+    let handler = Arc::new(DefaultSqsHandler::new());
+    let src_name = "lock-redrive-src";
+    let dl_name = "lock-redrive-dlq";
+
+    let dl_resp = handler.handle(make_request("CreateQueue", json!({"QueueName": dl_name})));
+    let dl_url: String = serde_json::from_str::<Value>(&dl_resp.body).unwrap()["QueueUrl"]
+        .as_str()
+        .unwrap()
+        .into();
+    let dl_arn = dlq_arn_of(dl_name);
+    let src_resp = handler.handle(make_request("CreateQueue", json!({"QueueName": src_name})));
+    let src_url: String = serde_json::from_str::<Value>(&src_resp.body).unwrap()["QueueUrl"]
+        .as_str()
+        .unwrap()
+        .into();
+    handler.handle(make_request(
+        "SetQueueAttributes",
+        json!({
+            "QueueUrl": src_url,
+            "Attributes": {
+                "RedrivePolicy": json!({
+                    "deadLetterTargetArn": dl_arn,
+                    "maxReceiveCount": 1,
+                })
+                .to_string(),
+            },
+        }),
+    ));
+
+    let count = 20;
+    for i in 0..count {
+        let resp = handler.handle(make_request(
+            "SendMessage",
+            json!({"QueueUrl": src_url, "MessageBody": format!("m{}", i)}),
+        ));
+        assert_eq!(resp.status, 200);
+    }
+
+    // Two racing receive loops with VisibilityTimeout=0.
+    let barrier = Arc::new(std::sync::Barrier::new(2));
+    let (tx, rx) = mpsc::channel();
+    for _ in 0..2 {
+        let handler = Arc::clone(&handler);
+        let barrier = Arc::clone(&barrier);
+        let src_url = src_url.clone();
+        let tx = tx.clone();
+        thread::spawn(move || {
+            barrier.wait();
+            let mut empties = 0;
+            for _ in 0..60 {
+                let resp = handler.handle(make_request(
+                    "ReceiveMessage",
+                    json!({
+                        "QueueUrl": src_url,
+                        "MaxNumberOfMessages": 10,
+                        "VisibilityTimeout": 0,
+                    }),
+                ));
+                let data: Value = serde_json::from_str(&resp.body).unwrap_or(Value::Null);
+                let got = data
+                    .get("Messages")
+                    .and_then(|m| m.as_array())
+                    .map(|a| !a.is_empty())
+                    .unwrap_or(false);
+                empties = if got { 0 } else { empties + 1 };
+                if empties >= 2 {
+                    break;
+                }
+            }
+            let _ = tx.send(true);
+        });
+    }
+    drop(tx);
+    for _ in 0..2 {
+        let remaining = Duration::from_secs(10);
+        let _ = rx.recv_timeout(remaining);
+    }
+
+    // The DLQ holds each exhausted message exactly once.
+    let dlq_msgs = drain_until(&handler, &dl_url, count);
+    let mut ids: Vec<String> = dlq_msgs
+        .iter()
+        .map(|m| m["MessageId"].as_str().unwrap_or_default().to_string())
+        .collect();
+    assert_eq!(ids.len(), count, "every exhausted message moved to the DLQ");
+    ids.sort();
+    ids.dedup();
+    assert_eq!(
+        ids.len(),
+        count,
+        "every exhausted message must appear exactly once in the DLQ"
+    );
+    // The source is empty afterwards.
+    let src_after = drain_until(&handler, &src_url, 1);
+    assert!(src_after.is_empty(), "source must be fully redriven");
+}
+
+/// Delete-then-producer-loss: deliveries buffered by bridge producers for
+/// a queue are dropped with the queue itself; a re-created queue of the
+/// same name must not resurrect them, while the bridge keeps working after.
+#[test]
+fn test_delete_queue_clears_pending_before_recreate() {
+    let handler = DefaultSqsHandler::new();
+    let name = "lock-delete-pending";
+    let create = handler.handle(make_request("CreateQueue", json!({"QueueName": name})));
+    let url: String = serde_json::from_str::<Value>(&create.body).unwrap()["QueueUrl"]
+        .as_str()
+        .unwrap()
+        .into();
+
+    // Producer buffering (SNS/EventBridge fanout path) before the delete.
+    for i in 0..3 {
+        assert!(bridge::deliver_to_queue(
+            123456789012,
+            "us-east-1",
+            name,
+            &format!("lost-{}", i)
+        ));
+    }
+
+    let del = handler.handle(make_request("DeleteQueue", json!({"QueueUrl": url})));
+    assert_eq!(del.status, 200);
+
+    // Same-name re-create yields a fresh empty queue: no stale buffered
+    // delivery from the deleted queue's lifetime may survive.
+    let create2 = handler.handle(make_request("CreateQueue", json!({"QueueName": name})));
+    let url2: String = serde_json::from_str::<Value>(&create2.body).unwrap()["QueueUrl"]
+        .as_str()
+        .unwrap()
+        .into();
+    let data = drain_until(&handler, &url2, 3);
+    assert!(
+        data.is_empty(),
+        "deleted queue's pending deliveries must be gone, got {:?}",
+        data
+    );
+
+    // The bridge still buffers for the live queue after the delete.
+    assert!(bridge::deliver_to_queue(
+        123456789012,
+        "us-east-1",
+        name,
+        "fresh-1"
+    ));
+    let data = drain_until(&handler, &url2, 1);
+    assert_eq!(data.len(), 1);
+    assert_eq!(data[0]["Body"], "fresh-1");
+}
+
+/// PurgeQueue drops buffered cross-service deliveries along with the
+/// stored messages, in one critical section with the queue purge.
+#[test]
+fn test_purge_queue_clears_pending() {
+    let handler = DefaultSqsHandler::new();
+    let name = "lock-purge-pending";
+    let create = handler.handle(make_request("CreateQueue", json!({"QueueName": name})));
+    let url: String = serde_json::from_str::<Value>(&create.body).unwrap()["QueueUrl"]
+        .as_str()
+        .unwrap()
+        .into();
+
+    for i in 0..3 {
+        assert!(bridge::deliver_to_queue(
+            123456789012,
+            "us-east-1",
+            name,
+            &format!("p{}", i)
+        ));
+    }
+    let purge = handler.handle(make_request("PurgeQueue", json!({"QueueUrl": url})));
+    assert_eq!(purge.status, 200);
+
+    let data = drain_until(&handler, &url, 3);
+    assert!(data.is_empty(), "purge must drop pending deliveries too");
+}
+
+/// Store-level: re-creating a same-name queue resolves to the live handle
+/// instead of overwriting the registered entry.
+#[test]
+fn test_store_create_queue_is_insert_if_absent() {
+    let store = SqsStore::new();
+    let first = store.create_queue(Queue::new(
+        "lock-create-identity".to_string(),
+        "us-east-1".to_string(),
+        "123456789012".to_string(),
+        "http://queue-url-1".to_string(),
+        "arn:aws:sqs:us-east-1:123456789012:lock-create-identity".to_string(),
+    ));
+    let second = store.create_queue(Queue::new(
+        "lock-create-identity".to_string(),
+        "us-east-1".to_string(),
+        "123456789012".to_string(),
+        "http://queue-url-2".to_string(),
+        "arn:aws:sqs:us-east-1:123456789012:lock-create-identity".to_string(),
+    ));
+
+    assert!(
+        Arc::ptr_eq(&first, &second),
+        "racing same-name create must resolve to the live queue"
+    );
+    assert_eq!(
+        first.read().url,
+        "http://queue-url-1",
+        "existing entry must survive the racing create"
+    );
+}
+
+/// The dead-letter move task keeps its previous wire behavior: a task
+/// against a source with a redrive-derived target moves the visible
+/// messages and, with no target, reports FAILED.
+#[test]
+fn test_start_message_move_task_without_target_reports_failed() {
+    let handler = DefaultSqsHandler::new();
+    let name = "lock-move-failed";
+    let arn = dlq_arn_of(name);
+    let create = handler.handle(make_request("CreateQueue", json!({"QueueName": name})));
+    assert_eq!(create.status, 200);
+
+    let resp = handler.handle(make_request(
+        "StartMessageMoveTask",
+        json!({"SourceArn": arn}),
+    ));
+    assert_eq!(resp.status, 200);
+    let handle: String = serde_json::from_str::<Value>(&resp.body).unwrap()["TaskHandle"]
+        .as_str()
+        .unwrap()
+        .into();
+    let task = serde_json::from_str::<Value>(
+        &handler
+            .handle(make_request(
+                "ListMessageMoveTasks",
+                json!({"SourceArn": arn}),
+            ))
+            .body,
+    )
+    .unwrap();
+    let entry = &task["Results"][0];
+    assert_eq!(entry["Status"], "FAILED");
+    assert_eq!(entry["TaskHandle"], handle);
+}
 
 fn make_request(operation: &str, params: Value) -> AwsRequest {
     AwsRequest {
