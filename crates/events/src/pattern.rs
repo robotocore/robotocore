@@ -34,7 +34,9 @@ fn matches(pattern: &Map<String, Value>, event: &Map<String, Value>) -> bool {
         let event_value = match event.get(key) {
             Some(v) => v,
             None => {
-                // Absent key: only a list whose sole match is "exists": false passes.
+                // Absent key: a filter list passes when ANY of its members
+                // is an `{"exists": false}` filter (the code's `any`
+                // applies to the membership, not a sole-match requirement).
                 let absent_ok = pattern_value.as_array().is_some_and(|list| {
                     list.iter().any(|pv| {
                         pv.as_object()
@@ -43,10 +45,21 @@ fn matches(pattern: &Map<String, Value>, event: &Map<String, Value>) -> bool {
                             == Some(false)
                     })
                 });
-                if !absent_ok {
-                    return false;
+                if absent_ok {
+                    continue;
                 }
-                continue;
+                // moto still descends into an object pattern behind an
+                // absent ancestor: `_does_event_match` walks the pattern
+                // by path prefix and only resolves leaves against the
+                // flattened event, where a missing parent reads back
+                // UNDEFINED. The whole subtree is therefore judged
+                // against an undefined item rather than failing here.
+                if let Some(sub_pattern) = pattern_value.as_object() {
+                    if pattern_matches_undefined(sub_pattern) {
+                        continue;
+                    }
+                }
+                return false;
             }
         };
 
@@ -55,6 +68,11 @@ fn matches(pattern: &Map<String, Value>, event: &Map<String, Value>) -> bool {
                 let ok = match event_value {
                     Value::Object(obj) => matches(sub_pattern, obj),
                     Value::Array(arr) => array_objects_match(sub_pattern, arr),
+                    // An explicit null ancestor behaves like an absent
+                    // one for moto: the flattened event stores
+                    // `"detail": null` as a terminal leaf and the
+                    // pattern walk beneath it resolves UNDEFINED.
+                    Value::Null => pattern_matches_undefined(sub_pattern),
                     _ => false,
                 };
                 if !ok {
@@ -76,6 +94,37 @@ fn matches(pattern: &Map<String, Value>, event: &Map<String, Value>) -> bool {
     true
 }
 
+/// Judge a pattern subtree against a missing or null region, where every
+/// leaf reads back moto's UNDEFINED sentinel
+/// (`_does_item_match_filters(UNDEFINED, filters)`): a filter list is
+/// satisfied there iff any member is an `{"exists": false}` filter, and
+/// no other leaf shape can see the item. Nested objects recurse the same
+/// way, `$or` needs any one sub-pattern to pass, and scalar pattern
+/// leaves never do.
+fn pattern_matches_undefined(pattern: &Map<String, Value>) -> bool {
+    pattern.iter().all(|(key, pattern_value)| {
+        if key == "$or" {
+            let Some(subs) = pattern_value.as_array() else {
+                return false;
+            };
+            subs.iter()
+                .filter_map(|sp| sp.as_object())
+                .any(pattern_matches_undefined)
+        } else {
+            match pattern_value {
+                Value::Object(sub_pattern) => pattern_matches_undefined(sub_pattern),
+                Value::Array(list) => list.iter().any(|pv| {
+                    pv.as_object()
+                        .and_then(|o| o.get("exists"))
+                        .and_then(Value::as_bool)
+                        == Some(false)
+                }),
+                _ => false,
+            }
+        }
+    })
+}
+
 /// A nested pattern against an array (moto PR #10360, event-ruler "JSON
 /// Array Matching"): it must be satisfied by a SINGLE element, so fields
 /// never mix across different elements of the same array. Elements that
@@ -89,6 +138,20 @@ fn array_objects_match(pattern: &Map<String, Value>, arr: &[Value]) -> bool {
     })
 }
 
+/// Filter-path element equality. moto compares filter values with
+/// Python `==`/`in`, which fold numeric representations together
+/// (`2 == 2.0`); event-ruler canonicalizes Numbers the same way.
+/// JSON-level `Value` equality is representation-sensitive (`2` and
+/// `2.0` are distinct variants), so two Numbers compare by `as_f64()`
+/// value. Everything else stays strict (Python's `True == 1` is NOT
+/// emulated).
+fn values_equal(a: &Value, b: &Value) -> bool {
+    if let (Some(x), Some(y)) = (a.as_f64(), b.as_f64()) {
+        return x == y;
+    }
+    a == b
+}
+
 /// A list of acceptable values/matchers for one event field.
 ///
 /// Public so the Lambda event-source-mapping engine can reuse the exact
@@ -97,18 +160,22 @@ fn array_objects_match(pattern: &Map<String, Value>, arr: &[Value]) -> bool {
 ///
 /// Dict leaves are moto's `_does_item_match_named_filter`: the `exists`
 /// filter applies to the value itself, every other named filter is
-/// evaluated per element of an array value, and unnamed dict leaves never
-/// match (era: no branch fires).
+/// evaluated per element of an array value, and dict leaves whose filter
+/// name is unrecognized never match. That rejection is deliberate: moto's
+/// `evaluate()` falls through to `True` for an unrecognized name (verified
+/// live: `{"x":[{"bogus":"v"}]}` matches anything), so an unknown filter
+/// name would silently match every event; a typed filter should reject
+/// instead of swallow malformed patterns.
 pub fn list_match(pattern_values: &[Value], event_value: &Value) -> bool {
     for pv in pattern_values {
         if let Some(filter) = pv.as_object() {
             if named_filter_matches(filter, event_value) {
                 return true;
             }
-        } else if event_value == pv {
+        } else if values_equal(event_value, pv) {
             return true;
         } else if let Some(arr) = event_value.as_array() {
-            if arr.contains(pv) {
+            if arr.iter().any(|item| values_equal(item, pv)) {
                 return true;
             }
         }
@@ -121,13 +188,18 @@ pub fn list_match(pattern_values: &[Value], event_value: &Value) -> bool {
 /// applies every other named filter per element of an array value.
 fn named_filter_matches(filter: &Map<String, Value>, event_value: &Value) -> bool {
     if let Some(expected) = filter.get("exists").and_then(Value::as_bool) {
-        // An `exists` leaf tests the presence of the event value
-        // itself, in both directions (moto
-        // `_does_item_match_named_filter`: `exists = item is not
-        // UNDEFINED`; era `_match_value_list`: a non-None value
-        // satisfies `exists: true`). Explicit JSON null counts as
-        // absent (era parity: `event.get(key) is None`).
-        return expected != event_value.is_null();
+        // An `exists` leaf tests literal key presence, not JSON
+        // nullness: moto `_does_item_match_named_filter` computes
+        // `exists = item is not UNDEFINED; return exists ==
+        // filter_value`, and a flattened JSON null is a present value
+        // (event-ruler's exists machine likewise answers on the key,
+        // not its contents). The value in hand is present by
+        // construction — `matches` routes absent keys and null-ancestor
+        // regions through `pattern_matches_undefined` and never feeds
+        // them to a leaf — so `exists: true` matches any value,
+        // explicit null included, and `exists: false` never matches at
+        // a leaf (absence is decided upstream).
+        return expected;
     }
     match event_value {
         Value::Array(arr) => arr.iter().any(|item| evaluate_named_filter(filter, item)),
@@ -137,6 +209,10 @@ fn named_filter_matches(filter: &Map<String, Value>, event_value: &Value) -> boo
 
 /// Evaluate a named filter against one (scalar) event value. Several
 /// recognized filter names may appear in one leaf; they OR together.
+/// Deliberate divergence (F5 mid): real AWS rejects such multi-key
+/// leaves at pattern creation and moto evaluates only the FIRST key
+/// (`list(pattern.items())[0]`); this port keeps the
+/// OR-of-recognized-keys reading, behavior unchanged.
 fn evaluate_named_filter(filter: &Map<String, Value>, value: &Value) -> bool {
     // prefix / suffix: the target is a string, a list of strings, or an
     // {"equals-ignore-case": "..."} object (moto prefix/suffix forms).
@@ -298,14 +374,14 @@ fn anything_but(excluded: &Value, event_value: &Value) -> bool {
             // previous all-elements-differ reading inverted the operator
             // (era parity: `if not any(v in excluded for v in event_value)`
             // — era's scalar branch adds the residual case below).
-            Value::Array(ex) => arr.iter().any(|v| !ex.contains(v)),
+            Value::Array(ex) => arr.iter().any(|v| !ex.iter().any(|e| values_equal(e, v))),
             Value::Object(obj) => arr.iter().any(|v| !named_filter_matches(obj, v)),
-            _ => arr.iter().any(|v| v != excluded),
+            _ => arr.iter().any(|v| !values_equal(v, excluded)),
         },
         _ => match excluded {
             Value::Object(obj) => !named_filter_matches(obj, event_value),
-            Value::Array(ex) => !ex.contains(event_value),
-            _ => event_value != excluded,
+            Value::Array(ex) => !ex.iter().any(|e| values_equal(e, event_value)),
+            _ => !values_equal(event_value, excluded),
         },
     }
 }
@@ -438,6 +514,16 @@ mod tests {
     use serde_json::json;
 
     // -- exists leaves (F1, agent-221 finding 1) ------------------------------
+    //
+    // `exists` is decided by literal key presence, not JSON nullness:
+    // moto `_does_item_match_named_filter` computes
+    // `exists = item is not UNDEFINED; return exists == filter_value`
+    // (verified live against the pinned fork: a flattened null leaf is
+    // a present value) and event-ruler's exists machine likewise
+    // answers on the key rather than its contents. These tests
+    // previously pinned the predecessor's `is_null()` reading, which
+    // had the null column of the truth table inverted; matching moto
+    // here is the deliberate real-AWS-better decision.
 
     #[test]
     fn exists_true_matches_present_values() {
@@ -447,26 +533,119 @@ mod tests {
             &json!({"detail": {"state": "running"}})
         ));
         assert!(matches_pattern(&pattern, &json!({"detail": {"state": 0}})));
-        // Absent key: `exists: true` must not match.
-        assert!(!matches_pattern(&pattern, &json!({"detail": {}})));
-        // Explicit null counts as absent (era parity).
-        assert!(!matches_pattern(
+        // A null value is still a present key: `exists: true` matches
+        // it (moto: `item is not UNDEFINED` is true for a flattened
+        // null; the old era reading said "absent" here).
+        assert!(matches_pattern(
             &pattern,
             &json!({"detail": {"state": null}})
         ));
+        // Absent key: `exists: true` must not match.
+        assert!(!matches_pattern(&pattern, &json!({"detail": {}})));
+        // A stored whole-ancestor null (`detail: null`) leaves the leaf
+        // behind it UNDEFINED: no match.
+        assert!(!matches_pattern(&pattern, &json!({"detail": null})));
+        // Same presence reading when the key ITSELF is the null leaf:
+        // pattern tests `detail` directly, event has `detail: null`.
+        let key_pattern = json!({"detail": [{"exists": true}]});
+        assert!(matches_pattern(&key_pattern, &json!({"detail": null})));
+        assert!(!matches_pattern(&key_pattern, &json!({})));
     }
 
     #[test]
-    fn exists_false_matches_absent_and_null() {
+    fn exists_false_matches_absent_keys_only() {
         let pattern = json!({"detail": {"state": [{"exists": false}]}});
+        // The absent leaf is the one case exists:false matches.
         assert!(matches_pattern(&pattern, &json!({"detail": {}})));
-        assert!(matches_pattern(
+        // A null ancestor reads UNDEFINED beneath it (absent-ancestor
+        // descent): matches.
+        assert!(matches_pattern(&pattern, &json!({"detail": null})));
+        // A null-valued leaf is present: `exists: false` must not match
+        // (moto: `exists = item is not UNDEFINED` -> True != False; the
+        // old era reading matched here).
+        assert!(!matches_pattern(
             &pattern,
             &json!({"detail": {"state": null}})
         ));
         assert!(!matches_pattern(
             &pattern,
             &json!({"detail": {"state": "on"}})
+        ));
+        // The key itself null = present: `exists: false` misses it.
+        assert!(!matches_pattern(
+            &json!({"detail": [{"exists": false}]}),
+            &json!({"detail": null})
+        ));
+        assert!(matches_pattern(
+            &json!({"detail": [{"exists": false}]}),
+            &json!({})
+        ));
+    }
+
+    // -- absent ancestors must not kill exists:false subtrees ------------------
+    // moto walks the pattern recursively by path, as long as the pattern
+    // continues, even if the parent key is absent (event-ruler "Machines
+    // behind absent-key patterns").
+    #[test]
+    fn exists_false_under_absent_ancestor_matches() {
+        let pattern = json!({"detail": {"state": [{"exists": false}]}});
+        // The whole `detail` tree is missing (previously returned false).
+        assert!(matches_pattern(
+            &pattern,
+            &json!({"source": "app", "detail-type": "t"})
+        ));
+        // `detail: null` is stored as a terminal leaf, wherever the pattern
+        // asks below it, moto reads UNDEFINED and matches.
+        assert!(matches_pattern(&pattern, &json!({"detail": null})));
+        // Deep nesting through absent ancestors.
+        assert!(matches_pattern(
+            &json!({"detail": {"a": {"b": [{"exists": false}]}}}),
+            &json!({"source": "app"})
+        ));
+        // $or needs only one sub-pattern to be satisfiable by a missing key.
+        assert!(matches_pattern(
+            &json!({"detail": {"$or": [{"state": [{"exists": false}]}, {"other": [{"exists": true}]}]}}),
+            &json!({})
+        ));
+        // A filter list passes so long as some member is exists:false.
+        assert!(matches_pattern(
+            &json!({"detail": {"state": [{"exists": false}, "running"]}}),
+            &json!({})
+        ));
+    }
+
+    #[test]
+    fn absent_ancestor_rejects_filters_that_need_a_value() {
+        // exists:true at a leaf, under absent and null ancestors, no match.
+        let pattern = json!({"detail": {"state": [{"exists": true}]}});
+        assert!(!matches_pattern(&pattern, &json!({})));
+        assert!(!matches_pattern(&pattern, &json!({"detail": null})));
+        // Scalar and plain-value list leaves have nothing to see.
+        assert!(!matches_pattern(
+            &json!({"detail": {"state": ["running"]}}),
+            &json!({})
+        ));
+        assert!(!matches_pattern(
+            &json!({"detail": {"state": ["running", "stopped"]}}),
+            &json!({"detail": null})
+        ));
+        // A sibling exists:true kills the subtree even when another leaf
+        // is exists:false.
+        let mixed = json!({
+            "detail": {
+                "state": [{"exists": false}],
+                "code": [{"exists": true}]
+            }
+        });
+        assert!(!matches_pattern(&mixed, &json!({})));
+        // A present leaf value still means the subtree does not match.
+        assert!(!matches_pattern(
+            &json!({"detail": {"state": [{"exists": false}]}}),
+            &json!({"detail": {"state": "running"}})
+        ));
+        assert!(!matches_pattern(
+            &json!({"detail": {"a": {"b": [{"exists": false}]}}}),
+            &json!({"detail": {"a": {"b": "x"}}})
         ));
     }
 
@@ -505,6 +684,61 @@ mod tests {
         assert!(!matches_pattern(
             &pattern,
             &json!({"detail": {"state": ["a", "a"]}})
+        ));
+    }
+
+    // -- number equality folds representations (fix 3c) -------------------------
+    // moto compares filter values with Python `==`/`in` (`2 == 2.0` is
+    // True) and event-ruler canonicalizes Numbers likewise; this port
+    // folds two Numbers through `as_f64()` and keeps every other type
+    // strict.
+
+    #[test]
+    fn number_equality_spans_representations() {
+        // Integer pattern vs float event value: matches (moto: True).
+        let pattern = json!({"count": [2]});
+        assert!(matches_pattern(&pattern, &json!({"count": 2.0})));
+        // ...and the mirror direction.
+        assert!(matches_pattern(
+            &json!({"count": [2.0]}),
+            &json!({"count": 2})
+        ));
+        // Membership scan again folds (`f in item`).
+        assert!(matches_pattern(&pattern, &json!({"count": [1, 2.0]})));
+        // Non-equal magnitudes still miss.
+        assert!(!matches_pattern(&pattern, &json!({"count": 3.0})));
+        assert!(!matches_pattern(&pattern, &json!({"count": [1, 3.0]})));
+        // Other types stay strict: no string/number folding.
+        assert!(!matches_pattern(&pattern, &json!({"count": "2"})));
+        assert!(!matches_pattern(&pattern, &json!({"count": true})));
+    }
+
+    #[test]
+    fn anything_but_excludes_numbers_across_representations() {
+        // moto's `val not in filter_value` folds 2.0 == 2: an event of
+        // 2.0 is NOT "anything but 2".
+        assert!(!matches_pattern(
+            &json!({"count": [{"anything-but": 2}]}),
+            &json!({"count": 2.0})
+        ));
+        assert!(matches_pattern(
+            &json!({"count": [{"anything-but": 2}]}),
+            &json!({"count": 3.0})
+        ));
+        // Array-valued events fold per element: 2.0 alone is fully
+        // excluded by [2] (`2.0 in [2]` folds), while any differing
+        // element lets the array through (moto `any(evaluate(i))`).
+        assert!(!matches_pattern(
+            &json!({"count": [{"anything-but": [2]}]}),
+            &json!({"count": [2.0]})
+        ));
+        assert!(matches_pattern(
+            &json!({"count": [{"anything-but": [2]}]}),
+            &json!({"count": [3.0, 4.0]})
+        ));
+        assert!(matches_pattern(
+            &json!({"count": [{"anything-but": [2]}]}),
+            &json!({"count": [3.0, 2.0]})
         ));
     }
 
