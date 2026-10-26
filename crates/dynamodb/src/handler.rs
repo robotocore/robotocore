@@ -756,6 +756,23 @@ fn item_key(table: &Table, attrs: &Map<String, Value>) -> Option<String> {
     compute_key_from_attrs(&table.key_schema, &attrs_to_map(attrs))
 }
 
+/// Enforce the real-AWS per-item 400 KB limit on the item about to be
+/// written, mirroring moto's `LimitedSizeDict` check — a ValidationException
+/// reading "Item size has exceeded the maximum allowed size" (moto issue
+/// #1874). Numbers are sized with AWS's own formula per moto issue #10176
+/// (`models::number_value_size`), so moto-oversized items are accepted.
+fn check_item_size(attrs: &Map<String, Value>) -> Option<AwsResponse> {
+    if crate::models::item_size(attrs) > crate::models::MAX_ITEM_SIZE {
+        Some(AwsResponse::error(
+            400,
+            "ValidationException",
+            "Item size has exceeded the maximum allowed size",
+        ))
+    } else {
+        None
+    }
+}
+
 fn kh_to_attrmap(key: &Map<String, Value>) -> AttrMap {
     key.clone().into_iter().collect()
 }
@@ -882,6 +899,12 @@ impl DynamoDbHandler {
                 )
             }
         };
+
+        // moto constructs the LimitedSizeDict-backed Item before evaluating
+        // conditions, so the 400 KB check runs first (getmoto/moto#1874).
+        if let Some(e) = check_item_size(&attrs) {
+            return e;
+        }
 
         let existing = table.items.read().get(&key).map(|i| i.attributes.clone());
         if let Err(e) = Self::check_condition(
@@ -1056,6 +1079,12 @@ impl DynamoDbHandler {
             Ok(o) => o,
             Err(e) => return AwsResponse::error(400, "ValidationException", e.as_str()),
         };
+
+        // moto's UpdateExpressionExecutor raises the same size check on the
+        // executed result (getmoto/moto#1874); mirror it on the final item.
+        if let Some(e) = check_item_size(&new_attrs) {
+            return e;
+        }
 
         let stored: AttrMap = map_to_attrmap(new_attrs.clone());
         table.items.write().insert(key, Arc::new(Item::new(stored)));
@@ -1605,6 +1634,11 @@ impl DynamoDbHandler {
                         let Some(key) = item_key(&table, &attrs) else {
                             continue;
                         };
+                        // moto's batch save lands in the same
+                        // LimitedSizeDict check as put_item (getmoto/moto#1874).
+                        if let Some(e) = check_item_size(&attrs) {
+                            return e;
+                        }
                         // Stream capture mirrors moto's batch put hook.
                         let old = table.items.read().get(&key).map(|i| i.attributes.clone());
                         table
@@ -1728,6 +1762,11 @@ impl DynamoDbHandler {
                             "The provided key element does not match the schema",
                         );
                     };
+                    // moto's transactional Put runs the same LimitedSizeDict
+                    // check when it builds the Item (getmoto/moto#1874).
+                    if let Some(e) = check_item_size(&attrs) {
+                        return e;
+                    }
                     let pre = existing(&table, &key);
                     let check = Self::eval_condition_on(
                         expr_str(op.get("ConditionExpression")),
@@ -1896,6 +1935,11 @@ impl DynamoDbHandler {
                         return AwsResponse::error(400, "ValidationException", e.as_str());
                     }
                 }
+            }
+            // moto's transactional Update raises the same size check on the
+            // executed result above (getmoto/moto#1874).
+            if let Some(e) = check_item_size(&new_attrs) {
+                return e;
             }
             // Stream capture mirrors moto's transact update hook
             // (INSERT when the item was absent, MODIFY otherwise).
@@ -3894,5 +3938,155 @@ mod tests {
                 "Status": "ACTIVE"
             })
         );
+    }
+
+    // ---- Item size enforcement (getmoto/moto#10176, #1874) ----
+
+    // getmoto/moto#10176: with AWS's number sizing this ~150 KB item
+    // (ceil(300001/2)+1 bytes for the Number) is legal; moto's
+    // len(str(value)) sizing rejects it. The twin implements the AWS formula.
+    #[test]
+    fn item_size_number_bytes_300k_digit_number_is_not_400() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "nsize",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        let big_number = "9".repeat(300_000);
+        let resp = handler.handle(make_req(
+            "PutItem",
+            json!({"TableName": "nsize", "Item": {"pk": {"S": "big"}, "n": {"N": big_number}}}),
+        ));
+        // moto treats len(str(value)) = 300,000 > 405,000 as a 400.
+        assert_eq!(resp.status, 200);
+    }
+
+    // The issue's own repro: pk(2+40) + data(4+409530 raw) + ttl(3+6 with
+    // AWS number sizing) = 409,585 <= 409,600 — accepted by real AWS,
+    // rejected by moto (moto's ttl sizing puts it past its 405,000 guard).
+    #[test]
+    fn item_size_number_bytes_issue_repro_accepted() {
+        use base64::Engine;
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "repro",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        let blob = base64::engine::general_purpose::STANDARD.encode(vec![120u8; 409530]);
+        let resp = handler.handle(make_req(
+            "PutItem",
+            json!({
+                "TableName": "repro",
+                "Item": {
+                    "pk": {"S": "x".repeat(40)},
+                    "data": {"B": blob},
+                    "ttl": {"N": "1786461547"},
+                }
+            }),
+        ));
+        assert_eq!(resp.status, 200);
+    }
+
+    #[test]
+    fn item_size_number_bytes_over_400kb_is_400() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "nover",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        let big_string = "x".repeat(500_000);
+        let resp = handler.handle(make_req(
+            "PutItem",
+            json!({"TableName": "nover", "Item": {"pk": {"S": "a"}, "v": {"S": big_string}}}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp.body.contains("ValidationException"));
+        // moto's ItemSizeTooLarge wording.
+        assert!(resp
+            .body
+            .contains("Item size has exceeded the maximum allowed size"));
+    }
+
+    // The same limit applies wherever an item is written: UpdateItem, the
+    // PutRequest row of BatchWriteItem, and TransactWriteItems Put/Update.
+    #[test]
+    fn item_size_number_bytes_write_paths_400() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "paths",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        let big_string = "x".repeat(500_000);
+
+        let resp = handler.handle(make_req(
+            "UpdateItem",
+            json!({
+                "TableName": "paths",
+                "Key": {"pk": {"S": "a"}},
+                "UpdateExpression": "SET v = :v",
+                "ExpressionAttributeValues": {":v": {"S": big_string.clone()}}
+            }),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp
+            .body
+            .contains("Item size has exceeded the maximum allowed size"));
+
+        let resp = handler.handle(make_req(
+            "BatchWriteItem",
+            json!({"RequestItems": {"paths": [
+                {"PutRequest": {"Item": {"pk": {"S": "b"}, "v": {"S": big_string.clone()}}}}
+            ]}}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp
+            .body
+            .contains("Item size has exceeded the maximum allowed size"));
+
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "paths",
+                         "Item": {"pk": {"S": "c"}, "v": {"S": big_string.clone()}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp
+            .body
+            .contains("Item size has exceeded the maximum allowed size"));
+
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Update": {"TableName": "paths",
+                            "Key": {"pk": {"S": "d"}},
+                            "UpdateExpression": "SET v = :v",
+                            "ExpressionAttributeValues": {":v": {"S": big_string.clone()}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp
+            .body
+            .contains("Item size has exceeded the maximum allowed size"));
     }
 }

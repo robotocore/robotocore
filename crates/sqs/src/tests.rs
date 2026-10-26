@@ -2110,3 +2110,98 @@ fn batch_validate_change_message_visibility_batch_valid_entries_still_apply() {
         "visibility zero must return both messages for delivery"
     );
 }
+
+/// A batch whose Ids duplicate, aimed at a queue that does not exist, must
+/// answer the batch error: moto validates the Entries before the backend
+/// resolves the queue (responses.py raises EmptyBatchRequest without
+/// touching the queue; delete/change visibility look the queue up only
+/// inside the backend), so batch errors beat QueueDoesNotExist. The
+/// "/x" suffix turns the real queue's URL into one for a queue that was
+/// never created without hardcoding an endpoint.
+#[test]
+fn batch_validate_before_queue_lookup_send_message_batch() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = format!("{}x", create_queue(&handler, "bq-lookup-send-anchor"));
+
+    let resp = handler.handle(make_request(
+        "SendMessageBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "dup", "MessageBody": "one"},
+                {"Id": "dup", "MessageBody": "two"},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.BatchEntryIdsNotDistinct"));
+    assert!(resp.body.contains("Id dup repeated."));
+    assert!(
+        !resp
+            .body
+            .contains("AWS.SimpleQueueService.NonExistentQueue"),
+        "batch validation must be answered before the queue lookup"
+    );
+}
+
+/// DeleteMessageBatch with duplicate Ids on a missing queue must answer
+/// BatchEntryIdsNotDistinct, not QueueDoesNotExist (validation runs first).
+#[test]
+fn batch_validate_before_queue_lookup_delete_message_batch() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = format!("{}x", create_queue(&handler, "bq-lookup-del-anchor"));
+
+    let resp = handler.handle(make_request(
+        "DeleteMessageBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "dup", "ReceiptHandle": "h1"},
+                {"Id": "dup", "ReceiptHandle": "h2"},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.BatchEntryIdsNotDistinct"));
+    assert!(resp.body.contains("Id dup repeated."));
+    assert!(
+        !resp
+            .body
+            .contains("AWS.SimpleQueueService.NonExistentQueue"),
+        "queue existence must not be resolved before batch validation"
+    );
+}
+
+/// ChangeMessageVisibilityBatch with duplicate Ids on a missing queue must
+/// answer BatchEntryIdsNotDistinct, not QueueDoesNotExist.
+#[test]
+fn batch_validate_before_queue_lookup_change_message_visibility_batch() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = format!("{}x", create_queue(&handler, "bq-lookup-cmv-anchor"));
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "dup", "ReceiptHandle": "h1", "VisibilityTimeout": 0},
+                {"Id": "dup", "ReceiptHandle": "h2", "VisibilityTimeout": 0},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.BatchEntryIdsNotDistinct"));
+    assert!(resp.body.contains("Id dup repeated."));
+    assert!(
+        !resp
+            .body
+            .contains("AWS.SimpleQueueService.NonExistentQueue"),
+        "queue existence must not be resolved before batch validation"
+    );
+}
