@@ -1008,15 +1008,14 @@ fn authenticate_user(
     }
     if user["UserStatus"].as_str() == Some("FORCE_CHANGE_PASSWORD") {
         // moto stores the challenge session (models.py `self.sessions[...]`)
-        // so RespondToAuthChallenge can pick it up later.
+        // so RespondToAuthChallenge can pick it up later. Its initiated
+        // challenge carries just the internal USERNAME
+        // (fork models.py:2121-2126).
         record_auth_event(s, pool_id, username, true);
         let session = session_register(s, username, pool_id);
         return ok_json(&json!({
             "ChallengeName": "NEW_PASSWORD_REQUIRED",
-            "ChallengeParameters": {
-                "USER_ID_FOR_SRP": username,
-                "requiredAttributes": "[]",
-            },
+            "ChallengeParameters": { "USERNAME": username },
             "Session": session,
         }));
     }
@@ -5316,6 +5315,47 @@ mod tests {
         assert!(b["ChallengeName"].is_null(), "{b}");
         assert!(b["Session"].is_null(), "{b}");
         assert!(b["ChallengeParameters"].is_null(), "{b}");
+    }
+
+    #[test]
+    fn cognito_user_password_auth_force_challenge_parameters() {
+        // moto's FORCE_CHANGE_PASSWORD initiate returns ChallengeParameters
+        // {"USERNAME": user.username} only — no USER_ID_FOR_SRP, no
+        // requiredAttributes (fork models.py:2121-2126).
+        let acct = scope();
+        let (_pool_id, client_id) = password_verifier_setup(acct, &["fcp-user"]);
+        let mut r = req(
+            "InitiateAuth",
+            json!({
+                "ClientId": &client_id,
+                "AuthFlow": "USER_PASSWORD_AUTH",
+                "AuthParameters": {"USERNAME": "fcp-user", "PASSWORD": "TempPass1!"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["ChallengeName"], "NEW_PASSWORD_REQUIRED", "{b}");
+        assert_eq!(
+            b["ChallengeParameters"],
+            json!({"USERNAME": "fcp-user"}),
+            "{b}"
+        );
+        assert!(b["Session"].is_string(), "{b}");
+
+        // The session still completes the challenge into tokens.
+        let session = b["Session"].as_str().unwrap().to_string();
+        let mut r = req(
+            "RespondToAuthChallenge",
+            json!({
+                "ClientId": &client_id,
+                "ChallengeName": "NEW_PASSWORD_REQUIRED",
+                "Session": &session,
+                "ChallengeResponses": {"USERNAME": "fcp-user", "NEW_PASSWORD": "NewPerm1!"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert!(b["AuthenticationResult"]["AccessToken"].is_string(), "{b}");
     }
 
     #[test]
