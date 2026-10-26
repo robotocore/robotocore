@@ -1,5 +1,6 @@
 //! SQS data models: messages, queues, and storage
 
+use crate::error::SqsError;
 use chrono::Utc;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
@@ -196,6 +197,13 @@ pub struct Queue {
     /// Monotonic sequence number counter for FIFO queues.
     #[serde(default)]
     pub next_sequence_number: u64,
+    /// When the queue was last successfully purged (unix ms). moto's
+    /// `last_purged_at` (`moto/sqs/models.py`): None until the first
+    /// purge, kept for the 60-second re-purge throttle. Timestamped per
+    /// queue, so the throttle applies to every client, not just the
+    /// caller of the first purge.
+    #[serde(default)]
+    pub last_purged_at: Option<u64>,
 }
 
 impl Queue {
@@ -214,6 +222,7 @@ impl Queue {
             tags: parking_lot::RwLock::new(std::collections::HashMap::new()),
             dedup_ids: std::collections::HashMap::new(),
             next_sequence_number: 1_854_250_000_000_000,
+            last_purged_at: None,
         }
     }
 
@@ -380,6 +389,25 @@ impl Queue {
     pub fn purge(&mut self) {
         self.messages.clear();
         self.last_modified = (Utc::now().timestamp_millis()) as u64;
+    }
+
+    /// Purge with the 60-second re-purge throttle, mirroring moto's
+    /// `purge_queue` (`moto/sqs/models.py`): a purge within 60 seconds
+    /// of the last successful one — from any client — answers
+    /// `PurgeQueueInProgress` and leaves the queue untouched.
+    pub fn purge_with_throttle(&mut self) -> Result<(), SqsError> {
+        let now_ms = (Utc::now().timestamp_millis()) as u64;
+        if let Some(last_purged_at) = self.last_purged_at {
+            if now_ms.saturating_sub(last_purged_at) < 60_000 {
+                return Err(SqsError::PurgeQueueInProgress(format!(
+                    "Only one PurgeQueue operation on {} is allowed every 60 seconds.",
+                    self.name
+                )));
+            }
+        }
+        self.last_purged_at = Some(now_ms);
+        self.purge();
+        Ok(())
     }
 }
 
