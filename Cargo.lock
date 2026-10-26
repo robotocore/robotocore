@@ -1553,6 +1553,7 @@ dependencies = [
  "chrono",
  "events",
  "hex",
+ "hmac",
  "md5",
  "parking_lot",
  "serde",

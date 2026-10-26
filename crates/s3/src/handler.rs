@@ -4,7 +4,9 @@
 //! (account, region). Requests are routed via method + path + query params.
 
 use base64::Engine;
+use hmac::{Hmac, Mac};
 use parking_lot::RwLock;
+use sha2::Sha256;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -342,8 +344,349 @@ impl IdConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Main handler
+// POST object form parsing
 // ---------------------------------------------------------------------------
+
+/// A browser form upload body, parsed from `multipart/form-data`: the form's
+/// named text fields in wire order, plus the `file` part's bytes.
+struct PostForm {
+    /// `name` → value, first occurrence wins, case-insensitive lookup.
+    fields: Vec<(String, String)>,
+    /// The raw payload of the `file` field (a file part's bytes, or the value
+    /// of a plain `file` field when a client posts the content as a string).
+    file: Option<Vec<u8>>,
+    /// `filename` attribute of the file part (used for `${filename}`).
+    file_filename: Option<String>,
+    /// `Content-Type` header of the file part, if the client sent one.
+    file_content_type: Option<String>,
+}
+
+impl PostForm {
+    // POST field names are matched the way AWS does it (the docs list fields
+    // by exact capitalization, but browsers and SDKs disagree in practice —
+    // localstack scans them case-insensitively through a lowercase dict).
+    fn get(&self, name: &str) -> Option<&str> {
+        self.fields
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.as_str())
+    }
+
+    fn contains(&self, name: &str) -> bool {
+        self.fields
+            .iter()
+            .any(|(k, _)| k.eq_ignore_ascii_case(name))
+    }
+}
+
+/// Extract the `boundary` parameter of a `Content-Type: multipart/form-data`
+/// header. Quoted boundaries are unquoted.
+fn parse_boundary(content_type: &str) -> Option<String> {
+    for param in content_type.split(';') {
+        let param = param.trim();
+        let Some((name, value)) = param.split_once('=') else {
+            continue;
+        };
+        if name.trim().eq_ignore_ascii_case("boundary") {
+            let value = value.trim();
+            let unquoted = value
+                .strip_prefix('"')
+                .and_then(|v| v.strip_suffix('"'))
+                .unwrap_or(value);
+            return Some(unquoted.to_string());
+        }
+    }
+    None
+}
+
+/// First occurrence of `needle` in `hay` at or after `from`.
+fn mem_find(hay: &[u8], needle: &[u8], from: usize) -> Option<usize> {
+    if needle.is_empty() || hay.len() < needle.len() || from >= hay.len() {
+        return None;
+    }
+    hay[from..]
+        .windows(needle.len())
+        .position(|w| w == needle)
+        .map(|p| p + from)
+}
+
+/// `Content-Disposition` parameters of one part: `name="key"`,
+/// `filename="f.txt"` (quoted or quoted-fresh values both tolerated).
+fn disposition_param(headers: &str, param: &str) -> Option<String> {
+    for line in headers.split("\r\n") {
+        let (name, value) = line.split_once(':')?;
+        if !name.trim().eq_ignore_ascii_case("content-disposition") {
+            continue;
+        }
+        for segment in value.split(';') {
+            let segment = segment.trim();
+            if segment.len() > param.len() && segment[..param.len()].eq_ignore_ascii_case(param) {
+                let rest = segment[param.len()..].trim_start_matches('=').trim();
+                let value = rest
+                    .strip_prefix('"')
+                    .and_then(|v| v.strip_suffix('"'))
+                    .unwrap_or(rest);
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Value of a plain header line inside one part (`Content-Type: text/plain`).
+fn part_header_value(headers: &str, name: &str) -> Option<String> {
+    headers.split("\r\n").find_map(|line| {
+        let (key, value) = line.split_once(':')?;
+        key.trim()
+            .eq_ignore_ascii_case(name)
+            .then(|| value.trim().to_string())
+    })
+}
+
+// ---------------------------------------------------------------------------
+// POST policy (SigV4 form upload) signature validation
+// ---------------------------------------------------------------------------
+
+/// The form fields a SigV4 pre-signed POST carries (localstack
+/// presigned_url.py SIGNATURE_V4_POST_FIELDS) and the legacy SigV2 pair.
+const POST_V4_FIELDS: [&str; 4] = [
+    "x-amz-signature",
+    "x-amz-algorithm",
+    "x-amz-credential",
+    "x-amz-date",
+];
+const POST_V2_FIELDS: [&str; 2] = ["signature", "awsaccesskeyid"];
+
+/// The signing secret the twin underwrites for POST-upload verification.
+///
+/// The twin's documented credential model is `aws_access_key_id` =
+/// any 12-digit number, `aws_secret_access_key` = `test` (AGENTS.md
+/// "Endpoint & credentials"). A real AWS deployment verifies the POST
+/// signature against the IAM secret of the credentials in the form; the twin
+/// has no secret store (any non-empty secret is accepted on signed
+/// requests), so POST uploads — the one S3 wire path where the twin checks
+/// a signature — pin the verification secret to the documented pair.
+/// Clients using the documented credentials behave exactly as on real AWS;
+/// a signature produced with any other secret answers SignatureDoesNotMatch,
+/// same as a real server would for a wrong key.
+const POST_UPLOAD_SIGNING_SECRET: &str = "test";
+
+/// Which signature version the form declares, detected the localstack way
+/// (`_is_match_with_signature_fields`): knowing ANY field of a version's
+/// field set requires ALL of them, else the missing field names an
+/// InvalidArgument error from the caller.
+enum PostSigVersion {
+    /// Complete SigV4 field set; carries the hex signature form value.
+    V4 { signature: String },
+    /// Complete legacy SigV2 pair; carrying no verification (see the
+    /// residual-gaps notes: the twin validates v4 signatures only).
+    V2,
+    /// Any subset of one field set, naming the first missing field.
+    Incomplete(&'static str),
+    /// Neither version's fields appear at all.
+    Anonymous,
+}
+
+fn post_signature_version(form: &PostForm) -> PostSigVersion {
+    let missing = |fields: &[&'static str]| -> Option<&'static str> {
+        fields.iter().find(|f| !form.contains(f)).copied()
+    };
+    let any_v4 = POST_V4_FIELDS.iter().any(|f| form.contains(f));
+    let any_v2 = POST_V2_FIELDS.iter().any(|f| form.contains(f));
+    if any_v4 {
+        return match missing(&POST_V4_FIELDS) {
+            Some(field) => PostSigVersion::Incomplete(field),
+            None => PostSigVersion::V4 {
+                signature: form.get("x-amz-signature").unwrap_or_default().to_string(),
+            },
+        };
+    }
+    if any_v2 {
+        return match missing(&POST_V2_FIELDS) {
+            Some(field) => PostSigVersion::Incomplete(field),
+            None => PostSigVersion::V2,
+        };
+    }
+    PostSigVersion::Anonymous
+}
+
+/// The user-facing field name (localstack's capitalize helper + its
+/// AWSAccessKeyId special case).
+fn post_argument_display_name(field: &str) -> &str {
+    match field {
+        "x-amz-signature" => "X-Amz-Signature",
+        "x-amz-algorithm" => "X-Amz-Algorithm",
+        "x-amz-credential" => "X-Amz-Credential",
+        "x-amz-date" => "X-Amz-Date",
+        "signature" => "Signature",
+        "awsaccesskeyid" => "AWSAccessKeyId",
+        other => other,
+    }
+}
+
+/// HMAC-SHA256 of `data` under `key`.
+fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
+    let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC-SHA256 accepts any key length");
+    mac.update(data);
+    mac.finalize().into_bytes().into()
+}
+
+/// The expected SigV4 POST-upload signature: `hex(HMAC(signing_key,
+/// base64(policy)))` — the signature covers the base64 policy document and
+/// nothing else (AWS "Constructing an AWS4-HMAC-SHA256 POST policy").
+/// `None` when the credential scope is not a SigV4 string.
+fn expected_post_signature(
+    secret: &str,
+    amz_date: &str,
+    amz_credential: &str,
+    string_to_sign: &str,
+) -> Option<String> {
+    // Scope: <access-key>/<YYYYMMDD>/<region>/s3/aws4_request
+    let parts: Vec<&str> = amz_credential.split('/').collect();
+    if parts.len() != 5 {
+        return None;
+    }
+    let date = amz_date.get(..8)?;
+    let region = parts[2];
+    let key_date = hmac_sha256(format!("AWS4{secret}").as_bytes(), date.as_bytes());
+    let key_region = hmac_sha256(&key_date, region.as_bytes());
+    let key_service = hmac_sha256(&key_region, b"s3");
+    let key_signing = hmac_sha256(&key_service, b"aws4_request");
+    Some(hex::encode(hmac_sha256(
+        &key_signing,
+        string_to_sign.as_bytes(),
+    )))
+}
+
+/// The base64-encoded policy document is the SigV4 POST string-to-sign;
+/// a policy that does not decode into a JSON object means the request was
+/// tampered with, which real AWS reports as a signature mismatch
+/// (localstack validate_post_policy comment: "this means the policy has
+/// been tampered with").
+struct PostPolicy {
+    expiration: Option<String>,
+    conditions: Vec<serde_json::Value>,
+}
+
+/// The two expiration formats the AWS docs allow in a POST policy
+/// (localstack POLICY_EXPIRATION_FORMAT1/2).
+fn parse_policy_expiration(value: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    for fmt in ["%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S.%fZ"] {
+        if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(value, fmt) {
+            return Some(naive.and_utc());
+        }
+    }
+    None
+}
+
+/// A POST policy JSON value as an integer (localstack coerces
+/// content-length-range bounds with int(), which reads both JSON numbers
+/// and numeric strings).
+fn as_policy_i64(value: &serde_json::Value) -> Option<i64> {
+    value
+        .as_i64()
+        .or_else(|| value.as_str().and_then(|s| s.trim().parse::<i64>().ok()))
+}
+
+/// Percent-encode an object key for a Location header's path, preserving the
+/// `/` separators (localstack's urlparser.quote default safe='/').
+fn encoded_key(key: &str) -> String {
+    key.split('/')
+        .map(urlencoding::encode)
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// Parse a `multipart/form-data` body the way the form upload wire path
+/// needs it: named text fields plus the file part. Mirrors what werkzeug
+/// (localstack's context.request.form/files) and moto's Flask request give
+/// their handlers: field values decoded as text, the file part raw.
+/// `None` → not a parseable multipart body (MalformedPOSTRequest).
+fn parse_multipart_form(body: &[u8], content_type: &str) -> Option<PostForm> {
+    let boundary = parse_boundary(content_type)?;
+    if boundary.is_empty() || body.is_empty() {
+        return None;
+    }
+
+    let mut part_delim = Vec::with_capacity(boundary.len() + 2);
+    part_delim.extend_from_slice(b"--");
+    part_delim.extend_from_slice(boundary.as_bytes());
+    let mut next_delim = Vec::with_capacity(part_delim.len() + 2);
+    next_delim.extend_from_slice(b"\r\n");
+    next_delim.extend_from_slice(&part_delim);
+
+    // Preamble (everything before the first --boundary) is discarded.
+    let mut pos = mem_find(body, &part_delim, 0)? + part_delim.len();
+    let mut form = PostForm {
+        fields: Vec::new(),
+        file: None,
+        file_filename: None,
+        file_content_type: None,
+    };
+
+    loop {
+        if pos >= body.len() {
+            break;
+        }
+        // `--boundary--` terminal marker (optional trailing transport padding
+        // after it is ignored, matching real parsers).
+        if body[pos..].starts_with(b"--") {
+            break;
+        }
+        // Each part's headers begin right after CRLF.
+        if !body[pos..].starts_with(b"\r\n") {
+            return None;
+        }
+        pos += 2;
+
+        let headers_end = mem_find(body, b"\r\n\r\n", pos)? + 4;
+        let header_block = String::from_utf8_lossy(&body[pos..headers_end - 4]).to_string();
+        let (content_end, terminated) = match mem_find(body, &next_delim, headers_end) {
+            Some(end) => (end, true),
+            None => {
+                // Tolerate a final part whose closing delimiter arrives as a
+                // bare `--boundary` (no leading CRLF) — rare client quirk.
+                let tail = mem_find(body, &part_delim, headers_end)? + part_delim.len();
+                if !body[tail..].starts_with(b"--") {
+                    return None;
+                }
+                (tail - part_delim.len(), false)
+            }
+        };
+        if content_end < headers_end {
+            return None;
+        }
+        let payload = &body[headers_end..content_end];
+        let name = disposition_param(&header_block, "name").unwrap_or_default();
+
+        if name.eq_ignore_ascii_case("file") {
+            // The file payload: a real file part carries a filename
+            // attribute; a name="file" text part also carries uploadable
+            // content when the client posted it as a plain form string
+            // (localstack's `if "file" in form` branch). First wins.
+            if form.file.is_none() {
+                form.file = Some(payload.to_vec());
+            }
+            if form.file_filename.is_none() {
+                form.file_filename = disposition_param(&header_block, "filename");
+            }
+            if form.file_content_type.is_none() {
+                form.file_content_type = part_header_value(&header_block, "content-type");
+            }
+        } else if !name.is_empty() && form.get(&name).is_none() {
+            form.fields
+                .push((name, String::from_utf8_lossy(payload).into_owned()));
+        }
+
+        if terminated {
+            pos = content_end + next_delim.len();
+        } else {
+            pos = content_end + part_delim.len();
+        }
+    }
+
+    Some(form)
+}
 
 /// The S3 service handler.
 pub struct S3Handler {
@@ -507,6 +850,9 @@ impl S3Handler {
             "GetBucketPolicy" => self.get_bucket_policy(&req),
             "DeleteBucketPolicy" => self.delete_bucket_policy(&req),
             "PutObject" => self.put_object(&req),
+            // Browser-form POST upload (part of PutObject's wire surface):
+            // multipart/form-data body carrying key/policy/signature/file.
+            "PostObject" => self.post_object(&req),
             "GetObject" => self.get_object(&req),
             "HeadObject" => self.head_object(&req),
             "DeleteObject" => self.delete_object(&req),
@@ -1013,6 +1359,661 @@ impl S3Handler {
                 .push(("x-amz-version-id".to_string(), version_id));
         }
         resp
+    }
+
+    // ------------------------------------------------------------------
+    // POST object — browser form upload (RESTObjectPOST)
+    // ------------------------------------------------------------------
+
+    /// Build an S3 error document with extra child elements, the shape moto's
+    /// `S3ClientError` serialization emits for POST-policy failures
+    /// (`Condition`, `AWSAccessKeyId`, `StringToSign`, `ProposedSize`, ...).
+    /// Same wire shape as `AwsResponse::error`, plus the extensions.
+    fn aws_error_with(
+        status: u16,
+        code: &str,
+        message: &str,
+        extra: &[(&str, &str)],
+    ) -> AwsResponse {
+        let mut body = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<Error>
+  <Code>{}</Code>
+  <Message>{}</Message>"#,
+            xml_escape(code),
+            xml_escape(message),
+        );
+        for (tag, value) in extra {
+            body.push_str(&format!(
+                "\n  <{}>{}</{}>",
+                xml_escape(tag),
+                xml_escape(value),
+                xml_escape(tag)
+            ));
+        }
+        body.push_str("\n</Error>");
+        AwsResponse::xml(status, body)
+    }
+
+    /// The multipart/form-data browser upload (AWS "POST Object" wire path,
+    /// exposed as `POST /{Bucket}` and `POST /{Bucket}/{Key}`; mirror of
+    /// localstack provider.py `post_object` and moto
+    /// `_bucket_response_post`). The form carries `key`, `policy` (base64
+    /// JSON), the SigV4 signature fields, `file`, and the success controls.
+    /// Validation order mirrors real AWS: parse the form, then policy +
+    /// signature, then policy conditions, then store.
+    fn post_object(&self, req: &AwsRequest) -> AwsResponse {
+        let content_type = req.headers.get("content-type").cloned().unwrap_or_default();
+        if !content_type.contains("multipart/form-data") {
+            // localstack post_object: PreconditionFailed carrying the
+            // Condition element real AWS includes on this failure.
+            return Self::aws_error_with(
+                412,
+                "PreconditionFailed",
+                "At least one of the pre-conditions you specified did not hold",
+                &[(
+                    "Condition",
+                    "Bucket POST must be of the enclosure-type multipart/form-data",
+                )],
+            );
+        }
+        // moto _bucket_response_post: a POST upload needs an explicit length.
+        if !req.headers.contains_key("content-length") {
+            return AwsResponse::error(411, "MissingContentLength", "Content-Length required");
+        }
+
+        let form = match parse_multipart_form(&req.body, &content_type) {
+            Some(form) => form,
+            None => {
+                return AwsResponse::error(
+                    400,
+                    "MalformedPOSTRequest",
+                    "The body of your POST request is not well-formed multipart/form-data.",
+                )
+            }
+        };
+
+        // moto resolves the account from the parsed form (its querystring IS
+        // the form body), so an unsigned browser POST still isolates state
+        // per access key; a real client never signs this wire path with an
+        // Authorization header. The form's x-amz-credential/AWSAccessKeyId is
+        // the only credential source here.
+        let mut req = req.clone();
+        Self::apply_post_form_account(&mut req, &form);
+
+        let bucket_name = req.bucket.clone().unwrap_or_default();
+        let state = self.get_state(req.account, &req.region);
+        let bucket = match Self::bucket_or_404(&state, &bucket_name) {
+            Ok(b) => b,
+            Err(e) => return e,
+        };
+
+        // The form's `key` field is authoritative on the wire; the URL key
+        // (POST /{Bucket}/{Key}) is the fallback when the form omits it. Both
+        // funnel through the crate's decoded_key so stored state uses the
+        // decoded form like every other S3 operation.
+        let key = match form.get("key") {
+            Some(k) => {
+                let mut k = k.to_string();
+                // moto replaces ${filename} with the uploaded file's basename.
+                if k.contains("${filename}") {
+                    if let Some(name) = form.file_filename.as_deref() {
+                        k = k.replace("${filename}", name);
+                    }
+                }
+                Self::decoded_key(&k)
+            }
+            None => Self::bucket_and_key(&req).1,
+        };
+        // localstack validate_post_policy raises InvalidArgument when the key
+        // field is absent or empty.
+        if key.is_empty() {
+            return Self::aws_error_with(
+                400,
+                "InvalidArgument",
+                "Bucket POST must contain a field named 'key'.  If it is specified, please check the order of the fields.",
+                &[("ArgumentName", "key"), ("ArgumentValue", "")],
+            );
+        }
+
+        let file = match form.file.as_deref() {
+            Some(f) => f,
+            // Real AWS answers MalformedPOSTRequest when the form carries no
+            // file payload at all.
+            None => {
+                return AwsResponse::error(
+                    400,
+                    "MalformedPOSTRequest",
+                    "The body of your POST request is not well-formed multipart/form-data.",
+                )
+            }
+        };
+
+        // Policy + signature validation, in the AWS wire order: decode the
+        // policy → expiry → signature → conditions → covered-field rule. A
+        // form without a policy document is the publicly-writable-door shape
+        // moto and localstack both store (localstack validate_post_policy
+        // early-returns when no policy field is present).
+        let policy_b64 = form.get("policy").unwrap_or("");
+        if !policy_b64.is_empty() {
+            let policy = match Self::decode_post_policy(policy_b64, &form) {
+                Ok(policy) => policy,
+                Err(e) => return e,
+            };
+            if let Err(e) = Self::check_post_policy_expiration(&policy) {
+                return e;
+            }
+            if let Err(e) = Self::verify_post_signature(policy_b64, &form) {
+                return e;
+            }
+            // Conditions (localstack walk order), then the covered-field doc
+            // rule, then store.
+            if let Err(e) = Self::check_post_conditions(&policy, &form, &bucket_name, file.len()) {
+                return e;
+            }
+            if let Err(e) = Self::check_post_fields_covered(&policy, &form) {
+                return e;
+            }
+        }
+
+        // System metadata the form may set (localstack
+        // post_system_settable_headers): the Content-Type form field wins,
+        // else the file part's declared type, else the crate default.
+        let content_type = form
+            .get("content-type")
+            .map(String::from)
+            .or_else(|| form.file_content_type.clone())
+            .unwrap_or_else(|| "binary/octet-stream".to_string());
+        let storage_class = form
+            .get("x-amz-storage-class")
+            .unwrap_or("STANDARD")
+            .to_string();
+        // x-amz-meta-* form fields become object user metadata (localstack
+        // post_object user_metadata loop).
+        let metadata: HashMap<String, String> = form
+            .fields
+            .iter()
+            .filter_map(|(k, v)| {
+                k.strip_prefix("x-amz-meta-")
+                    .map(|rest| (rest.to_ascii_lowercase(), v.clone()))
+            })
+            .collect();
+
+        let (version_id, etag) = Self::store_bytes(
+            &bucket,
+            &key,
+            file.to_vec(),
+            content_type,
+            metadata,
+            HashMap::new(),
+            storage_class,
+        );
+
+        Self::fire_event(
+            &req,
+            &bucket,
+            &key,
+            "s3:ObjectCreated:Post",
+            file.len(),
+            &etag,
+        );
+        self.maybe_replicate(&req, &state, &bucket, &key, file.to_vec());
+
+        // Location points at the object URL (localstack's
+        // get_url_encoded_object_location): host-aware path-style so it is
+        // directly refetchable, with the AWS vhost shape as the host-less
+        // fallback.
+        let upstream = Self::post_object_location(&req, &bucket_name, &encoded_key(&key));
+
+        // Success mapping, moto order: success_action_redirect wins, then
+        // success_action_status, else 204. The redirect URL gets
+        // bucket/key/etag appended (localstack
+        // create_redirect_for_post_request); if S3 cannot interpret the URL
+        // it acts as if the field was not present.
+        if let Some(redirect) = form.get("success_action_redirect") {
+            if let Some(url) = Self::success_redirect_url(redirect, &bucket_name, &key, &etag) {
+                return Self::post_success_response(303, &url, None, &etag, &version_id);
+            }
+        }
+        let immediate = form.get("success_action_status").and_then(|s| match s {
+            "200" => Some(200),
+            "201" => Some(201),
+            _ => None,
+        });
+        let status = immediate.unwrap_or(204);
+        let body_201 = (status == 201).then(|| {
+            format!(
+                r#"<PostResponse>
+  <Location>{}</Location>
+  <Bucket>{}</Bucket>
+  <Key>{}</Key>
+  <ETag>"{}"</ETag>
+</PostResponse>"#,
+                xml_escape(&upstream),
+                xml_escape(&bucket_name),
+                xml_escape(&key),
+                xml_escape(&etag),
+            )
+        });
+        Self::post_success_response(status, &upstream, body_201.as_deref(), &etag, &version_id)
+    }
+
+    /// Location/ETag/version headers shared by all POST upload successes.
+    fn post_success_response(
+        status: u16,
+        location: &str,
+        body_201: Option<&str>,
+        etag: &str,
+        version_id: &str,
+    ) -> AwsResponse {
+        let mut resp = match (status, body_201) {
+            (201, Some(body)) => AwsResponse::xml(201, body.to_string()),
+            (201, None) | (200, _) => AwsResponse::xml(status, String::new()),
+            _ => AwsResponse::no_content(status),
+        };
+        resp.headers
+            .push(("Location".to_string(), location.to_string()));
+        resp.headers
+            .push(("ETag".to_string(), format!("\"{etag}\"")));
+        if version_id != NULL_VERSION_ID {
+            resp.headers
+                .push(("x-amz-version-id".to_string(), version_id.to_string()));
+        }
+        resp
+    }
+
+    /// The object URL a POST success Location header points at: path-style
+    /// under the request's Host (directly refetchable), the AWS canonical
+    /// virtual-host shape when the request carried no Host.
+    fn post_object_location(req: &AwsRequest, bucket: &str, encoded_key: &str) -> String {
+        match req.headers.get("host") {
+            Some(host) if !host.is_empty() => {
+                format!("http://{host}/{bucket}/{encoded_key}")
+            }
+            _ => format!("http://{bucket}.s3.amazonaws.com/{encoded_key}"),
+        }
+    }
+
+    /// Append `key`/`bucket`/`etag` to a `success_action_redirect` URL
+    /// (localstack create_redirect_for_post_request: parse, append, rejoin).
+    /// `None` when the value is not an absolute URL — real AWS then treats
+    /// the field as if it was not present.
+    fn success_redirect_url(
+        base_redirect: &str,
+        bucket: &str,
+        key: &str,
+        etag: &str,
+    ) -> Option<String> {
+        let (scheme, rest) = base_redirect.split_once("://")?;
+        if scheme.is_empty() || rest.is_empty() {
+            return None;
+        }
+        let (authority, rest) = rest.split_once('/')?;
+        let (path, query) = match rest.split_once('?') {
+            Some((p, q)) => (p, q),
+            None => (rest, ""),
+        };
+        if authority.is_empty() {
+            return None;
+        }
+        let mut queryargs: Vec<String> = query
+            .split('&')
+            .filter(|p| !p.is_empty())
+            .map(|p| p.to_string())
+            .collect();
+        queryargs.push(format!("key={}", urlencoding::encode(key)));
+        queryargs.push(format!("bucket={}", urlencoding::encode(bucket)));
+        queryargs.push(format!("etag={}", urlencoding::encode(etag)));
+        Some(format!(
+            "{scheme}://{authority}/{path}?{}",
+            queryargs.join("&"),
+        ))
+    }
+
+    /// moto resolves the account from the form's access key the same way as
+    /// for query-string credentials (form-fields-as-querystring in
+    /// moto/core/responses.py get_access_key). Only reconsidered when the
+    /// request kept none of the higher-priority sources (moto order:
+    /// account header, Authorization, access key, default fallback).
+    fn apply_post_form_account(req: &mut AwsRequest, form: &PostForm) {
+        if req.headers.contains_key("x-robotocore-account")
+            || req.headers.contains_key("authorization")
+        {
+            return;
+        }
+        if req.account != 123456789012 {
+            return;
+        }
+        // SigV4: x-amz-credential is "<access-key>/<date>/<region>/s3/aws4_request".
+        // SigV2: AWSAccessKeyId carries the key directly.
+        let access_key = form
+            .get("x-amz-credential")
+            .and_then(|c| c.split('/').next())
+            .or_else(|| form.get("awsaccesskeyid"))
+            .unwrap_or("");
+        if access_key.len() == 12 && access_key.chars().all(|c| c.is_ascii_digit()) {
+            if let Ok(account) = access_key.parse::<u64>() {
+                req.account = account;
+            }
+        }
+    }
+
+    /// The `SignatureDoesNotMatch` document real AWS answers when the
+    /// server-side check fails: the AWSAccessKeyId attribute the error carries
+    /// plus the provided signature and the string that was signed.
+    fn signature_does_not_match_error(
+        provided: &str,
+        string_to_sign: &str,
+        access_key: &str,
+    ) -> AwsResponse {
+        Self::aws_error_with(
+            403,
+            "SignatureDoesNotMatch",
+            "The request signature we calculated does not match the signature you provided. Check your key and signing method.",
+            &[
+                ("AWSAccessKeyId", access_key),
+                ("SignatureProvided", provided),
+                ("StringToSign", string_to_sign),
+            ],
+        )
+    }
+
+    /// Base64-decode + JSON-parse the form's policy document. Failures mean
+    /// the request was tampered with → SignatureDoesNotMatch (real AWS
+    /// cannot confirm a signature over an unreadable policy either).
+    fn decode_post_policy(policy_b64: &str, form: &PostForm) -> Result<PostPolicy, AwsResponse> {
+        let failed = || {
+            let access_key = form
+                .get("x-amz-credential")
+                .and_then(|c| c.split('/').next())
+                .or_else(|| form.get("awsaccesskeyid"))
+                .unwrap_or("")
+                .to_string();
+            let provided = form
+                .get("x-amz-signature")
+                .or_else(|| form.get("signature"))
+                .unwrap_or("");
+            Self::signature_does_not_match_error(provided, policy_b64, &access_key)
+        };
+        let raw = base64::engine::general_purpose::STANDARD
+            .decode(policy_b64)
+            .map_err(|_| failed())?;
+        let text = String::from_utf8(raw).map_err(|_| failed())?;
+        let value: serde_json::Value = serde_json::from_str(&text).map_err(|_| failed())?;
+        if !value.is_object() {
+            return Err(failed());
+        }
+        let expiration = value
+            .get("expiration")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let conditions = value
+            .get("conditions")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        Ok(PostPolicy {
+            expiration,
+            conditions,
+        })
+    }
+
+    /// Policy expiry (localstack validate_post_policy order: right after
+    /// decoding, before signature and conditions). A value in neither
+    /// documented format (`2007-12-01T12:00:00Z` /
+    /// `2007-12-01T12:00:00.000Z`) is an invalid policy date (AWS docs: 400
+    /// InvalidRequest, "Invalid date"); a past expiry is 403 AccessDenied,
+    /// "Invalid according to Policy: Policy expired."
+    fn check_post_policy_expiration(policy: &PostPolicy) -> Result<(), AwsResponse> {
+        let Some(expiry) = policy.expiration.as_deref() else {
+            return Ok(());
+        };
+        let parsed = parse_policy_expiration(expiry);
+        let Some(exp) = parsed else {
+            return Err(AwsResponse::error(400, "InvalidRequest", "Invalid date"));
+        };
+        if exp < chrono::Utc::now() {
+            return Err(Self::aws_error_with(
+                403,
+                "AccessDenied",
+                "Invalid according to Policy: Policy expired.",
+                &[],
+            ));
+        }
+        Ok(())
+    }
+
+    /// The signature gate (localstack field-set detection + real AWS's
+    /// SigV4 chain). V2-signed forms verify as v4-less here (no SHA-1 in
+    /// this crate; see residual gaps) — they still pass through decode and
+    /// expiry above.
+    fn verify_post_signature(policy_b64: &str, form: &PostForm) -> Result<(), AwsResponse> {
+        match post_signature_version(form) {
+            PostSigVersion::V4 { signature } => {
+                let credential = form.get("x-amz-credential").unwrap_or_default();
+                let amz_date = form.get("x-amz-date").unwrap_or_default();
+                let access_key = credential.split('/').next().unwrap_or_default();
+                let expected = expected_post_signature(
+                    POST_UPLOAD_SIGNING_SECRET,
+                    amz_date,
+                    credential,
+                    policy_b64,
+                );
+                let matches = expected
+                    .as_deref()
+                    .is_some_and(|exp| exp.eq_ignore_ascii_case(&signature));
+                if !matches {
+                    return Err(Self::signature_does_not_match_error(
+                        &signature, policy_b64, access_key,
+                    ));
+                }
+                Ok(())
+            }
+            PostSigVersion::Incomplete(field) => {
+                let name = post_argument_display_name(field);
+                Err(Self::aws_error_with(
+                    400,
+                    "InvalidArgument",
+                    &format!("Bucket POST must contain a field named '{name}'.  If it is specified, please check the order of the fields.",),
+                    &[("ArgumentName", name), ("ArgumentValue", "")],
+                ))
+            }
+            // A form with a policy document but no signature field family is
+            // not a signed upload: AccessDenied, as localstack raises.
+            PostSigVersion::Anonymous => Err(Self::aws_error_with(
+                403,
+                "AccessDenied",
+                "Access Denied",
+                &[],
+            )),
+            PostSigVersion::V2 => Ok(()),
+        }
+    }
+
+    /// Evaluate every declared policy condition against the form, in order
+    /// (localstack `_verify_condition`). The first failing condition answers
+    /// 403 AccessDenied "Invalid according to Policy: Policy Condition
+    /// failed: [...]"; content-length-range raises the typed
+    /// EntityTooSmall/EntityTooLarge shapes instead.
+    fn check_post_conditions(
+        policy: &PostPolicy,
+        form: &PostForm,
+        bucket_name: &str,
+        content_length: usize,
+    ) -> Result<(), AwsResponse> {
+        for condition in &policy.conditions {
+            if !Self::evaluate_post_condition(condition, form, bucket_name, content_length)? {
+                return Err(Self::aws_error_with(
+                    403,
+                    "AccessDenied",
+                    &format!(
+                        "Invalid according to Policy: Policy Condition failed: {}",
+                        condition
+                    ),
+                    &[],
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// One condition's truth against the parsed form. `Err` is for the typed
+    /// shapes localstack raises mid-walk (EntityTooSmall, EntityTooLarge,
+    /// InvalidPolicyDocument); `Ok(false)` is a plain mismatch.
+    fn evaluate_post_condition(
+        condition: &serde_json::Value,
+        form: &PostForm,
+        bucket_name: &str,
+        content_length: usize,
+    ) -> Result<bool, AwsResponse> {
+        if let Some(dict) = condition.as_object() {
+            // Real AWS/simple-conditions: exactly one property per dict.
+            if dict.len() != 1 {
+                return Err(Self::aws_error_with(
+                    400,
+                    "InvalidPolicyDocument",
+                    "Invalid Policy: Invalid Simple-Condition: Simple-Conditions must have exactly one property specified.",
+                    &[],
+                ));
+            }
+            let (key, value) = dict.iter().next().expect("checked len above");
+            let matched = key.eq_ignore_ascii_case("bucket") && value.as_str() == Some(bucket_name)
+                || !key.eq_ignore_ascii_case("bucket")
+                    && form
+                        .get(key)
+                        .is_some_and(|v| value.as_str().is_some_and(|s| v == s));
+            return Ok(matched);
+        }
+        let Some(parts) = condition.as_array() else {
+            // Unsupported condition shape: treated as failed (localstack's
+            // _verify_condition match falls off for unknown shapes).
+            return Ok(false);
+        };
+        // ["content-length-range", min, max]: bounds arrive as JSON numbers
+        // or numeric strings, coerced the way localstack's int() reads them.
+        if parts.len() == 3
+            && parts.first().and_then(|v| v.as_str()) == Some("content-length-range")
+        {
+            let (Some(min), Some(max)) = (
+                as_policy_i64(parts.get(1).unwrap_or(&serde_json::Value::Null)),
+                as_policy_i64(parts.get(2).unwrap_or(&serde_json::Value::Null)),
+            ) else {
+                // Non-numeric bounds: localstack's try/int ValueError branch
+                // marks the condition failed.
+                return Ok(false);
+            };
+            let size = content_length as i64;
+            if size < min {
+                return Err(Self::aws_error_with(
+                    400,
+                    "EntityTooSmall",
+                    "Your proposed upload is smaller than the minimum allowed size",
+                    &[
+                        ("ProposedSize", &size.to_string()),
+                        ("MinSizeAllowed", &min.to_string()),
+                    ],
+                ));
+            }
+            if size > max {
+                return Err(Self::aws_error_with(
+                    400,
+                    "EntityTooLarge",
+                    "Your proposed upload exceeds the maximum allowed size",
+                    &[
+                        ("ProposedSize", &size.to_string()),
+                        ("MaxSizeAllowed", &max.to_string()),
+                    ],
+                ));
+            }
+            return Ok(true);
+        }
+        // eq / starts-with conditions: operator, `$field`, string value.
+        let Some(op) = parts.first().and_then(|v| v.as_str()) else {
+            return Ok(false);
+        };
+        let Some(field) = parts.get(1).and_then(|v| v.as_str()) else {
+            return Ok(false);
+        };
+        let Some(bound) = parts.get(2).and_then(|v| v.as_str()) else {
+            return Ok(false);
+        };
+        match (op, field, bound) {
+            ("eq", k, bound) => {
+                if k.eq_ignore_ascii_case("$bucket") {
+                    return Ok(bound == bucket_name);
+                }
+                Ok(k.starts_with('$')
+                    && form
+                        .get(k.trim_start_matches('$'))
+                        .is_some_and(|v| v == bound))
+            }
+            ("starts-with", k, bound) => {
+                if !k.starts_with('$') {
+                    return Ok(false);
+                }
+                // An empty starts-with value accepts anything the field holds.
+                if bound.is_empty() {
+                    return Ok(true);
+                }
+                Ok(form
+                    .get(k.trim_start_matches('$'))
+                    .is_some_and(|v| v.starts_with(bound)))
+            }
+            _ => Ok(false),
+        }
+    }
+
+    /// AWS doc rule (sigv4-HTTPPOSTConstructPolicy, enforced the way minio's
+    /// checkPostPolicy cites it): "Each form field that you specify in a
+    /// form (except x-amz-signature, file, policy, and field names that have
+    /// an x-ignore- prefix) must appear in the list of conditions." The
+    /// signature mechanics of both versions are exempt too (the twin
+    /// verifies those, real AWS conditions nothing on them). Violations
+    /// answer 403 AccessDenied.
+    fn check_post_fields_covered(policy: &PostPolicy, form: &PostForm) -> Result<(), AwsResponse> {
+        let mut covered: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for condition in &policy.conditions {
+            if let Some(dict) = condition.as_object() {
+                for key in dict.keys() {
+                    let name = key.to_ascii_lowercase();
+                    if name != "bucket" {
+                        covered.insert(name.trim_start_matches('$').to_string());
+                    }
+                }
+            }
+            if let Some(parts) = condition.as_array() {
+                if parts.len() == 3 {
+                    if let Some(key) = parts.get(1).and_then(|v| v.as_str()) {
+                        if !key.eq_ignore_ascii_case("$bucket") {
+                            covered.insert(
+                                key.to_ascii_lowercase().trim_start_matches('$').to_string(),
+                            );
+                        }
+                    }
+                }
+                // content-length-range covers nothing: it constrains size.
+            }
+        }
+        let exempt = |name: &str| -> bool {
+            matches!(name, "file" | "policy")
+                || POST_V4_FIELDS.contains(&name)
+                || POST_V2_FIELDS.contains(&name)
+                || name.starts_with("x-ignore-")
+        };
+        for (name, _) in &form.fields {
+            let lowered = name.to_ascii_lowercase();
+            if !exempt(&lowered) && !covered.contains(&lowered) {
+                return Err(Self::aws_error_with(
+                    403,
+                    "AccessDenied",
+                    &format!(
+                        "Each form field that you specify in a form must appear in the list of policy conditions. \"{name}\" not specified in the policy."
+                    ),
+                    &[],
+                ));
+            }
+        }
+        Ok(())
     }
 
     fn do_copy_object(
@@ -3662,7 +4663,12 @@ impl S3Handler {
                 "PUT" => Some("PutObject".to_string()),
                 "HEAD" => Some("HeadObject".to_string()),
                 "DELETE" => Some("DeleteObject".to_string()),
-                "POST" => Some("PutObject".to_string()),
+                // POST /{Bucket}/{Key+} with no query suffix is the browser
+                // form upload (real AWS routes POST object uploads on both
+                // bucket-only and bucket/object URLs; the SDK-side POST with
+                // a key, CompleteMultipartUpload, is matched above by
+                // ?uploadId). The form's `key` field names the object.
+                "POST" => Some("PostObject".to_string()),
                 _ => None,
             };
         }
@@ -3861,7 +4867,11 @@ impl S3Handler {
                 } else if q("metadataTable") {
                     Some("CreateBucketMetadataTableConfiguration".to_string())
                 } else {
-                    None
+                    // POST /{Bucket} without a recognized query suffix is the
+                    // HTML form upload (RESTObjectPOST). moto's
+                    // _bucket_response_post treats it the same way: everything
+                    // that is not ?delete is a pre-signed POST.
+                    Some("PostObject".to_string())
                 }
             }
             "HEAD" => Some("HeadBucket".to_string()),
@@ -4162,6 +5172,880 @@ mod tests {
             chrono::NaiveDateTime::parse_from_str(&expiration, "%Y-%m-%dT%H:%M:%SZ").is_ok(),
             "expiration format: {expiration}"
         );
+    }
+
+    // ------------------------------------------------------------------
+    // POST object — browser form upload
+    // ------------------------------------------------------------------
+
+    /// Compose a multipart/form-data body the way real form-post clients
+    /// (browsers, requests-posting-boto formulalar) write it: named text
+    /// fields first, then the `file` part, terminated with the standard
+    /// boundary. Returns the full Content-Type header value and the body.
+    fn multipart_form_body(
+        fields: &[(&str, &str)],
+        file_part: Option<(&str, &str, &[u8])>,
+    ) -> (String, Vec<u8>) {
+        const BOUNDARY: &str = "----robotocore-post-form";
+        let mut body: Vec<u8> = Vec::new();
+        for (name, value) in fields {
+            body.extend_from_slice(
+                format!("--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n")
+                    .as_bytes(),
+            );
+            body.extend_from_slice(value.as_bytes());
+            body.extend_from_slice(b"\r\n");
+        }
+        if let Some((filename, content_type, payload)) = file_part {
+            body.extend_from_slice(
+                format!(
+                    "--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\nContent-Type: {content_type}\r\n\r\n"
+                )
+                .as_bytes(),
+            );
+            body.extend_from_slice(payload);
+            body.extend_from_slice(b"\r\n");
+        }
+        body.extend_from_slice(format!("--{BOUNDARY}--\r\n").as_bytes());
+        (format!("multipart/form-data; boundary={BOUNDARY}"), body)
+    }
+
+    /// A POST upload wire request the way the gateway delivers it: method
+    /// POST, multipart content-type, operation detected from the method+path
+    /// (the same detect the gateway runs).
+    fn form_post_request(
+        bucket: &str,
+        key_in_url: Option<&str>,
+        fields: &[(&str, &str)],
+        file_part: Option<(&str, &str, &[u8])>,
+    ) -> AwsRequest {
+        let (content_type, body) = multipart_form_body(fields, file_part);
+        let path = format!(
+            "/{}{}",
+            bucket,
+            key_in_url.map(|k| format!("/{k}")).unwrap_or_default(),
+        );
+        let operation =
+            S3Handler::detect_s3_operation("POST", &path, &HashMap::new()).unwrap_or_default();
+        AwsRequest {
+            service: "s3".to_string(),
+            operation,
+            account: 123456789012,
+            region: "us-east-1".to_string(),
+            bucket: Some(bucket.to_string()),
+            key: key_in_url.map(String::from),
+            query_params: HashMap::new(),
+            headers: form_post_headers(&content_type, body.len()),
+            method: "POST".to_string(),
+            body: Bytes::copy_from_slice(&body),
+            params: Value::Null,
+        }
+    }
+
+    /// The header set a real multipart POST carries: Host plus the body
+    /// length (browsers/hyper always send Content-Length; the handler's 411
+    /// gate keys off it).
+    fn form_post_headers(content_type: &str, body_len: usize) -> HashMap<String, String> {
+        let mut headers = HashMap::new();
+        headers.insert("host".to_string(), "localhost:4566".to_string());
+        headers.insert("content-type".to_string(), content_type.to_string());
+        headers.insert("content-length".to_string(), body_len.to_string());
+        headers
+    }
+
+    /// A POST upload with owned (policy/signature) form fields, no URL key.
+    fn form_post_request_owned(
+        bucket: &str,
+        fields: &[(String, String)],
+        file_part: Option<(&str, &str, &[u8])>,
+    ) -> AwsRequest {
+        let owned: Vec<(&str, &str)> = fields
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+        let (content_type, body) = multipart_form_body(&owned, file_part);
+        let operation =
+            S3Handler::detect_s3_operation("POST", &format!("/{bucket}"), &HashMap::new())
+                .unwrap_or_default();
+        AwsRequest {
+            service: "s3".to_string(),
+            operation,
+            account: 123456789012,
+            region: "us-east-1".to_string(),
+            bucket: Some(bucket.to_string()),
+            key: None,
+            query_params: HashMap::new(),
+            headers: form_post_headers(&content_type, body.len()),
+            method: "POST".to_string(),
+            body: Bytes::copy_from_slice(&body),
+            params: Value::Null,
+        }
+    }
+
+    #[test]
+    fn post_object_success_stores_object() {
+        // Policy-less form on a writable bucket (moto/localstack both store
+        // and answer 204 + Location + ETag).
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let file_payload: &[u8] = b"form file contents";
+        let resp = handler.handle(form_post_request(
+            "post-bkt",
+            None,
+            &[
+                ("key", "uploads/a & b.txt"),
+                ("x-amz-meta-owner", "me"),
+                ("Content-Type", "text/x-form-upload"),
+            ],
+            Some(("note.txt", "application/octet-stream", file_payload)),
+        ));
+        assert_eq!(
+            resp.status,
+            204,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let headers = header_map(&resp);
+        assert_eq!(headers.get("content-type").map(String::as_str), None); // 204: no content type
+        let etag = headers.get("ETag").expect("ETag header").clone();
+        assert!(etag.starts_with('"') && etag.ends_with('"'), "etag: {etag}");
+        let location = headers.get("Location").expect("Location header").clone();
+        assert_eq!(
+            location,
+            "http://localhost:4566/post-bkt/uploads/a%20%26%20b.txt"
+        );
+
+        // Stored through the decoded-key funnel; fetchable and typed.
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("uploads/a & b.txt"),
+            b"",
+        ));
+        assert_eq!(get.status, 200);
+        assert_eq!(get.body, file_payload);
+        let got_headers = header_map(&get);
+        assert_eq!(
+            got_headers.get("Content-Type").map(String::as_str),
+            Some("text/x-form-upload")
+        );
+        assert_eq!(
+            got_headers.get("x-amz-meta-owner").map(String::as_str),
+            Some("me")
+        );
+        assert_eq!(
+            got_headers.get("ETag").map(String::as_str),
+            Some(etag.as_str())
+        );
+    }
+
+    #[test]
+    fn post_object_filename_substitution() {
+        // moto: ${filename} in the key field is replaced by the uploaded
+        // file's name when a file part exists.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let resp = handler.handle(form_post_request(
+            "post-bkt",
+            None,
+            &[("key", "docs/${filename}")],
+            Some(("report.pdf", "application/pdf", b"%PDF-1.4 body")),
+        ));
+        assert_eq!(resp.status, 204);
+        let location = header_map(&resp).get("Location").expect("Location").clone();
+        assert!(
+            location.ends_with("/docs/report.pdf"),
+            "location: {location}"
+        );
+
+        let head = handler.handle(make_req(
+            "HeadObject",
+            Some("post-bkt"),
+            Some("docs/report.pdf"),
+            b"",
+        ));
+        assert_eq!(head.status, 200);
+    }
+
+    #[test]
+    fn post_object_requires_multipart_content_type() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let mut req = form_post_request("post-bkt", None, &[("key", "k")], Some(("f", "", b"1")));
+        req.headers
+            .insert("content-type".to_string(), "text/plain".to_string());
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 412);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("PreconditionFailed"), "body: {body}");
+        assert!(
+            body.contains("enclosure-type multipart/form-data"),
+            "body: {body}"
+        );
+    }
+
+    #[test]
+    fn post_object_key_field_required() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        // No key field in the form and no key in the URL.
+        let resp = handler.handle(form_post_request(
+            "post-bkt",
+            None,
+            &[],
+            Some(("f.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(resp.status, 400);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("InvalidArgument"), "body: {body}");
+        assert!(
+            body.contains("<ArgumentName>key</ArgumentName>"),
+            "body: {body}"
+        );
+    }
+
+    #[test]
+    fn post_object_url_key_used_when_form_omits_key() {
+        // POST /{Bucket}/{Key}: the URL key names the object when the form
+        // carries no key field (buckets publish the endpoint /bucket/key).
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let resp = handler.handle(form_post_request(
+            "post-bkt",
+            Some("from-url.txt"),
+            &[],
+            Some(("whatever.txt", "application/octet-stream", b"url-key body")),
+        ));
+        assert_eq!(resp.status, 204);
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("from-url.txt"),
+            b"",
+        ));
+        assert_eq!(get.status, 200);
+        assert_eq!(get.body, b"url-key body");
+    }
+
+    // ------------------------------------------------------------------
+    // POST object — policy document + SigV4 signature (auth stage)
+    // ------------------------------------------------------------------
+
+    /// Base64-encode a POST policy document with the caller's conditions.
+    fn post_policy_body(conditions: serde_json::Value, expiration: Option<&str>) -> String {
+        let mut doc = serde_json::Map::new();
+        if let Some(exp) = expiration {
+            doc.insert(
+                "expiration".to_string(),
+                serde_json::Value::String(exp.into()),
+            );
+        }
+        doc.insert("conditions".to_string(), conditions);
+        let text = serde_json::Value::Object(doc).to_string();
+        base64::engine::general_purpose::STANDARD.encode(text)
+    }
+
+    /// The SigV4 POST field family for `policy_b64`, signed with `secret`
+    /// (or corrupted when asked).
+    fn post_v4_fields(
+        policy_b64: &str,
+        secret: &str,
+        corrupt_signature: bool,
+    ) -> Vec<(String, String)> {
+        let amz_date = "20260226T000000Z";
+        let credential = format!("123456789012/{}/us-east-1/s3/aws4_request", &amz_date[..8]);
+        let mut signature =
+            expected_post_signature(secret, amz_date, &credential, policy_b64).unwrap();
+        if corrupt_signature {
+            signature = format!("face{}", &signature[4..]);
+        }
+        vec![
+            (
+                "x-amz-algorithm".to_string(),
+                "AWS4-HMAC-SHA256".to_string(),
+            ),
+            ("x-amz-credential".to_string(), credential),
+            ("x-amz-date".to_string(), amz_date.to_string()),
+            ("x-amz-signature".to_string(), signature),
+        ]
+    }
+
+    #[test]
+    fn post_object_signed_policy_success() {
+        // The documented credential pair (`secret_access_key = test`) signs
+        // a full v4 POST: 204 + the object stored.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([["starts-with", "$key", ""]]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "signed/obj.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("signed.txt", "application/octet-stream", b"signed payload")),
+        ));
+        assert_eq!(
+            resp.status,
+            204,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("signed/obj.txt"),
+            b"",
+        ));
+        assert_eq!(get.body, b"signed payload");
+    }
+
+    #[test]
+    fn post_object_wrong_signature_rejected() {
+        // A bogus x-amz-signature answers 403 SignatureDoesNotMatch carrying
+        // AWSAccessKeyId + SignatureProvided + StringToSign, and stores
+        // nothing.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([["starts-with", "$key", ""]]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "evil.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        fields.extend(post_v4_fields(&policy_b64, "not-the-twin-secret", false));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("evil.txt", "application/octet-stream", b"nope")),
+        ));
+        assert_eq!(
+            resp.status,
+            403,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(
+            body.contains("<Code>SignatureDoesNotMatch</Code>"),
+            "body: {body}"
+        );
+        assert!(
+            body.contains("<AWSAccessKeyId>123456789012</AWSAccessKeyId>"),
+            "body: {body}"
+        );
+        assert!(
+            body.contains(&format!("<StringToSign>{policy_b64}</StringToSign>")),
+            "body: {body}"
+        );
+
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("evil.txt"),
+            b"",
+        ));
+        assert_eq!(get.status, 404, "tampered upload must not store");
+    }
+
+    #[test]
+    fn post_object_corrupt_policy_document_rejected() {
+        // A policy field that decodes but is not a JSON policy document →
+        // SignatureDoesNotMatch (real AWS cannot verify a signature over an
+        // unreadable policy; localstack: "the policy has been tampered with").
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let garbage = base64::engine::general_purpose::STANDARD.encode("plain text, not json");
+        let mut fields = vec![
+            ("key".to_string(), "corrupt.txt".to_string()),
+            ("policy".to_string(), garbage.clone()),
+        ];
+        fields.extend(post_v4_fields(&garbage, POST_UPLOAD_SIGNING_SECRET, false));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("corrupt.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(resp.status, 403);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(
+            body.contains("<Code>SignatureDoesNotMatch</Code>"),
+            "body: {body}"
+        );
+        assert!(
+            body.contains(&format!("<StringToSign>{garbage}</StringToSign>")),
+            "body: {body}"
+        );
+    }
+
+    #[test]
+    fn post_object_expired_policy_rejected() {
+        // Expired policy with a correct signature → 403 AccessDenied,
+        // "Invalid according to Policy: Policy expired." (localstack
+        // validate_post_policy; the policy+signature stage precedes storing).
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([["starts-with", "$key", ""]]),
+            Some("2001-01-01T00:00:00Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "late.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("late.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(
+            resp.status,
+            403,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<Code>AccessDenied</Code>"), "body: {body}");
+        assert!(
+            body.contains("Invalid according to Policy: Policy expired."),
+            "body: {body}"
+        );
+    }
+
+    #[test]
+    fn post_object_bad_expiration_format_400() {
+        // A policy expiration in neither documented format → 400
+        // InvalidRequest "Invalid date" (AWS docs; the parent lane pin).
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([["starts-with", "$key", ""]]),
+            Some("2099-13-99T99:99:99Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "badexp.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("badexp.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(resp.status, 400);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<Code>InvalidRequest</Code>"), "body: {body}");
+        assert!(body.contains("Invalid date"), "body: {body}");
+    }
+
+    #[test]
+    fn post_object_missing_signature_field_400() {
+        // A partial v4 field family → InvalidArgument naming the first
+        // missing field (localstack _is_match_with_signature_fields).
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([["starts-with", "$key", ""]]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let fields = vec![
+            ("key".to_string(), "half-signed.txt".to_string()),
+            ("policy".to_string(), policy_b64),
+            (
+                "x-amz-algorithm".to_string(),
+                "AWS4-HMAC-SHA256".to_string(),
+            ),
+            (
+                "x-amz-credential".to_string(),
+                "123456789012/20260226/us-east-1/s3/aws4_request".to_string(),
+            ),
+        ];
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("half-signed.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(resp.status, 400);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(
+            body.contains("<Code>InvalidArgument</Code>"),
+            "body: {body}"
+        );
+        assert!(body.contains("X-Amz-Signature"), "body: {body}");
+    }
+
+    #[test]
+    fn post_object_policy_without_signature_403() {
+        // A policy document with no signature field family at all is not a
+        // signed upload → 403 AccessDenied (localstack validate_post_policy).
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([["starts-with", "$key", ""]]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let fields = vec![
+            ("key".to_string(), "unsigned.txt".to_string()),
+            ("policy".to_string(), policy_b64),
+        ];
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("unsigned.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(resp.status, 403);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<Code>AccessDenied</Code>"), "body: {body}");
+    }
+
+    #[test]
+    fn post_object_eq_condition_mismatch_403() {
+        // An eq condition the form fails → 403 AccessDenied with the AWS
+        // policy-condition-failed message rendering the condition.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([["eq", "$key", "expected.txt"]]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "mismatched.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("m.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(
+            resp.status,
+            403,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<Code>AccessDenied</Code>"), "body: {body}");
+        assert!(
+            body.contains(r#"Invalid according to Policy: Policy Condition failed: ["eq","$key","expected.txt"]"#),
+            "body: {body}"
+        );
+    }
+
+    #[test]
+    fn post_object_uncovered_field_403() {
+        // The AWS doc rule (quoted in minio's checkPostPolicy): every form
+        // field outside the ignore list must appear in the policy's
+        // conditions; posting an uncovered field → 403 AccessDenied.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([["starts-with", "$key", ""]]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "covered-key.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+            // Metadata is conditionable like any other field: uncovered.
+            ("x-amz-meta-owner".to_string(), "me".to_string()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("m.txt", "application/octet-stream", b"body")),
+        ));
+        assert_eq!(
+            resp.status,
+            403,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<Code>AccessDenied</Code>"), "body: {body}");
+        assert!(
+            body.contains(r#""x-amz-meta-owner" not specified in the policy."#),
+            "body: {body}"
+        );
+
+        // The same field WITH a matching condition passes and stores.
+        let policy_b64 = post_policy_body(
+            serde_json::json!([
+                ["starts-with", "$key", ""],
+                ["eq", "$x-amz-meta-owner", "me"]
+            ]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "covered-key2.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+            ("x-amz-meta-owner".to_string(), "me".to_string()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("m.txt", "application/octet-stream", b"body")),
+        ));
+        assert_eq!(
+            resp.status,
+            204,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+    }
+
+    #[test]
+    fn post_object_content_length_range_too_large_400() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([["starts-with", "$key", ""], ["content-length-range", 1, 10]]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "big.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let file_payload = vec![b'x'; 1000];
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("big.txt", "application/octet-stream", &file_payload)),
+        ));
+        assert_eq!(
+            resp.status,
+            400,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<Code>EntityTooLarge</Code>"), "body: {body}");
+        assert!(
+            body.contains("Your proposed upload exceeds the maximum allowed size"),
+            "body: {body}"
+        );
+        assert!(
+            body.contains("<ProposedSize>1000</ProposedSize>"),
+            "body: {body}"
+        );
+        assert!(
+            body.contains("<MaxSizeAllowed>10</MaxSizeAllowed>"),
+            "body: {body}"
+        );
+
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("big.txt"),
+            b"",
+        ));
+        assert_eq!(get.status, 404, "rejected uploads store nothing");
+    }
+
+    #[test]
+    fn post_object_content_length_range_too_small_400() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([
+                ["starts-with", "$key", ""],
+                ["content-length-range", 100, 99999]
+            ]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "tiny.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("tiny.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(resp.status, 400);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<Code>EntityTooSmall</Code>"), "body: {body}");
+        assert!(
+            body.contains("<MinSizeAllowed>100</MinSizeAllowed>"),
+            "body: {body}"
+        );
+    }
+
+    #[test]
+    fn post_object_bucket_condition_mismatch_403() {
+        // {"bucket": name} conditions compare the request's bucket, so a
+        // policy pinned to another bucket fails (localstack
+        // additional_policy_metadata["bucket"]).
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([
+                {"bucket": "some-other-bucket"},
+                ["starts-with", "$key", ""]
+            ]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "cross-posted.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("m.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(resp.status, 403);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(
+            body.contains(r#"Policy Condition failed: {"bucket":"some-other-bucket"}"#),
+            "body: {body}"
+        );
+    }
+
+    #[test]
+    fn post_object_invalid_simple_condition_400() {
+        // A dict condition with more than one property → 400
+        // InvalidPolicyDocument "Invalid Simple-Condition".
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([{"bucket": "post-bkt", "key": "k.txt"}]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "k.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("m.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(resp.status, 400);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(
+            body.contains("<Code>InvalidPolicyDocument</Code>"),
+            "body: {body}"
+        );
+        assert!(
+            body.contains("Simple-Conditions must have exactly one property"),
+            "body: {body}"
+        );
+    }
+
+    #[test]
+    fn post_object_bucket_and_key_conditions_success() {
+        // A policy matching the request exactly: bucket dict condition, key
+        // starts-with, and an in-range content-length-range → stored.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([
+                {"bucket": "post-bkt"},
+                ["starts-with", "$key", "docs/"],
+                ["content-length-range", 1, 1 << 20]
+            ]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "docs/final.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("final.txt", "application/octet-stream", b"checkpointed")),
+        ));
+        assert_eq!(
+            resp.status,
+            204,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("docs/final.txt"),
+            b"",
+        ));
+        assert_eq!(get.body, b"checkpointed");
     }
 
     #[test]
