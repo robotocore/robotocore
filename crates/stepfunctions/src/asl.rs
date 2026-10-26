@@ -12,6 +12,7 @@
 //! catcher's Next state. Executions run on a detached thread so
 //! StopExecution can abort them while they are waiting.
 
+use crate::jsonata;
 use crate::models::Execution;
 use parking_lot::Mutex;
 use serde_json::{json, Map, Value};
@@ -41,22 +42,47 @@ impl FlowError {
     }
 }
 
+/// The ASL `QueryLanguage` a state evaluates with: JSONPath (the default)
+/// or JSONata. States may override the machine-level value per state
+/// (https://docs.aws.amazon.com/step-functions/latest/dg/transforming-data.html).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum QueryLanguage {
+    #[default]
+    JsonPath,
+    Jsonata,
+}
+
+impl QueryLanguage {
+    /// Resolve the effective language for one state node against the
+    /// machine-level default; unknown values behave like JSONPATH.
+    pub fn for_state(obj: &Map<String, Value>, machine_default: QueryLanguage) -> QueryLanguage {
+        match obj.get("QueryLanguage").and_then(|v| v.as_str()) {
+            Some(s) if s.eq_ignore_ascii_case("JSONATA") => QueryLanguage::Jsonata,
+            Some(s) if s.eq_ignore_ascii_case("JSONPATH") => QueryLanguage::JsonPath,
+            _ => machine_default,
+        }
+    }
+
+    /// The machine-level `QueryLanguage` (top level of the ASL document).
+    pub fn for_machine(def: &Map<String, Value>) -> QueryLanguage {
+        QueryLanguage::for_state(def, QueryLanguage::JsonPath)
+    }
+}
+
 /// Serialise a JSON value as the wire string used in event details.
 pub fn value_to_string(v: &Value) -> String {
     serde_json::to_string(v).unwrap_or_else(|_| "null".to_string())
 }
 
-/// Resolve a JSONPath of the form `$.a.b` against a value.
+/// Resolve an AWS StepFunctions-dialect JSONPath against a value: `$.a.b`
+/// dot fields, bracket indices / slices / wildcards and `[?( ... )]` filters
+/// with the AWS `&&` / `||` conjunctions (moto issue #10078). Returns `None`
+/// for a definite path that does not exist (the era `_resolve_path`
+/// semantics), `Some([])` for a filter / slice / wildcard that matches
+/// nothing (the AWS dialect), and carries moto extract_json's singleton
+/// unpack + shape heuristics from moto issue #7825.
 pub fn resolve_json_path(path: &str, base: &Value) -> Option<Value> {
-    let rest = path.strip_prefix("$.")?;
-    if rest.is_empty() {
-        return Some(base.clone());
-    }
-    let mut cur = base.clone();
-    for part in rest.split('.') {
-        cur = cur.get(part)?.clone();
-    }
-    Some(cur)
+    crate::jsonpath::resolve(path, base)
 }
 
 /// Interpreter context: emits history events into the execution record.
@@ -1175,13 +1201,14 @@ fn dispatch_states_start_execution(ctx: &Ctx, input: &Value) -> Result<Value, Fl
     // The child record stays unregistered (only registered executions show
     // up in DescribeExecution), like the era's throwaway nested history.
     let child_ctx = Ctx::new(child);
-    let def: Value = serde_json::from_str(&machine.definition_string()).unwrap_or(Value::Null);
-    let states = def
+    let machine_def: Value =
+        serde_json::from_str(&machine.definition_string()).unwrap_or(Value::Null);
+    let states = machine_def
         .get("States")
         .and_then(|s| s.as_object())
         .cloned()
         .unwrap_or_default();
-    let start_at = def
+    let start_at = machine_def
         .get("StartAt")
         .and_then(|s| s.as_str())
         .unwrap_or_default()
@@ -1192,7 +1219,13 @@ fn dispatch_states_start_execution(ctx: &Ctx, input: &Value) -> Result<Value, Fl
     } else {
         json!({})
     };
-    match run_flow(&child_ctx, &states, start_at, child_input) {
+    match run_flow(
+        &child_ctx,
+        &states,
+        start_at,
+        child_input,
+        QueryLanguage::for_machine(machine_def.as_object().unwrap_or(&Map::new())),
+    ) {
         Ok(output) => Ok(json!({ "executionArn": exec_arn, "output": output })),
         Err(e) => Ok(json!({ "executionArn": exec_arn, "error": e.error, "cause": e.cause })),
     }
@@ -1263,6 +1296,7 @@ pub fn run_flow(
     states: &Map<String, Value>,
     start_at: String,
     input: Value,
+    default_lang: QueryLanguage,
 ) -> Result<Value, FlowError> {
     let mut current = start_at;
     let mut data = input;
@@ -1299,9 +1333,18 @@ pub fn run_flow(
 
         ctx.emit_entered(&state_type, &name, &data);
 
-        let (output, next_state) = match execute_state(ctx, &name, &obj, &data) {
+        let lang = QueryLanguage::for_state(&obj, default_lang);
+        let attempt = StateAttempt {
+            name: &name,
+            obj: &obj,
+            data: &data,
+            lang,
+            machine_default: default_lang,
+        };
+        let (output, next_state) = match execute_state(ctx, &name, &obj, &data, lang, default_lang)
+        {
             Ok(ok) => ok,
-            Err(e) => recover_from_error(ctx, &mut retry_counts, &name, &obj, &data, e)?,
+            Err(e) => recover_from_error(ctx, &mut retry_counts, &attempt, e)?,
         };
 
         ctx.emit_exited(&state_type, &name, &output);
@@ -1323,7 +1366,12 @@ fn execute_state(
     name: &str,
     obj: &Map<String, Value>,
     data: &Value,
+    lang: QueryLanguage,
+    machine_default: QueryLanguage,
 ) -> Result<(Value, Option<String>), FlowError> {
+    if lang == QueryLanguage::Jsonata {
+        return execute_jsonata_state(ctx, name, obj, data, machine_default);
+    }
     let state_type = obj.get("Type").and_then(|t| t.as_str()).unwrap_or("Pass");
     let next_state = obj
         .get("Next")
@@ -1394,7 +1442,8 @@ fn execute_state(
             if let Some(branches) = obj.get("Branches").and_then(|b| b.as_array()) {
                 for branch in branches {
                     let (b_states, b_start) = sub_flow_states(branch)?;
-                    let out = run_flow(ctx, &b_states, b_start, effective.clone())?;
+                    let out =
+                        run_flow(ctx, &b_states, b_start, effective.clone(), machine_default)?;
                     outputs.push(out);
                 }
             }
@@ -1420,7 +1469,7 @@ fn execute_state(
             if let Some(iterator) = obj.get("Iterator").or_else(|| obj.get("ItemProcessor")) {
                 let (it_states, it_start) = sub_flow_states(iterator)?;
                 for item in items {
-                    let out = run_flow(ctx, &it_states, it_start.clone(), item)?;
+                    let out = run_flow(ctx, &it_states, it_start.clone(), item, machine_default)?;
                     outputs.push(out);
                 }
             }
@@ -1452,6 +1501,328 @@ fn execute_state(
                 next_state,
             ))
         }
+    }
+}
+
+/// Execute a state that evaluates as JSONata (`QueryLanguage: "JSONATA"`,
+/// machine-level or per-state). Mirrors the AWS JSONata field semantics:
+/// no InputPath/Parameters/ResultPath/OutputPath machinery — payloads are
+/// `{% %}`-templated strings evaluated with `$states.input` (plus
+/// `$states.result` for Task/Parallel/Map outputs), and any evaluation
+/// failure becomes `States.QueryEvaluationError` so Retry / Catch apply.
+fn execute_jsonata_state(
+    ctx: &Ctx,
+    name: &str,
+    obj: &Map<String, Value>,
+    data: &Value,
+    machine_default: QueryLanguage,
+) -> Result<(Value, Option<String>), FlowError> {
+    let context = build_jsonata_context(name, ctx);
+    let states_any = jsonata::StatesCtx::input_only(data, &context);
+    // One wrapper for the AWS runtime error: caught by the state's own
+    // Retry / Catch blocks like the real engine.
+    let jsonata_err = |e: jsonata::EvalError| {
+        FlowError::new(
+            "States.QueryEvaluationError",
+            format!(
+                "The JSONata expression in state '{}' could not be evaluated: {}",
+                name, e.message
+            ),
+        )
+    };
+
+    let next_state = obj
+        .get("Next")
+        .and_then(|v| v.as_str())
+        .map(|v| v.to_string());
+
+    match obj.get("Type").and_then(|t| t.as_str()).unwrap_or("Pass") {
+        "Fail" => {
+            // The Fail state's Error/Cause evaluate as JSONata templates.
+            let field_string = |key: &str, default: &str| -> Result<String, FlowError> {
+                match obj.get(key) {
+                    Some(Value::String(expr)) if jsonata::is_expanded(expr) => {
+                        match jsonata::eval_template(&json!(expr), &states_any) {
+                            Ok(v) => Ok(string_value(&v)),
+                            Err(e) => Err(jsonata_err(e)),
+                        }
+                    }
+                    // Non-string or plain literals pass through as the era.
+                    other => Ok(other
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(default)
+                        .to_string()),
+                }
+            };
+            let error = field_string("Error", "States.Fail")?;
+            let cause = field_string("Cause", "")?;
+            Err(FlowError { error, cause })
+        }
+        "Wait" => {
+            // Seconds/Timestamp accept a single {% %} template; the era caps
+            // the actual sleep either way.
+            if let Some(Value::String(expr)) = obj.get("Seconds") {
+                if jsonata::is_expanded(expr) {
+                    let seconds = match jsonata::eval(expr[2..expr.len() - 2].trim(), &states_any) {
+                        Ok(v) => v.as_f64().unwrap_or(0.0).clamp(0.0, 1.0),
+                        Err(e) => return Err(jsonata_err(e)),
+                    };
+                    if seconds > 0.0 {
+                        sleep_with_abort(&ctx.exec, seconds);
+                    }
+                    if ctx.exec.is_aborted() {
+                        return Ok((data.clone(), None));
+                    }
+                    return Ok((jsonata_pass_output(obj, &states_any)?, next_state));
+                }
+            }
+            // Timestamps never block in the era; a templated one only needs
+            // to evaluate (its value is not consumed by the sleep).
+            if let Some(Value::String(expr)) = obj.get("Timestamp") {
+                if jsonata::is_expanded(expr) {
+                    jsonata::eval_single_expression(expr[2..expr.len() - 2].trim(), &states_any)
+                        .map_err(jsonata_err)?;
+                }
+            }
+            Ok((jsonata_pass_output(obj, &states_any)?, next_state))
+        }
+        "Choice" => {
+            let choices = obj
+                .get("Choices")
+                .and_then(|c| c.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let mut target: Option<String> = None;
+            for rule in &choices {
+                let Some(rule_obj) = rule.as_object() else {
+                    continue;
+                };
+                if let Some(Value::String(cond)) = rule_obj.get("Condition") {
+                    if !jsonata::is_expanded(cond) {
+                        return Err(FlowError::new(
+                            "States.QueryEvaluationError",
+                            format!(
+                                "The Choice state '{}' condition must be a {{% %}}-wrapped JSONata expression",
+                                name
+                            ),
+                        ));
+                    }
+                    let verdict = jsonata::eval_single_expression(
+                        cond[2..cond.len() - 2].trim(),
+                        &states_any,
+                    )
+                    .map_err(jsonata_err)?;
+                    match verdict {
+                        Value::Bool(true) => {
+                            target = rule_obj
+                                .get("Next")
+                                .and_then(|n| n.as_str())
+                                .map(String::from);
+                            break;
+                        }
+                        Value::Bool(false) => {}
+                        // AWS: any non-boolean (or undefined) condition
+                        // result is a query evaluation error, not a miss.
+                        _ => {
+                            return Err(jsonata_err(jsonata::EvalError::new(
+                                "the Choice condition did not evaluate to a boolean",
+                            )))
+                        }
+                    }
+                }
+            }
+            if target.is_none() {
+                if let Some(default) = obj.get("Default").and_then(|d| d.as_str()) {
+                    target = Some(default.to_string());
+                }
+            }
+            match target {
+                Some(next) => Ok((data.clone(), Some(next))),
+                None => Err(FlowError::new(
+                    "States.NoChoiceMatched",
+                    format!("An error occurred while executing the state '{name}'"),
+                )),
+            }
+        }
+        "Parallel" => {
+            let mut outputs: Vec<Value> = Vec::new();
+            if let Some(branches) = obj.get("Branches").and_then(|b| b.as_array()) {
+                for branch in branches {
+                    let (b_states, b_start) = sub_flow_states(branch)?;
+                    let out = run_flow(ctx, &b_states, b_start, data.clone(), machine_default)?;
+                    outputs.push(out);
+                }
+            }
+            let result = Value::Array(outputs);
+            let output = match obj.get("Output") {
+                Some(_) => jsonata_output(obj, data, Some(&result), &context, name)?,
+                None => result,
+            };
+            Ok((output, next_state))
+        }
+        "Map" => {
+            // JSONata Map: `Items` (a JSONata expression evaluating to an
+            // array or object) replaces ItemsPath; `ItemSelector` replaces
+            // Parameters on the iteration payload.
+            let items_value = match obj.get("Items") {
+                Some(template) => {
+                    jsonata::eval_template(template, &states_any).map_err(jsonata_err)?
+                }
+                None => data.clone(),
+            };
+            let items: Vec<Value> = match items_value {
+                Value::Array(list) => list,
+                other => vec![other],
+            };
+            let mut outputs: Vec<Value> = Vec::new();
+            if let Some(iterator) = obj.get("Iterator").or_else(|| obj.get("ItemProcessor")) {
+                let (it_states, it_start) = sub_flow_states(iterator)?;
+                for item in items {
+                    let item_input = match obj.get("ItemSelector") {
+                        Some(sel) => jsonata::eval_template(
+                            sel,
+                            &jsonata::StatesCtx::input_only(&item, &context),
+                        )
+                        .map_err(jsonata_err)?,
+                        None => item,
+                    };
+                    let out = run_flow(
+                        ctx,
+                        &it_states,
+                        it_start.clone(),
+                        item_input,
+                        machine_default,
+                    )?;
+                    outputs.push(out);
+                }
+            }
+            let result = Value::Array(outputs);
+            let output = match obj.get("Output") {
+                Some(_) => jsonata_output(obj, data, Some(&result), &context, name)?,
+                None => result,
+            };
+            Ok((output, next_state))
+        }
+        "Task" => {
+            let resource = obj
+                .get("Resource")
+                .and_then(|r| r.as_str())
+                .unwrap_or_default()
+                .to_string();
+            // Arguments replace Parameters in JSONata states (either field is
+            // accepted so partially-converted definitions still run).
+            let effective = match obj.get("Arguments").or_else(|| obj.get("Parameters")) {
+                Some(args) => jsonata::eval_template(args, &states_any).map_err(jsonata_err)?,
+                None => data.clone(),
+            };
+            let raw_out = dispatch_task(ctx, &resource, &effective)?;
+            let output = match obj.get("Output") {
+                Some(_) => jsonata_output(obj, data, Some(&raw_out), &context, name)?,
+                None => raw_out,
+            };
+            Ok((output, next_state))
+        }
+        // Pass, Succeed, and unrecognised types pass through.
+        _ => Ok((jsonata_pass_output(obj, &states_any)?, next_state)),
+    }
+}
+
+/// Evaluate a JSONata state's `Output` field with `$states.result` bound.
+fn jsonata_output(
+    obj: &Map<String, Value>,
+    input: &Value,
+    result: Option<&Value>,
+    context: &Value,
+    name: &str,
+) -> Result<Value, FlowError> {
+    let Some(field) = obj.get("Output") else {
+        return Ok(input.clone());
+    };
+    let states = jsonata::StatesCtx {
+        input,
+        result,
+        context,
+        error_output: None,
+    };
+    jsonata::eval_template(field, &states).map_err(|e| {
+        FlowError::new(
+            "States.QueryEvaluationError",
+            format!(
+                "The JSONata expression in state '{}' could not be evaluated: {}",
+                name, e.message
+            ),
+        )
+    })
+}
+
+/// The Pass-state payload: `Output` is the JSONata way to transform;
+/// `Result` stays as an accepted literal fallback; otherwise the input
+/// passes through.
+fn jsonata_pass_output(
+    obj: &Map<String, Value>,
+    states: &jsonata::StatesCtx,
+) -> Result<Value, FlowError> {
+    if obj.get("Output").is_some() {
+        return jsonata::eval_template(&obj["Output"], states).map_err(|e| {
+            FlowError::new(
+                "States.QueryEvaluationError",
+                format!(
+                    "The JSONata Output expression could not be evaluated: {}",
+                    e.message
+                ),
+            )
+        });
+    }
+    match obj.get("Result") {
+        Some(result) => jsonata::eval_template(result, states).map_err(|e| {
+            FlowError::new(
+                "States.QueryEvaluationError",
+                format!(
+                    "The JSONata Result expression could not be evaluated: {}",
+                    e.message
+                ),
+            )
+        }),
+        None => Ok(states.input.clone()),
+    }
+}
+
+/// The minimal `$string()` form of a value for the Fail state's Error/Cause.
+fn string_value(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        other => serde_json::to_string(other).unwrap_or_default(),
+    }
+}
+
+/// JSONata `$states.context` — the enriched Context Object.
+fn build_jsonata_context(name: &str, ctx: &Ctx) -> Value {
+    let sm_name = ctx.exec.sm_arn.rsplit(':').next().unwrap_or_default();
+    json!({
+        "Execution": {
+            "Id": ctx.exec.arn,
+            "Name": ctx.exec.name,
+            "Input": serde_json::from_str::<Value>(&ctx.exec.input).unwrap_or(Value::Null),
+            "StartTime": iso_seconds(ctx.exec.start_date),
+        },
+        "StateMachine": {
+            "Id": ctx.exec.sm_arn,
+            "Name": sm_name,
+        },
+        "State": {
+            "Name": name,
+            "EnteredTime": iso_seconds(now_f()),
+        },
+    })
+}
+
+/// Epoch seconds -> ISO 8601 with millisecond precision, UTC.
+fn iso_seconds(epoch: f64) -> String {
+    let secs = epoch.floor() as i64;
+    let nanos = ((epoch - epoch.floor()) * 1_000_000_000.0) as u32;
+    match chrono::DateTime::from_timestamp(secs, nanos) {
+        Some(dt) => dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+        None => String::new(),
     }
 }
 
@@ -1499,14 +1870,29 @@ fn error_equals_match(error_equals: Option<&Value>, error: &str) -> bool {
 /// until `MaxAttempts` is reached — then Catch blocks, where the first
 /// matching catcher's `Next` carries a `{"Error", "Cause"}` merged into the
 /// state input at the catcher's `ResultPath`.
+/// Per-state execution context shared by `execute_state` and the
+/// Retry/Catch machinery (keeps the recursion signature clippy-friendly).
+struct StateAttempt<'a> {
+    name: &'a str,
+    obj: &'a Map<String, Value>,
+    data: &'a Value,
+    lang: QueryLanguage,
+    machine_default: QueryLanguage,
+}
+
 fn recover_from_error(
     ctx: &Ctx,
     retry_counts: &mut HashMap<String, u32>,
-    name: &str,
-    obj: &Map<String, Value>,
-    data: &Value,
+    attempt: &StateAttempt,
     err: FlowError,
 ) -> Result<(Value, Option<String>), FlowError> {
+    let StateAttempt {
+        name,
+        obj,
+        data,
+        lang,
+        machine_default,
+    } = *attempt;
     if let Some(retriers) = obj.get("Retry").and_then(|r| r.as_array()) {
         if let Some(retrier) = retriers
             .iter()
@@ -1533,9 +1919,9 @@ fn recover_from_error(
                 sleep_with_abort(&ctx.exec, wait_time.min(0.1));
                 // Re-execute the state; a repeated failure recurses through
                 // the same Retry/Catch handling (era `_handle_error`).
-                return match execute_state(ctx, name, obj, data) {
+                return match execute_state(ctx, name, obj, data, lang, machine_default) {
                     Ok(ok) => Ok(ok),
-                    Err(e) => recover_from_error(ctx, retry_counts, name, obj, data, e),
+                    Err(e) => recover_from_error(ctx, retry_counts, attempt, e),
                 };
             }
             // Retries exhausted, fall through to the Catch blocks.
@@ -1548,13 +1934,42 @@ fn recover_from_error(
             .find(|c| error_equals_match(c.get("ErrorEquals"), &err.error))
         {
             let error_output = json!({ "Error": err.error, "Cause": err.cause });
-            let result_path = match catch.get("ResultPath") {
-                None => Some("$"),
-                Some(Value::String(s)) => Some(s.as_str()),
-                Some(Value::Null) => None,
-                Some(_) => None,
+            // JSONata catchers can shape the payload with an Output field
+            // ($states.errorOutput holds {"Error", "Cause"}; AWS's fallback
+            // form); the era ResultPath merge stays for JSONPath catches.
+            let output = if lang == QueryLanguage::Jsonata {
+                match catch.get("Output") {
+                    Some(template) => {
+                        let states = jsonata::StatesCtx {
+                            input: attempt.data,
+                            result: None,
+                            context: &build_jsonata_context(name, ctx),
+                            error_output: Some(&error_output),
+                        };
+                        match jsonata::eval_template(template, &states) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                return Err(FlowError::new(
+                                    "States.QueryEvaluationError",
+                                    format!(
+                                        "The JSONata expression in state '{}' could not be evaluated: {}",
+                                        name, e.message
+                                    ),
+                                ))
+                            }
+                        }
+                    }
+                    None => error_output,
+                }
+            } else {
+                let result_path = match catch.get("ResultPath") {
+                    None => Some("$"),
+                    Some(Value::String(s)) => Some(s.as_str()),
+                    Some(Value::Null) => None,
+                    Some(_) => None,
+                };
+                apply_result_path(result_path, attempt.data, error_output)
             };
-            let output = apply_result_path(result_path, data, error_output);
             // Era: `return catch.get("Next"), output` — a catcher without a
             // Next leaves next_state None, which the caller re-raises.
             return match catch.get("Next").and_then(|n| n.as_str()).map(String::from) {
@@ -1595,7 +2010,11 @@ pub fn run_on_thread(exec: Arc<Execution>, definition: String) {
                 .unwrap_or_default()
                 .to_string();
             let input: Value = serde_json::from_str(&exec.input).unwrap_or_else(|_| json!({}));
-            run_flow(&ctx, states, start_at, input)
+            let machine_default = def
+                .as_object()
+                .map(QueryLanguage::for_machine)
+                .unwrap_or_default();
+            run_flow(&ctx, states, start_at, input, machine_default)
         })();
         let last_event_id = ctx.exec.events.read().len() as i64;
         match result {
@@ -1610,6 +2029,316 @@ pub fn run_on_thread(exec: Arc<Execution>, definition: String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ---- AWS JSONPath dialect (moto issues #10078 / #7825) ----
+
+    fn dialect_input() -> Value {
+        json!({
+            "items": [
+                {"keep": true, "ready": true, "name": "a"},
+                {"keep": true, "ready": false, "name": "b"},
+                {"keep": false, "ready": true, "name": "c"},
+            ],
+            "total": 3,
+        })
+    }
+
+    #[test]
+    fn sfn_dialect_and_or_in_filter() {
+        let input = dialect_input();
+        // The CDK-emitted conjunction shape from moto #10078.
+        let got = resolve_json_path("$.items[?(@.keep == true && @.ready == true)]", &input)
+            .expect("parses and matches");
+        assert_eq!(got, json!([{"keep": true, "ready": true, "name": "a"}]));
+        // || disjunction and adjacency without spaces.
+        let got = resolve_json_path("$.items[?(@.name=='b'||@.name=='c')].name", &input).unwrap();
+        assert_eq!(got, json!(["b", "c"]));
+        // Negation, bare truthiness and $-rooted refs inside the filter.
+        assert_eq!(
+            resolve_json_path("$.items[?(!@.keep)].name", &input),
+            Some(json!(["c"]))
+        );
+        assert_eq!(
+            resolve_json_path("$.items[?(@.ready)].name", &input),
+            Some(json!(["a", "c"]))
+        );
+        // A $-rooted ref inside the filter resolves against the path input.
+        let got = resolve_json_path(
+            "$.items[?($.total > 1 && @.ready == true)].name",
+            &json!({"items": [{"ready": true, "name": "r1"}], "total": 2}),
+        );
+        assert_eq!(got, Some(json!(["r1"])));
+        // Two-space separated operators still parse.
+        assert_eq!(
+            resolve_json_path("$.items[?(@.keep==true && @.ready==false)].name", &input),
+            Some(json!(["b"]))
+        );
+        // Parenthesised groups combine with the conjunction: numeric and
+        // string ordering comparators of the AWS filter set.
+        let users = json!({"users": [
+            {"name": "a", "n": 5, "role": "x"},
+            {"name": "b", "n": 15, "role": "y"},
+            {"name": "c", "n": 0, "role": "y"},
+        ]});
+        assert_eq!(
+            resolve_json_path("$.users[?(@.n >= 5 && @.n < 10)].name", &users),
+            Some(json!(["a"]))
+        );
+        // 'a' < 'b' and its role group passes via the negated-missing arm.
+        assert_eq!(
+            resolve_json_path(
+                "$.users[?(@.name < 'b' && (@.role == 'y' || !@.gone))].name",
+                &users
+            ),
+            Some(json!(["a"]))
+        );
+        assert_eq!(
+            resolve_json_path("$.users[?(@.name != 'a' && @.n != 0)].name", &users),
+            Some(json!(["b"]))
+        );
+        // A missing path comparison misses both == and !=, like jsonpath_ng.
+        assert_eq!(
+            resolve_json_path("$.users[?(@.miss == null)]", &users),
+            Some(json!([]))
+        );
+        // A present null compares equal to the null literal.
+        assert_eq!(
+            resolve_json_path(
+                "$.users[?(@.nul == null)].name",
+                &json!({"users": [{"name": "z", "nul": null}]})
+            ),
+            Some(json!(["z"]))
+        );
+    }
+
+    #[test]
+    fn sfn_dialect_empty_filter_yields_empty_array() {
+        // moto #10078: a zero-matching filter must yield [], making a Pass
+        // Parameters template produce an empty list instead of null (AWS).
+        let input = json!({"items": [{"k": "a"}], "none": []});
+        assert_eq!(
+            resolve_json_path("$.items[?(@.k == 'NONE')]", &input),
+            Some(json!([]))
+        );
+        assert_eq!(
+            resolve_json_path("$.none[?(@.k == 'NONE')]", &input),
+            Some(json!([]))
+        );
+        // A Parameters resolution carries the [] through end-to-end.
+        let pass = json!({
+            "StartAt": "Filter",
+            "States": {"Filter": {
+                "Type": "Pass",
+                "Parameters": {"selected.$": "$.items[?(@.keep == true && @.ready == true)]"},
+                "End": true,
+            }},
+        });
+        let out = run(&pass, json!({"items": [{"keep": true, "ready": true}]}))
+            .expect("the #10078 repro state completes");
+        assert_eq!(
+            out["selected"],
+            json!([{"keep": true, "ready": true}]),
+            "filter Parameters resolve, not States.Runtime: {out}"
+        );
+        // And a zero match in the same shape resolves to [].
+        let out = run(&pass, json!({"items": []})).expect("empty list");
+        assert_eq!(out["selected"], json!([]));
+    }
+
+    #[test]
+    fn sfn_dialect_filter_keeps_array_shape_for_projections() {
+        // moto #7825: a filter with ONE match and a trailing projection stays
+        // an array (localstack collapsed singletons to a bare object).
+        let input = json!({"items": [{"keep": true, "name": "a"}, {"keep": false}]});
+        assert_eq!(
+            resolve_json_path("$.items[?(@.keep == true)].name", &input),
+            Some(json!(["a"]))
+        );
+        // Two matches project each hit.
+        let input = json!({
+            "items": [
+                {"keep": true, "name": "a"},
+                {"keep": true, "name": "b"},
+            ],
+        });
+        assert_eq!(
+            resolve_json_path("$.items[?(@.keep == true)].name", &input),
+            Some(json!(["a", "b"]))
+        );
+        // Single match of the filter alone keeps the array shape...
+        let single = json!({"items": [{"keep": true, "name": "a"}, {"keep": false}]});
+        assert_eq!(
+            resolve_json_path("$.items[?(@.keep)]", &single),
+            Some(json!([{"keep": true, "name": "a"}]))
+        );
+        // ...while a literal trailing index unpacks it (and selects the
+        // first element of a multi-match filter before it).
+        assert_eq!(
+            resolve_json_path("$.items[?(@.keep)][0]", &single),
+            Some(json!({"keep": true, "name": "a"}))
+        );
+        let multi = json!({"items": [
+            {"keep": true, "name": "a"}, {"keep": false}, {"keep": true, "name": "b"},
+        ]});
+        assert_eq!(
+            resolve_json_path("$.items[?(@.keep)][0].name", &multi),
+            Some(json!(["a"])),
+            "moto #7825: projection after a definite index keeps array shape"
+        );
+        // A plain field path is still scalar, and a definite index unpacks.
+        let input = json!({"items": [{"name": "a"}, {"name": "b"}]});
+        assert_eq!(
+            resolve_json_path("$.items[0].name", &input),
+            Some(json!(["a"]))
+        );
+        assert_eq!(
+            resolve_json_path("$.items[0]", &input),
+            Some(json!({"name": "a"}))
+        );
+        assert_eq!(
+            resolve_json_path("$.total", &json!({"total": 3})),
+            Some(json!(3))
+        );
+    }
+
+    #[test]
+    fn sfn_dialect_indices_slices_and_wildcards() {
+        let input = json!({
+            "items": [1, 2, 3, 4],
+            "map": {"a": 1, "b": 2},
+            "label": "x",
+        });
+        assert_eq!(
+            resolve_json_path("$.items[*]", &input),
+            Some(json!([1, 2, 3, 4]))
+        );
+        assert_eq!(
+            resolve_json_path("$.items[0:2]", &input),
+            Some(json!([1, 2]))
+        );
+        assert_eq!(
+            resolve_json_path("$.items[-2:]", &input),
+            Some(json!([3, 4]))
+        );
+        assert_eq!(
+            resolve_json_path("$.items[::2]", &input),
+            Some(json!([1, 3]))
+        );
+        assert_eq!(resolve_json_path("$.items[-1]", &input), Some(json!(4)));
+        // Out-of-range literal index: a definite miss, not [] (era missing).
+        assert_eq!(resolve_json_path("$.items[9]", &input), None);
+        assert_eq!(resolve_json_path("$.map.*", &input), Some(json!([1, 2])));
+        assert_eq!(resolve_json_path("$.label", &input), Some(json!("x")));
+        assert_eq!(resolve_json_path("$", &input), Some(input.clone()));
+        // Quoted bracket keys, dot-free (quoted fields are object-field
+        // accesses, not array indices, matching jsonpath_ng).
+        assert_eq!(
+            resolve_json_path("$.map['0 A0']", &json!({"map": {"0 A0": 7}})),
+            Some(json!(7))
+        );
+        assert_eq!(
+            resolve_json_path("$['a b']", &json!({"a b": 5})),
+            Some(json!(5))
+        );
+        // Unsupported syntax resolves to None, never crashes the engine.
+        assert_eq!(resolve_json_path("$.items..name", &input), None);
+        assert!(resolve_json_path("$.items[?(@.a =~ /x*/)]", &input).is_some());
+        assert_eq!(resolve_json_path("", &input), None);
+        assert_eq!(resolve_json_path("$.items[]", &input), None);
+    }
+
+    #[test]
+    fn sfn_dialect_regex_literals_in_filter() {
+        // moto #7825's filter equality (a regex literal); note even moto's
+        // own jsonpath_ng backend cannot parse a bare multi-slash regex
+        // literal, so the shape is exercised via the quoted-string form the
+        // real definition carries, and regex literals here are single-slash
+        // patterns (multi-slash patterns read as unsupported syntax).
+        let input = json!({
+            "Parameters": [{"Name": "/eggs/cooked/like", "Value": "poached"}],
+        });
+        let got = resolve_json_path(
+            "$.Parameters[?(@.Name == '/eggs/cooked/like')].Value",
+            &input,
+        );
+        assert_eq!(got, Some(json!(["poached"])));
+        // =~ with anchors and classes, and case-insensitive flag.
+        let input = json!({"users": [{"email": "Bob@Example.COM"}, {"email": "ann@x.io"}]});
+        assert_eq!(
+            resolve_json_path("$.users[?(@.email =~ /^bob.*/i)].email", &input),
+            Some(json!(["Bob@Example.COM"]))
+        );
+        assert_eq!(
+            resolve_json_path("$.users[?(@.email =~ /\\.io$/)].email", &input),
+            Some(json!(["ann@x.io"]))
+        );
+        // A non-matching regex stays a no-match, not a crash.
+        assert_eq!(
+            resolve_json_path("$.users[?(@.email =~ /zorg*/)].email", &input),
+            Some(json!([]))
+        );
+        assert_eq!(
+            resolve_json_path("$.users[?(@.email != /\\.io$/)].email", &input),
+            Some(json!(["Bob@Example.COM"]))
+        );
+    }
+
+    #[test]
+    fn sfn_dialect_filter_is_usable_across_callers() {
+        // ResultSelector vs the state result, OutputPath over a filter, and
+        // a Map ItemsPath filter — all ride the same resolver.
+        let def = json!({
+            "StartAt": "P",
+            "States": {
+                "P": {
+                    "Type": "Pass",
+                    "ResultSelector": {"picked.$": "$.vals[?(@.go == true)].v"},
+                    "End": true,
+                }
+            }
+        });
+        let out = run(
+            &def,
+            json!({
+                "vals": [{"go": true, "v": "keep"}, {"go": false, "v": "drop"}],
+            }),
+        )
+        .expect("ResultSelector resolves a filter");
+        assert_eq!(out, json!({"picked": ["keep"]}), "got {out}");
+
+        // A zero-match filter through OutputPath keeps the state flowing.
+        let def = json!({
+            "StartAt": "P",
+            "States": {
+                "P": {"Type": "Pass", "OutputPath": "$.vals[?(@.go == false)].v", "End": true}
+            }
+        });
+        let out = run(&def, json!({"vals": [{"go": true, "v": 1}]}))
+            .expect("filter OutputPath keeps the flow running");
+        assert_eq!(out, json!([]), "the state output is an empty array");
+
+        // Map ItemsPath accepts a filtered list.
+        let def = json!({
+            "StartAt": "M",
+            "States": {
+                "M": {
+                    "Type": "Map",
+                    "ItemsPath": "$.rows[?(@.go == true)]",
+                    "ItemProcessor": {
+                        "StartAt": "Echo",
+                        "States": {"Echo": {"Type": "Pass", "Result": "done", "End": true}},
+                    },
+                    "End": true,
+                }
+            }
+        });
+        let out = run(
+            &def,
+            json!({"rows": [{"go": true}, {"go": false}, {"go": true}]}),
+        )
+        .expect("map iterates the filtered rows");
+        assert_eq!(out, json!(["done", "done"]));
+    }
 
     #[test]
     fn test_nested_choice_rules() {
@@ -1715,7 +2444,11 @@ mod tests {
             .and_then(|s| s.as_str())
             .unwrap_or_default()
             .to_string();
-        run_flow(ctx, &states, start_at, input)
+        let machine_default = def
+            .as_object()
+            .map(QueryLanguage::for_machine)
+            .unwrap_or_default();
+        run_flow(ctx, &states, start_at, input, machine_default)
     }
 
     fn run(def: &Value, input: Value) -> Result<Value, FlowError> {
@@ -2942,5 +3675,377 @@ mod tests {
         let err = run(&def, json!({})).expect_err("empty FunctionName fails");
         assert_eq!(err.error, "Lambda.ServiceException", "got {:?}", err);
         assert_eq!(err.cause, "Function not found: ");
+    }
+
+    // ---- JSONata query-language states (`QueryLanguage: "JSONATA"`) ----
+
+    #[test]
+    fn sfn_jsonata_machine_level_output_transform() {
+        // The AWS docs' "Input and Output" example: machine-level
+        // QueryLanguage and an Output field templating $states.input.
+        let def = json!({
+            "QueryLanguage": "JSONata",
+            "StartAt": "S",
+            "States": {
+                "S": {
+                    "Type": "Pass",
+                    "Output": {
+                        "lastName": "{% 'Last=>' & $states.input.customer.lastName %}",
+                        "orderValue": "{% $states.input.order.total %}"
+                    },
+                    "End": true,
+                }
+            }
+        });
+        let out = run(
+            &def,
+            json!({"customer": {"firstName": "Martha", "lastName": "Rivera"},
+                   "order": {"items": 7, "total": 27.91}}),
+        )
+        .expect("jsonata pass completes");
+        assert_eq!(
+            out,
+            json!({"lastName": "Last=>Rivera", "orderValue": 27.91}),
+            "got {out}"
+        );
+    }
+
+    #[test]
+    fn sfn_jsonata_per_state_override() {
+        // The machine is JSONPath; one state opts into JSONata individually.
+        let def = json!({
+            "StartAt": "Legacy",
+            "States": {
+                "Legacy": {
+                    "Type": "Pass",
+                    "Result": {"kept": true},
+                    "Next": "Jsonata",
+                },
+                "Jsonata": {
+                    "Type": "Pass",
+                    "QueryLanguage": "JSONATA",
+                    "Output": {"echo": "{% $states.input.kept %}"},
+                    "End": true,
+                },
+            }
+        });
+        let out = run(&def, json!({"kept": true})).expect("mixed languages");
+        assert_eq!(out, json!({"echo": true}));
+    }
+
+    #[test]
+    fn sfn_jsonata_choice_condition_routes() {
+        let def = json!({
+            "QueryLanguage": "JSONATA",
+            "StartAt": "Check",
+            "States": {
+                "Check": {
+                    "Type": "Choice",
+                    "Choices": [
+                        {
+                            "Condition": "{% $states.input.price < 10 %}",
+                            "Next": "Cheap",
+                        },
+                        {
+                            "Condition": "{% $states.input.price >= 10 and $states.input.approved %}",
+                            "Next": "Approved",
+                        },
+                    ],
+                    "Default": "Denied",
+                },
+                "Cheap": {"Type": "Pass", "Result": "cheap", "End": true},
+                "Approved": {"Type": "Pass", "Result": "approved", "End": true},
+                "Denied": {"Type": "Pass", "Result": "denied", "End": true},
+            }
+        });
+        let out = run(&def, json!({"price": 5, "approved": false})).expect("routes left");
+        assert_eq!(out, json!("cheap"));
+        let out = run(&def, json!({"price": 42, "approved": true})).expect("routes right");
+        assert_eq!(out, json!("approved"));
+        let out = run(&def, json!({"price": 42, "approved": false})).expect("falls to default");
+        assert_eq!(out, json!("denied"));
+        // A non-boolean condition surface is a query evaluation error that a
+        // Catch can pick up.
+        let def = json!({
+            "QueryLanguage": "JSONATA",
+            "StartAt": "Check",
+            "States": {
+                "Check": {
+                    "Type": "Choice",
+                    "Choices": [{"Condition": "{% $states.input.price %}", "Next": "A"}],
+                    "Catch": [{"ErrorEquals": ["States.QueryEvaluationError"], "Next": "Handle"}],
+                },
+                "A": {"Type": "Pass", "End": true},
+                "Handle": {"Type": "Pass", "Result": "handled", "End": true},
+            }
+        });
+        let out = run(&def, json!({"price": 42})).expect("a non-boolean condition is facing");
+        assert_eq!(out, json!("handled"), "got {out}");
+    }
+
+    #[test]
+    fn sfn_jsonata_task_arguments_and_output() {
+        let (account, region, name) = (847009000008u64, "sfn-jsonata", "echo-fn");
+        register_echo_function(account, region, name);
+        let def = json!({
+            "QueryLanguage": "JSONATA",
+            "StartAt": "Call",
+            "States": {
+                "Call": {
+                    "Type": "Task",
+                    "Resource": format!("arn:aws:lambda:{region}:{account}:function:{name}"),
+                    "Arguments": {
+                        "bit": "{% $states.input.stuff %}",
+                        "static": "value",
+                    },
+                    "Output": {
+                        "result": "{% $states.result %}",
+                        "echoed": "{% $states.result.bit %}",
+                        "inputEcho": "{% $states.input.stuff %}",
+                    },
+                    "End": true,
+                }
+            }
+        });
+        let out = run(&def, json!({"stuff": "payload"})).expect("jsonata task runs");
+        // $states.result carries the function output; $states.input stays the
+        // whole state input (JSONata states have no InputPath).
+        assert_eq!(
+            out["result"],
+            json!({"bit": "payload", "static": "value"}),
+            "got {out}"
+        );
+        assert_eq!(out["echoed"], json!("payload"));
+        assert_eq!(out["echoed"], json!("payload"));
+    }
+
+    #[test]
+    fn sfn_jsonata_task_ids_state_result_unavailable_in_arguments() {
+        let def = json!({
+            "QueryLanguage": "JSONATA",
+            "StartAt": "Call",
+            "States": {
+                "Call": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::sqs:sendMessage",
+                    "Arguments": {"x": "{% $states.result %}"},
+                    "End": true,
+                }
+            }
+        });
+        let err = run(&def, json!({})).expect_err("bad field binding errors");
+        assert_eq!(err.error, "States.QueryEvaluationError", "got {:?}", err);
+        assert!(
+            err.cause.contains("$states.result is not available"),
+            "cause names the binding: {}",
+            err.cause
+        );
+    }
+
+    #[test]
+    fn sfn_jsonata_parallel_merge_result() {
+        // The AWS docs' parallel-flattening example: each branch returns an
+        // object and the parent merges $states.result.
+        let def = json!({
+            "QueryLanguage": "JSONATA",
+            "StartAt": "Par",
+            "States": {
+                "Par": {
+                    "Type": "Parallel",
+                    "Output": "{% $merge($states.result) %}",
+                    "Branches": [
+                        {
+                            "StartAt": "A",
+                            "States": {"A": {
+                                "Type": "Pass",
+                                "Output": {"orderId": "{% $states.input.orderId %}"},
+                                "End": true,
+                            }}
+                        },
+                        {
+                            "StartAt": "B",
+                            "States": {"B": {
+                                "Type": "Pass",
+                                "Output": {"customerId": "{% $states.input.customerId %}"},
+                                "End": true,
+                            }}
+                        },
+                    ],
+                    "End": true,
+                }
+            }
+        });
+        let out = run(&def, json!({"orderId": "12345", "customerId": "C-100"}))
+            .expect("parallel merge runs");
+        assert_eq!(
+            out,
+            json!({"orderId": "12345", "customerId": "C-100"}),
+            "got {out}"
+        );
+    }
+
+    #[test]
+    fn sfn_jsonata_map_items_and_item_selector() {
+        let def = json!({
+            "QueryLanguage": "JSONATA",
+            "StartAt": "Process",
+            "States": {
+                "Process": {
+                    "Type": "Map",
+                    "Items": "{% $states.input.rows %}",
+                    "ItemSelector": {
+                        "name": "{% $states.input.name %}",
+                        "value": "{% $states.input.value %}"
+                    },
+                    "ItemProcessor": {
+                        "StartAt": "Row",
+                        "States": {"Row": {
+                            "Type": "Pass",
+                            "Output": {"row": "{% $states.input.name %}", "doubled": "{% $states.input.value * 2 %}"},
+                            "End": true,
+                        }}
+                    },
+                    "Output": ["{% $states.result[0].row %}"],
+                    "End": true,
+                }
+            }
+        });
+        let out = run(
+            &def,
+            json!({"rows": [{"name": "a", "value": 2}, {"name": "b", "value": 5}]}),
+        )
+        .expect("jsonata map runs");
+        assert_eq!(out, json!(["a"]), "got {out}");
+    }
+
+    #[test]
+    fn sfn_jsonata_functions_and_interpolation() {
+        // $sub-setting: $format, $map/$filter, arithmetic and string concat,
+        // plus embedded interpolation inside longer strings.
+        let def = json!({
+            "QueryLanguage": "JSONATA",
+            "StartAt": "Make",
+            "States": {
+                "Make": {
+                    "Type": "Pass",
+                    "Output": {
+                        "greeting": "{% $format('Hello {0}!', $states.input.name) %}",
+                        "big": "{% $map($states.input.items, function($x) { $x * 2 }) %}",
+                        "kept": "{% $filter($states.input.items, function($x) { $x > 1 }) %}",
+                        "sum": "{% $sum($states.input.items) %}",
+                        "label": "count={% $states.input.count %} of {% $states.input.name %}",
+                        "total": "total-{% $states.input.count %}",
+                        "upper": "{% $uppercase($states.input.name) %}",
+                        "cut": "{% $substring($states.input.name, 0, 3) %}",
+                    },
+                    "End": true,
+                }
+            }
+        });
+        let out = run(&def, json!({"name": "ada", "count": 2, "items": [1, 2, 3]}))
+            .expect("jsonata functions run");
+        assert_eq!(
+            out,
+            json!({
+                "greeting": "Hello ada!",
+                "big": [2, 4, 6],
+                "kept": [2, 3],
+                "sum": 6,
+                "label": "count=2 of ada",
+                "total": "total-2",
+                "upper": "ADA",
+                "cut": "ada",
+            }),
+            "got {out}"
+        );
+    }
+
+    #[test]
+    fn sfn_jsonata_unknown_function_fails_flow() {
+        let def = json!({
+            "QueryLanguage": "JSONATA",
+            "StartAt": "Bug",
+            "States": {"Bug": {
+                "Type": "Pass",
+                "Output": {"x": "{% $nonexistent(1) %}"},
+                "End": true,
+            }}
+        });
+        let err = run(&def, json!({})).expect_err("an unknown function fails the state");
+        assert_eq!(err.error, "States.QueryEvaluationError", "got {:?}", err);
+        assert!(err.cause.contains("$nonexistent"), "got {}", err.cause);
+    }
+
+    #[test]
+    fn sfn_jsonata_undefined_expression_errors_like_aws() {
+        // "JSON cannot represent an undefined value expression" — a missing
+        // field in the input is a States.QueryEvaluationError.
+        let def = json!({
+            "QueryLanguage": "JSONATA",
+            "StartAt": "P",
+            "States": {"P": {"Type": "Pass", "Output": {"x": "{% $states.input.missing %}"}, "End": true}}
+        });
+        let err = run(&def, json!({})).expect_err("undefined payload fails");
+        assert_eq!(err.error, "States.QueryEvaluationError");
+        // ...unless defaulted away.
+        let def = json!({
+            "QueryLanguage": "JSONATA",
+            "StartAt": "P",
+            "States": {"P": {
+                "Type": "Pass",
+                "Output": {"x": "{% $states.input.missing ?? 'fallback' %}"},
+                "End": true,
+            }}
+        });
+        let out = run(&def, json!({})).expect("?? provides the default");
+        assert_eq!(out, json!({"x": "fallback"}));
+    }
+
+    #[test]
+    fn sfn_jsonata_wait_seconds_template_and_fail_paths() {
+        // Wait with a templated number, and templated Fail Error/Cause.
+        let def = json!({
+            "QueryLanguage": "JSONATA",
+            "StartAt": "W",
+            "States": {
+                "W": {
+                    "Type": "Wait",
+                    "Seconds": "{% $states.input.wait %}",
+                    "Next": "Boom",
+                },
+                "Boom": {"Type": "Fail", "Error": "{% 'states.' & $states.input.code %}", "Cause": "done"},
+            }
+        });
+        let err = run(&def, json!({"wait": 300, "code": "Boom"})).expect_err("fails");
+        assert_eq!(err.error, "states.Boom", "got {:?}", err);
+        assert_eq!(err.cause, "done");
+    }
+
+    #[test]
+    fn sfn_jsonata_catch_output_uses_states_error_output() {
+        // AWS: "$states.errorOutput can be used in the Catch field's Output".
+        let def = json!({
+            "QueryLanguage": "JSONATA",
+            "StartAt": "Boom",
+            "States": {
+                "Boom": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:lambda:us-east-1:123456789012:function:missing",
+                    "Catch": [{
+                        "ErrorEquals": ["States.ALL"],
+                        "Output": {"caught": "{% $states.errorOutput.Error %}", "why": "{% $states.errorOutput.Cause %}"},
+                        "Next": "Handle",
+                    }],
+                },
+                "Handle": {"Type": "Pass", "End": true},
+            }
+        });
+        let out = run(&def, json!({})).expect("the catcher shapes the payload");
+        assert_eq!(out["caught"], json!("Lambda.ServiceException"), "got {out}");
+        assert_eq!(
+            out["why"],
+            json!("Function not found: arn:aws:lambda:us-east-1:123456789012:function:missing"),
+            "got {out}"
+        );
     }
 }
