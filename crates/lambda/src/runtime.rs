@@ -1038,6 +1038,21 @@ pub fn execute_custom(
 
     let mut child: Child = match cmd.spawn() {
         Ok(c) => c,
+        // ETXTBSY (os error 26) is a known transient on concurrent
+        // extraction storms: another thread still holds the freshly
+        // extracted file open for write when exec(2) lands. One short
+        // retry makes a legit twin resilient instead of 904-ing the
+        // invoke with a misleading Runtime.InternalError.
+        Err(e) if e.raw_os_error() == Some(26) => {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            match cmd.spawn() {
+                Ok(c) => c,
+                Err(e) => {
+                    cleanup(&work);
+                    return missing_runtime_result(&e.to_string());
+                }
+            }
+        }
         Err(e) => {
             cleanup(&work);
             return missing_runtime_result(&e.to_string());
