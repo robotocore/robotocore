@@ -15464,7 +15464,7 @@
   "total": 17
  },
  "cloudtrail": {
-  "covered": 55,
+  "covered": 60,
   "ops": {
    "AddTags": {
     "absence": null,
@@ -15479,10 +15479,10 @@
    },
    "CancelQuery": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (QueryIdNotFoundException: The query ID abcdef01-2345-6789-abcd-ef0123456789 was not fo)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -15710,10 +15710,10 @@
    },
    "GetImport": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ImportNotFoundException: The import abcdef01-2345-6789-abcd-ef0123456789 was not foun)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -15732,10 +15732,10 @@
    },
    "GetQueryResults": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (QueryIdNotFoundException: The query ID abcdef01-2345-6789-abcd-ef0123456789 was not fo)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -15809,10 +15809,10 @@
    },
    "ListImportFailures": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ImportNotFoundException: The import abcdef01-2345-6789-abcd-ef0123456789 was not foun)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -16062,10 +16062,10 @@
    },
    "StopImport": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ImportNotFoundException: The import abcdef01-2345-6789-abcd-ef0123456789 was not foun)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -54566,7 +54566,7 @@
   "total": 87
  },
  "iam": {
-  "covered": 168,
+  "covered": 176,
   "ops": {
    "AcceptDelegationRequest": {
     "absence": null,
@@ -54737,7 +54737,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK (required-only fill)",
+    "probe_message": "implemented via required-only (EntityAlreadyExists)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -54748,7 +54748,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (EntityAlreadyExists: A policy called probe-test-value already exists.)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -54779,10 +54779,10 @@
    },
    "CreateSAMLProvider": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -54825,7 +54825,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (EntityAlreadyExists: MFADevice entity at the same path and name already exists.)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -55012,7 +55012,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "implemented (NoSuchEntity)",
+    "probe_message": "OK",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -55043,10 +55043,10 @@
    },
    "DeleteSigningCertificate": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (NoSuchEntity)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -55219,10 +55219,10 @@
    },
    "GenerateOrganizationsAccessReport": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -55406,10 +55406,10 @@
    },
    "GetOrganizationsAccessReport": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -55505,10 +55505,10 @@
    },
    "GetServiceLastAccessedDetails": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -55516,10 +55516,10 @@
    },
    "GetServiceLastAccessedDetailsWithEntities": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -56374,10 +56374,10 @@
    },
    "UpdateOpenIDConnectProviderThumbprint": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (NoSuchEntity)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -56451,10 +56451,10 @@
    },
    "UpdateSigningCertificate": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (NoSuchEntity)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -80556,7 +80556,7 @@
   "total": 10
  },
  "quicksight": {
-  "covered": 224,
+  "covered": 229,
   "ops": {
    "BatchCreateTopicReviewedAnswer": {
     "absence": null,
@@ -80615,10 +80615,10 @@
    },
    "CreateActionConnector": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -80857,10 +80857,10 @@
    },
    "CreateVPCConnection": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -81891,10 +81891,10 @@
    },
    "GetIdentityContext": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -82562,10 +82562,10 @@
    },
    "UpdateActionConnector": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -83068,10 +83068,10 @@
    },
    "UpdateVPCConnection": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -94101,7 +94101,7 @@
   "total": 19
  },
  "sagemaker": {
-  "covered": 371,
+  "covered": 378,
   "ops": {
    "AddAssociation": {
     "absence": null,
@@ -94270,10 +94270,10 @@
    },
    "CreateAutoMLJobV2": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -94732,10 +94732,10 @@
    },
    "CreateOptimizationJob": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -94765,10 +94765,10 @@
    },
    "CreatePipeline": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -95447,10 +95447,10 @@
    },
    "DeletePipeline": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -97492,10 +97492,10 @@
    },
    "RetryPipelineExecution": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -97602,10 +97602,10 @@
    },
    "StartPipelineExecution": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ValidationException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -97756,10 +97756,10 @@
    },
    "StopPipelineExecution": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -98879,7 +98879,7 @@
   "total": 23
  },
  "securityhub": {
-  "covered": 102,
+  "covered": 107,
   "ops": {
    "AcceptAdministratorInvitation": {
     "absence": null,
@@ -99070,10 +99070,10 @@
    },
    "CreateAutomationRuleV2": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -99081,10 +99081,10 @@
    },
    "CreateConfigurationPolicy": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -99092,10 +99092,10 @@
    },
    "CreateConnectorV2": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -99510,10 +99510,10 @@
    },
    "GetConfigurationPolicyAssociation": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -99884,10 +99884,10 @@
    },
    "StartConfigurationPolicyAssociation": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -110792,14 +110792,14 @@
   "total": 43
  },
  "transfer": {
-  "covered": 35,
+  "covered": 71,
   "ops": {
    "CreateAccess": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -110807,10 +110807,10 @@
    },
    "CreateAgreement": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -110851,10 +110851,10 @@
    },
    "CreateUser": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -110884,10 +110884,10 @@
    },
    "DeleteAccess": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -110895,10 +110895,10 @@
    },
    "DeleteAgreement": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -110928,10 +110928,10 @@
    },
    "DeleteHostKey": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -110950,10 +110950,10 @@
    },
    "DeleteServer": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -110961,10 +110961,10 @@
    },
    "DeleteSshPublicKey": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -110972,10 +110972,10 @@
    },
    "DeleteUser": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -110983,10 +110983,10 @@
    },
    "DeleteWebApp": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -110994,10 +110994,10 @@
    },
    "DeleteWebAppCustomization": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111016,10 +111016,10 @@
    },
    "DescribeAccess": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111027,10 +111027,10 @@
    },
    "DescribeAgreement": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111060,10 +111060,10 @@
    },
    "DescribeExecution": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111071,10 +111071,10 @@
    },
    "DescribeHostKey": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111104,10 +111104,10 @@
    },
    "DescribeServer": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111115,10 +111115,10 @@
    },
    "DescribeUser": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111126,10 +111126,10 @@
    },
    "DescribeWebApp": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111137,10 +111137,10 @@
    },
    "DescribeWebAppCustomization": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111170,10 +111170,10 @@
    },
    "ImportHostKey": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111181,10 +111181,10 @@
    },
    "ImportSshPublicKey": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111192,10 +111192,10 @@
    },
    "ListAccesses": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111203,10 +111203,10 @@
    },
    "ListAgreements": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111258,10 +111258,10 @@
    },
    "ListHostKeys": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111313,10 +111313,10 @@
    },
    "ListUsers": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111346,10 +111346,10 @@
    },
    "SendWorkflowStepState": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111401,10 +111401,10 @@
    },
    "StartServer": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111412,10 +111412,10 @@
    },
    "StopServer": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111445,10 +111445,10 @@
    },
    "TestIdentityProvider": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111467,10 +111467,10 @@
    },
    "UpdateAccess": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111478,10 +111478,10 @@
    },
    "UpdateAgreement": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111511,10 +111511,10 @@
    },
    "UpdateHostKey": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111533,10 +111533,10 @@
    },
    "UpdateServer": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111544,10 +111544,10 @@
    },
    "UpdateUser": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111555,10 +111555,10 @@
    },
    "UpdateWebApp": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111566,10 +111566,10 @@
    },
    "UpdateWebAppCustomization": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111579,14 +111579,19 @@
   "total": 71
  },
  "vpclattice": {
-  "covered": 23,
+  "covered": 58,
   "ops": {
    "BatchUpdateRule": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `batch_update_rule` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -111594,21 +111599,26 @@
    },
    "CreateAccessLogSubscription": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
     }
    },
    "CreateListener": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `create_listener` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -111638,10 +111648,10 @@
    },
    "CreateRule": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111671,10 +111681,10 @@
    },
    "CreateServiceNetworkResourceAssociation": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -111682,10 +111692,10 @@
    },
    "CreateServiceNetworkServiceAssociation": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -111715,10 +111725,10 @@
    },
    "DeleteAccessLogSubscription": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111726,10 +111736,10 @@
    },
    "DeleteAuthPolicy": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111737,21 +111747,26 @@
    },
    "DeleteDomainVerification": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DeleteListener": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `delete_listener` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -111759,10 +111774,10 @@
    },
    "DeleteResourceConfiguration": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -111770,10 +111785,10 @@
    },
    "DeleteResourceEndpointAssociation": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -111781,10 +111796,10 @@
    },
    "DeleteResourceGateway": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -111802,22 +111817,32 @@
     }
    },
    "DeleteRule": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `delete_rule` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "DeleteService": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `delete_service` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -111841,10 +111866,10 @@
    },
    "DeleteServiceNetworkResourceAssociation": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -111852,10 +111877,10 @@
    },
    "DeleteServiceNetworkServiceAssociation": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -111863,10 +111888,10 @@
    },
    "DeleteServiceNetworkVpcAssociation": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -111874,10 +111899,10 @@
    },
    "DeleteTargetGroup": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -111885,10 +111910,10 @@
    },
    "DeregisterTargets": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -111896,10 +111921,10 @@
    },
    "GetAccessLogSubscription": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111907,10 +111932,10 @@
    },
    "GetAuthPolicy": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111918,21 +111943,26 @@
    },
    "GetDomainVerification": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "GetListener": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `get_listener` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -111940,10 +111970,10 @@
    },
    "GetResourceConfiguration": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -111951,10 +111981,10 @@
    },
    "GetResourceGateway": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -111972,11 +112002,16 @@
     }
    },
    "GetRule": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `get_rule` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -111984,10 +112019,10 @@
    },
    "GetService": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -112006,10 +112041,10 @@
    },
    "GetServiceNetworkResourceAssociation": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -112017,10 +112052,10 @@
    },
    "GetServiceNetworkServiceAssociation": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -112028,10 +112063,10 @@
    },
    "GetServiceNetworkVpcAssociation": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -112039,10 +112074,10 @@
    },
    "GetTargetGroup": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -112050,10 +112085,10 @@
    },
    "ListAccessLogSubscriptions": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -112071,11 +112106,16 @@
     }
    },
    "ListListeners": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `list_listeners` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": true
@@ -112094,10 +112134,10 @@
    },
    "ListResourceEndpointAssociations": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -112115,11 +112155,16 @@
     }
    },
    "ListRules": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `list_rules` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -112220,10 +112265,10 @@
    },
    "ListTargets": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -112231,10 +112276,10 @@
    },
    "PutAuthPolicy": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -112253,10 +112298,10 @@
    },
    "RegisterTargets": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -112297,21 +112342,26 @@
    },
    "UpdateAccessLogSubscription": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
     }
    },
    "UpdateListener": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `update_listener` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -112319,10 +112369,10 @@
    },
    "UpdateResourceConfiguration": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -112330,32 +112380,42 @@
    },
    "UpdateResourceGateway": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "UpdateRule": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `update_rule` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "UpdateService": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `update_service` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -112379,10 +112439,10 @@
    },
    "UpdateServiceNetworkVpcAssociation": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -112390,10 +112450,10 @@
    },
    "UpdateTargetGroup": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (404: )",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -114026,7 +114086,7 @@
   "total": 91
  },
  "workspacesweb": {
-  "covered": 31,
+  "covered": 32,
   "ops": {
    "AssociateBrowserSettings": {
     "absence": null,
@@ -114197,10 +114257,10 @@
    },
    "CreateNetworkSettings": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -114218,11 +114278,16 @@
     }
    },
    "CreateSessionLogger": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): workspacesweb/responses.py has no `create_session_logger` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -114510,11 +114575,16 @@
     }
    },
    "ExpireSession": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "modeled_deny",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "twin not_implemented call-site at rotocore/src/services/workspacesweb.rs:268; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): workspacesweb/responses.py has no `expire_session` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_modeled_deny",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -114618,11 +114688,16 @@
     }
    },
    "GetSession": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "modeled_deny",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "twin not_implemented call-site at rotocore/src/services/workspacesweb.rs:272; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): workspacesweb/responses.py has no `get_session` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_modeled_deny",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -114661,11 +114736,16 @@
     }
    },
    "GetTrustStoreCertificate": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): workspacesweb/responses.py has no `get_trust_store_certificate` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -114786,11 +114866,16 @@
     }
    },
    "ListSessions": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): workspacesweb/responses.py has no `list_sessions` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false

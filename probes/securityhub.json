@@ -1,10 +1,10 @@
 {
   "service": "securityhub",
-  "generated_at": "2026-10-25T19:44:57.389036+00:00",
+  "generated_at": "2026-10-26T03:11:31.004214+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 102,
-    "needs_params": 5,
+    "working": 107,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -97,18 +97,18 @@
     },
     {
       "operation": "CreateAutomationRuleV2",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateConfigurationPolicy",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateConnectorV2",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateFindingAggregator",
@@ -297,8 +297,8 @@
     },
     {
       "operation": "GetConfigurationPolicyAssociation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetConnectorV2",
@@ -467,8 +467,8 @@
     },
     {
       "operation": "StartConfigurationPolicyAssociation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartConfigurationPolicyDisassociation",

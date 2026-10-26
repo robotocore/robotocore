@@ -1,0 +1,481 @@
+{
+  "vpclattice": {
+    "BatchUpdateRule": {
+      "serviceIdentifier": "svc-0123456789abcdef0",
+      "listenerIdentifier": "listener-0123456789abcdef0",
+      "rules": [{"ruleIdentifier": "rule-0123456789abcdef0"}]
+    },
+    "CreateAccessLogSubscription": {
+      "resourceIdentifier": "sn-0123456789abcdef0",
+      "destinationArn": "arn:aws:logs:us-east-1:123456789012:log-destination/probe-test"
+    },
+    "CreateListener": {
+      "serviceIdentifier": "svc-0123456789abcdef0",
+      "name": "probe-listener",
+      "protocol": "HTTP",
+      "defaultAction": {"fixedResponse": {"statusCode": 404}}
+    },
+    "CreateRule": {
+      "serviceIdentifier": "svc-0123456789abcdef0",
+      "listenerIdentifier": "listener-0123456789abcdef0",
+      "name": "probe-rule",
+      "match": {
+        "httpMatch": {
+          "method": "GET",
+          "pathMatch": {"match": {"prefix": "/"}, "caseSensitive": false}
+        }
+      },
+      "priority": 200,
+      "action": {
+        "forward": {"targetGroups": [{"targetGroupIdentifier": "tg-0123456789abcdef0", "weight": 200}]}
+      }
+    },
+    "CreateServiceNetworkResourceAssociation": {
+      "resourceConfigurationIdentifier": "rcfg-0123456789abcdef0",
+      "serviceNetworkIdentifier": "sn-0123456789abcdef0"
+    },
+    "CreateServiceNetworkServiceAssociation": {
+      "serviceIdentifier": "svc-0123456789abcdef0",
+      "serviceNetworkIdentifier": "sn-0123456789abcdef0"
+    },
+    "DeleteAccessLogSubscription": {"accessLogSubscriptionIdentifier": "als-0123456789abcdef0"},
+    "DeleteAuthPolicy": {"resourceIdentifier": "sn-0123456789abcdef0"},
+    "DeleteDomainVerification": {"domainVerificationIdentifier": "dv-0123456789abcdef0"},
+    "DeleteListener": {
+      "serviceIdentifier": "svc-0123456789abcdef0",
+      "listenerIdentifier": "listener-0123456789abcdef0"
+    },
+    "DeleteResourceConfiguration": {"resourceConfigurationIdentifier": "rcfg-0123456789abcdef0"},
+    "DeleteResourceEndpointAssociation": {"resourceEndpointAssociationIdentifier": "rea-0123456789abcdef0"},
+    "DeleteResourceGateway": {"resourceGatewayIdentifier": "rgw-0123456789abcdef0"},
+    "DeleteRule": {
+      "serviceIdentifier": "svc-0123456789abcdef0",
+      "listenerIdentifier": "listener-0123456789abcdef0",
+      "ruleIdentifier": "rule-0123456789abcdef0"
+    },
+    "DeleteService": {"serviceIdentifier": "svc-0123456789abcdef0"},
+    "DeleteServiceNetworkResourceAssociation": {
+      "serviceNetworkResourceAssociationIdentifier": "snra-0123456789abcdef0"
+    },
+    "DeleteServiceNetworkServiceAssociation": {
+      "serviceNetworkServiceAssociationIdentifier": "snsa-0123456789abcdef0"
+    },
+    "DeleteServiceNetworkVpcAssociation": {
+      "serviceNetworkVpcAssociationIdentifier": "snva-0123456789abcdef0"
+    },
+    "DeleteTargetGroup": {"targetGroupIdentifier": "tg-0123456789abcdef0"},
+    "DeregisterTargets": {
+      "targetGroupIdentifier": "tg-0123456789abcdef0",
+      "targets": [{"id": "probe-target-id", "port": 80}]
+    },
+    "GetAccessLogSubscription": {"accessLogSubscriptionIdentifier": "als-0123456789abcdef0"},
+    "GetAuthPolicy": {"resourceIdentifier": "sn-0123456789abcdef0"},
+    "GetDomainVerification": {"domainVerificationIdentifier": "dv-0123456789abcdef0"},
+    "GetListener": {
+      "serviceIdentifier": "svc-0123456789abcdef0",
+      "listenerIdentifier": "listener-0123456789abcdef0"
+    },
+    "GetResourceConfiguration": {"resourceConfigurationIdentifier": "rcfg-0123456789abcdef0"},
+    "GetResourceGateway": {"resourceGatewayIdentifier": "rgw-0123456789abcdef0"},
+    "GetRule": {
+      "serviceIdentifier": "svc-0123456789abcdef0",
+      "listenerIdentifier": "listener-0123456789abcdef0",
+      "ruleIdentifier": "rule-0123456789abcdef0"
+    },
+    "GetService": {"serviceIdentifier": "svc-0123456789abcdef0"},
+    "GetServiceNetworkResourceAssociation": {
+      "serviceNetworkResourceAssociationIdentifier": "snra-0123456789abcdef0"
+    },
+    "GetServiceNetworkServiceAssociation": {
+      "serviceNetworkServiceAssociationIdentifier": "snsa-0123456789abcdef0"
+    },
+    "GetServiceNetworkVpcAssociation": {
+      "serviceNetworkVpcAssociationIdentifier": "snva-0123456789abcdef0"
+    },
+    "GetTargetGroup": {"targetGroupIdentifier": "tg-0123456789abcdef0"},
+    "ListAccessLogSubscriptions": {"resourceIdentifier": "sn-0123456789abcdef0"},
+    "ListListeners": {"serviceIdentifier": "svc-0123456789abcdef0"},
+    "ListResourceEndpointAssociations": {"resourceConfigurationIdentifier": "rcfg-0123456789abcdef0"},
+    "ListRules": {
+      "serviceIdentifier": "svc-0123456789abcdef0",
+      "listenerIdentifier": "listener-0123456789abcdef0"
+    },
+    "ListTargets": {"targetGroupIdentifier": "tg-0123456789abcdef0"},
+    "PutAuthPolicy": {
+      "resourceIdentifier": "sn-0123456789abcdef0",
+      "policy": "{\"Id\":\"probe-test\",\"Statement\":[{\"Sid\":\"probe-statement\",\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"vpc-lattice:*\",\"Resource\":\"*\"}]}"
+    },
+    "RegisterTargets": {
+      "targetGroupIdentifier": "tg-0123456789abcdef0",
+      "targets": [{"id": "probe-target-id", "port": 80}]
+    },
+    "UpdateAccessLogSubscription": {
+      "accessLogSubscriptionIdentifier": "als-0123456789abcdef0",
+      "destinationArn": "arn:aws:logs:us-east-1:123456789012:log-destination/probe-test"
+    },
+    "UpdateListener": {
+      "serviceIdentifier": "svc-0123456789abcdef0",
+      "listenerIdentifier": "listener-0123456789abcdef0",
+      "defaultAction": {"fixedResponse": {"statusCode": 404}}
+    },
+    "UpdateResourceConfiguration": {"resourceConfigurationIdentifier": "rcfg-0123456789abcdef0"},
+    "UpdateResourceGateway": {
+      "resourceGatewayIdentifier": "rgw-0123456789abcdef0",
+      "securityGroupIds": ["sg-01234567890abcdef0"]
+    },
+    "UpdateRule": {
+      "serviceIdentifier": "svc-0123456789abcdef0",
+      "listenerIdentifier": "listener-0123456789abcdef0",
+      "ruleIdentifier": "rule-0123456789abcdef0"
+    },
+    "UpdateService": {"serviceIdentifier": "svc-0123456789abcdef0"},
+    "UpdateServiceNetworkVpcAssociation": {
+      "serviceNetworkVpcAssociationIdentifier": "snva-0123456789abcdef0",
+      "securityGroupIds": ["sg-0123456789abcdef0"]
+    },
+    "UpdateTargetGroup": {
+      "targetGroupIdentifier": "tg-0123456789abcdef0",
+      "healthCheck": {
+        "enabled": true,
+        "protocol": "HTTP",
+        "protocolVersion": "HTTP1",
+        "port": 80,
+        "path": "/",
+        "healthCheckIntervalSeconds": 30,
+        "healthCheckTimeoutSeconds": 5,
+        "healthyThresholdCount": 5,
+        "unhealthyThresholdCount": 2,
+        "matcher": {"httpCode": "200"}
+      }
+    }
+  },
+  "transfer": {
+    "CreateAccess": {
+      "ExternalId": "S-1-1-12-1234567890-1234567890",
+      "Role": "arn:aws:iam::123456789012:role/probe-test-role",
+      "ServerId": "s-0123456789abcdef0"
+    },
+    "CreateAgreement": {
+      "AccessRole": "arn:aws:iam::123456789012:role/probe-test-role",
+      "LocalProfileId": "p-0123456789abcdef0",
+      "PartnerProfileId": "p-0123456789abcdef0",
+      "ServerId": "s-0123456789abcdef0"
+    },
+    "CreateUser": {
+      "Role": "arn:aws:iam::123456789012:role/probe-test-role",
+      "ServerId": "s-0123456789abcdef0",
+      "UserName": "probe-user"
+    },
+    "DeleteAccess": {
+      "ExternalId": "S-1-1-12-1234567890-1234567890",
+      "ServerId": "s-0123456789abcdef0"
+    },
+    "DeleteAgreement": {
+      "AgreementId": "a-0123456789abcdef0",
+      "ServerId": "s-0123456789abcdef0"
+    },
+    "DeleteHostKey": {
+      "HostKeyId": "hostkey-0123456789abcdef0",
+      "ServerId": "s-0123456789abcdef0"
+    },
+    "DeleteServer": {"ServerId": "s-0123456789abcdef0"},
+    "DeleteSshPublicKey": {
+      "ServerId": "s-0123456789abcdef0",
+      "SshPublicKeyId": "key-0123456789abcdef0",
+      "UserName": "probe-user"
+    },
+    "DeleteUser": {"ServerId": "s-0123456789abcdef0", "UserName": "probe-user"},
+    "DeleteWebApp": {"WebAppId": "webapp-0123456789abcdef0"},
+    "DeleteWebAppCustomization": {"WebAppId": "webapp-0123456789abcdef0"},
+    "DescribeAccess": {
+      "ExternalId": "S-1-1-12-1234567890-1234567890",
+      "ServerId": "s-0123456789abcdef0"
+    },
+    "DescribeAgreement": {
+      "AgreementId": "a-0123456789abcdef0",
+      "ServerId": "s-0123456789abcdef0"
+    },
+    "DescribeExecution": {
+      "ExecutionId": "01234567-89ab-cdef-0123-456789abcdef",
+      "WorkflowId": "w-0123456789abcdef0"
+    },
+    "DescribeHostKey": {
+      "HostKeyId": "hostkey-0123456789abcdef0",
+      "ServerId": "s-0123456789abcdef0"
+    },
+    "DescribeServer": {"ServerId": "s-0123456789abcdef0"},
+    "DescribeUser": {"ServerId": "s-0123456789abcdef0", "UserName": "probe-user"},
+    "DescribeWebApp": {"WebAppId": "webapp-0123456789abcdef0"},
+    "DescribeWebAppCustomization": {"WebAppId": "webapp-0123456789abcdef0"},
+    "ImportHostKey": {
+      "ServerId": "s-0123456789abcdef0",
+      "HostKeyBody": "-----BEGIN RSA PRIVATE KEY-----\nprobe-test-host-key-body\n-----END RSA PRIVATE KEY-----",
+      "Description": "probe-test host key"
+    },
+    "ImportSshPublicKey": {
+      "ServerId": "s-0123456789abcdef0",
+      "SshPublicKeyBody": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIProbeTest000000000000000000000000000000",
+      "UserName": "probe-user"
+    },
+    "ListAccesses": {"ServerId": "s-0123456789abcdef0"},
+    "ListAgreements": {"ServerId": "s-0123456789abcdef0"},
+    "ListHostKeys": {"ServerId": "s-0123456789abcdef0"},
+    "ListUsers": {"ServerId": "s-0123456789abcdef0"},
+    "SendWorkflowStepState": {
+      "WorkflowId": "w-0123456789abcdef0",
+      "ExecutionId": "01234567-89ab-cdef-0123-456789abcdef",
+      "Token": "probeToken0123456789abcdef",
+      "Status": "SUCCESS"
+    },
+    "StartServer": {"ServerId": "s-0123456789abcdef0"},
+    "StopServer": {"ServerId": "s-0123456789abcdef0"},
+    "TestIdentityProvider": {
+      "ServerId": "s-0123456789abcdef0",
+      "UserName": "probe-user",
+      "UserPassword": "probe-test-password"
+    },
+    "UpdateAccess": {
+      "ExternalId": "S-1-1-12-1234567890-1234567890",
+      "ServerId": "s-0123456789abcdef0"
+    },
+    "UpdateAgreement": {
+      "AgreementId": "a-0123456789abcdef0",
+      "ServerId": "s-0123456789abcdef0"
+    },
+    "UpdateHostKey": {
+      "HostKeyId": "hostkey-0123456789abcdef0",
+      "ServerId": "s-0123456789abcdef0",
+      "Description": "probe-test host key"
+    },
+    "UpdateServer": {"ServerId": "s-0123456789abcdef0"},
+    "UpdateUser": {"ServerId": "s-0123456789abcdef0", "UserName": "probe-user"},
+    "UpdateWebApp": {"WebAppId": "webapp-0123456789abcdef0"},
+    "UpdateWebAppCustomization": {"WebAppId": "webapp-0123456789abcdef0"}
+  },
+  "iam": {
+    "CreateSAMLProvider": {
+      "Name": "probe-saml-provider",
+      "SAMLMetadataDocument": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><md:EntityDescriptor xmlns:md=\"urn:oasis:names:tc:SAML:2.0:metadata\" entityID=\"urn:probe:robotocore:saml\"><md:IDPSSODescriptor WantAuthnRequestsSigned=\"false\" protocolSupportEnumeration=\"urn:oasis:names:tc:SAML:2.0:protocol\"><md:KeyDescriptor use=\"signing\"><ds:KeyInfo xmlns:ds=\"http://www.w3.org/2000/09/xmldsig#\"><ds:X509Data><ds:X509Certificate>MIIC0DCCAbmgAwIBAgIQWWaG0AJ0C13I5G6nAAAAOTANBgkqhkiG9w0BAQsFADAUMRIwEAYDVQQD DAlNU1NQbGF5Z3JvdW5kMB4XDTI0MDEwMTAwMDAwMFoXDTM0MDEwMTAwMDAwMFowFDESMBAGA1UE AwwJTVNTUFBsYXlncm91cDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAL7bbZx0x7Gf ChIn6UP5qXIfZ/YE3/5NQvC+s8WVJvXfnrEjtOrangeDummyPadding00112233445566778899a aabbccddeeff000111222333444555666777888999aaabbbcccdddeeefff000111222333444 ddeeff00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff012345 nalDummyPadding66778899aabbccddeeff0192837465AAEEDDCCBBAA998877665544332211 00ffeeddccbbaa99887766554433221100aabbccddeeff00112233445566778899aabbccddc</ds:X509Certificate></ds:X509Data></ds:KeyInfo></md:KeyDescriptor><md:NameIDFormat>urn:oasis:names:tc:SAML:2.0:nameid-format:persistent</md:NameIDFormat><md:SingleSignOnService Binding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect\" Location=\"https://probe-test.robotocore.test/saml/sso\"/></md:IDPSSODescriptor></md:EntityDescriptor>"
+    },
+    "DeleteSigningCertificate": {
+      "UserName": "probe-user",
+      "CertificateId": "ASCA0123456789ABCDEF1234"
+    },
+    "GenerateOrganizationsAccessReport": {
+      "EntityPath": "o-0123456789/r-0123"
+    },
+    "GetOrganizationsAccessReport": {
+      "JobId": "0123456789abcdef0123456789abcdef0123"
+    },
+    "GetServiceLastAccessedDetails": {
+      "JobId": "0123456789abcdef0123456789abcdef0123"
+    },
+    "GetServiceLastAccessedDetailsWithEntities": {
+      "JobId": "0123456789abcdef0123456789abcdef0123",
+      "ServiceNamespace": "s3"
+    },
+    "UpdateOpenIDConnectProviderThumbprint": {
+      "OpenIDConnectProviderArn": "arn:aws:iam::123456789012:oidc-provider/probe-test",
+      "ThumbprintList": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
+    },
+    "UpdateSigningCertificate": {
+      "UserName": "probe-user",
+      "CertificateId": "ASCA0123456789ABCDEF1234",
+      "Status": "Active"
+    }
+  },
+  "sagemaker": {
+    "CreateAutoMLJobV2": {
+      "AutoMLJobName": "probe-automl-job",
+      "AutoMLJobInputDataConfig": [
+        {
+          "ChannelType": "training",
+          "ContentType": "text/csv",
+          "DataSource": {
+            "S3DataSource": {"S3DataType": "S3Prefix", "S3Uri": "s3://probe-test-bucket/data"}
+          }
+        }
+      ],
+      "AutoMLProblemTypeConfig": {
+        "TextClassificationJobConfig": {
+          "ContentColumn": "col-text",
+          "TargetLabelColumn": "col-label"
+        }
+      },
+      "OutputDataConfig": {"S3OutputPath": "s3://probe-test-bucket/output"},
+      "RoleArn": "arn:aws:iam::123456789012:role/probe-test-role"
+    },
+    "CreateOptimizationJob": {
+      "OptimizationJobName": "probe-optimization-job",
+      "DeploymentInstanceType": "ml.p4d.24xlarge",
+      "ModelSource": {"SageMakerModel": {"ModelName": "probe-model"}},
+      "OptimizationConfigs": [
+        {"ModelQuantizationConfig": {"Image": "000000000000.dkr.ecr.us-east-1.amazonaws.com/probe-repo:latest"}}
+      ],
+      "OutputConfig": {"S3OutputLocation": "s3://probe-test-bucket/optimized"},
+      "RoleArn": "arn:aws:iam::123456789012:role/probe-test-role",
+      "StoppingCondition": {"MaxRuntimeInSeconds": 3600}
+    },
+    "CreatePipeline": {
+      "PipelineName": "probe-pipeline",
+      "PipelineDefinition": "{\"Version\": \"2020-12-01\", \"Parameters\": [], \"Steps\": []}",
+      "ClientRequestToken": "probe-client-request-token-0123456789",
+      "RoleArn": "arn:aws:iam::123456789012:role/probe-test-role"
+    },
+    "DeletePipeline": {
+      "PipelineName": "probe-pipeline",
+      "ClientRequestToken": "probe-client-request-token-0123456790"
+    },
+    "RetryPipelineExecution": {
+      "PipelineExecutionArn": "arn:aws:sagemaker:us-east-1:123456789012:pipeline/probe-pipeline/execution/01234567-89ab-cdef-0123-456789abcdef",
+      "ClientRequestToken": "probe-client-request-token-0123456789"
+    },
+    "StartPipelineExecution": {
+      "PipelineName": "probe-pipeline",
+      "ClientRequestToken": "probe-client-request-token-0123456888"
+    },
+    "StopPipelineExecution": {
+      "PipelineExecutionArn": "arn:aws:sagemaker:us-east-1:123456789012:pipeline/probe-pipeline/execution/01234567-89ab-cdef-0123-456789abcdef",
+      "ClientRequestToken": "probe-client-request-token-0123456899"
+    }
+  },
+  "workspacesweb": {
+    "CreateNetworkSettings": {
+      "vpcId": "vpc-0123456789abcdef0",
+      "subnetIds": ["subnet-01234567", "subnet-89abcdef0"],
+      "securityGroupIds": ["sg-01234567"]
+    },
+    "CreateSessionLogger": {
+      "eventFilter": {"all": {}},
+      "logConfiguration": {
+        "s3": {
+          "bucket": "probe-test-bucket",
+          "keyPrefix": "probe-session-logs",
+          "logFileFormat": "JSONLines",
+          "folderStructure": "Flat"
+        }
+      },
+      "displayName": "probe session logger"
+    },
+    "ExpireSession": {
+      "portalId": "01234567-89ab-cdef-0123-456789abcdef",
+      "sessionId": "fedcba98-7654-3210-fedc-ba9876543210"
+    },
+    "GetSession": {
+      "portalId": "01234567-89ab-cdef-0123-456789abcdef",
+      "sessionId": "fedcba98-7654-3210-fedc-ba9876543210"
+    },
+    "GetTrustStoreCertificate": {
+      "trustStoreArn": "arn:aws:workspaces-web:us-east-1:123456789012:trustStore/01234567-89ab-cdef-0123-456789abcdef",
+      "thumbprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "ListSessions": {
+      "portalId": "01234567-89ab-cdef-0123-456789abcdef",
+      "status": "Active",
+      "sortBy": "StartTimeDescending"
+    }
+  },
+  "cloudtrail": {
+    "CancelQuery": {
+      "EventDataStore": "arn:aws:cloudtrail:us-east-1:123456789012:eventdatastore/probe-test",
+      "QueryId": "abcdef01-2345-6789-abcd-ef0123456789"
+    },
+    "GetImport": {"ImportId": "abcdef01-2345-6789-abcd-ef0123456789"},
+    "GetQueryResults": {
+      "EventDataStore": "arn:aws:cloudtrail:us-east-1:123456789012:eventdatastore/probe-test",
+      "QueryId": "abcdef01-2345-6789-abcd-ef0123456789",
+      "MaxQueryResults": 100
+    },
+    "ListImportFailures": {"ImportId": "abcdef01-2345-6789-abcd-ef0123456789"},
+    "StopImport": {"ImportId": "abcdef01-2345-6789-abcd-ef0123456789"}
+  },
+  "securityhub": {
+    "CreateAutomationRuleV2": {
+      "RuleName": "probe-test-rule",
+      "RuleStatus": "ENABLED",
+      "Description": "probe-test automation rule",
+      "RuleOrder": 1.0,
+      "Criteria": {"OcsfFindingCriteria": {"CompositeOperator": "AND"}},
+      "Actions": [
+        {
+          "Type": "FINDING_FIELDS_UPDATE",
+          "FindingFieldsUpdate": {"SeverityId": 2, "Comment": "probe-test"}
+        }
+      ]
+    },
+    "CreateConfigurationPolicy": {
+      "Name": "probe-test-policy",
+      "Description": "probe-test configuration policy",
+      "ConfigurationPolicy": {
+        "SecurityHub": {
+          "ServiceEnabled": true,
+          "SecurityControlsConfiguration": {"EnabledSecurityControlIdentifiers": []}
+        }
+      }
+    },
+    "CreateConnectorV2": {
+      "Name": "probe-test-connector",
+      "Provider": {"JiraCloud": {"ProjectKey": "probe-test"}}
+    },
+    "GetConfigurationPolicyAssociation": {
+      "Target": {"AccountId": "123456789012"}
+    },
+    "StartConfigurationPolicyAssociation": {
+      "ConfigurationPolicyIdentifier": "probe-test-policy",
+      "Target": {"AccountId": "123456789012"}
+    }
+  },
+  "quicksight": {
+    "CreateActionConnector": {
+      "AwsAccountId": "123456789012",
+      "ActionConnectorId": "probe-action-connector-id",
+      "Name": "probe-action-connector",
+      "Type": "GENERIC_HTTP",
+      "AuthenticationConfig": {
+        "AuthenticationType": "API_KEY",
+        "AuthenticationMetadata": {
+          "ApiKeyConnectionMetadata": {
+            "BaseEndpoint": "https://probe-test.robotocore.test",
+            "ApiKey": "probe-test-api-key"
+          }
+        }
+      }
+    },
+    "CreateVPCConnection": {
+      "AwsAccountId": "123456789012",
+      "VPCConnectionId": "probe-vpc-connection-id",
+      "Name": "probe-vpc-connection",
+      "SubnetIds": ["subnet-01234567", "subnet-89abcdef0"],
+      "SecurityGroupIds": ["sg-01234567"],
+      "RoleArn": "arn:aws:iam::123456789012:role/probe-test-role"
+    },
+    "GetIdentityContext": {
+      "AwsAccountId": "123456789012",
+      "UserIdentifier": {
+        "UserArn": "arn:aws:quicksight:us-east-1:123456789012:user/default/probe-test"
+      }
+    },
+    "UpdateActionConnector": {
+      "AwsAccountId": "123456789012",
+      "ActionConnectorId": "probe-action-connector-id",
+      "Name": "probe-action-connector",
+      "AuthenticationConfig": {
+        "AuthenticationType": "API_KEY",
+        "AuthenticationMetadata": {
+          "ApiKeyConnectionMetadata": {
+            "BaseEndpoint": "https://probe-test.robotocore.test",
+            "ApiKey": "probe-test-api-key"
+          }
+        }
+      }
+    },
+    "UpdateVPCConnection": {
+      "AwsAccountId": "123456789012",
+      "VPCConnectionId": "probe-vpc-connection-id",
+      "Name": "probe-vpc-connection",
+      "SubnetIds": ["subnet-01234567", "subnet-89abcdef0"],
+      "SecurityGroupIds": ["sg-01234567"],
+      "RoleArn": "arn:aws:iam::123456789012:role/probe-test-role"
+    }
+  }
+}

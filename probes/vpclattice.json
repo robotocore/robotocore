@@ -1,29 +1,29 @@
 {
   "service": "vpclattice",
-  "generated_at": "2026-10-25T19:45:15.931423+00:00",
+  "generated_at": "2026-10-26T03:11:26.893476+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 23,
-    "needs_params": 47,
-    "not_implemented": 3,
+    "working": 58,
+    "needs_params": 0,
+    "not_implemented": 15,
     "500_error": 0,
     "timeout": 0
   },
   "operations": [
     {
       "operation": "BatchUpdateRule",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "CreateAccessLogSubscription",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateListener",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "CreateResourceConfiguration",
@@ -37,8 +37,8 @@
     },
     {
       "operation": "CreateRule",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateService",
@@ -52,13 +52,13 @@
     },
     {
       "operation": "CreateServiceNetworkResourceAssociation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "CreateServiceNetworkServiceAssociation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "CreateServiceNetworkVpcAssociation",
@@ -72,38 +72,38 @@
     },
     {
       "operation": "DeleteAccessLogSubscription",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteAuthPolicy",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteDomainVerification",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "DeleteListener",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "DeleteResourceConfiguration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "DeleteResourceEndpointAssociation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "DeleteResourceGateway",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "DeleteResourcePolicy",
@@ -112,13 +112,13 @@
     },
     {
       "operation": "DeleteRule",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "DeleteService",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "DeleteServiceNetwork",
@@ -127,58 +127,58 @@
     },
     {
       "operation": "DeleteServiceNetworkResourceAssociation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "DeleteServiceNetworkServiceAssociation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "DeleteServiceNetworkVpcAssociation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "DeleteTargetGroup",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "DeregisterTargets",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "GetAccessLogSubscription",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetAuthPolicy",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetDomainVerification",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "GetListener",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "GetResourceConfiguration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "GetResourceGateway",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "GetResourcePolicy",
@@ -187,13 +187,13 @@
     },
     {
       "operation": "GetRule",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "GetService",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetServiceNetwork",
@@ -202,28 +202,28 @@
     },
     {
       "operation": "GetServiceNetworkResourceAssociation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "GetServiceNetworkServiceAssociation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "GetServiceNetworkVpcAssociation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "GetTargetGroup",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "ListAccessLogSubscriptions",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListDomainVerifications",
@@ -232,8 +232,8 @@
     },
     {
       "operation": "ListListeners",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "ListResourceConfigurations",
@@ -242,8 +242,8 @@
     },
     {
       "operation": "ListResourceEndpointAssociations",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "ListResourceGateways",
@@ -252,8 +252,8 @@
     },
     {
       "operation": "ListRules",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "ListServiceNetworkResourceAssociations",
@@ -297,13 +297,13 @@
     },
     {
       "operation": "ListTargets",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "PutAuthPolicy",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutResourcePolicy",
@@ -312,8 +312,8 @@
     },
     {
       "operation": "RegisterTargets",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "StartDomainVerification",
@@ -332,33 +332,33 @@
     },
     {
       "operation": "UpdateAccessLogSubscription",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateListener",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "UpdateResourceConfiguration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "UpdateResourceGateway",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "UpdateRule",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "UpdateService",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "UpdateServiceNetwork",
@@ -367,13 +367,13 @@
     },
     {
       "operation": "UpdateServiceNetworkVpcAssociation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     },
     {
       "operation": "UpdateTargetGroup",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (404: )"
     }
   ]
 }

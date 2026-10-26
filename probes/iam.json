@@ -1,10 +1,10 @@
 {
   "service": "iam",
-  "generated_at": "2026-10-26T01:27:32.553707+00:00",
+  "generated_at": "2026-10-26T03:11:54.024590+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 168,
-    "needs_params": 8,
+    "working": 176,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -88,12 +88,12 @@
     {
       "operation": "CreateOpenIDConnectProvider",
       "status": "working",
-      "message": "OK (required-only fill)"
+      "message": "implemented via required-only (EntityAlreadyExists)"
     },
     {
       "operation": "CreatePolicy",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (EntityAlreadyExists: A policy called probe-test-value already exists.)"
     },
     {
       "operation": "CreatePolicyVersion",
@@ -107,8 +107,8 @@
     },
     {
       "operation": "CreateSAMLProvider",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateServiceLinkedRole",
@@ -128,7 +128,7 @@
     {
       "operation": "CreateVirtualMFADevice",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (EntityAlreadyExists: MFADevice entity at the same path and name already exists.)"
     },
     {
       "operation": "DeactivateMFADevice",
@@ -213,7 +213,7 @@
     {
       "operation": "DeleteServerCertificate",
       "status": "working",
-      "message": "implemented (NoSuchEntity)"
+      "message": "OK"
     },
     {
       "operation": "DeleteServiceLinkedRole",
@@ -227,8 +227,8 @@
     },
     {
       "operation": "DeleteSigningCertificate",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "DeleteUser",
@@ -307,8 +307,8 @@
     },
     {
       "operation": "GenerateOrganizationsAccessReport",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GenerateServiceLastAccessedDetails",
@@ -392,8 +392,8 @@
     },
     {
       "operation": "GetOrganizationsAccessReport",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetOutboundWebIdentityFederationInfo",
@@ -437,13 +437,13 @@
     },
     {
       "operation": "GetServiceLastAccessedDetails",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetServiceLastAccessedDetailsWithEntities",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetServiceLinkedRoleDeletionStatus",
@@ -832,8 +832,8 @@
     },
     {
       "operation": "UpdateOpenIDConnectProviderThumbprint",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "UpdateRole",
@@ -867,8 +867,8 @@
     },
     {
       "operation": "UpdateSigningCertificate",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (NoSuchEntity)"
     },
     {
       "operation": "UpdateUser",
