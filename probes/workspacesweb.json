@@ -1,11 +1,11 @@
 {
   "service": "workspacesweb",
-  "generated_at": "2026-10-25T19:45:19.462788+00:00",
+  "generated_at": "2026-10-26T03:11:27.993838+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 31,
-    "needs_params": 6,
-    "not_implemented": 38,
+    "working": 32,
+    "needs_params": 0,
+    "not_implemented": 43,
     "500_error": 0,
     "timeout": 0
   },
@@ -72,8 +72,8 @@
     },
     {
       "operation": "CreateNetworkSettings",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreatePortal",
@@ -82,8 +82,8 @@
     },
     {
       "operation": "CreateSessionLogger",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "CreateTrustStore",
@@ -192,8 +192,8 @@
     },
     {
       "operation": "ExpireSession",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "GetBrowserSettings",
@@ -232,8 +232,8 @@
     },
     {
       "operation": "GetSession",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "GetSessionLogger",
@@ -247,8 +247,8 @@
     },
     {
       "operation": "GetTrustStoreCertificate",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "GetUserAccessLoggingSettings",
@@ -297,8 +297,8 @@
     },
     {
       "operation": "ListSessions",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "ListTagsForResource",

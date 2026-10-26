@@ -1,10 +1,10 @@
 {
   "service": "cloudtrail",
-  "generated_at": "2026-10-25T19:42:07.863110+00:00",
+  "generated_at": "2026-10-26T03:11:16.538081+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 55,
-    "needs_params": 5,
+    "working": 60,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -17,8 +17,8 @@
     },
     {
       "operation": "CancelQuery",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (QueryIdNotFoundException: The query ID abcdef01-2345-6789-abcd-ef0123456789 was not fo)"
     },
     {
       "operation": "CreateChannel",
@@ -122,8 +122,8 @@
     },
     {
       "operation": "GetImport",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ImportNotFoundException: The import abcdef01-2345-6789-abcd-ef0123456789 was not foun)"
     },
     {
       "operation": "GetInsightSelectors",
@@ -132,8 +132,8 @@
     },
     {
       "operation": "GetQueryResults",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (QueryIdNotFoundException: The query ID abcdef01-2345-6789-abcd-ef0123456789 was not fo)"
     },
     {
       "operation": "GetResourcePolicy",
@@ -167,8 +167,8 @@
     },
     {
       "operation": "ListImportFailures",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ImportNotFoundException: The import abcdef01-2345-6789-abcd-ef0123456789 was not foun)"
     },
     {
       "operation": "ListImports",
@@ -282,8 +282,8 @@
     },
     {
       "operation": "StopImport",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ImportNotFoundException: The import abcdef01-2345-6789-abcd-ef0123456789 was not foun)"
     },
     {
       "operation": "StopLogging",

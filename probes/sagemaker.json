@@ -1,10 +1,10 @@
 {
   "service": "sagemaker",
-  "generated_at": "2026-10-25T19:44:53.321460+00:00",
+  "generated_at": "2026-10-26T03:11:50.861664+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 371,
-    "needs_params": 7,
+    "working": 378,
+    "needs_params": 0,
     "not_implemented": 2,
     "500_error": 0,
     "timeout": 0
@@ -87,8 +87,8 @@
     },
     {
       "operation": "CreateAutoMLJobV2",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateCluster",
@@ -297,8 +297,8 @@
     },
     {
       "operation": "CreateOptimizationJob",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreatePartnerApp",
@@ -312,8 +312,8 @@
     },
     {
       "operation": "CreatePipeline",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreatePresignedDomainUrl",
@@ -622,8 +622,8 @@
     },
     {
       "operation": "DeletePipeline",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteProcessingJob",
@@ -1547,8 +1547,8 @@
     },
     {
       "operation": "RetryPipelineExecution",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "Search",
@@ -1597,8 +1597,8 @@
     },
     {
       "operation": "StartPipelineExecution",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "StartSession",
@@ -1667,8 +1667,8 @@
     },
     {
       "operation": "StopPipelineExecution",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StopProcessingJob",

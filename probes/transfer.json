@@ -1,10 +1,10 @@
 {
   "service": "transfer",
-  "generated_at": "2026-10-25T19:45:13.989121+00:00",
+  "generated_at": "2026-10-26T03:11:26.284246+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 35,
-    "needs_params": 36,
+    "working": 71,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -12,13 +12,13 @@
   "operations": [
     {
       "operation": "CreateAccess",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "CreateAgreement",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "CreateConnector",
@@ -37,8 +37,8 @@
     },
     {
       "operation": "CreateUser",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "CreateWebApp",
@@ -52,13 +52,13 @@
     },
     {
       "operation": "DeleteAccess",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "DeleteAgreement",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "DeleteCertificate",
@@ -72,8 +72,8 @@
     },
     {
       "operation": "DeleteHostKey",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "DeleteProfile",
@@ -82,28 +82,28 @@
     },
     {
       "operation": "DeleteServer",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "DeleteSshPublicKey",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "DeleteUser",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "DeleteWebApp",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteWebAppCustomization",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteWorkflow",
@@ -112,13 +112,13 @@
     },
     {
       "operation": "DescribeAccess",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "DescribeAgreement",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "DescribeCertificate",
@@ -132,13 +132,13 @@
     },
     {
       "operation": "DescribeExecution",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeHostKey",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "DescribeProfile",
@@ -152,23 +152,23 @@
     },
     {
       "operation": "DescribeServer",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "DescribeUser",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "DescribeWebApp",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeWebAppCustomization",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeWorkflow",
@@ -182,23 +182,23 @@
     },
     {
       "operation": "ImportHostKey",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "ImportSshPublicKey",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "ListAccesses",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "ListAgreements",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "ListCertificates",
@@ -222,8 +222,8 @@
     },
     {
       "operation": "ListHostKeys",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "ListProfiles",
@@ -247,8 +247,8 @@
     },
     {
       "operation": "ListUsers",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "ListWebApps",
@@ -262,8 +262,8 @@
     },
     {
       "operation": "SendWorkflowStepState",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "StartDirectoryListing",
@@ -287,13 +287,13 @@
     },
     {
       "operation": "StartServer",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "StopServer",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "TagResource",
@@ -307,8 +307,8 @@
     },
     {
       "operation": "TestIdentityProvider",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "UntagResource",
@@ -317,13 +317,13 @@
     },
     {
       "operation": "UpdateAccess",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "UpdateAgreement",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "UpdateCertificate",
@@ -337,8 +337,8 @@
     },
     {
       "operation": "UpdateHostKey",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "UpdateProfile",
@@ -347,23 +347,23 @@
     },
     {
       "operation": "UpdateServer",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "UpdateUser",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
     },
     {
       "operation": "UpdateWebApp",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateWebAppCustomization",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     }
   ]
 }

@@ -2,10 +2,10 @@
  "comment": "surface-absence manifest (generated) \u2014 every not_implemented probe row is a recorded decision; see docs/botocore-surface-plan.md \u00a73d; rebuild deterministically via scripts/build_surface_absence.py",
  "counts": {
   "absent_moto_crash_faithful": 1,
-  "absent_no_handler": 232,
+  "absent_no_handler": 247,
   "legacy_gap": 3,
-  "modeled_deny": 79,
-  "not_implemented": 315
+  "modeled_deny": 81,
+  "not_implemented": 332
  },
  "services": {
   "account": {
@@ -1739,16 +1739,88 @@
    }
   },
   "vpclattice": {
+   "BatchUpdateRule": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `batch_update_rule` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "CreateListener": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `create_listener` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "DeleteListener": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `delete_listener` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "DeleteRule": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `delete_rule` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "DeleteService": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `delete_service` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
    "DeleteServiceNetwork": {
     "class": "absent_no_handler",
     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `delete_service_network` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
     "status": "not_implemented"
    },
+   "GetListener": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `get_listener` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "GetRule": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `get_rule` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "ListListeners": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `list_listeners` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "ListRules": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `list_rules` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
    "ListServiceNetworkVpcAssociations": {
     "class": "absent_no_handler",
     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `list_service_network_vpc_associations` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "UpdateListener": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `update_listener` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "UpdateRule": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `update_rule` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "UpdateService": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `update_service` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
     "status": "not_implemented"
    },
    "UpdateServiceNetwork": {
@@ -1807,6 +1879,12 @@
     "class": "absent_no_handler",
     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): workspacesweb/responses.py has no `create_ip_access_settings` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "CreateSessionLogger": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): workspacesweb/responses.py has no `create_session_logger` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
     "status": "not_implemented"
    },
    "CreateTrustStore": {
@@ -1869,6 +1947,12 @@
     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): workspacesweb/responses.py has no `disassociate_user_settings` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
     "status": "not_implemented"
    },
+   "ExpireSession": {
+    "class": "modeled_deny",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "twin not_implemented call-site at rotocore/src/services/workspacesweb.rs:268; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): workspacesweb/responses.py has no `expire_session` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
    "GetDataProtectionSettings": {
     "class": "absent_no_handler",
     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
@@ -1893,6 +1977,12 @@
     "evidence": "twin not_implemented call-site at rotocore/src/services/workspacesweb.rs:264; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): workspacesweb/responses.py has no `get_portal_service_provider_metadata` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
     "status": "not_implemented"
    },
+   "GetSession": {
+    "class": "modeled_deny",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "twin not_implemented call-site at rotocore/src/services/workspacesweb.rs:272; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): workspacesweb/responses.py has no `get_session` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
    "GetSessionLogger": {
     "class": "absent_no_handler",
     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
@@ -1903,6 +1993,12 @@
     "class": "absent_no_handler",
     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): workspacesweb/responses.py has no `get_trust_store` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "GetTrustStoreCertificate": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): workspacesweb/responses.py has no `get_trust_store_certificate` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
     "status": "not_implemented"
    },
    "ListDataProtectionSettings": {
@@ -1921,6 +2017,12 @@
     "class": "absent_no_handler",
     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): workspacesweb/responses.py has no `list_session_loggers` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "ListSessions": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): workspacesweb/responses.py has no `list_sessions` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
     "status": "not_implemented"
    },
    "ListTrustStoreCertificates": {
