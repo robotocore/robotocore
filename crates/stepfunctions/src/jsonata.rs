@@ -18,7 +18,16 @@
 //!   positional/boolean predicates (zero offset, like jsonata's
 //!   `evaluateFilter`), the `[]` force-sequence step and `a..b` ranges;
 //!   JSONata 2.0.6 has no slicing operator (a `[a:b]` predicate parses as a
-//!   syntax error there too)
+//!   syntax error there too).
+//!
+//! Deliberate deviation from the reference binding table (`parser.js`):
+//! `a..b` binds tighter than `and`/`or` here, while the reference binds
+//! `..` at 20, looser than `or` at 25 (`a or b .. c` groups as
+//! `(a or b) .. c` upstream, `a or (b .. c)` here); expressions mixing
+//! ranges with boolean operators surface as a numeric-operand error.
+//! `&` deliberately binds equal to `+`/`-`, left-to-right, as in the
+//! reference — so `2 & 3 + 4` errors on an arithmetic-on-string operand
+//! there and here.
 //! - `$states` variable: `.input` (every evaluating field), `.result` and
 //!   `.errorOutput` (Task/Parallel/Map outputs, Catch payloads), `.context`
 //! - functions (the SFN-eligible subset): `$format`, `$fromMillis`,
@@ -571,16 +580,19 @@ impl P {
         check_depth(self.depth)
     }
 
-    /// `cond ? then : else` — the loosest operator; a missing `:` reads as
-    /// the JSONata no-output else branch.
+    /// `cond ? then : else` — the loosest operator. `a ?: b` is the elvis
+    /// default (parser.js parses it as the ternary whose then-branch is the
+    /// condition itself), and a missing `:` degrades to an undefined else
+    /// branch.
     fn ternary(&mut self) -> Result<Node, EvalError> {
         let cond = self.default()?;
         if self.eat_op(Op::Question) {
             if self.eat_op(Op::Colon) {
+                let other = self.nested_expr()?;
                 return Ok(Node::Ternary(
+                    Box::new(cond.clone()),
                     Box::new(cond),
-                    Box::new(Node::Lit(Value::Null)),
-                    None,
+                    Some(Box::new(other)),
                 ));
             }
             let then = self.nested_expr()?;
@@ -592,9 +604,7 @@ impl P {
                     Some(Box::new(other)),
                 ));
             }
-            return Err(EvalError::new(
-                "expected ':' in a ternary expression".to_string(),
-            ));
+            return Ok(Node::Ternary(Box::new(cond), Box::new(then), None));
         }
         Ok(cond)
     }
@@ -654,8 +664,9 @@ impl P {
         self.cmp_expr()
     }
 
+    /// Comparisons bind over the additive level, which includes `&`.
     fn cmp_expr(&mut self) -> Result<Node, EvalError> {
-        let mut left = self.concat_expr()?;
+        let mut left = self.add_expr()?;
         loop {
             let op = match self.peek() {
                 Tok::Op(Op::Eq) => BinOp::Eq,
@@ -668,18 +679,8 @@ impl P {
                 _ => break,
             };
             self.i += 1;
-            let right = self.concat_expr()?;
-            left = Node::Bin(op, Box::new(left), Box::new(right));
-        }
-        Ok(left)
-    }
-
-    fn concat_expr(&mut self) -> Result<Node, EvalError> {
-        let mut left = self.add_expr()?;
-        while self.peek() == Tok::Op(Op::Amp) {
-            self.i += 1;
             let right = self.add_expr()?;
-            left = Node::Bin(BinOp::Concat, Box::new(left), Box::new(right));
+            left = Node::Bin(op, Box::new(left), Box::new(right));
         }
         Ok(left)
     }
@@ -690,6 +691,10 @@ impl P {
             let op = match self.peek() {
                 Tok::Op(Op::Plus) => BinOp::Add,
                 Tok::Op(Op::Minus) => BinOp::Sub,
+                // `&` binds equal to + and -, evaluated left-to-right (the
+                // reference binding table): `2 & 3 + 4` is a reference
+                // numeric-operand error, not a `"27"` concat.
+                Tok::Op(Op::Amp) => BinOp::Concat,
                 _ => break,
             };
             self.i += 1;
@@ -1741,12 +1746,12 @@ fn call_builtin(
                 None => Some(len),
                 Some(v) => {
                     let length = number_of(jv_value(v)?, "$substring")? as i64;
-                    if length < 0 {
-                        // A negative length counts back from the end.
-                        Some(len + length - start)
-                    } else {
-                        Some(start + length)
+                    if length <= 0 {
+                        // A length of zero or less produces the empty string
+                        // (jsonata functions.js substring).
+                        return Ok(Jv::Val(Value::String(String::new())));
                     }
+                    Some(start + length)
                 }
             };
             let end = end.unwrap_or(len).clamp(0, len);
@@ -2355,5 +2360,72 @@ mod tests {
             eval_input("items[v]", &input).unwrap(),
             json!([{"v": 0}, {"v": "y"}, {"v": [0, 2]}, {"v": 4}])
         );
+    }
+
+    #[test]
+    fn substring_non_positive_length_yields_empty() {
+        // jsonata functions.js: a length of zero or less produces "" —
+        // it used to read as "counts back from the end".
+        assert_eq!(
+            eval_input("$substring('hello', 3, -4)", &json!({})).unwrap(),
+            json!("")
+        );
+        assert_eq!(
+            eval_input("$substring('hello', 0, -1)", &json!({})).unwrap(),
+            json!("")
+        );
+        assert_eq!(
+            eval_input("$substring('hello', 0, 0)", &json!({})).unwrap(),
+            json!("")
+        );
+        assert_eq!(
+            eval_input("$substring('hello', 3, 1)", &json!({})).unwrap(),
+            json!("l")
+        );
+    }
+
+    #[test]
+    fn elvis_default_evaluates_to_condition_then_else() {
+        // parser.js parses `a ?: b` as the ternary with the condition as
+        // its own then-branch (`1 ?: 'x'` reads `1`, not null).
+        assert_eq!(eval_input("1 ?: 'x'", &json!({})).unwrap(), json!(1));
+        assert_eq!(eval_input("'y' ?: 'x'", &json!({})).unwrap(), json!("y"));
+        assert_eq!(
+            eval_input("$.gone ?: 'default'", &json!({"gone": false})).unwrap(),
+            json!("default")
+        );
+        assert_eq!(
+            eval_input("false ?: false ?: 'tail'", &json!({})).unwrap(),
+            json!("tail")
+        );
+    }
+
+    #[test]
+    fn else_less_ternary_degrades_to_undefined_else() {
+        // A missing `:` parses fine (parser.js); a truthy condition takes
+        // the then-branch, a falsy one evaluates to no value.
+        assert_eq!(eval_input("true ? 1", &json!({})).unwrap(), json!(1));
+        assert_eq!(
+            eval_input("true ? 'a' ? 'b' : 'c'", &json!({})).unwrap(),
+            json!("b")
+        );
+        let err = eval_input("false ? 1", &json!({})).unwrap_err();
+        assert!(err.message.contains("no value"), "{}", err.message);
+    }
+
+    #[test]
+    fn concat_binds_at_the_addition_level_like_reference() {
+        // `&` shares the +/- level, left-to-right (reference binding 50):
+        // `2 & 3` concatenates to "23" and adding to it is a
+        // arithmetic-on-string error, not "27".
+        let err = eval_input("2 & 3 + 4", &json!({})).unwrap_err();
+        assert!(
+            err.message.contains("'+' requires numeric operands"),
+            "{}",
+            err.message
+        );
+        assert_eq!(eval_input("2 & 3", &json!({})).unwrap(), json!("23"));
+        assert_eq!(eval_input("1 - 2 & 3", &json!({})).unwrap(), json!("-13"));
+        assert_eq!(eval_input("'a' & 'b'", &json!({})).unwrap(), json!("ab"));
     }
 }

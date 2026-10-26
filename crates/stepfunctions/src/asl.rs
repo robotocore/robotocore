@@ -2224,7 +2224,9 @@ mod tests {
             resolve_json_path("$.items[::2]", &input),
             Some(json!([1, 3]))
         );
-        assert_eq!(resolve_json_path("$.items[-1]", &input), Some(json!(4)));
+        // Negative single index stays array-wrapped (moto's
+        // `_is_singleton_array_access` pattern `\[\d+\]` has no minus).
+        assert_eq!(resolve_json_path("$.items[-1]", &input), Some(json!([4])));
         // Out-of-range literal index: a definite miss, not [] (era missing).
         assert_eq!(resolve_json_path("$.items[9]", &input), None);
         assert_eq!(resolve_json_path("$.map.*", &input), Some(json!([1, 2])));

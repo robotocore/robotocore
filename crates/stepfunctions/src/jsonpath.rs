@@ -12,7 +12,9 @@
 //!
 //! and the #7825 shape fix: a projection after any array traversal
 //! (wildcard, slice, filter or definite index) keeps the array shape, while
-//! a path ending in a literal `[n]` unpacks its single match.
+//! a path ending in a literal non-negative `[n]` unpacks its single match —
+//! negative `[-n]` stays array-wrapped, like moto's
+//! `_is_singleton_array_access` whose `\[\d+\]` pattern has no minus.
 //!
 //! Supported syntax: `$.a.b`, bracket-quoted fields `['a.b']`, `[0]`
 //! (negative counts from the end), `[start:end:step]` slices, `[*]` / `.*`
@@ -48,11 +50,15 @@ pub(crate) fn resolve(path: &str, base: &Value) -> Option<Value> {
     if matches.len() > 1 {
         return Some(Value::Array(matches));
     }
-    // Single match: a path ending in a literal index is a definite access
-    // (moto `_is_singleton_array_access`), so AWS unpacks it; otherwise any
-    // array traversal in the chain preserves the array shape (moto #7825)
-    // and a plain dot path yields the field value itself.
-    if steps.last().is_some_and(|s| matches!(s, Step::Index(_))) {
+    // Single match: a path ending in a literal non-negative index is a
+    // definite access (moto `_is_singleton_array_access` matches `\[\d+\]`,
+    // no minus), so AWS unpacks it; a negative index keeps the array shape.
+    // Otherwise any array traversal in the chain preserves the array shape
+    // (moto #7825) and a plain dot path yields the field value itself.
+    if steps
+        .last()
+        .is_some_and(|s| matches!(s, Step::Index(n) if *n >= 0))
+    {
         return Some(matches.pop().expect("at least one match"));
     }
     if steps.iter().any(Step::traverses_array) {
@@ -833,17 +839,21 @@ fn index_of(v: &Value, idx: i64) -> Option<&Value> {
 }
 
 /// Python slice semantics: negative indices wrap, boundaries clamp, a
-/// negative step descends.
+/// negative step descends, and a zero step matches nothing (jsonpath_ng) —
+/// a zero step yields no indices rather than degenerating into a
+/// full forward slice.
 fn slice_indices(
     len: usize,
     start: Option<f64>,
     end: Option<f64>,
     step: Option<f64>,
 ) -> Vec<usize> {
-    let step: i64 = step
-        .filter(|s| *s != 0.0)
-        .map(|s| s.floor() as i64)
-        .unwrap_or(1);
+    let step: i64 = step.map(|s| s.floor() as i64).unwrap_or(1);
+    if step == 0 {
+        // $a[::0] matches nothing; falling through to the negative-step
+        // loop would never advance.
+        return Vec::new();
+    }
     let adjust = |v: f64| -> i64 {
         let i = v.floor() as i64;
         if i < 0 {
@@ -1421,5 +1431,26 @@ mod tests {
             let path = format!("${}", ".a".repeat(segs));
             assert_eq!(resolve(&path, &json!({})), None, "depth {segs}");
         }
+    }
+
+    #[test]
+    fn zero_step_slice_matches_nothing() {
+        // jsonpath_ng semantics: a ::0 step yields no elements instead of
+        // degenerating into a full forward slice.
+        let input = json!({"items": [1, 2, 3]});
+        assert_eq!(resolve("$.items[::0]", &input), Some(json!([])));
+        assert_eq!(resolve("$.items[:2:0]", &input), Some(json!([])));
+        // Sanity: positive steps still stride.
+        assert_eq!(resolve("$.items[::2]", &input), Some(json!([1, 3])));
+    }
+
+    #[test]
+    fn negative_singleton_index_stays_array_wrapped() {
+        // moto `_is_singleton_array_access` matches `\[\d+\]` — a minus is
+        // not a definite access, so the shape stays an array.
+        let input = json!({"items": [1, 2, 3]});
+        assert_eq!(resolve("$.items[-1]", &input), Some(json!([3])));
+        assert_eq!(resolve("$.items[1]", &input), Some(json!(2)));
+        assert_eq!(resolve("$.items[*][-1]", &input), Some(json!([3])));
     }
 }
