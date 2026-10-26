@@ -1,6 +1,6 @@
 {
   "service": "acm",
-  "generated_at": "2026-10-26T09:23:46.481890+00:00",
+  "generated_at": "2026-10-26T11:13:33.763296+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 16,
@@ -43,7 +43,7 @@
     {
       "operation": "ImportCertificate",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "ListCertificates",

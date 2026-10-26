@@ -1,6 +1,6 @@
 {
   "service": "cognito-idp",
-  "generated_at": "2026-10-26T09:23:48.499340+00:00",
+  "generated_at": "2026-10-26T11:13:35.768320+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 121,
@@ -78,7 +78,7 @@
     {
       "operation": "AdminInitiateAuth",
       "status": "working",
-      "message": "implemented via required-only (ResourceNotFoundException)"
+      "message": "implemented via required-only (InvalidParameterException)"
     },
     {
       "operation": "AdminLinkProviderForUser",
@@ -163,12 +163,12 @@
     {
       "operation": "CompleteWebAuthnRegistration",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-9297)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-7070)"
     },
     {
       "operation": "ConfirmDevice",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-9297)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-7070)"
     },
     {
       "operation": "ConfirmForgotPassword",
@@ -253,7 +253,7 @@
     {
       "operation": "DeleteUser",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-9297)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-7070)"
     },
     {
       "operation": "DeleteUserAttributes",
@@ -283,7 +283,7 @@
     {
       "operation": "DeleteWebAuthnCredential",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-9297)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-7070)"
     },
     {
       "operation": "DescribeIdentityProvider",
@@ -338,7 +338,7 @@
     {
       "operation": "ForgetDevice",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-9297)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-7070)"
     },
     {
       "operation": "ForgotPassword",
@@ -353,7 +353,7 @@
     {
       "operation": "GetDevice",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-9297)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-7070)"
     },
     {
       "operation": "GetGroup",
@@ -413,12 +413,12 @@
     {
       "operation": "InitiateAuth",
       "status": "working",
-      "message": "implemented via required-only (InvalidParameterException)"
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "ListDevices",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-9297)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-7070)"
     },
     {
       "operation": "ListGroups",
@@ -478,7 +478,7 @@
     {
       "operation": "ListWebAuthnCredentials",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-9297)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-7070)"
     },
     {
       "operation": "ResendConfirmationCode",
@@ -513,7 +513,7 @@
     {
       "operation": "SetUserMFAPreference",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-9297)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-7070)"
     },
     {
       "operation": "SetUserPoolMfaConfig",
@@ -538,7 +538,7 @@
     {
       "operation": "StartWebAuthnRegistration",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-9297)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-7070)"
     },
     {
       "operation": "StopUserImportJob",
@@ -563,7 +563,7 @@
     {
       "operation": "UpdateDeviceStatus",
       "status": "working",
-      "message": "likely implemented (NotAuthorizedException: probe-token-9297)"
+      "message": "likely implemented (NotAuthorizedException: probe-token-7070)"
     },
     {
       "operation": "UpdateGroup",

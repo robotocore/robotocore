@@ -1,11 +1,11 @@
 {
   "service": "ecr",
-  "generated_at": "2026-10-26T03:43:03.282291+00:00",
-  "endpoint": "http://localhost:4795",
+  "generated_at": "2026-10-26T11:13:34.411653+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 58,
+    "working": 57,
     "needs_params": 0,
-    "not_implemented": 0,
+    "not_implemented": 1,
     "500_error": 0,
     "timeout": 0
   },
@@ -13,7 +13,7 @@
     {
       "operation": "BatchCheckLayerAvailability",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (RepositoryNotFoundException)"
     },
     {
       "operation": "BatchDeleteImage",
@@ -33,7 +33,7 @@
     {
       "operation": "CompleteLayerUpload",
       "status": "working",
-      "message": "likely implemented (InvalidAction: Could not find operation CompleteLayerUpload)"
+      "message": "implemented (RepositoryNotFoundException)"
     },
     {
       "operation": "CreatePullThroughCacheRule",
@@ -142,8 +142,8 @@
     },
     {
       "operation": "GetDownloadUrlForLayer",
-      "status": "working",
-      "message": "likely implemented (InvalidAction: Could not find operation GetDownloadUrlForLayer)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "GetLifecyclePolicy",
@@ -178,7 +178,7 @@
     {
       "operation": "InitiateLayerUpload",
       "status": "working",
-      "message": "likely implemented (InvalidAction: Could not find operation InitiateLayerUpload)"
+      "message": "implemented (RepositoryNotFoundException)"
     },
     {
       "operation": "ListImageReferrers",
@@ -293,7 +293,7 @@
     {
       "operation": "UploadLayerPart",
       "status": "working",
-      "message": "likely implemented (InvalidAction: Could not find operation UploadLayerPart)"
+      "message": "implemented (RepositoryNotFoundException)"
     },
     {
       "operation": "ValidatePullThroughCacheRule",
