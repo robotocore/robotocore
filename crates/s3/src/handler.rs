@@ -457,6 +457,22 @@ const POST_V4_FIELDS: [&str; 4] = [
 ];
 const POST_V2_FIELDS: [&str; 2] = ["signature", "awsaccesskeyid"];
 
+/// The canned ACL names AWS documents (ACL overview table; moto's
+/// get_canned_acl accepts the same set, raising for anything else). Used by
+/// POST Object's `x-amz-acl`/`acl` form field — the twin stores no ACL
+/// state, so a valid canned name passes like PUT's x-amz-acl header does
+/// and only unknown names are rejected.
+const CANNED_ACLS: [&str; 8] = [
+    "private",
+    "public-read",
+    "public-read-write",
+    "authenticated-read",
+    "aws-exec-read",
+    "bucket-owner-read",
+    "bucket-owner-full-control",
+    "log-delivery-write",
+];
+
 /// The signing secret the twin underwrites for POST-upload verification.
 ///
 /// The twin's documented credential model is `aws_access_key_id` =
@@ -1544,17 +1560,40 @@ impl S3Handler {
             .map(String::from)
             .or_else(|| form.file_content_type.clone())
             .unwrap_or_else(|| "binary/octet-stream".to_string());
+        // The canned-ACL POST field (AWS documents x-amz-acl as the header
+        // the canned value arrives under; moto's form-as-querystring check
+        // reads the same name bare, `acl`). Valid canned names pass the way
+        // PUT's x-amz-acl header does — the twin stores no ACL state — and
+        // an unknown name is a bad argument, the way real AWS rejects an
+        // unsupported canned value (moto's oracle path
+        // `get_canned_acl` raises on the same inputs).
+        let acl = form
+            .get("x-amz-acl")
+            .or_else(|| form.get("acl"))
+            .unwrap_or("");
+        if !acl.is_empty() && !CANNED_ACLS.contains(&acl) {
+            return Self::aws_error_with(
+                400,
+                "InvalidArgument",
+                &format!("Invalid argument: {acl}"),
+                &[("ArgumentName", "x-amz-acl"), ("ArgumentValue", acl)],
+            );
+        }
         let storage_class = form
             .get("x-amz-storage-class")
             .unwrap_or("STANDARD")
             .to_string();
         // x-amz-meta-* form fields become object user metadata (localstack
-        // post_object user_metadata loop).
+        // post_object user_metadata loop). Multipart field names arrive with
+        // the client's own casing (unlike gateway headers, which are
+        // lowercased), so the strip is case-insensitive — an X-Amz-Meta-...
+        // field is the same metadata spelling.
         let metadata: HashMap<String, String> = form
             .fields
             .iter()
             .filter_map(|(k, v)| {
-                k.strip_prefix("x-amz-meta-")
+                k.to_ascii_lowercase()
+                    .strip_prefix("x-amz-meta-")
                     .map(|rest| (rest.to_ascii_lowercase(), v.clone()))
             })
             .collect();
@@ -5541,6 +5580,120 @@ mod tests {
         assert!(
             body.contains("You must provide the content-length HTTP header."),
             "body: {body}"
+        );
+    }
+
+    #[test]
+    fn post_object_acl_field_honored() {
+        // The canned-ACL form field is honored like PUT's x-amz-acl header:
+        // the AWS-documented name x-amz-acl (moto also reads the bare `acl`
+        // name). A valid canned name stores the object; an unknown name is
+        // a bad argument.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        for (field, value) in [
+            ("x-amz-acl", "public-read"),
+            ("acl", "bucket-owner-full-control"),
+        ] {
+            let resp = handler.handle(form_post_request(
+                "post-bkt",
+                None,
+                &[("key", &format!("acl-{field}.txt")), (field, value)],
+                Some(("f.txt", "application/octet-stream", b"body")),
+            ));
+            assert_eq!(
+                resp.status,
+                204,
+                "body: {:?}",
+                String::from_utf8_lossy(&resp.body)
+            );
+            let get = handler.handle(make_req(
+                "GetObject",
+                Some("post-bkt"),
+                Some(&format!("acl-{field}.txt")),
+                b"",
+            ));
+            assert_eq!(get.status, 200);
+        }
+
+        // Unknown canned value → 400 InvalidArgument naming the field.
+        let resp = handler.handle(form_post_request(
+            "post-bkt",
+            None,
+            &[("key", "bad-acl.txt"), ("x-amz-acl", "everyone")],
+            Some(("f.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(
+            resp.status,
+            400,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(
+            body.contains("<Code>InvalidArgument</Code>"),
+            "body: {body}"
+        );
+        assert!(
+            body.contains("<ArgumentName>x-amz-acl</ArgumentName>"),
+            "body: {body}"
+        );
+        assert!(
+            body.contains("<ArgumentValue>everyone</ArgumentValue>"),
+            "body: {body}"
+        );
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("bad-acl.txt"),
+            b"",
+        ));
+        assert_eq!(get.status, 404, "rejected uploads store nothing");
+    }
+
+    #[test]
+    fn post_object_meta_fields_case_insensitive() {
+        // Multipart field names carry the client's casing, unlike gateway
+        // headers (lowercased top-side): the x-amz-meta- strip must be
+        // case-insensitive so an `X-Amz-Meta-...` form field survives as
+        // object user metadata just like its lowercase spelling.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let resp = handler.handle(form_post_request(
+            "post-bkt",
+            None,
+            &[
+                ("key", "cased-meta.txt"),
+                ("X-Amz-Meta-Color", "red"),
+                ("x-amz-meta-Mood", "happy"),
+            ],
+            Some(("f.txt", "application/octet-stream", b"body")),
+        ));
+        assert_eq!(
+            resp.status,
+            204,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("cased-meta.txt"),
+            b"",
+        ));
+        assert_eq!(get.status, 200);
+        let headers = header_map(&get);
+        assert_eq!(
+            headers.get("x-amz-meta-color").map(String::as_str),
+            Some("red"),
+            "headers: {:?}",
+            headers
+        );
+        assert_eq!(
+            headers.get("x-amz-meta-mood").map(String::as_str),
+            Some("happy")
         );
     }
 
