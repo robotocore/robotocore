@@ -995,7 +995,7 @@ fn handle(
         "UpdateBillingGroup" => update_billing_group(s, &seg(1), body, query),
         "DeleteBillingGroup" => delete_billing_group(s, &seg(1)),
         "ListBillingGroups" => list_billing_groups(s, body, query),
-        "ListThingsInBillingGroup" => list_things_in_billing_group(s, &seg(1)),
+        "ListThingsInBillingGroup" => list_things_in_billing_group(s, &seg(1), body, query),
         "AddThingToBillingGroup" => add_thing_to_billing_group(s, body, query),
         "RemoveThingFromBillingGroup" => remove_thing_from_billing_group(s, body, query),
         "CreateDynamicThingGroup" => create_dynamic_thing_group(s, &seg(1), body, &region, account),
@@ -1063,13 +1063,13 @@ fn handle(
         "DeleteJob" => delete_job(s, &seg(1), body, query),
         "CancelJob" => cancel_job(s, &seg(1), body, query),
         "GetJobDocument" => get_job_document(s, &seg(1)),
-        "ListJobs" => list_jobs(s),
+        "ListJobs" => list_jobs(s, body, query),
         "ListJobExecutionsForJob" => list_job_executions_for_job(s, &seg(1), body, query),
         "AssociateTargetsWithJob" => associate_targets_with_job(body),
         "CreateJobTemplate" => create_job_template(s, &seg(1), body, &region, account),
         "DescribeJobTemplate" => describe_job_template(s, &seg(1)),
         "DeleteJobTemplate" => delete_job_template(s, &seg(1)),
-        "ListJobTemplates" => list_job_templates(s),
+        "ListJobTemplates" => list_job_templates(s, body, query),
         "CreateDomainConfiguration" => {
             create_domain_configuration(s, &seg(1), body, &region, account)
         }
@@ -1438,19 +1438,114 @@ fn delete_thing(s: &mut State, name: &str) -> Result<Response, Response> {
     Ok(ok_empty())
 }
 
-/// Real AWS pages IoT list results at 100 items per page: every paginated
-/// method in moto's iot PAGINATION_MODEL carries `limit_default: 100`, and
-/// moto PR getmoto/moto#10417 makes the responses layer honor that page
-/// size for list_thing_types/list_things/list_jobs/list_job_templates/
-/// list_job_executions_for_job/list_job_executions_for_thing. The twin's
-/// list handlers have no token pagination yet (they always answer
-/// nextToken: null), so the cap is applied directly to the returned page —
-/// a pageSize or maxResults beyond 100 cannot widen it.
-const IOT_MAX_PAGE_SIZE: usize = 100;
+/// moto/iot/utils.py's PAGINATION_MODEL pins `limit_default: 100` on every
+/// paginated iot list; the pinned fork's responses layer reads `maxResults`
+/// from the wire with its own default of 50 ("not the default, but makes
+/// testing easier"), except the two billing-group lists which default to
+/// 100. A limit that is present but 0 falls back to the model's
+/// limit_default (the Paginator's falsy-max rule).
+const IOT_PAGINATION_LIMIT_DEFAULT: usize = 100;
 
-/// Cap a list page at AWS's 100-item maximum (`IOT_MAX_PAGE_SIZE`).
-fn page_cap(items: Vec<Value>) -> Vec<Value> {
-    items.into_iter().take(IOT_MAX_PAGE_SIZE).collect()
+/// moto's Paginator InvalidToken: the JsonRESTError raised when a page
+/// token cannot be decoded ("Invalid token") or names no item of the list
+/// ("Resource not found!") — `{"__type": "InvalidToken", "message":
+/// "Invalid Token: <reason>"}`, HTTP 400.
+fn invalid_token(message: &str) -> Response {
+    json_err(
+        400,
+        "InvalidToken",
+        json!({"__type": "InvalidToken", "message": format!("Invalid Token: {message}")}),
+    )
+}
+
+/// The botocore page-token encoding shared with s3control's access-point
+/// lists (one attribute per token, joined with `|` per moto's
+/// `Paginator._build_next_token` when a method declares several).
+fn encode_iot_page_token(values: &[String]) -> String {
+    crate::services::s3control::encode_s3control_token(&values.join("|"))
+}
+
+/// The inverse of [`encode_iot_page_token`]; the `parameterChecksum` member
+/// moto also embeds (Python's salted `hash()` of the non-pagination
+/// kwargs) is not wire-portable and is ignored, like s3control's.
+fn decode_iot_page_token(token: &str) -> Option<Vec<String>> {
+    crate::services::s3control::decode_s3control_token(token)
+        .map(|joined| joined.split('|').map(str::to_owned).collect())
+}
+
+/// The item member a unique_attribute resolves to (moto's
+/// `Paginator._get_unique_value`: string items are their own value;
+/// otherwise the declared attribute of the item, `""` when absent).
+fn unique_value_of(item: &Value, attr: &str) -> String {
+    if let Some(s) = item.as_str() {
+        return s.to_string();
+    }
+    match item.get(attr) {
+        Some(Value::String(s)) => s.clone(),
+        Some(other) => other.to_string(),
+        None => String::new(),
+    }
+}
+
+/// moto's `moto.utilities.paginator.Paginator.paginate` around an iot list
+/// (PAGINATION_MODEL): a page starts where `attrs`-and-`values` match the
+/// resume token, runs for `raw_limit.unwrap_or(default)` rows, and mints
+/// the next token from the first EXCLUDED item only when a non-empty page
+/// left rows behind. `attrs` is one resolved-member name per declared
+/// `unique_attribute` (unused for the all-string lists, where items are
+/// their own unique value).
+fn paginate_list(
+    items: &[Value],
+    attrs: &[&str],
+    token: Option<&str>,
+    raw_limit: Option<usize>,
+    default_limit: usize,
+) -> Result<(Vec<Value>, Option<String>), Response> {
+    let start = match token {
+        Some(token) => {
+            let values = match decode_iot_page_token(token) {
+                Some(values) => values,
+                None => return Err(invalid_token("Invalid token")),
+            };
+            items
+                .iter()
+                .position(|item| {
+                    attrs
+                        .iter()
+                        .zip(values.iter())
+                        .all(|(attr, want)| &unique_value_of(item, attr) == want)
+                })
+                .ok_or_else(|| invalid_token("Resource not found!"))?
+        }
+        None => 0,
+    };
+    let limit = match raw_limit {
+        None => default_limit,
+        Some(0) => IOT_PAGINATION_LIMIT_DEFAULT,
+        Some(n) => n,
+    };
+    let end = (start + limit).min(items.len());
+    let page = items[start..end].to_vec();
+    let next_token = if !page.is_empty() && end < items.len() {
+        let values: Vec<String> = attrs
+            .iter()
+            .map(|attr| unique_value_of(&items[end], attr))
+            .collect();
+        Some(encode_iot_page_token(&values))
+    } else {
+        None
+    };
+    Ok((page, next_token))
+}
+
+/// A member of the request as an unsigned integer (body number or query
+/// string).
+fn p_usize(body: &Value, query: &BTreeMap<String, Vec<String>>, key: &str) -> Option<usize> {
+    match p(body, query, key) {
+        Value::Number(n) => n.as_u64().map(|v| v as usize),
+        Value::String(s) => s.parse::<usize>().ok(),
+        _ => None,
+    }
 }
 
 fn list_things(
@@ -1481,9 +1576,17 @@ fn list_things(
         }
         items.push(obj);
     }
-    Ok(ok_json(
-        &json!({"things": page_cap(items), "nextToken": Value::Null}),
-    ))
+    // moto's list_things: @paginate'd backend list (input_token "token",
+    // limit_default 100) in front of a responses layer whose `maxResults`
+    // reads default to 50; the token names a thing's thingArn.
+    let (items, token) = paginate_list(
+        &items,
+        &["thingArn"],
+        p_str(body, query, "nextToken").as_deref(),
+        p_usize(body, query, "maxResults"),
+        50,
+    )?;
+    Ok(ok_json(&json!({"things": items, "nextToken": token})))
 }
 
 fn register_thing(_body: &Value) -> Result<Response, Response> {
@@ -1659,8 +1762,33 @@ fn list_thing_types(
         })
         .cloned()
         .collect();
+    // list_thing_types is NOT one of the @paginate'd PAGINATION_MODEL
+    // methods, but the pinned fork still pages it by hand in its responses
+    // layer: default maxResults 50 and a plain integer-offset token
+    // (`str(max_results)`), resumed at `thingTypes[token : token +
+    // max_results]` — moto-minted pages were therefore never uncapped.
+    let max = p_usize(body, query, "maxResults").unwrap_or(50);
+    let start = match p_str(body, query, "nextToken") {
+        None => 0,
+        Some(token) => match token.parse::<usize>() {
+            Ok(offset) => offset,
+            Err(_) => {
+                // the fork's `int(previous_next_token)` ValueError lands in
+                // werkzeug's 500 HTML; answering the InvalidToken
+                // JsonRESTError a @paginate'd list would raise instead.
+                return Err(invalid_token("Invalid token"));
+            }
+        },
+    };
+    let end = (start + max).min(items.len());
+    let page = items[start.min(items.len())..end].to_vec();
+    let next_token = if items.len() > start + max {
+        Some((start + max).to_string())
+    } else {
+        None
+    };
     Ok(ok_json(
-        &json!({"thingTypes": page_cap(items), "nextToken": Value::Null}),
+        &json!({"thingTypes": page, "nextToken": next_token}),
     ))
 }
 
@@ -2102,9 +2230,17 @@ fn list_billing_groups(
         })
         .map(|g| json!({"groupName": g["billingGroupName"], "groupArn": g["billingGroupArn"]}))
         .collect();
-    Ok(ok_json(
-        &json!({"billingGroups": page_cap(items), "nextToken": Value::Null}),
-    ))
+    // moto's list_billing_groups: @paginate'd (unique_attribute
+    // "groupName", limit_default 100) on to_short_dict items, in front of
+    // a responses layer whose maxResults defaults to 100.
+    let (page, token) = paginate_list(
+        &items,
+        &["groupName"],
+        p_str(body, query, "nextToken").as_deref(),
+        p_usize(body, query, "maxResults"),
+        100,
+    )?;
+    Ok(ok_json(&json!({"billingGroups": page, "nextToken": token})))
 }
 
 fn identify_thing_for_billing(
@@ -2215,7 +2351,12 @@ fn remove_thing_from_billing_group(
     Ok(ok_empty())
 }
 
-fn list_things_in_billing_group(s: &mut State, name: &str) -> Result<Response, Response> {
+fn list_things_in_billing_group(
+    s: &mut State,
+    name: &str,
+    body: &Value,
+    query: &BTreeMap<String, Vec<String>>,
+) -> Result<Response, Response> {
     let idx =
         find_by_field_idx(&s.billing_groups, "billingGroupName", name).ok_or_else(not_found)?;
     let mut names: Vec<Value> = Vec::new();
@@ -2229,9 +2370,19 @@ fn list_things_in_billing_group(s: &mut State, name: &str) -> Result<Response, R
             names.push(t["thingName"].clone());
         }
     }
-    Ok(ok_json(
-        &json!({"things": page_cap(names), "nextToken": Value::Null}),
-    ))
+    // moto's list_things_in_billing_group: @paginate'd (input_token
+    // "token", unique_attribute "thing_name", limit_default 100) over the
+    // FakeThing members of the group, in front of a responses layer whose
+    // maxResults defaults to 100; the items are the bare names, so each is
+    // its own unique value in the token.
+    let (page, token) = paginate_list(
+        &names,
+        &["thingName"],
+        p_str(body, query, "nextToken").as_deref(),
+        p_usize(body, query, "maxResults"),
+        100,
+    )?;
+    Ok(ok_json(&json!({"things": page, "nextToken": token})))
 }
 
 fn create_dynamic_thing_group(
@@ -3463,7 +3614,11 @@ fn get_job_document(s: &mut State, job_id: &str) -> Result<Response, Response> {
     Ok(ok_json(&json!({"document": s.jobs[idx]["document"]})))
 }
 
-fn list_jobs(s: &mut State) -> Result<Response, Response> {
+fn list_jobs(
+    s: &mut State,
+    body: &Value,
+    query: &BTreeMap<String, Vec<String>>,
+) -> Result<Response, Response> {
     let items: Vec<Value> = s
         .jobs
         .iter()
@@ -3490,9 +3645,22 @@ fn list_jobs(s: &mut State) -> Result<Response, Response> {
             })
         })
         .collect();
-    Ok(ok_json(
-        &json!({"jobs": page_cap(items), "nextToken": Value::Null}),
-    ))
+    // moto's list_jobs: @paginate'd (input_token "next_token",
+    // limit_default 100) in front of a responses layer whose maxResults
+    // defaults to 50. Watch-out: the fork's token for this method pins the
+    // literal string "None" — its model declares the unique_attribute
+    // "jobId" while FakeJob carries job_id (snake case), so getattr
+    // resolves to None and a real moto paginator walk re-positions at
+    // index 0 forever. This twin tokenizes by the model's DECLARED
+    // attribute (the item's jobId) so walks terminate.
+    let (page, token) = paginate_list(
+        &items,
+        &["jobId"],
+        p_str(body, query, "nextToken").as_deref(),
+        p_usize(body, query, "maxResults"),
+        50,
+    )?;
+    Ok(ok_json(&json!({"jobs": page, "nextToken": token})))
 }
 
 // --- Job executions -------------------------------------------------------
@@ -3614,8 +3782,19 @@ fn list_job_executions_for_job(
             })
         })
         .collect();
+    // moto's list_job_executions_for_job: @paginate'd with two declared
+    // unique_attributes (["job_id", "thing_arn"]) — tokens carry both,
+    // joined "|" by the Paginator — in front of a responses layer whose
+    // maxResults defaults to 50.
+    let (items, token) = paginate_list(
+        &items,
+        &["jobId", "thingArn"],
+        p_str(body, query, "nextToken").as_deref(),
+        p_usize(body, query, "maxResults"),
+        50,
+    )?;
     Ok(ok_json(
-        &json!({"executionSummaries": page_cap(items), "nextToken": Value::Null}),
+        &json!({"executionSummaries": items, "nextToken": token}),
     ))
 }
 
@@ -3645,8 +3824,18 @@ fn list_job_executions_for_thing(
             })
         })
         .collect();
+    // moto's list_job_executions_for_thing: @paginate'd (input_token
+    // "next_token", unique_attribute "job_id") in front of a responses
+    // layer whose maxResults defaults to 50.
+    let (items, token) = paginate_list(
+        &items,
+        &["jobId"],
+        p_str(body, query, "nextToken").as_deref(),
+        p_usize(body, query, "maxResults"),
+        50,
+    )?;
     Ok(ok_json(
-        &json!({"executionSummaries": page_cap(items), "nextToken": Value::Null}),
+        &json!({"executionSummaries": items, "nextToken": token}),
     ))
 }
 
@@ -3712,7 +3901,11 @@ fn delete_job_template(s: &mut State, id: &str) -> Result<Response, Response> {
     Ok(ok_empty())
 }
 
-fn list_job_templates(s: &mut State) -> Result<Response, Response> {
+fn list_job_templates(
+    s: &mut State,
+    body: &Value,
+    query: &BTreeMap<String, Vec<String>>,
+) -> Result<Response, Response> {
     let items: Vec<Value> = s
         .job_templates
         .iter()
@@ -3725,9 +3918,17 @@ fn list_job_templates(s: &mut State) -> Result<Response, Response> {
             })
         })
         .collect();
-    Ok(ok_json(
-        &json!({"jobTemplates": page_cap(items), "nextToken": Value::Null}),
-    ))
+    // moto's list_job_templates: @paginate'd (unique_attribute
+    // "jobTemplateId", limit_default 100) in front of a responses layer
+    // whose maxResults defaults to 50.
+    let (page, token) = paginate_list(
+        &items,
+        &["jobTemplateId"],
+        p_str(body, query, "nextToken").as_deref(),
+        p_usize(body, query, "maxResults"),
+        50,
+    )?;
+    Ok(ok_json(&json!({"jobTemplates": page, "nextToken": token})))
 }
 
 // ---------------------------------------------------------------------------
@@ -6724,33 +6925,215 @@ mod tests {
         assert_eq!(status_of(r), 409);
     }
 
-    /// moto PR getmoto/moto#10417: iot list pages honor the AWS 100-item
-    /// page cap (PAGINATION_MODEL limit_default / real AWS max pageSize).
-    /// The twin's list endpoints have no token pagination yet — they always
-    /// answer nextToken: null — so the cap is applied directly to the
-    /// returned page:PageSize/maxResults beyond 100 cannot widen it.
+    /// list_things pages per moto's @paginate'd backend method
+    /// (PAGINATION_MODEL): the responses layer reads maxResults from the
+    /// wire (default 50), the token is the botocore encoding of the first
+    /// EXCLUDED thing's thingArn, resume positions at it, and every
+    /// paginator-style walk terminates.
     #[test]
-    fn iot_list_things_page_size_cap() {
-        let prefix = format!("cap-{}", random_id().get(..8).unwrap_or_default());
+    fn iot_list_things_token_pagination() {
+        let prefix = format!("pg-{}", random_id().get(..8).unwrap_or_default());
         for i in 0..150 {
-            let r = dispatch_req(&req("POST", &format!("/things/{prefix}-{i}"), json!({})));
+            let r = dispatch_req(&req("POST", &format!("/things/{prefix}{i:03}"), json!({})));
             assert_eq!(r.status, 200);
         }
+        let things = |q: &str| {
+            let mut r = req("GET", "/things", json!({}));
+            r.query_string = q.to_string();
+            body(&dispatch_req(&r))
+        };
 
-        // 150 things exist, but a page never holds more than AWS's 100.
-        let r = dispatch_req(&req("GET", "/things", json!({})));
-        assert_eq!(r.status, 200);
-        let things = body(&r)["things"].as_array().cloned().unwrap_or_default();
-        assert_eq!(things.len(), 100, "list page capped at 100 items");
-        // No token mechanism yet: the cap is returned as a single (truncated)
-        // page, documented rather than silently paginated.
-        assert_eq!(body(&r)["nextToken"], Value::Null);
+        // maxResults can widen beyond the old 100-row cap
+        let all = things("maxResults=150");
+        assert_eq!(all["things"].as_array().unwrap().len(), 150);
+        assert!(all["nextToken"].is_null());
+        let excluded_arn = all["things"][50]["thingArn"].clone();
 
-        // A pageSize beyond the cap cannot widen the page either.
-        let mut big_page = req("GET", "/things", json!({}));
-        big_page.query_string = "maxResults=500".to_string();
-        let r = dispatch_req(&big_page);
-        let things = body(&r)["things"].as_array().cloned().unwrap_or_default();
-        assert_eq!(things.len(), 100, "pageSize=500 must not exceed 100 items");
+        // default page: 50 rows + a token naming the first excluded thing
+        let first = things("");
+        let page = first["things"].as_array().unwrap();
+        assert_eq!(page.len(), 50, "the responses layer's default page is 50");
+        assert_eq!(page[0]["thingName"], json!(format!("{prefix}000")));
+        let token = first["nextToken"].as_str().unwrap().to_string();
+        let mut padded = token.clone();
+        padded.push_str(&"=".repeat((4 - token.len() % 4) % 4));
+        let decoded_bytes = {
+            use base64::Engine as _;
+            base64::engine::general_purpose::STANDARD
+                .decode(padded.as_bytes())
+                .unwrap()
+        };
+        let decoded: Value = serde_json::from_slice(&decoded_bytes).unwrap();
+        assert_eq!(
+            decoded,
+            json!({"uniqueAttributes": excluded_arn}),
+            "token encodes the first excluded thingArn"
+        );
+
+        // resume with a different page size: the page starts AT the token
+        let resumed = things(&format!("maxResults=50&nextToken={}", pct_encode(&token)));
+        let resumed_rows = resumed["things"].as_array().unwrap();
+        assert_eq!(resumed_rows.len(), 50);
+        assert_eq!(resumed_rows[0]["thingName"], json!(format!("{prefix}050")));
+
+        // a paginator-style walk with maxResults=7 terminates without gaps
+        // or repeats: 150 things over 22 pages.
+        let mut seen: Vec<String> = Vec::new();
+        let mut cursor: Option<String> = None;
+        loop {
+            let q = match &cursor {
+                None => "maxResults=7".to_string(),
+                Some(t) => format!("maxResults=7&nextToken={}", pct_encode(t)),
+            };
+            let page = things(&q);
+            seen.extend(
+                page["things"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|t| t["thingName"].as_str().unwrap().to_string()),
+            );
+            cursor = page["nextToken"].as_str().map(str::to_owned);
+            if cursor.is_none() {
+                break;
+            }
+        }
+        assert_eq!(seen.len(), 150, "walk must reach every thing once");
+        assert_eq!(seen[0], format!("{prefix}000"));
+        assert_eq!(seen.last().unwrap(), &format!("{prefix}149"));
+
+        // an undecodable token answers the fork's InvalidToken JsonRESTError
+        let bad = {
+            let mut r = req("GET", "/things", json!({}));
+            r.query_string = "nextToken=garbage!!!".to_string();
+            dispatch_req(&r)
+        };
+        assert_eq!(bad.status, 400);
+        assert_eq!(
+            body(&bad),
+            json!({"__type": "InvalidToken", "message": "Invalid Token: Invalid token"})
+        );
+
+        // a token whose thing the current filter list no longer carries is
+        // the fork's resume failure: "...Resource not found!"
+        let dangling = {
+            let mut r = req("GET", "/things", json!({}));
+            r.query_string = format!(
+                "attributeName=nope&attributeValue=nope&nextToken={}",
+                pct_encode(&token)
+            );
+            dispatch_req(&r)
+        };
+        assert_eq!(dangling.status, 400);
+        assert_eq!(
+            body(&dangling)["message"],
+            "Invalid Token: Resource not found!"
+        );
+    }
+
+    /// list_jobs honors maxResults (default 50): pages widen with the
+    /// parameter, resume from the token naming the first excluded jobId,
+    /// and terminate. (The pinned fork mints "uniqueAttributes": "None"
+    /// here — its FakeJob carries job_id, not the model's declared
+    /// "jobId" — so real moto paginator walks rewind forever; the twin
+    /// tokenizes the declared attribute.)
+    #[test]
+    fn iot_list_jobs_max_results() {
+        let prefix = format!("jb-{}", random_id().get(..8).unwrap_or_default());
+        let targets = json!(["arn:aws:iot:us-east-1:123456789012:thing/t"]);
+        for i in 0..120 {
+            let r = dispatch_req(&req(
+                "PUT",
+                &format!("/jobs/{prefix}{i:03}"),
+                json!({"targets": targets}),
+            ));
+            assert_eq!(r.status, 200);
+        }
+        let jobs = |q: &str| {
+            let mut r = req("GET", "/jobs", json!({}));
+            r.query_string = q.to_string();
+            body(&dispatch_req(&r))
+        };
+
+        let first = jobs("");
+        let page = first["jobs"].as_array().unwrap();
+        assert_eq!(page.len(), 50);
+        assert_eq!(page[0]["jobId"], json!(format!("{prefix}000")));
+
+        // explicit maxResults, resumed page starts at the token's job
+        let two = jobs("maxResults=2");
+        let token = two["nextToken"].as_str().unwrap().to_string();
+        let resumed = jobs(&format!("maxResults=2&nextToken={}", pct_encode(&token)));
+        let resumed_rows = resumed["jobs"].as_array().unwrap();
+        assert_eq!(resumed_rows[0]["jobId"], json!(format!("{prefix}002")));
+        assert_eq!(resumed_rows[1]["jobId"], json!(format!("{prefix}003")));
+
+        // the walk covers all 120 in creation order (3 pages of 50)
+        let mut seen: Vec<String> = Vec::new();
+        let mut cursor: Option<String> = None;
+        loop {
+            let q = match &cursor {
+                None => "maxResults=50".to_string(),
+                Some(t) => format!("maxResults=50&nextToken={}", pct_encode(t)),
+            };
+            let page = jobs(&q);
+            seen.extend(
+                page["jobs"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|j| j["jobId"].as_str().unwrap().to_string()),
+            );
+            cursor = page["nextToken"].as_str().map(str::to_owned);
+            if cursor.is_none() {
+                break;
+            }
+        }
+        assert_eq!(seen.len(), 120);
+        assert_eq!(seen[0], format!("{prefix}000"));
+        assert_eq!(seen.last().unwrap(), &format!("{prefix}119"));
+    }
+
+    /// list_thing_types pages the fork's hand-rolled responses-layer way:
+    /// default 50, a plain integer-offset token, sliced resume, and the
+    /// InvalidToken JsonRESTError for a non-integer token (the fork's
+    /// `int()` ValueError 500 is deliberately answered crash-free).
+    #[test]
+    fn iot_list_thing_types_offset_pagination() {
+        let prefix = format!("ptt-{}", random_id().get(..8).unwrap_or_default());
+        for i in 0..55 {
+            let r = dispatch_req(&req(
+                "POST",
+                &format!("/thing-types/{prefix}{i:02}"),
+                json!({}),
+            ));
+            assert_eq!(r.status, 200);
+        }
+        let types = |q: &str| {
+            let mut r = req("GET", "/thing-types", json!({}));
+            r.query_string = q.to_string();
+            body(&dispatch_req(&r))
+        };
+
+        let first = types("");
+        assert_eq!(first["thingTypes"].as_array().unwrap().len(), 50);
+        assert_eq!(first["nextToken"].as_str(), Some("50"));
+        let rest = types("nextToken=50");
+        let rest_rows = rest["thingTypes"].as_array().unwrap();
+        assert_eq!(rest_rows.len(), 5);
+        assert_eq!(rest_rows[0]["thingTypeName"], json!(format!("{prefix}50")));
+        assert!(rest["nextToken"].is_null());
+
+        let widened = types("maxResults=200");
+        assert_eq!(widened["thingTypes"].as_array().unwrap().len(), 55);
+        assert!(widened["nextToken"].is_null());
+
+        let bad = {
+            let mut r = req("GET", "/thing-types", json!({}));
+            r.query_string = "nextToken=garbage".to_string();
+            dispatch_req(&r)
+        };
+        assert_eq!(bad.status, 400);
+        assert_eq!(body(&bad)["__type"], "InvalidToken");
     }
 }
