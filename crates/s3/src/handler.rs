@@ -645,8 +645,30 @@ impl S3Handler {
     fn bucket_and_key(req: &AwsRequest) -> (String, String) {
         (
             req.bucket.clone().unwrap_or_default(),
-            req.key.clone().unwrap_or_default(),
+            req.key
+                .as_deref()
+                .map(Self::decoded_key)
+                .unwrap_or_default(),
         )
+    }
+
+    /// S3 object keys arrive from the gateway in the raw wire form: a
+    /// percent-encoded path segment. Botocore quotes `%` and non-ASCII bytes;
+    /// other sub-delims such as `=` may legally appear raw. Normalize to the
+    /// decoded key once, here, so stored state, listing comparisons
+    /// (prefix/marker/StartAfter), pagination tokens and lookups all use the
+    /// decoded form — real AWS stores the decoded key (moto's S3 response
+    /// layer decodes the same way; localstack discussion 54).
+    ///
+    /// A single decode keeps the round-trip faithful: a literal `%20` uploaded
+    /// raw arrives as `%2520` and decodes exactly once to `%20`, never to a
+    /// space. Parameters read from `query_params` are already decoded by the
+    /// gateway, so `StartAfter`-style comparisons against state keys need no
+    /// re-encoding either.
+    fn decoded_key(key: &str) -> String {
+        urlencoding::decode(key)
+            .map(String::from)
+            .unwrap_or_else(|_| key.to_string())
     }
 
     fn bucket_or_404(state: &S3State, name: &str) -> Result<Arc<Bucket>, AwsResponse> {
@@ -4791,5 +4813,282 @@ mod tests {
         let headers = header_map(&resp);
         assert!(!headers.contains_key("x-amz-delete-marker"));
         assert!(!headers.contains_key("x-amz-version-id"));
+    }
+
+    // -----------------------------------------------------------------------
+    // S3 key percent-encoding round-trip (localstack discussion 54, ex
+    // localstack #13745): the wire path may percent-encode parts of a key;
+    // stored state must be the DECODED key everywhere — object storage key,
+    // StartAfter comparison, continuation tokens, prefix filtering, delete,
+    // get, head and copy.
+    // -----------------------------------------------------------------------
+
+    /// The decoded set of `<Key>` entries in a ListObjectsV2 body.
+    fn listed_keys(handler: &S3Handler, bucket: &str) -> Vec<String> {
+        let resp = handler.handle(make_req("ListObjectsV2", Some(bucket), None, b""));
+        assert_eq!(resp.status, 200);
+        let body = String::from_utf8_lossy(&resp.body).to_string();
+        xml_sections(&body, "Key")
+            .iter()
+            .map(|k| xml_unescape(k))
+            .collect()
+    }
+
+    /// Query listing with pre-decoded params, exactly as the gateway
+    /// delivers them (src/core/server.rs decodes query params once).
+    fn list_query(handler: &S3Handler, bucket: &str, query: &[(&str, &str)]) -> String {
+        let mut req = make_req("ListObjectsV2", Some(bucket), None, b"");
+        for (k, v) in query {
+            req.query_params.insert(k.to_string(), v.to_string());
+        }
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+        String::from_utf8_lossy(&resp.body).to_string()
+    }
+
+    #[test]
+    fn key_decode_equals_key_round_trip_with_start_after() {
+        // The observed bug: PUT wire key "data/NE%3DABC/quz" stored
+        // "%3D" instead of "=", so the key never listed or compared
+        // against its decoded StartAfter.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("enc1"), None, b""));
+
+        // Wire form as botocore quotes it: "=" sent raw is legal, "%3D"
+        // is its encoded spelling; both must land in the same entry.
+        let resp = handler.handle(make_req(
+            "PutObject",
+            Some("enc1"),
+            Some("data/NE=ABC/quz"),
+            b"v1",
+        ));
+        assert_eq!(resp.status, 200);
+        let resp = handler.handle(make_req(
+            "PutObject",
+            Some("enc1"),
+            Some("data/NE%3DABC/quz"),
+            b"v2",
+        ));
+        assert_eq!(resp.status, 200);
+
+        // One entry under the decoded key, holding the second write.
+        assert_eq!(listed_keys(&handler, "enc1"), ["data/NE=ABC/quz"]);
+
+        // Decoded and encoded GET spellings both resolve to it.
+        let resp = handler.handle(make_req(
+            "GetObject",
+            Some("enc1"),
+            Some("data/NE=ABC/quz"),
+            b"",
+        ));
+        assert_eq!(resp.body, b"v2".to_vec());
+        let resp = handler.handle(make_req(
+            "GetObject",
+            Some("enc1"),
+            Some("data/NE%3DABC/quz"),
+            b"",
+        ));
+        assert_eq!(resp.body, b"v2".to_vec());
+        let resp = handler.handle(make_req(
+            "HeadObject",
+            Some("enc1"),
+            Some("data/NE=ABC/quz"),
+            b"",
+        ));
+        assert_eq!(resp.status, 200);
+        let headers = header_map(&resp);
+        assert_eq!(headers.get("Content-Length").map(String::as_str), Some("2"));
+
+        // StartAfter with raw '=' against decoded state still paginates.
+        let body = list_query(&handler, "enc1", &[("start-after", "data/NE=ABC/")]);
+        assert!(
+            xml_unescape(&xml_text(&body, "Key").expect("the key after the prefix"))
+                .contains("data/NE=ABC/quz"),
+            "body: {body}"
+        );
+    }
+
+    #[test]
+    fn key_decode_start_after_excludes_earlier_keys() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("enc2"), None, b""));
+        for key in ["before", "data/NE=ABC/one", "data/NE=ABC/quz"] {
+            handler.handle(make_req("PutObject", Some("enc2"), Some(key), b"x"));
+        }
+
+        // Real AWS returns the objects after the (decoded) StartAfter;
+        // the stored-encoded-key bug returned an empty result.
+        let body = list_query(&handler, "enc2", &[("start-after", "data/NE=ABC/")]);
+        let keys = xml_sections(&body, "Key")
+            .iter()
+            .map(|k| xml_unescape(k))
+            .collect::<Vec<_>>();
+        assert_eq!(keys, ["data/NE=ABC/one", "data/NE=ABC/quz"]);
+
+        // StartAfter itself is excluded; and a marker carrying '>' and '='
+        // raw ("k>=1" on the wire) compares against the DECODED keys — the
+        // stored-encoded-key bug would sort the keys below the marker.
+        for key in ["ka", "k=a", "k<a"] {
+            handler.handle(make_req("PutObject", Some("enc2"), Some(key), b"x"));
+        }
+        // Sorting: "k<a" < "k=a" < "ka" ('<' < '=' < 'a'); only "ka" sorts
+        // above the marker.
+        let body = list_query(&handler, "enc2", &[("start-after", "k>=1")]);
+        let keys = xml_sections(&body, "Key")
+            .iter()
+            .map(|k| xml_unescape(k))
+            .collect::<Vec<_>>();
+        assert_eq!(keys, ["ka"]);
+    }
+
+    #[test]
+    fn key_decode_literal_percent_is_decoded_once() {
+        // A literal "%20" uploaded raw arrives as "%2520"; a single decode
+        // recovers the literal characters, never a space. The client sends
+        // the same "%2520" spelling back to GET it.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("enc3"), None, b""));
+        let resp = handler.handle(make_req(
+            "PutObject",
+            Some("enc3"),
+            Some("a%2520b.txt"),
+            b"literal",
+        ));
+        assert_eq!(resp.status, 200);
+
+        let resp = handler.handle(make_req(
+            "GetObject",
+            Some("enc3"),
+            Some("a%2520b.txt"),
+            b"",
+        ));
+        assert_eq!(resp.status, 200);
+        assert_eq!(resp.body, b"literal".to_vec());
+
+        // A literal space and a literal percent sign coexist as distinct keys;
+        // the DECODED spellings are what the state holds and what the listing
+        // shows.
+        let resp = handler.handle(make_req(
+            "PutObject",
+            Some("enc3"),
+            Some("sp%20ace.txt"),
+            b"spacey",
+        ));
+        assert_eq!(resp.status, 200);
+        let resp = handler.handle(make_req("GetObject", Some("enc3"), Some("sp ace.txt"), b""));
+        assert_eq!(resp.body, b"spacey".to_vec());
+
+        let keys = listed_keys(&handler, "enc3");
+        assert_eq!(keys, ["a%20b.txt", "sp ace.txt"]);
+    }
+
+    #[test]
+    fn key_decode_unicode_key_round_trip() {
+        // botocore quotes UTF-8 as %E2%80%94 for the em dash.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("enc4"), None, b""));
+        let resp = handler.handle(make_req(
+            "PutObject",
+            Some("enc4"),
+            Some("uni%E2%80%94d.txt"),
+            b"\xe2\x80\x94-body",
+        ));
+        assert_eq!(resp.status, 200);
+
+        let resp = handler.handle(make_req(
+            "GetObject",
+            Some("enc4"),
+            Some("uni\u{2014}d.txt"),
+            b"",
+        ));
+        assert_eq!(resp.status, 200);
+        assert_eq!(resp.body, "\u{2014}-body".as_bytes().to_vec());
+
+        // The listing shows the decoded, xml-escaped key.
+        let body = list_query(&handler, "enc4", &[]);
+        assert!(body.contains("<Key>uni\u{2014}d.txt</Key>"), "body: {body}");
+    }
+
+    #[test]
+    fn key_decode_delete_encoded_key() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("enc4b"), None, b""));
+        handler.handle(make_req(
+            "PutObject",
+            Some("enc4b"),
+            Some("del%20k.txt"),
+            b"gone",
+        ));
+        // Delete sent in the encoded wire spelling removes the decoded key.
+        let resp = handler.handle(make_req(
+            "DeleteObject",
+            Some("enc4b"),
+            Some("del%20k.txt"),
+            b"",
+        ));
+        assert_eq!(resp.status, 204);
+
+        let resp = handler.handle(make_req("GetObject", Some("enc4b"), Some("del k.txt"), b""));
+        assert_eq!(resp.status, 404);
+        assert_eq!(listed_keys(&handler, "enc4b"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn key_decode_copy_from_encoded_source() {
+        // x-amz-copy-source quotes the source key; copy must write the
+        // destination under its decoded key.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("enc5"), None, b""));
+        handler.handle(make_req("PutObject", Some("enc5"), Some("src%3D1"), b"z"));
+
+        let mut req = make_req("CopyObject", Some("enc5"), Some("cp%20d.txt"), b"");
+        req.headers
+            .insert("x-amz-copy-source".to_string(), "/enc5/src%3D1".to_string());
+        req.headers
+            .insert("content-type".to_string(), "application/xml".to_string());
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+
+        let mut req = make_req("GetObject", Some("enc5"), Some("cp d.txt"), b"");
+        req.headers.remove("x-amz-copy-source");
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+        assert_eq!(resp.body, b"z".to_vec());
+        assert_eq!(listed_keys(&handler, "enc5"), ["cp d.txt", "src=1"]);
+    }
+
+    #[test]
+    fn key_decode_pagination_across_continuation_tokens() {
+        // Continuation tokens are opaque base64 of the stored key; page
+        // through '>'/'=' keys and confirm the decoded sequence.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("enc6"), None, b""));
+        // String order: "k=1" < "k>=" < "z9" ('=' < '>' < 'z').
+        for key in ["z9", "k=1", "k>="] {
+            handler.handle(make_req("PutObject", Some("enc6"), Some(key), b"row"));
+        }
+
+        let mut keys = Vec::new();
+        let mut token = String::new();
+        loop {
+            let query: Vec<(&str, &str)> = if token.is_empty() {
+                vec![("max-keys", "2")]
+            } else {
+                vec![("max-keys", "2"), ("continuation-token", token.as_str())]
+            };
+            let body = list_query(&handler, "enc6", &query);
+            keys.extend(xml_sections(&body, "Key").iter().map(|k| xml_unescape(k)));
+            match xml_text(&body, "NextContinuationToken") {
+                Some(next) => token = next,
+                None => break,
+            }
+        }
+        assert_eq!(keys, ["k=1", "k>=", "z9"]);
+
+        // The token is derived from the decoded key, not the wire form.
+        let body = list_query(&handler, "enc6", &[("max-keys", "2")]);
+        let token = xml_text(&body, "NextContinuationToken").expect("token");
+        let decoded = decode_token(&token).expect("base64 key token");
+        assert_eq!(decoded, "k>=");
     }
 }
