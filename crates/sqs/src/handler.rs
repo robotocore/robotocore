@@ -573,9 +573,11 @@ impl DefaultSqsHandler {
             .to_string();
 
         // moto validates the batch Entries in the response layer before the
-        // backend resolves the queue (moto responses.py answers
-        // EmptyBatchRequest/batch-Id errors without touching the queue), so
-        // a malformed batch beats QueueDoesNotExist.
+        // backend resolves the queue: EmptyBatchRequest is moto 5.2.4
+        // response-layer behavior, and the batch-Id errors ride the same
+        // layer (UNMERGED PR getmoto/moto#10346 at 5.2.4, ported
+        // deliberately for real-AWS parity), so a malformed batch beats
+        // QueueDoesNotExist.
         let entries =
             Self::validate_batch_entries(params, "ChangeMessageVisibilityBatchRequestEntry")?;
 
@@ -646,8 +648,9 @@ impl DefaultSqsHandler {
 
         // moto answers an empty Entries list with EmptyBatchRequest before
         // touching the queue (live-verified wording), then the shared helper
-        // runs moto's batch-Id validation (PR getmoto/moto#10346) — resolve
-        // the queue only after those batch errors could fire.
+        // runs the batch-Id validation (UNMERGED PR getmoto/moto#10346 at
+        // moto 5.2.4; real-AWS-better for DELETE/VIS) — resolve the queue
+        // only after those batch errors could fire.
         let entries = Self::validate_batch_entries(params, "DeleteMessageBatchRequestEntry")?;
 
         // moto responses.py delete_message_batch (pinned 5.2.4): a
@@ -1325,17 +1328,23 @@ impl DefaultSqsHandler {
     /// Validate a batch operation's `Entries` list, raising moto's batch
     /// errors before any entry is processed:
     ///
-    /// `EmptyBatchRequest` (per-operation entry noun), then moto
-    /// models.py `_validate_batch_entry_ids` — InvalidBatchEntryId when
-    /// any Id fails python's `^[\w-]{1,80}$` regex, BatchEntryIdsNotDistinct
-    /// for the first repeated Id, and TooManyEntriesInBatchRequest above
-    /// 10 entries — each a top-level 400.
+    /// `EmptyBatchRequest` (per-operation entry noun), then the batch-Id
+    /// checks — InvalidBatchEntryId when any Id fails python's
+    /// `^[\w-]{1,80}$` regex, BatchEntryIdsNotDistinct for the first
+    /// repeated Id, and TooManyEntriesInBatchRequest above 10 entries —
+    /// each a top-level 400.
     ///
-    /// Shared by SendMessageBatch / DeleteMessageBatch /
-    /// ChangeMessageVisibilityBatch (PR getmoto/moto#10346; wordings
-    /// live-verified on the pinned fork). `entry_noun` fills the
-    /// EmptyBatchRequest wording the way moto responses.py's
-    /// `EmptyBatchRequest(action=...)` interpolates the action name.
+    /// moto 5.2.4 alone validates batch Ids only on SendMessageBatch and
+    /// only inside its backend (`moto/sqs/models.py`
+    /// `send_message_batch`); for DeleteMessageBatch and
+    /// ChangeMessageVisibilityBatch the Id checks exist solely in
+    /// UNMERGED PR getmoto/moto#10346, ported here deliberately: real AWS
+    /// documents TooManyEntriesInBatchRequest for every batch operation,
+    /// so DELETE/VIS were given the shared Id checks instead of dropping
+    /// them. The message wordings are live-verified on the pinned fork;
+    /// `entry_noun` fills the EmptyBatchRequest wording the way moto
+    /// responses.py's `EmptyBatchRequest(action=...)` interpolates the
+    /// action name.
     fn validate_batch_entries(
         params: &Value,
         entry_noun: &'static str,
