@@ -1748,8 +1748,18 @@ impl S3Handler {
                 .unwrap_or("");
             Self::signature_does_not_match_error(provided, policy_b64, &access_key)
         };
+        // Python's base64 decoder (the moto/localstack signing path, and how
+        // most real-world producers wrap PEM-style) ignores ASCII
+        // whitespace, so a line-wrapped policy field is a valid POST there.
+        // Strip the whitespace before decoding — the RAW string still acts
+        // as the SigV4 string-to-sign (expected_post_signature), exactly as
+        // moto signs it.
+        let compact: String = policy_b64
+            .chars()
+            .filter(|c| !c.is_ascii_whitespace())
+            .collect();
         let raw = base64::engine::general_purpose::STANDARD
-            .decode(policy_b64)
+            .decode(compact.as_bytes())
             .map_err(|_| failed())?;
         let text = String::from_utf8(raw).map_err(|_| failed())?;
         let value: serde_json::Value = serde_json::from_str(&text).map_err(|_| failed())?;
@@ -5750,6 +5760,56 @@ mod tests {
             body.contains(&format!("<StringToSign>{garbage}</StringToSign>")),
             "body: {body}"
         );
+    }
+
+    #[test]
+    fn post_object_line_wrapped_policy_accepted() {
+        // Real-world policy producers (and the Python decoders
+        // moto/localstack rely on) tolerate line-wrapped base64: ASCII
+        // whitespace inside the policy field is stripped before decoding
+        // while the RAW string remains the SigV4 string-to-sign. A wrapped
+        // policy signed as posted must store the upload, not 403.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let flat = post_policy_body(
+            serde_json::json!([["starts-with", "$key", ""]]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        // Wrap at 16 chars with CRLF, the PEM-style layout a client posts.
+        let wrapped: String = flat
+            .as_bytes()
+            .chunks(16)
+            .map(|c| String::from_utf8_lossy(c).to_string())
+            .collect::<Vec<_>>()
+            .join("\r\n");
+        assert_ne!(wrapped, flat, "the test must actually wrap");
+
+        let mut fields = vec![
+            ("key".to_string(), "wrapped.txt".to_string()),
+            ("policy".to_string(), wrapped.clone()),
+        ];
+        // The client signs the policy exactly as it posts it (wrapped).
+        fields.extend(post_v4_fields(&wrapped, POST_UPLOAD_SIGNING_SECRET, false));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("wrapped.txt", "application/octet-stream", b"stored")),
+        ));
+        assert_eq!(
+            resp.status,
+            204,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("wrapped.txt"),
+            b"",
+        ));
+        assert_eq!(get.status, 200);
+        assert_eq!(get.body, b"stored");
     }
 
     #[test]
