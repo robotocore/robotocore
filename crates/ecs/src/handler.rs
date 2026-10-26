@@ -769,9 +769,11 @@ impl EcsHandler {
         let desired_count = req.params.get("desiredCount").cloned().unwrap_or(json!(0));
         // moto 5.2.0 computes the rollout state at service creation: the
         // primary deployment reports COMPLETED once its runningCount reaches
-        // desiredCount, IN_PROGRESS while tasks are still coming up. The
-        // deployment created below starts at runningCount 0.
-        let running_count = 0i64;
+        // desiredCount, IN_PROGRESS while tasks are still coming up. moto
+        // seeds that runningCount from MOTO_ECS_SERVICE_RUNNING (fork
+        // ecs/models.py Service.__init__), with pendingCount the remainder.
+        let running_count = env_running_tasks();
+        let pending_count = desired_count.as_i64().unwrap_or(0) - running_count;
         let (rollout_state, rollout_state_reason) =
             if running_count >= desired_count.as_i64().unwrap_or(0) {
                 ("COMPLETED", format!("ECS deployment {dep_id} completed."))
@@ -804,8 +806,8 @@ impl EcsHandler {
             "clusterArn": cluster_arn,
             "taskDefinition": task_definition,
             "desiredCount": desired_count.clone(),
-            "runningCount": 0,
-            "pendingCount": 0,
+            "runningCount": running_count,
+            "pendingCount": pending_count,
             "status": "ACTIVE",
             "launchType": req.params.get("launchType").and_then(|v| v.as_str()).unwrap_or("FARGATE"),
             "networkConfiguration": req.params.get("networkConfiguration").cloned().unwrap_or(json!({})),
@@ -815,8 +817,8 @@ impl EcsHandler {
                 "status": "PRIMARY",
                 "taskDefinition": task_definition,
                 "desiredCount": desired_count,
-                "runningCount": 0,
-                "pendingCount": 0,
+                "runningCount": running_count,
+                "pendingCount": pending_count,
                 "failedTasks": env_failed_tasks(),
                 "rolloutState": rollout_state,
                 "rolloutStateReason": rollout_state_reason,
@@ -2433,13 +2435,30 @@ fn now_f64() -> f64 {
     UNIX_EPOCH.elapsed().map(|d| d.as_secs_f64()).unwrap_or(0.0)
 }
 
+/// moto's env-var count parsing (fork ecs/models.py Service.__init__):
+/// `max(int(value), 0)` with a ValueError falling back to 0 — negative
+/// values are not allowed.
+fn parse_env_count(value: Option<&str>) -> i64 {
+    value
+        .and_then(|v| v.parse::<i64>().ok())
+        .map_or(0, |v| v.max(0))
+}
+
 /// `MOTO_ECS_SERVICE_FAILED_TASKS` (moto 5.2.0): failedTasks reported in the
 /// service's primary deployment; non-numeric or negative values fall back to 0.
 fn env_failed_tasks() -> i64 {
-    std::env::var("MOTO_ECS_SERVICE_FAILED_TASKS")
-        .ok()
-        .and_then(|v| v.parse::<i64>().ok())
-        .map_or(0, |v| v.max(0))
+    parse_env_count(
+        std::env::var("MOTO_ECS_SERVICE_FAILED_TASKS")
+            .ok()
+            .as_deref(),
+    )
+}
+
+/// `MOTO_ECS_SERVICE_RUNNING` (moto 5.2.0, fork ecs/models.py:515): the
+/// number of running tasks the primary deployment reports; pendingCount and
+/// the rollout state follow from it.
+fn env_running_tasks() -> i64 {
+    parse_env_count(std::env::var("MOTO_ECS_SERVICE_RUNNING").ok().as_deref())
 }
 
 fn cluster_not_found(name: &str) -> AwsResponse {
@@ -2762,6 +2781,19 @@ mod tests {
                 dep["id"].as_str().unwrap()
             ))
         );
+    }
+
+    #[test]
+    fn env_count_parsing_matches_moto() {
+        // moto's `max(int(value), 0)` with a ValueError caught: absent,
+        // empty and non-numeric values fall back to 0, negatives clamp.
+        assert_eq!(parse_env_count(None), 0);
+        assert_eq!(parse_env_count(Some("")), 0);
+        assert_eq!(parse_env_count(Some("0")), 0);
+        assert_eq!(parse_env_count(Some("3")), 3);
+        assert_eq!(parse_env_count(Some("+3")), 3);
+        assert_eq!(parse_env_count(Some("-5")), 0);
+        assert_eq!(parse_env_count(Some("running")), 0);
     }
 
     #[test]
