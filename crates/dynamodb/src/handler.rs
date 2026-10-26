@@ -1809,43 +1809,40 @@ impl DynamoDbHandler {
         }
 
         for entry in &transact_items {
-            // moto crashes on a row that parses to no operation (a zero-op
-            // `{}` row, or — via moto's response-layer parse dropping
-            // unmodeled members — any row whose only key is not one of the
-            // four modeled ops): `item_values = list(item.values())[0]`
-            // raises IndexError (dynamodb/responses.py:1478) before the
-            // model's row loop (models/__init__.py:635) could ever raise
+            // moto's response layer crashes on a row that parses to no
+            // operation: `item_values = list(item.values())[0]` raises
+            // IndexError (dynamodb/responses.py:1478) before the model's
+            // row loop (models/__init__.py:635) could ever raise
             // StopIteration, so moto_server answers the plain werkzeug 500
             // page instead of a cancellation envelope. Whole-request, and
             // atomically writes nothing (mirror: live transcript
             // 2026-10-26, moto 5.2.4).
-            if !entry.is_object() || entry.as_object().is_some_and(Map::is_empty) {
-                return AwsResponse::werkzeug_500();
-            }
-            // moto's row-loop head (dynamodb/models/__init__.py:630-632,
-            // TransactWriteSingleOpException): exactly one of Put, Update,
-            // Delete or ConditionCheck per row — a row carrying two ops is
-            // rejected up front ("TransactItems can only contain one of
-            // Check, Put, Update or Delete").
-            if entry.as_object().is_some_and(|m| m.len() > 1) {
+            //
+            // moto's parse (moto/core/parse.py BaseJSONParser
+            // ._parse_structure) keeps ONLY the modeled Put/Update/Delete/
+            // ConditionCheck members of each row — any other key (e.g. a
+            // "Get" write row) is dropped before the backend ever sees it,
+            // so the model's ValueError("Unsupported transaction
+            // operation") branch is unreachable over HTTP. Mirror the
+            // parsed shape: count modeled members for both the single-op
+            // check and op selection (live-transcribed 2026-10-26):
+            //   Put + Get          -> executes as a plain Put (200)
+            //   Put + Delete + Get -> single-op ValidationException
+            //   Get only           -> parses to {} -> werkzeug 500
+            let modeled: Vec<(&str, &Value)> = ["Put", "Update", "Delete", "ConditionCheck"]
+                .iter()
+                .filter_map(|k| entry.get(*k).map(|o| (*k, o)))
+                .collect();
+            if modeled.len() > 1 {
                 return AwsResponse::error(
                     400,
                     "ValidationException",
                     "TransactItems can only contain one of Check, Put, Update or Delete",
                 );
             }
-            let (op_name, op) = match ["Put", "Update", "Delete", "ConditionCheck"]
-                .iter()
-                .find_map(|k| entry.get(k).map(|o| (*k, Some(o))))
-            {
-                Some((k, Some(o))) => (k, o),
-                _ => {
-                    return AwsResponse::error(
-                        400,
-                        "ValidationException",
-                        "TransactItems can only contain one of Check, Put, Update or Delete",
-                    )
-                }
+            let (op_name, op) = match modeled.into_iter().next() {
+                Some(t) => t,
+                None => return AwsResponse::werkzeug_500(),
             };
             let table_name = param_str(op, "TableName").unwrap_or("").to_string();
             let table = match self
@@ -4769,6 +4766,87 @@ mod tests {
             json!({"TableName": "zeroop", "Key": {"pk": {"S": "p"}}}),
         ));
         assert_eq!(resp.body, "{}");
+    }
+
+    // moto's response-layer parse drops unmodeled keys from each
+    // TransactWrite row (moto/core/parse.py BaseJSONParser
+    // ._parse_structure keeps only the modeled Put/Update/Delete/
+    // ConditionCheck members), so:
+    //   - a row keyed only by an unknown op ("Get") parses to {} and
+    //     crashes the validation (`list(item.values())[0]` IndexError,
+    //     dynamodb/responses.py:1478) -> werkzeug 500 page. The
+    //     model-level ValueError("Unsupported transaction operation")
+    //     branch (models/__init__.py:636-637) is unreachable over HTTP
+    //     because the key never reaches the backend — no
+    //     TransactionCancelled envelope with a per-row "ValueError" code
+    //     is produced for this input;
+    //   - a Put row carrying an extra unmodeled "Get" key executes as a
+    //     plain single-op Put;
+    //   - two modeled ops sharing the row with unmodeled junk still
+    //     answer the single-op ValidationException.
+    // Live-transcribed against moto 5.2.4 (2026-10-26).
+    #[test]
+    fn transact_unmodeled_op_row_parse_drop_mirror() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "getdrop",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+
+        // "Get"—only write row -> moto's werkzeug 500 page.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Get": {"TableName": "getdrop", "Key": {"pk": {"S": "r1"}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 500);
+        assert_eq!(resp.body, MOTO_SERVER_WERKZEUG_500);
+
+        // Put + Get executes as a plain Put, and the row commits.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "getdrop",
+                         "Item": {"pk": {"S": "r2"}, "v": {"S": "x"}}},
+                 "Get": {"TableName": "getdrop", "Key": {"pk": {"S": "r2"}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 200);
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "getdrop", "Key": {"pk": {"S": "r2"}}}),
+        ));
+        assert_eq!(
+            resp.body,
+            json!({"Item": {"pk": {"S": "r2"}, "v": {"S": "x"}}}).to_string()
+        );
+
+        // Put + Delete + Get: the two modeled members keep the row under
+        // the single-op check.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "getdrop",
+                         "Item": {"pk": {"S": "r3"}, "v": {"S": "x"}}},
+                 "Delete": {"TableName": "getdrop", "Key": {"pk": {"S": "r3"}}},
+                 "Get": {"TableName": "getdrop", "Key": {"pk": {"S": "r3"}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            resp.body,
+            json!({
+                "__type": "ValidationException",
+                "message": "TransactItems can only contain one of Check, Put, Update or Delete"
+            })
+            .to_string()
+        );
     }
 
     // moto's row-loop head raises TransactWriteSingleOpException when one
