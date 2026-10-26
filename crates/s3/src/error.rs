@@ -29,9 +29,6 @@ pub enum S3Error {
     #[error("InvalidBucketName: The specified bucket is not valid")]
     InvalidBucketName,
 
-    #[error("InvalidObjectName: The specified key is not valid")]
-    InvalidObjectName,
-
     #[error("InvalidPart: One or more of the specified parts could not be found")]
     InvalidPart,
 
@@ -59,7 +56,6 @@ impl S3Error {
             | S3Error::NoSuchCORSConfiguration => 404,
             S3Error::BucketAlreadyExists | S3Error::BucketAlreadyOwnedByYou => 409,
             S3Error::InvalidBucketName
-            | S3Error::InvalidObjectName
             | S3Error::InvalidPart
             | S3Error::EntityTooSmall => 400,
             S3Error::AccessDenied => 403,
@@ -79,7 +75,6 @@ impl S3Error {
             S3Error::NoSuchBucketPolicy => "NoSuchBucketPolicy",
             S3Error::NoSuchCORSConfiguration => "NoSuchCORSConfiguration",
             S3Error::InvalidBucketName => "InvalidBucketName",
-            S3Error::InvalidObjectName => "InvalidObjectName",
             S3Error::InvalidPart => "InvalidPart",
             S3Error::EntityTooSmall => "EntityTooSmall",
             S3Error::AccessDenied => "AccessDenied",
@@ -101,7 +96,6 @@ impl S3Error {
             S3Error::NoSuchBucketPolicy => "The bucket policy does not exist",
             S3Error::NoSuchCORSConfiguration => "The CORS configuration does not exist",
             S3Error::InvalidBucketName => "The specified bucket is not valid",
-            S3Error::InvalidObjectName => "The specified key is not valid",
             S3Error::InvalidPart => "One or more of the specified parts could not be found",
             S3Error::EntityTooSmall => "Part is too small",
             S3Error::AccessDenied => "Access Denied",
