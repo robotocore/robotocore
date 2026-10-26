@@ -1068,7 +1068,27 @@ fn find_web_acl<'a>(st: &'a WafStore, name: &str, id: &str) -> Option<&'a WebAcl
 }
 
 fn get_web_acl(st: &WafStore, body: &Value) -> Response {
-    match find_web_acl(st, as_str(body, "Name"), as_str(body, "Id")) {
+    // moto's get_web_acl: an ARN (the ARN member, a WebACLArn-style spelling,
+    // or an Id that is itself an ARN) resolves the stored ACL directly; an
+    // ARN that misses is the same 400-family WAFNonexistentItemException as
+    // the Name/Id path. An empty ARN member is falsy in moto and falls
+    // through to Name+Id.
+    let arn = as_opt_str(body, "ARN")
+        .or_else(|| as_opt_str(body, "WebACLArn"))
+        .filter(|arn| !arn.is_empty())
+        .or_else(|| {
+            let id = as_str(body, "Id");
+            if id.starts_with("arn:") {
+                Some(id.to_string())
+            } else {
+                None
+            }
+        });
+    let acl = match arn {
+        Some(arn) => st.wacls.get(&arn),
+        None => find_web_acl(st, as_str(body, "Name"), as_str(body, "Id")),
+    };
+    match acl {
         Some(wacl) => {
             // moto's GetWebACL response carries the LockToken both inside the
             // ACL dict and at the top level.
@@ -1981,6 +2001,62 @@ mod tests {
         );
         assert_eq!(status, 400);
         assert_eq!(body["__type"], "WafV2DuplicateItem");
+    }
+
+    /// moto 5.2.0: GetWebACL accepts an ARN (the ARN member, a WebACLArn-style
+    /// spelling, or an Id that is itself an ARN) besides Name/Scope/Id.
+    #[test]
+    fn wafv2_get_web_acl_by_arn() {
+        let account = next_account();
+        let summary = create_wacl(account, "acl-arn", "REGIONAL", json!([]));
+        let arn = summary["ARN"].as_str().unwrap().to_string();
+
+        // The ARN member resolves the ACL directly.
+        let (status, body) = send(
+            account,
+            "GetWebACL",
+            json!({"ARN": &arn, "Scope": "REGIONAL"}),
+        );
+        assert_eq!(status, 200, "arn lookup failed: {body}");
+        assert_eq!(body["WebACL"]["Name"], "acl-arn");
+        assert!(body["LockToken"].as_str().unwrap().len() > 10);
+
+        // A WebACLArn-style member works the same way.
+        let (status, body) = send(
+            account,
+            "GetWebACL",
+            json!({"WebACLArn": &arn, "Scope": "REGIONAL"}),
+        );
+        assert_eq!(status, 200);
+        assert_eq!(body["WebACL"]["Name"], "acl-arn");
+
+        // An Id that is itself an ARN resolves too.
+        let (status, body) = send(account, "GetWebACL", json!({"Id": &arn}));
+        assert_eq!(status, 200);
+        assert_eq!(body["WebACL"]["Name"], "acl-arn");
+
+        // An unknown ARN stays the usual missing-item error.
+        let bogus = format!(
+            "arn:aws:wafv2:us-east-1:{account}:regional/webacl/acl-arn/00000000-0000-0000-0000-000000000000"
+        );
+        let (status, body) = send(
+            account,
+            "GetWebACL",
+            json!({"ARN": &bogus, "Scope": "REGIONAL"}),
+        );
+        assert_eq!(status, 400);
+        assert_eq!(body["__type"], "WAFNonexistentItemException");
+
+        // CLOUDFRONT ACLs live in the global slice; their ARN resolves there
+        // when the request carries the matching scope.
+        let global = create_wacl(account, "acl-global", "CLOUDFRONT", json!([]));
+        let (status, body) = send(
+            account,
+            "GetWebACL",
+            json!({"ARN": global["ARN"], "Scope": "CLOUDFRONT"}),
+        );
+        assert_eq!(status, 200, "global arn lookup failed: {body}");
+        assert_eq!(body["WebACL"]["Name"], "acl-global");
     }
 
     #[test]
