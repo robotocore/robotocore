@@ -54,7 +54,11 @@ pub enum QueryLanguage {
 
 impl QueryLanguage {
     /// Resolve the effective language for one state node against the
-    /// machine-level default; unknown values behave like JSONPATH.
+    /// machine-level default: a recognized (case-insensitive) tag
+    /// overrides for that state, while an absent or unrecognized tag
+    /// inherits the machine default — which itself defaults to JSONPath
+    /// (`for_machine`), so only the machine-level unknown value reads as
+    /// JSONPATH.
     pub fn for_state(obj: &Map<String, Value>, machine_default: QueryLanguage) -> QueryLanguage {
         match obj.get("QueryLanguage").and_then(|v| v.as_str()) {
             Some(s) if s.eq_ignore_ascii_case("JSONATA") => QueryLanguage::Jsonata,
@@ -1981,9 +1985,23 @@ fn recover_from_error(
     Err(err)
 }
 
+/// A caught-off panic payload as a printable cause (`&str` for
+/// `panic!("static")` messages, `String` for formatted ones).
+fn panic_cause(panic: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = panic.downcast_ref::<&'static str>() {
+        (*s).to_string()
+    } else if let Some(s) = panic.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "unrecognized panic payload".to_string()
+    }
+}
+
 /// Kick off an execution on a detached thread: emits ExecutionStarted, walks
 /// the ASL graph, then records SUCCEEDED/FAILED unless the execution was
-/// aborted in the meantime.
+/// aborted in the meantime. Any panic during the walk is caught off too —
+/// a crashing evaluation records FAILED with a `States.Runtime` error
+/// instead of leaving the execution stuck RUNNING forever.
 pub fn run_on_thread(exec: Arc<Execution>, definition: String) {
     std::thread::spawn(move || {
         exec.push_event(json!({
@@ -1996,7 +2014,7 @@ pub fn run_on_thread(exec: Arc<Execution>, definition: String) {
             },
         }));
         let ctx = Ctx::new(exec.clone());
-        let result = (|| {
+        let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let def: Value = serde_json::from_str(&definition).unwrap_or(Value::Null);
             let states = def
                 .get("States")
@@ -2015,7 +2033,16 @@ pub fn run_on_thread(exec: Arc<Execution>, definition: String) {
                 .map(QueryLanguage::for_machine)
                 .unwrap_or_default();
             run_flow(&ctx, states, start_at, input, machine_default)
-        })();
+        })) {
+            Ok(result) => result,
+            Err(panic) => Err(FlowError::new(
+                "States.Runtime",
+                format!(
+                    "The execution aborted with an internal error: {}",
+                    panic_cause(panic)
+                ),
+            )),
+        };
         let last_event_id = ctx.exec.events.read().len() as i64;
         match result {
             Ok(output) => ctx
@@ -2378,6 +2405,42 @@ mod tests {
             &input,
             false
         ));
+    }
+
+    #[test]
+    fn deep_paren_filter_choice_variable_misses_without_aborting() {
+        // A Choice Variable whose filter body carries 5k paren groups used
+        // to recurse one stack frame per group and abort the whole process
+        // (StartExecution → stack overflow). The filter parser now counts
+        // the nesting, so a past-the-cap path resolves as missing, the rule
+        // misses, Default routes, and the flow resolves deterministically
+        // in-process.
+        let parens = |n: usize| format!("$.a[?{}@.b{}]", "(".repeat(n), ")".repeat(n));
+        let def = |variable: String| {
+            json!({
+                "StartAt": "Pick",
+                "States": {
+                    "Pick": {
+                        "Type": "Choice",
+                        "Choices": [
+                            {"Variable": variable, "IsPresent": true, "Next": "Hit"},
+                        ],
+                        "Default": "Done",
+                    },
+                    "Hit": {"Type": "Pass", "Result": {"hit": true}, "End": true},
+                    "Done": {"Type": "Pass", "Result": {"missed": true}, "End": true},
+                },
+            })
+        };
+        let input = json!({"a": [{"b": true}]});
+        // ≤100 parens still parse and evaluate: the filter matches, the
+        // matched route (Next) is taken.
+        let out = run(&def(parens(100)), input.clone()).expect("within the cap");
+        assert_eq!(out, json!({"hit": true}), "100 parens evaluate: {out}");
+        // 5k parens exceed the filter depth cap: the rule misses, Default
+        // routes, SUCCEEDED.
+        let out = run(&def(parens(5_000)), input).expect("past the cap is a miss");
+        assert_eq!(out, json!({"missed": true}), "past cap = missing: {out}");
     }
 
     #[test]
@@ -3733,6 +3796,48 @@ mod tests {
         });
         let out = run(&def, json!({"kept": true})).expect("mixed languages");
         assert_eq!(out, json!({"echo": true}));
+    }
+
+    #[test]
+    fn sfn_jsonata_unknown_state_tag_inherits_machine_default() {
+        // An unrecognized per-state QueryLanguage is not a JSONPATH
+        // fallback: for_state inherits the machine default for it. A
+        // recognized tag still overrides.
+        let map = |lang: &str| json!({ "QueryLanguage": lang });
+        assert_eq!(
+            QueryLanguage::for_state(map("JSONATA_").as_object().unwrap(), QueryLanguage::Jsonata),
+            QueryLanguage::Jsonata,
+            "typo'd tag inherits the JSONata machine default"
+        );
+        assert_eq!(
+            QueryLanguage::for_state(
+                map("JSONATA_").as_object().unwrap(),
+                QueryLanguage::JsonPath
+            ),
+            QueryLanguage::JsonPath,
+            "absent-of-override inherits the given machine default"
+        );
+        assert_eq!(
+            QueryLanguage::for_state(map("JSONPATH").as_object().unwrap(), QueryLanguage::Jsonata),
+            QueryLanguage::JsonPath,
+            "a recognized tag overrides the machine default"
+        );
+        // End-to-end: a JSONATA machine whose only state carries a typo'd
+        // tag still evaluates JSONata — the Output template resolves.
+        let def = json!({
+            "QueryLanguage": "JSONATA",
+            "StartAt": "S",
+            "States": {
+                "S": {
+                    "Type": "Pass",
+                    "QueryLanguage": "JSONATA_",
+                    "Output": {"echo": "{% $states.input.kept %}"},
+                    "End": true,
+                },
+            }
+        });
+        let out = run(&def, json!({"kept": true})).expect("typo'd tag inherits JSONata");
+        assert_eq!(out, json!({"echo": true}), "got {out}");
     }
 
     #[test]

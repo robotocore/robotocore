@@ -1014,6 +1014,12 @@ fn check_depth(self_depth: u32) -> Result<(), EvalError> {
 
 const EVAL_DEPTH_CAP: u32 = 128;
 
+/// Upper bound on a materialised `a..b` range: a bound beyond f64's
+/// representable integers (`(.0)..(.9e30)`) saturates the cast and used to
+/// collect an unbounded range until the allocator panicked on capacity.
+/// Beyond this many items the range is an evaluation error instead.
+const MAX_RANGE_ITEMS: i64 = 1_000_000;
+
 /// Internal evaluation values: JSON data, the JSONata "no value" (undefined)
 /// and lambdas in flight.
 #[derive(Debug, Clone)]
@@ -1195,6 +1201,13 @@ fn eval_node(
                 return Err(EvalError::new(
                     "The JSONata range operator requires an incrementing range".to_string(),
                 ));
+            }
+            // The saturating subtraction keeps huge bounds (down to a
+            // `i64::MIN..i64::MAX` span) countable without overflowing.
+            if b.saturating_sub(a) >= MAX_RANGE_ITEMS {
+                return Err(EvalError::new(format!(
+                    "The range {a}..{b} exceeds the maximum of {MAX_RANGE_ITEMS} items"
+                )));
             }
             let items: Vec<Value> = (a..=b).map(|i| number_value(i as f64)).collect();
             Ok(Jv::Val(Value::Array(items)))
@@ -2293,6 +2306,45 @@ mod tests {
         let src = format!("{}1{}", "(".repeat(10_000), ")".repeat(10_000));
         let err = eval_input(&src, &json!({})).unwrap_err();
         assert!(err.message.contains("too deeply nested"), "{}", err.message);
+    }
+
+    #[test]
+    fn range_over_the_item_cap_errors_instead_of_materialising() {
+        // `(.0)..(.9e30)`: the f64->i64 casts saturate and the range
+        // collector used to keep allocating until the capacity panic
+        // aborted the evaluation thread. It is an evaluation error now.
+        let err = eval_input("(.0)..(.9e30)", &json!({})).unwrap_err();
+        assert!(
+            err.message.contains("exceeds the maximum of 1000000"),
+            "{}",
+            err.message
+        );
+        // A backwards-span extreme overflows i64 arithmetic no longer.
+        let err = eval_input("(-9e30)..(9e30)", &json!({})).unwrap_err();
+        assert!(
+            err.message.contains("exceeds the maximum of 1000000"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn range_up_to_the_item_cap_materialises() {
+        // A range of exactly the cap count succeeds (`0..999999` covers
+        // 1,000,000 items) and keeps its endpoints; a slightly-sparser cap
+        // count stays a plain array, not an error.
+        let out = eval_input("(0)..(999999)", &json!({})).unwrap();
+        let items = out.as_array().expect("a materialised range");
+        assert_eq!(items.len(), 1_000_000);
+        assert_eq!(items[0], json!(0));
+        assert_eq!(items[999_999], json!(999_999));
+        // One past the cap is the evaluation error.
+        let err = eval_input("(0)..(1000000)", &json!({})).unwrap_err();
+        assert!(
+            err.message.contains("exceeds the maximum of 1000000"),
+            "{}",
+            err.message
+        );
     }
 
     #[test]

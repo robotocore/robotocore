@@ -221,7 +221,7 @@ fn parse_bracket(cur: &mut Cursor) -> Option<Step> {
             if !cur.eat('(') {
                 return None;
             }
-            let rule = parse_filter_or(cur)?;
+            let rule = parse_filter_or(cur, 0)?;
             cur.skip_ws();
             if !cur.eat(')') {
                 return None;
@@ -361,6 +361,13 @@ fn take_number(cur: &mut Cursor) -> Option<f64> {
 
 // ---- Filter expression grammar -------------------------------------------
 
+/// Upper bound on filter-expression nesting: every descent into a `!` or
+/// `(`-group counts against this (128 levels keeps the worst-case parser
+/// stack inside the 2MiB thread stacks, like the JSONata parser's cap).
+/// Past the cap the expression reads as off-dialect syntax — a missing
+/// value — instead of recursing once per group and aborting the process.
+const MAX_FILTER_DEPTH: usize = 128;
+
 /// A char cursor over a path / filter / pattern source, positioned by
 /// `char` index (sources are pre-collected into a `Vec<char>`).
 struct Cursor<'a> {
@@ -408,11 +415,11 @@ impl<'a> Cursor<'a> {
 }
 
 /// `<and> ('||' <and>)*`
-fn parse_filter_or(cur: &mut Cursor) -> Option<FilterRule> {
-    let mut parts = vec![parse_filter_and(cur)?];
+fn parse_filter_or(cur: &mut Cursor, depth: usize) -> Option<FilterRule> {
+    let mut parts = vec![parse_filter_and(cur, depth)?];
     cur.skip_ws();
     while cur.eat_text("||") {
-        parts.push(parse_filter_and(cur)?);
+        parts.push(parse_filter_and(cur, depth)?);
         cur.skip_ws();
     }
     if parts.len() == 1 {
@@ -423,11 +430,11 @@ fn parse_filter_or(cur: &mut Cursor) -> Option<FilterRule> {
 }
 
 /// `<not> ('&&' <not>)*`
-fn parse_filter_and(cur: &mut Cursor) -> Option<FilterRule> {
-    let mut parts = vec![parse_filter_unary(cur)?];
+fn parse_filter_and(cur: &mut Cursor, depth: usize) -> Option<FilterRule> {
+    let mut parts = vec![parse_filter_unary(cur, depth)?];
     cur.skip_ws();
     while cur.eat_text("&&") {
-        parts.push(parse_filter_unary(cur)?);
+        parts.push(parse_filter_unary(cur, depth)?);
         cur.skip_ws();
     }
     if parts.len() == 1 {
@@ -437,13 +444,22 @@ fn parse_filter_and(cur: &mut Cursor) -> Option<FilterRule> {
     }
 }
 
-fn parse_filter_unary(cur: &mut Cursor) -> Option<FilterRule> {
+fn parse_filter_unary(cur: &mut Cursor, depth: usize) -> Option<FilterRule> {
+    if depth > MAX_FILTER_DEPTH {
+        // The `!` / `(` recursion points each add one level here, so a
+        // crafted all-parens body stops descending instead of exhausting
+        // the thread stack.
+        return None;
+    }
     cur.skip_ws();
     if cur.eat('!') {
-        return Some(FilterRule::Not(Box::new(parse_filter_unary(cur)?)));
+        return Some(FilterRule::Not(Box::new(parse_filter_unary(
+            cur,
+            depth + 1,
+        )?)));
     }
     if cur.eat('(') {
-        let rule = parse_filter_or(cur)?;
+        let rule = parse_filter_or(cur, depth + 1)?;
         cur.skip_ws();
         return if cur.eat(')') { Some(rule) } else { None };
     }
@@ -854,6 +870,14 @@ fn slice_indices(
         // loop would never advance.
         return Vec::new();
     }
+    // A huge step (`$a[1:2:1e300]` saturates the cast) overflowed the
+    // running index `i`: debug builds panicked on `i += step`, release
+    // builds wrapped and indexed garbage. Clamp the effective magnitude to
+    // the collection length so a stride from an in-range index cannot wrap,
+    // and stride with saturating adds — no panic or wrap in either build
+    // profile.
+    let bound = len.min(i64::MAX as usize) as i64;
+    let step = step.clamp(-bound, bound);
     let adjust = |v: f64| -> i64 {
         let i = v.floor() as i64;
         if i < 0 {
@@ -869,7 +893,7 @@ fn slice_indices(
         let mut i = s;
         while i < e {
             out.push(i as usize);
-            i += step;
+            i = i.saturating_add(step);
         }
     } else {
         let s = start
@@ -880,7 +904,7 @@ fn slice_indices(
         let mut i = s;
         while i > e {
             out.push(i as usize);
-            i += step;
+            i = i.saturating_add(step);
         }
     }
     out
@@ -1372,42 +1396,6 @@ fn esc_literal(esc: char) -> Option<char> {
 }
 
 #[cfg(test)]
-mod scratch {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn zdbg() {
-        let users = json!({"users": [
-            {"name": "a", "n": 5, "role": "x"},
-            {"name": "b", "n": 15, "role": "y"},
-            {"name": "c", "n": 0, "role": "y"},
-        ]});
-        println!("lt:     {:?}", resolve("$.users[?(@.name < 'b')]", &users));
-        println!("gone:   {:?}", resolve("$.users[?(!@.gone).name]", &users));
-        println!(
-            "role:   {:?}",
-            resolve("$.users[?(@.role == 'y')].name", &users)
-        );
-        println!(
-            "group:  {:?}",
-            resolve("$.users[?(@.role == 'y' || !@.gone)]", &users)
-        );
-        println!(
-            "paren:  {:?}",
-            resolve("$.users[?(@.role == 'y' || (!@.gone))]", &users)
-        );
-        println!(
-            "combo: {:?}",
-            resolve(
-                "$.users[?(@.name < 'b' && (@.role == 'y' || !@.gone))].name",
-                &users
-            )
-        );
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
@@ -1442,6 +1430,42 @@ mod tests {
         assert_eq!(resolve("$.items[:2:0]", &input), Some(json!([])));
         // Sanity: positive steps still stride.
         assert_eq!(resolve("$.items[::2]", &input), Some(json!([1, 3])));
+    }
+
+    #[test]
+    fn filter_nesting_within_the_cap_evaluates_and_beyond_reads_missing() {
+        // Every `(` group descends one counted level — the `[?(` envelope
+        // itself is eaten by the bracket parser outside the count, so the
+        // cap bites a group past `MAX_FILTER_DEPTH` levels. ≤100 parens
+        // still parse and evaluate ...
+        let input = json!({"a": [{"b": true}]});
+        let parenthesised = |n: usize| format!("$.a[?{}@.b{}]", "(".repeat(n), ")".repeat(n));
+        assert_eq!(
+            resolve(&parenthesised(100), &input),
+            Some(json!([{"b": true}]))
+        );
+        // ... a body over the cap reads as off-dialect syntax (a missing
+        // value) instead of aborting the process with a stack overflow.
+        for parens in [130usize, 1_000, 5_000] {
+            assert_eq!(resolve(&parenthesised(parens), &input), None, "{parens}");
+        }
+    }
+
+    #[test]
+    fn huge_step_slice_yields_a_result_without_overflowing() {
+        // `$.a[1:2:1e300]` used to overflow the running index (`i += step`
+        // with the step saturated to i64::MAX): a panic in debug builds and
+        // wrap-to-garbage indexing in release. The effective magnitude is
+        // clamped and strides saturating, so every huge-step slice —
+        // positive and negative alike — returns one element (the start)
+        // without panicking in either build profile.
+        let input = json!({"a": [10, 20, 30, 40]});
+        assert_eq!(resolve("$.a[1:2:1e300]", &input), Some(json!([20])));
+        assert_eq!(resolve("$.a[0:4:1e300]", &input), Some(json!([10])));
+        assert_eq!(resolve("$.a[-4::1e300]", &input), Some(json!([10])));
+        assert_eq!(resolve("$.a[::-1e300]", &input), Some(json!([40])));
+        // Sanity: one-integer steps still stride every element.
+        assert_eq!(resolve("$.a[0:4:1]", &input), Some(json!([10, 20, 30, 40])));
     }
 
     #[test]
