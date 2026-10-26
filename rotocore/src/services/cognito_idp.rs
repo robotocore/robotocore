@@ -1034,48 +1034,297 @@ fn authenticate_user(
     }))
 }
 
+/// moto's AuthFlow enum (fork models.py:59-67) in declaration order — the
+/// set-clone renders member names in the enum-validation error.
+const AUTH_FLOWS: [&str; 7] = [
+    "ADMIN_NO_SRP_AUTH",
+    "ADMIN_USER_PASSWORD_AUTH",
+    "USER_SRP_AUTH",
+    "REFRESH_TOKEN_AUTH",
+    "REFRESH_TOKEN",
+    "CUSTOM_AUTH",
+    "USER_PASSWORD_AUTH",
+];
+
+/// moto's `_validate_auth_flow` (fork models.py:1491-1505): a value outside
+/// the enum fails schema validation with the "1 validation error detected"
+/// text; a known value the flavour does not offer gets the fixed
+/// `Initiate Auth method not supported` error.
+fn validate_auth_flow(auth_flow: &str, admin_valid: bool) -> Result<(), Response> {
+    if !AUTH_FLOWS.contains(&auth_flow) {
+        let list: Vec<String> = AUTH_FLOWS.iter().map(|f| format!("'{f}'")).collect();
+        return Err(err(
+            "InvalidParameterException",
+            &format!(
+                "1 validation error detected: Value '{auth_flow}' at 'authFlow' failed to satisfy \
+                 constraint: Member must satisfy enum value set: [{}]",
+                list.join(", ")
+            ),
+        ));
+    }
+    let offered: &[&str] = if admin_valid {
+        &[
+            "ADMIN_NO_SRP_AUTH",
+            "ADMIN_USER_PASSWORD_AUTH",
+            "REFRESH_TOKEN_AUTH",
+            "REFRESH_TOKEN",
+        ]
+    } else {
+        &[
+            "USER_SRP_AUTH",
+            "REFRESH_TOKEN_AUTH",
+            "REFRESH_TOKEN",
+            "CUSTOM_AUTH",
+            "USER_PASSWORD_AUTH",
+        ]
+    };
+    if !offered.contains(&auth_flow) {
+        return Err(err(
+            "InvalidParameterException",
+            "Initiate Auth method not supported",
+        ));
+    }
+    Ok(())
+}
+
 fn initiate_auth(s: &mut State, p: &Value, _region: &str) -> Response {
     let auth_flow = p["AuthFlow"].as_str().unwrap_or_default();
     let client_id = p["ClientId"].as_str().unwrap_or_default().to_string();
-    if auth_flow != "USER_PASSWORD_AUTH" {
-        return err(
-            "InvalidParameterException",
-            &format!("Unsupported auth flow: {auth_flow}"),
-        );
+    if let Err(e) = validate_auth_flow(auth_flow, false) {
+        return e;
     }
     let pool_id = match find_pool_by_client(s, &client_id) {
         Some(pool) => pool.pool["Id"].as_str().unwrap_or_default().to_string(),
         None => return client_missing(&client_id),
     };
-    authenticate_user(
-        s,
-        &pool_id,
-        &client_id,
-        p["AuthParameters"]["USERNAME"].as_str().unwrap_or_default(),
-        p["AuthParameters"]["PASSWORD"].as_str().unwrap_or_default(),
-    )
+    match auth_flow {
+        "USER_PASSWORD_AUTH" => authenticate_user(
+            s,
+            &pool_id,
+            &client_id,
+            p["AuthParameters"]["USERNAME"].as_str().unwrap_or_default(),
+            p["AuthParameters"]["PASSWORD"].as_str().unwrap_or_default(),
+        ),
+        "USER_SRP_AUTH" => initiate_auth_srp(s, &pool_id, p),
+        "REFRESH_TOKEN_AUTH" | "REFRESH_TOKEN" => refresh_token_flow(
+            s,
+            &pool_id,
+            &client_id,
+            p["AuthParameters"]["REFRESH_TOKEN"]
+                .as_str()
+                .unwrap_or_default(),
+            false,
+        ),
+        // moto's initiate_auth has no CUSTOM_AUTH branch: with no custom
+        // challenge trigger the bare arm falls through to `return None`,
+        // which renders as an empty `{}` body with HTTP 200 (live-verified).
+        // The pool/client lookup above still runs first, so a stray
+        // ClientId raises before the empty answer.
+        "CUSTOM_AUTH" => ok_json(&json!({})),
+        _ => err(
+            "InvalidParameterException",
+            "Initiate Auth method not supported",
+        ),
+    }
 }
 
 fn admin_initiate_auth(s: &mut State, p: &Value, _region: &str) -> Response {
     let pool_id = p["UserPoolId"].as_str().unwrap_or_default().to_string();
     let client_id = p["ClientId"].as_str().unwrap_or_default().to_string();
     let auth_flow = p["AuthFlow"].as_str().unwrap_or_default();
+    if let Err(e) = validate_auth_flow(auth_flow, true) {
+        return e;
+    }
     if let Err(e) = need_pool(s, &pool_id) {
         return e;
     }
-    if !matches!(auth_flow, "ADMIN_USER_PASSWORD_AUTH" | "USER_PASSWORD_AUTH") {
-        return err(
+    match auth_flow {
+        "ADMIN_USER_PASSWORD_AUTH" | "ADMIN_NO_SRP_AUTH" => admin_authenticate_user(
+            s,
+            &pool_id,
+            &client_id,
+            p["AuthParameters"]["USERNAME"].as_str().unwrap_or_default(),
+            p["AuthParameters"]["PASSWORD"].as_str().unwrap_or_default(),
+        ),
+        "REFRESH_TOKEN_AUTH" | "REFRESH_TOKEN" => refresh_token_flow(
+            s,
+            &pool_id,
+            &client_id,
+            p["AuthParameters"]["REFRESH_TOKEN"]
+                .as_str()
+                .unwrap_or_default(),
+            true,
+        ),
+        _ => err(
             "InvalidParameterException",
-            &format!("Unsupported auth flow: {auth_flow}"),
-        );
+            "Initiate Auth method not supported",
+        ),
     }
-    authenticate_user(
-        s,
-        &pool_id,
-        &client_id,
-        p["AuthParameters"]["USERNAME"].as_str().unwrap_or_default(),
-        p["AuthParameters"]["PASSWORD"].as_str().unwrap_or_default(),
+}
+
+/// The cognito-idp JWT issuer for a pool.
+fn issue_tokens_issuer(pool_id: &str) -> String {
+    format!(
+        "https://cognito-idp.{}.amazonaws.com/{pool_id}",
+        pool_region(pool_id)
     )
+}
+
+/// moto's ADMIN_USER_PASSWORD_AUTH / ADMIN_NO_SRP_AUTH arm (fork
+/// models.py:1525-1547): admin-flavoured lookups raise admin_get_user's
+/// fixed `User does not exist.`, a disabled user is refused, wrong
+/// passwords echo the username (NotAuthorizedError(username)), and a
+/// FORCE_CHANGE_PASSWORD user is challenged with bare parameters and a
+/// fresh session. Everyone else is logged in via `_log_user_in`.
+fn admin_authenticate_user(
+    s: &mut State,
+    pool_id: &str,
+    client_id: &str,
+    username: &str,
+    password: &str,
+) -> Response {
+    let Some(user) = pool_ref(s, pool_id)
+        .and_then(|pl| pool_get_user(pl, username))
+        .cloned()
+    else {
+        return user_missing(username);
+    };
+    if user["Enabled"].as_bool() == Some(false) {
+        record_auth_event(s, pool_id, username, false);
+        return err("NotAuthorizedException", "User is disabled.");
+    }
+    if user["Password"].as_str().unwrap_or_default() != password {
+        record_auth_event(s, pool_id, username, false);
+        return not_authorized_token(username);
+    }
+    if user["UserStatus"].as_str() == Some("UNCONFIRMED") {
+        record_auth_event(s, pool_id, username, false);
+        return err("UserNotConfirmedException", "User is not confirmed.");
+    }
+    if user["UserStatus"].as_str() == Some("FORCE_CHANGE_PASSWORD") {
+        record_auth_event(s, pool_id, username, true);
+        let session = session_register(s, username, pool_id);
+        return ok_json(&json!({
+            "ChallengeName": "NEW_PASSWORD_REQUIRED",
+            "ChallengeParameters": {},
+            "Session": session,
+        }));
+    }
+    record_auth_event(s, pool_id, username, true);
+    let issuer = issue_tokens_issuer(pool_id);
+    let sub = user["UserSub"].as_str().unwrap_or_default().to_string();
+    let tokens = issue_tokens(&issuer, &sub, client_id, username);
+    track_refresh_token(s, pool_id, username, &tokens);
+    ok_json(&json!({
+        "ChallengeParameters": {},
+        "AuthenticationResult": tokens,
+    }))
+}
+
+/// moto's USER_SRP_AUTH initiate (fork models.py:2060-2104): no SRP math is
+/// performed — a verifier session is minted and the PASSWORD_VERIFIER
+/// challenge carries moto's fake parameters, the SECRET_BLOCK doubling as
+/// the session id RespondToAuthChallenge keys on.
+fn initiate_auth_srp(s: &mut State, pool_id: &str, p: &Value) -> Response {
+    let username = p["AuthParameters"]["USERNAME"].as_str().unwrap_or_default();
+    let srp_a = p["AuthParameters"]["SRP_A"].as_str().unwrap_or_default();
+    if srp_a.is_empty() {
+        // moto: `raise ResourceNotFoundError(srp_a)` with srp_a None → "".
+        return err("ResourceNotFoundException", "");
+    }
+    // moto: `user = self.admin_get_user(user_pool.id, username)` — the
+    // alias-aware lookup with fixed `User does not exist.` text.
+    let Some(user) = pool_ref(s, pool_id)
+        .and_then(|pl| pool_get_user(pl, username))
+        .cloned()
+    else {
+        return user_missing(username);
+    };
+    if user["Enabled"].as_bool() == Some(false) {
+        return err("NotAuthorizedException", "User is disabled.");
+    }
+    if user["UserStatus"].as_str() == Some("UNCONFIRMED") {
+        return err("UserNotConfirmedException", "User is not confirmed.");
+    }
+    let session = session_register(s, username, pool_id);
+    ok_json(&json!({
+        "ChallengeName": "PASSWORD_VERIFIER",
+        "Session": session,
+        "ChallengeParameters": {
+            // moto fakes both SRP values with a bare uuid4().hex (32 hex
+            // chars, no dashes).
+            "SALT": uuid::Uuid::new_v4().simple().to_string(),
+            "SRP_B": uuid::Uuid::new_v4().simple().to_string(),
+            "USERNAME": user["Username"].as_str().unwrap_or_default(),
+            // USER_ID_FOR_SRP is the user's internal id — the sub.
+            "USER_ID_FOR_SRP": user["UserSub"].as_str().unwrap_or_default(),
+            "SECRET_BLOCK": session,
+        },
+    }))
+}
+
+/// moto's REFRESH_TOKEN / REFRESH_TOKEN_AUTH branch (fork models.py:2165-2194;
+/// admin flavour models.py:1574-1594): re-mint access/id tokens from a
+/// live grant. The twin's grant table is `State.refresh_tokens`, scoped to
+/// the pool the ClientId resolves to — moto reads `user_pool.refresh_tokens`
+/// the same way. The grant itself stays live (a refresh does not revoke old
+/// access tokens) and the response carries no RefreshToken member.
+fn refresh_token_flow(
+    s: &mut State,
+    pool_id: &str,
+    client_id: &str,
+    refresh_token: &str,
+    admin: bool,
+) -> Response {
+    if !admin && refresh_token.is_empty() {
+        // moto: `raise ResourceNotFoundError(refresh_token)` with None → "".
+        return err("ResourceNotFoundException", "");
+    }
+    let tracked = s
+        .refresh_tokens
+        .iter()
+        .find(|(t, pid, _)| t == refresh_token && pid == pool_id)
+        .map(|(_, _, u)| u.clone());
+    let Some(username) = tracked else {
+        // public: moto's `.get` miss → NotAuthorizedError("Refresh Token has
+        // been revoked"). admin: create_tokens_from_refresh_token raises
+        // NotAuthorizedError(refresh_token), echoing the token; a completely
+        // absent key crashes moto with a KeyError (HTTP 500), so the twin
+        // answers the same echo there instead of a 500.
+        return if admin {
+            not_authorized_token(refresh_token)
+        } else {
+            err("NotAuthorizedException", "Refresh Token has been revoked")
+        };
+    };
+    let Some((sub, issuer)) = pool_ref(s, pool_id)
+        .and_then(|pl| pl.users.iter().find(|(k, _)| k == &username))
+        .map(|(_, v)| {
+            (
+                v["UserSub"].as_str().unwrap_or_default().to_string(),
+                issue_tokens_issuer(pool_id),
+            )
+        })
+    else {
+        // The user behind a surviving grant vanished; mirror the twin's
+        // GetTokensFromRefreshToken rather than minting tokens for a sub
+        // that no longer resolves.
+        return err("NotAuthorizedException", "Invalid Refresh Token.");
+    };
+    ok_json(&json!({
+        "AuthenticationResult": {
+            "AccessToken": jwt(&issuer, &sub, client_id, "access", None),
+            "IdToken": jwt(
+                &issuer,
+                &sub,
+                client_id,
+                "id",
+                Some(&json!({ "cognito:username": username })),
+            ),
+            "TokenType": "Bearer",
+            "ExpiresIn": 3600,
+        }
+    }))
 }
 
 /// moto PR getmoto/moto#10243 `_resolve_password_verifier_session`: every
@@ -1192,15 +1441,16 @@ fn password_verifier_finish(
             "Session": session,
         }));
     }
-    let issuer = format!(
-        "https://cognito-idp.{}.amazonaws.com/{pool_id}",
-        pool_region(pool_id)
-    );
+    let issuer = issue_tokens_issuer(pool_id);
     session_delete(s, session);
     let tokens = issue_tokens(&issuer, &sub, client_id, &username);
     track_refresh_token(s, pool_id, &username, &tokens);
-    // moto's `_log_user_in` answers with the bare AuthenticationResult.
-    ok_json(&json!({ "AuthenticationResult": tokens }))
+    // moto's `_log_user_in` returns both keys — ChallengeParameters {}
+    // alongside the token bundle (fork models.py:1468-1497).
+    ok_json(&json!({
+        "ChallengeParameters": {},
+        "AuthenticationResult": tokens,
+    }))
 }
 
 fn respond_to_auth_challenge(s: &mut State, p: &Value, _region: &str) -> Response {
@@ -1240,10 +1490,19 @@ fn respond_to_auth_challenge(s: &mut State, p: &Value, _region: &str) -> Respons
             &format!("Unsupported challenge: {challenge}"),
         );
     }
-    let pool_id = match find_pool_by_client(s, &client_id) {
-        Some(pool) => pool.pool["Id"].as_str().unwrap_or_default().to_string(),
-        None => return client_missing(&client_id),
+    // moto's respond_to_auth_challenge (fork models.py:1619-1627): the
+    // session must be live before anything else, the pool comes FROM the
+    // session (`_, user_pool = self.sessions[session]`), and the answering
+    // client must live in that pool — a ClientId-only pool lookup let a
+    // session minted for one pool complete under another pool's client.
+    let session = p["Session"].as_str().unwrap_or_default().to_string();
+    let Some((_, pool_id)) = session_lookup(s, &session) else {
+        return session_not_found(&session);
     };
+    if !pool_ref(s, &pool_id).is_some_and(|pl| pl.clients.iter().any(|(k, _)| *k == client_id)) {
+        // moto: `raise ResourceNotFoundError(client_id)` from the session's pool.
+        return session_not_found(&client_id);
+    }
     let username = p["ChallengeResponses"]["USERNAME"]
         .as_str()
         .unwrap_or_default()
@@ -1251,6 +1510,12 @@ fn respond_to_auth_challenge(s: &mut State, p: &Value, _region: &str) -> Respons
     let new_password = p["ChallengeResponses"]["NEW_PASSWORD"]
         .as_str()
         .unwrap_or_default();
+    if new_password.is_empty() {
+        return err(
+            "InvalidPasswordException",
+            "The provided password does not confirm to the configured password policy",
+        );
+    }
     let (sub, issuer) = {
         let pl = pool_mut(s, &pool_id).unwrap();
         let Some(user) = pl
@@ -1265,12 +1530,12 @@ fn respond_to_auth_challenge(s: &mut State, p: &Value, _region: &str) -> Respons
         user["UserStatus"] = json!("CONFIRMED");
         user["LastModifiedDate"] = json!(now());
         let sub = user["UserSub"].as_str().unwrap_or_default().to_string();
-        let issuer = format!(
-            "https://cognito-idp.{}.amazonaws.com/{pool_id}",
-            pool_region(&pool_id)
-        );
+        let issuer = issue_tokens_issuer(&pool_id);
         (sub, issuer)
     };
+    // moto: `del self.sessions[session]` before logging the user in — a
+    // replay of a spent session fails with ResourceNotFoundError(session).
+    session_delete(s, &session);
     let tokens = issue_tokens(&issuer, &sub, &client_id, &username);
     track_refresh_token(s, &pool_id, &username, &tokens);
     ok_json(&json!({
@@ -4413,10 +4678,11 @@ mod tests {
 
     // --- PASSWORD_VERIFIER binding (moto PR getmoto/moto#10243, fixing #7562)
     //
-    // The twin has no SRP initiate, so PASSWORD_VERIFIER sessions are minted
-    // the way its other auth flows mint them: a FORCE_CHANGE_PASSWORD user
-    // signs in and the session is kept for RespondToAuthChallenge. moto has no
-    // real SRP either — the signature is never checked, only the binding.
+    // PASSWORD_VERIFIER sessions are minted by the USER_SRP_AUTH initiation
+    // (the SECRET_BLOCK doubles as the session id) or, like here, the way
+    // the twin's other auth flows mint them: a FORCE_CHANGE_PASSWORD user
+    // signs in and the session is kept for RespondToAuthChallenge. moto has
+    // no real SRP either — the signature is never checked, only the binding.
 
     /// Pool + client + users in FORCE_CHANGE_PASSWORD (the state
     /// AdminCreateUser leaves them in before a challenge is answered).
@@ -4614,5 +4880,554 @@ mod tests {
         );
         assert_eq!(b["__type"], "NotAuthorizedException", "{b}");
         assert_eq!(b["message"], "Incorrect username or password.");
+    }
+
+    /// A confirmed pool user, ready for USER_SRP_AUTH / refresh flows.
+    fn confirmed_setup(acct: u64, username: &str) -> (String, String) {
+        let (pool_id, client_id) = password_verifier_setup(acct, &[username]);
+        let mut r = req(
+            "AdminSetUserPassword",
+            json!({
+                "UserPoolId": &pool_id, "Username": username,
+                "Password": "Perm1!@A", "Permanent": true,
+            }),
+        );
+        r.account = acct;
+        assert_eq!(dispatch(&r).unwrap().status, 200);
+        (pool_id, client_id)
+    }
+
+    fn login_tokens(acct: u64, client_id: &str, username: &str) -> Value {
+        let mut r = req(
+            "InitiateAuth",
+            json!({
+                "ClientId": client_id,
+                "AuthFlow": "USER_PASSWORD_AUTH",
+                "AuthParameters": {"USERNAME": username, "PASSWORD": "Perm1!@A"},
+            }),
+        );
+        r.account = acct;
+        body(&dispatch(&r).unwrap())
+    }
+
+    #[test]
+    fn cognito_srp_initiation_and_verifier_roundtrip() {
+        let acct = scope();
+        let (_pool_id, client_id) = confirmed_setup(acct, "srp-user");
+
+        let mut r = req(
+            "InitiateAuth",
+            json!({
+                "ClientId": &client_id,
+                "AuthFlow": "USER_SRP_AUTH",
+                "AuthParameters": {"USERNAME": "srp-user", "SRP_A": "abc123"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["ChallengeName"], "PASSWORD_VERIFIER", "{b}");
+        assert!(b["Session"].is_string(), "{b}");
+        // moto's fake challenge parameters: SALT / SRP_B are bare uuid4().hex
+        // (32 hex chars), USERNAME is the pool username, USER_ID_FOR_SRP the
+        // user's internal id (sub), and SECRET_BLOCK mirrors the session id.
+        let params = &b["ChallengeParameters"];
+        let salt = params["SALT"].as_str().unwrap();
+        let srp_b = params["SRP_B"].as_str().unwrap();
+        assert_eq!(salt.len(), 32, "{params}");
+        assert_eq!(srp_b.len(), 32, "{params}");
+        assert!(salt.bytes().all(|c| c.is_ascii_hexdigit()), "{salt}");
+        assert_ne!(salt, srp_b);
+        assert_eq!(params["USERNAME"], "srp-user");
+        assert_eq!(
+            b["ChallengeParameters"]["SECRET_BLOCK"]["SALT"],
+            json!(null)
+        );
+        assert_ne!(params["USER_ID_FOR_SRP"].as_str().unwrap(), "");
+
+        // RespondToAuthChallenge keys the session off the secret block.
+        let mut r = req(
+            "RespondToAuthChallenge",
+            json!({
+                "ClientId": &client_id,
+                "ChallengeName": "PASSWORD_VERIFIER",
+                "ChallengeResponses": {
+                    "USERNAME": "srp-user",
+                    "PASSWORD_CLAIM_SIGNATURE": "dummy",
+                    "PASSWORD_CLAIM_SECRET_BLOCK": params["SECRET_BLOCK"],
+                    "TIMESTAMP": "Mon Jan 1 00:00:00 UTC 2024",
+                },
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        // moto's `_log_user_in` returns both keys — ChallengeParameters {}
+        // alongside the token bundle (fork models.py:1468-1497).
+        assert_eq!(b["ChallengeParameters"], json!({}), "{b}");
+        assert!(b["ChallengeName"].is_null(), "{b}");
+        assert!(b["AuthenticationResult"]["AccessToken"].is_string(), "{b}");
+        assert!(b["AuthenticationResult"]["RefreshToken"].is_string(), "{b}");
+    }
+
+    #[test]
+    fn cognito_srp_initiation_rejects_bad_candidates() {
+        let acct = scope();
+        let (_pool_id, client_id) = confirmed_setup(acct, "srp-user");
+
+        // Unknown user: moto's admin_get_user fixed text.
+        let mut r = req(
+            "InitiateAuth",
+            json!({
+                "ClientId": &client_id,
+                "AuthFlow": "USER_SRP_AUTH",
+                "AuthParameters": {"USERNAME": "ghost", "SRP_A": "abc123"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "UserNotFoundException", "{b}");
+        assert_eq!(b["message"], "User does not exist.");
+
+        // Missing SRP_A: ResourceNotFoundError(None) renders "".
+        let mut r = req(
+            "InitiateAuth",
+            json!({
+                "ClientId": &client_id,
+                "AuthFlow": "USER_SRP_AUTH",
+                "AuthParameters": {"USERNAME": "srp-user"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "ResourceNotFoundException", "{b}");
+        assert_eq!(b["message"], "");
+
+        // A value outside the enum fails moto's schema validation; a known
+        // the flavour does not offer gets the fixed not-supported text.
+        let mut r = req(
+            "InitiateAuth",
+            json!({"ClientId": &client_id, "AuthFlow": "ADMIN_NO_SRP_AUTH"}),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "InvalidParameterException", "{b}");
+        assert_eq!(b["message"], "Initiate Auth method not supported");
+
+        let mut r = req(
+            "InitiateAuth",
+            json!({"ClientId": &client_id, "AuthFlow": "BOGUS"}),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert!(
+            b["message"]
+                .as_str()
+                .unwrap()
+                .starts_with("1 validation error detected: Value 'BOGUS'"),
+            "{b}"
+        );
+    }
+
+    #[test]
+    fn cognito_refresh_token_flow_mints_without_new_grant() {
+        let acct = scope();
+        let (pool_id, client_id) = confirmed_setup(acct, "rf-user");
+        let tokens = login_tokens(acct, &client_id, "rf-user");
+        let refresh = tokens["AuthenticationResult"]["RefreshToken"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        for flow in ["REFRESH_TOKEN_AUTH", "REFRESH_TOKEN"] {
+            let mut r = req(
+                "InitiateAuth",
+                json!({
+                    "ClientId": &client_id,
+                    "AuthFlow": flow,
+                    "AuthParameters": {"REFRESH_TOKEN": &refresh},
+                }),
+            );
+            r.account = acct;
+            let b = body(&dispatch(&r).unwrap());
+            let result = b["AuthenticationResult"].clone();
+            assert!(result["AccessToken"].is_string(), "{b}");
+            assert!(result["IdToken"].is_string(), "{b}");
+            // moto's refresh responses carry no new RefreshToken.
+            assert!(result["RefreshToken"].is_null(), "{b}");
+            assert!(b["ChallengeName"].is_null(), "{b}");
+        }
+
+        // admin flavour: same shape from AdminInitiateAuth.
+        let mut r = req(
+            "AdminInitiateAuth",
+            json!({
+                "UserPoolId": &pool_id, "ClientId": &client_id,
+                "AuthFlow": "REFRESH_TOKEN_AUTH",
+                "AuthParameters": {"REFRESH_TOKEN": &refresh},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert!(b["AuthenticationResult"]["AccessToken"].is_string(), "{b}");
+        assert!(b["AuthenticationResult"]["RefreshToken"].is_null(), "{b}");
+
+        // Unknown token: moto's public wording.
+        let mut r = req(
+            "InitiateAuth",
+            json!({
+                "ClientId": &client_id,
+                "AuthFlow": "REFRESH_TOKEN_AUTH",
+                "AuthParameters": {"REFRESH_TOKEN": "never-minted"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "NotAuthorizedException", "{b}");
+        assert_eq!(b["message"], "Refresh Token has been revoked");
+
+        // admin flavour echoes the token back (moto's
+        // create_tokens_from_refresh_token NotAuthorizedError(refresh_token)).
+        let mut r = req(
+            "AdminInitiateAuth",
+            json!({
+                "UserPoolId": &pool_id, "ClientId": &client_id,
+                "AuthFlow": "REFRESH_TOKEN",
+                "AuthParameters": {"REFRESH_TOKEN": "never-minted"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "NotAuthorizedException", "{b}");
+        assert_eq!(b["message"], "never-minted");
+
+        // After RevokeToken the grant is gone for both flavors.
+        let mut r = req(
+            "RevokeToken",
+            json!({"Token": &refresh, "ClientId": &client_id}),
+        );
+        r.account = acct;
+        assert_eq!(dispatch(&r).unwrap().status, 200);
+        let mut r = req(
+            "InitiateAuth",
+            json!({
+                "ClientId": &client_id,
+                "AuthFlow": "REFRESH_TOKEN_AUTH",
+                "AuthParameters": {"REFRESH_TOKEN": &refresh},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "NotAuthorizedException", "{b}");
+    }
+
+    #[test]
+    fn cognito_refresh_token_flow_is_pool_scoped() {
+        // A grant minted for pool A does not authorize a client of pool B:
+        // moto scopes grants to `user_pool.refresh_tokens`, looked up through
+        // the ClientId's pool.
+        let acct = scope();
+        let (_pool_a, client_a) = confirmed_setup(acct, "u1");
+        let tokens = login_tokens(acct, &client_a, "u1");
+        let refresh = tokens["AuthenticationResult"]["RefreshToken"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let (_pool_b, client_b) = password_verifier_setup(acct, &["other"]);
+        let mut r = req(
+            "InitiateAuth",
+            json!({
+                "ClientId": &client_b,
+                "AuthFlow": "REFRESH_TOKEN",
+                "AuthParameters": {"REFRESH_TOKEN": &refresh},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "NotAuthorizedException", "{b}");
+        assert_eq!(b["message"], "Refresh Token has been revoked");
+        // The grant still answers for its own pool.
+        let mut r = req(
+            "InitiateAuth",
+            json!({
+                "ClientId": &client_a,
+                "AuthFlow": "REFRESH_TOKEN",
+                "AuthParameters": {"REFRESH_TOKEN": &refresh},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert!(b["AuthenticationResult"]["AccessToken"].is_string(), "{b}");
+    }
+
+    #[test]
+    fn cognito_admin_no_srp_flow() {
+        let acct = scope();
+        let force_pool = make_pool(acct);
+        let mut r = req(
+            "AdminCreateUser",
+            json!({
+                "UserPoolId": &force_pool, "Username": "fc",
+                "TemporaryPassword": "TempPass1!", "MessageAction": "SUPPRESS",
+            }),
+        );
+        r.account = acct;
+        assert_eq!(dispatch(&r).unwrap().status, 200);
+        let mut r = req(
+            "CreateUserPoolClient",
+            json!({"UserPoolId": &force_pool, "ClientName": "c"}),
+        );
+        r.account = acct;
+        let client_id = body(&dispatch(&r).unwrap())["UserPoolClient"]["ClientId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // FORCE_CHANGE_PASSWORD user + correct temporary password:
+        // ChallengeName NEW_PASSWORD_REQUIRED with bare parameters.
+        let mut r = req(
+            "AdminInitiateAuth",
+            json!({
+                "UserPoolId": &force_pool, "ClientId": &client_id,
+                "AuthFlow": "ADMIN_NO_SRP_AUTH",
+                "AuthParameters": {"USERNAME": "fc", "PASSWORD": "TempPass1!"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["ChallengeName"], "NEW_PASSWORD_REQUIRED", "{b}");
+        assert_eq!(b["ChallengeParameters"], json!({}));
+        assert!(b["Session"].is_string(), "{b}");
+
+        // The session answers NEW_PASSWORD_REQUIRED into tokens, and the
+        // session is consumed afterwards.
+        let session = b["Session"].as_str().unwrap().to_string();
+        let mut r = req(
+            "AdminRespondToAuthChallenge",
+            json!({
+                "UserPoolId": &force_pool, "ClientId": &client_id,
+                "ChallengeName": "NEW_PASSWORD_REQUIRED",
+                "Session": &session,
+                "ChallengeResponses": {"USERNAME": "fc", "NEW_PASSWORD": "NewPerm1!"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert!(b["AuthenticationResult"]["AccessToken"].is_string(), "{b}");
+        let mut r = req(
+            "AdminRespondToAuthChallenge",
+            json!({
+                "UserPoolId": &force_pool, "ClientId": &client_id,
+                "ChallengeName": "NEW_PASSWORD_REQUIRED",
+                "Session": &session,
+                "ChallengeResponses": {"USERNAME": "fc", "NEW_PASSWORD": "Again1!@A"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "ResourceNotFoundException", "{b}");
+
+        // Wrong password: moto echoes the username.
+        let mut r = req(
+            "AdminInitiateAuth",
+            json!({
+                "UserPoolId": &force_pool, "ClientId": &client_id,
+                "AuthFlow": "ADMIN_NO_SRP_AUTH",
+                "AuthParameters": {"USERNAME": "fc", "PASSWORD": "wrong"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "NotAuthorizedException", "{b}");
+        assert_eq!(b["message"], "fc");
+
+        // A confirmed user is logged straight in: both keys of moto's
+        // _log_user_in, with a fresh refresh grant tracked.
+        let mut r = req(
+            "AdminSetUserPassword",
+            json!({
+                "UserPoolId": &force_pool, "Username": "fc",
+                "Password": "NewPerm1!@A", "Permanent": true,
+            }),
+        );
+        r.account = acct;
+        assert_eq!(dispatch(&r).unwrap().status, 200);
+        let mut r = req(
+            "AdminInitiateAuth",
+            json!({
+                "UserPoolId": &force_pool, "ClientId": &client_id,
+                "AuthFlow": "ADMIN_NO_SRP_AUTH",
+                "AuthParameters": {"USERNAME": "fc", "PASSWORD": "NewPerm1!@A"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert!(b["ChallengeName"].is_null(), "{b}");
+        assert_eq!(b["ChallengeParameters"], json!({}), "{b}");
+        assert!(b["AuthenticationResult"]["RefreshToken"].is_string(), "{b}");
+
+        // Unknown user → admin_get_user's fixed text; USER_PASSWORD_AUTH is
+        // not an admin flow → moto's "Initiate Auth method not supported".
+        let mut r = req(
+            "AdminInitiateAuth",
+            json!({
+                "UserPoolId": &force_pool, "ClientId": &client_id,
+                "AuthFlow": "ADMIN_NO_SRP_AUTH",
+                "AuthParameters": {"USERNAME": "ghost", "PASSWORD": "x"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "UserNotFoundException", "{b}");
+        assert_eq!(b["message"], "User does not exist.");
+        let mut r = req(
+            "AdminInitiateAuth",
+            json!({
+                "UserPoolId": &force_pool, "ClientId": &client_id,
+                "AuthFlow": "USER_PASSWORD_AUTH",
+                "AuthParameters": {"USERNAME": "fc", "PASSWORD": "NewPerm1!@A"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "InvalidParameterException", "{b}");
+        assert_eq!(b["message"], "Initiate Auth method not supported");
+
+        // CUSTOM_AUTH with no challenge trigger: moto falls through to an
+        // empty `{}` 200 after resolving the client.
+        let mut r = req(
+            "InitiateAuth",
+            json!({"ClientId": &client_id, "AuthFlow": "CUSTOM_AUTH"}),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b, json!({}), "{b}");
+    }
+
+    /// A user in FORCE_CHANGE_PASSWORD: the public USER_PASSWORD_AUTH login
+    /// mints a NEW_PASSWORD_REQUIRED session (nothing registered client-side
+    /// needed beyond the pool's own client).
+    fn new_password_session(acct: u64, _pool_id: &str, client_id: &str, username: &str) -> String {
+        let mut r = req(
+            "InitiateAuth",
+            json!({
+                "ClientId": client_id,
+                "AuthFlow": "USER_PASSWORD_AUTH",
+                "AuthParameters": {"USERNAME": username, "PASSWORD": "TempPass1!"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["ChallengeName"], "NEW_PASSWORD_REQUIRED", "{b}");
+        b["Session"].as_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn cognito_new_password_required_rejects_stale_session() {
+        let acct = scope();
+        let (pool_id, client_id) = password_verifier_setup(acct, &["u1"]);
+        let session = new_password_session(acct, &pool_id, &client_id, "u1");
+
+        // Completing the challenge succeeds...
+        let mut r = req(
+            "RespondToAuthChallenge",
+            json!({
+                "ClientId": &client_id,
+                "ChallengeName": "NEW_PASSWORD_REQUIRED",
+                "Session": &session,
+                "ChallengeResponses": {"USERNAME": "u1", "NEW_PASSWORD": "NewPerm1!@A"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert!(b["AuthenticationResult"]["AccessToken"].is_string(), "{b}");
+
+        // ...consumes the session: a replay fails like a never-seen one.
+        let mut r = req(
+            "RespondToAuthChallenge",
+            json!({
+                "ClientId": &client_id,
+                "ChallengeName": "NEW_PASSWORD_REQUIRED",
+                "Session": &session,
+                "ChallengeResponses": {"USERNAME": "u1", "NEW_PASSWORD": "Again1!@A"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "ResourceNotFoundException", "{b}");
+        assert_eq!(b["message"], session);
+
+        // A never-seen session id also raises with the raw value.
+        let unknown = "unknown-session-of-forty-characters-xxxxxxxxx";
+        let mut r = req(
+            "RespondToAuthChallenge",
+            json!({
+                "ClientId": &client_id,
+                "ChallengeName": "NEW_PASSWORD_REQUIRED",
+                "Session": unknown,
+                "ChallengeResponses": {"USERNAME": "u1", "NEW_PASSWORD": "NewPerm1!@A"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "ResourceNotFoundException", "{b}");
+        assert_eq!(b["message"], unknown);
+    }
+
+    #[test]
+    fn cognito_new_password_required_binds_session_pool() {
+        // A session minted for pool B cannot be completed through pool A's
+        // client: moto resolves the pool from the session and requires the
+        // client to be listed in it (ResourceNotFoundError(client_id)).
+        let acct = scope();
+        let (pool_b, client_b) = password_verifier_setup(acct, &["u-b"]);
+        let session = new_password_session(acct, &pool_b, &client_b, "u-b");
+
+        // Pool A with its own client.
+        let (pool_a, _client_a_noise) = password_verifier_setup(acct, &["u-a"]);
+        let mut r = req(
+            "CreateUserPoolClient",
+            json!({"UserPoolId": &pool_a, "ClientName": "ca"}),
+        );
+        r.account = acct;
+        let client_a = body(&dispatch(&r).unwrap())["UserPoolClient"]["ClientId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let mut r = req(
+            "RespondToAuthChallenge",
+            json!({
+                "ClientId": &client_a,
+                "ChallengeName": "NEW_PASSWORD_REQUIRED",
+                "Session": &session,
+                "ChallengeResponses": {"USERNAME": "u-b", "NEW_PASSWORD": "NewPerm1!@A"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "ResourceNotFoundException", "{b}");
+        assert_eq!(b["message"], client_a);
+
+        // The pool-B user was not modified by the failed attempt.
+        let mut r = req(
+            "AdminGetUser",
+            json!({"UserPoolId": &pool_b, "Username": "u-b"}),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["UserStatus"], "FORCE_CHANGE_PASSWORD", "{b}");
+
+        // And the same session still completes under pool B's own client.
+        let mut r = req(
+            "RespondToAuthChallenge",
+            json!({
+                "ClientId": &client_b,
+                "ChallengeName": "NEW_PASSWORD_REQUIRED",
+                "Session": &session,
+                "ChallengeResponses": {"USERNAME": "u-b", "NEW_PASSWORD": "NewPerm1!@A"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert!(b["AuthenticationResult"]["AccessToken"].is_string(), "{b}");
     }
 }

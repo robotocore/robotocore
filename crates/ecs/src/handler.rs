@@ -164,6 +164,15 @@ impl EcsHandler {
             .and_then(|v| v.as_array())
             .cloned()
             .unwrap_or_default();
+        // moto's Cluster model carries the cluster-default strategy so
+        // run_task can fall back to it when neither a launch type nor an
+        // explicit strategy is given (fork ecs/models.py run_task).
+        let default_strategy: Vec<Value> = req
+            .params
+            .get("defaultCapacityProviderStrategy")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
         let arn = format!(
             "arn:aws:ecs:{}:{}:cluster/{}",
             req.region, req.account, name
@@ -178,6 +187,7 @@ impl EcsHandler {
             "activeServicesCount": 0,
             "settings": settings,
             "capacityProviders": providers,
+            "defaultCapacityProviderStrategy": default_strategy,
             "tags": tags.clone(),
         });
         if !tags.is_empty() {
@@ -753,12 +763,17 @@ impl EcsHandler {
             .get("taskDefinition")
             .and_then(|v| v.as_str())
             .unwrap_or_default();
-        let desired_count = req.params.get("desiredCount").cloned().unwrap_or(json!(1));
+        // moto 5.2.0: desiredCount is optional and defaults to 0 (fork
+        // ecs/models.py create_service), so a service created without one
+        // reports its rollout COMPLETED rather than IN_PROGRESS.
+        let desired_count = req.params.get("desiredCount").cloned().unwrap_or(json!(0));
         // moto 5.2.0 computes the rollout state at service creation: the
         // primary deployment reports COMPLETED once its runningCount reaches
-        // desiredCount, IN_PROGRESS while tasks are still coming up. The
-        // deployment created below starts at runningCount 0.
-        let running_count = 0i64;
+        // desiredCount, IN_PROGRESS while tasks are still coming up. moto
+        // seeds that runningCount from MOTO_ECS_SERVICE_RUNNING (fork
+        // ecs/models.py Service.__init__), with pendingCount the remainder.
+        let running_count = env_running_tasks();
+        let pending_count = desired_count.as_i64().unwrap_or(0) - running_count;
         let (rollout_state, rollout_state_reason) =
             if running_count >= desired_count.as_i64().unwrap_or(0) {
                 ("COMPLETED", format!("ECS deployment {dep_id} completed."))
@@ -791,8 +806,8 @@ impl EcsHandler {
             "clusterArn": cluster_arn,
             "taskDefinition": task_definition,
             "desiredCount": desired_count.clone(),
-            "runningCount": 0,
-            "pendingCount": 0,
+            "runningCount": running_count,
+            "pendingCount": pending_count,
             "status": "ACTIVE",
             "launchType": req.params.get("launchType").and_then(|v| v.as_str()).unwrap_or("FARGATE"),
             "networkConfiguration": req.params.get("networkConfiguration").cloned().unwrap_or(json!({})),
@@ -802,8 +817,8 @@ impl EcsHandler {
                 "status": "PRIMARY",
                 "taskDefinition": task_definition,
                 "desiredCount": desired_count,
-                "runningCount": 0,
-                "pendingCount": 0,
+                "runningCount": running_count,
+                "pendingCount": pending_count,
                 "failedTasks": env_failed_tasks(),
                 "rolloutState": rollout_state,
                 "rolloutStateReason": rollout_state_reason,
@@ -2420,13 +2435,31 @@ fn now_f64() -> f64 {
     UNIX_EPOCH.elapsed().map(|d| d.as_secs_f64()).unwrap_or(0.0)
 }
 
+/// moto's env-var count parsing (fork ecs/models.py Service.__init__):
+/// `max(int(value), 0)` with a ValueError falling back to 0 — negative
+/// values are not allowed. Python's int() accepts surrounding whitespace,
+/// so trim before parsing.
+fn parse_env_count(value: Option<&str>) -> i64 {
+    value
+        .and_then(|v| v.trim().parse::<i64>().ok())
+        .map_or(0, |v| v.max(0))
+}
+
 /// `MOTO_ECS_SERVICE_FAILED_TASKS` (moto 5.2.0): failedTasks reported in the
 /// service's primary deployment; non-numeric or negative values fall back to 0.
 fn env_failed_tasks() -> i64 {
-    std::env::var("MOTO_ECS_SERVICE_FAILED_TASKS")
-        .ok()
-        .and_then(|v| v.parse::<i64>().ok())
-        .map_or(0, |v| v.max(0))
+    parse_env_count(
+        std::env::var("MOTO_ECS_SERVICE_FAILED_TASKS")
+            .ok()
+            .as_deref(),
+    )
+}
+
+/// `MOTO_ECS_SERVICE_RUNNING` (moto 5.2.0, fork ecs/models.py:515): the
+/// number of running tasks the primary deployment reports; pendingCount and
+/// the rollout state follow from it.
+fn env_running_tasks() -> i64 {
+    parse_env_count(std::env::var("MOTO_ECS_SERVICE_RUNNING").ok().as_deref())
 }
 
 fn cluster_not_found(name: &str) -> AwsResponse {
@@ -2725,6 +2758,49 @@ mod tests {
     }
 
     #[test]
+    fn create_service_defaults_desired_count_to_zero() {
+        // moto 5.2.0 create_service: desiredCount is optional and defaults
+        // to 0, so the primary deployment is already COMPLETED.
+        let h = EcsHandler::new();
+        setup_cluster_and_task_family(&h, "cls", "fam");
+        let create = h.handle(make_req(
+            "CreateService",
+            json!({"cluster": "cls", "serviceName": "s0", "taskDefinition": "fam:1"}),
+        ));
+        let created: Value = serde_json::from_str(&create.body).unwrap();
+        let svc = &created["service"];
+        assert_eq!(svc["desiredCount"], json!(0));
+        assert_eq!(svc["runningCount"], json!(0));
+        assert_eq!(svc["pendingCount"], json!(0));
+        let dep = &svc["deployments"][0];
+        assert_eq!(dep["desiredCount"], json!(0));
+        assert_eq!(dep["rolloutState"], json!("COMPLETED"));
+        assert_eq!(
+            dep["rolloutStateReason"],
+            json!(format!(
+                "ECS deployment {} completed.",
+                dep["id"].as_str().unwrap()
+            ))
+        );
+    }
+
+    #[test]
+    fn env_count_parsing_matches_moto() {
+        // moto's `max(int(value), 0)` with a ValueError caught: absent,
+        // empty and non-numeric values fall back to 0, negatives clamp.
+        assert_eq!(parse_env_count(None), 0);
+        assert_eq!(parse_env_count(Some("")), 0);
+        assert_eq!(parse_env_count(Some("0")), 0);
+        assert_eq!(parse_env_count(Some("3")), 3);
+        assert_eq!(parse_env_count(Some("+3")), 3);
+        assert_eq!(parse_env_count(Some("-5")), 0);
+        assert_eq!(parse_env_count(Some("running")), 0);
+        // Python's int(' 2 ') accepts surrounding whitespace.
+        assert_eq!(parse_env_count(Some(" 2 ")), 2);
+        assert_eq!(parse_env_count(Some("\t2\n")), 2);
+    }
+
+    #[test]
     fn describe_services_rollout_failed_tasks() {
         // MOTO_ECS_SERVICE_FAILED_TASKS unset -> failedTasks defaults to 0.
         let h = EcsHandler::new();
@@ -2842,6 +2918,48 @@ mod tests {
         assert_eq!(
             run["tasks"][0]["capacityProviderName"],
             json!("EC2_PROVIDER")
+        );
+    }
+
+    #[test]
+    fn run_task_capacity_provider_cluster_default_v2() {
+        // moto's Cluster model stores defaultCapacityProviderStrategy from
+        // CreateCluster itself (fork ecs/models.py Cluster.__init__), so the
+        // run_task fallback works without a PutClusterCapacityProviders call
+        // and DescribeClusters echoes the member.
+        let h = EcsHandler::new();
+        setup_cluster_and_task_family(&h, "cds", "fam");
+        let created = h.handle(make_req(
+            "CreateCluster",
+            json!({
+                "clusterName": "cds",
+                "capacityProviders": ["FARGATE", "FARGATE_SPOT"],
+                "defaultCapacityProviderStrategy":
+                    [{"capacityProvider": "FARGATE", "weight": 1, "base": 1}],
+            }),
+        ));
+        let created: Value = serde_json::from_str(&created.body).unwrap();
+        assert_eq!(
+            created["cluster"]["defaultCapacityProviderStrategy"][0]["capacityProvider"],
+            json!("FARGATE")
+        );
+
+        let run = h.handle(make_req(
+            "RunTask",
+            json!({
+                "cluster": "cds",
+                "taskDefinition": "fam:1",
+            }),
+        ));
+        assert_eq!(run.status, 200);
+        let run: Value = serde_json::from_str(&run.body).unwrap();
+        assert_eq!(run["tasks"][0]["capacityProviderName"], json!("FARGATE"));
+
+        let described = h.handle(make_req("DescribeClusters", json!({"clusters": ["cds"]})));
+        let described: Value = serde_json::from_str(&described.body).unwrap();
+        assert_eq!(
+            described["clusters"][0]["defaultCapacityProviderStrategy"][0]["capacityProvider"],
+            json!("FARGATE")
         );
     }
 }
