@@ -43,10 +43,21 @@ fn matches(pattern: &Map<String, Value>, event: &Map<String, Value>) -> bool {
                             == Some(false)
                     })
                 });
-                if !absent_ok {
-                    return false;
+                if absent_ok {
+                    continue;
                 }
-                continue;
+                // moto still descends into an object pattern behind an
+                // absent ancestor: `_does_event_match` walks the pattern
+                // by path prefix and only resolves leaves against the
+                // flattened event, where a missing parent reads back
+                // UNDEFINED. The whole subtree is therefore judged
+                // against an undefined item rather than failing here.
+                if let Some(sub_pattern) = pattern_value.as_object() {
+                    if pattern_matches_undefined(sub_pattern) {
+                        continue;
+                    }
+                }
+                return false;
             }
         };
 
@@ -55,6 +66,11 @@ fn matches(pattern: &Map<String, Value>, event: &Map<String, Value>) -> bool {
                 let ok = match event_value {
                     Value::Object(obj) => matches(sub_pattern, obj),
                     Value::Array(arr) => array_objects_match(sub_pattern, arr),
+                    // An explicit null ancestor behaves like an absent
+                    // one for moto: the flattened event stores
+                    // `"detail": null` as a terminal leaf and the
+                    // pattern walk beneath it resolves UNDEFINED.
+                    Value::Null => pattern_matches_undefined(sub_pattern),
                     _ => false,
                 };
                 if !ok {
@@ -74,6 +90,37 @@ fn matches(pattern: &Map<String, Value>, event: &Map<String, Value>) -> bool {
         }
     }
     true
+}
+
+/// Judge a pattern subtree against a missing or null region, where every
+/// leaf reads back moto's UNDEFINED sentinel
+/// (`_does_item_match_filters(UNDEFINED, filters)`): a filter list is
+/// satisfied there iff any member is an `{"exists": false}` filter, and
+/// no other leaf shape can see the item. Nested objects recurse the same
+/// way, `$or` needs any one sub-pattern to pass, and scalar pattern
+/// leaves never do.
+fn pattern_matches_undefined(pattern: &Map<String, Value>) -> bool {
+    pattern.iter().all(|(key, pattern_value)| {
+        if key == "$or" {
+            let Some(subs) = pattern_value.as_array() else {
+                return false;
+            };
+            subs.iter()
+                .filter_map(|sp| sp.as_object())
+                .any(pattern_matches_undefined)
+        } else {
+            match pattern_value {
+                Value::Object(sub_pattern) => pattern_matches_undefined(sub_pattern),
+                Value::Array(list) => list.iter().any(|pv| {
+                    pv.as_object()
+                        .and_then(|o| o.get("exists"))
+                        .and_then(Value::as_bool)
+                        == Some(false)
+                }),
+                _ => false,
+            }
+        }
+    })
 }
 
 /// A nested pattern against an array (moto PR #10360, event-ruler "JSON
@@ -467,6 +514,73 @@ mod tests {
         assert!(!matches_pattern(
             &pattern,
             &json!({"detail": {"state": "on"}})
+        ));
+    }
+
+    // -- absent ancestors must not kill exists:false subtrees ------------------
+    // moto walks the pattern recursively by path, as long as the pattern
+    // continues, even if the parent key is absent (event-ruler "Machines
+    // behind absent-key patterns").
+    #[test]
+    fn exists_false_under_absent_ancestor_matches() {
+        let pattern = json!({"detail": {"state": [{"exists": false}]}});
+        // The whole `detail` tree is missing (previously returned false).
+        assert!(matches_pattern(
+            &pattern,
+            &json!({"source": "app", "detail-type": "t"})
+        ));
+        // `detail: null` is stored as a terminal leaf, wherever the pattern
+        // asks below it, moto reads UNDEFINED and matches.
+        assert!(matches_pattern(&pattern, &json!({"detail": null})));
+        // Deep nesting through absent ancestors.
+        assert!(matches_pattern(
+            &json!({"detail": {"a": {"b": [{"exists": false}]}}}),
+            &json!({"source": "app"})
+        ));
+        // $or needs only one sub-pattern to be satisfiable by a missing key.
+        assert!(matches_pattern(
+            &json!({"detail": {"$or": [{"state": [{"exists": false}]}, {"other": [{"exists": true}]}]}}),
+            &json!({})
+        ));
+        // A filter list passes so long as some member is exists:false.
+        assert!(matches_pattern(
+            &json!({"detail": {"state": [{"exists": false}, "running"]}}),
+            &json!({})
+        ));
+    }
+
+    #[test]
+    fn absent_ancestor_rejects_filters_that_need_a_value() {
+        // exists:true at a leaf, under absent and null ancestors, no match.
+        let pattern = json!({"detail": {"state": [{"exists": true}]}});
+        assert!(!matches_pattern(&pattern, &json!({})));
+        assert!(!matches_pattern(&pattern, &json!({"detail": null})));
+        // Scalar and plain-value list leaves have nothing to see.
+        assert!(!matches_pattern(
+            &json!({"detail": {"state": ["running"]}}),
+            &json!({})
+        ));
+        assert!(!matches_pattern(
+            &json!({"detail": {"state": ["running", "stopped"]}}),
+            &json!({"detail": null})
+        ));
+        // A sibling exists:true kills the subtree even when another leaf
+        // is exists:false.
+        let mixed = json!({
+            "detail": {
+                "state": [{"exists": false}],
+                "code": [{"exists": true}]
+            }
+        });
+        assert!(!matches_pattern(&mixed, &json!({})));
+        // A present leaf value still means the subtree does not match.
+        assert!(!matches_pattern(
+            &json!({"detail": {"state": [{"exists": false}]}}),
+            &json!({"detail": {"state": "running"}})
+        ));
+        assert!(!matches_pattern(
+            &json!({"detail": {"a": {"b": [{"exists": false}]}}}),
+            &json!({"detail": {"a": {"b": "x"}}})
         ));
     }
 
