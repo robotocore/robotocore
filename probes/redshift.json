@@ -1,11 +1,11 @@
 {
   "service": "redshift",
-  "generated_at": "2026-10-25T19:44:28.872837+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T03:43:22.601249+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
     "working": 127,
-    "needs_params": 2,
-    "not_implemented": 11,
+    "needs_params": 0,
+    "not_implemented": 13,
     "500_error": 0,
     "timeout": 0
   },
@@ -257,8 +257,8 @@
     },
     {
       "operation": "DeregisterNamespace",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "DescribeAccountAttributes",
@@ -652,8 +652,8 @@
     },
     {
       "operation": "RegisterNamespace",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "RejectDataShare",

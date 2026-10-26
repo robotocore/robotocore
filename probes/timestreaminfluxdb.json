@@ -1,29 +1,29 @@
 {
   "service": "timestreaminfluxdb",
-  "generated_at": "2026-10-22T04:07:23.137572+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T03:43:28.932775+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 10,
-    "needs_params": 5,
-    "not_implemented": 4,
-    "500_error": 0,
+    "working": 12,
+    "needs_params": 0,
+    "not_implemented": 6,
+    "500_error": 1,
     "timeout": 0
   },
   "operations": [
     {
       "operation": "CreateDbCluster",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateDbInstance",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateDbParameterGroup",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "500_error",
+      "message": "unparsable response (Invalid service response: Parameters must have one and only )"
     },
     {
       "operation": "DeleteDbCluster",
@@ -97,13 +97,13 @@
     },
     {
       "operation": "UpdateDbCluster",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "UpdateDbInstance",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     }
   ]
 }

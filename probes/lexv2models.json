@@ -1,10 +1,10 @@
 {
   "service": "lexv2models",
-  "generated_at": "2026-10-25T19:43:53.384467+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T03:43:15.215865+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 103,
-    "needs_params": 4,
+    "working": 107,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -107,8 +107,8 @@
     },
     {
       "operation": "DeleteBotAnalyzerRecommendation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteBotLocale",
@@ -187,8 +187,8 @@
     },
     {
       "operation": "DescribeBotAnalyzerRecommendation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeBotLocale",
@@ -457,8 +457,8 @@
     },
     {
       "operation": "StartBotResourceGeneration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "StartImport",
@@ -477,8 +477,8 @@
     },
     {
       "operation": "StopBotAnalyzer",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "StopBotRecommendation",

@@ -1,10 +1,10 @@
 {
   "service": "opensearchserverless",
-  "generated_at": "2026-10-25T19:44:08.814399+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T03:43:20.183551+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 42,
-    "needs_params": 4,
+    "working": 46,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -197,8 +197,8 @@
     },
     {
       "operation": "UpdateAccessPolicy",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateAccountSettings",
@@ -222,18 +222,18 @@
     },
     {
       "operation": "UpdateLifecyclePolicy",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateSecurityConfig",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateSecurityPolicy",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateVpcEndpoint",

@@ -1,10 +1,10 @@
 {
   "service": "identitystore",
-  "generated_at": "2026-10-25T19:43:36.881412+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T03:43:04.803038+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 17,
-    "needs_params": 2,
+    "working": 19,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -57,8 +57,8 @@
     },
     {
       "operation": "GetGroupId",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetGroupMembershipId",
@@ -67,8 +67,8 @@
     },
     {
       "operation": "GetUserId",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "IsMemberInGroups",

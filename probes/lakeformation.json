@@ -1,13 +1,13 @@
 {
   "service": "lakeformation",
-  "generated_at": "2026-10-25T19:43:49.858489+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T03:43:13.247176+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 55,
-    "needs_params": 4,
+    "working": 60,
+    "needs_params": 0,
     "not_implemented": 1,
     "500_error": 0,
-    "timeout": 1
+    "timeout": 0
   },
   "operations": [
     {
@@ -152,13 +152,13 @@
     },
     {
       "operation": "GetQueryState",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetQueryStatistics",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetResourceLFTags",
@@ -187,13 +187,13 @@
     },
     {
       "operation": "GetWorkUnitResults",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetWorkUnits",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GrantPermissions",
@@ -272,8 +272,8 @@
     },
     {
       "operation": "StartQueryPlanning",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://query-localho)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartTransaction",

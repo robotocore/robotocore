@@ -1,10 +1,10 @@
 {
   "service": "acmpca",
-  "generated_at": "2026-10-25T19:41:45.874239+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T03:42:44.049601+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 18,
-    "needs_params": 1,
+    "working": 19,
+    "needs_params": 0,
     "not_implemented": 4,
     "500_error": 0,
     "timeout": 0
@@ -47,8 +47,8 @@
     },
     {
       "operation": "DescribeCertificateAuthorityAuditReport",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetCertificate",

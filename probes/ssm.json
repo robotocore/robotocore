@@ -1,10 +1,10 @@
 {
   "service": "ssm",
-  "generated_at": "2026-10-25T19:45:07.921971+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T03:43:27.733946+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 119,
-    "needs_params": 27,
+    "working": 146,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -22,13 +22,13 @@
     },
     {
       "operation": "CancelCommand",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (InvalidCommandId: Invalid command id.)"
     },
     {
       "operation": "CancelMaintenanceWindowExecution",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
     },
     {
       "operation": "CreateActivation",
@@ -97,8 +97,8 @@
     },
     {
       "operation": "DeleteMaintenanceWindow",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window probe-window-id00000 does not exist)"
     },
     {
       "operation": "DeleteOpsItem",
@@ -147,13 +147,13 @@
     },
     {
       "operation": "DeregisterTargetFromMaintenanceWindow",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window probe-window-id00000 does not exist)"
     },
     {
       "operation": "DeregisterTaskFromMaintenanceWindow",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window probe-window-id00000 does not exist)"
     },
     {
       "operation": "DescribeActivations",
@@ -182,8 +182,8 @@
     },
     {
       "operation": "DescribeAutomationStepExecutions",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
     },
     {
       "operation": "DescribeAvailablePatches",
@@ -247,18 +247,18 @@
     },
     {
       "operation": "DescribeMaintenanceWindowExecutionTaskInvocations",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
     },
     {
       "operation": "DescribeMaintenanceWindowExecutionTasks",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
     },
     {
       "operation": "DescribeMaintenanceWindowExecutions",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeMaintenanceWindowSchedule",
@@ -267,13 +267,13 @@
     },
     {
       "operation": "DescribeMaintenanceWindowTargets",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window probe-window-id00000 does not exist)"
     },
     {
       "operation": "DescribeMaintenanceWindowTasks",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window probe-window-id00000 does not exist)"
     },
     {
       "operation": "DescribeMaintenanceWindows",
@@ -332,8 +332,8 @@
     },
     {
       "operation": "GetAutomationExecution",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: probe-automation-execution-id0000000 does not exist)"
     },
     {
       "operation": "GetCalendarState",
@@ -342,8 +342,8 @@
     },
     {
       "operation": "GetCommandInvocation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (InvalidCommandId: Invalid command id.)"
     },
     {
       "operation": "GetConnectionStatus",
@@ -357,8 +357,8 @@
     },
     {
       "operation": "GetDeployablePatchSnapshotForInstance",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
     },
     {
       "operation": "GetDocument",
@@ -367,8 +367,8 @@
     },
     {
       "operation": "GetExecutionPreview",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
     },
     {
       "operation": "GetInventory",
@@ -382,28 +382,28 @@
     },
     {
       "operation": "GetMaintenanceWindow",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window probe-window-id00000 does not exist)"
     },
     {
       "operation": "GetMaintenanceWindowExecution",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
     },
     {
       "operation": "GetMaintenanceWindowExecutionTask",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
     },
     {
       "operation": "GetMaintenanceWindowExecutionTaskInvocation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
     },
     {
       "operation": "GetMaintenanceWindowTask",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
     },
     {
       "operation": "GetOpsItem",
@@ -592,13 +592,13 @@
     },
     {
       "operation": "RegisterTargetWithMaintenanceWindow",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window probe-window-id00000 does not exist)"
     },
     {
       "operation": "RegisterTaskWithMaintenanceWindow",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window probe-window-id00000 does not exist)"
     },
     {
       "operation": "RemoveTagsFromResource",
@@ -617,8 +617,8 @@
     },
     {
       "operation": "SendAutomationSignal",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
     },
     {
       "operation": "SendCommand",
@@ -657,8 +657,8 @@
     },
     {
       "operation": "StopAutomationExecution",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: probe-automation-execution-id0000000 does not exist)"
     },
     {
       "operation": "TerminateSession",
@@ -697,18 +697,18 @@
     },
     {
       "operation": "UpdateMaintenanceWindow",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (InvalidParameterException)"
     },
     {
       "operation": "UpdateMaintenanceWindowTarget",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window probe-window-id00000 does not exist)"
     },
     {
       "operation": "UpdateMaintenanceWindowTask",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (DoesNotExistException: Maintenance window probe-window-id00000 does not exist)"
     },
     {
       "operation": "UpdateManagedInstanceRole",

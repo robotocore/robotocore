@@ -1,12 +1,12 @@
 {
   "service": "events",
-  "generated_at": "2026-10-26T04:03:38.274035+00:00",
-  "endpoint": "http://localhost:4786",
+  "generated_at": "2026-10-26T04:28:30.846545+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 55,
-    "needs_params": 1,
+    "working": 57,
+    "needs_params": 0,
     "not_implemented": 0,
-    "500_error": 1,
+    "500_error": 0,
     "timeout": 0
   },
   "operations": [
@@ -37,8 +37,8 @@
     },
     {
       "operation": "CreateEndpoint",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateEventBus",
@@ -217,8 +217,8 @@
     },
     {
       "operation": "PutEvents",
-      "status": "500_error",
-      "message": "exception: MissingDependencyException: Missing Dependency: This operation requires an additional de"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutPartnerEvents",

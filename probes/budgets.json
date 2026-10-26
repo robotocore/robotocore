@@ -1,10 +1,10 @@
 {
   "service": "budgets",
-  "generated_at": "2026-10-25T19:42:00.293257+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T03:42:47.655959+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 21,
-    "needs_params": 5,
+    "working": 26,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -37,8 +37,8 @@
     },
     {
       "operation": "DeleteBudgetAction",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DeleteNotification",
@@ -57,13 +57,13 @@
     },
     {
       "operation": "DescribeBudgetAction",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DescribeBudgetActionHistories",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeBudgetActionsForAccount",
@@ -102,8 +102,8 @@
     },
     {
       "operation": "ExecuteBudgetAction",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "ListTagsForResource",
@@ -127,8 +127,8 @@
     },
     {
       "operation": "UpdateBudgetAction",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateNotification",
