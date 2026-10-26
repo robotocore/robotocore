@@ -602,10 +602,26 @@ impl DefaultSqsHandler {
                 .and_then(|v| v.as_str())
                 .unwrap_or_default()
                 .to_string();
-            let visibility = entry
-                .get("VisibilityTimeout")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(30);
+            // moto's change_message_visibility_batch backend wraps the
+            // per-entry `int(entry["VisibilityTimeout"])` parse and the
+            // MAXIMUM_VISIBILITY_TIMEOUT assert in one bare except:
+            // anything above the cap answers a per-entry Failed row
+            // (live-verified shape: SenderFault true / Code
+            // InvalidParameterValue / Message "Visibility timeout
+            // invalid"), and a u32-overflowing value takes the same row.
+            let visibility = Self::visibility_timeout_of(entry.get("VisibilityTimeout"));
+            let visibility = match visibility {
+                Some(v) if v <= Self::MAX_VISIBILITY_TIMEOUT => v,
+                _ => {
+                    failed.push(json!({
+                        "Id": id,
+                        "SenderFault": true,
+                        "Code": "InvalidParameterValue",
+                        "Message": "Visibility timeout invalid",
+                    }));
+                    continue;
+                }
+            };
             let mut q = queue_arc.write();
             if q.change_message_visibility(&receipt_handle, visibility as u32) {
                 successful.push(json!({ "Id": id }));
@@ -1244,17 +1260,26 @@ impl DefaultSqsHandler {
                 SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
             })?;
 
+        // moto validates the visibility timeout in the RESPONSE layer
+        // (`_get_validated_visibility_timeout` → MaxVisibilityTimeout)
+        // before the backend resolves either the queue or the receipt
+        // handle, so an over-cap value beats even a nonexistent queue
+        // (live-verified) and answers before the missing-ReceiptHandle
+        // crash below.
+        let timeout = Self::visibility_timeout_of(params.get("VisibilityTimeout")).unwrap_or(30);
+        if timeout > Self::MAX_VISIBILITY_TIMEOUT {
+            return Err(SqsError::InvalidParameterValue(
+                Self::MAX_VISIBILITY_TIMEOUT_MESSAGE.to_string(),
+            ));
+        }
+        let timeout = timeout as u32; // <= 43200 fits
+
         // moto passes the None ReceiptHandle into method dispatch which
         // escapes as a werkzeug 500 crash (live-verified).
         let receipt_handle = params
             .get("ReceiptHandle")
             .and_then(|v| v.as_str())
             .ok_or(SqsError::MotoCrash)?;
-
-        let timeout = params
-            .get("VisibilityTimeout")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(30) as u32;
 
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
         let store = self.get_store(account, region);
@@ -1323,6 +1348,37 @@ impl DefaultSqsHandler {
             headers: Self::json_headers(),
             body,
         })
+    }
+
+    /// `MAXIMUM_VISIBILITY_TIMEOUT` (moto/sqs/constants.py): the cap the
+    /// response layer applies to every ChangeMessageVisibility input.
+    /// A value above it answers InvalidParameterValue, not the queue or
+    /// handle checks (live-verified: a nonexistent queue with an
+    /// over-cap timeout still answers the cap error).
+    const MAX_VISIBILITY_TIMEOUT: u64 = 43200;
+
+    /// moto exceptions.MaxVisibilityTimeout.message (live-verified).
+    const MAX_VISIBILITY_TIMEOUT_MESSAGE: &str =
+        "Invalid request, maximum visibility timeout is 43200";
+
+    /// VisibilityTimeout as it reaches the API: the JSON protocol passes
+    /// numbers natively, while the gateway's query-protocol parser hands
+    /// scalars over as strings — moto's smithy-lite parser coerces the
+    /// form value with `int()` (`moto/core/parse.py` `_parse_integer`), so
+    /// a numeric string is honored here too. A number beyond u64 keeps
+    /// its magnitude through the saturating f64 cast; an all-digit
+    /// string that overflows u64 does the same (moto's `int(value)` has
+    /// no limit). Unparseable junk counts as the parameter being absent,
+    /// like every non-numeric `Value` shape.
+    fn visibility_timeout_of(param: Option<&Value>) -> Option<u64> {
+        match param? {
+            Value::Number(n) => n.as_u64().or_else(|| n.as_f64().map(|f| f as u64)),
+            Value::String(s) => s
+                .parse::<u64>()
+                .ok()
+                .or_else(|| s.chars().all(|c| c.is_ascii_digit()).then_some(u64::MAX)),
+            _ => None,
+        }
     }
 
     /// Validate a batch operation's `Entries` list, raising moto's batch

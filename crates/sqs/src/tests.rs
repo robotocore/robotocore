@@ -2097,6 +2097,129 @@ fn batch_validate_delete_message_batch_duplicate_ids_distinct_handles() {
     assert_eq!(counts.1, 2, "no message may be deleted by a rejected batch");
 }
 
+/// The response layer caps ChangeMessageVisibility at moto's
+/// MAXIMUM_VISIBILITY_TIMEOUT (43200) before the queue or receipt handle
+/// are resolved: an over-cap value answers InvalidParameterValue with
+/// moto's exact wording, and still does on a nonexistent queue (both
+/// live-verified against the pinned fork). A u32-overflowing value takes
+/// the same path, whether it arrives as a JSON number or a numeric
+/// string the way the gateway's query-protocol parser produces them.
+#[test]
+fn visibility_cap_change_message_visibility_over_limit() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "vis-cap-single");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "capped"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let receipt_handle: String = serde_json::from_str::<Value>(&recv.body).unwrap()["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .unwrap()
+        .into();
+
+    for (value, label) in [
+        (json!(43201u64), "over-cap"),
+        (json!(4294967300u64), "u32-overflow number"),
+        (json!("4294967300"), "u32-overflow numeric string"),
+    ] {
+        let resp = handler.handle(make_request(
+            "ChangeMessageVisibility",
+            json!({
+                "QueueUrl": &queue_url,
+                "ReceiptHandle": receipt_handle,
+                "VisibilityTimeout": value,
+            }),
+        ));
+        assert_eq!(resp.status, 400, "cap breach {label} must answer 400");
+        assert!(resp.body.contains("InvalidParameterValue"));
+        assert!(
+            resp.body
+                .contains("Invalid request, maximum visibility timeout is 43200"),
+            "over-cap ChangeMessageVisibility must carry moto's wording, got {}",
+            resp.body
+        );
+    }
+
+    // The rejected change left the message in flight untouched.
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(
+        counts.1, 1,
+        "a rejected cap breach must not change flight state"
+    );
+
+    // moto validates the timeout in the response layer, before the
+    // backend queue lookup: the cap error beats a nonexistent queue too.
+    let ghost = format!("{}x", queue_url);
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &ghost,
+            "ReceiptHandle": "anything",
+            "VisibilityTimeout": 43201,
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp.body.contains("InvalidParameterValue"));
+    assert!(resp
+        .body
+        .contains("Invalid request, maximum visibility timeout is 43200"));
+    assert!(
+        !resp
+            .body
+            .contains("AWS.SimpleQueueService.NonExistentQueue"),
+        "the cap check must precede the queue lookup"
+    );
+}
+
+/// ChangeMessageVisibilityBatch turns an over-cap (or u32-overflowing)
+/// per-entry timeout into a Failed row with moto's live-verified shape
+/// — SenderFault true, Code InvalidParameterValue, Message "Visibility
+/// timeout invalid" — while valid entries still apply.
+#[test]
+fn visibility_cap_change_message_visibility_batch_over_limit_rows() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "vis-cap-batch");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "ok", "ReceiptHandle": handles[0]["ReceiptHandle"], "VisibilityTimeout": 0},
+                {"Id": "cap", "ReceiptHandle": handles[1]["ReceiptHandle"], "VisibilityTimeout": 43201},
+                {"Id": "huge", "ReceiptHandle": handles[0]["ReceiptHandle"], "VisibilityTimeout": 4294967300u64},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 200);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    let successful = data["Successful"].as_array().expect("Successful array");
+    assert_eq!(successful.len(), 1);
+    assert_eq!(successful[0]["Id"], "ok");
+
+    let failed = data["Failed"].as_array().expect("Failed array");
+    assert_eq!(failed.len(), 2);
+    assert_eq!(failed[0]["Id"], "cap");
+    assert_eq!(failed[1]["Id"], "huge");
+    for row in failed {
+        assert_eq!(row["SenderFault"], true);
+        assert_eq!(row["Code"], "InvalidParameterValue");
+        assert_eq!(row["Message"], "Visibility timeout invalid");
+    }
+
+    // The "ok" entry returned its message to the visible pool; entries
+    // rejected for the cap unchanged (still in flight).
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.0, 1, "the zeroed entry is visible again");
+    assert_eq!(counts.1, 1, "the rejected entries stay in flight");
+}
+
 /// The rewired happy path: valid entries still delete, through the same
 /// helper that rejects the invalid ones.
 #[test]
