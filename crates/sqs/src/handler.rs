@@ -571,19 +571,20 @@ impl DefaultSqsHandler {
             .and_then(|v| v.as_str())
             .unwrap_or_default()
             .to_string();
+
+        // moto validates the batch Entries in the response layer before the
+        // backend resolves the queue (moto responses.py answers
+        // EmptyBatchRequest/batch-Id errors without touching the queue), so
+        // a malformed batch beats QueueDoesNotExist.
+        let entries =
+            Self::validate_batch_entries(params, "ChangeMessageVisibilityBatchRequestEntry")?;
+
         let queue_name = self.extract_queue_name_from_url(&queue_url)?;
         let store = self.get_store(account, region);
         let queue_opt = store.get_queue(&queue_name);
         let queue_arc = queue_opt.ok_or_else(|| {
             SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
         })?;
-
-        // moto responses.py (PR getmoto/moto#10346) adds the EmptyBatchRequest
-        // check to ChangeMessageVisibilityBatch ("ChangeMessageVisibility"
-        // action naming) and runs moto's shared batch-Id validation
-        // before touching any entry.
-        let entries =
-            Self::validate_batch_entries(params, "ChangeMessageVisibilityBatchRequestEntry")?;
 
         let mut successful: Vec<Value> = Vec::new();
         let mut failed: Vec<Value> = Vec::new();
@@ -642,17 +643,19 @@ impl DefaultSqsHandler {
             .and_then(|v| v.as_str())
             .unwrap_or_default()
             .to_string();
+
+        // moto answers an empty Entries list with EmptyBatchRequest before
+        // touching the queue (live-verified wording), then the shared helper
+        // runs moto's batch-Id validation (PR getmoto/moto#10346) — resolve
+        // the queue only after those batch errors could fire.
+        let entries = Self::validate_batch_entries(params, "DeleteMessageBatchRequestEntry")?;
+
         let queue_name = self.extract_queue_name_from_url(&queue_url)?;
         let store = self.get_store(account, region);
         let queue_opt = store.get_queue(&queue_name);
         let queue_arc = queue_opt.ok_or_else(|| {
             SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
         })?;
-
-        // moto answers an empty Entries list with EmptyBatchRequest before
-        // touching the queue (live-verified wording); the shared helper
-        // then runs moto's batch-Id validation (PR getmoto/moto#10346).
-        let entries = Self::validate_batch_entries(params, "DeleteMessageBatchRequestEntry")?;
 
         let mut successful: Vec<Value> = Vec::new();
         let mut failed: Vec<Value> = Vec::new();
