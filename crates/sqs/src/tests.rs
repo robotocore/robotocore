@@ -2454,6 +2454,206 @@ fn visibility_batch_invalid_handle_row_shape() {
     assert_eq!(failed[0]["Message"], "The input receipt handle is invalid.");
 }
 
+/// moto accepts negative VisibilityTimeouts (moto 5.2.4 live-verified:
+/// top-level ChangeMessageVisibility with VisibilityTimeout=-5 answers 200
+/// and the message is re-receivable immediately — Message.change_visibility
+/// stores visible_at in the past). The string and number shapes take the
+/// same path through the query/JSON protocols.
+#[test]
+fn negative_visibility_top_level_immediately_visible() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "neg-vis-top");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "0"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1, "VisibilityTimeout": 30}),
+    ));
+    let data: Value = serde_json::from_str(&recv.body).expect("Invalid JSON");
+    // Each re-receive mints a fresh handle; refresh before every CMV call.
+    let mut receipt_handle: String = data["Messages"][0]["ReceiptHandle"]
+        .as_str()
+        .unwrap()
+        .into();
+
+    for (shape, value) in [("number", json!(-5)), ("string", json!("-5"))] {
+        let resp = handler.handle(make_request(
+            "ChangeMessageVisibility",
+            json!({
+                "QueueUrl": &queue_url,
+                "ReceiptHandle": &receipt_handle,
+                "VisibilityTimeout": value,
+            }),
+        ));
+        assert_eq!(resp.status, 200, "{shape} negative must answer 200");
+
+        // moto answers a negative like VisibilityTimeout=0 on
+        // observability: no invisible window at all, the same message is
+        // re-receivable on the next poll (live-verified I2-C/RAW-2 flow).
+        let again = handler.handle(make_request(
+            "ReceiveMessage",
+            json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1, "VisibilityTimeout": 30}),
+        ));
+        let data: Value = serde_json::from_str(&again.body).expect("Invalid JSON");
+        let bodies: Vec<&str> = data["Messages"]
+            .as_array()
+            .map(|m| m.iter().filter_map(|x| x["Body"].as_str()).collect())
+            .unwrap_or_default();
+        assert_eq!(bodies, vec!["0"], "{shape} negative must make the message visible immediately");
+        receipt_handle = data["Messages"][0]["ReceiptHandle"].as_str().unwrap().into();
+    }
+
+    // A large negative behaves the same.
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": &receipt_handle,
+            "VisibilityTimeout": -100,
+        }),
+    ));
+    assert_eq!(resp.status, 200);
+    let again = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1, "VisibilityTimeout": 30}),
+    ));
+    let data: Value = serde_json::from_str(&again.body).expect("Invalid JSON");
+    assert_eq!(
+        data["Messages"].as_array().map(|m| m.len()),
+        Some(1),
+        "every negative timeout means immediate visibility"
+    );
+}
+
+/// Negative visibility through a batch row: moto answers a Successful row
+/// (int("-5") passes the <= MAXIMUM_VISIBILITY_TIMEOUT assert,
+/// models.py:1108-1109) and the message becomes visible immediately
+/// (live-verified).
+#[test]
+fn negative_visibility_batch_row_applies_and_unhides() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "neg-vis-batch");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+    // Each re-receive mints a fresh handle; refresh before every batch row.
+    let mut handle: String = handles[0]["ReceiptHandle"].as_str().unwrap().into();
+
+    for (shape, timeout) in [("number", json!(-5)), ("string", json!("-5"))] {
+        let resp = handler.handle(make_request(
+            "ChangeMessageVisibilityBatch",
+            json!({
+                "QueueUrl": &queue_url,
+                "Entries": [{"Id": "neg", "ReceiptHandle": &handle, "VisibilityTimeout": timeout}],
+            }),
+        ));
+        assert_eq!(resp.status, 200);
+        let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+        let successful = data["Successful"].as_array().expect("Successful array");
+        assert_eq!(successful.len(), 1, "{shape} negative row must succeed");
+        assert_eq!(successful[0]["Id"], "neg");
+        let failed = data["Failed"].as_array().expect("Failed array");
+        assert_eq!(failed.len(), 0, "{shape} negative row must succeed");
+
+        // The message is visible again immediately; the second queued
+        // message (hidden for the default 30s) is not.
+        let again = handler.handle(make_request(
+            "ReceiveMessage",
+            json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 2}),
+        ));
+        let data: Value = serde_json::from_str(&again.body).expect("Invalid JSON");
+        let bodies: Vec<&str> = data["Messages"]
+            .as_array()
+            .map(|m| m.iter().filter_map(|x| x["Body"].as_str()).collect())
+            .unwrap_or_default();
+        assert_eq!(
+            bodies,
+            vec!["0"],
+            "{shape} negative row must unhide message 0 only"
+        );
+        handle = data["Messages"][0]["ReceiptHandle"].as_str().unwrap().into();
+    }
+}
+
+/// A negative timeout still runs moto's handle validation: top-level
+/// answers 400 ReceiptHandleIsInvalid on an unknown handle, a batch row
+/// fails with SenderFault and moto's row message (the twin always resolves
+/// the queue before the handle check, per the ITEM-1 restructure).
+#[test]
+fn negative_visibility_invalid_handle_still_errors() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "neg-vis-bogus");
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": "no-such-handle",
+            "VisibilityTimeout": -5,
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp.body.contains("ReceiptHandleIsInvalid"));
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [{"Id": "neg", "ReceiptHandle": "no-such-handle", "VisibilityTimeout": -5}],
+        }),
+    ));
+    assert_eq!(resp.status, 200);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    let failed = data["Failed"].as_array().expect("Failed array");
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0]["SenderFault"], true);
+    assert_eq!(failed[0]["Code"], "ReceiptHandleIsInvalid");
+    assert_eq!(failed[0]["Message"], "The input receipt handle is invalid.");
+}
+
+/// moto's int(value) has no magnitude limit: a negative value beyond every
+/// integer's range behaves like every other negative — accepted, immediate
+/// visibility (live-verified via the bare-except flow; the i64::MIN
+/// saturation lands in the clamp-to-0 arm).
+#[test]
+fn negative_visibility_overflow_string_immediately_visible() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "neg-vis-overflow");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "overflow-huge"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1, "VisibilityTimeout": 30}),
+    ));
+    let receipt_handle: String = serde_json::from_str::<Value>(&recv.body).unwrap()["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .unwrap()
+        .into();
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": &receipt_handle,
+            "VisibilityTimeout": "-99999999999999999999",
+        }),
+    ));
+    assert_eq!(resp.status, 200);
+    let again = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1, "VisibilityTimeout": 30}),
+    ));
+    let data: Value = serde_json::from_str(&again.body).expect("Invalid JSON");
+    assert_eq!(
+        data["Messages"].as_array().map(|m| m.len()),
+        Some(1),
+        "negative overflow must mean immediate visibility"
+    );
+}
+
 /// The rewired happy path: valid entries still delete, through the same
 /// helper that rejects the invalid ones.
 #[test]

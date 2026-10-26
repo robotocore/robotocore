@@ -605,9 +605,12 @@ impl DefaultSqsHandler {
             // (live-verified shape: SenderFault true / Code
             // InvalidParameterValue / Message "Visibility timeout
             // invalid"), and a u64-overflowing value takes the same row.
+            // Negatives parse and PASS the assert (moto 5.2.4, live
+            // verified: a "-5" row succeeds on a valid handle and the
+            // message becomes visible immediately).
             let visibility = Self::visibility_timeout_of(entry.get("VisibilityTimeout"));
             let visibility = match visibility {
-                Some(v) if v <= Self::MAX_VISIBILITY_TIMEOUT => v,
+                Some(v) if v <= Self::MAX_VISIBILITY_TIMEOUT as i64 => v,
                 _ => {
                     failed.push(json!({
                         "Id": id,
@@ -637,7 +640,11 @@ impl DefaultSqsHandler {
             })?;
 
             let mut q = queue_arc.write();
-            if q.change_message_visibility(&receipt_handle, visibility as u32) {
+            // moto's Message.change_visibility stores visible_at in the
+            // past for negative timeouts and the message becomes visible
+            // immediately (live-verified); the store cannot represent a
+            // past point, so negatives clamp to 0 — the same outcome.
+            if q.change_message_visibility(&receipt_handle, visibility.max(0) as u32) {
                 successful.push(json!({ "Id": id }));
             } else {
                 // moto rows per-entry ReceiptHandleIsInvalid with
@@ -1284,14 +1291,21 @@ impl DefaultSqsHandler {
         // before the backend resolves either the queue or the receipt
         // handle, so an over-cap value beats even a nonexistent queue
         // (live-verified) and answers before the missing-ReceiptHandle
-        // crash below.
+        // crash below. Negative values pass the response-layer cap in moto
+        // too; they are clamped below, at the apply step.
         let timeout = Self::visibility_timeout_of(params.get("VisibilityTimeout")).unwrap_or(30);
-        if timeout > Self::MAX_VISIBILITY_TIMEOUT {
+        if timeout > Self::MAX_VISIBILITY_TIMEOUT as i64 {
             return Err(SqsError::InvalidParameterValue(
                 Self::MAX_VISIBILITY_TIMEOUT_MESSAGE.to_string(),
             ));
         }
-        let timeout = timeout as u32; // <= 43200 fits
+        // moto accepts negative timeouts (int("-5"); live-verified
+        // top-level: a ChangeMessageVisibility with VisibilityTimeout=-5
+        // answers 200 and the message is re-receivable immediately, moto's
+        // Message.change_visibility stores visible_at in the past). The
+        // store cannot represent a past visibility point, so negatives
+        // clamp to 0 — the same immediately-visible outcome.
+        let timeout = timeout.max(0) as u32; // <= 43200 fits
 
         // moto passes the None ReceiptHandle into method dispatch which
         // escapes as a werkzeug 500 crash (live-verified).
@@ -1392,18 +1406,37 @@ impl DefaultSqsHandler {
     /// numbers natively, while the gateway's query-protocol parser hands
     /// scalars over as strings — moto's smithy-lite parser coerces the
     /// form value with `int()` (`moto/core/parse.py` `_parse_integer`), so
-    /// a numeric string is honored here too. A number beyond u64 keeps
-    /// its magnitude through the saturating f64 cast; an all-digit
-    /// string that overflows u64 does the same (moto's `int(value)` has
-    /// no limit). Unparseable junk counts as the parameter being absent,
-    /// like every non-numeric `Value` shape.
-    fn visibility_timeout_of(param: Option<&Value>) -> Option<u64> {
+    /// a numeric string is honored here too, negatives included
+    /// (`int("-5")` = -5; live-verified: a negative ChangeMessageVisibility
+    /// — top-level and per-batch-row — applies and the message becomes
+    /// visible immediately, moto's `Message.change_visibility` stores
+    /// `visible_at` in the past). The u64-typed store cannot represent a
+    /// past visibility point, so call sites clamp negatives to 0, which
+    /// yields the same immediately-visible outcome. A magnitude beyond i64
+    /// saturates through the cast or the digit-string rule — a positive
+    /// overflow stays cap-breaching, a negative overflow behaves like
+    /// every negative (moto's `int(value)` has no limit). Unparseable junk
+    /// counts as the parameter being absent, like every non-numeric
+    /// `Value` shape.
+    fn visibility_timeout_of(param: Option<&Value>) -> Option<i64> {
         match param? {
-            Value::Number(n) => n.as_u64().or_else(|| n.as_f64().map(|f| f as u64)),
-            Value::String(s) => s
-                .parse::<u64>()
-                .ok()
-                .or_else(|| s.chars().all(|c| c.is_ascii_digit()).then_some(u64::MAX)),
+            Value::Number(n) => n.as_i64().or_else(|| n.as_f64().map(|f| f as i64)),
+            Value::String(s) => {
+                if let Ok(v) = s.parse::<i64>() {
+                    Some(v)
+                } else if s.len() > 1 && s.starts_with('-') && s[1..].chars().all(|c| c.is_ascii_digit())
+                {
+                    // "-<huge>": moto's unbounded int() is negative; the
+                    // saturating i64::MIN lands in the clamp-to-immediate
+                    // arm like every negative.
+                    Some(i64::MIN)
+                } else if s.chars().all(|c| c.is_ascii_digit()) {
+                    // "<huge>": positive overflow, still cap-breaching.
+                    Some(i64::MAX)
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
     }
