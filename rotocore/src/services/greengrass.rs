@@ -662,7 +662,10 @@ fn op_group_versions(
             .and_then(|vs| vs.get(vid))
         {
             Some(v) => ok_json(&group_version_json_detail(v)),
-            None => gg_error("IdNotFoundException", "That version does not exist."),
+            None => gg_error(
+                "VersionNotFoundException",
+                &format!("Version {vid} of Group Definition {group_id} does not exist."),
+            ),
         },
         _ => not_implemented(),
     }
@@ -772,7 +775,13 @@ fn op_group_role(
         }
         "GET" => match state.group_roles.get(group_id).cloned() {
             Some(role_arn) => ok_json(&json!({ "AssociatedAt": iso_ts(), "RoleArn": role_arn })),
-            None => gg_error("IdNotFoundException", "No role was found for the group."),
+            // moto's missing-role row answers literal code "404" with the
+            // IAM-attachment ask (moto/greengrass/models.py
+            // get_associated_role) — live-verified.
+            None => gg_error(
+                "404",
+                "You need to attach an IAM role to this deployment group.",
+            ),
         },
         "DELETE" => {
             state.group_roles.remove(group_id);
