@@ -388,9 +388,12 @@ mod tests {
 
     #[test]
     fn database_lifecycle() {
+        // Per-test account: both tests in this module share the process-global
+        // store and run concurrently, so ListDatabases counts must not see a
+        // neighbor's databases (AGENTS.md per-test isolation).
         let slot = state();
         let mut st = slot.write();
-        let b = st.entry((123456789012, "us-east-1".into())).or_default();
+        let b = st.entry((900000000001, "us-east-1".into())).or_default();
 
         let created = handle(
             &req("CreateDatabase"),
@@ -423,7 +426,7 @@ mod tests {
     fn table_roundtrip_and_endpoints() {
         let slot = state();
         let mut st = slot.write();
-        let b = st.entry((123456789012, "us-east-1".into())).or_default();
+        let b = st.entry((900000000002, "us-east-1".into())).or_default();
         handle(&req("CreateDatabase"), b, &json!({"DatabaseName": "db"}));
         let t = handle(
             &req("CreateTable"),
