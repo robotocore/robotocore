@@ -4576,16 +4576,23 @@ mod tests {
 
     #[test]
     fn cloudtrail_emit_fires_on_register_and_deregister_targets() {
-        // Registry claim contract (rotocore::cloudtrail_emit::reset_registry):
-        // reset, install a spy, emit through the real ops, restore the
-        // unbound default. The state scope uses a dedicated account nobody
-        // else touches so parallel tests stay independent.
+        // Registry claim contract (rotocore::cloudtrail_emit::test_claim +
+        // reset_registry): hold the claim guard for the whole
+        // reset/spy/restore window, restore the unbound default at the end.
+        // The state scope uses a dedicated account nobody else touches so
+        // parallel tests stay independent.
+        let _claim = crate::cloudtrail_emit::test_claim();
         crate::cloudtrail_emit::reset_registry();
         let seen: std::sync::Arc<parking_lot::Mutex<Vec<Value>>> = Default::default();
         {
             let sink = seen.clone();
             crate::cloudtrail_emit::register_emitter(std::sync::Arc::new(
                 move |account, region, source, event, request| {
+                    // Only this test's scope: other tests drive the same ops
+                    // concurrently against their own accounts.
+                    if account != 447089063401 {
+                        return;
+                    }
                     sink.lock().push(json!({
                         "account": account,
                         "region": region,
@@ -4654,6 +4661,9 @@ mod tests {
         let p = parse_params(&miss_req);
         assert!(op_deregister_targets(&miss_req, st, &p).is_err());
 
+        // Restore the unbound default, then read the captures. The spy lives
+        // under `_claim`, so nothing races the registry between here and the
+        // test's own ops.
         crate::cloudtrail_emit::reset_registry();
         let rows = seen.lock().clone();
         assert_eq!(rows.len(), 2, "only successful calls emit");

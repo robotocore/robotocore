@@ -63,6 +63,19 @@ pub fn test_registered_emitter() -> Option<CloudtrailEmitFn> {
     registered().read().clone()
 }
 
+/// Test-only claim guard: claiming tests hold the guard for their whole
+/// reset/spy/restore window so a binary that ships several claiming tests
+/// (elbv2, autoscaling, ec2 emitters) observes its registry claim cleanly
+/// despite rust test parallelism. Claim with `let _claim =
+/// crate::cloudtrail_emit::test_claim();` as the first line, and call
+/// [`reset_registry`] again at the end to restore the unbound default.
+#[cfg(test)]
+#[doc(hidden)]
+pub fn test_claim() -> parking_lot::MutexGuard<'static, ()> {
+    static CLAIM: OnceLock<parking_lot::Mutex<()>> = OnceLock::new();
+    CLAIM.get_or_init(|| parking_lot::Mutex::new(())).lock()
+}
+
 /// Fire-and-forget: publish the CloudTrail API-call event for one succeeded
 /// mutating call. A missing/cold registry drops the push and never fails the
 /// emitting service handler.

@@ -2013,6 +2013,7 @@ fn op_create_auto_scaling_group(
     };
     let (launch_image_id, launch_instance_type, launch_key_name, launch_user_data) =
         lc_snapshot.or(snapshot).unwrap_or((None, None, None, None));
+    let ct_launch_template_id = launch_template_id.clone();
     let group = Group {
         name: name.clone(),
         id: uuid::Uuid::new_v4().to_string(),
@@ -2059,6 +2060,34 @@ fn op_create_auto_scaling_group(
         let desired_final = desired_capacity.or(min_size);
         set_group_capacity(req, group, desired_final);
     }
+    // Successful mutate → CloudTrail management event on the default bus
+    // (issue #347 allowlist). Fields the call carried, in the lower-camel
+    // member shape real CloudTrail records use.
+    emit_asg_cloudtrail(
+        req,
+        "CreateAutoScalingGroup",
+        [
+            ("autoScalingGroupName", Some(serde_json::json!(name))),
+            ("minSize", min_size.map(|v| serde_json::json!(v))),
+            ("maxSize", max_size.map(|v| serde_json::json!(v))),
+            (
+                "desiredCapacity",
+                desired_capacity.map(|v| serde_json::json!(v)),
+            ),
+            (
+                "availabilityZones",
+                (!availability_zones.is_empty()).then(|| serde_json::json!(availability_zones)),
+            ),
+            (
+                "launchConfigurationName",
+                launch_config_name.as_ref().map(|v| serde_json::json!(v)),
+            ),
+            (
+                "launchTemplateId",
+                ct_launch_template_id.as_ref().map(|v| serde_json::json!(v)),
+            ),
+        ],
+    );
     Ok(String::new())
 }
 
@@ -2252,7 +2281,44 @@ fn op_delete_auto_scaling_group(
     if let Some(mut group) = state.autoscaling_groups.remove(&name) {
         set_group_capacity(req, &mut group, Some(0));
     }
+    // Successful mutate → CloudTrail management event on the default bus
+    // (issue #347 allowlist); forceDelete only when the call carried it.
+    emit_asg_cloudtrail(
+        req,
+        "DeleteAutoScalingGroup",
+        [
+            ("autoScalingGroupName", Some(serde_json::json!(name))),
+            (
+                "forceDelete",
+                p_bool(p, "ForceDelete").map(|v| serde_json::json!(v)),
+            ),
+        ],
+    );
     Ok(String::new())
+}
+
+/// CloudTrail management-event emit for the succeeded create/delete group
+/// calls (issue #347). Members are `(member-name, Option<value>)` pairs so
+/// the payload only carries fields the call actually had; fire-and-forget
+/// through the process-global registry — never fails the API call.
+fn emit_asg_cloudtrail(
+    req: &Request,
+    event_name: &str,
+    members: impl IntoIterator<Item = (&'static str, Option<serde_json::Value>)>,
+) {
+    let mut params = serde_json::Map::new();
+    for (name, value) in members {
+        if let Some(value) = value {
+            params.insert(name.to_string(), value);
+        }
+    }
+    crate::cloudtrail_emit::emit_cloudtrail_api_call(
+        req.account,
+        &req.region,
+        "autoscaling.amazonaws.com",
+        event_name,
+        &serde_json::Value::Object(params).to_string(),
+    );
 }
 
 fn op_describe_auto_scaling_groups(state: &AsgState, p: &Params) -> OpResult<String> {
@@ -4472,5 +4538,91 @@ mod tests {
             ),
         )
         .expect("seed asg");
+    }
+
+    #[test]
+    fn cloudtrail_emit_fires_only_on_successful_group_calls() {
+        // Registry claim contract (crate::cloudtrail_emit::test_claim +
+        // reset_registry): hold the claim guard for the whole
+        // reset/spy/restore window, restore the unbound default at the end.
+        // Dedicated account scope, isolated from the tests above.
+        let _claim = crate::cloudtrail_emit::test_claim();
+        crate::cloudtrail_emit::reset_registry();
+        let seen: std::sync::Arc<parking_lot::Mutex<Vec<serde_json::Value>>> =
+            std::sync::Arc::new(parking_lot::Mutex::new(Vec::new()));
+        {
+            let sink = seen.clone();
+            crate::cloudtrail_emit::register_emitter(std::sync::Arc::new(
+                move |account, region, source, event, request| {
+                    // Only this test's scope (21): other tests drive the same
+                    // group CRUD concurrently against their own accounts.
+                    if account != 21 {
+                        return;
+                    }
+                    sink.lock().push(serde_json::json!({
+                        "account": account,
+                        "region": region,
+                        "source": source,
+                        "event": event,
+                        "request": serde_json::from_str::<serde_json::Value>(request)
+                            .unwrap_or_default(),
+                    }));
+                },
+            ));
+        }
+        run_again(
+            21,
+            &req_for(
+                "CreateLaunchConfiguration",
+                "LaunchConfigurationName=ct-lc&ImageId=ami-1&InstanceType=t2.micro",
+            ),
+        )
+        .expect("lc"); // launch configs are not on the emit allowlist
+        run_again(
+            21,
+            &req_for(
+                "CreateAutoScalingGroup",
+                "AutoScalingGroupName=ct-g&LaunchConfigurationName=ct-lc&MinSize=0&MaxSize=2\
+                 &AvailabilityZones.member.1=us-east-1a&DesiredCapacity=0",
+            ),
+        )
+        .expect("create asg");
+        // A failed delete emits nothing (no such group).
+        assert!(run_again(
+            21,
+            &req_for("DeleteAutoScalingGroup", "AutoScalingGroupName=missing")
+        )
+        .is_err());
+        run_again(
+            21,
+            &req_for(
+                "DeleteAutoScalingGroup",
+                "AutoScalingGroupName=ct-g&ForceDelete=true",
+            ),
+        )
+        .expect("delete asg");
+        crate::cloudtrail_emit::reset_registry();
+
+        let rows = seen.lock().clone();
+        assert_eq!(rows.len(), 2, "only the two successful group calls emit");
+        assert_eq!(rows[0]["source"], "autoscaling.amazonaws.com");
+        assert_eq!(rows[0]["event"], "CreateAutoScalingGroup");
+        assert_eq!(rows[0]["account"], serde_json::json!(21));
+        assert_eq!(rows[0]["region"], "us-east-1");
+        assert_eq!(rows[0]["request"]["autoScalingGroupName"], "ct-g");
+        assert_eq!(rows[0]["request"]["maxSize"], serde_json::json!(2));
+        assert_eq!(
+            rows[0]["request"]["availabilityZones"][0], "us-east-1a",
+            "numeric members stay numeric and lists stay lists"
+        );
+        assert_eq!(rows[0]["request"]["launchConfigurationName"], "ct-lc");
+        assert!(rows[0]["request"].get("forceDelete").is_none());
+        assert_eq!(rows[1]["event"], "DeleteAutoScalingGroup");
+        assert_eq!(rows[1]["request"]["autoScalingGroupName"], "ct-g");
+        assert_eq!(
+            rows[1]["request"]["forceDelete"],
+            serde_json::json!(true),
+            "fields the call carried are echoed, absent ones are not"
+        );
     }
 }
