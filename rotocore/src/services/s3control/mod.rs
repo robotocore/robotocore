@@ -860,8 +860,11 @@ fn invalid_token_not_found() -> Response {
 /// `{"uniqueAttributes": "<value>"}`, padding stripped. moto additionally
 /// embeds a parameterChecksum derived from Python's salted `hash()`, which
 /// is not wire-portable, so this twin mints only the attribute — and
-/// likewise ignores the checksum member of an incoming token.
-fn encode_s3control_token(value: &str) -> String {
+/// likewise ignores the checksum member of an incoming token. Shared with
+/// the other paginated lists (vpclattice `list_listeners`, the iot
+/// PAGINATION_MODEL lists); multi-attribute tokens join their values with
+/// `|` per moto's `Paginator._build_next_token`.
+pub(crate) fn encode_s3control_token(value: &str) -> String {
     let encoded = base64::engine::general_purpose::STANDARD
         .encode(json!({ "uniqueAttributes": value }).to_string());
     encoded.trim_end_matches('=').to_string()
@@ -869,7 +872,7 @@ fn encode_s3control_token(value: &str) -> String {
 
 /// `None` when the token does not decode like a botocore page token
 /// (padding optional, JSON object with a `uniqueAttributes` member).
-fn decode_s3control_token(token: &str) -> Option<String> {
+pub(crate) fn decode_s3control_token(token: &str) -> Option<String> {
     let mut padded = token.to_string();
     let rem = padded.len() % 4;
     if rem != 0 {
