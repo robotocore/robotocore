@@ -582,13 +582,18 @@ impl DefaultSqsHandler {
         // crashes too, discarding the valid row). A MISSING key no longer
         // crashes here: the response-layer bare except catches its lookup
         // failure and answers the per-row Failed arm (live-verified shape).
+        // A JSON null takes the same missing route — moto's parse drops
+        // null members entirely (`BaseJSONParser._parse_structure` skips a
+        // member whose value came off the wire as None; live-verified: a
+        // batch row with VisibilityTimeout:null answers 200 with the same
+        // Failed row, not the parse crash).
         // The scan sits before the batch-Id validation because the parse
         // precedes the whole response layer.
         if let Some(entries) = params.get("Entries").and_then(|v| v.as_array()) {
             for entry in entries {
                 if entry
                     .get("VisibilityTimeout")
-                    .is_some_and(|v| Self::visibility_timeout_of(Some(v)).is_none())
+                    .is_some_and(|v| !v.is_null() && Self::visibility_timeout_of(Some(v)).is_none())
                 {
                     return Err(SqsError::MotoCrash);
                 }
@@ -829,10 +834,15 @@ impl DefaultSqsHandler {
         // does not crash: the response layer catches the fallback TypeError
         // and applies the queue's attribute (live-verified: absent on a
         // nonexistent queue answers NonExistentQueue like every resolve).
-        // Numeric strings keep the int() coercion of both protocols.
+        // A JSON null takes the same absent path — moto's parse layer drops
+        // null members entirely (`BaseJSONParser._parse_structure` skips a
+        // member whose value came off the wire as None, live-verified:
+        // receive with VisibilityTimeout:null answers 200 with the queue
+        // default). Numeric strings keep the int() coercion of both
+        // protocols.
         if params
             .get("VisibilityTimeout")
-            .is_some_and(|v| Self::visibility_timeout_of(Some(v)).is_none())
+            .is_some_and(|v| !v.is_null() && Self::visibility_timeout_of(Some(v)).is_none())
         {
             return Err(SqsError::MotoCrash);
         }
@@ -1565,6 +1575,15 @@ impl DefaultSqsHandler {
     /// moto's parse layer does (a present-but-unparseable value kills the
     /// request), while the batch row arm treats such a key as missing and
     /// answers the per-row Failed entry under moto's broad `except:`.
+    ///
+    /// A JSON null member never raises here either: moto's parse layer
+    /// drops null members outright (`BaseJSONParser._parse_structure`
+    /// skips a member whose wire value parses to None — live-verified),
+    /// so this helper answers None and the call sites take their absent
+    /// paths (receive falls back to the queue's attribute, a batch row
+    /// lands in the same bare-except Failed arm — both live-verified —
+    /// and top-level ChangeMessageVisibility still crashes on the missing
+    /// value via `None > 43200`, which a dropped null reproduces exactly).
     fn visibility_timeout_of(param: Option<&Value>) -> Option<i64> {
         match param? {
             Value::Number(n) => n.as_i64().or_else(|| n.as_f64().map(|f| f as i64)),
