@@ -164,6 +164,21 @@ impl KinesisHandler {
         })
     }
 
+    /// moto's `Stream.to_json_summary()["StreamDescriptionSummary"]`.
+    fn stream_summary_value(stream: &KinesisStream) -> Value {
+        json!({
+            "StreamName": stream.name,
+            "StreamARN": stream.arn,
+            "StreamStatus": stream.status,
+            "StreamModeDetails": { "StreamMode": "PROVISIONED" },
+            "RetentionPeriodHours": *stream.retention_hours.read(),
+            "StreamCreationTimestamp": stream.created,
+            "EnhancedMonitoring": [ { "ShardLevelMetrics": [] } ],
+            "OpenShardCount": stream.shards.read().len(),
+            "ConsumerCount": stream.consumers.read().len(),
+        })
+    }
+
     fn describe_stream(&self, req: &AwsRequest) -> AwsResponse {
         let name = req
             .params
@@ -211,22 +226,12 @@ impl KinesisHandler {
             .unwrap_or_default();
         let state = self.get_state(req.account, &req.region);
         match state.get_stream(name) {
-            Some(stream) => {
-                let open_shard_count = stream.shards.read().len();
-                let summary = Self::stream_describe_value(&stream);
-                let summary = json!({
-                    "StreamName": summary["StreamName"],
-                    "StreamARN": summary["StreamARN"],
-                    "StreamStatus": summary["StreamStatus"],
-                    "StreamModeDetails": summary["StreamModeDetails"],
-                    "RetentionPeriodHours": summary["RetentionPeriodHours"],
-                    "StreamCreationTimestamp": stream.created,
-                    "EnhancedMonitoring": [ { "ShardLevelMetrics": [] } ],
-                    "OpenShardCount": open_shard_count,
-                    "ConsumerCount": stream.consumers.read().len(),
-                });
-                AwsResponse::json(200, json!({ "StreamDescriptionSummary": summary }))
-            }
+            Some(stream) => AwsResponse::json(
+                200,
+                json!({
+                    "StreamDescriptionSummary": Self::stream_summary_value(&stream),
+                }),
+            ),
             None => not_found_stream(name, req.account),
         }
     }
@@ -273,12 +278,11 @@ impl KinesisHandler {
 
     fn list_streams(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
+        // moto keys `streams` in a dict; this twin uses a BTreeMap, so the
+        // traversal order is sorted by name.
         let mut names = state.list_stream_names();
-        let limit = req
-            .params
-            .get("Limit")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(100) as usize;
+        // ExclusiveStartStreamName keeps working: it trims the list before
+        // pagination (starting after the named stream).
         if let Some(start) = req
             .params
             .get("ExclusiveStartStreamName")
@@ -288,15 +292,66 @@ impl KinesisHandler {
                 names.drain(..=pos);
             }
         }
-        let has_more = names.len() > limit;
-        names.truncate(limit);
-        AwsResponse::json(
-            200,
-            json!({
-                "StreamNames": names,
-                "HasMoreStreams": has_more
-            }),
-        )
+        // moto PR #10385: ListStreams pages on NextToken. The token carries
+        // the first excluded stream name in botocore's token encoding
+        // ({"uniqueAttributes": "<name>"}); limit defaults to moto's 10.
+        // An undecodable token is treated as no token
+        // (`fail_on_invalid_token: False`); a well-formed token that names
+        // no stream on this page answers an empty page.
+        let limit = req
+            .params
+            .get("Limit")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(10) as usize;
+        let start = match req
+            .params
+            .get("NextToken")
+            .and_then(Value::as_str)
+            .map(decode_list_streams_token)
+        {
+            Some(Ok(unique)) => match unique.and_then(|name| names.iter().position(|n| n == &name))
+            {
+                Some(pos) => pos,
+                None => {
+                    return AwsResponse::json(
+                        200,
+                        json!({
+                            "StreamNames": [],
+                            "HasMoreStreams": false,
+                            "StreamSummaries": [],
+                        }),
+                    );
+                }
+            },
+            // undecodable token (or none): page from the start
+            _ => 0,
+        };
+        let remaining = &names[start..];
+        let streams_map = state.streams.read();
+        let page: Vec<Arc<KinesisStream>> = remaining
+            .iter()
+            .take(limit)
+            .filter_map(|name| streams_map.get(name).cloned())
+            .collect();
+        let index_end = start + limit;
+        let has_next = !page.is_empty() && index_end < names.len();
+        let next_name = if has_next {
+            remaining.get(limit).map(String::as_str)
+        } else {
+            None
+        };
+        let mut out = json!({
+            "StreamNames": page.iter().map(|s| s.name.clone()).collect::<Vec<_>>(),
+            "StreamSummaries": page
+                .iter()
+                .map(|s| Self::stream_summary_value(s))
+                .collect::<Vec<_>>(),
+            "HasMoreStreams": next_name.is_some(),
+        });
+        if let Some(name) = next_name {
+            out["NextToken"] = json!(encode_list_streams_token(name));
+        }
+        AwsResponse::json(200, out)
     }
 
     // --- Records ---
@@ -1711,6 +1766,37 @@ fn decode_iterator(token: &str) -> Result<Value, AwsResponse> {
     }
 }
 
+/// The ListStreams page token: botocore's TokenEncoder shape (base64 of
+/// `{"uniqueAttributes": "<stream name>"}`). moto additionally embeds a
+/// parameterChecksum derived from Python's salted `hash`, which is not
+/// wire-portable, so this twin mints only the unique attribute — and
+/// likewise ignores the checksum member of an incoming token.
+fn encode_list_streams_token(stream_name: &str) -> String {
+    base64::engine::general_purpose::STANDARD
+        .encode(json!({ "uniqueAttributes": stream_name }).to_string())
+}
+
+/// `Ok(Some(name))` for a decodable token naming a stream, `Ok(None)` when
+/// the decoded token carries no uniqueAttributes member, `Err(())` for an
+/// undecodable token — moto's paginate treats that as no token
+/// (`fail_on_invalid_token: False`). Padding is optional (botocore strips
+/// it when encoding).
+fn decode_list_streams_token(token: &str) -> Result<Option<String>, ()> {
+    let mut padded = token.to_string();
+    let rem = padded.len() % 4;
+    if rem != 0 {
+        padded.push_str(&"=".repeat(4 - rem));
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(padded)
+        .map_err(|_| ())?;
+    let value: Value = serde_json::from_slice(&bytes).map_err(|_| ())?;
+    Ok(value
+        .get("uniqueAttributes")
+        .and_then(Value::as_str)
+        .map(String::from))
+}
+
 impl Default for KinesisHandler {
     fn default() -> Self {
         Self::new()
@@ -1754,6 +1840,83 @@ mod tests {
         let resp = handler.handle(make_req("ListStreams", json!({})));
         assert_eq!(resp.status, 200);
         assert!(resp.body.contains("test-stream"));
+    }
+
+    #[test]
+    fn kinesis_list_streams_paginates() {
+        let handler = KinesisHandler::new();
+        let names = ["a", "b", "c", "d", "e"];
+        for name in names {
+            handler.handle(make_req(
+                "CreateStream",
+                json!({"StreamName": name, "ShardCount": 1}),
+            ));
+        }
+
+        // moto PR #10385: pages carry both the names and the summaries and
+        // mint a NextToken whose uniqueAttributes is the first excluded
+        // stream name.
+        let page1 = parse_body(&handler.handle(make_req("ListStreams", json!({"Limit": 2}))));
+        assert_eq!(page1["StreamNames"], json!(["a", "b"]));
+        assert_eq!(
+            json!(page1["StreamSummaries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|s| s["StreamName"].clone())
+                .collect::<Vec<_>>()),
+            json!(["a", "b"])
+        );
+        assert_eq!(page1["HasMoreStreams"], true);
+        assert_eq!(
+            decode_list_streams_token(page1["NextToken"].as_str().unwrap()),
+            Ok(Some("c".to_string()))
+        );
+
+        let page2 = parse_body(&handler.handle(make_req(
+            "ListStreams",
+            json!({"Limit": 2, "NextToken": page1["NextToken"]}),
+        )));
+        assert_eq!(page2["StreamNames"], json!(["c", "d"]));
+        assert_eq!(page2["HasMoreStreams"], true);
+
+        let page3 = parse_body(&handler.handle(make_req(
+            "ListStreams",
+            json!({"Limit": 2, "NextToken": page2["NextToken"]}),
+        )));
+        assert_eq!(page3["StreamNames"], json!(["e"]));
+        assert_eq!(page3["HasMoreStreams"], false);
+        assert!(page3.get("NextToken").is_none());
+
+        // The default page size is moto's 10.
+        let unpaged = parse_body(&handler.handle(make_req("ListStreams", json!({}))));
+        assert_eq!(unpaged["StreamNames"].as_array().unwrap().len(), 5);
+        assert_eq!(unpaged["HasMoreStreams"], false);
+        assert!(unpaged.get("NextToken").is_none());
+
+        // ExclusiveStartStreamName still trims the list before pagination.
+        let trimmed = parse_body(&handler.handle(make_req(
+            "ListStreams",
+            json!({"Limit": 100, "ExclusiveStartStreamName": "a"}),
+        )));
+        assert_eq!(trimmed["StreamNames"], json!(["b", "c", "d", "e"]));
+
+        // An undecodable token behaves like no token; a well-formed one
+        // naming an unknown stream answers an empty page with no token.
+        let garbage = parse_body(&handler.handle(make_req(
+            "ListStreams",
+            json!({"Limit": 1, "NextToken": "garbage"}),
+        )));
+        assert_eq!(garbage["StreamNames"].as_array().unwrap().len(), 1);
+        let unknown = parse_body(&handler.handle(make_req(
+            "ListStreams",
+            json!({
+                "Limit": 1,
+                "NextToken": encode_list_streams_token("no-such-stream"),
+            }),
+        )));
+        assert_eq!(unknown["StreamNames"].as_array().unwrap().len(), 0);
+        assert_eq!(unknown["HasMoreStreams"], false);
     }
 
     #[test]
