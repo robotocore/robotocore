@@ -49,10 +49,12 @@ fn not_found(resource: &str) -> Response {
     )
 }
 
-fn validation(message: &str) -> Response {
+fn bad_request(message: &str) -> Response {
+    // botocore's appsync model carries BadRequestException (not
+    // ValidationException); missing/ill-formed schema definitions answer it.
     json_resp(
         400,
-        &json!({ "__type": "ValidationException", "message": message }),
+        &json!({ "__type": "BadRequestException", "message": message }),
     )
 }
 
@@ -727,10 +729,10 @@ fn start_schema_creation(state: &mut AppSyncState, api_id: &str, body: &Value) -
         return not_found("GraphQL API");
     };
     let Some(definition_b64) = body.get("definition").and_then(Value::as_str) else {
-        return validation("Missing definition");
+        return bad_request("Missing definition");
     };
     decode_b64(definition_b64).map_or_else(
-        || validation("Invalid definition encoding"),
+        || bad_request("Invalid definition encoding"),
         |bytes| {
             let definition = String::from_utf8_lossy(&bytes).to_string();
             let types = extract_type_names(&definition);
@@ -2167,6 +2169,27 @@ mod tests {
             .any(|k| k["id"] == key_id.as_str()));
     }
 
+    /// botocore's appsync model has no ValidationException — ill-formed
+    /// StartSchemaCreation payloads answer BadRequestException.
+    #[test]
+    fn schema_creation_errors_are_bad_request() {
+        let api = create_api("schema-canon");
+        let api_id = api["apiId"].as_str().unwrap().to_string();
+        let url = format!("/v1/apis/{api_id}/schemacreation");
+
+        let resp = run("POST", &url, json!({}));
+        assert_eq!(resp.status, 400);
+        let v = body_of(&resp);
+        assert_eq!(v["__type"], "BadRequestException");
+        assert_eq!(v["message"], "Missing definition");
+
+        let resp = run("POST", &url, json!({"definition": "not-base64!!"}));
+        assert_eq!(resp.status, 400);
+        let v = body_of(&resp);
+        assert_eq!(v["__type"], "BadRequestException");
+        assert_eq!(v["message"], "Invalid definition encoding");
+    }
+
     #[test]
     fn schema_types_and_resolvers() {
         let api = create_api("schema-life");
@@ -2183,7 +2206,6 @@ mod tests {
             json!({}),
         ));
         assert_eq!(status["status"], "SUCCESS");
-
         let introspection = run("GET", &format!("/v1/apis/{api_id}/schema"), json!({}));
         assert!(String::from_utf8_lossy(&introspection.body).contains("Query"));
 

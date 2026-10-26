@@ -176,12 +176,14 @@ fn invalid_request(message: &str) -> Response {
     json_error(400, "InvalidRequestException", message)
 }
 
-/// moto's DetectPIIValidationException rendering.
-fn validation_exception(language: &str, languages: &[&str]) -> Response {
+/// Invalid LanguageCode in the detect family. botocore's comprehend model
+/// carries InvalidRequestException (ValidationException is not modeled for
+/// the service), so the enum violation surfaces typed.
+fn unsupported_language(language: &str, languages: &[&str]) -> Response {
     let joined = languages.join(", ");
     json_error(
         400,
-        "ValidationException",
+        "InvalidRequestException",
         &format!(
             "Value '{}' at 'languageCode'failed to satisfy constraint: Member must satisfy enum value set: {}",
             language, joined
@@ -1070,7 +1072,7 @@ fn check_language(p: &Value, languages: &[&str]) -> Option<Response> {
     if languages.contains(&lang) {
         return None;
     }
-    Some(validation_exception(lang, languages))
+    Some(unsupported_language(lang, languages))
 }
 
 fn canned_phrases() -> Value {
@@ -1309,14 +1311,14 @@ mod tests {
     }
 
     #[test]
-    fn validation_error_language() {
+    fn unsupported_lang_is_invalid_request() {
         let acct = next_account();
         let (_s, r) = call(
             "DetectSentiment",
             json!({"Text": "x", "LanguageCode": "zz"}),
             acct,
         );
-        assert_eq!(r["__type"], "ValidationException");
+        assert_eq!(r["__type"], "InvalidRequestException");
         assert!(r["message"].as_str().unwrap().contains("enum value set"));
     }
 
