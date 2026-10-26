@@ -1563,16 +1563,21 @@ impl DefaultSqsHandler {
     /// numbers natively, while the gateway's query-protocol parser hands
     /// scalars over as strings — moto's smithy-lite parser coerces the
     /// form value with `int()` (`moto/core/parse.py` `_parse_integer`), so
-    /// a numeric string is honored here too, negatives included
+    /// the full python int() string semantics apply (see
+    /// `python_int_str`): surrounding whitespace and unicode Nd digits
+    /// strip/map (`int(" 30 ")` = 30, `int("٣٠")` = 30 — live-verified),
+    /// PEP 515 underscores parse only between digits (`int("1_0")` = 10,
+    /// `int("٣_٠")` = 30, `int("_30")` = ValueError → the moto crash) and
+    /// a leading sign is honored, negatives included
     /// (`int("-5")` = -5; live-verified: a negative ChangeMessageVisibility
     /// — top-level and per-batch-row — applies and the message becomes
     /// visible immediately, moto's `Message.change_visibility` stores
     /// `visible_at` in the past). The u64-typed store cannot represent a
     /// past visibility point, so call sites clamp negatives to 0, which
     /// yields the same immediately-visible outcome. A magnitude beyond i64
-    /// saturates through the cast or the digit-string rule — a positive
+    /// saturates in the helper (python's int() is unbounded) — a positive
     /// overflow stays cap-breaching, a negative overflow behaves like
-    /// every negative (moto's `int(value)` has no limit). Unparseable junk
+    /// every negative. Unparseable junk
     /// and other non-numeric `Value` shapes return None; how that value
     /// surfaces per call site mirrors moto, where it differs per path:
     /// top-level ChangeMessageVisibility and ReceiveMessage crash the way
@@ -1597,34 +1602,187 @@ impl DefaultSqsHandler {
             // answers 200, ChangeMessageVisibility with true passes the
             // cap as vis=1 and reaches the backend).
             Value::Bool(b) => Some(if *b { 1 } else { 0 }),
-            Value::String(s) => {
-                if let Ok(v) = s.parse::<i64>() {
-                    Some(v)
-                } else if s.len() > 1
-                    && s.starts_with('-')
-                    && s[1..].chars().all(|c| c.is_ascii_digit())
-                {
-                    // "-<huge>": moto's unbounded int() is negative; the
-                    // saturating i64::MIN lands in the clamp-to-immediate
-                    // arm like every negative.
-                    Some(i64::MIN)
-                } else if !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()) {
-                    // "<huge>": positive overflow, still cap-breaching.
-                    // The emptiness mask keeps the all-digits arm from
-                    // matching the vacuously-true `""`: python
-                    // `int("")` raises ValueError, so moto dies in its
-                    // parse layer on the empty string exactly like any
-                    // other junk (live-verified on receive and top-level
-                    // ChangeMessageVisibility VisibilityTimeout, the
-                    // receive MaxNumberOfMessages/WaitTimeSeconds bounds
-                    // and batch rows) — the None route, not i64::MAX.
-                    Some(i64::MAX)
-                } else {
-                    None
-                }
-            }
+            Value::String(s) => Self::python_int_str(s).map(|(value, _echo)| value),
             _ => None,
         }
+    }
+
+    /// Unicode decimal-digit runs (category Nd): CPython's
+    /// `_PyUnicode_TransformDecimalAndSpaceToASCII` maps every Nd code
+    /// point to the ASCII digit of its position inside the run, so
+    /// python's int() reads "٣٠" as 30. The 68 ten-wide runs of the
+    /// pinned fork's interpreter (Python 3.13, its Unicode database;
+    /// generated with unicodedata over the code points).
+    const PYTHON_ND_RANGES: &[(u32, u32)] = &[
+        (0x30, 0x39),
+        (0x660, 0x669),
+        (0x6F0, 0x6F9),
+        (0x7C0, 0x7C9),
+        (0x966, 0x96F),
+        (0x9E6, 0x9EF),
+        (0xA66, 0xA6F),
+        (0xAE6, 0xAEF),
+        (0xB66, 0xB6F),
+        (0xBE6, 0xBEF),
+        (0xC66, 0xC6F),
+        (0xCE6, 0xCEF),
+        (0xD66, 0xD6F),
+        (0xDE6, 0xDEF),
+        (0xE50, 0xE59),
+        (0xED0, 0xED9),
+        (0xF20, 0xF29),
+        (0x1040, 0x1049),
+        (0x1090, 0x1099),
+        (0x17E0, 0x17E9),
+        (0x1810, 0x1819),
+        (0x1946, 0x194F),
+        (0x19D0, 0x19D9),
+        (0x1A80, 0x1A89),
+        (0x1A90, 0x1A99),
+        (0x1B50, 0x1B59),
+        (0x1BB0, 0x1BB9),
+        (0x1C40, 0x1C49),
+        (0x1C50, 0x1C59),
+        (0xA620, 0xA629),
+        (0xA8D0, 0xA8D9),
+        (0xA900, 0xA909),
+        (0xA9D0, 0xA9D9),
+        (0xA9F0, 0xA9F9),
+        (0xAA50, 0xAA59),
+        (0xABF0, 0xABF9),
+        (0xFF10, 0xFF19),
+        (0x104A0, 0x104A9),
+        (0x10D30, 0x10D39),
+        (0x11066, 0x1106F),
+        (0x110F0, 0x110F9),
+        (0x11136, 0x1113F),
+        (0x111D0, 0x111D9),
+        (0x112F0, 0x112F9),
+        (0x11450, 0x11459),
+        (0x114D0, 0x114D9),
+        (0x11650, 0x11659),
+        (0x116C0, 0x116C9),
+        (0x11730, 0x11739),
+        (0x118E0, 0x118E9),
+        (0x11950, 0x11959),
+        (0x11C50, 0x11C59),
+        (0x11D50, 0x11D59),
+        (0x11DA0, 0x11DA9),
+        (0x11F50, 0x11F59),
+        (0x16A60, 0x16A69),
+        (0x16AC0, 0x16AC9),
+        (0x16B50, 0x16B59),
+        (0x1D7CE, 0x1D7D7),
+        (0x1D7D8, 0x1D7E1),
+        (0x1D7E2, 0x1D7EB),
+        (0x1D7EC, 0x1D7F5),
+        (0x1D7F6, 0x1D7FF),
+        (0x1E140, 0x1E149),
+        (0x1E2F0, 0x1E2F9),
+        (0x1E4F0, 0x1E4F9),
+        (0x1E950, 0x1E959),
+        (0x1FBF0, 0x1FBF9),
+    ];
+
+    /// CPython's Py_UNICODE_ISSPACE: the Unicode White_Space set plus the
+    /// legacy ASCII file-separator run \x1c..\x1f that int()'s whitespace
+    /// transliteration also strips (Rust's is_whitespace is White_Space
+    /// only).
+    fn py_isspace(c: char) -> bool {
+        c.is_whitespace() || matches!(c, '\u{1c}'..='\u{1f}')
+    }
+
+    /// The ASCII digit a python int() would see for `c`, if int() accepts
+    /// it at all: ASCII digits pass through, any Unicode Nd code point
+    /// maps to the digit of its position in its run (live-verified:
+    /// "٣٠" parses to 30), and everything else is ValueError.
+    fn python_digit(c: char) -> Option<char> {
+        if c.is_ascii_digit() {
+            return Some(c);
+        }
+        let ch = c as u32;
+        for &(lo, hi) in Self::PYTHON_ND_RANGES {
+            if ch >= lo && ch <= hi {
+                return char::from_digit(ch - lo, 10);
+            }
+        }
+        None
+    }
+
+    /// python int(str) for the string shapes the gateway delivers
+    /// (moto/core/parse.py `_parse_integer` and the model parse layer run
+    /// the same coercion — live-verified: " 30 " parses to 30 with the
+    /// surrounding whitespace stripped, "٣٠" to 30 via the Nd mapping,
+    /// "1_0" to 10 and "٣_٠" to 30 via PEP 515, while "_30" raises).
+    /// Returns None when python would raise — trailing/leading/doubled
+    /// underscores, any non-digit, and the empty string included.
+    ///
+    /// The tuple carries the value saturated into i64 (python's int() is
+    /// unbounded, and the API only ever compares it against small bounds
+    /// or the 43200 cap) plus `echo`: python's str(int(s)) — the exact
+    /// digits moto interpolates into its bounds error messages, canonical
+    /// (sign, ASCII digits, no leading zeros — str(int("٣٠")) is "30",
+    /// str(int("00005")) is "5", str(int(" -3 ")) is "-3"; live-verified).
+    fn python_int_str(s: &str) -> Option<(i64, String)> {
+        let trimmed = s.trim_matches(Self::py_isspace);
+        let (negative, rest) = match trimmed.strip_prefix('-') {
+            Some(r) => (true, r),
+            None => (false, trimmed.strip_prefix('+').unwrap_or(trimmed)),
+        };
+        // PEP 515: underscores are legal only BETWEEN digits — never at
+        // either end of the signed digit run.
+        let mut digits = String::with_capacity(rest.len());
+        let mut prev_digit = false;
+        for c in rest.chars() {
+            if c == '_' {
+                if !prev_digit {
+                    return None;
+                }
+                prev_digit = false;
+                continue;
+            }
+            let d = Self::python_digit(c)?;
+            digits.push(d);
+            prev_digit = true;
+        }
+        if !prev_digit {
+            return None;
+        }
+        // Canonical magnitude for the echo: str(int("00005")) is "5".
+        let mag = digits.trim_start_matches('0');
+        let echo = if mag.is_empty() {
+            "0".to_string() // str(int("-0")) loses the sign
+        } else if negative {
+            format!("-{mag}")
+        } else {
+            mag.to_string()
+        };
+        // The comparison value saturates beyond the i64 range: a positive
+        // overflow stays cap/bounds-breaching, a negative overflow behaves
+        // like every negative.
+        let value = if mag.is_empty() {
+            0
+        } else if mag.len() > 39 {
+            if negative {
+                i64::MIN
+            } else {
+                i64::MAX
+            }
+        } else {
+            let m: u128 = mag.parse().ok()?;
+            if negative {
+                if m > i64::MAX as u128 + 1 {
+                    i64::MIN
+                } else {
+                    -(m as i128) as i64
+                }
+            } else if m > i64::MAX as u128 {
+                i64::MAX
+            } else {
+                m as i64
+            }
+        };
+        Some((value, echo))
     }
 
     /// Validate a batch operation's `Entries` list, raising moto's batch

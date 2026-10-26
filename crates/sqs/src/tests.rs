@@ -2979,6 +2979,265 @@ fn cmv_null_receipt_handle_matches_first_message() {
     );
 }
 
+/// moto's scripted parse coerces string members with the real python
+/// int() (moto/core/parse.py `_parse_integer`): surrounding whitespace
+/// strips (" 30 " = 30 — live-verified 200 with the bump applied and the
+/// queue's short default overridden), unicode Nd digits map to their
+/// ASCII value ("٣٠" = 30, "  ٣_0  " too, live-verified), PEP 515
+/// underscores parse only BETWEEN digits ("1_0" = 10 and "٣_٠" = 30,
+/// live-verified; "_30" raises ValueError and crashes the request in the
+/// parse layer — a batch row's "_30" kills the whole request), a leading
+/// sign is honored ("+30", and "+0" releases an in-flight message), and
+/// the bounds accept the same coercions on their members (Max/Wait "1_0"
+/// ride in-range as 10; "000" parses as 0). Junk inside the digits ("3 0")
+/// never parses.
+#[test]
+fn python_int_coercions_string_shapes() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "py-int-coerce");
+    handler.handle(make_request(
+        "SetQueueAttributes",
+        json!({
+            "QueueUrl": &queue_url,
+            "Attributes": {"VisibilityTimeout": "1"}
+        }),
+    ));
+
+    // A fresh visible message per cell, released via CMV where needed.
+    let seq = std::cell::Cell::new(0usize);
+    let fresh_message = |handler: &DefaultSqsHandler| -> String {
+        let body = format!("cell-{}", seq.get() + 1);
+        seq.set(seq.get() + 1);
+        handler.handle(make_request(
+            "SendMessage",
+            json!({"QueueUrl": &queue_url, "MessageBody": &body}),
+        ));
+        // A VisibilityTimeout=0 receive mints a real handle and keeps the
+        // message immediately receivable; the body assert anchors every
+        // cell to its own freshly sent message.
+        let recv = handler.handle(make_request(
+            "ReceiveMessage",
+            json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1, "VisibilityTimeout": 0}),
+        ));
+        let data: Value = serde_json::from_str(&recv.body).expect("json");
+        assert_eq!(
+            data["Messages"][0]["Body"].as_str(),
+            Some(body.as_str()),
+            "each cell must start from its own message, got {}",
+            recv.body
+        );
+        data["Messages"][0]["ReceiptHandle"]
+            .as_str()
+            .expect("handle")
+            .to_string()
+    };
+    let visible_count = |handler: &DefaultSqsHandler| queued_message_counts(handler, &queue_url).0;
+    let inflight_count = |handler: &DefaultSqsHandler| queued_message_counts(handler, &queue_url).1;
+    let crash_envelope =
+        |body: &str| body.contains("<!doctype html>") && body.contains("500 Internal Server Error");
+    let cleanup = |handler: &DefaultSqsHandler, handle: &str| {
+        let resp = handler.handle(make_request(
+            "DeleteMessage",
+            json!({"QueueUrl": &queue_url, "ReceiptHandle": handle}),
+        ));
+        assert_eq!(resp.status, 200, "cleanup delete: got {}", resp.body);
+        let counts = queued_message_counts(handler, &queue_url);
+        assert_eq!(
+            (counts.0, counts.1),
+            (0, 0),
+            "cleanup must leave the queue empty between cells"
+        );
+    };
+
+    // " 30 ": the parse strips the surrounding whitespace and applies 30,
+    // outlasting the queue's short default (live-verified cell). The
+    // receive delivers the fresh message, then the bump holds it in
+    // flight across an immediate re-receive.
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "ws-recv"}),
+    ));
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "VisibilityTimeout": " 30 "}),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    assert_eq!(
+        data["Messages"][0]["Body"].as_str(),
+        Some("ws-recv"),
+        "got {}",
+        resp.body
+    );
+    assert_eq!(
+        inflight_count(&handler),
+        1,
+        "the whitespace-padded bump must keep the message in flight"
+    );
+    let resp = handler.handle(make_request(
+        "DeleteMessage",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": data["Messages"][0]["ReceiptHandle"].as_str().unwrap(),
+        }),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(
+        (counts.0, counts.1),
+        (0, 0),
+        "the queue resets for the next cell"
+    );
+
+    // CMV " 0 " releases the message instantly (0 applies, reachable
+    // through the trimmed string, live-verified).
+    let handle = fresh_message(&handler);
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": &handle,
+            "VisibilityTimeout": " 0 ",
+        }),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+    assert_eq!(
+        visible_count(&handler),
+        1,
+        "CMV ' 0 ' must return the message to the pool"
+    );
+    cleanup(&handler, &handle);
+
+    // "٣_٠" = 30 via unicode digits + inner underscore; "1_0" = 10.
+    let handle = fresh_message(&handler);
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": &handle,
+            "VisibilityTimeout": "٣_٠",
+        }),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+    assert_eq!(
+        inflight_count(&handler),
+        1,
+        "٣_٠ must parse to 30 and keep the message in flight"
+    );
+    cleanup(&handler, &handle);
+    let handle = fresh_message(&handler);
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": &handle,
+            "VisibilityTimeout": "1_0",
+        }),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+    assert_eq!(
+        inflight_count(&handler),
+        1,
+        "1_0 must parse to 10 and keep the message in flight"
+    );
+    cleanup(&handler, &handle);
+
+    // "_30" never parses: a motocrash-shaped 500 (live-verified), and a
+    // batch row carrying it kills the whole request at the parse layer
+    // (neither crash touches the queue; clean up the visible message for
+    // the next cell).
+    let handle = fresh_message(&handler);
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": &handle,
+            "VisibilityTimeout": "_30",
+        }),
+    ));
+    assert_eq!(resp.status, 500, "got {}", resp.body);
+    assert!(crash_envelope(&resp.body), "got {}", resp.body);
+    cleanup(&handler, &handle);
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "x", "ReceiptHandle": "any", "VisibilityTimeout": "_30"},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 500, "got {}", resp.body);
+    assert!(crash_envelope(&resp.body), "got {}", resp.body);
+
+    // "+30" parses with the sign (200, message bumps into flight), and
+    // "+0" releases the bump.
+    let handle = fresh_message(&handler);
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({"QueueUrl": &queue_url, "ReceiptHandle": &handle, "VisibilityTimeout": "+30"}),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+    assert_eq!(
+        inflight_count(&handler),
+        1,
+        "+30 must parse to a 30s in-flight bump"
+    );
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({"QueueUrl": &queue_url, "ReceiptHandle": &handle, "VisibilityTimeout": "+0"}),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+    assert_eq!(
+        visible_count(&handler),
+        1,
+        "+0 must release the message immediately"
+    );
+    cleanup(&handler, &handle);
+
+    // Batch rows take the same coercions (live-verified cells: a " 0 "
+    // row and a "٣_٠" row both succeed; the trailing row leaves the
+    // message in flight for its 30).
+    let handle = fresh_message(&handler);
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "ws", "ReceiptHandle": &handle, "VisibilityTimeout": " 0 "},
+                {"Id": "uni", "ReceiptHandle": &handle, "VisibilityTimeout": "٣_٠"},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    let successful = data["Successful"].as_array().expect("Successful array");
+    assert_eq!(successful.len(), 2, "got {}", resp.body);
+    cleanup(&handler, &handle);
+
+    // The receive bounds accept the same ints: "1_0" = 10 rides in
+    // range for Max (live-verified) and lands inside the wait bounds;
+    // in-bounds numeric coercions keep their 200.
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": "1_0"}),
+    ));
+    assert_eq!(
+        resp.status, 200,
+        "Max '1_0' parses to 10, got {}",
+        resp.body
+    );
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "WaitTimeSeconds": "000"}),
+    ));
+    assert_eq!(
+        resp.status, 200,
+        "Wait '000' parses to 0, got {}",
+        resp.body
+    );
+}
+
 /// The rewired happy path: valid entries still delete, through the same
 /// helper that rejects the invalid ones.
 #[test]
