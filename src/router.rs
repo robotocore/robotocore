@@ -242,6 +242,24 @@ fn path_patterns() -> Vec<(Regex, &'static str)> {
             Regex::new(r"^/cloudformation_[^/]+/cfnresponse").unwrap(),
             "cloudformation",
         ),
+        // Cognito user-pool OIDC material (issue #347): verifiers resolve
+        // the token issuer `https://cognito-idp.<region>.amazonaws.com/<pool>`
+        // onto the twin and fetch the keys/discovery under it unsigned. The
+        // pool-id segment carries its region prefix (`us-east-1_abc123`) —
+        // the `_` keeps this from matching S3 buckets ever riding such paths
+        // (bucket names cannot contain underscores).
+        (
+            Regex::new(
+                r"^/[a-z][a-z0-9-]*-\d+_[^/]+/\.well-known/(jwks\.json|openid-configuration)$",
+            )
+            .unwrap(),
+            "cognito-idp",
+        ),
+        // Legacy bare JWKS the python twin served.
+        (
+            Regex::new(r"^/\.well-known/jwks\.json$").unwrap(),
+            "cognito-idp",
+        ),
     ]
 }
 
