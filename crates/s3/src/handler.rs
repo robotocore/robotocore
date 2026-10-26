@@ -7761,7 +7761,12 @@ mod catchup_fx5_object_attributes_tests {
     use bytes::Bytes;
     use serde_json::Value;
 
-    fn make_req(operation: &str, bucket: Option<&str>, key: Option<&str>, body: &[u8]) -> AwsRequest {
+    fn make_req(
+        operation: &str,
+        bucket: Option<&str>,
+        key: Option<&str>,
+        body: &[u8],
+    ) -> AwsRequest {
         AwsRequest {
             service: "s3".to_string(),
             operation: operation.to_string(),

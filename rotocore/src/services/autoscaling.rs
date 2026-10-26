@@ -4636,10 +4636,16 @@ mod tests {
         );
     }
 
+    /// moto master e70a7315 (#10412): target groups can be deleted before their
+    /// Auto Scaling group, and DeleteAutoScalingGroup must still succeed — moto
+    /// 5.2.4 tripped on set_desired_capacity's target refresh and answered
+    /// TargetGroupNotFound. The unit-test harness has no loopback peer (no Host
+    /// header, sync calls skip), which is exactly the environment where the
+    /// delete must not consult target groups at all.
     #[test]
     fn delete_group_with_deleted_target_groups() {
-        // moto master e70a7315 (#10412): target groups can be deleted before
-        // their Auto Scaling group, and DeleteAutoScalingGroup must still
+        // Details collide with the module comment above; this test pins the
+        // behavior matrix., and DeleteAutoScalingGroup must still
         // succeed — moto 5.2.4 tripped on set_desired_capacity's target
         // refresh and answered TargetGroupNotFound. The unit-test harness
         // has no loopback peer (no Host header, sync calls skip), which is

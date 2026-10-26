@@ -4090,7 +4090,12 @@ mod catchup_fx5_tests {
                 &format!("TemplateBody={}", form_encode(template)),
             ),
         );
-        assert_eq!(resp.status, 200, "got {}", String::from_utf8_lossy(&resp.body));
+        assert_eq!(
+            resp.status,
+            200,
+            "got {}",
+            String::from_utf8_lossy(&resp.body)
+        );
         let body = String::from_utf8_lossy(&resp.body);
         assert!(body.contains("AWS::SQS::Queue"), "got {body}");
         assert!(!body.contains("<Version>"), "got {body}");
@@ -4104,7 +4109,12 @@ mod catchup_fx5_tests {
                 &format!("TemplateBody={}", form_encode(yaml)),
             ),
         );
-        assert_eq!(resp.status, 200, "got {}", String::from_utf8_lossy(&resp.body));
+        assert_eq!(
+            resp.status,
+            200,
+            "got {}",
+            String::from_utf8_lossy(&resp.body)
+        );
         let body = String::from_utf8_lossy(&resp.body);
         assert!(body.contains("AWS::SQS::Queue"), "got {body}");
         assert!(!body.contains("<Version>"), "got {body}");
@@ -4121,19 +4131,28 @@ mod catchup_fx5_tests {
                 ),
             ),
         );
-        assert_eq!(resp.status, 200, "got {}", String::from_utf8_lossy(&resp.body));
+        assert_eq!(
+            resp.status,
+            200,
+            "got {}",
+            String::from_utf8_lossy(&resp.body)
+        );
         let resp = run(
             acct,
             &cfx_req("GetTemplateSummary", "StackName=f5x-no-version-stack"),
         );
-        assert_eq!(resp.status, 200, "got {}", String::from_utf8_lossy(&resp.body));
+        assert_eq!(
+            resp.status,
+            200,
+            "got {}",
+            String::from_utf8_lossy(&resp.body)
+        );
         let body = String::from_utf8_lossy(&resp.body);
         assert!(body.contains("AWS::SQS::Queue"), "got {body}");
         assert!(!body.contains("<Version>"), "got {body}");
 
         // A template that does declare the version still reports it.
-        let versioned =
-            r#"{"AWSTemplateFormatVersion":"2010-09-09","Resources":{"Queue":{"Type":"AWS::SQS::Queue"}}}"#;
+        let versioned = r#"{"AWSTemplateFormatVersion":"2010-09-09","Resources":{"Queue":{"Type":"AWS::SQS::Queue"}}}"#;
         let resp = run(
             acct,
             &cfx_req(
@@ -4141,7 +4160,12 @@ mod catchup_fx5_tests {
                 &format!("TemplateBody={}", form_encode(versioned)),
             ),
         );
-        assert_eq!(resp.status, 200, "got {}", String::from_utf8_lossy(&resp.body));
+        assert_eq!(
+            resp.status,
+            200,
+            "got {}",
+            String::from_utf8_lossy(&resp.body)
+        );
         let body = String::from_utf8_lossy(&resp.body);
         assert!(body.contains("<Version>2010-09-09</Version>"), "got {body}");
     }
@@ -4223,19 +4247,34 @@ mod catchup_fx5_last_updated_tests {
                 ),
             ),
         );
-        assert_eq!(resp.status, 200, "got {}", String::from_utf8_lossy(&resp.body));
+        assert_eq!(
+            resp.status,
+            200,
+            "got {}",
+            String::from_utf8_lossy(&resp.body)
+        );
 
         let describe = run(acct, &cfx_req("DescribeStacks", "StackName=f5x-lsrs-stack"));
-        assert_eq!(describe.status, 200, "got {}", String::from_utf8_lossy(&describe.body));
-        let creation = extract(
-            &String::from_utf8_lossy(&describe.body),
-            "CreationTime",
-        )
-        .pop()
-        .expect("CreationTime rendered");
+        assert_eq!(
+            describe.status,
+            200,
+            "got {}",
+            String::from_utf8_lossy(&describe.body)
+        );
+        let creation = extract(&String::from_utf8_lossy(&describe.body), "CreationTime")
+            .pop()
+            .expect("CreationTime rendered");
 
-        let resp = run(acct, &cfx_req("ListStackResources", "StackName=f5x-lsrs-stack"));
-        assert_eq!(resp.status, 200, "got {}", String::from_utf8_lossy(&resp.body));
+        let resp = run(
+            acct,
+            &cfx_req("ListStackResources", "StackName=f5x-lsrs-stack"),
+        );
+        assert_eq!(
+            resp.status,
+            200,
+            "got {}",
+            String::from_utf8_lossy(&resp.body)
+        );
         let body = String::from_utf8_lossy(&resp.body);
         let stamps = extract(&body, "LastUpdatedTimestamp");
         assert_eq!(stamps.len(), 1, "got {body}");

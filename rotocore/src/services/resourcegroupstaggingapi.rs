@@ -420,9 +420,7 @@ fn tag_resources(req: &Request) -> Response {
         .collect();
     let unsupported: Vec<String> = arns
         .iter()
-        .filter(|arn| {
-            !supported_partition_arn(partition, arn) && !connect::instance_arn(arn)
-        })
+        .filter(|arn| !supported_partition_arn(partition, arn) && !connect::instance_arn(arn))
         .cloned()
         .collect();
     let mut failed = serde_json::Map::new();
@@ -477,9 +475,7 @@ fn untag_resources(req: &Request) -> Response {
         .collect();
     let unsupported: Vec<String> = arns
         .iter()
-        .filter(|arn| {
-            !supported_partition_arn(partition, arn) && !connect::instance_arn(arn)
-        })
+        .filter(|arn| !supported_partition_arn(partition, arn) && !connect::instance_arn(arn))
         .cloned()
         .collect();
     let mut failed = serde_json::Map::new();
@@ -775,7 +771,11 @@ mod tests {
                 "Tags": { tag_key: tag_val },
             }),
         ));
-        assert_eq!(create.status, 200, "connect create failed: {}", create.status);
+        assert_eq!(
+            create.status, 200,
+            "connect create failed: {}",
+            create.status
+        );
         let arn = serde_json::from_slice::<Value>(&create.body).unwrap()["Arn"]
             .as_str()
             .unwrap()
@@ -814,7 +814,9 @@ mod tests {
         // Keys/values walk the connect tags too.
         let keys = body_of(&dispatch(&ctx.req("GetTagKeys", json!({}))));
         assert_eq!(keys["TagKeys"], json!([tag_key]));
-        let values = body_of(&dispatch(&ctx.req("GetTagValues", json!({ "Key": tag_key }))));
+        let values = body_of(&dispatch(
+            &ctx.req("GetTagValues", json!({ "Key": tag_key })),
+        ));
         assert_eq!(values["TagValues"], json!([tag_val]));
 
         // RGT TagResources tags a fresh connect instance through the
@@ -823,16 +825,17 @@ mod tests {
             .as_str()
             .unwrap()
             .to_string();
-        let tag_resp = body_of(&dispatch(
-            &ctx.req(
-                "TagResources",
-                json!({ "ResourceARNList": [second], "Tags": { "vk": "vv" } }),
-            ),
-        ));
-        assert!(tag_resp["FailedResourcesMap"]
-            .as_object()
-            .unwrap()
-            .is_empty(), "got {tag_resp}");
+        let tag_resp = body_of(&dispatch(&ctx.req(
+            "TagResources",
+            json!({ "ResourceARNList": [second], "Tags": { "vk": "vv" } }),
+        )));
+        assert!(
+            tag_resp["FailedResourcesMap"]
+                .as_object()
+                .unwrap()
+                .is_empty(),
+            "got {tag_resp}"
+        );
         let list = body_of(&dispatch(&ctx.req(
             "GetResources",
             json!({ "ResourceTypeFilters": ["connect"] }),
@@ -847,19 +850,21 @@ mod tests {
         assert!(arns_on_list.contains(&second.as_str()));
 
         // UntagResources removes the tag and untagged resources drop off.
-        let untag_resp = body_of(&dispatch(
-            &ctx.req(
-                "UntagResources",
-                json!({ "ResourceARNList": [second], "TagKeys": ["vk"] }),
-            ),
-        ));
-        assert!(untag_resp["FailedResourcesMap"]
-            .as_object()
-            .unwrap()
-            .is_empty(), "got {untag_resp}");
-        let list = body_of(&dispatch(
-            &ctx.req("GetResources", json!({ "ResourceTypeFilters": ["connect"] })),
-        ));
+        let untag_resp = body_of(&dispatch(&ctx.req(
+            "UntagResources",
+            json!({ "ResourceARNList": [second], "TagKeys": ["vk"] }),
+        )));
+        assert!(
+            untag_resp["FailedResourcesMap"]
+                .as_object()
+                .unwrap()
+                .is_empty(),
+            "got {untag_resp}"
+        );
+        let list = body_of(&dispatch(&ctx.req(
+            "GetResources",
+            json!({ "ResourceTypeFilters": ["connect"] }),
+        )));
         assert_eq!(list["ResourceTagMappingList"].as_array().unwrap().len(), 1);
     }
 }
