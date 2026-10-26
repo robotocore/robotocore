@@ -175,14 +175,20 @@ fn other_error_code(code: &str, message: &str) -> Response {
 }
 
 fn missing_parameter() -> Response {
-    json_error(400, "MissingParameter", MISSING_PARAMETER)
+    json_error(400, "InvalidParameterException", MISSING_PARAMETER)
 }
 
-/// The suite's ops all key off `CertificateArn`; empty → MissingParameter.
+/// The suite's ops all key off `CertificateArn`; empty → InvalidParameterException
+/// (botocore's acm model: InvalidParameterException + ValidationException; a
+/// required parameter not supplied is never `MissingParameter`).
 fn arn_param(body: &Value) -> Result<String, Response> {
     match body.get("CertificateArn").and_then(Value::as_str) {
         Some(arn) if !arn.is_empty() => Ok(arn.to_string()),
-        _ => Err(json_error(400, "MissingParameter", MISSING_PARAMETER)),
+        _ => Err(json_error(
+            400,
+            "InvalidParameterException",
+            MISSING_PARAMETER,
+        )),
     }
 }
 
@@ -1076,9 +1082,10 @@ mod tests {
     }
 
     #[test]
-    fn missing_arn_gives_missing_parameter() {
+    fn missing_arn_gives_invalid_parameter_exception() {
         let err = run("DeleteCertificate", json!({}));
-        assert_eq!(body_of(&err)["__type"], "MissingParameter");
+        assert_eq!(body_of(&err)["__type"], "InvalidParameterException");
+        assert_eq!(body_of(&err)["message"], MISSING_PARAMETER);
         assert_eq!(status_of(&err), 400);
     }
 
