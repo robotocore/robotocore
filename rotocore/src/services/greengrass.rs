@@ -748,7 +748,12 @@ fn op_group_deployments(
         }
         ("GET", Some(deployment_id)) => match state.deployments.get(deployment_id) {
             Some(deployment) => ok_json(&deployment_status_json(deployment)),
-            None => gg_error("IdNotFoundException", "That deployment does not exist."),
+            // moto's get_deployment_status answers InvalidInputException with
+            // the quoted id (moto/greengrass/models.py) — live-verified.
+            None => gg_error(
+                "InvalidInputException",
+                &format!("Deployment '{deployment_id}' does not exist."),
+            ),
         },
         _ => not_implemented(),
     }
