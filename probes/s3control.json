@@ -1,6 +1,6 @@
 {
   "service": "s3control",
-  "generated_at": "2026-10-26T11:13:38.647986+00:00",
+  "generated_at": "2026-10-26T13:36:38.579352+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 84,
@@ -243,7 +243,7 @@
     {
       "operation": "GetBucketLifecycleConfiguration",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchBucket)"
     },
     {
       "operation": "GetBucketPolicy",
@@ -253,7 +253,7 @@
     {
       "operation": "GetBucketReplication",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchBucket)"
     },
     {
       "operation": "GetBucketTagging",
@@ -263,7 +263,7 @@
     {
       "operation": "GetBucketVersioning",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchBucket)"
     },
     {
       "operation": "GetDataAccess",
@@ -408,22 +408,22 @@
     {
       "operation": "PutBucketLifecycleConfiguration",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchBucket)"
     },
     {
       "operation": "PutBucketPolicy",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchBucket)"
     },
     {
       "operation": "PutBucketReplication",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchBucket)"
     },
     {
       "operation": "PutBucketTagging",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NoSuchBucket)"
     },
     {
       "operation": "PutBucketVersioning",
