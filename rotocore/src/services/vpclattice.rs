@@ -1037,16 +1037,19 @@ fn list_listeners(st: &State, svc_input: &str, req: &Request) -> Response {
         .and_then(|v| v.parse::<usize>().ok())
         .filter(|m| *m != 0) // a falsy limit falls back to the model default
         .unwrap_or(50);
-    // moto's Paginator positions the page AT the token's item: a token
-    // naming no listener of this service raises its InvalidToken
-    // ("Resource not found!"), surfacing as the JsonRESTError JSON body.
+    let matching: Vec<&ListenerEntry> = st
+        .listeners
+        .iter()
+        .filter(|l| l.service_id == svc)
+        .collect();
+    // moto's Paginator positions the page AT the token's item WITHIN this
+    // service's filtered list: a token naming no listener of the service
+    // raises its InvalidToken ("Resource not found!"), surfacing as the
+    // JsonRESTError JSON body. (Positioning over the whole listener vec
+    // would skew every page by the count of other services' listeners.)
     let start = match crate::proto::query_first(&qmap, "nextToken") {
         Some(token) => match decode_s3control_token(token) {
-            Some(id) => match st
-                .listeners
-                .iter()
-                .position(|l| l.service_id == svc && l.id == id)
-            {
+            Some(id) => match matching.iter().position(|l| l.id == id) {
                 Some(pos) => pos,
                 None => return invalid_token("Resource not found!"),
             },
@@ -1054,11 +1057,6 @@ fn list_listeners(st: &State, svc_input: &str, req: &Request) -> Response {
         },
         None => 0,
     };
-    let matching: Vec<&ListenerEntry> = st
-        .listeners
-        .iter()
-        .filter(|l| l.service_id == svc)
-        .collect();
     let end = (start + max).min(matching.len());
     let page: Vec<Value> = matching[start..end]
         .iter()
@@ -1875,6 +1873,20 @@ mod tests {
     fn vpclattice_listener_token_pagination() {
         let acct = next_account();
         let req = |m: &str, p: &str, q: &str, b: Value| raw_req(acct, m, p, q, b);
+
+        // Another service's listener exists in the vec BEFORE the walked
+        // service's: the resume position is taken within the filtered list
+        // (not the whole vec), else every page skips the extra rows.
+        let seed = dispatch(&req("POST", "/services", "", json!({"name": "seed"}))).unwrap();
+        let seed_path = url_encode_path(json_of(&seed)["arn"].as_str().unwrap());
+        let seed_listener = dispatch(&req(
+            "POST",
+            &format!("/services/{seed_path}/listeners"),
+            "",
+            json!({"name": "seed-l", "protocol": "HTTP", "defaultAction": {"forward": {"targetGroups": [{"targetGroupIdentifier": "tg-12345678901234567"}]}}}),
+        ))
+        .unwrap();
+        assert_eq!(seed_listener.status, 200);
 
         let service = dispatch(&req("POST", "/services", "", json!({"name": "svc"}))).unwrap();
         let svc = json_of(&service);
