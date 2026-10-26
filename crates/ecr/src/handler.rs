@@ -2485,12 +2485,15 @@ mod tests {
 
         // initiate: exactly {uploadId, partSize}; partSize is moto's
         // DEFAULT_LAYER_PART_SIZE (10 MiB), uploadId is a dashed uuid4.
+        // Keys come back in moto's document order (ecr/models.py:851
+        // returns {"uploadId": ..., "partSize": ...}), which the twin's
+        // order-preserving Maps emit verbatim.
         let init = parse(&h.handle(make_req(
             "InitiateLayerUpload",
             json!({"repositoryName": "sh"}),
         )));
         let init_keys: Vec<String> = init.as_object().unwrap().keys().cloned().collect();
-        assert_eq!(init_keys, vec!["partSize", "uploadId"]);
+        assert_eq!(init_keys, vec!["uploadId", "partSize"]);
         assert_eq!(init["partSize"], json!(10 * 1024 * 1024));
         let uid = init["uploadId"].as_str().unwrap();
         assert_eq!(uid.len(), 36);

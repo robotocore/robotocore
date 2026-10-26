@@ -68,12 +68,16 @@ fn matches(pattern: &Map<String, Value>, event: &Map<String, Value>) -> bool {
                 let ok = match event_value {
                     Value::Object(obj) => matches(sub_pattern, obj),
                     Value::Array(arr) => array_objects_match(sub_pattern, arr),
-                    // An explicit null ancestor behaves like an absent
-                    // one for moto: the flattened event stores
-                    // `"detail": null` as a terminal leaf and the
-                    // pattern walk beneath it resolves UNDEFINED.
-                    Value::Null => pattern_matches_undefined(sub_pattern),
-                    _ => false,
+                    // Absent keys never reach this arm. For every other
+                    // non-object ancestor — an explicit null or a scalar
+                    // (Number/String/Bool) — moto's `_flatten_dict`
+                    // (models.py:971-977) stores the ancestor itself as a
+                    // terminal leaf and `_does_event_match` resolves every
+                    // leaf beneath it as UNDEFINED (upstream PR #10360
+                    // preserves this walk even with array matching), so
+                    // the subtree passes only through its `{"exists":
+                    // false}` filters, exactly like behind an absent key.
+                    _ => pattern_matches_undefined(sub_pattern),
                 };
                 if !ok {
                     return false;
@@ -184,84 +188,86 @@ pub fn list_match(pattern_values: &[Value], event_value: &Value) -> bool {
 }
 
 /// One named filter (`{"prefix": "a"}`, `{"exists": true}`, ...) against
-/// the whole event value. moto checks `exists` on the value itself and
+/// the whole event value. moto resolves the filter by the leaf's FIRST
+/// key (`models.py:1022`), checks `exists` on the value itself, and
 /// applies every other named filter per element of an array value.
 fn named_filter_matches(filter: &Map<String, Value>, event_value: &Value) -> bool {
-    if let Some(expected) = filter.get("exists").and_then(Value::as_bool) {
-        // An `exists` leaf tests literal key presence, not JSON
-        // nullness: moto `_does_item_match_named_filter` computes
+    let Some((name, target)) = filter.iter().next() else {
+        return false;
+    };
+    if name == "exists" {
+        let Some(expected) = target.as_bool() else {
+            return false;
+        };
+        // An `exists` leaf tests literal flattened-key presence, not
+        // JSON nullness: moto `_does_item_match_named_filter` computes
         // `exists = item is not UNDEFINED; return exists ==
         // filter_value`, and a flattened JSON null is a present value
         // (event-ruler's exists machine likewise answers on the key,
         // not its contents). The value in hand is present by
-        // construction — `matches` routes absent keys and null-ancestor
-        // regions through `pattern_matches_undefined` and never feeds
-        // them to a leaf — so `exists: true` matches any value,
-        // explicit null included, and `exists: false` never matches at
-        // a leaf (absence is decided upstream).
-        return expected;
+        // construction — `matches` routes absent keys and null/scalar
+        // ancestors through `pattern_matches_undefined` and never feeds
+        // them to a leaf — except when `_flatten_dict` (models.py:974:
+        // `if isinstance(v, dict) and v`) dropped it: a NON-EMPTY dict
+        // value recurses into dotted sub-keys, so the exists-check path
+        // itself reads back UNDEFINED (`{"detail":{"state":{"a":1}}}`
+        // stores only `detail.state.a`). Empty `{}` is stored as a
+        // leaf, as are null/scalar/list values: all present.
+        let exists = !matches!(event_value, Value::Object(obj) if !obj.is_empty());
+        return exists == expected;
     }
     match event_value {
-        Value::Array(arr) => arr.iter().any(|item| evaluate_named_filter(filter, item)),
-        other => evaluate_named_filter(filter, other),
+        Value::Array(arr) => arr
+            .iter()
+            .any(|item| evaluate_named_filter_by(name, target, item)),
+        other => evaluate_named_filter_by(name, target, other),
     }
 }
 
-/// Evaluate a named filter against one (scalar) event value. Several
-/// recognized filter names may appear in one leaf; they OR together.
-/// Deliberate divergence (F5 mid): real AWS rejects such multi-key
-/// leaves at pattern creation and moto evaluates only the FIRST key
-/// (`list(pattern.items())[0]`); this port keeps the
-/// OR-of-recognized-keys reading, behavior unchanged.
-fn evaluate_named_filter(filter: &Map<String, Value>, value: &Value) -> bool {
+/// moto `_does_item_match_named_filter` resolves ONE named filter from
+/// the leaf: `models.py:1022` — `filter_name, filter_value =
+/// list(pattern.items())[0]` — and only that first key is applied
+/// (Python dicts keep insertion order, which serde_json reproduces
+/// under its `preserve_order` feature). Real AWS rejects multi-key
+/// filter leaves at pattern creation, so this only affects hand-fed
+/// patterns. Unrecognized filter names deliberately reject here — the
+/// port's typed-filter divergence from moto, whose `evaluate()` falls
+/// through to `True` for any unknown name (models.py:1097) — and a
+/// filter leaf with no keys rejects instead of raising the IndexError
+/// moto's `list({...items...})[0]` would hit.
+///
+/// Evaluate one filter name/target against one (scalar) event value.
+fn evaluate_named_filter_by(name: &str, target: &Value, value: &Value) -> bool {
     // prefix / suffix: the target is a string, a list of strings, or an
     // {"equals-ignore-case": "..."} object (moto prefix/suffix forms).
-    if let Some(target) = filter.get("prefix") {
-        if string_targets_match(target, value.as_str(), true) {
-            return true;
+    match name {
+        "prefix" => string_targets_match(target, value.as_str(), true),
+        "suffix" => string_targets_match(target, value.as_str(), false),
+        "equals-ignore-case" => {
+            let Some(s) = value.as_str() else {
+                return false;
+            };
+            match target {
+                Value::String(t) => s.to_lowercase() == t.to_lowercase(),
+                Value::Array(list) => list.iter().any(|t| {
+                    t.as_str().map(|t| s.to_lowercase() == t.to_lowercase()) == Some(true)
+                }),
+                _ => false,
+            }
         }
+        // moto numeric: value must be a number and EVERY (op, operand)
+        // pair must hold (models.py:1063-1074). A non-array target is
+        // unfilterable (moto crashes on `5[::2]`; the port rejects).
+        "numeric" => target
+            .as_array()
+            .is_some_and(|ops| match_numeric(ops, value)),
+        // anything-but: the exclusion may be a bare element, a list of
+        // them, or a nested named filter (models.py:1075-1083).
+        "anything-but" => anything_but(target, value),
+        "cidr" => cidr_matches(value, target),
+        "wildcard" => wildcard_targets_match(target, value.as_str()),
+        _ => false,
     }
-    if let Some(target) = filter.get("suffix") {
-        if string_targets_match(target, value.as_str(), false) {
-            return true;
-        }
-    }
-    if let Some(target) = filter.get("equals-ignore-case") {
-        let Some(s) = value.as_str() else {
-            return false;
-        };
-        let matches = match target {
-            Value::String(t) => s.to_lowercase() == t.to_lowercase(),
-            Value::Array(list) => list
-                .iter()
-                .any(|t| t.as_str().map(|t| s.to_lowercase() == t.to_lowercase()) == Some(true)),
-            _ => false,
-        };
-        if matches {
-            return true;
-        }
-    }
-    if let Some(ops) = filter.get("numeric").and_then(Value::as_array) {
-        if match_numeric(ops, value) {
-            return true;
-        }
-    }
-    if let Some(excluded) = filter.get("anything-but") {
-        if anything_but(excluded, value) {
-            return true;
-        }
-    }
-    if let Some(network) = filter.get("cidr") {
-        if cidr_matches(value, network) {
-            return true;
-        }
-    }
-    if let Some(target) = filter.get("wildcard") {
-        if wildcard_targets_match(target, value.as_str()) {
-            return true;
-        }
-    }
-    false
 }
 
 /// String prefix/suffix against a scalar, list, or
@@ -646,6 +652,205 @@ mod tests {
         assert!(!matches_pattern(
             &json!({"detail": {"a": {"b": [{"exists": false}]}}}),
             &json!({"detail": {"a": {"b": "x"}}})
+        ));
+    }
+
+    // -- scalar ancestors under nested patterns (round-2 finding 1, HIGH) --
+    //
+    // moto `_flatten_dict` (models.py:971-977) stores a scalar/null
+    // ancestor as a terminal leaf of the flattened event and the dotted
+    // pattern walk resolves every leaf beneath it as UNDEFINED —
+    // upstream PR #10360 preserves this. A nested pattern is therefore
+    // satisfied beneath a scalar exactly as behind an absent key: only
+    // its `{"exists": false}` filters can see the subtree.
+
+    #[test]
+    fn scalar_ancestor_under_nested_pattern_walks_undefined() {
+        let pattern = json!({"detail": {"state": [{"exists": false}]}});
+        // The three scalar shapes all resolve leaves as UNDEFINED and
+        // pass the exists:false filter (moto: True, live-verified).
+        assert!(matches_pattern(&pattern, &json!({"detail": "x"})));
+        assert!(matches_pattern(&pattern, &json!({"detail": 5})));
+        assert!(matches_pattern(&pattern, &json!({"detail": true})));
+    }
+
+    #[test]
+    fn scalar_ancestor_rejects_filters_that_need_a_value() {
+        // Without an escape exists:false every leaf underneath is
+        // UNDEFINED and the pattern cannot match (moto: False).
+        assert!(!matches_pattern(
+            &json!({"detail": {"state": ["running"]}}),
+            &json!({"detail": "x"})
+        ));
+        assert!(!matches_pattern(
+            &json!({"detail": {"state": [{"exists": true}]}}),
+            &json!({"detail": 5})
+        ));
+        // Deeper subtrees walk the same way.
+        assert!(matches_pattern(
+            &json!({"detail": {"state": {"a": [{"exists": false}]}}}),
+            &json!({"detail": true})
+        ));
+        assert!(!matches_pattern(
+            &json!({"detail": {"state": {"a": [{"exists": true}]}}}),
+            &json!({"detail": "x"})
+        ));
+        // A named value filter under a scalar ancestor sees nothing.
+        assert!(!matches_pattern(
+            &json!({"detail": {"state": [{"prefix": "run"}]}}),
+            &json!({"detail": "running"})
+        ));
+    }
+
+    // -- exists vs dict-valued intermediates (round-2 finding 2, MED) --------
+    //
+    // moto `_flatten_dict` (models.py:974-977) drops non-empty dict
+    // INTERMEDIATES: it recurses into them, so the leaf list only ever
+    // contains dotted leaves and the lookup at an intermediate path
+    // reads UNDEFINED (models.py:999-1000). The exists branch
+    // (models.py:1023-1025: `exists = item is not UNDEFINED`) therefore
+    // answers "absent" at that path, and exists:false mirrors it.
+    // Every outcome below is live-verified against the pinned fork.
+
+    #[test]
+    fn exists_true_sees_dict_intermediate_as_absent() {
+        let pattern = json!({"detail": {"state": [{"exists": true}]}});
+        // A non-empty dict at the exists path is flattened away — UNDEFINED.
+        assert!(!matches_pattern(
+            &pattern,
+            &json!({"detail": {"state": {"a": 1}}})
+        ));
+        // Deeper dict intermediates are dropped likewise.
+        assert!(!matches_pattern(
+            &pattern,
+            &json!({"detail": {"state": {"a": {"b": 1}}}})
+        ));
+        // The same rule at the walk's top level: `detail` itself is not a
+        // flattened key when its value is a non-empty dict.
+        assert!(!matches_pattern(
+            &json!({"detail": [{"exists": true}]}),
+            &json!({"detail": {"a": 1}})
+        ));
+    }
+
+    #[test]
+    fn exists_false_matches_dict_intermediates() {
+        let pattern = json!({"detail": {"state": [{"exists": false}]}});
+        // moto: the intermediate path is UNDEFINED, so exists:false matches.
+        assert!(matches_pattern(
+            &pattern,
+            &json!({"detail": {"state": {"a": 1}}})
+        ));
+        assert!(matches_pattern(
+            &json!({"detail": [{"exists": false}]}),
+            &json!({"detail": {"a": 1}})
+        ));
+        // Deep walk through the pattern into a dict intermediate.
+        assert!(matches_pattern(
+            &json!({"detail": {"state": {"a": [{"exists": false}]}}}),
+            &json!({"detail": {"state": {"a": {"b": 1}}}})
+        ));
+    }
+
+    #[test]
+    fn exists_treats_empty_dict_null_scalar_and_list_as_present() {
+        // models.py:974 `and v`: an EMPTY dict is NOT recursed into and is
+        // stored as a leaf — present for exists:true, matching for
+        // exists:false.
+        assert!(matches_pattern(
+            &json!({"detail": {"state": [{"exists": true}]}}),
+            &json!({"detail": {"state": {}}})
+        ));
+        assert!(!matches_pattern(
+            &json!({"detail": {"state": [{"exists": false}]}}),
+            &json!({"detail": {"state": {}}})
+        ));
+        assert!(matches_pattern(
+            &json!({"detail": [{"exists": true}]}),
+            &json!({"detail": {}})
+        ));
+        assert!(!matches_pattern(
+            &json!({"detail": [{"exists": false}]}),
+            &json!({"detail": {}})
+        ));
+        // Present leaves keep the classic exists table (models.py:1024:
+        // null/scalar/list values all read back non-UNDEFINED).
+        assert!(matches_pattern(
+            &json!({"detail": [{"exists": true}]}),
+            &json!({"detail": [1, 2]})
+        ));
+        assert!(!matches_pattern(
+            &json!({"detail": [{"exists": false}]}),
+            &json!({"detail": [1, 2]})
+        ));
+    }
+
+    // -- first-key rule for multi-key filter leaves (round-2 finding 3, LOW) --
+    //
+    // moto resolves each dict leaf by exactly ONE filter:
+    // `models.py:1022` — `filter_name, filter_value =
+    // list(pattern.items())[0]` — the first key of the leaf in
+    // insertion (Python dict) order, every other key ignored. The pair
+    // below brackets the rule: inserting `prefix` first matches on
+    // "100", swapping the key order flips the leaf to `numeric`, which
+    // sees a non-number and fails. Real AWS rejects multi-key leaves at
+    // pattern creation; the twin evaluates them per moto instead of
+    // erroring. Outcomes live-verified against the pinned fork.
+
+    #[test]
+    fn multi_key_leaf_evaluates_only_the_first_key() {
+        // First key = prefix → True on "100" (the legacy OR reading ran
+        // the numeric filter too, which would have failed the leaf).
+        assert!(matches_pattern(
+            &json!({"count": [{"prefix": "1", "numeric": [">", 5]}]}),
+            &json!({"count": "100"})
+        ));
+        // Same leaf, numeric first: "99" is not a number for the filter —
+        // the ignored `prefix` "9" would have matched under the old OR.
+        assert!(!matches_pattern(
+            &json!({"count": [{"numeric": [">", 5], "prefix": "9"}]}),
+            &json!({"count": "99"})
+        ));
+        // ...and a non-number still fails while the first key is numeric.
+        assert!(!matches_pattern(
+            &json!({"count": [{"numeric": [">", 5], "prefix": "9"}]}),
+            &json!({"count": "abc"})
+        ));
+        // Single-key numeric leaf keeps matching as before (control).
+        assert!(matches_pattern(
+            &json!({"count": [{"numeric": [">", 5]}]}),
+            &json!({"count": 10})
+        ));
+    }
+
+    #[test]
+    fn multi_key_leaf_with_exists_positions_decide() {
+        // `exists` ignored when it is NOT the first key: prefix runs.
+        assert!(matches_pattern(
+            &json!({"detail": [{"prefix": "d", "exists": false}]}),
+            &json!({"detail": "dog"})
+        ));
+        // `exists` first: a present value reads exists=false → no match,
+        // whatever the other (ignored) key would say.
+        assert!(!matches_pattern(
+            &json!({"detail": [{"exists": false, "prefix": "d"}]}),
+            &json!({"detail": "dog"})
+        ));
+        // First key wins among ordinary operators too: suffix matched,
+        // the failing prefix is never consulted (moto: True).
+        assert!(matches_pattern(
+            &json!({"source": [{"suffix": ".png", "prefix": "x"}]}),
+            &json!({"source": "pic.png"})
+        ));
+        assert!(!matches_pattern(
+            &json!({"source": [{"suffix": ".gif", "prefix": "pic."}]}),
+            &json!({"source": "pic.png"})
+        ));
+        // An empty filter leaf has no first key: moto's
+        // `list(pattern.items())[0]` raises IndexError; the port rejects.
+        assert!(!matches_pattern(
+            &json!({"detail": [{}]}),
+            &json!({"detail": "x"})
         ));
     }
 

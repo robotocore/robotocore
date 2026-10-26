@@ -6,7 +6,10 @@ license = "MIT"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive", "rc"] }
-serde_json = "1.0"
+# `preserve_order` keeps parsed JSON object keys in document order so
+# pattern-matcher dict leaves resolve their FIRST key like moto's
+# `list(pattern.items())[0]` (models.py:1022) — Python dict order.
+serde_json = { version = "1.0", features = ["preserve_order"] }
 bytes = "1.5"
 uuid = { version = "1.0", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
