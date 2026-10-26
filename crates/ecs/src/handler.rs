@@ -753,6 +753,21 @@ impl EcsHandler {
             .get("taskDefinition")
             .and_then(|v| v.as_str())
             .unwrap_or_default();
+        let desired_count = req.params.get("desiredCount").cloned().unwrap_or(json!(1));
+        // moto 5.2.0 computes the rollout state at service creation: the
+        // primary deployment reports COMPLETED once its runningCount reaches
+        // desiredCount, IN_PROGRESS while tasks are still coming up. The
+        // deployment created below starts at runningCount 0.
+        let running_count = 0i64;
+        let (rollout_state, rollout_state_reason) =
+            if running_count >= desired_count.as_i64().unwrap_or(0) {
+                ("COMPLETED", format!("ECS deployment {dep_id} completed."))
+            } else {
+                (
+                    "IN_PROGRESS",
+                    format!("ECS deployment {dep_id} in progress."),
+                )
+            };
         let svc_arn = format!(
             "arn:aws:ecs:{}:{}:service/{}/{}",
             req.region, req.account, cluster_name, svc_name
@@ -775,7 +790,7 @@ impl EcsHandler {
             "serviceName": svc_name,
             "clusterArn": cluster_arn,
             "taskDefinition": task_definition,
-            "desiredCount": req.params.get("desiredCount").cloned().unwrap_or(json!(1)),
+            "desiredCount": desired_count.clone(),
             "runningCount": 0,
             "pendingCount": 0,
             "status": "ACTIVE",
@@ -786,9 +801,12 @@ impl EcsHandler {
                 "id": dep_id,
                 "status": "PRIMARY",
                 "taskDefinition": task_definition,
-                "desiredCount": req.params.get("desiredCount").cloned().unwrap_or(json!(1)),
+                "desiredCount": desired_count,
                 "runningCount": 0,
                 "pendingCount": 0,
+                "failedTasks": env_failed_tasks(),
+                "rolloutState": rollout_state,
+                "rolloutStateReason": rollout_state_reason,
                 "createdAt": now,
                 "updatedAt": now,
             }],
@@ -2365,6 +2383,15 @@ fn now_f64() -> f64 {
     UNIX_EPOCH.elapsed().map(|d| d.as_secs_f64()).unwrap_or(0.0)
 }
 
+/// `MOTO_ECS_SERVICE_FAILED_TASKS` (moto 5.2.0): failedTasks reported in the
+/// service's primary deployment; non-numeric or negative values fall back to 0.
+fn env_failed_tasks() -> i64 {
+    std::env::var("MOTO_ECS_SERVICE_FAILED_TASKS")
+        .ok()
+        .and_then(|v| v.parse::<i64>().ok())
+        .map_or(0, |v| v.max(0))
+}
+
 fn cluster_not_found(name: &str) -> AwsResponse {
     AwsResponse::error(
         400,
@@ -2593,5 +2620,93 @@ mod tests {
             }),
         ));
         assert!(deleted.body.contains("INACTIVE"));
+    }
+
+    // ------------------------------------------------------------------
+    // moto 5.2.0: deployment rollout members on service responses
+    // ------------------------------------------------------------------
+
+    fn setup_cluster_and_task_family(h: &EcsHandler, cluster: &str, family: &str) {
+        h.handle(make_req("CreateCluster", json!({"clusterName": cluster})));
+        h.handle(make_req(
+            "RegisterTaskDefinition",
+            json!({
+                "family": family,
+                "containerDefinitions": [{"name": "app", "image": "nginx", "memory": 128}],
+            }),
+        ));
+    }
+
+    #[test]
+    fn describe_services_rollout_state() {
+        let h = EcsHandler::new();
+        setup_cluster_and_task_family(&h, "cls", "fam");
+        let create = h.handle(make_req(
+            "CreateService",
+            json!({
+                "cluster": "cls", "serviceName": "s1", "desiredCount": 1,
+                "taskDefinition": "fam:1",
+            }),
+        ));
+        assert_eq!(create.status, 200);
+        let created: Value = serde_json::from_str(&create.body).unwrap();
+        let dep = created["service"]["deployments"][0].clone();
+        // runningCount 0 < desiredCount 1 -> rollout still in progress.
+        assert_eq!(dep["rolloutState"], json!("IN_PROGRESS"));
+        assert_eq!(
+            dep["rolloutStateReason"],
+            json!(format!(
+                "ECS deployment {} in progress.",
+                dep["id"].as_str().unwrap()
+            ))
+        );
+
+        // A zero desired count is already complete; the describe renderer
+        // echoes the stored members.
+        h.handle(make_req(
+            "CreateService",
+            json!({
+                "cluster": "cls", "serviceName": "s0", "desiredCount": 0,
+                "taskDefinition": "fam:1",
+            }),
+        ));
+        let described = h.handle(make_req(
+            "DescribeServices",
+            json!({"cluster": "cls", "services": ["s0"]}),
+        ));
+        assert_eq!(described.status, 200);
+        let described: Value = serde_json::from_str(&described.body).unwrap();
+        let dep0 = described["services"][0]["deployments"][0].clone();
+        assert_eq!(dep0["rolloutState"], json!("COMPLETED"));
+        assert_eq!(
+            dep0["rolloutStateReason"],
+            json!(format!(
+                "ECS deployment {} completed.",
+                dep0["id"].as_str().unwrap()
+            ))
+        );
+    }
+
+    #[test]
+    fn describe_services_rollout_failed_tasks() {
+        // MOTO_ECS_SERVICE_FAILED_TASKS unset -> failedTasks defaults to 0.
+        let h = EcsHandler::new();
+        setup_cluster_and_task_family(&h, "cls", "fam");
+        h.handle(make_req(
+            "CreateService",
+            json!({
+                "cluster": "cls", "serviceName": "s1", "desiredCount": 1,
+                "taskDefinition": "fam:1",
+            }),
+        ));
+        let described = h.handle(make_req(
+            "DescribeServices",
+            json!({"cluster": "cls", "services": ["s1"]}),
+        ));
+        let described: Value = serde_json::from_str(&described.body).unwrap();
+        assert_eq!(
+            described["services"][0]["deployments"][0]["failedTasks"],
+            json!(0)
+        );
     }
 }
