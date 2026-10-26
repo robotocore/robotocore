@@ -757,17 +757,24 @@ fn item_key(table: &Table, attrs: &Map<String, Value>) -> Option<String> {
 }
 
 /// Enforce the real-AWS per-item 400 KB limit on the item about to be
-/// written, mirroring moto's `LimitedSizeDict` check — a ValidationException
-/// reading "Item size has exceeded the maximum allowed size" (moto issue
+/// written, mirroring moto's check — a 400 ValidationException (moto issue
 /// #1874). Numbers are sized with AWS's own formula per moto issue #10176
 /// (`models::number_value_size`), so moto-oversized items are accepted.
-fn check_item_size(attrs: &Map<String, Value>) -> Option<AwsResponse> {
+///
+/// UpdateItem and the TransactWriteItems Update row reach this via moto's
+/// `update_item`, which re-raises the underlying rejected size as
+/// ItemSizeToUpdateTooLarge ("Item size to update has exceeded the maximum
+/// allowed size"); put-shaped paths (PutItem, BatchWriteItem, Transact
+/// Put, PartiQL INSERT/UPDATE via put_item) keep moto's put-flavored
+/// "Item size has exceeded the maximum allowed size".
+fn check_item_size(attrs: &Map<String, Value>, is_update: bool) -> Option<AwsResponse> {
     if crate::models::item_size(attrs) > crate::models::MAX_ITEM_SIZE {
-        Some(AwsResponse::error(
-            400,
-            "ValidationException",
-            "Item size has exceeded the maximum allowed size",
-        ))
+        let message = if is_update {
+            "Item size to update has exceeded the maximum allowed size"
+        } else {
+            "Item size has exceeded the maximum allowed size"
+        };
+        Some(AwsResponse::error(400, "ValidationException", message))
     } else {
         None
     }
@@ -902,7 +909,7 @@ impl DynamoDbHandler {
 
         // moto constructs the LimitedSizeDict-backed Item before evaluating
         // conditions, so the 400 KB check runs first (getmoto/moto#1874).
-        if let Some(e) = check_item_size(&attrs) {
+        if let Some(e) = check_item_size(&attrs, false) {
             return e;
         }
 
@@ -1080,9 +1087,10 @@ impl DynamoDbHandler {
             Err(e) => return AwsResponse::error(400, "ValidationException", e.as_str()),
         };
 
-        // moto's UpdateExpressionExecutor raises the same size check on the
-        // executed result (getmoto/moto#1874); mirror it on the final item.
-        if let Some(e) = check_item_size(&new_attrs) {
+        // moto's UpdateExpressionExecutor raises ItemSizeToUpdateTooLarge on
+        // the executed result (getmoto/moto#1874); mirror it on the final
+        // item, with the update-flavored wording.
+        if let Some(e) = check_item_size(&new_attrs, true) {
             return e;
         }
 
@@ -1636,7 +1644,7 @@ impl DynamoDbHandler {
                         };
                         // moto's batch save lands in the same
                         // LimitedSizeDict check as put_item (getmoto/moto#1874).
-                        if let Some(e) = check_item_size(&attrs) {
+                        if let Some(e) = check_item_size(&attrs, false) {
                             return e;
                         }
                         // Stream capture mirrors moto's batch put hook.
@@ -1764,7 +1772,7 @@ impl DynamoDbHandler {
                     };
                     // moto's transactional Put runs the same LimitedSizeDict
                     // check when it builds the Item (getmoto/moto#1874).
-                    if let Some(e) = check_item_size(&attrs) {
+                    if let Some(e) = check_item_size(&attrs, false) {
                         return e;
                     }
                     let pre = existing(&table, &key);
@@ -1835,9 +1843,11 @@ impl DynamoDbHandler {
                                     }
                                 }
                             }
-                            // moto's transactional Update runs the same size
-                            // check on the executed result (getmoto/moto#1874).
-                            if let Some(e) = check_item_size(&new_attrs) {
+                            // moto's transactional Update re-raises the size
+                            // check on the executed result as the
+                            // update-flavored ItemSizeToUpdateTooLarge
+                            // (dynamodb/models/__init__.py update_item).
+                            if let Some(e) = check_item_size(&new_attrs, true) {
                                 return e;
                             }
                             cancellation.push(None);
@@ -2412,8 +2422,9 @@ fn partiql_run(
                 .ok_or_else(invalid)?;
             let key = item_key(&table, &attrs).ok_or_else(invalid)?;
             // moto routes a PartiQL INSERT through table.put_item, whose Item
-            // constructor enforces the 400 KB limit (getmoto/moto#1874).
-            if let Some(e) = check_item_size(&attrs) {
+            // constructor enforces the 400 KB limit (getmoto/moto#1874);
+            // the put-flavored wording applies, like moto's ItemSizeTooLarge.
+            if let Some(e) = check_item_size(&attrs, false) {
                 return Err(e);
             }
             let old = table
@@ -2483,7 +2494,9 @@ fn partiql_run(
                 // limit (getmoto/moto#1874); like moto, a failure here leaves
                 // replacements already applied in this statement in place.
                 let attrs_json = attrmap_to_serde(&attrs);
-                if let Some(e) = check_item_size(&attrs_json) {
+                // moto routes the replacement through put_item, so this stays
+                // put-flavored even though the statement is an UPDATE.
+                if let Some(e) = check_item_size(&attrs_json, false) {
                     return Err(e);
                 }
                 let old = streaming::stream_enabled(&table)
@@ -3986,9 +3999,16 @@ mod tests {
 
     // ---- Item size enforcement (getmoto/moto#10176, #1874) ----
 
-    // getmoto/moto#10176: with AWS's number sizing this ~150 KB item
-    // (ceil(300001/2)+1 bytes for the Number) is legal; moto's
-    // len(str(value)) sizing rejects it. The twin implements the AWS formula.
+    // AWS sizes a Number value at ceil(significant_digits / 2) + 1 bytes, so
+    // this item (~150 KB: ceil(300000/2)+1 bytes for the Number plus a small
+    // key) is inside the twin's 409,600-byte limit. moto's Number sizing
+    // differs at the ~400 KB boundary (it weighs a Number at
+    // len(str(value)) — 300,000 bytes here — and its LimitedSizeDict guard
+    // fires when the moto-sized whole-item sum passes 405,000 bytes), so the
+    // two engines classify boundary-size items differently. The AWS
+    // 38-significant-digit cap on Number values is implemented in neither
+    // moto nor the twin: a documented shared divergence, orthogonal to the
+    // 409,600-byte item-size check this test exercises.
     #[test]
     fn item_size_number_bytes_300k_digit_number_is_not_400() {
         let handler = DynamoDbHandler::new();
@@ -4006,7 +4026,8 @@ mod tests {
             "PutItem",
             json!({"TableName": "nsize", "Item": {"pk": {"S": "big"}, "n": {"N": big_number}}}),
         ));
-        // moto treats len(str(value)) = 300,000 > 405,000 as a 400.
+        // The item totals ~150 KB under AWS's byte formula, below the
+        // 409,600-byte limit the twin enforces.
         assert_eq!(resp.status, 200);
     }
 
@@ -4092,9 +4113,10 @@ mod tests {
             }),
         ));
         assert_eq!(resp.status, 400);
+        // moto's ItemSizeToUpdateTooLarge wording on the update path.
         assert!(resp
             .body
-            .contains("Item size has exceeded the maximum allowed size"));
+            .contains("Item size to update has exceeded the maximum allowed size"));
 
         let resp = handler.handle(make_req(
             "BatchWriteItem",
@@ -4129,9 +4151,10 @@ mod tests {
             ]}),
         ));
         assert_eq!(resp.status, 400);
+        // The transact Update row re-raises through moto's update_item too.
         assert!(resp
             .body
-            .contains("Item size has exceeded the maximum allowed size"));
+            .contains("Item size to update has exceeded the maximum allowed size"));
     }
 
     // TransactWriteItems is atomic: moto deep-copies every touched table and
