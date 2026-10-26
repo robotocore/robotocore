@@ -2381,6 +2381,42 @@ mod tests {
     }
 
     #[test]
+    fn deep_paren_filter_choice_variable_misses_without_aborting() {
+        // A Choice Variable whose filter body carries 5k paren groups used
+        // to recurse one stack frame per group and abort the whole process
+        // (StartExecution → stack overflow). The filter parser now counts
+        // the nesting, so a past-the-cap path resolves as missing, the rule
+        // misses, Default routes, and the flow resolves deterministically
+        // in-process.
+        let parens = |n: usize| format!("$.a[?{}@.b{}]", "(".repeat(n), ")".repeat(n));
+        let def = |variable: String| {
+            json!({
+                "StartAt": "Pick",
+                "States": {
+                    "Pick": {
+                        "Type": "Choice",
+                        "Choices": [
+                            {"Variable": variable, "IsPresent": true, "Next": "Hit"},
+                        ],
+                        "Default": "Done",
+                    },
+                    "Hit": {"Type": "Pass", "Result": {"hit": true}, "End": true},
+                    "Done": {"Type": "Pass", "Result": {"missed": true}, "End": true},
+                },
+            })
+        };
+        let input = json!({"a": [{"b": true}]});
+        // ≤100 parens still parse and evaluate: the filter matches, the
+        // matched route (Next) is taken.
+        let out = run(&def(parens(100)), input.clone()).expect("within the cap");
+        assert_eq!(out, json!({"hit": true}), "100 parens evaluate: {out}");
+        // 5k parens exceed the filter depth cap: the rule misses, Default
+        // routes, SUCCEEDED.
+        let out = run(&def(parens(5_000)), input).expect("past the cap is a miss");
+        assert_eq!(out, json!({"missed": true}), "past cap = missing: {out}");
+    }
+
+    #[test]
     fn test_result_path_discard_replace_and_merge() {
         let input = json!({"original": "data", "flag": true});
         // ResultPath "$" — the result replaces the input entirely and keys
