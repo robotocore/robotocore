@@ -457,6 +457,22 @@ const POST_V4_FIELDS: [&str; 4] = [
 ];
 const POST_V2_FIELDS: [&str; 2] = ["signature", "awsaccesskeyid"];
 
+/// The canned ACL names AWS documents (ACL overview table; moto's
+/// get_canned_acl accepts the same set, raising for anything else). Used by
+/// POST Object's `x-amz-acl`/`acl` form field — the twin stores no ACL
+/// state, so a valid canned name passes like PUT's x-amz-acl header does
+/// and only unknown names are rejected.
+const CANNED_ACLS: [&str; 8] = [
+    "private",
+    "public-read",
+    "public-read-write",
+    "authenticated-read",
+    "aws-exec-read",
+    "bucket-owner-read",
+    "bucket-owner-full-control",
+    "log-delivery-write",
+];
+
 /// The signing secret the twin underwrites for POST-upload verification.
 ///
 /// The twin's documented credential model is `aws_access_key_id` =
@@ -617,6 +633,7 @@ fn parse_multipart_form(body: &[u8], content_type: &str) -> Option<PostForm> {
 
     // Preamble (everything before the first --boundary) is discarded.
     let mut pos = mem_find(body, &part_delim, 0)? + part_delim.len();
+    let mut saw_terminal = false;
     let mut form = PostForm {
         fields: Vec::new(),
         file: None,
@@ -631,6 +648,7 @@ fn parse_multipart_form(body: &[u8], content_type: &str) -> Option<PostForm> {
         // `--boundary--` terminal marker (optional trailing transport padding
         // after it is ignored, matching real parsers).
         if body[pos..].starts_with(b"--") {
+            saw_terminal = true;
             break;
         }
         // Each part's headers begin right after CRLF.
@@ -685,6 +703,13 @@ fn parse_multipart_form(body: &[u8], content_type: &str) -> Option<PostForm> {
         }
     }
 
+    // A body that simply runs out before the closing `--boundary--` marker
+    // was never terminated: the multipart envelope is truncated (the Python
+    // form parsers this mirror refuse it — the loop must not "succeed" at
+    // end-of-body). MalformedPOSTRequest.
+    if !saw_terminal {
+        return None;
+    }
     Some(form)
 }
 
@@ -1417,9 +1442,16 @@ impl S3Handler {
                 )],
             );
         }
-        // moto _bucket_response_post: a POST upload needs an explicit length.
+        // moto _bucket_response_post 411s a POST without an explicit length;
+        // the message text is real AWS's documented MissingContentLength
+        // wording (moto's plain "Content-Length required" sentinel is not
+        // what hits the wire on real AWS).
         if !req.headers.contains_key("content-length") {
-            return AwsResponse::error(411, "MissingContentLength", "Content-Length required");
+            return AwsResponse::error(
+                411,
+                "MissingContentLength",
+                "You must provide the content-length HTTP header.",
+            );
         }
 
         let form = match parse_multipart_form(&req.body, &content_type) {
@@ -1448,10 +1480,14 @@ impl S3Handler {
             Err(e) => return e,
         };
 
-        // The form's `key` field is authoritative on the wire; the URL key
-        // (POST /{Bucket}/{Key}) is the fallback when the form omits it. Both
-        // funnel through the crate's decoded_key so stored state uses the
-        // decoded form like every other S3 operation.
+        // The form's `key` field is authoritative on the wire and is stored
+        // VERBATIM: a multipart field value is form payload, not a URI path
+        // component, so percent sequences in it are literal. moto keys the
+        // object from the parsed form value as-is (its form IS the
+        // querystring; s3/responses.py `_bucket_response_post` reads
+        // `self.querystring["key"][0]`), and real AWS does the same. Only the
+        // URL key (POST /{Bucket}/{Key}), the fallback when the form omits
+        // the field, is a path segment and keeps the crate's decoded_key.
         let key = match form.get("key") {
             Some(k) => {
                 let mut k = k.to_string();
@@ -1461,7 +1497,7 @@ impl S3Handler {
                         k = k.replace("${filename}", name);
                     }
                 }
-                Self::decoded_key(&k)
+                k
             }
             None => Self::bucket_and_key(&req).1,
         };
@@ -1524,17 +1560,40 @@ impl S3Handler {
             .map(String::from)
             .or_else(|| form.file_content_type.clone())
             .unwrap_or_else(|| "binary/octet-stream".to_string());
+        // The canned-ACL POST field (AWS documents x-amz-acl as the header
+        // the canned value arrives under; moto's form-as-querystring check
+        // reads the same name bare, `acl`). Valid canned names pass the way
+        // PUT's x-amz-acl header does — the twin stores no ACL state — and
+        // an unknown name is a bad argument, the way real AWS rejects an
+        // unsupported canned value (moto's oracle path
+        // `get_canned_acl` raises on the same inputs).
+        let acl = form
+            .get("x-amz-acl")
+            .or_else(|| form.get("acl"))
+            .unwrap_or("");
+        if !acl.is_empty() && !CANNED_ACLS.contains(&acl) {
+            return Self::aws_error_with(
+                400,
+                "InvalidArgument",
+                &format!("Invalid argument: {acl}"),
+                &[("ArgumentName", "x-amz-acl"), ("ArgumentValue", acl)],
+            );
+        }
         let storage_class = form
             .get("x-amz-storage-class")
             .unwrap_or("STANDARD")
             .to_string();
         // x-amz-meta-* form fields become object user metadata (localstack
-        // post_object user_metadata loop).
+        // post_object user_metadata loop). Multipart field names arrive with
+        // the client's own casing (unlike gateway headers, which are
+        // lowercased), so the strip is case-insensitive — an X-Amz-Meta-...
+        // field is the same metadata spelling.
         let metadata: HashMap<String, String> = form
             .fields
             .iter()
             .filter_map(|(k, v)| {
-                k.strip_prefix("x-amz-meta-")
+                k.to_ascii_lowercase()
+                    .strip_prefix("x-amz-meta-")
                     .map(|rest| (rest.to_ascii_lowercase(), v.clone()))
             })
             .collect();
@@ -1622,15 +1681,34 @@ impl S3Handler {
         resp
     }
 
-    /// The object URL a POST success Location header points at: path-style
-    /// under the request's Host (directly refetchable), the AWS canonical
-    /// virtual-host shape when the request carried no Host.
+    /// The object URL a POST success Location header points at. The request
+    /// arrives with normalize_virtual_host's path-style rewrite ALREADY
+    /// applied, so vhost-ness is re-detected from the Host header this code
+    /// never rewrote: a virtual-hosted caller (Host names the bucket) gets
+    /// `http://{host}/{key}` — real S3's Location for a virtual-hosted
+    /// POST — instead of the path-style shape that would double-book the
+    /// bucket and not refetch. Path-style stays `http://{host}/{bucket}/{key}`;
+    /// a request without any Host keeps the AWS canonical vhost shape.
+    /// X-Forwarded-Proto (first hop, when the caller forwarded TLS) decides
+    /// the scheme; plain HTTP otherwise.
     fn post_object_location(req: &AwsRequest, bucket: &str, encoded_key: &str) -> String {
-        match req.headers.get("host") {
-            Some(host) if !host.is_empty() => {
-                format!("http://{host}/{bucket}/{encoded_key}")
+        let scheme = req
+            .headers
+            .get("x-forwarded-proto")
+            .and_then(|v| v.split(',').next())
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| "http".to_string());
+        match req.headers.get("host").map(String::as_str) {
+            Some(host)
+                if !host.is_empty() && Self::vhost_bucket_from_host(Some(host)).is_some() =>
+            {
+                format!("{scheme}://{host}/{encoded_key}")
             }
-            _ => format!("http://{bucket}.s3.amazonaws.com/{encoded_key}"),
+            Some(host) if !host.is_empty() => {
+                format!("{scheme}://{host}/{bucket}/{encoded_key}")
+            }
+            _ => format!("{scheme}://{bucket}.s3.amazonaws.com/{encoded_key}"),
         }
     }
 
@@ -1735,8 +1813,18 @@ impl S3Handler {
                 .unwrap_or("");
             Self::signature_does_not_match_error(provided, policy_b64, &access_key)
         };
+        // Python's base64 decoder (the moto/localstack signing path, and how
+        // most real-world producers wrap PEM-style) ignores ASCII
+        // whitespace, so a line-wrapped policy field is a valid POST there.
+        // Strip the whitespace before decoding — the RAW string still acts
+        // as the SigV4 string-to-sign (expected_post_signature), exactly as
+        // moto signs it.
+        let compact: String = policy_b64
+            .chars()
+            .filter(|c| !c.is_ascii_whitespace())
+            .collect();
         let raw = base64::engine::general_purpose::STANDARD
-            .decode(policy_b64)
+            .decode(compact.as_bytes())
             .map_err(|_| failed())?;
         let text = String::from_utf8(raw).map_err(|_| failed())?;
         let value: serde_json::Value = serde_json::from_str(&text).map_err(|_| failed())?;
@@ -1790,6 +1878,23 @@ impl S3Handler {
     fn verify_post_signature(policy_b64: &str, form: &PostForm) -> Result<(), AwsResponse> {
         match post_signature_version(form) {
             PostSigVersion::V4 { signature } => {
+                // The V4 field set is only valid for its single documented
+                // algorithm: anything else (or an empty value) is rejected
+                // the way real AWS rejects a POST declaring an
+                // unsupported x-amz-algorithm — 400 InvalidArgument naming
+                // the field.
+                let algorithm = form.get("x-amz-algorithm").unwrap_or_default();
+                if algorithm != "AWS4-HMAC-SHA256" {
+                    return Err(Self::aws_error_with(
+                        400,
+                        "InvalidArgument",
+                        "Unsupported Signing Algorithm",
+                        &[
+                            ("ArgumentName", "x-amz-algorithm"),
+                            ("ArgumentValue", algorithm),
+                        ],
+                    ));
+                }
                 let credential = form.get("x-amz-credential").unwrap_or_default();
                 let amz_date = form.get("x-amz-date").unwrap_or_default();
                 let access_key = credential.split('/').next().unwrap_or_default();
@@ -1951,13 +2056,14 @@ impl S3Handler {
                 if !k.starts_with('$') {
                     return Ok(false);
                 }
-                // An empty starts-with value accepts anything the field holds.
-                if bound.is_empty() {
-                    return Ok(true);
-                }
-                Ok(form
-                    .get(k.trim_start_matches('$'))
-                    .is_some_and(|v| v.starts_with(bound)))
+                // An empty starts-with value accepts anything the field
+                // holds — but the field itself must exist: an absent field
+                // is a policy condition failure (AWS/moto 403 AccessDenied
+                // with the Policy-Condition-failed message).
+                let Some(value) = form.get(k.trim_start_matches('$')) else {
+                    return Ok(false);
+                };
+                Ok(bound.is_empty() || value.starts_with(bound))
             }
             _ => Ok(false),
         }
@@ -2162,6 +2268,31 @@ impl S3Handler {
         resp
     }
 
+    /// The `response-*` query-parameter overrides a successful GET/HEAD
+    /// object answer carries (AWS "Get Object: response header overrides";
+    /// moto `ALLOWED_HEADER_OVERRIDES`, s3/responses.py:180-187). Each of
+    /// the six usable response headers is overridden ONLY by its own query
+    /// parameter, when that parameter is present in the request — this is
+    /// how a browser pulls an object with a different Content-Disposition
+    /// etc. without a copy (moto applies the same map for HEAD requests
+    /// whose presigned URL carries the params).
+    fn apply_response_header_overrides(req: &AwsRequest, headers: &mut Vec<(String, String)>) {
+        const OVERRIDES: [(&str, &str); 6] = [
+            ("response-content-type", "Content-Type"),
+            ("response-content-language", "Content-Language"),
+            ("response-expires", "Expires"),
+            ("response-cache-control", "Cache-Control"),
+            ("response-content-disposition", "Content-Disposition"),
+            ("response-content-encoding", "Content-Encoding"),
+        ];
+        for (param, header) in OVERRIDES {
+            if let Some(value) = req.query_params.get(param) {
+                headers.retain(|(k, _)| !k.eq_ignore_ascii_case(header));
+                headers.push((header.to_string(), value.clone()));
+            }
+        }
+    }
+
     fn get_object(&self, req: &AwsRequest) -> AwsResponse {
         let (bucket_name, key) = Self::bucket_and_key(req);
         let state = self.get_state(req.account, &req.region);
@@ -2260,6 +2391,7 @@ impl S3Handler {
             for (k, v) in obj.metadata.iter() {
                 resp.headers.push((format!("x-amz-meta-{}", k), v.clone()));
             }
+            Self::apply_response_header_overrides(req, &mut resp.headers);
             return resp;
         }
 
@@ -2281,6 +2413,7 @@ impl S3Handler {
             resp.headers
                 .push(("x-amz-version-id".to_string(), obj.version_id.clone()));
         }
+        Self::apply_response_header_overrides(req, &mut resp.headers);
         resp
     }
 
@@ -2357,11 +2490,13 @@ impl S3Handler {
         if obj.version_id != NULL_VERSION_ID && bucket.is_versioned() {
             headers.push(("x-amz-version-id".to_string(), obj.version_id.clone()));
         }
-        AwsResponse {
+        let mut resp = AwsResponse {
             status: 200,
             headers,
             body: vec![],
-        }
+        };
+        Self::apply_response_header_overrides(req, &mut resp.headers);
+        resp
     }
 
     fn delete_object(&self, req: &AwsRequest) -> AwsResponse {
@@ -5338,6 +5473,45 @@ mod tests {
             got_headers.get("ETag").map(String::as_str),
             Some(etag.as_str())
         );
+
+        // moto keys a POST upload from the form's `key` field verbatim
+        // (moto/s3/responses.py `_bucket_response_post`: `key =
+        // self.querystring["key"][0]`; `moto/core/responses.py` feeds the
+        // multipart form into that querystring without URL-decoding) — a
+        // form value is payload, not a URI path segment. A literal `a%3Db`
+        // uploaded via the form therefore stores as `a%3Db`, reachable only
+        // through the once-decoded wire spelling `a%253Db`.
+        let resp = handler.handle(form_post_request(
+            "post-bkt",
+            None,
+            &[("key", "a%3Db")],
+            Some(("pct.txt", "application/octet-stream", b"verbatim")),
+        ));
+        assert_eq!(
+            resp.status,
+            204,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let location = header_map(&resp).get("Location").expect("Location").clone();
+        assert_eq!(location, "http://localhost:4566/post-bkt/a%253Db");
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("a%253Db"), // the literal `a%3Db` form key, wire spelling
+            b"",
+        ));
+        assert_eq!(get.status, 200, "form key must be stored verbatim");
+        assert_eq!(get.body, b"verbatim");
+        // The path-decoded spelling is a different key: the form key was
+        // never run through decoded_key.
+        let decoded = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("a%3Db"), // decodes once to `a=b`, which was never uploaded
+            b"",
+        ));
+        assert_eq!(decoded.status, 404, "form key must not be path-decoded");
     }
 
     #[test]
@@ -5388,6 +5562,142 @@ mod tests {
     }
 
     #[test]
+    fn post_object_requires_content_length() {
+        // moto _bucket_response_post 411s a POST with no explicit length;
+        // the message text is real AWS's MissingContentLength wording.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let mut req = form_post_request("post-bkt", None, &[("key", "k")], Some(("f", "", b"1")));
+        req.headers.remove("content-length");
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 411);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(
+            body.contains("<Code>MissingContentLength</Code>"),
+            "body: {body}"
+        );
+        assert!(
+            body.contains("You must provide the content-length HTTP header."),
+            "body: {body}"
+        );
+    }
+
+    #[test]
+    fn post_object_acl_field_honored() {
+        // The canned-ACL form field is honored like PUT's x-amz-acl header:
+        // the AWS-documented name x-amz-acl (moto also reads the bare `acl`
+        // name). A valid canned name stores the object; an unknown name is
+        // a bad argument.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        for (field, value) in [
+            ("x-amz-acl", "public-read"),
+            ("acl", "bucket-owner-full-control"),
+        ] {
+            let resp = handler.handle(form_post_request(
+                "post-bkt",
+                None,
+                &[("key", &format!("acl-{field}.txt")), (field, value)],
+                Some(("f.txt", "application/octet-stream", b"body")),
+            ));
+            assert_eq!(
+                resp.status,
+                204,
+                "body: {:?}",
+                String::from_utf8_lossy(&resp.body)
+            );
+            let get = handler.handle(make_req(
+                "GetObject",
+                Some("post-bkt"),
+                Some(&format!("acl-{field}.txt")),
+                b"",
+            ));
+            assert_eq!(get.status, 200);
+        }
+
+        // Unknown canned value → 400 InvalidArgument naming the field.
+        let resp = handler.handle(form_post_request(
+            "post-bkt",
+            None,
+            &[("key", "bad-acl.txt"), ("x-amz-acl", "everyone")],
+            Some(("f.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(
+            resp.status,
+            400,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(
+            body.contains("<Code>InvalidArgument</Code>"),
+            "body: {body}"
+        );
+        assert!(
+            body.contains("<ArgumentName>x-amz-acl</ArgumentName>"),
+            "body: {body}"
+        );
+        assert!(
+            body.contains("<ArgumentValue>everyone</ArgumentValue>"),
+            "body: {body}"
+        );
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("bad-acl.txt"),
+            b"",
+        ));
+        assert_eq!(get.status, 404, "rejected uploads store nothing");
+    }
+
+    #[test]
+    fn post_object_meta_fields_case_insensitive() {
+        // Multipart field names carry the client's casing, unlike gateway
+        // headers (lowercased top-side): the x-amz-meta- strip must be
+        // case-insensitive so an `X-Amz-Meta-...` form field survives as
+        // object user metadata just like its lowercase spelling.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let resp = handler.handle(form_post_request(
+            "post-bkt",
+            None,
+            &[
+                ("key", "cased-meta.txt"),
+                ("X-Amz-Meta-Color", "red"),
+                ("x-amz-meta-Mood", "happy"),
+            ],
+            Some(("f.txt", "application/octet-stream", b"body")),
+        ));
+        assert_eq!(
+            resp.status,
+            204,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("cased-meta.txt"),
+            b"",
+        ));
+        assert_eq!(get.status, 200);
+        let headers = header_map(&get);
+        assert_eq!(
+            headers.get("x-amz-meta-color").map(String::as_str),
+            Some("red"),
+            "headers: {:?}",
+            headers
+        );
+        assert_eq!(
+            headers.get("x-amz-meta-mood").map(String::as_str),
+            Some("happy")
+        );
+    }
+
+    #[test]
     fn post_object_key_field_required() {
         let handler = S3Handler::new();
         handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
@@ -5430,6 +5740,168 @@ mod tests {
         ));
         assert_eq!(get.status, 200);
         assert_eq!(get.body, b"url-key body");
+    }
+
+    #[test]
+    fn post_object_truncated_form_rejected() {
+        // A multipart body that ends before the closing `--boundary--`
+        // terminal marker is truncated: parse_multipart_form must refuse it
+        // (MalformedPOSTRequest) instead of accepting whatever parts fit —
+        // the werkzeug/Flask form parsers the wire path mirrors only return
+        // a form when the closing delimiter is present, and real AWS 400s
+        // the same way. Nothing is stored.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let (content_type, full_body) = multipart_form_body(
+            &[("key", "trunc.txt")],
+            Some(("f.txt", "application/octet-stream", b"payload")),
+        );
+        // Drop the final `--\r\n` so the body ends at the bare `--boundary`
+        // delimiter with no terminal `--boundary--` (and no trailing CRLF).
+        let truncated = full_body[..full_body.len() - 4].to_vec();
+
+        let path = "/post-bkt";
+        let operation =
+            S3Handler::detect_s3_operation("POST", path, &HashMap::new()).unwrap_or_default();
+        let req = AwsRequest {
+            service: "s3".to_string(),
+            operation,
+            account: 123456789012,
+            region: "us-east-1".to_string(),
+            bucket: Some("post-bkt".to_string()),
+            key: None,
+            query_params: HashMap::new(),
+            headers: form_post_headers(&content_type, truncated.len()),
+            method: "POST".to_string(),
+            body: Bytes::copy_from_slice(&truncated),
+            params: Value::Null,
+        };
+        let resp = handler.handle(req);
+        assert_eq!(
+            resp.status,
+            400,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(
+            body.contains("<Code>MalformedPOSTRequest</Code>"),
+            "body: {body}"
+        );
+
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("trunc.txt"),
+            b"",
+        ));
+        assert_eq!(get.status, 404, "truncated uploads store nothing");
+    }
+
+    /// A POST wire request with a caller-supplied Host header, delivered
+    /// pre-normalization the way `normalize_virtual_host` expects a
+    /// virtual-hosted caller to arrive (bucket = the first path segment).
+    fn form_post_request_with_host(
+        host: &str,
+        proto: Option<&str>,
+        path: &str,
+        fields: &[(&str, &str)],
+        file_part: Option<(&str, &str, &[u8])>,
+    ) -> AwsRequest {
+        let (content_type, body) = multipart_form_body(fields, file_part);
+        let operation =
+            S3Handler::detect_s3_operation("POST", path, &HashMap::new()).unwrap_or_default();
+        // The gateway parses /{bucket}/{key}: the first path segment is the
+        // arriving bucket.
+        let mut bucket_key = path.trim_start_matches('/').splitn(2, '/');
+        let parsed_bucket = bucket_key.next().unwrap_or_default();
+        let parsed_key = bucket_key.next().unwrap_or_default();
+        let mut headers = form_post_headers(&content_type, body.len());
+        headers.insert("host".to_string(), host.to_string());
+        if let Some(scheme) = proto {
+            headers.insert("x-forwarded-proto".to_string(), scheme.to_string());
+        }
+        AwsRequest {
+            service: "s3".to_string(),
+            operation,
+            account: 123456789012,
+            region: "us-east-1".to_string(),
+            bucket: Some(parsed_bucket.to_string()).filter(|s| !s.is_empty()),
+            key: Some(parsed_key.to_string()).filter(|s| !s.is_empty()),
+            query_params: HashMap::new(),
+            headers,
+            method: "POST".to_string(),
+            body: Bytes::copy_from_slice(&body),
+            params: Value::Null,
+        }
+    }
+
+    #[test]
+    fn post_object_vhost_location_omits_bucket_path() {
+        // A virtual-hosted POST (Host carries the bucket) keeps the vhost
+        // shape in the success Location: `http://host/key`. The request is
+        // path-normalized before the builder runs, so the vhost shape is
+        // re-detected from the original Host — the old builder answered
+        // `http://host/bucket/key`, which names the bucket twice and
+        // 404s on refetch.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("vhost-bkt"), None, b""));
+
+        // On the wire: POST http://vhost-bkt.localhost:4566/v.txt — the
+        // gateway parses /v.txt into bucket=v.txt before normalization.
+        let resp = handler.handle(form_post_request_with_host(
+            "vhost-bkt.localhost:4566",
+            None,
+            "/v.txt",
+            &[("key", "v.txt")],
+            Some(("v.txt", "application/octet-stream", b"payload")),
+        ));
+        assert_eq!(
+            resp.status,
+            204,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let headers = header_map(&resp);
+        assert_eq!(
+            headers.get("Location").map(String::as_str),
+            Some("http://vhost-bkt.localhost:4566/v.txt")
+        );
+        let get = handler.handle(make_req("GetObject", Some("vhost-bkt"), Some("v.txt"), b""));
+        assert_eq!(get.status, 200);
+        assert_eq!(get.body, b"payload");
+
+        // X-Forwarded-Proto wins over http (first hop before a comma).
+        let resp = handler.handle(form_post_request_with_host(
+            "vhost-bkt.localhost:4566",
+            Some("https"),
+            "/v2.txt",
+            &[("key", "v2.txt")],
+            Some(("v.txt", "application/octet-stream", b"payload")),
+        ));
+        assert_eq!(resp.status, 204);
+        let headers = header_map(&resp);
+        assert_eq!(
+            headers.get("Location").map(String::as_str),
+            Some("https://vhost-bkt.localhost:4566/v2.txt")
+        );
+
+        // Path-style callers stay under the bucket path, scheme honored.
+        let resp = handler.handle(form_post_request_with_host(
+            "localhost:4566",
+            Some("https"),
+            "/vhost-bkt/p.txt",
+            &[("key", "p.txt")],
+            Some(("p.txt", "application/octet-stream", b"payload")),
+        ));
+        assert_eq!(resp.status, 204);
+        let headers = header_map(&resp);
+        assert_eq!(
+            headers.get("Location").map(String::as_str),
+            Some("https://localhost:4566/vhost-bkt/p.txt")
+        );
+        // No X-Forwarded-Proto → plain http (covered by the sibling tests).
     }
 
     // ------------------------------------------------------------------
@@ -5598,6 +6070,56 @@ mod tests {
     }
 
     #[test]
+    fn post_object_line_wrapped_policy_accepted() {
+        // Real-world policy producers (and the Python decoders
+        // moto/localstack rely on) tolerate line-wrapped base64: ASCII
+        // whitespace inside the policy field is stripped before decoding
+        // while the RAW string remains the SigV4 string-to-sign. A wrapped
+        // policy signed as posted must store the upload, not 403.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let flat = post_policy_body(
+            serde_json::json!([["starts-with", "$key", ""]]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        // Wrap at 16 chars with CRLF, the PEM-style layout a client posts.
+        let wrapped: String = flat
+            .as_bytes()
+            .chunks(16)
+            .map(|c| String::from_utf8_lossy(c).to_string())
+            .collect::<Vec<_>>()
+            .join("\r\n");
+        assert_ne!(wrapped, flat, "the test must actually wrap");
+
+        let mut fields = vec![
+            ("key".to_string(), "wrapped.txt".to_string()),
+            ("policy".to_string(), wrapped.clone()),
+        ];
+        // The client signs the policy exactly as it posts it (wrapped).
+        fields.extend(post_v4_fields(&wrapped, POST_UPLOAD_SIGNING_SECRET, false));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("wrapped.txt", "application/octet-stream", b"stored")),
+        ));
+        assert_eq!(
+            resp.status,
+            204,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("wrapped.txt"),
+            b"",
+        ));
+        assert_eq!(get.status, 200);
+        assert_eq!(get.body, b"stored");
+    }
+
+    #[test]
     fn post_object_expired_policy_rejected() {
         // Expired policy with a correct signature → 403 AccessDenied,
         // "Invalid according to Policy: Policy expired." (localstack
@@ -5706,6 +6228,67 @@ mod tests {
     }
 
     #[test]
+    fn post_object_bad_algorithm_400() {
+        // A complete V4 field set whose x-amz-algorithm is not
+        // AWS4-HMAC-SHA256 fails before any signature comparison: real AWS
+        // accepts exactly one algorithm in a signed POST, and rejects the
+        // request with 400 InvalidArgument naming x-amz-algorithm.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([["starts-with", "$key", ""]]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        // Fields are signed correctly otherwise: the algorithm gate must
+        // still fire (it precedes the signature comparison).
+        let mut fields = vec![
+            ("key".to_string(), "wrong-alg.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        if let Some(alg) = fields.iter_mut().find(|(k, _)| k == "x-amz-algorithm") {
+            alg.1 = "AWS4-HMAC-SHA1".to_string();
+        }
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("wrong-alg.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(
+            resp.status,
+            400,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(
+            body.contains("<Code>InvalidArgument</Code>"),
+            "body: {body}"
+        );
+        assert!(
+            body.contains("<ArgumentName>x-amz-algorithm</ArgumentName>"),
+            "body: {body}"
+        );
+        assert!(
+            body.contains("<ArgumentValue>AWS4-HMAC-SHA1</ArgumentValue>"),
+            "body: {body}"
+        );
+
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("wrong-alg.txt"),
+            b"",
+        ));
+        assert_eq!(get.status, 404, "rejected uploads store nothing");
+    }
+
+    #[test]
     fn post_object_policy_without_signature_403() {
         // A policy document with no signature field family at all is not a
         // signed upload → 403 AccessDenied (localstack validate_post_policy).
@@ -5766,6 +6349,85 @@ mod tests {
         assert!(
             body.contains(r#"Invalid according to Policy: Policy Condition failed: ["eq","$key","expected.txt"]"#),
             "body: {body}"
+        );
+    }
+
+    #[test]
+    fn post_object_empty_starts_with_requires_field() {
+        // An empty starts-with bound accepts any VALUE of the field, but the
+        // field itself must be present: a policy `["starts-with", "$key", ""]`
+        // with a form that carries no key field (the agent posts through the
+        // URL-key fallback) fails the condition with 403 AccessDenied like
+        // real AWS/moto — the old shortcut returned Ok(true) for the empty
+        // bound even when the field was absent.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([["starts-with", "$key", ""]]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let mut owned = vec![("policy".to_string(), policy_b64.clone())];
+        owned.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        // No `key` form field: the object would come from the URL key.
+        let fields: Vec<(&str, &str)> = owned
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+        let resp = handler.handle(form_post_request(
+            "post-bkt",
+            Some("from-url.txt"),
+            &fields,
+            Some(("f.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(
+            resp.status,
+            403,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<Code>AccessDenied</Code>"), "body: {body}");
+        assert!(
+            body.contains(
+                r#"Invalid according to Policy: Policy Condition failed: ["starts-with","$key",""]"#
+            ),
+            "body: {body}"
+        );
+
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("from-url.txt"),
+            b"",
+        ));
+        assert_eq!(get.status, 404, "failed conditions store nothing");
+
+        // The same policy with an explicit (present) key field succeeds —
+        // the empty bound is only about value freedom once the field exists.
+        let mut with_key = vec![
+            ("key".to_string(), "signed/any.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        with_key.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &with_key,
+            Some(("g.txt", "application/octet-stream", b"2")),
+        ));
+        assert_eq!(
+            resp.status,
+            204,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
         );
     }
 
@@ -6046,6 +6708,111 @@ mod tests {
             b"",
         ));
         assert_eq!(get.body, b"checkpointed");
+    }
+
+    /// The stored object pair the response-override tests pull back.
+    fn put_response_override_object(handler: &S3Handler) {
+        handler.handle(make_req("CreateBucket", Some("ov-bkt"), None, b""));
+        let mut req = make_req("PutObject", Some("ov-bkt"), Some("obj.txt"), b"body");
+        req.headers
+            .insert("content-type".to_string(), "text/x-stored".to_string());
+        handler.handle(req);
+    }
+
+    #[test]
+    fn response_overrides_get() {
+        // Each of the six response-* query params overrides exactly its own
+        // response header (AWS "Get Object" response header overrides; moto
+        // ALLOWED_HEADER_OVERRIDES); headers without an override keep the
+        // stored values and the body is untouched.
+        let handler = S3Handler::new();
+        put_response_override_object(&handler);
+
+        let resp = handler.handle(make_req("GetObject", Some("ov-bkt"), Some("obj.txt"), b""));
+        assert_eq!(
+            header_map(&resp).get("Content-Type").map(String::as_str),
+            Some("text/x-stored")
+        );
+
+        let mut req = make_req("GetObject", Some("ov-bkt"), Some("obj.txt"), b"");
+        for (param, value) in [
+            ("response-content-type", "application/json"),
+            ("response-content-language", "pt-BR"),
+            ("response-expires", "Wed, 21 Oct 2115 07:28:00 GMT"),
+            ("response-cache-control", "no-cache"),
+            (
+                "response-content-disposition",
+                r#"attachment; filename="x.bin""#,
+            ),
+            ("response-content-encoding", "gzip"),
+        ] {
+            req.query_params
+                .insert(param.to_string(), value.to_string());
+        }
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+        assert_eq!(resp.body, b"body", "overrides are response headers only");
+        let headers = header_map(&resp);
+        assert_eq!(
+            headers.get("Content-Type").map(String::as_str),
+            Some("application/json")
+        );
+        assert_eq!(
+            headers.get("Content-Language").map(String::as_str),
+            Some("pt-BR")
+        );
+        assert_eq!(
+            headers.get("Expires").map(String::as_str),
+            Some("Wed, 21 Oct 2115 07:28:00 GMT")
+        );
+        assert_eq!(
+            headers.get("Cache-Control").map(String::as_str),
+            Some("no-cache")
+        );
+        assert_eq!(
+            headers.get("Content-Disposition").map(String::as_str),
+            Some(r#"attachment; filename="x.bin""#)
+        );
+        assert_eq!(
+            headers.get("Content-Encoding").map(String::as_str),
+            Some("gzip")
+        );
+        // Only the six mapped headers change.
+        assert!(headers.get("ETag").map(String::as_str).is_some());
+    }
+
+    #[test]
+    fn response_overrides_head() {
+        // HEAD honors the same six overrides as GET (moto applies
+        // ALLOWED_HEADER_OVERRIDES to HEAD when the URL carries the params);
+        // the answer stays body-less.
+        let handler = S3Handler::new();
+        put_response_override_object(&handler);
+
+        let mut req = make_req("HeadObject", Some("ov-bkt"), Some("obj.txt"), b"");
+        req.query_params.insert(
+            "response-content-type".to_string(),
+            "application/x-override".to_string(),
+        );
+        req.query_params.insert(
+            "response-content-disposition".to_string(),
+            r#"attachment; filename="h.bin""#.to_string(),
+        );
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+        assert!(resp.body.is_empty(), "HEAD has no body");
+        let headers = header_map(&resp);
+        assert_eq!(
+            headers.get("Content-Type").map(String::as_str),
+            Some("application/x-override")
+        );
+        assert_eq!(
+            headers.get("Content-Disposition").map(String::as_str),
+            Some(r#"attachment; filename="h.bin""#)
+        );
+        // Non-overridden headers keep their values.
+        assert!(headers.get("ETag").map(String::as_str).is_some());
+        assert!(headers.get("Last-Modified").map(String::as_str).is_some());
     }
 
     #[test]
