@@ -592,7 +592,11 @@ fn get_group(state: &mut GreengrassState, group_id: &str) -> Response {
 
 fn delete_group(state: &mut GreengrassState, group_id: &str) -> Response {
     if state.groups.remove(group_id).is_none() {
-        return gg_error("IdNotFoundException", "That group does not exist.");
+        // moto's delete_group wording (live-verified).
+        return gg_error(
+            "IdNotFoundException",
+            "That group definition does not exist.",
+        );
     }
     state.group_versions.remove(group_id);
     ok_json(&json!({}))
@@ -601,7 +605,11 @@ fn delete_group(state: &mut GreengrassState, group_id: &str) -> Response {
 fn update_group(state: &mut GreengrassState, group_id: &str, body: &Value) -> Response {
     let name = body.get("Name").and_then(Value::as_str).unwrap_or_default();
     let Some(group) = state.groups.get_mut(group_id) else {
-        return gg_error("IdNotFoundException", "That group does not exist.");
+        // moto's update_group wording (live-verified).
+        return gg_error(
+            "IdNotFoundException",
+            "That group definition does not exist.",
+        );
     };
     group.name = name.to_string();
     ok_json(&json!({}))
@@ -617,7 +625,12 @@ fn op_group_versions(
     region: &str,
 ) -> Response {
     if !state.groups.contains_key(group_id) {
-        return gg_error("IdNotFoundException", "That group does not exist.");
+        // moto's list/copy group-versions wording (live list_group_versions
+        // probe has the same text).
+        return gg_error(
+            "IdNotFoundException",
+            "That group definition does not exist.",
+        );
     }
     match (method, version_id) {
         ("POST", None) => {
@@ -686,11 +699,17 @@ fn op_group_deployments(
     account: u64,
     region: &str,
 ) -> Response {
-    if !state.groups.contains_key(group_id) {
-        return gg_error("IdNotFoundException", "That group does not exist.");
-    }
     match (method, deployment_id) {
         ("POST", None) => {
+            // moto create_deployment on an unknown group answers
+            // ResourceNotFoundException before any type/duration validation
+            // (live-verified wording).
+            if !state.groups.contains_key(group_id) {
+                return gg_error(
+                    "ResourceNotFoundException",
+                    "That group definition does not exist.",
+                );
+            }
             let deployment_type = body
                 .get("DeploymentType")
                 .and_then(Value::as_str)
