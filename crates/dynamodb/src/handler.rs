@@ -494,6 +494,15 @@ impl DynamoDbHandler {
         }
     }
 
+    /// The single renderer of a table description, shared by DescribeTable,
+    /// CreateTable and UpdateTable (moto renders all three from
+    /// `Table.describe()` with a base key; the twin keeps one code path).
+    ///
+    /// TableId: moto itself omits TableId from Table.describe() (verified
+    /// against moto 5.2.4 — no member on the description map), while real AWS
+    /// renders one; the twin renders the STORED stable id (`Table.table_id`,
+    /// minted once in `Table::new`), so every describes-rendering operation
+    /// reports the same value instead of a fresh random uuid per call.
     fn describe_table_response(
         _req: &AwsRequest,
         table: &Table,
@@ -578,7 +587,7 @@ impl DynamoDbHandler {
         let mut description = json!({
             "TableName": table.name,
             "TableStatus": *table.status.read(),
-            "TableId": format!("{}", uuid::Uuid::new_v4()),
+            "TableId": table.table_id.clone(),
             "TableArn": *table.table_arn.read(),
             "KeySchema": key_schema_json,
             "AttributeDefinitions": attr_defs_json,
@@ -4988,6 +4997,42 @@ mod tests {
         assert_eq!(td["KeySchema"][0]["AttributeName"], "pk");
         assert!(td.get("AttributeDefinitions").is_some());
         assert!(td.get("TableArn").is_some());
+    }
+
+    // TableId is rendered from the Table's STORED id (Table::new mints it
+    // once), so two consecutive describes are identical and UpdateTable's
+    // re-routed describe payload matches a fresh describe. moto's own
+    // Table.describe() omits TableId entirely (moto 5.2.4); real AWS renders
+    // one, like the twin does.
+    #[test]
+    fn describe_table_table_id_is_stable() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "stable-id",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        let first = handler.handle(make_req("DescribeTable", json!({"TableName": "stable-id"})));
+        assert_eq!(first.status, 200);
+        let second = handler.handle(make_req("DescribeTable", json!({"TableName": "stable-id"})));
+        let body_a: Value = serde_json::from_str(&first.body).unwrap();
+        let body_b: Value = serde_json::from_str(&second.body).unwrap();
+        let id_a = body_a["Table"]["TableId"].as_str().unwrap().to_string();
+        let id_b = body_b["Table"]["TableId"].as_str().unwrap().to_string();
+        assert!(!id_a.is_empty(), "describe renders a TableId");
+        assert_eq!(id_a, id_b, "two describing calls report the same TableId");
+
+        // UpdateTable's TableDescription carries the stored id too.
+        let resp = handler.handle(make_req(
+            "UpdateTable",
+            json!({"TableName": "stable-id", "BillingMode": "PROVISIONED"}),
+        ));
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(body["TableDescription"]["TableId"], id_a);
     }
 
     // moto renders each GSI's own ProvisionedThroughput
