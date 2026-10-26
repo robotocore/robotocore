@@ -37,6 +37,18 @@ fn mesh_error(code: &str, message: &str) -> Response {
     json_resp(400, &json!({ "__type": code, "message": message }))
 }
 
+/// Unrouted appmesh methods answer the gateway's genuine-absence shape:
+/// HTTP 501 with `NotImplemented` (the repo-wide canon — AGENTS.md
+/// "Reading errors correctly"). The 400-status mesh_error above remains
+/// for the modeled appmesh error codes; NotImplemented was the one pair
+/// that contradicted the canon (wave-5 ERROR-CANON follow-up, 17 sites).
+fn mesh_not_implemented(message: &str) -> Response {
+    json_resp(
+        501,
+        &json!({ "__type": "NotImplemented", "message": message }),
+    )
+}
+
 /// Multi-value query params (`tagKeys` can repeat).
 fn query_multi(query_string: &str, key: &str) -> Vec<String> {
     let mut out = Vec::new();
@@ -227,7 +239,7 @@ pub fn dispatch(req: &Request) -> Response {
         path.split('/').collect()
     };
     if segments.first() != Some(&"v20190125") {
-        return mesh_error("NotImplemented", &format!("{} {}", req.method, req.path));
+        return mesh_not_implemented(&format!("{} {}", req.method, req.path));
     }
     let rest = &segments[1..];
     let body: Value = if req.body.is_empty() {
@@ -323,7 +335,7 @@ fn route_resource(
                     .collect();
                 ok_json(&json!({ "nextToken": Value::Null, "meshes": meshes }))
             }
-            _ => mesh_error("NotImplemented", &format!("{method} on /meshes")),
+            _ => mesh_not_implemented(&format!("{method} on /meshes")),
         },
         ["meshes", mesh_name] => {
             let mesh_exists = state.meshes.contains_key(*mesh_name);
@@ -365,13 +377,13 @@ fn route_resource(
                     state.tags.remove(&mesh_arn(account, region, mesh_name));
                     ok_json(&deleting)
                 }
-                _ => mesh_error("NotImplemented", &format!("{method} on mesh")),
+                _ => mesh_not_implemented(&format!("{method} on mesh")),
             }
         }
         ["meshes", mesh_name, "virtualNodes"] => match method {
             "PUT" => op_create_node(state, mesh_name, body, account, region),
             "GET" => op_list_nodes(state, mesh_name),
-            _ => mesh_error("NotImplemented", &format!("{method} on virtualNodes")),
+            _ => mesh_not_implemented(&format!("{method} on virtualNodes")),
         },
         ["meshes", mesh_name, "virtualNodes", node_name] => {
             op_node_item(state, method, mesh_name, node_name, body, account, region)
@@ -379,7 +391,7 @@ fn route_resource(
         ["meshes", mesh_name, "virtualRouters"] => match method {
             "PUT" => op_create_router(state, mesh_name, body, account, region),
             "GET" => op_list_routers(state, mesh_name),
-            _ => mesh_error("NotImplemented", &format!("{method} on virtualRouters")),
+            _ => mesh_not_implemented(&format!("{method} on virtualRouters")),
         },
         ["meshes", mesh_name, "virtualRouters", router_name] => {
             op_router_item(state, method, mesh_name, router_name, body, account, region)
@@ -387,7 +399,7 @@ fn route_resource(
         ["meshes", mesh_name, "virtualRouter", router_name, "routes"] => match method {
             "PUT" => op_create_route(state, mesh_name, router_name, body, account, region),
             "GET" => op_list_routes(state, mesh_name, router_name),
-            _ => mesh_error("NotImplemented", &format!("{method} on routes")),
+            _ => mesh_not_implemented(&format!("{method} on routes")),
         },
         ["meshes", mesh_name, "virtualRouter", router_name, "routes", route_name] => op_route_item(
             state,
@@ -402,7 +414,7 @@ fn route_resource(
         ["meshes", mesh_name, "virtualServices"] => match method {
             "PUT" => op_create_service(state, mesh_name, body, account, region),
             "GET" => op_list_services(state, mesh_name),
-            _ => mesh_error("NotImplemented", &format!("{method} on virtualServices")),
+            _ => mesh_not_implemented(&format!("{method} on virtualServices")),
         },
         ["meshes", mesh_name, "virtualServices", svc_name] => {
             op_service_item(state, method, mesh_name, svc_name, body, account, region)
@@ -410,7 +422,7 @@ fn route_resource(
         ["meshes", mesh_name, "virtualGateways"] => match method {
             "PUT" => op_create_gateway(state, mesh_name, body, account, region),
             "GET" => op_list_gateways(state, mesh_name),
-            _ => mesh_error("NotImplemented", &format!("{method} on virtualGateways")),
+            _ => mesh_not_implemented(&format!("{method} on virtualGateways")),
         },
         ["meshes", mesh_name, "virtualGateways", gw_name] => {
             op_gateway_item(state, method, mesh_name, gw_name, body, account, region)
@@ -418,7 +430,7 @@ fn route_resource(
         ["meshes", mesh_name, "virtualGateway", gw_name, "gatewayRoutes"] => match method {
             "PUT" => op_create_gateway_route(state, mesh_name, gw_name, body, account, region),
             "GET" => op_list_gateway_routes(state, mesh_name, gw_name),
-            _ => mesh_error("NotImplemented", &format!("{method} on gatewayRoutes")),
+            _ => mesh_not_implemented(&format!("{method} on gatewayRoutes")),
         },
         ["meshes", mesh_name, "virtualGateway", gw_name, "gatewayRoutes", gr_name] => {
             op_gateway_route_item(
@@ -428,7 +440,7 @@ fn route_resource(
         ["tags"] if method == "GET" => op_tags(state, "GET", body, query),
         ["tag"] if method == "PUT" => op_tags(state, "POST", body, query),
         ["untag"] if method == "PUT" => op_tags(state, "DELETE", body, query),
-        _ => mesh_error("NotImplemented", &format!("path {segments:?}")),
+        _ => mesh_not_implemented(&format!("path {segments:?}")),
     }
 }
 
@@ -623,7 +635,7 @@ fn op_node_item(
                 node,
             ))
         }
-        _ => mesh_error("NotImplemented", &format!("{method} on virtualNode")),
+        _ => mesh_not_implemented(&format!("{method} on virtualNode")),
     }
 }
 
@@ -742,7 +754,7 @@ fn op_router_item(
                 router,
             ))
         }
-        _ => mesh_error("NotImplemented", &format!("{method} on virtualRouter")),
+        _ => mesh_not_implemented(&format!("{method} on virtualRouter")),
     }
 }
 
@@ -904,7 +916,7 @@ fn op_route_item(
             state.tags.remove(&arn);
             ok_json(&view)
         }
-        _ => mesh_error("NotImplemented", &format!("{method} on route")),
+        _ => mesh_not_implemented(&format!("{method} on route")),
     }
 }
 
@@ -1020,7 +1032,7 @@ fn op_service_item(
                 svc,
             ))
         }
-        _ => mesh_error("NotImplemented", &format!("{method} on virtualService")),
+        _ => mesh_not_implemented(&format!("{method} on virtualService")),
     }
 }
 
@@ -1137,7 +1149,7 @@ fn op_gateway_item(
                 gw,
             ))
         }
-        _ => mesh_error("NotImplemented", &format!("{method} on virtualGateway")),
+        _ => mesh_not_implemented(&format!("{method} on virtualGateway")),
     }
 }
 
@@ -1317,7 +1329,7 @@ fn op_gateway_route_item(
             state.tags.remove(&arn);
             ok_json(&view)
         }
-        _ => mesh_error("NotImplemented", &format!("{method} on gatewayRoute")),
+        _ => mesh_not_implemented(&format!("{method} on gatewayRoute")),
     }
 }
 
@@ -1394,7 +1406,7 @@ fn op_tags(state: &mut AppMeshState, method: &str, body: &Value, query: &str) ->
             }
             json_resp(200, &json!({}))
         }
-        _ => mesh_error("NotImplemented", method),
+        _ => mesh_not_implemented(method),
     }
 }
 
@@ -1464,6 +1476,7 @@ mod tests {
 
         run("DELETE", "/v20190125/meshes/unit-mesh", json!({}));
         let gone = run("GET", "/v20190125/meshes/unit-mesh", json!({}));
+        // MeshNotFound is a *modeled* appmesh error: mesh_error keeps 400.
         assert_eq!(gone.status, 400);
         assert!(String::from_utf8_lossy(&gone.body).contains("MeshNotFound"));
     }

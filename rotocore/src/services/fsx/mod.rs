@@ -1993,9 +1993,11 @@ fn py_truthy(value: &Value) -> bool {
     }
 }
 
-/// moto's crash-shaped 500: ValueError/KeyError into `InternalError`.
-fn internal_error_500(message: &str) -> Response {
-    json_error(500, "InternalError", message)
+/// moto's crash-shaped 500: ValueError/KeyError escape the handler and
+/// tumble to the werkzeug HTML 500 page (canon since the crash-fidelity
+/// wave — the JSON InternalError body was a parseable heresy).
+fn internal_error_500(_message: &str) -> Response {
+    crate::proto::moto_crash_response()
 }
 
 // ---------------------------------------------------------------------------
@@ -2114,7 +2116,7 @@ mod tests {
         let resp = dispatch(&request).expect("fsx dispatch");
         (
             resp.status,
-            serde_json::from_slice(&resp.body).unwrap_or(json!({})),
+            serde_json::from_slice(&resp.body).unwrap_or(Value::Null),
         )
     }
 
@@ -2226,13 +2228,20 @@ mod tests {
             json!({ "FileSystemType": "probe-test-value" }),
         );
         assert_eq!(status, 500);
-        assert_eq!(body["__type"], "InternalError");
-        assert_eq!(body["message"], "Invalid FileSystemType: probe-test-value");
+        // HTML crash pages are not JSON: the parsed body falls back to
+        // Null. The canon server returns moto's exact werkzeug page.
+        assert!(
+            body.is_null() || body.as_str().is_some(),
+            "crash mirror serves the moto HTML page"
+        );
 
         // An absent FileSystemType stringifies like python's None.
-        let (status, body) = send(account, "CreateFileSystem", json!({}));
-        assert_eq!(status, 500);
-        assert_eq!(body["message"], "Invalid FileSystemType: None");
+        let (status_absent, body_absent) = send(account, "CreateFileSystem", json!({}));
+        assert_eq!(status_absent, 500);
+        assert!(
+            body_absent.is_null(),
+            "absent-type crash serves the HTML page"
+        );
     }
 
     #[test]
@@ -2391,11 +2400,9 @@ mod tests {
                 json!({ "Filters": [{"Name": name, "Values": ["whatever"]}] }),
             );
             assert_eq!(status, 500, "{name}");
-            assert_eq!(
-                body,
-                json!({}),
-                "{name} must be the crash page, not an AWS envelope"
-            );
+            // Crash mirrors serve moto's HTML page; the JSON parse fallback
+            // surfaces Null rather than an AWS envelope.
+            assert!(body.is_null() || body.as_str().is_some(), "{name}");
         }
 
         // An empty-valued existing filter drops everything first (moto's

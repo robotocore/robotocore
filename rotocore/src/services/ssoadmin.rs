@@ -231,14 +231,13 @@ fn quota_exceeded(message: &str) -> Response {
     error_response("ServiceQuotaExceededException", message)
 }
 
-/// moto's dict lookups that crash into a plain 500 (unreachable through boto3 —
-/// the members are required shapes): mirror the 500 without the crash.
+/// moto's dict lookups that crash into a plain 500 (unreachable through
+/// boto3 — the members are required shapes): mirror moto's observable
+/// behavior — the werkzeug HTML 500 crash page, canon since the
+/// crash-fidelity wave (the JSON InternalError body was a parseable
+/// heresy that mocked "implemented but broken").
 fn moto_internal_error() -> Response {
-    let e = json!({
-        "__type": "InternalError",
-        "message": "InternalError",
-    });
-    Response::json(500, serde_json::to_vec(&e).unwrap_or_default())
+    crate::proto::moto_crash_response()
 }
 
 /// moto's `_find_permission_set`: the tail of the ARN after the last "/".

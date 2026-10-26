@@ -266,7 +266,13 @@ def deny_evidence(svc: str, op: str) -> str | None:
     table_start = re.compile(r"const\s+\w+\s*:\s*&\[")
     for f in twin_files(svc):
         text = f.read_text()
-        rel = f.relative_to(ROOT).as_posix()
+        # Twin files normally live under the repo root, but the unit tests
+        # monkeypatch twin_files to synthetic modules in tmp — keep those
+        # readable instead of crashing on the relative_to walk.
+        try:
+            rel = f.relative_to(ROOT).as_posix()
+        except ValueError:
+            rel = f.as_posix()
         lines = text.split("\n")
 
         # D1 — direct call-site: not_implemented("<op>")

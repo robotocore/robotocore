@@ -188,10 +188,8 @@ fn op_invoke_model(req: &Request) -> Response {
         // `InternalError` translation. A JSON `null` payload trips the
         // backend's `assert payload is not None` the same way.
         match serde_json::from_slice::<Value>(&req.body) {
-            Ok(Value::Null) => {
-                return json_error(500, "InternalError", "AssertionError: payload is None")
-            }
-            Err(e) => return json_error(500, "InternalError", &e.to_string()),
+            Ok(Value::Null) => return crate::proto::moto_crash_response(),
+            Err(_e) => return crate::proto::moto_crash_response(),
             Ok(_) => {}
         }
     }
@@ -304,14 +302,16 @@ mod tests {
 
     #[test]
     fn invoke_model_invalid_json_body_is_moto_500() {
-        // moto's json.loads raises -> unhandled exception -> 500 InternalError.
+        // moto's json.loads raises -> unhandled exception -> werkzeug HTML
+        // 500 crash page (canon; the JSON `InternalError` body was the old
+        // parseable heresy the crash-fidelity wave replaced).
         let resp = status_of(&header(
             &request("bedrock", "POST", "/model/m1/invoke", b"not json"),
             "content-type",
             "application/json",
         ));
         assert_eq!(resp.status, 500);
-        assert_eq!(single(&resp, "x-amzn-errortype"), "InternalError:");
+        assert!(String::from_utf8_lossy(&resp.body).contains("<!doctype html>"));
     }
 
     #[test]

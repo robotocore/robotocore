@@ -463,7 +463,7 @@ fn delete_cluster(st: &mut DaxStore, body: &Value) -> Response {
     // cluster is still present.
     st.refresh_clusters();
     let Some(cluster) = st.clusters.get_mut(name) else {
-        return json_error(500, "InternalError", &format!("KeyError: '{name}'"));
+        return crate::proto::moto_crash_response();
     };
     ok(json!({ "Cluster": cluster.render() }))
 }
