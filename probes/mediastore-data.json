@@ -1,7 +1,7 @@
 {
   "service": "mediastore-data",
-  "generated_at": "2026-10-25T19:44:02.336752+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T04:02:24.993074+00:00",
+  "endpoint": "http://localhost:4786",
   "counts": {
     "working": 5,
     "needs_params": 0,

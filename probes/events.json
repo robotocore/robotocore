@@ -1,7 +1,7 @@
 {
   "service": "events",
-  "generated_at": "2026-10-25T19:43:21.187460+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T04:03:38.274035+00:00",
+  "endpoint": "http://localhost:4786",
   "counts": {
     "working": 55,
     "needs_params": 1,

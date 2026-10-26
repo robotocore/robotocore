@@ -1,7 +1,7 @@
 {
   "service": "pipes",
-  "generated_at": "2026-10-25T19:44:14.049216+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T04:02:25.314060+00:00",
+  "endpoint": "http://localhost:4786",
   "counts": {
     "working": 10,
     "needs_params": 0,

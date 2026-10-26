@@ -1,7 +1,7 @@
 {
   "service": "greengrass",
-  "generated_at": "2026-10-25T19:43:31.766979+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T04:02:24.767537+00:00",
+  "endpoint": "http://localhost:4786",
   "counts": {
     "working": 92,
     "needs_params": 0,
@@ -168,7 +168,7 @@
     {
       "operation": "GetAssociatedRole",
       "status": "working",
-      "message": "likely implemented (IdNotFoundException: No role was found for the group.)"
+      "message": "likely implemented (404: You need to attach an IAM role to this deployment group.)"
     },
     {
       "operation": "GetBulkDeploymentStatus",

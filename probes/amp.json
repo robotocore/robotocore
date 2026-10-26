@@ -1,7 +1,7 @@
 {
   "service": "amp",
-  "generated_at": "2026-10-25T19:41:46.443499+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T04:02:22.961736+00:00",
+  "endpoint": "http://localhost:4786",
   "counts": {
     "working": 41,
     "needs_params": 3,

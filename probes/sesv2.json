@@ -1,7 +1,7 @@
 {
   "service": "sesv2",
-  "generated_at": "2026-10-25T19:45:02.409581+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T04:03:40.307747+00:00",
+  "endpoint": "http://localhost:4786",
   "counts": {
     "working": 108,
     "needs_params": 0,

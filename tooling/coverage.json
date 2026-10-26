@@ -52932,7 +52932,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (IdNotFoundException: No role was found for the group.)",
+    "probe_message": "likely implemented (404: You need to attach an IAM role to this deployment group.)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -105225,7 +105225,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "implemented (ValidationException)",
+    "probe_message": "implemented (ResourceNotFoundException)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -105247,7 +105247,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/123456789012/probe-queue does no)",
+    "probe_message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: The specified queue does not exist.)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -105269,7 +105269,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/123456789012/probe-queue does no)",
+    "probe_message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: The specified queue does not exist.)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -105280,7 +105280,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/123456789012/probe-queue does no)",
+    "probe_message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: The specified queue does not exist.)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -105291,7 +105291,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/123456789012/probe-queue does no)",
+    "probe_message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: The specified queue does not exist.)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -105357,7 +105357,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/123456789012/probe-queue does no)",
+    "probe_message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: The specified queue does not exist.)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -105379,7 +105379,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/123456789012/probe-queue does no)",
+    "probe_message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: The specified queue does not exist.)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -105390,7 +105390,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: Queue http://localhost:4566/123456789012/probe-queue does no)",
+    "probe_message": "likely implemented (AWS.SimpleQueueService.NonExistentQueue: The specified queue does not exist.)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -105412,7 +105412,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "implemented (ValidationException)",
+    "probe_message": "implemented (ResourceNotFoundException)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -115108,7 +115108,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (InvalidPolicyRevisionIdException: The provided policy revision id does not match.)",
     "probe_status": "working",
     "screens": {
      "probe": true,
