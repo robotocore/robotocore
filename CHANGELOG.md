@@ -49,7 +49,7 @@ See the 2026.10.x entries below (crash-fidelity canon, CFN mirror
 rollback cascade, lambda docker executor hardening, iam/kms/sfn/events
 semantic fixes from the adversarial review waves).
 
-## 2026.10.24 (unreleased)
+## 2026.10.24 (shipped in 2.0.0)
 
 ### Fixed: crashed probe rows now match moto's exact wire behavior
 
@@ -102,7 +102,7 @@ twin-only divergence:
   regenerated `tooling/coverage.json` and advanced the
   `tooling/coverage-budget.json` ratchet (`covered 9458/10268`, gate OK).
 
-## 2026.10.19 (unreleased, `port/rot-emr2` branch)
+## 2026.10.19 (shipped in 2.0.0)
 
 ### Added: native EMR backend on the pure-Rust server
 
@@ -142,7 +142,7 @@ state is in-memory and per-(account, region) as before. `Instances.
 InstanceFleets` on `RunJobFlow` stays a no-op (moto parity — fleets are
 created with `AddInstanceFleet`).
 
-## 2026.5.14 (unreleased, `port/rot-state` branch)
+## 2026.5.14 (shipped in 2.0.0)
 
 ### Added: state save/load/reset on the pure-Rust server
 
