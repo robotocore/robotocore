@@ -2470,9 +2470,7 @@ fn describe_workflow_execution(st: &mut SwfStore, body: &Value) -> Response {
         Err(resp) => return resp,
     };
     with_domain(st, &params.domain, |dm| {
-        let wfe_idx = match dm
-            .require_wfe(&params.workflow_id, params.run_id.as_deref(), false)
-        {
+        let wfe_idx = match dm.require_wfe(&params.workflow_id, params.run_id.as_deref(), false) {
             Ok(i) => i,
             Err(resp) => return resp,
         };
@@ -2558,9 +2556,7 @@ fn execution_history(st: &mut SwfStore, body: &Value) -> Response {
         Err(resp) => return resp,
     };
     with_domain(st, &params.domain, |dm| {
-        let wfe_idx = match dm
-            .require_wfe(&params.workflow_id, params.run_id.as_deref(), false)
-        {
+        let wfe_idx = match dm.require_wfe(&params.workflow_id, params.run_id.as_deref(), false) {
             Ok(i) => i,
             Err(resp) => return resp,
         };
@@ -4058,11 +4054,7 @@ mod tests {
             );
 
             // domain only: 'execution' null.
-            let (status, body) = send(
-                account,
-                operation,
-                json!({ "domain": "test-domain" }),
-            );
+            let (status, body) = send(account, operation, json!({ "domain": "test-domain" }));
             assert_eq!(status, 400);
             assert_eq!(error_code(&body), "ValidationException");
             assert_eq!(

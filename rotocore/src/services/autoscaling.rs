@@ -860,13 +860,15 @@ fn sync_target_groups(req: &Request, group: &Group) {
             ("Action".into(), "DescribeTargetGroups".into()),
             ("TargetGroupArn".into(), attached.clone()),
         ];
-        let Some((200, xml)) = cross_call(req, "elbv2", &LoopbackBody::Form(encoded_pairs(&describe)))
+        let Some((200, xml)) =
+            cross_call(req, "elbv2", &LoopbackBody::Form(encoded_pairs(&describe)))
         else {
             continue;
         };
         // Only refresh the ARN that was asked for: moto describes the pruned
         // remainder, never the delete markers of other callers' groups.
-        let Some(tg_arn) = xml.split("<member>")
+        let Some(tg_arn) = xml
+            .split("<member>")
             .find_map(|chunk| xml_tag(chunk, "TargetGroupArn"))
             .filter(|arn| arn == &attached)
         else {
@@ -4482,16 +4484,12 @@ mod tests {
         .expect("seed asg");
     }
 
-
-/// moto master e70a7315 (#10412): target groups can be deleted before their
-/// Auto Scaling group, and DeleteAutoScalingGroup must still succeed — moto
-/// 5.2.4 tripped on set_desired_capacity's target refresh and answered
-/// TargetGroupNotFound. The unit-test harness has no loopback peer (no Host
-/// header, sync calls skip), which is exactly the environment where the
-/// delete must not consult target groups at all.
-
-    use super::*;
-
+    /// moto master e70a7315 (#10412): target groups can be deleted before their
+    /// Auto Scaling group, and DeleteAutoScalingGroup must still succeed — moto
+    /// 5.2.4 tripped on set_desired_capacity's target refresh and answered
+    /// TargetGroupNotFound. The unit-test harness has no loopback peer (no Host
+    /// header, sync calls skip), which is exactly the environment where the
+    /// delete must not consult target groups at all.
     #[test]
     fn delete_group_with_deleted_target_groups() {
         for deleted_count in [0usize, 1, 2] {
@@ -4515,14 +4513,16 @@ mod tests {
                     acct
                 ));
             }
-            run_again(acct, &req_for("CreateAutoScalingGroup", &form))
-                .expect("create asg");
+            run_again(acct, &req_for("CreateAutoScalingGroup", &form)).expect("create asg");
             // (deleted_count of those target groups may be deleted before
             // the ASG is deleted — the live twin probe covers that case
             // against a real elbv2 store.)
             run_again(
                 acct,
-                &req_for("DeleteAutoScalingGroup", "AutoScalingGroupName=asg&ForceDelete=true"),
+                &req_for(
+                    "DeleteAutoScalingGroup",
+                    "AutoScalingGroupName=asg&ForceDelete=true",
+                ),
             )
             .expect("delete must succeed even when target groups are deleted");
             let body = run_again(acct, &req_for("DescribeAutoScalingGroups", "")).unwrap();
