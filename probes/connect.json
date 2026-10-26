@@ -1,7 +1,7 @@
 {
   "service": "connect",
-  "generated_at": "2026-10-26T03:43:00.139898+00:00",
-  "endpoint": "http://localhost:4795",
+  "generated_at": "2026-10-26T23:09:34.730731+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 365,
     "needs_params": 0,

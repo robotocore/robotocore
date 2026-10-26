@@ -2,10 +2,10 @@
  "comment": "surface-absence manifest (generated) \u2014 every not_implemented probe row is a recorded decision; see docs/botocore-surface-plan.md \u00a73d; rebuild deterministically via scripts/build_surface_absence.py",
  "counts": {
   "absent_moto_crash_faithful": 2,
-  "absent_no_handler": 252,
+  "absent_no_handler": 317,
   "legacy_gap": 3,
-  "modeled_deny": 83,
-  "not_implemented": 340
+  "modeled_deny": 84,
+  "not_implemented": 406
  },
  "services": {
   "account": {
@@ -104,7 +104,7 @@
    "LaunchInstances": {
     "class": "modeled_deny",
     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-    "evidence": "twin unit test pins the deny at rotocore/src/services/autoscaling.rs:4442; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): autoscaling/responses.py has no `launch_instances` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "evidence": "twin unit test pins the deny at rotocore/src/services/autoscaling.rs:4518; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): autoscaling/responses.py has no `launch_instances` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
     "status": "not_implemented"
    }
   },
@@ -202,6 +202,406 @@
     "status": "not_implemented"
    }
   },
+  "bedrock-agentcore": {
+   "BatchCreateMemoryRecords": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for BatchCreateMemoryRecords; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "GetAgentCard": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for GetAgentCard; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "GetBrowserSession": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for GetBrowserSession; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "GetResourceApiKey": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for GetResourceApiKey; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "GetResourceOauth2Token": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for GetResourceOauth2Token; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "GetWorkloadAccessToken": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for GetWorkloadAccessToken; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "GetWorkloadAccessTokenForJWT": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for GetWorkloadAccessTokenForJWT; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "GetWorkloadAccessTokenForUserId": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for GetWorkloadAccessTokenForUserId; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "InvokeAgentRuntime": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for InvokeAgentRuntime; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "InvokeAgentRuntimeCommand": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for InvokeAgentRuntimeCommand; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "InvokeCodeInterpreter": {
+    "class": "modeled_deny",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "twin deny arm at rotocore/src/services/bedrockagentcore/data.rs:30; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for InvokeCodeInterpreter; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "ListBrowserSessions": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for ListBrowserSessions; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "ListMemoryExtractionJobs": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for ListMemoryExtractionJobs; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "ListMemoryRecords": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for ListMemoryRecords; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "RetrieveMemoryRecords": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for RetrieveMemoryRecords; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "SaveBrowserSessionProfile": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for SaveBrowserSessionProfile; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "StartBrowserSession": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for StartBrowserSession; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "StartMemoryExtractionJob": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for StartMemoryExtractionJob; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "StopBrowserSession": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for StopBrowserSession; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   }
+  },
+  "bedrock-agentcore-control": {
+   "CreateApiKeyCredentialProvider": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for CreateApiKeyCredentialProvider; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "CreateBrowser": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for CreateBrowser; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "CreateBrowserProfile": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for CreateBrowserProfile; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "CreatePolicyEngine": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for CreatePolicyEngine; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "CreateWorkloadIdentity": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for CreateWorkloadIdentity; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "DeleteApiKeyCredentialProvider": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for DeleteApiKeyCredentialProvider; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "DeleteBrowser": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for DeleteBrowser; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "DeleteBrowserProfile": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for DeleteBrowserProfile; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "DeleteEvaluator": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for DeleteEvaluator; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "DeleteOauth2CredentialProvider": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for DeleteOauth2CredentialProvider; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "DeleteOnlineEvaluationConfig": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for DeleteOnlineEvaluationConfig; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "DeletePolicy": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for DeletePolicy; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "DeletePolicyEngine": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for DeletePolicyEngine; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "DeleteResourcePolicy": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for DeleteResourcePolicy; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "DeleteWorkloadIdentity": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for DeleteWorkloadIdentity; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "GetApiKeyCredentialProvider": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetApiKeyCredentialProvider; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "GetBrowser": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetBrowser; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "GetBrowserProfile": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetBrowserProfile; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "GetEvaluator": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetEvaluator; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "GetOauth2CredentialProvider": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetOauth2CredentialProvider; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "GetOnlineEvaluationConfig": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetOnlineEvaluationConfig; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "GetPolicy": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetPolicy; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "GetPolicyEngine": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetPolicyEngine; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "GetPolicyGeneration": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetPolicyGeneration; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "GetResourcePolicy": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetResourcePolicy; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "GetTokenVault": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetTokenVault; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "GetWorkloadIdentity": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetWorkloadIdentity; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "ListApiKeyCredentialProviders": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for ListApiKeyCredentialProviders; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "ListBrowserProfiles": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for ListBrowserProfiles; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "ListBrowsers": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for ListBrowsers; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "ListEvaluators": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for ListEvaluators; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "ListOauth2CredentialProviders": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for ListOauth2CredentialProviders; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "ListOnlineEvaluationConfigs": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for ListOnlineEvaluationConfigs; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "ListPolicies": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for ListPolicies; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "ListPolicyEngines": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for ListPolicyEngines; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "ListPolicyGenerationAssets": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for ListPolicyGenerationAssets; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "ListPolicyGenerations": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for ListPolicyGenerations; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "ListWorkloadIdentities": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for ListWorkloadIdentities; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "PutResourcePolicy": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for PutResourcePolicy; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "SetTokenVaultCMK": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for SetTokenVaultCMK; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "SynchronizeGatewayTargets": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for SynchronizeGatewayTargets; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "UpdateApiKeyCredentialProvider": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for UpdateApiKeyCredentialProvider; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "UpdateEvaluator": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for UpdateEvaluator; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "UpdateOnlineEvaluationConfig": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for UpdateOnlineEvaluationConfig; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "UpdatePolicy": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for UpdatePolicy; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "UpdatePolicyEngine": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for UpdatePolicyEngine; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   },
+   "UpdateWorkloadIdentity": {
+    "class": "absent_no_handler",
+    "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+    "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for UpdateWorkloadIdentity; the twin mirrors the absence with the gateway NotImplemented 501",
+    "status": "not_implemented"
+   }
+  },
   "bedrock-runtime": {
    "ApplyGuardrail": {
     "class": "absent_no_handler",
@@ -256,19 +656,19 @@
    "DescribeTypeRegistration": {
     "class": "modeled_deny",
     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-    "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3788; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `describe_type_registration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3795; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `describe_type_registration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
     "status": "not_implemented"
    },
    "RegisterType": {
     "class": "modeled_deny",
     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-    "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3788; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `register_type` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3795; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `register_type` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
     "status": "not_implemented"
    },
    "SetTypeConfiguration": {
     "class": "modeled_deny",
     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-    "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3788; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `set_type_configuration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+    "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3795; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `set_type_configuration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
     "status": "not_implemented"
    }
   },
