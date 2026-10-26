@@ -21,6 +21,7 @@
 
 use crate::store;
 use crate::{Request, Response};
+use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
 pub const XMLNS: &str = "http://elasticloadbalancing.amazonaws.com/doc/2015-12-01/";
@@ -1376,7 +1377,7 @@ fn run_op(
         "ModifyTargetGroup" => op_modify_target_group(state, p),
         "ModifyTargetGroupAttributes" => op_modify_target_group_attributes(state, p),
         "RegisterTargets" => op_register_targets(req, state, p),
-        "DeregisterTargets" => op_deregister_targets(state, p),
+        "DeregisterTargets" => op_deregister_targets(req, state, p),
         "DescribeTargetHealth" => op_describe_target_health(req, state, p),
         "DeleteTargetGroup" => {
             let arn = p_string(p, "TargetGroupArn")
@@ -2322,10 +2323,17 @@ fn op_register_targets(
             tg.targets.push((id, port));
         }
     }
+    // Successful mutate → CloudTrail management event on the default bus
+    // (issue #347 allowlist).
+    emit_target_op_cloudtrail(req, "RegisterTargets", &arn, &targets);
     Ok(String::new())
 }
 
-fn op_deregister_targets(state: &mut ElbV2State, p: &BTreeMap<String, ElbVal>) -> OpResult {
+fn op_deregister_targets(
+    req: &Request,
+    state: &mut ElbV2State,
+    p: &BTreeMap<String, ElbVal>,
+) -> OpResult {
     let arn = p_string(p, "TargetGroupArn")
         .unwrap_or_default()
         .to_string();
@@ -2344,7 +2352,45 @@ fn op_deregister_targets(state: &mut ElbV2State, p: &BTreeMap<String, ElbVal>) -
         let removed = tg.targets.remove(pos);
         tg.deregistered.push(removed);
     }
+    // Successful mutate → CloudTrail management event on the default bus
+    // (issue #347: EventBridge rules on DeregisterTargets drive the drain
+    // Lambda).
+    emit_target_op_cloudtrail(req, "DeregisterTargets", &arn, &targets);
     Ok(String::new())
+}
+
+/// CloudTrail management-event emit for a succeeded target
+/// register/deregister call (issue #347). The member names are the
+/// lower-camel shape real CloudTrail records carry (`targetGroupArn`,
+/// `targets[].id`); numeric members stay numeric. Fire-and-forget through
+/// the process-global registry — nothing here can fail the API call.
+fn emit_target_op_cloudtrail(
+    req: &Request,
+    event_name: &str,
+    arn: &str,
+    targets: &[BTreeMap<String, ElbVal>],
+) {
+    let items: Vec<Value> = targets
+        .iter()
+        .filter_map(|m| {
+            let id = m.get("Id").and_then(|v| v.string())?;
+            let mut item = json!({ "id": id });
+            if let Some(port) = m.get("Port").and_then(|v| v.string()) {
+                item["port"] = match port.parse::<i64>() {
+                    Ok(n) => json!(n),
+                    Err(_) => json!(port),
+                };
+            }
+            Some(item)
+        })
+        .collect();
+    crate::cloudtrail_emit::emit_cloudtrail_api_call(
+        req.account,
+        &req.region,
+        "elasticloadbalancing.amazonaws.com",
+        event_name,
+        &json!({ "targetGroupArn": arn, "targets": items }).to_string(),
+    );
 }
 
 fn health_for(
@@ -4526,5 +4572,114 @@ mod tests {
         assert!(out2.contains(
             "<DescribeTagsResult><TagDescriptions></TagDescriptions></DescribeTagsResult>"
         ));
+    }
+
+    #[test]
+    fn cloudtrail_emit_fires_on_register_and_deregister_targets() {
+        // Registry claim contract (rotocore::cloudtrail_emit::test_claim +
+        // reset_registry): hold the claim guard for the whole
+        // reset/spy/restore window, restore the unbound default at the end.
+        // The state scope uses a dedicated account nobody else touches so
+        // parallel tests stay independent.
+        let _claim = crate::cloudtrail_emit::test_claim();
+        crate::cloudtrail_emit::reset_registry();
+        let seen: std::sync::Arc<parking_lot::Mutex<Vec<Value>>> = Default::default();
+        {
+            let sink = seen.clone();
+            crate::cloudtrail_emit::register_emitter(std::sync::Arc::new(
+                move |account, region, source, event, request| {
+                    // Only this test's scope: other tests drive the same ops
+                    // concurrently against their own accounts.
+                    if account != 447089063401 {
+                        return;
+                    }
+                    sink.lock().push(json!({
+                        "account": account,
+                        "region": region,
+                        "source": source,
+                        "event": event,
+                        "request": serde_json::from_str::<Value>(request)
+                            .unwrap_or_default(),
+                    }));
+                },
+            ));
+        }
+        let account = 447089063401u64;
+        let arn = format!("arn:aws:elasticloadbalancing:us-east-1:{account}:targetgroup/streamer-tg/0123456789abcdef");
+        let slots = store::slot::<ElbV2State>("elbv2");
+        let mut map = slots.write();
+        let st = map.entry((account, "us-east-1".into())).or_default();
+        st.tgs.push(FakeTargetGroup {
+            arn: arn.clone(),
+            name: "streamer-tg".into(),
+            vpc_id: Some("vpc-1".into()),
+            protocol: Some("HTTP".into()),
+            protocol_version: Some("HTTP1".into()),
+            port: Some("8080".into()),
+            health_check_protocol: Some("HTTP".into()),
+            health_check_port: Some("traffic-port".into()),
+            health_check_enabled: true,
+            health_check_interval_seconds: 30,
+            health_check_timeout_seconds: 5,
+            healthy_threshold_count: "5".into(),
+            unhealthy_threshold_count: "2".into(),
+            health_check_path: Some("/".into()),
+            matcher: None,
+            targets: vec![],
+            deregistered: vec![],
+            terminated: vec![],
+            load_balancer_arns: vec![],
+            target_type: "instance".into(),
+            ip_address_type: Some("ipv4".into()),
+            attributes: FakeTargetGroup::default_attributes(Some("HTTP"), "instance"),
+        });
+
+        // Success paths emit; the unit-test loopback is absent so instance
+        // state lookups pass (no InvalidTarget guard).
+        let reg_req = req_for(
+            "RegisterTargets",
+            "TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:447089063401:targetgroup/streamer-tg/0123456789abcdef&Targets.member.1.Id=i-drain1&Targets.member.1.Port=8080",
+        );
+        let reg_req = Request { account, ..reg_req };
+        let p = parse_params(&reg_req);
+        op_register_targets(&reg_req, st, &p).expect("register succeeds");
+        let dereg_req = req_for(
+            "DeregisterTargets",
+            "TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:447089063401:targetgroup/streamer-tg/0123456789abcdef&Targets.member.1.Id=i-drain1",
+        );
+        let dereg_req = Request {
+            account,
+            ..dereg_req
+        };
+        let p = parse_params(&dereg_req);
+        op_deregister_targets(&dereg_req, st, &p).expect("deregister succeeds");
+        // A failed call emits nothing (unknown target group).
+        let miss_req = req_for(
+            "DeregisterTargets",
+            "TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:447089063401:targetgroup/nope/0123456789abcdef&Targets.member.1.Id=i-x",
+        );
+        let p = parse_params(&miss_req);
+        assert!(op_deregister_targets(&miss_req, st, &p).is_err());
+
+        // Restore the unbound default, then read the captures. The spy lives
+        // under `_claim`, so nothing races the registry between here and the
+        // test's own ops.
+        crate::cloudtrail_emit::reset_registry();
+        let rows = seen.lock().clone();
+        assert_eq!(rows.len(), 2, "only successful calls emit");
+        assert_eq!(rows[0]["source"], "elasticloadbalancing.amazonaws.com");
+        assert_eq!(rows[0]["event"], "RegisterTargets");
+        assert_eq!(rows[0]["account"], json!(account));
+        assert_eq!(rows[0]["region"], "us-east-1");
+        assert_eq!(rows[0]["request"]["targetGroupArn"], arn.clone());
+        assert_eq!(rows[0]["request"]["targets"][0]["id"], "i-drain1");
+        assert_eq!(
+            rows[0]["request"]["targets"][0]["port"],
+            json!(8080),
+            "numeric members stay numeric"
+        );
+        assert_eq!(rows[1]["event"], "DeregisterTargets");
+        assert_eq!(rows[1]["request"]["targetGroupArn"], arn);
+        assert_eq!(rows[1]["request"]["targets"][0]["id"], "i-drain1");
     }
 }
