@@ -627,6 +627,165 @@ impl DynamoDbHandler {
             );
         };
 
+        // moto update_table (dynamodb/models/__init__.py:168-195) applies
+        // its members in a fixed order — attribute definitions, global
+        // secondary index updates, provisioned throughput, billing mode,
+        // stream specification, deletion protection — stopping at the
+        // first failure, so a member positioned earlier that raises
+        // shadows later members entirely (nothing after it is applied).
+        // The twin previously ran throughput → billing → stream →
+        // protection → attrs → GSI; reordered to moto's per-source order.
+
+        // 1. moto replaces table.attr wholesale with a non-empty
+        // AttributeDefinitions member (models/__init__.py:180-181 —
+        // `table.attr = attr_definitions`; live-transcribed 2026-10-26,
+        // a request carrying only [extra] dropped the earlier [id]). The
+        // twin keeps its long-standing merge behavior — flagged as an
+        // observed divergence, not mirrored in this lane.
+        if let Some(defs) = req.params.get("AttributeDefinitions") {
+            let mut existing_defs = table.attribute_definitions.write();
+            for def in Self::parse_attr_defs(Some(defs)) {
+                if !existing_defs
+                    .iter()
+                    .any(|d| d.attribute_name == def.attribute_name)
+                {
+                    existing_defs.push(def);
+                }
+            }
+        }
+
+        // 2. GlobalSecondaryIndexUpdates. moto's
+        // update_table_global_indexes (models/__init__.py:207-247) walks
+        // each member's verbs in Delete → Update → Create order and
+        // raises ValueError — a plain werkzeug 500 through moto_server —
+        // when a verb names an index that does not exist ("Global
+        // Secondary Index does not exist, but tried to delete/update:
+        // {name}") or re-creates a name that exists ("Global Secondary
+        // Index already exists: {name}"), plus a KeyError 500 when a
+        // Create lacks one of its required IndexName/KeySchema/Projection
+        // members (an empty KeySchema ARRAY is accepted — live-transcribed
+        // moto 5.2.4, 2026-10-26). Deletes and creates mutate a staging
+        // list committed only when every member succeeded (moto assigns
+        // table.global_indexes after the loop); Updates mutate the live
+        // entry and survive a later member's failure (live-transcribed:
+        // Update g1x→9/1 then Delete ghost answered the 500 and g1x kept
+        // 9/1).
+        let index_updates = req
+            .params
+            .get("GlobalSecondaryIndexUpdates")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let mut staged = table.global_secondary_indexes.read().clone();
+        for update in index_updates {
+            if let Some(delete) = update.get("Delete") {
+                let Some(name) = delete.get("IndexName").and_then(Value::as_str) else {
+                    return AwsResponse::werkzeug_500();
+                };
+                let Some(pos) = staged.iter().position(|g| g.name == name) else {
+                    return AwsResponse::werkzeug_500();
+                };
+                staged.remove(pos);
+            }
+            if let Some(gsi_update) = update.get("Update") {
+                let Some(name) = gsi_update.get("IndexName").and_then(Value::as_str) else {
+                    return AwsResponse::werkzeug_500();
+                };
+                let Some(pos) = staged.iter().position(|g| g.name == name) else {
+                    return AwsResponse::werkzeug_500();
+                };
+                // moto's IndexDefinition.update replaces the members the
+                // update carries (dynamodb/models/table.py:149-155).
+                let idx = &mut staged[pos];
+                if let Some(key_schema_json) = gsi_update.get("KeySchema") {
+                    idx.key_schema = Self::parse_key_schema(Some(key_schema_json));
+                }
+                if let Some(proj) = gsi_update.get("Projection") {
+                    idx.projection = proj
+                        .get("ProjectionType")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("ALL")
+                        .to_string();
+                    idx.non_key_attributes = proj
+                        .get("NonKeyAttributes")
+                        .and_then(|n| n.as_array())
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(|x| x.as_str().map(String::from))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                }
+                if let Some(throughput) = gsi_update.get("ProvisionedThroughput") {
+                    idx.provisioned_rcu =
+                        throughput.get("ReadCapacityUnits").and_then(|v| v.as_i64());
+                    idx.provisioned_wcu = throughput
+                        .get("WriteCapacityUnits")
+                        .and_then(|v| v.as_i64());
+                }
+                // moto mutates the LIVE index object here — mirror on the
+                // stored entry so the change also survives a later member
+                // failing.
+                let mut stored = table.global_secondary_indexes.write();
+                if let Some(stored_idx) = stored.iter_mut().find(|g| g.name == name) {
+                    *stored_idx = idx.clone();
+                }
+            }
+            if let Some(create) = update.get("Create") {
+                let (index_name, key_schema_json, projection_json) = match (
+                    create.get("IndexName").and_then(Value::as_str),
+                    create.get("KeySchema"),
+                    create.get("Projection"),
+                ) {
+                    (Some(name), Some(ks), Some(p)) if !name.is_empty() => (name, ks, p),
+                    // moto's GlobalSecondaryIndex.create does dct[...] — a
+                    // missing required member IndexErrors out.
+                    _ => return AwsResponse::werkzeug_500(),
+                };
+                if staged.iter().any(|g| g.name == index_name) {
+                    return AwsResponse::werkzeug_500();
+                }
+                let key_schema = Self::parse_key_schema(Some(key_schema_json));
+                let projection = projection_json
+                    .get("ProjectionType")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("ALL")
+                    .to_string();
+                let non_key_attributes = projection_json
+                    .get("NonKeyAttributes")
+                    .and_then(|n| n.as_array())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|x| x.as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                // moto's GlobalSecondaryIndex.create (used for indexes
+                // created through UpdateTable too) reads the index's own
+                // throughput.
+                let throughput = create.get("ProvisionedThroughput");
+                staged.push(crate::models::IndexDefinition {
+                    name: index_name.to_string(),
+                    key_schema,
+                    projection,
+                    non_key_attributes,
+                    provisioned_rcu: throughput
+                        .and_then(|p| p.get("ReadCapacityUnits"))
+                        .and_then(|v| v.as_i64()),
+                    provisioned_wcu: throughput
+                        .and_then(|p| p.get("WriteCapacityUnits"))
+                        .and_then(|v| v.as_i64()),
+                });
+            }
+        }
+        // Committed only when every member succeeded (moto assigns
+        // table.global_indexes after its loop; on an error we already
+        // returned).
+        *table.global_secondary_indexes.write() = staged;
+
+        // 3. moto update_table: a present throughput member replaces the
+        // stored units — nothing validates the values server-side (live:
+        // 0/0 stored verbatim, 2026-10-26).
         if let Some(pt) = req.params.get("ProvisionedThroughput") {
             let rcu = pt
                 .get("ReadCapacityUnits")
@@ -640,7 +799,7 @@ impl DynamoDbHandler {
             *table.provisioned_wcu.write() = wcu;
         }
 
-        // moto update_table (dynamodb/models/__init__.py:186-187): a BillingMode
+        // 4. moto update_table (dynamodb/models/__init__.py:186-187): a BillingMode
         // member mutates the stored mode, so this and the next DescribeTable
         // echo the new mode — and the derived WarmThroughput follows it (the
         // twin treats a PAY_PER_REQUEST table as moto's 12000/4000 on-demand
@@ -651,7 +810,7 @@ impl DynamoDbHandler {
             }
         }
 
-        // moto update_table: stream_spec is applied through
+        // 5. moto update_table: stream_spec is applied through
         // update_table_streams (dynamodb/models/__init__.py:197-205) —
         // re-enabling a table that already carries a stream label raises
         // ResourceInUseException ("Cannot enable stream"); otherwise an
@@ -676,7 +835,7 @@ impl DynamoDbHandler {
             }
         }
 
-        // moto update_table (dynamodb/models/__init__.py:190-191): a present
+        // 6. moto update_table (dynamodb/models/__init__.py:190-191): a present
         // boolean DeletionProtectionEnabled member mutates the stored value.
         if let Some(enabled) = req
             .params
@@ -684,81 +843,6 @@ impl DynamoDbHandler {
             .and_then(Value::as_bool)
         {
             *table.deletion_protection_enabled.write() = enabled;
-        }
-
-        // Merge attribute definitions supplied alongside index updates.
-        if let Some(defs) = req.params.get("AttributeDefinitions") {
-            let mut existing_defs = table.attribute_definitions.write();
-            for def in Self::parse_attr_defs(Some(defs)) {
-                if !existing_defs
-                    .iter()
-                    .any(|d| d.attribute_name == def.attribute_name)
-                {
-                    existing_defs.push(def);
-                }
-            }
-        }
-
-        for update in req
-            .params
-            .get("GlobalSecondaryIndexUpdates")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default()
-        {
-            if let Some(create) = update.get("Create") {
-                let key_schema = Self::parse_key_schema(create.get("KeySchema"));
-                if key_schema.is_empty() {
-                    continue;
-                }
-                let projection = create
-                    .get("Projection")
-                    .and_then(|p| p.get("ProjectionType"))
-                    .and_then(|t| t.as_str())
-                    .unwrap_or("ALL")
-                    .to_string();
-                let non_key_attributes = create
-                    .get("Projection")
-                    .and_then(|p| p.get("NonKeyAttributes"))
-                    .and_then(|n| n.as_array())
-                    .map(|a| {
-                        a.iter()
-                            .filter_map(|x| x.as_str().map(String::from))
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                // moto's GlobalSecondaryIndex.create (used for indexes created
-                // through UpdateTable too) reads the index's own throughput.
-                let throughput = create.get("ProvisionedThroughput");
-                let idx = crate::models::IndexDefinition {
-                    name: create
-                        .get("IndexName")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or_default()
-                        .to_string(),
-                    key_schema,
-                    projection,
-                    non_key_attributes,
-                    provisioned_rcu: throughput
-                        .and_then(|p| p.get("ReadCapacityUnits"))
-                        .and_then(|v| v.as_i64()),
-                    provisioned_wcu: throughput
-                        .and_then(|p| p.get("WriteCapacityUnits"))
-                        .and_then(|v| v.as_i64()),
-                };
-                let mut gsis = table.global_secondary_indexes.write();
-                if !gsis.iter().any(|g| g.name == idx.name) {
-                    gsis.push(idx);
-                }
-            }
-            if let Some(delete) = update.get("Delete") {
-                if let Some(name) = delete.get("IndexName").and_then(|v| v.as_str()) {
-                    table
-                        .global_secondary_indexes
-                        .write()
-                        .retain(|g| g.name != name);
-                }
-            }
         }
 
         // moto's UpdateTable response is Table.describe() — the full base_key
