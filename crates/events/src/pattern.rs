@@ -168,13 +168,18 @@ pub fn list_match(pattern_values: &[Value], event_value: &Value) -> bool {
 /// applies every other named filter per element of an array value.
 fn named_filter_matches(filter: &Map<String, Value>, event_value: &Value) -> bool {
     if let Some(expected) = filter.get("exists").and_then(Value::as_bool) {
-        // An `exists` leaf tests the presence of the event value
-        // itself, in both directions (moto
-        // `_does_item_match_named_filter`: `exists = item is not
-        // UNDEFINED`; era `_match_value_list`: a non-None value
-        // satisfies `exists: true`). Explicit JSON null counts as
-        // absent (era parity: `event.get(key) is None`).
-        return expected != event_value.is_null();
+        // An `exists` leaf tests literal key presence, not JSON
+        // nullness: moto `_does_item_match_named_filter` computes
+        // `exists = item is not UNDEFINED; return exists ==
+        // filter_value`, and a flattened JSON null is a present value
+        // (event-ruler's exists machine likewise answers on the key,
+        // not its contents). The value in hand is present by
+        // construction — `matches` routes absent keys and null-ancestor
+        // regions through `pattern_matches_undefined` and never feeds
+        // them to a leaf — so `exists: true` matches any value,
+        // explicit null included, and `exists: false` never matches at
+        // a leaf (absence is decided upstream).
+        return expected;
     }
     match event_value {
         Value::Array(arr) => arr.iter().any(|item| evaluate_named_filter(filter, item)),
@@ -485,6 +490,16 @@ mod tests {
     use serde_json::json;
 
     // -- exists leaves (F1, agent-221 finding 1) ------------------------------
+    //
+    // `exists` is decided by literal key presence, not JSON nullness:
+    // moto `_does_item_match_named_filter` computes
+    // `exists = item is not UNDEFINED; return exists == filter_value`
+    // (verified live against the pinned fork: a flattened null leaf is
+    // a present value) and event-ruler's exists machine likewise
+    // answers on the key rather than its contents. These tests
+    // previously pinned the predecessor's `is_null()` reading, which
+    // had the null column of the truth table inverted; matching moto
+    // here is the deliberate real-AWS-better decision.
 
     #[test]
     fn exists_true_matches_present_values() {
@@ -494,26 +509,52 @@ mod tests {
             &json!({"detail": {"state": "running"}})
         ));
         assert!(matches_pattern(&pattern, &json!({"detail": {"state": 0}})));
-        // Absent key: `exists: true` must not match.
-        assert!(!matches_pattern(&pattern, &json!({"detail": {}})));
-        // Explicit null counts as absent (era parity).
-        assert!(!matches_pattern(
+        // A null value is still a present key: `exists: true` matches
+        // it (moto: `item is not UNDEFINED` is true for a flattened
+        // null; the old era reading said "absent" here).
+        assert!(matches_pattern(
             &pattern,
             &json!({"detail": {"state": null}})
         ));
+        // Absent key: `exists: true` must not match.
+        assert!(!matches_pattern(&pattern, &json!({"detail": {}})));
+        // A stored whole-ancestor null (`detail: null`) leaves the leaf
+        // behind it UNDEFINED: no match.
+        assert!(!matches_pattern(&pattern, &json!({"detail": null})));
+        // Same presence reading when the key ITSELF is the null leaf:
+        // pattern tests `detail` directly, event has `detail: null`.
+        let key_pattern = json!({"detail": [{"exists": true}]});
+        assert!(matches_pattern(&key_pattern, &json!({"detail": null})));
+        assert!(!matches_pattern(&key_pattern, &json!({})));
     }
 
     #[test]
-    fn exists_false_matches_absent_and_null() {
+    fn exists_false_matches_absent_keys_only() {
         let pattern = json!({"detail": {"state": [{"exists": false}]}});
+        // The absent leaf is the one case exists:false matches.
         assert!(matches_pattern(&pattern, &json!({"detail": {}})));
-        assert!(matches_pattern(
+        // A null ancestor reads UNDEFINED beneath it (absent-ancestor
+        // descent): matches.
+        assert!(matches_pattern(&pattern, &json!({"detail": null})));
+        // A null-valued leaf is present: `exists: false` must not match
+        // (moto: `exists = item is not UNDEFINED` -> True != False; the
+        // old era reading matched here).
+        assert!(!matches_pattern(
             &pattern,
             &json!({"detail": {"state": null}})
         ));
         assert!(!matches_pattern(
             &pattern,
             &json!({"detail": {"state": "on"}})
+        ));
+        // The key itself null = present: `exists: false` misses it.
+        assert!(!matches_pattern(
+            &json!({"detail": [{"exists": false}]}),
+            &json!({"detail": null})
+        ));
+        assert!(matches_pattern(
+            &json!({"detail": [{"exists": false}]}),
+            &json!({})
         ));
     }
 
