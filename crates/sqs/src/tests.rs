@@ -2855,3 +2855,85 @@ fn batch_validate_before_queue_lookup_change_message_visibility_batch() {
         "queue existence must not be resolved before batch validation"
     );
 }
+
+/// moto's receive path validates the requested VisibilityTimeout in the
+/// response layer AFTER the queue lookup but before the backend
+/// receive/long-poll (`_get_validated_visibility_timeout` →
+/// MaxVisibilityTimeout, responses.py receive_message): values above 43200
+/// answer 400 InvalidParameterValue with moto's exact wording on both the
+/// JSON-number and the query-protocol string shapes, and 43200 passes at
+/// the boundary (live-verified: 50000 → 400, 43200 → 200, 43201 → 400).
+#[test]
+fn receive_visibility_over_cap_answers_max_visibility_wording() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "recv-cap-boundary");
+
+    // The boundary receive (empty queue, no wait) answers 200 and no error.
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1, "VisibilityTimeout": 43200}),
+    ));
+    assert_eq!(resp.status, 200, "43200 passes the cap at the boundary");
+
+    // A visible message is NOT consumed by the rejected calls, and moto's
+    // exact wording carries on both value shapes.
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "cap-guard"}),
+    ));
+    for (shape, value) in [
+        ("number 50000", json!(50000)),
+        ("string 50000", json!("50000")),
+        ("number 43201", json!(43201)),
+        ("string 43201", json!("43201")),
+    ] {
+        let resp = handler.handle(make_request(
+            "ReceiveMessage",
+            json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1, "VisibilityTimeout": value}),
+        ));
+        assert_eq!(resp.status, 400, "over-cap receive ({shape}) must answer 400");
+        assert!(
+            resp.body.contains("InvalidParameterValue"),
+            "over-cap receive ({shape}) must be InvalidParameterValue, got {}",
+            resp.body
+        );
+        assert!(
+            resp.body
+                .contains("Invalid request, maximum visibility timeout is 43200"),
+            "over-cap receive ({shape}) must carry moto's wording, got {}",
+            resp.body
+        );
+    }
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.0, 1, "the rejected receive must not consume the message");
+    assert_eq!(counts.1, 0, "the rejected receive must not touch flight state");
+}
+
+/// moto validates the receive VisibilityTimeout AFTER the queue lookup
+/// (responses.py receive_message resolves the queue first): the same
+/// over-cap request on a nonexistent queue answers NonExistentQueue, not
+/// the cap error (live-verified) — so the guard sits after resolution.
+#[test]
+fn receive_visibility_cap_requires_existing_queue_first() {
+    let handler = DefaultSqsHandler::new();
+    let ghost = format!("{}x", create_queue(&handler, "recv-cap-ghost"));
+
+    for (label, entry) in [
+        (
+            "over-cap on ghost queue",
+            json!({"QueueUrl": &ghost, "MaxNumberOfMessages": 1, "VisibilityTimeout": 50000}),
+        ),
+        (
+            "valid on ghost queue",
+            json!({"QueueUrl": &ghost, "MaxNumberOfMessages": 1, "VisibilityTimeout": 30}),
+        ),
+    ] {
+        let resp = handler.handle(make_request("ReceiveMessage", entry));
+        assert_eq!(resp.status, 400, "{label} must answer 400");
+        assert!(
+            resp.body.contains("AWS.SimpleQueueService.NonExistentQueue"),
+            "{label}: the queue lookup precedes the receive cap (live-verified order), got {}",
+            resp.body
+        );
+    }
+}

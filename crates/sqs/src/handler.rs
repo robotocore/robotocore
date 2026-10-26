@@ -800,6 +800,28 @@ impl DefaultSqsHandler {
             .map(|v| v.min(20))
             .unwrap_or(queue_wait.min(20) as u64);
 
+        // moto validates the requested VisibilityTimeout in its response
+        // layer (`_get_validated_visibility_timeout` → MaxVisibilityTimeout,
+        // moto/sqs/responses.py receive_message) AFTER the queue lookup but
+        // BEFORE the backend receive/long-poll: an over-cap value answers
+        // 400 InvalidParameterValue "Invalid request, maximum visibility
+        // timeout is 43200" (live-verified: receive_message with
+        // VisibilityTimeout=50000 → 400 with that exact wording; 43200
+        // passes at the boundary, 43201 does not), while the same request
+        // on a NONEXISTENT queue answers NonExistentQueue first
+        // (live-verified) — so this guard sits after the queue resolution.
+        // moto accepts negative timeouts on this path (they pass the cap
+        // comparison and Message.change_visibility applies them); the
+        // twin's application below keeps treating a negative as the
+        // parameter being absent (queue default), a recorded divergence.
+        if let Some(v) = Self::visibility_timeout_of(params.get("VisibilityTimeout")) {
+            if v > Self::MAX_VISIBILITY_TIMEOUT as i64 {
+                return Err(SqsError::InvalidParameterValue(
+                    Self::MAX_VISIBILITY_TIMEOUT_MESSAGE.to_string(),
+                ));
+            }
+        }
+
         let mut messages;
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(wait_seconds);
         // Visibility override from the request, if any; otherwise the
