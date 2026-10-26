@@ -846,6 +846,7 @@ impl EventsHandler {
     }
 
     fn list_event_buses(&self, req: &AwsRequest) -> AwsResponse {
+        let prefix = Self::param_str(req, &["NamePrefix"]);
         let state = self.get_state(req.account, &req.region);
         let mut buses = vec![json!({
             "Name": "default",
@@ -858,10 +859,50 @@ impl EventsHandler {
             .collect();
         rows.sort_by(|a, b| a["Name"].as_str().cmp(&b["Name"].as_str()));
         buses.append(&mut rows);
-        AwsResponse::json(
-            200,
-            json!({ "EventBuses": buses, "NextToken": Value::Null }),
-        )
+        drop(stored);
+        if !prefix.is_empty() {
+            buses.retain(|bus| {
+                bus["Name"]
+                    .as_str()
+                    .map(|n| n.starts_with(&prefix))
+                    .unwrap_or(true)
+            });
+        }
+        // Pagination (moto 5.2.3, moto's @paginate with limit_default 50):
+        // Limit slices the filtered list; NextToken carries the last bus
+        // returned on this page and the next call resumes after it. An
+        // unknown token yields an empty final page, no error (moto's
+        // fail_on_invalid_token=False).
+        let limit = req
+            .params
+            .get("Limit")
+            .and_then(|v| v.as_u64())
+            .filter(|n| *n > 0)
+            .unwrap_or(50) as usize;
+        let token = req
+            .params
+            .get("NextToken")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let start = if token.is_empty() {
+            0
+        } else {
+            buses
+                .iter()
+                .position(|bus| bus["Name"].as_str() == Some(token))
+                .map(|i| i + 1)
+                .unwrap_or(buses.len())
+        };
+        let end = (start + limit).min(buses.len());
+        let page = &buses[start..end];
+        let next_token = match (page.last(), end < buses.len()) {
+            (Some(last), true) => match last["Name"].as_str() {
+                Some(name) => json!(name),
+                None => Value::Null,
+            },
+            _ => Value::Null,
+        };
+        AwsResponse::json(200, json!({ "EventBuses": page, "NextToken": next_token }))
     }
 
     fn update_event_bus(&self, req: &AwsRequest) -> AwsResponse {
@@ -1625,7 +1666,9 @@ impl EventsHandler {
             .partner_sources
             .write()
             .insert(name.clone(), json!({ "Name": name, "Arn": arn }));
-        AwsResponse::json(200, json!({}))
+        // moto 5.2.2: the response carries the partner source ARN
+        // ({"EventSourceArn": arn}); the stored record already used it.
+        AwsResponse::json(200, json!({ "EventSourceArn": arn }))
     }
 
     fn describe_partner_event_source(&self, req: &AwsRequest) -> AwsResponse {
@@ -2523,5 +2566,204 @@ mod tests {
             "unwired destination ARNs are dropped without DLQ traffic"
         );
         handler.handle(make_req("DeleteRule", json!({"Name": rule})));
+    }
+
+    // -- ListEventBuses pagination (moto 5.2.3) --------------------------------
+
+    /// Pagination tests run under a dedicated account so exhaustive-list
+    /// assertions stay immune to other tests sharing the default account
+    /// (state is keyed by (account, region)).
+    fn req_acc(operation: &str, params: Value, account: u64) -> AwsRequest {
+        AwsRequest {
+            service: "events".to_string(),
+            operation: operation.to_string(),
+            account,
+            region: "us-east-1".to_string(),
+            params,
+            body: bytes::Bytes::new(),
+        }
+    }
+
+    fn bus_names(resp: &Value) -> Vec<&str> {
+        resp["EventBuses"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| b["Name"].as_str().unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn list_event_buses_pagination_slices_with_limit_and_token() {
+        let handler = EventsHandler::new();
+        let acct = 141414141414;
+        for name in ["test-bus-1", "test-bus-2", "other-bus-1", "other-bus-2"] {
+            handler.handle(req_acc("CreateEventBus", json!({ "Name": name }), acct));
+        }
+
+        // No pagination arguments: the full list, token exhausted. moto emits
+        // the key as null (botocore clients drop null members entirely).
+        let resp = body(&handler.handle(req_acc("ListEventBuses", json!({}), acct)));
+        assert_eq!(bus_names(&resp).len(), 5, "default + 4 custom buses");
+        assert!(resp["NextToken"].is_null());
+
+        // NamePrefix works on its own (moto filters the bus map, which
+        // includes the default bus).
+        let resp = body(&handler.handle(req_acc(
+            "ListEventBuses",
+            json!({ "NamePrefix": "other-bus" }),
+            acct,
+        )));
+        assert_eq!(bus_names(&resp), ["other-bus-1", "other-bus-2"]);
+        assert!(resp["NextToken"].is_null());
+
+        // Limit slices in list order: default bus, then custom buses sorted
+        // by name; NextToken carries the last-returned bus name.
+        let resp = body(&handler.handle(req_acc("ListEventBuses", json!({ "Limit": 2 }), acct)));
+        assert_eq!(bus_names(&resp), ["default", "other-bus-1"]);
+        let token = resp["NextToken"].as_str().unwrap().to_string();
+
+        let resp = body(&handler.handle(req_acc(
+            "ListEventBuses",
+            json!({ "Limit": 2, "NextToken": token }),
+            acct,
+        )));
+        assert_eq!(bus_names(&resp), ["other-bus-2", "test-bus-1"]);
+        let token = resp["NextToken"].as_str().unwrap().to_string();
+
+        let resp = body(&handler.handle(req_acc(
+            "ListEventBuses",
+            json!({ "NextToken": token }),
+            acct,
+        )));
+        assert_eq!(bus_names(&resp), ["test-bus-2"]);
+        assert!(resp["NextToken"].is_null());
+    }
+
+    #[test]
+    fn list_event_buses_pagination_with_prefix_and_token() {
+        let handler = EventsHandler::new();
+        let acct = 141414141415;
+        for name in ["test-bus-1", "other-bus-1", "other-bus-2"] {
+            handler.handle(req_acc("CreateEventBus", json!({ "Name": name }), acct));
+        }
+
+        let resp = body(&handler.handle(req_acc(
+            "ListEventBuses",
+            json!({ "NamePrefix": "other-bus", "Limit": 1 }),
+            acct,
+        )));
+        let names = bus_names(&resp);
+        assert_eq!(names, ["other-bus-1"]);
+        let token = resp["NextToken"].as_str().unwrap().to_string();
+
+        // NamePrefix must be repeated ("keep all other arguments unchanged").
+        let resp = body(&handler.handle(req_acc(
+            "ListEventBuses",
+            json!({ "NamePrefix": "other-bus", "NextToken": token }),
+            acct,
+        )));
+        assert_eq!(bus_names(&resp), ["other-bus-2"]);
+        assert!(resp["NextToken"].is_null());
+    }
+
+    #[test]
+    fn list_event_buses_pagination_default_limit_is_50() {
+        let handler = EventsHandler::new();
+        let acct = 141414141416;
+        for i in 0..60 {
+            handler.handle(req_acc(
+                "CreateEventBus",
+                json!({ "Name": format!("bulk-{i:03}") }),
+                acct,
+            ));
+        }
+        let resp = body(&handler.handle(req_acc("ListEventBuses", json!({}), acct)));
+        assert_eq!(
+            bus_names(&resp).len(),
+            50,
+            "moto's limit_default for list_event_buses"
+        );
+        assert!(resp["NextToken"].as_str().is_some());
+        let token = resp["NextToken"].as_str().unwrap().to_string();
+
+        let resp = body(&handler.handle(req_acc(
+            "ListEventBuses",
+            json!({ "NextToken": token }),
+            acct,
+        )));
+        assert_eq!(
+            bus_names(&resp).len(),
+            11,
+            "default + 60 buses - first page"
+        );
+        assert!(resp["NextToken"].is_null());
+    }
+
+    #[test]
+    fn list_event_buses_pagination_unknown_token_is_an_empty_final_page() {
+        let handler = EventsHandler::new();
+        let acct = 141414141417;
+        handler.handle(req_acc(
+            "CreateEventBus",
+            json!({ "Name": "solo-bus" }),
+            acct,
+        ));
+        // moto's fail_on_invalid_token=False: an unmatched token ends
+        // pagination with an empty page instead of an error.
+        let resp = body(&handler.handle(req_acc(
+            "ListEventBuses",
+            json!({ "NextToken": "bus-that-was-deleted" }),
+            acct,
+        )));
+        assert_eq!(
+            bus_names(&resp),
+            Vec::<&str>::new() as Vec<&str>,
+            "unknown token yields an empty page, no error"
+        );
+        assert!(resp["NextToken"].is_null());
+    }
+
+    // -- CreatePartnerEventSource returns EventSourceArn (moto 5.2.2) ----------
+
+    #[test]
+    fn create_partner_event_source_arn_is_returned() {
+        let handler = EventsHandler::new();
+        let name = "mypartner/actions/create";
+        let expected = format!("arn:aws:events:us-east-1::event-source/aws.partner/{name}");
+        let resp = body(&handler.handle(make_req(
+            "CreatePartnerEventSource",
+            json!({ "Name": name, "Account": "222222222222" }),
+        )));
+        assert_eq!(resp["EventSourceArn"], expected);
+
+        // The stored source carries the same ARN on both describe paths.
+        let desc = body(&handler.handle(make_req(
+            "DescribePartnerEventSource",
+            json!({ "Name": name }),
+        )));
+        assert_eq!(desc["Arn"], expected);
+        assert_eq!(desc["Name"], name);
+        let desc = body(&handler.handle(make_req("DescribeEventSource", json!({ "Name": name }))));
+        assert_eq!(desc["Arn"], expected);
+    }
+
+    #[test]
+    fn create_partner_event_source_arn_is_stable_when_recreated() {
+        let handler = EventsHandler::new();
+        let name = "mypartner/actions/recreate";
+        let first = body(&handler.handle(make_req(
+            "CreatePartnerEventSource",
+            json!({ "Name": name, "Account": "222222222222" }),
+        )));
+        let second = body(&handler.handle(make_req(
+            "CreatePartnerEventSource",
+            json!({ "Name": name, "Account": "333333333333" }),
+        )));
+        assert_eq!(first, second, "recreating an existing source keeps its ARN");
+        assert_eq!(
+            first["EventSourceArn"],
+            format!("arn:aws:events:us-east-1::event-source/aws.partner/{name}")
+        );
     }
 }
