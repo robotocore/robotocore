@@ -255,10 +255,12 @@ fn missing_param(name: &str) -> Response {
 }
 
 fn invalid_name(name: &str) -> Response {
+    // botocore's cognito-identity model carries InvalidParameterException —
+    // ValidationException is not modeled for the service.
     Response::json(
         400,
         serde_json::to_vec(&json!({
-            "__type": "ValidationException",
+            "__type": "InvalidParameterException",
             "message": format!(
                 "1 validation error detected: Value '{name}' at 'identityPoolName' failed to satisfy constraint: Member must satisfy regular expression pattern: [\\w\\s+=,.@-]+"
             ),
@@ -346,5 +348,13 @@ mod tests {
             "us-east-1",
         );
         assert_eq!(resp.status, 400);
+        let v: Value = serde_json::from_slice(&resp.body).unwrap();
+        // canon: cognito-identity models InvalidParameterException, never
+        // ValidationException
+        assert_eq!(v["__type"], "InvalidParameterException");
+        assert!(v["message"]
+            .as_str()
+            .unwrap()
+            .contains("failed to satisfy constraint"));
     }
 }
