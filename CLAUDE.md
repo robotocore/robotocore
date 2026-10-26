@@ -61,7 +61,7 @@ robotocore/
 │       ├── introspection.rs   # audit log, usage errors, counters
 │       ├── state.rs           # in-memory state + save/load
 │       └── services/          # native core handlers (sts, s3, sqs, ...)
-├── rotocore/                  # "moto in Rust" — far-service backends (141 services)
+├── rotocore/                  # "moto in Rust" — far-service backends (139 pub modules)
 ├── crates/                    # per-service crates (sqs, s3, dynamodb, lambda, ...)
 ├── bindings/                  # language bindings: python/, typescript/, go/, rust/ + tools/
 ├── tests/
