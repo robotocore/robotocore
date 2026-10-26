@@ -531,7 +531,19 @@ impl DynamoDbHandler {
                     if is_gsi {
                         index["IndexSizeBytes"] = json!(0);
                         index["ItemCount"] = json!(0);
-                        index["ProvisionedThroughput"] = provisioned.clone();
+                        // moto renders each GSI's OWN throughput
+                        // (dynamodb/models/table.py GlobalSecondaryIndex
+                        // __init__ + describe): the index echoes what its own
+                        // request carried — a PROVISIONED table's GSI spec'd
+                        // at 7/9 describes 7/9 while the table itself
+                        // describes its own units. An on-demand GSI (no spec
+                        // throughput, e.g. any index on a PAY_PER_REQUEST
+                        // table) describes a zero block, mirroring moto's
+                        // zeroed throughput default.
+                        index["ProvisionedThroughput"] = json!({
+                            "ReadCapacityUnits": i.provisioned_rcu.unwrap_or(0),
+                            "WriteCapacityUnits": i.provisioned_wcu.unwrap_or(0),
+                        });
                         // botocore declares WarmThroughput only on
                         // GlobalSecondaryIndexDescription — its member shape
                         // is GlobalSecondaryIndexWarmThroughputDescription
@@ -598,7 +610,6 @@ impl DynamoDbHandler {
             );
         };
 
-        let mut provisioned: Option<Value> = None;
         if let Some(pt) = req.params.get("ProvisionedThroughput") {
             let rcu = pt
                 .get("ReadCapacityUnits")
@@ -610,7 +621,6 @@ impl DynamoDbHandler {
                 .unwrap_or(0);
             *table.provisioned_rcu.write() = rcu;
             *table.provisioned_wcu.write() = wcu;
-            provisioned = Some(json!({"ReadCapacityUnits": rcu, "WriteCapacityUnits": wcu}));
         }
 
         // Merge attribute definitions supplied alongside index updates.
@@ -688,19 +698,14 @@ impl DynamoDbHandler {
             }
         }
 
-        let mut description = json!({
-            "TableName": table.name,
-            "TableStatus": *table.status.read(),
-        });
-        if let Some(pt) = provisioned {
-            description["ProvisionedThroughput"] = pt;
-        }
-        // moto's UpdateTable response is Table.describe(), so it carries the
-        // same WarmThroughput block as DescribeTable — computed after the
-        // mutations above, so PROVISIONED tables report the possibly-updated
-        // units (moto/dynamodb/models/__init__.py update_table + Table.describe).
-        description["WarmThroughput"] = Self::table_warm_throughput(&table);
-        AwsResponse::json(200, json!({ "TableDescription": description }))
+        // moto's UpdateTable response is Table.describe() — the full base_key
+        // "TableDescription" payload (moto/dynamodb/models/__init__.py
+        // update_table + Table.describe). Route through the shared renderer so
+        // the response carries all of it — BillingModeSummary, KeySchema,
+        // AttributeDefinitions, GlobalSecondaryIndexes (each with its own
+        // ProvisionedThroughput/WarmThroughput) and the table-level
+        // WarmThroughput computed after the mutations above.
+        Self::describe_table_response(req, &table, 200, "TableDescription")
     }
 }
 
@@ -757,17 +762,24 @@ fn item_key(table: &Table, attrs: &Map<String, Value>) -> Option<String> {
 }
 
 /// Enforce the real-AWS per-item 400 KB limit on the item about to be
-/// written, mirroring moto's `LimitedSizeDict` check — a ValidationException
-/// reading "Item size has exceeded the maximum allowed size" (moto issue
+/// written, mirroring moto's check — a 400 ValidationException (moto issue
 /// #1874). Numbers are sized with AWS's own formula per moto issue #10176
 /// (`models::number_value_size`), so moto-oversized items are accepted.
-fn check_item_size(attrs: &Map<String, Value>) -> Option<AwsResponse> {
+///
+/// UpdateItem and the TransactWriteItems Update row reach this via moto's
+/// `update_item`, which re-raises the underlying rejected size as
+/// ItemSizeToUpdateTooLarge ("Item size to update has exceeded the maximum
+/// allowed size"); put-shaped paths (PutItem, BatchWriteItem, Transact
+/// Put, PartiQL INSERT/UPDATE via put_item) keep moto's put-flavored
+/// "Item size has exceeded the maximum allowed size".
+fn check_item_size(attrs: &Map<String, Value>, is_update: bool) -> Option<AwsResponse> {
     if crate::models::item_size(attrs) > crate::models::MAX_ITEM_SIZE {
-        Some(AwsResponse::error(
-            400,
-            "ValidationException",
-            "Item size has exceeded the maximum allowed size",
-        ))
+        let message = if is_update {
+            "Item size to update has exceeded the maximum allowed size"
+        } else {
+            "Item size has exceeded the maximum allowed size"
+        };
+        Some(AwsResponse::error(400, "ValidationException", message))
     } else {
         None
     }
@@ -902,7 +914,7 @@ impl DynamoDbHandler {
 
         // moto constructs the LimitedSizeDict-backed Item before evaluating
         // conditions, so the 400 KB check runs first (getmoto/moto#1874).
-        if let Some(e) = check_item_size(&attrs) {
+        if let Some(e) = check_item_size(&attrs, false) {
             return e;
         }
 
@@ -1080,9 +1092,10 @@ impl DynamoDbHandler {
             Err(e) => return AwsResponse::error(400, "ValidationException", e.as_str()),
         };
 
-        // moto's UpdateExpressionExecutor raises the same size check on the
-        // executed result (getmoto/moto#1874); mirror it on the final item.
-        if let Some(e) = check_item_size(&new_attrs) {
+        // moto's UpdateExpressionExecutor raises ItemSizeToUpdateTooLarge on
+        // the executed result (getmoto/moto#1874); mirror it on the final
+        // item, with the update-flavored wording.
+        if let Some(e) = check_item_size(&new_attrs, true) {
             return e;
         }
 
@@ -1636,7 +1649,7 @@ impl DynamoDbHandler {
                         };
                         // moto's batch save lands in the same
                         // LimitedSizeDict check as put_item (getmoto/moto#1874).
-                        if let Some(e) = check_item_size(&attrs) {
+                        if let Some(e) = check_item_size(&attrs, false) {
                             return e;
                         }
                         // Stream capture mirrors moto's batch put hook.
@@ -1690,10 +1703,10 @@ impl DynamoDbHandler {
         struct PendingUpdate {
             table: Arc<Table>,
             key: String,
-            key_attrs: Map<String, Value>,
-            update: Option<String>,
-            names: Names,
-            values: Values,
+            /// The fully evaluated post-update row, computed in phase 1
+            /// against a clone of the pre-transaction item, so phase 2 is a
+            /// plain overwrite that cannot fail mid-transaction.
+            new_attrs: AttrMap,
         }
         struct PendingDelete {
             table: Arc<Table>,
@@ -1764,7 +1777,7 @@ impl DynamoDbHandler {
                     };
                     // moto's transactional Put runs the same LimitedSizeDict
                     // check when it builds the Item (getmoto/moto#1874).
-                    if let Some(e) = check_item_size(&attrs) {
+                    if let Some(e) = check_item_size(&attrs, false) {
                         return e;
                     }
                     let pre = existing(&table, &key);
@@ -1806,14 +1819,47 @@ impl DynamoDbHandler {
                     );
                     match check {
                         Ok(()) => {
+                            // TransactWriteItems is atomic: moto deep-copies
+                            // every touched table and restores it on error,
+                            // and real AWS commits nothing on failure. Apply
+                            // the update to a CLONE of the pre-transaction
+                            // row here, before any write happens, so an
+                            // invalid expression or an oversized result
+                            // cancels the whole transaction (this row's own
+                            // payload included) instead of leaving earlier
+                            // rows committed. Phase 2 then only overwrites.
+                            let mut new_attrs: Map<String, Value> = match &pre {
+                                Some(m) => m.clone().into_iter().collect(),
+                                None => key_attrs.clone(),
+                            };
+                            if let Some(update) = expr_str(op.get("UpdateExpression")) {
+                                if !update.trim().is_empty() {
+                                    if let Err(e) = expr_engine::apply_update(
+                                        &mut new_attrs,
+                                        update,
+                                        &op_names(op),
+                                        &op_values(op),
+                                    ) {
+                                        return AwsResponse::error(
+                                            400,
+                                            "ValidationException",
+                                            e.as_str(),
+                                        );
+                                    }
+                                }
+                            }
+                            // moto's transactional Update re-raises the size
+                            // check on the executed result as the
+                            // update-flavored ItemSizeToUpdateTooLarge
+                            // (dynamodb/models/__init__.py update_item).
+                            if let Some(e) = check_item_size(&new_attrs, true) {
+                                return e;
+                            }
                             cancellation.push(None);
                             updates.push(PendingUpdate {
                                 table,
                                 key,
-                                key_attrs,
-                                update: expr_str(op.get("UpdateExpression")).map(String::from),
-                                names: op_names(op),
-                                values: op_values(op),
+                                new_attrs: attrs_to_map(&new_attrs),
                             });
                         }
                         Err(_) => {
@@ -1923,24 +1969,11 @@ impl DynamoDbHandler {
                 .read()
                 .get(&upd.key)
                 .map(|i| i.attributes.clone());
-            let mut new_attrs: Map<String, Value> = match &old {
-                Some(m) => m.clone().into_iter().collect(),
-                None => upd.key_attrs.clone(),
-            };
-            if let Some(update) = upd.update.as_deref() {
-                if !update.trim().is_empty() {
-                    if let Err(e) =
-                        expr_engine::apply_update(&mut new_attrs, update, &upd.names, &upd.values)
-                    {
-                        return AwsResponse::error(400, "ValidationException", e.as_str());
-                    }
-                }
-            }
-            // moto's transactional Update raises the same size check on the
-            // executed result above (getmoto/moto#1874).
-            if let Some(e) = check_item_size(&new_attrs) {
-                return e;
-            }
+            // Phase 1 evaluated the expression and the size against a
+            // pre-transaction clone, so applying is a pure overwrite that
+            // cannot fail — no mid-transaction error, no rollback state to
+            // restore (moto gets there with a per-table deepcopy instead).
+            let new_serde = attrmap_to_serde(&upd.new_attrs);
             // Stream capture mirrors moto's transact update hook
             // (INSERT when the item was absent, MODIFY otherwise).
             let old_serde = streaming::stream_enabled(&upd.table)
@@ -1949,12 +1982,12 @@ impl DynamoDbHandler {
             streaming::record_mutation(
                 &upd.table,
                 old_serde.as_ref().map(|m| m as &Map<String, Value>),
-                Some(&new_attrs),
+                Some(&new_serde),
             );
             upd.table
                 .items
                 .write()
-                .insert(upd.key, Arc::new(Item::new(map_to_attrmap(new_attrs))));
+                .insert(upd.key.clone(), Arc::new(Item::new(upd.new_attrs.clone())));
         }
         for del in deletes {
             let old = del.table.items.write().remove(&del.key);
@@ -2131,7 +2164,20 @@ impl DynamoDbHandler {
                     responses.push(Value::Object(obj));
                 }
                 Ok(None) => responses.push(json!({})),
-                Err(e) => return e,
+                // moto reports a failed statement on its own batch row instead
+                // of aborting the whole batch (dynamodb/models/__init__.py
+                // batch_execute_statement: responses[idx] = {"Error": ...}).
+                Err(e) => {
+                    let body: Value = serde_json::from_str(&e.body).unwrap_or(Value::Null);
+                    let code = body
+                        .get("__type")
+                        .and_then(Value::as_str)
+                        .unwrap_or("ValidationException");
+                    let message = body.get("message").and_then(Value::as_str).unwrap_or("");
+                    responses.push(json!({
+                        "Error": {"Code": code, "Message": message}
+                    }));
+                }
             }
         }
         AwsResponse::json(200, json!({ "Responses": responses }))
@@ -2380,6 +2426,12 @@ fn partiql_run(
                 })
                 .ok_or_else(invalid)?;
             let key = item_key(&table, &attrs).ok_or_else(invalid)?;
+            // moto routes a PartiQL INSERT through table.put_item, whose Item
+            // constructor enforces the 400 KB limit (getmoto/moto#1874);
+            // the put-flavored wording applies, like moto's ItemSizeTooLarge.
+            if let Some(e) = check_item_size(&attrs, false) {
+                return Err(e);
+            }
             let old = table
                 .items
                 .read()
@@ -2442,6 +2494,16 @@ fn partiql_run(
                 }
             }
             for (key, attrs) in replacements {
+                // moto routes each PartiQL UPDATE replacement through
+                // table.put_item, whose Item constructor enforces the 400 KB
+                // limit (getmoto/moto#1874); like moto, a failure here leaves
+                // replacements already applied in this statement in place.
+                let attrs_json = attrmap_to_serde(&attrs);
+                // moto routes the replacement through put_item, so this stays
+                // put-flavored even though the statement is an UPDATE.
+                if let Some(e) = check_item_size(&attrs_json, false) {
+                    return Err(e);
+                }
                 let old = streaming::stream_enabled(&table)
                     .then(|| items.get(&key).map(|i| attrmap_to_serde(&i.attributes)))
                     .flatten();
@@ -2450,7 +2512,7 @@ fn partiql_run(
                 streaming::record_mutation(
                     &table,
                     old.as_ref().map(|m| m as &Map<String, Value>),
-                    Some(&attrmap_to_serde(&attrs)),
+                    Some(&attrs_json),
                 );
             }
             Ok(None)
@@ -3942,9 +4004,16 @@ mod tests {
 
     // ---- Item size enforcement (getmoto/moto#10176, #1874) ----
 
-    // getmoto/moto#10176: with AWS's number sizing this ~150 KB item
-    // (ceil(300001/2)+1 bytes for the Number) is legal; moto's
-    // len(str(value)) sizing rejects it. The twin implements the AWS formula.
+    // AWS sizes a Number value at ceil(significant_digits / 2) + 1 bytes, so
+    // this item (~150 KB: ceil(300000/2)+1 bytes for the Number plus a small
+    // key) is inside the twin's 409,600-byte limit. moto's Number sizing
+    // differs at the ~400 KB boundary (it weighs a Number at
+    // len(str(value)) — 300,000 bytes here — and its LimitedSizeDict guard
+    // fires when the moto-sized whole-item sum passes 405,000 bytes), so the
+    // two engines classify boundary-size items differently. The AWS
+    // 38-significant-digit cap on Number values is implemented in neither
+    // moto nor the twin: a documented shared divergence, orthogonal to the
+    // 409,600-byte item-size check this test exercises.
     #[test]
     fn item_size_number_bytes_300k_digit_number_is_not_400() {
         let handler = DynamoDbHandler::new();
@@ -3962,7 +4031,8 @@ mod tests {
             "PutItem",
             json!({"TableName": "nsize", "Item": {"pk": {"S": "big"}, "n": {"N": big_number}}}),
         ));
-        // moto treats len(str(value)) = 300,000 > 405,000 as a 400.
+        // The item totals ~150 KB under AWS's byte formula, below the
+        // 409,600-byte limit the twin enforces.
         assert_eq!(resp.status, 200);
     }
 
@@ -4048,9 +4118,10 @@ mod tests {
             }),
         ));
         assert_eq!(resp.status, 400);
+        // moto's ItemSizeToUpdateTooLarge wording on the update path.
         assert!(resp
             .body
-            .contains("Item size has exceeded the maximum allowed size"));
+            .contains("Item size to update has exceeded the maximum allowed size"));
 
         let resp = handler.handle(make_req(
             "BatchWriteItem",
@@ -4085,8 +4156,297 @@ mod tests {
             ]}),
         ));
         assert_eq!(resp.status, 400);
+        // The transact Update row re-raises through moto's update_item too.
+        assert!(resp
+            .body
+            .contains("Item size to update has exceeded the maximum allowed size"));
+    }
+
+    // TransactWriteItems is atomic: moto deep-copies every touched table and
+    // restores it on failure (dynamodb/models/__init__.py transact_write_items),
+    // like real AWS. When an Update row turns out
+    // oversized, a Put row from earlier in the same transaction must not be
+    // visible afterwards. The twin reaches this by evaluating every Update
+    // against a pre-transaction clone in phase 1, before any write happens.
+    #[test]
+    fn transact_update_oversize_no_partial_commit() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "atomic1",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        let big_string = "x".repeat(500_000);
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "atomic1",
+                         "Item": {"pk": {"S": "early-row"}, "v": {"S": "small"}}}},
+                {"Update": {"TableName": "atomic1",
+                            "Key": {"pk": {"S": "later-row"}},
+                            "UpdateExpression": "SET v = :v",
+                            "ExpressionAttributeValues": {":v": {"S": big_string}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp.body.contains("ValidationException"));
+        // The failed transaction leaves nothing behind: the earlier Put row
+        // and the update target are both invisible.
+        for pk in ["early-row", "later-row"] {
+            let resp = handler.handle(make_req(
+                "GetItem",
+                json!({"TableName": "atomic1", "Key": {"pk": {"S": pk}}}),
+            ));
+            assert_eq!(resp.status, 200);
+            assert_eq!(resp.body, "{}", "rollback must remove {pk}");
+        }
+    }
+
+    // moto routes PartiQL INSERT and UPDATE writes through table.put_item
+    // (dynamo_backend.execute_statement calls table.put_item for both the
+    // CREATE and UPDATE cases), so the 400 KB item limit applies there too —
+    // a 400 ValidationException with the put-flavored message.
+    #[test]
+    fn partiql_insert_and_update_oversize_400() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "pq",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        let big = "z".repeat(500_000);
+
+        let resp = handler.handle(make_req(
+            "ExecuteStatement",
+            json!({"Statement": format!("INSERT INTO \"pq\" VALUE {{'pk': 'ins-row', 'v': '{big}'}}")}),
+        ));
+        assert_eq!(resp.status, 400);
         assert!(resp
             .body
             .contains("Item size has exceeded the maximum allowed size"));
+        // The oversized INSERT must not have written the row.
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "pq", "Key": {"pk": {"S": "ins-row"}}}),
+        ));
+        assert!(!resp.body.contains("Item"));
+
+        let resp = handler.handle(make_req(
+            "PutItem",
+            json!({"TableName": "pq", "Item": {"pk": {"S": "u"}, "v": {"S": "small"}}}),
+        ));
+        assert_eq!(resp.status, 200);
+        let resp = handler.handle(make_req(
+            "ExecuteStatement",
+            json!({"Statement": format!("UPDATE \"pq\" SET v = '{big}' WHERE pk = 'u'")}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp
+            .body
+            .contains("Item size has exceeded the maximum allowed size"));
+        // The old row survives the rejected UPDATE unchanged.
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "pq", "Key": {"pk": {"S": "u"}}}),
+        ));
+        assert!(resp.body.contains("\"small\""));
+
+        // BatchExecuteStatement reports the oversized statement on its own
+        // batch row (moto: responses[idx] = {"Error": ...}) instead of
+        // aborting the whole batch, and nothing from it is written.
+        let resp = handler.handle(make_req(
+            "BatchExecuteStatement",
+            json!({"Statements": [
+                {"Statement": "SELECT * FROM \"pq\" WHERE pk = 'u'"},
+                {"Statement": format!("INSERT INTO \"pq\" VALUE {{'pk': 'bad-row', 'v': '{big}'}}")}
+            ]}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["Responses"][1]["Error"]["Code"],
+            json!("ValidationException")
+        );
+        assert!(body["Responses"][1]["Error"]["Message"]
+            .to_string()
+            .contains("Item size has exceeded the maximum allowed size"));
+        // The successful statement still returned its item...
+        assert_eq!(body["Responses"][0]["Item"]["v"]["S"], "small");
+        // ... and the failed statement left nothing behind.
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "pq", "Key": {"pk": {"S": "bad-row"}}}),
+        ));
+        assert!(!resp.body.contains("Item"));
+    }
+
+    // moto's UpdateTable response is Table.describe() (base_key
+    // TableDescription), so it carries the full payload — BillingModeSummary,
+    // KeySchema, and every GSI with its ProvisionedThroughput and
+    // WarmThroughput — not just the changed fields (moto server probe:
+    // creating a GSI through UpdateTable answers GSI[0].WarmThroughput
+    // 7/9 through the shared renderer).
+    #[test]
+    fn update_table_response_includes_gsi_warm_throughput() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "upd-spec",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "ProvisionedThroughput": {"ReadCapacityUnits": 3, "WriteCapacityUnits": 5}
+            }),
+        ));
+        // Sanity: no GSI before the update.
+        let resp = handler.handle(make_req("DescribeTable", json!({"TableName": "upd-spec"})));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert!(body["Table"]["GlobalSecondaryIndexes"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+
+        let resp = handler.handle(make_req(
+            "UpdateTable",
+            json!({
+                "TableName": "upd-spec",
+                "AttributeDefinitions": [{"AttributeName": "name", "AttributeType": "S"}],
+                "GlobalSecondaryIndexUpdates": [{"Create": {
+                    "IndexName": "byname",
+                    "KeySchema": [{"AttributeName": "name", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "ALL"},
+                    "ProvisionedThroughput": {"ReadCapacityUnits": 7, "WriteCapacityUnits": 9}
+                }}]
+            }),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        let td = &body["TableDescription"];
+        assert_eq!(td["WarmThroughput"]["Status"], "ACTIVE");
+        assert_eq!(
+            td["GlobalSecondaryIndexes"][0]["WarmThroughput"],
+            json!({
+                "ReadUnitsPerSecond": 7,
+                "WriteUnitsPerSecond": 9,
+                "Status": "ACTIVE"
+            })
+        );
+        // The full describe payload, not just the changed fields.
+        assert_eq!(td["BillingModeSummary"]["BillingMode"], "PROVISIONED");
+        assert_eq!(td["KeySchema"][0]["AttributeName"], "pk");
+        assert!(td.get("AttributeDefinitions").is_some());
+        assert!(td.get("TableArn").is_some());
+    }
+
+    // moto renders each GSI's own ProvisionedThroughput
+    // (dynamodb/models/table.py GlobalSecondaryIndex.describe): the PROVISIONED
+    // 3/5 table keeps describing its own units, while its GSI (spec'd 7/9)
+    // describes 7/9 — the table-level block is not copied into indexes. Oracle
+    // (moto_server): GSI PT {7,9}, table PT {3,5}; on-demand GSIs (no spec
+    // throughput) describe {0, 0}.
+    #[test]
+    fn gsi_provisioned_throughput_echoes_index_spec() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "gsi-pt-echo",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [
+                    {"AttributeName": "pk", "AttributeType": "S"},
+                    {"AttributeName": "name", "AttributeType": "S"}
+                ],
+                "ProvisionedThroughput": {"ReadCapacityUnits": 3, "WriteCapacityUnits": 5},
+                "GlobalSecondaryIndexes": [{
+                    "IndexName": "byname",
+                    "KeySchema": [{"AttributeName": "name", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "ALL"},
+                    "ProvisionedThroughput": {"ReadCapacityUnits": 7, "WriteCapacityUnits": 9}
+                }]
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "DescribeTable",
+            json!({"TableName": "gsi-pt-echo"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        let table = &body["Table"];
+        // The index echoes its own spec, not the table's units...
+        assert_eq!(
+            table["GlobalSecondaryIndexes"][0]["ProvisionedThroughput"],
+            json!({"ReadCapacityUnits": 7, "WriteCapacityUnits": 9})
+        );
+        // ... and the table keeps its own.
+        assert_eq!(
+            table["ProvisionedThroughput"],
+            json!({"ReadCapacityUnits": 3, "WriteCapacityUnits": 5})
+        );
+        // UpdateTable-created indexes likewise echo their own spec.
+        let resp = handler.handle(make_req(
+            "UpdateTable",
+            json!({
+                "TableName": "gsi-pt-echo",
+                "GlobalSecondaryIndexUpdates": [{"Create": {
+                    "IndexName": "upd",
+                    "KeySchema": [{"AttributeName": "name", "KeyType": "RANGE"}],
+                    "Projection": {"ProjectionType": "ALL"},
+                    "ProvisionedThroughput": {"ReadCapacityUnits": 11, "WriteCapacityUnits": 13}
+                }}]
+            }),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["TableDescription"]["GlobalSecondaryIndexes"][1]["ProvisionedThroughput"],
+            json!({"ReadCapacityUnits": 11, "WriteCapacityUnits": 13})
+        );
+        let body = handler.handle(make_req(
+            "DescribeTable",
+            json!({"TableName": "gsi-pt-echo"}),
+        ));
+        let body: Value = serde_json::from_str(&body.body).unwrap();
+        assert_eq!(
+            body["Table"]["GlobalSecondaryIndexes"][1]["ProvisionedThroughput"],
+            json!({"ReadCapacityUnits": 11, "WriteCapacityUnits": 13})
+        );
+
+        // An on-demand GSI (no spec throughput) describes moto's zero block.
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "gsi-pt-ondemand",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [
+                    {"AttributeName": "pk", "AttributeType": "S"},
+                    {"AttributeName": "who", "AttributeType": "S"}
+                ],
+                "BillingMode": "PAY_PER_REQUEST",
+                "GlobalSecondaryIndexes": [{
+                    "IndexName": "byname",
+                    "KeySchema": [{"AttributeName": "who", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "ALL"}
+                }]
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "DescribeTable",
+            json!({"TableName": "gsi-pt-ondemand"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["Table"]["GlobalSecondaryIndexes"][0]["ProvisionedThroughput"],
+            json!({"ReadCapacityUnits": 0, "WriteCapacityUnits": 0})
+        );
     }
 }
