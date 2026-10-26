@@ -322,7 +322,11 @@ impl RrSet {
         if let Some(region) = &self.region {
             out += &el("Region", region);
         }
-        if self.ttl.unwrap_or(0) != 0 {
+        // Alias records have no TTL of their own — Route53 inherits it from
+        // the aliased target — so the TTL member is never rendered for them
+        // (real AWS behavior; moto 5.2.2 #10029). Even an explicitly supplied
+        // TTL is dropped, matching list_resource_record_sets().
+        if self.alias_target.is_none() && self.ttl.unwrap_or(0) != 0 {
             out += &el("TTL", self.ttl.unwrap().to_string());
         }
         if let Some(failover) = &self.failover {
@@ -2876,5 +2880,84 @@ mod tests {
         assert!(String::from_utf8(list.body)
             .unwrap()
             .contains("<Key>k</Key>"));
+    }
+
+    #[test]
+    fn route53_alias_no_ttl() {
+        // Alias records have no TTL of their own: Route53 inherits it from
+        // the alias target, so list_resource_record_sets() must never return
+        // a TTL member for them (moto 5.2.2 #10029,
+        // test_alias_record_set_omits_ttl). Even an explicitly supplied TTL
+        // is not echoed back for an alias set.
+        let account =
+            12_000_000_000_000 + (uuid::Uuid::new_v4().as_u128() % 1_000_000_000_000) as u64;
+        let create = dispatch(&test_req(
+            account,
+            "POST",
+            "hostedzone",
+            r#"<CreateHostedZoneRequest xmlns="https://route53.amazonaws.com/doc/2013-04-01/"><Name>aliasttl.test.com</Name><CallerReference>alias-ttl</CallerReference></CreateHostedZoneRequest>"#,
+        ));
+        assert_eq!(create.status, 201);
+        let id = String::from_utf8(create.body.clone())
+            .unwrap()
+            .split("<Id>/hostedzone/")
+            .nth(1)
+            .unwrap()
+            .split("</Id>")
+            .next()
+            .unwrap()
+            .to_string();
+
+        let change = dispatch(&test_req(
+            account,
+            "POST",
+            &format!("hostedzone/{id}/rrset/"),
+            r#"<ChangeResourceRecordSetsRequest xmlns="https://route53.amazonaws.com/doc/2013-04-01/"><ChangeBatch><Changes><Change><Action>CREATE</Action><ResourceRecordSet><Name>target.aliasttl.test.com</Name><Type>A</Type><TTL>60</TTL><ResourceRecords><ResourceRecord><Value>10.0.0.5</Value></ResourceRecord></ResourceRecords></ResourceRecordSet></Change><Change><Action>CREATE</Action><ResourceRecordSet><Name>alias.aliasttl.test.com</Name><Type>A</Type><TTL>60</TTL><AliasTarget><HostedZoneId>/hostedzone/ID</HostedZoneId><DNSName>target.aliasttl.test.com</DNSName><EvaluateTargetHealth>false</EvaluateTargetHealth></AliasTarget></ResourceRecordSet></Change></Changes></ChangeBatch></ChangeResourceRecordSetsRequest>"#,
+        ));
+        assert_eq!(change.status, 200);
+
+        let list = dispatch(&test_req(
+            account,
+            "GET",
+            &format!("hostedzone/{id}/rrset"),
+            "",
+        ));
+        assert_eq!(list.status, 200);
+        let body = String::from_utf8(list.body).unwrap();
+        let alias_chunks: Vec<String> = body
+            .split("<ResourceRecordSet>")
+            .skip(1)
+            .map(|chunk| {
+                chunk
+                    .split("</ResourceRecordSet>")
+                    .next()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
+
+        let alias_chunk = alias_chunks.iter().find(|chunk| {
+            chunk.contains("<Name>alias.aliasttl.test.com.</Name>")
+                && chunk.contains("<AliasTarget>")
+        });
+        let Some(alias_chunk) = alias_chunk else {
+            panic!("alias set not listed: {body}");
+        };
+        assert!(
+            !alias_chunk.contains("<TTL>"),
+            "alias set must not render a TTL: {alias_chunk}"
+        );
+
+        // Non-alias sets (and the zone's default SOA) keep their TTLs.
+        let target_chunk = alias_chunks
+            .iter()
+            .find(|chunk| chunk.contains("<Name>target.aliasttl.test.com.</Name>"))
+            .expect("alias target set listed");
+        assert!(target_chunk.contains("<TTL>60</TTL>"));
+        let soa_chunk = alias_chunks
+            .iter()
+            .find(|chunk| chunk.contains("<Type>SOA</Type>"))
+            .expect("SOA set listed");
+        assert!(soa_chunk.contains("<TTL>900</TTL>"));
     }
 }

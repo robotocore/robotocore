@@ -332,7 +332,31 @@ fn workflow_steps(rec: &Value, store_key: &str) -> Vec<Value> {
         .collect()
 }
 
-/// `Server.to_dict()`.
+/// moto 5.2.3 #10068's `prune_unset`: AWS Transfer omits unset optional
+/// fields from its Describe* responses rather than returning them as null,
+/// so null members and emptied containers are dropped recursively. List
+/// items are still pruned but never dropped, like moto.
+fn prune_unset(v: &Value) -> Value {
+    match v {
+        Value::Object(map) => {
+            let mut pruned = serde_json::Map::new();
+            for (key, val) in map {
+                let cleaned = prune_unset(val);
+                let drop = cleaned.is_null()
+                    || matches!(cleaned, Value::Object(ref m) if m.is_empty())
+                    || matches!(cleaned, Value::Array(ref a) if a.is_empty());
+                if !drop {
+                    pruned.insert(key.clone(), cleaned);
+                }
+            }
+            Value::Object(pruned)
+        }
+        Value::Array(items) => Value::Array(items.iter().map(prune_unset).collect()),
+        other => other.clone(),
+    }
+}
+
+/// `Server.to_dict()` — wrapped in `prune_unset` per moto 5.2.3 #10068.
 fn server_to_dict(rec: &Value) -> Value {
     let on_upload = workflow_steps(rec, "on_upload");
     let on_partial_upload = workflow_steps(rec, "on_partial_upload");
@@ -340,7 +364,10 @@ fn server_to_dict(rec: &Value) -> Value {
     let ipd = &rec["identity_provider_details"];
     let pd = &rec["protocol_details"];
     let s3o = &rec["s3_storage_options"];
-    json!({
+    // Unset optional members (e.g. Certificate, LoggingRole, the empty
+    // EndpointDetails/WorkflowDetails wrappers, Tags on a tag-less server)
+    // are omitted below instead of rendered as null.
+    prune_unset(&json!({
         "Certificate": rec["certificate"],
         "Domain": rec["domain"],
         "EndpointType": rec["endpoint_type"],
@@ -382,7 +409,7 @@ fn server_to_dict(rec: &Value) -> Value {
             "DirectoryListingOptimization": s3o["directory_listing_optimization"],
         },
         "WorkflowDetails": {"OnUpload": on_upload, "OnPartialUpload": on_partial_upload},
-    })
+    }))
 }
 
 fn server_to_short(rec: &Value) -> Value {
@@ -750,7 +777,9 @@ fn connector_record(region: &str, account: u64, p: &Value) -> Value {
 }
 
 /// `Connector.to_dict()` — egress addresses get their mock default at render
-/// time; As2Config/SftpConfig render with moto's snake_case keys.
+/// time; As2Config/SftpConfig render with moto's snake_case keys; unset
+/// members are omitted (moto 5.2.3 #10068 `prune_unset`), never serialized
+/// as null.
 fn connector_to_dict(rec: &Value) -> Value {
     let mut out = json!({
         "Arn": rec["arn"],
@@ -769,7 +798,7 @@ fn connector_to_dict(rec: &Value) -> Value {
     if rec.get("sftp_config").and_then(Value::as_object).is_some() {
         obj.insert("SftpConfig".into(), rec["sftp_config"].clone());
     }
-    out
+    prune_unset(&out)
 }
 
 fn connector_to_short(rec: &Value) -> Value {
@@ -2984,5 +3013,75 @@ mod tests {
         );
         assert_eq!(camel_to_snake("AS2Id"), "as2_id"); // upper-run split, like moto
         assert_eq!(camel_to_snake("Compression"), "compression");
+    }
+
+    #[test]
+    fn transfer_describe_no_nulls() {
+        // moto 5.2.3 #10068: AWS Transfer omits unset optional fields from
+        // describe_server()/describe_connector() responses instead of
+        // returning them as null.
+        let (status, body) = run(
+            "CreateServer",
+            json!({"IdentityProviderType": "SERVICE_MANAGED"}),
+        );
+        assert_eq!(status, 200);
+        let server_id = body["ServerId"].as_str().unwrap().to_string();
+        let (_, body) = run("DescribeServer", json!({"ServerId": server_id}));
+        let server = &body["Server"];
+        for omitted in [
+            "Certificate",
+            "LoggingRole",
+            "SecurityPolicyName",
+            "HostKeyFingerprint",
+            "PreAuthenticationLoginBanner",
+            "PostAuthenticationLoginBanner",
+            "EndpointDetails",
+            "IdentityProviderDetails",
+            "ProtocolDetails",
+            "S3StorageOptions",
+            "WorkflowDetails",
+            "Tags",
+        ] {
+            assert!(
+                server.get(omitted).is_none(),
+                "describe_server must omit unset {omitted}: {server}"
+            );
+        }
+        // Fields that are always populated remain present.
+        assert_eq!(server["ServerId"], server_id.as_str());
+        assert!(server["Arn"].as_str().is_some());
+        assert_eq!(server["State"], "ONLINE");
+
+        let (status, body) = run(
+            "CreateConnector",
+            json!({
+                "Url": "sftp://example.com",
+                "AccessRole": "arn:aws:iam::123456789012:role/TransferAccessRole",
+            }),
+        );
+        assert_eq!(status, 200);
+        let connector_id = body["ConnectorId"].as_str().unwrap().to_string();
+        let (_, body) = run("DescribeConnector", json!({"ConnectorId": connector_id}));
+        let connector = &body["Connector"];
+        for omitted in [
+            "LoggingRole",
+            "SecurityPolicyName",
+            "As2Config",
+            "SftpConfig",
+        ] {
+            assert!(
+                connector.get(omitted).is_none(),
+                "describe_connector must omit unset {omitted}: {connector}"
+            );
+        }
+        assert_eq!(connector["ConnectorId"], connector_id.as_str());
+        assert_eq!(connector["Url"], "sftp://example.com");
+        assert_eq!(
+            connector["AccessRole"],
+            "arn:aws:iam::123456789012:role/TransferAccessRole"
+        );
+        assert!(connector["ServiceManagedEgressIpAddresses"]
+            .as_array()
+            .is_some());
     }
 }
