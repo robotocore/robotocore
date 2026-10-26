@@ -15,7 +15,30 @@ import re
 import botocore.session
 
 # Hand-tuned params for operations where auto-fill isn't good enough.
-KNOWN_PARAMS: dict[str, dict[str, dict]] = {
+import pathlib as _pl
+
+# Per-lane hand-written fills live as data files: scripts/lib/fills/<any>.json,
+# each {"Service": {"Op": {param json}}}. Loaded at import so parallel fix
+# lanes can contribute fills without editing this file (merge-free).
+def _load_fill_files(base: dict) -> dict:
+    fills_dir = _pl.Path(__file__).resolve().parent / "fills"
+    if not fills_dir.is_dir():
+        return base
+    merged = dict(base)
+    import json as _json
+    for path in sorted(fills_dir.glob("*.json")):
+        try:
+            data = _json.loads(path.read_text())
+        except Exception:
+            continue
+        for svc, ops in data.items():
+            merged.setdefault(svc, {})
+            for op, params in ops.items():
+                if isinstance(params, dict):
+                    merged[svc].setdefault(op, params)
+    return merged
+
+KNOWN_PARAMS: dict[str, dict[str, dict]] = _load_fill_files({
     "sqs": {
         "CreateQueue": {"QueueName": "probe-test-queue"},
         "GetQueueUrl": {"QueueName": "probe-test-queue"},
@@ -82,7 +105,7 @@ KNOWN_PARAMS: dict[str, dict[str, dict]] = {
         },
         "DeleteVolume": {"VolumeId": "fsvol-0123456789abcdef0"},
     },
-}
+})
 
 _ENUM_FALLBACK = "probe-test"
 _FAKE_ACCOUNT = "123456789012"
