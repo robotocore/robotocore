@@ -621,7 +621,7 @@ fn resolve_val(val: &FilterVal, item: &Value, root: &Value) -> Option<Value> {
 
 /// Loose-precision number shape like the era's Python rounding: whole
 /// values become integers (`1.0` -> `1`) and NaN/inf yield null.
-fn number_value(n: f64) -> Value {
+pub(crate) fn number_value(n: f64) -> Value {
     if n.is_finite() && n.fract() == 0.0 && n.abs() <= 9.007_199_254_740_991e15 {
         V::Number(serde_json::Number::from(n as i64))
     } else {

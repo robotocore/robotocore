@@ -291,7 +291,11 @@ impl StepfunctionsHandler {
                 .unwrap_or_default()
                 .to_string();
             let parsed: Value = serde_json::from_str(&input).unwrap_or_else(|_| json!({}));
-            asl::run_flow(&ctx, states, start_at, parsed)
+            let machine_default = def
+                .as_object()
+                .map(asl::QueryLanguage::for_machine)
+                .unwrap_or_default();
+            asl::run_flow(&ctx, states, start_at, parsed, machine_default)
         })();
         let last_event_id = ctx.exec.events.read().len() as i64;
         match result {
