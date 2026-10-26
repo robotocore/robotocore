@@ -578,11 +578,12 @@ impl DefaultSqsHandler {
             SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
         })?;
 
-        let entries = params
-            .get("Entries")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default();
+        // moto responses.py (PR getmoto/moto#10346) adds the EmptyBatchRequest
+        // check to ChangeMessageVisibilityBatch ("ChangeMessageVisibility"
+        // action naming) and runs moto's shared batch-Id validation
+        // before touching any entry.
+        let entries =
+            Self::validate_batch_entries(params, "ChangeMessageVisibilityBatchRequestEntry")?;
 
         let mut successful: Vec<Value> = Vec::new();
         let mut failed: Vec<Value> = Vec::new();
@@ -649,18 +650,9 @@ impl DefaultSqsHandler {
         })?;
 
         // moto answers an empty Entries list with EmptyBatchRequest before
-        // touching the queue (live-verified wording).
-        let entries = params
-            .get("Entries")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .filter(|v| !v.is_empty())
-            .ok_or_else(|| {
-                SqsError::EmptyBatchRequest(
-                    "There should be at least one DeleteMessageBatchRequestEntry in the request."
-                        .to_string(),
-                )
-            })?;
+        // touching the queue (live-verified wording); the shared helper
+        // then runs moto's batch-Id validation (PR getmoto/moto#10346).
+        let entries = Self::validate_batch_entries(params, "DeleteMessageBatchRequestEntry")?;
 
         let mut successful: Vec<Value> = Vec::new();
         let mut failed: Vec<Value> = Vec::new();
@@ -1305,6 +1297,82 @@ impl DefaultSqsHandler {
             body,
         })
     }
+
+    /// Validate a batch operation's `Entries` list, raising moto's batch
+    /// errors before any entry is processed:
+    ///
+    /// `EmptyBatchRequest` (per-operation entry noun), then moto
+    /// models.py `_validate_batch_entry_ids` — InvalidBatchEntryId when
+    /// any Id fails python's `^[\w-]{1,80}$` regex, BatchEntryIdsNotDistinct
+    /// for the first repeated Id, and TooManyEntriesInBatchRequest above
+    /// 10 entries — each a top-level 400.
+    ///
+    /// Shared by SendMessageBatch / DeleteMessageBatch /
+    /// ChangeMessageVisibilityBatch (PR getmoto/moto#10346; wordings
+    /// live-verified on the pinned fork). `entry_noun` fills the
+    /// EmptyBatchRequest wording the way moto responses.py's
+    /// `EmptyBatchRequest(action=...)` interpolates the action name.
+    fn validate_batch_entries(
+        params: &Value,
+        entry_noun: &'static str,
+    ) -> Result<Vec<Value>, SqsError> {
+        let entries = params
+            .get("Entries")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .filter(|entries| !entries.is_empty())
+            .ok_or_else(|| {
+                SqsError::EmptyBatchRequest(format!(
+                    "There should be at least one {} in the request.",
+                    entry_noun
+                ))
+            })?;
+
+        // moto: `re.match(r"^[\w-]{1,80}$", entry["Id"])` — Python \w is
+        // unicode word characters, so alphanumeric code points, '_' and
+        // '-', within 1..=80 characters (chars, not bytes).
+        let invalid_id = entries.iter().any(|entry| {
+            let id = entry.get("Id").and_then(|v| v.as_str()).unwrap_or("");
+            !(1..=80).contains(&id.chars().count())
+                || !id
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+        });
+        if invalid_id {
+            return Err(SqsError::InvalidBatchEntryId);
+        }
+
+        // moto's _get_first_duplicate_id: the first Id seen twice wins.
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut duplicate: Option<String> = None;
+        for entry in &entries {
+            let id = entry
+                .get("Id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if !seen.insert(id.clone()) {
+                duplicate = Some(id);
+                break;
+            }
+        }
+        if let Some(id) = duplicate {
+            return Err(SqsError::BatchEntryIdsNotDistinct(format!(
+                "Id {} repeated.",
+                id
+            )));
+        }
+
+        if entries.len() > 10 {
+            return Err(SqsError::TooManyEntriesInBatchRequest(format!(
+                "Maximum number of entries per request are 10. You have sent {}.",
+                entries.len()
+            )));
+        }
+
+        Ok(entries)
+    }
+
     fn handle_send_message_batch(
         &self,
         params: &Value,
@@ -1317,17 +1385,9 @@ impl DefaultSqsHandler {
             .ok_or_else(|| {
                 SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
             })?;
-        // moto's EmptyBatchRequest wording (live-verified on the pinned fork).
-        let entries = params
-            .get("Entries")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .ok_or_else(|| {
-                SqsError::EmptyBatchRequest(
-                    "There should be at least one SendMessageBatchRequestEntry in the request."
-                        .to_string(),
-                )
-            })?;
+        // moto's EmptyBatchRequest wording (live-verified on the pinned
+        // fork); the shared helper also runs moto's batch-Id validation.
+        let entries = Self::validate_batch_entries(params, "SendMessageBatchRequestEntry")?;
 
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
         let store = self.get_store(account, region);

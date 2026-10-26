@@ -1648,3 +1648,465 @@ fn purge_throttle_expires_after_60_seconds() {
         "a purge after the 60-second window must succeed again"
     );
 }
+
+// --- Batch entry validation (moto PR getmoto/moto#10346) -------------------
+
+/// Send two messages and receive their handles (default visibility), the
+/// fixture for proving top-level batch errors leave no entry-level side
+/// effect behind (mirrors the PR's `_send_and_receive_two_messages`).
+fn send_and_receive_two_messages(handler: &DefaultSqsHandler, queue_url: &str) -> Vec<Value> {
+    for i in 0..2 {
+        let resp = handler.handle(make_request(
+            "SendMessage",
+            json!({"QueueUrl": queue_url, "MessageBody": i.to_string()}),
+        ));
+        assert_eq!(resp.status, 200);
+    }
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": queue_url, "MaxNumberOfMessages": 2}),
+    ));
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    let messages = data["Messages"]
+        .as_array()
+        .expect("two queued messages received")
+        .to_vec();
+    assert_eq!(messages.len(), 2, "must receive both messages back");
+    messages
+}
+
+/// Read (visible, not-visible, delayed) message counts for a queue.
+fn queued_message_counts(handler: &DefaultSqsHandler, queue_url: &str) -> (u32, u32, u32) {
+    let resp = handler.handle(make_request(
+        "GetQueueAttributes",
+        json!({"QueueUrl": queue_url, "AttributeNames": ["All"]}),
+    ));
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    let attrs = &data["Attributes"];
+    let get = |name: &str| {
+        attrs[name]
+            .as_str()
+            .expect("attribute must be reported")
+            .parse()
+            .expect("integer attribute")
+    };
+    (
+        get("ApproximateNumberOfMessages"),
+        get("ApproximateNumberOfMessagesNotVisible"),
+        get("ApproximateNumberOfMessagesDelayed"),
+    )
+}
+
+/// moto's PR #10346 id row: empty, punctuation, space, over-long (81 chars).
+fn invalid_batch_ids() -> Vec<String> {
+    vec![
+        "".to_string(),
+        ".!@#$%^&*()+=".to_string(),
+        "has space".to_string(),
+        "i".repeat(81),
+    ]
+}
+
+/// DeleteMessageBatch: every Id failing moto's `^[\w-]{1,80}$` row
+/// answers InvalidBatchEntryId as a top-level 400, before any entry is
+/// processed (no message deleted).
+#[test]
+fn batch_validate_delete_message_batch_invalid_entry_id() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-validate-del-bad-id");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+
+    for id in invalid_batch_ids() {
+        let resp = handler.handle(make_request(
+            "DeleteMessageBatch",
+            json!({
+                "QueueUrl": &queue_url,
+                "Entries": [{"Id": id, "ReceiptHandle": handles[0]["ReceiptHandle"]}],
+            }),
+        ));
+        assert_eq!(resp.status, 400, "invalid Id {id:?} must fail the request");
+        assert!(resp
+            .body
+            .contains("AWS.SimpleQueueService.InvalidBatchEntryId"));
+        assert!(resp.body.contains(
+            "A batch entry id can only contain alphanumeric characters, hyphens and underscores. It can be at most 80 letters long."
+        ));
+    }
+
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.1, 2, "no message may be deleted by a rejected batch");
+}
+
+/// Repeated Ids (with distinct receipt handles) answer BatchEntryIdsNotDistinct
+/// carrying the first duplicate, before side effects.
+#[test]
+fn batch_validate_delete_message_batch_entry_ids_not_distinct() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-validate-del-dup-id");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+
+    let resp = handler.handle(make_request(
+        "DeleteMessageBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "dup", "ReceiptHandle": handles[0]["ReceiptHandle"]},
+                {"Id": "dup", "ReceiptHandle": handles[1]["ReceiptHandle"]},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.BatchEntryIdsNotDistinct"));
+    assert!(resp.body.contains("Id dup repeated."));
+
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.1, 2, "no message may be deleted by a rejected batch");
+}
+
+/// More than 10 entries answer TooManyEntriesInBatchRequest with moto's
+/// exact count wording.
+#[test]
+fn batch_validate_delete_message_batch_too_many_entries() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-validate-del-too-many");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+
+    let entries: Vec<Value> = (0..11)
+        .map(|i| {
+            json!({
+                "Id": format!("id_{i}"),
+                "ReceiptHandle": handles[(i % 2) as usize]["ReceiptHandle"],
+            })
+        })
+        .collect();
+    let resp = handler.handle(make_request(
+        "DeleteMessageBatch",
+        json!({"QueueUrl": &queue_url, "Entries": entries}),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.TooManyEntriesInBatchRequest"));
+    assert!(resp
+        .body
+        .contains("Maximum number of entries per request are 10. You have sent 11."));
+
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.1, 2, "no message may be deleted by a rejected batch");
+}
+
+/// An empty Entries list answers EmptyBatchRequest naming the
+/// DeleteMessageBatch request entry.
+#[test]
+fn batch_validate_delete_message_batch_empty_entries() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-validate-del-empty");
+
+    let resp = handler.handle(make_request(
+        "DeleteMessageBatch",
+        json!({"QueueUrl": &queue_url, "Entries": []}),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.EmptyBatchRequest"));
+    assert!(resp
+        .body
+        .contains("There should be at least one DeleteMessageBatchRequestEntry in the request."));
+}
+
+/// ChangeMessageVisibilityBatch: moto PR #10346 adds the EmptyBatchRequest
+/// check with the ChangeMessageVisibilityBatchRequestEntry wording, on top
+/// of the shared Id validation.
+#[test]
+fn batch_validate_change_message_visibility_batch_empty_entries() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-validate-cmv-empty");
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({"QueueUrl": &queue_url, "Entries": []}),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.EmptyBatchRequest"));
+    assert!(resp.body.contains(
+        "There should be at least one ChangeMessageVisibilityBatchRequestEntry in the request."
+    ));
+}
+
+/// Invalid Ids on ChangeMessageVisibilityBatch answer InvalidBatchEntryId
+/// before any visibility timeout is touched.
+#[test]
+fn batch_validate_change_message_visibility_batch_invalid_entry_id() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-validate-cmv-bad-id");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+
+    for id in invalid_batch_ids() {
+        let resp = handler.handle(make_request(
+            "ChangeMessageVisibilityBatch",
+            json!({
+                "QueueUrl": &queue_url,
+                "Entries": [{
+                    "Id": id,
+                    "ReceiptHandle": handles[0]["ReceiptHandle"],
+                    "VisibilityTimeout": 0,
+                }],
+            }),
+        ));
+        assert_eq!(resp.status, 400, "invalid Id {id} must fail the request");
+        assert!(resp
+            .body
+            .contains("AWS.SimpleQueueService.InvalidBatchEntryId"));
+        assert!(resp.body.contains(
+            "A batch entry id can only contain alphanumeric characters, hyphens and underscores. It can be at most 80 letters long."
+        ));
+    }
+
+    // No visibility timeout was changed: both handles remain in flight.
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(
+        counts.1, 2,
+        "no handle may leave flight via a rejected batch"
+    );
+}
+
+/// Duplicate Ids on ChangeMessageVisibilityBatch answer
+/// BatchEntryIdsNotDistinct with moto's "Id {id} repeated." wording.
+#[test]
+fn batch_validate_change_message_visibility_batch_entry_ids_not_distinct() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-validate-cmv-dup-id");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "dup", "ReceiptHandle": handles[0]["ReceiptHandle"], "VisibilityTimeout": 0},
+                {"Id": "dup", "ReceiptHandle": handles[1]["ReceiptHandle"], "VisibilityTimeout": 0},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.BatchEntryIdsNotDistinct"));
+    assert!(resp.body.contains("Id dup repeated."));
+
+    // No visibility timeout was changed: both handles remain in flight.
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(
+        counts.1, 2,
+        "no handle may leave flight via a rejected batch"
+    );
+}
+
+/// More than 10 entries on ChangeMessageVisibilityBatch answer
+/// TooManyEntriesInBatchRequest with moto's exact count wording.
+#[test]
+fn batch_validate_change_message_visibility_batch_too_many_entries() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-validate-cmv-too-many");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+
+    let entries: Vec<Value> = (0..11)
+        .map(|i| {
+            json!({
+                "Id": format!("id_{i}"),
+                "ReceiptHandle": handles[(i % 2) as usize]["ReceiptHandle"],
+                "VisibilityTimeout": 0,
+            })
+        })
+        .collect();
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({"QueueUrl": &queue_url, "Entries": entries}),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.TooManyEntriesInBatchRequest"));
+    assert!(resp
+        .body
+        .contains("Maximum number of entries per request are 10. You have sent 11."));
+}
+
+/// SendMessageBatch answers the same top-level Id errors it always did —
+/// now via the shared helper — before enqueueing anything.
+#[test]
+fn batch_validate_send_message_batch_invalid_entry_id() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-validate-send-bad-id");
+
+    for i in 0..2 {
+        let resp = handler.handle(make_request(
+            "SendMessage",
+            json!({"QueueUrl": &queue_url, "MessageBody": i.to_string()}),
+        ));
+        assert_eq!(resp.status, 200);
+    }
+
+    let resp = handler.handle(make_request(
+        "SendMessageBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [{"Id": "bad!id", "MessageBody": "queued?"}],
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.InvalidBatchEntryId"));
+
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(
+        counts.0, 2,
+        "no message may be enqueued by a rejected batch"
+    );
+}
+
+/// Duplicate Ids fail SendMessageBatch as before, before side effects.
+#[test]
+fn batch_validate_send_message_batch_entry_ids_not_distinct() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-validate-send-dup-id");
+
+    let resp = handler.handle(make_request(
+        "SendMessageBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "dup", "MessageBody": "one"},
+                {"Id": "dup", "MessageBody": "two"},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.BatchEntryIdsNotDistinct"));
+    assert!(resp.body.contains("Id dup repeated."));
+}
+
+/// More than 10 entries on SendMessageBatch answer TooManyEntriesInBatchRequest.
+#[test]
+fn batch_validate_send_message_batch_too_many_entries() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-validate-send-too-many");
+
+    let entries: Vec<Value> = (0..11)
+        .map(|i| json!({"Id": format!("id_{i}"), "MessageBody": "body"}))
+        .collect();
+    let resp = handler.handle(make_request(
+        "SendMessageBatch",
+        json!({"QueueUrl": &queue_url, "Entries": entries}),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.TooManyEntriesInBatchRequest"));
+    assert!(resp
+        .body
+        .contains("Maximum number of entries per request are 10. You have sent 11."));
+}
+
+/// An empty Entries list on SendMessageBatch answers EmptyBatchRequest
+/// (moto responses.py `if entries == {}: raise EmptyBatchRequest()`),
+/// not a 200 with empty success/failure lists.
+#[test]
+fn batch_validate_send_message_batch_empty_entries() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-validate-send-empty");
+
+    let resp = handler.handle(make_request(
+        "SendMessageBatch",
+        json!({"QueueUrl": &queue_url, "Entries": []}),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.EmptyBatchRequest"));
+    assert!(resp
+        .body
+        .contains("There should be at least one SendMessageBatchRequestEntry in the request."));
+}
+
+/// The rewired happy path: valid entries still delete, through the same
+/// helper that rejects the invalid ones.
+#[test]
+fn batch_validate_delete_message_batch_valid_entries_still_delete() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-validate-del-valid");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+
+    let resp = handler.handle(make_request(
+        "DeleteMessageBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "first", "ReceiptHandle": handles[0]["ReceiptHandle"]},
+                {"Id": "second", "ReceiptHandle": handles[1]["ReceiptHandle"]},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 200);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    let successful = data["Successful"].as_array().expect("Successful array");
+    assert_eq!(successful.len(), 2);
+    assert!(
+        data.get("Failed")
+            .map(|f| f.as_array().unwrap().is_empty())
+            .unwrap_or(true),
+        "no entry may fail on valid handles"
+    );
+
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.1, 0, "both in-flight handles must be deleted");
+}
+
+/// The rewired happy path: valid entries still change visibility, and a
+/// zero timeout returns the messages to the visible pool immediately.
+#[test]
+fn batch_validate_change_message_visibility_batch_valid_entries_still_apply() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-validate-cmv-valid");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "first", "ReceiptHandle": handles[0]["ReceiptHandle"], "VisibilityTimeout": 0},
+                {"Id": "second", "ReceiptHandle": handles[1]["ReceiptHandle"], "VisibilityTimeout": 0},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 200);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    assert_eq!(
+        data["Successful"]
+            .as_array()
+            .expect("Successful array")
+            .len(),
+        2
+    );
+
+    // Zero visibility means both messages are deliverable again at once.
+    let again = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 2}),
+    ));
+    let data: Value = serde_json::from_str(&again.body).expect("Invalid JSON");
+    assert_eq!(
+        data["Messages"].as_array().map(|m| m.len()),
+        Some(2),
+        "visibility zero must return both messages for delivery"
+    );
+}

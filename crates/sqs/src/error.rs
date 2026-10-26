@@ -24,6 +24,17 @@ pub enum SqsError {
     MissingParameter(String),
     ResourceNotFound(String),
     EmptyBatchRequest(String),
+    /// moto's `InvalidBatchEntryId` (moto/sqs/exceptions.py): a batch
+    /// entry Id fails `^[\w-]{1,80}$`. The wire carries the
+    /// service-prefixed code (AWS.SimpleQueueService.InvalidBatchEntryId),
+    /// matching every other top-level SQS batch error.
+    InvalidBatchEntryId,
+    /// moto's `BatchEntryIdsNotDistinct`: carries the formatted
+    /// "Id {id} repeated." message.
+    BatchEntryIdsNotDistinct(String),
+    /// moto's `TooManyEntriesInBatchRequest`: carries the formatted
+    /// "Maximum number of entries per request are 10. You have sent {n}."
+    TooManyEntriesInBatchRequest(String),
     /// moto's `PurgeQueueInProgress` (moto/sqs/exceptions.py): a queue
     /// purged within the last 60 seconds blocks every further purge —
     /// regardless of which client issued the first one. AWS documents
@@ -46,6 +57,13 @@ impl SqsError {
             SqsError::MissingParameter(_) => "MissingParameter",
             SqsError::ResourceNotFound(_) => "ResourceNotFoundException",
             SqsError::EmptyBatchRequest(_) => "AWS.SimpleQueueService.EmptyBatchRequest",
+            SqsError::InvalidBatchEntryId => "AWS.SimpleQueueService.InvalidBatchEntryId",
+            SqsError::BatchEntryIdsNotDistinct(_) => {
+                "AWS.SimpleQueueService.BatchEntryIdsNotDistinct"
+            }
+            SqsError::TooManyEntriesInBatchRequest(_) => {
+                "AWS.SimpleQueueService.TooManyEntriesInBatchRequest"
+            }
             SqsError::PurgeQueueInProgress(_) => "AWS.SimpleQueueService.PurgeQueueInProgress",
             SqsError::MotoCrash => "InternalError",
         }
@@ -61,6 +79,11 @@ impl SqsError {
             SqsError::MissingParameter(msg) => msg,
             SqsError::ResourceNotFound(msg) => msg,
             SqsError::EmptyBatchRequest(msg) => msg,
+            SqsError::InvalidBatchEntryId => {
+                "A batch entry id can only contain alphanumeric characters, hyphens and underscores. It can be at most 80 letters long."
+            }
+            SqsError::BatchEntryIdsNotDistinct(msg) => msg,
+            SqsError::TooManyEntriesInBatchRequest(msg) => msg,
             SqsError::PurgeQueueInProgress(msg) => msg,
             SqsError::MotoCrash => "",
         }
@@ -78,6 +101,9 @@ impl SqsError {
             SqsError::MissingParameter(_) => 400,
             SqsError::ResourceNotFound(_) => 400,
             SqsError::EmptyBatchRequest(_) => 400,
+            SqsError::InvalidBatchEntryId => 400,
+            SqsError::BatchEntryIdsNotDistinct(_) => 400,
+            SqsError::TooManyEntriesInBatchRequest(_) => 400,
             SqsError::PurgeQueueInProgress(_) => 403,
             SqsError::MotoCrash => 500,
         }
