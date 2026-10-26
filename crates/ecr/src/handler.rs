@@ -431,8 +431,26 @@ impl EcrHandler {
             Err(e) => return e,
         };
         let repo_images = images_of(&state, name);
+        // moto 5.2.4 ECRResponse.list_images reads `filter.tagStatus` and
+        // passes it to ListingImages: TAGGED keeps images with at least
+        // one tag, UNTAGGED keeps images with none (moto/ecr/models.py
+        // ::list_images). moto does not validate the value — anything
+        // other than TAGGED/UNTAGGED (live-verified: "BOGUS", empty
+        // filter object) falls through to ANY and returns every image.
+        let tag_status = req
+            .params
+            .get("filter")
+            .and_then(|f| f.get("tagStatus"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("ANY");
         let mut ids: Vec<Value> = Vec::new();
         for img in &repo_images {
+            if tag_status == "TAGGED" && img.tags.is_empty() {
+                continue;
+            }
+            if tag_status == "UNTAGGED" && !img.tags.is_empty() {
+                continue;
+            }
             if img.tags.is_empty() {
                 ids.push(json!({ "imageDigest": img.digest, "imageTag": Value::Null }));
             } else {
@@ -1979,5 +1997,64 @@ mod tests {
             }),
         ));
         assert!(missing.body.contains("ImageNotFound"));
+    }
+
+    #[test]
+    fn ecr_list_images_tag_status_filter() {
+        let h = EcrHandler::new();
+        let parse = |resp: &AwsResponse| serde_json::from_str::<Value>(&resp.body).unwrap();
+        h.handle(make_req("CreateRepository", json!({"repositoryName": "f"})));
+        h.handle(make_req(
+            "PutImage",
+            json!({"repositoryName": "f", "imageManifest": manifest("m1"), "imageTag": "v1"}),
+        ));
+        h.handle(make_req(
+            "PutImage",
+            json!({"repositoryName": "f", "imageManifest": manifest("m2"), "imageTag": "v2"}),
+        ));
+        h.handle(make_req(
+            "PutImage",
+            json!({"repositoryName": "f", "imageManifest": manifest("m3")}),
+        ));
+
+        // moto defaults: absent/no-filter and explicit ANY list everything
+        // (n tagged entries + one null-tag entry for the untagged image).
+        let any_default = parse(&h.handle(make_req("ListImages", json!({"repositoryName": "f"}))));
+        assert_eq!(any_default["imageIds"].as_array().unwrap().len(), 3);
+        assert_eq!(
+            parse(&h.handle(make_req(
+                "ListImages",
+                json!({"repositoryName": "f", "filter": {"tagStatus": "ANY"}})
+            )))["imageIds"],
+            any_default["imageIds"]
+        );
+
+        let tagged = parse(&h.handle(make_req(
+            "ListImages",
+            json!({"repositoryName": "f", "filter": {"tagStatus": "TAGGED"}}),
+        )));
+        let tags: Vec<&str> = tagged["imageIds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| i["imageTag"].as_str().unwrap())
+            .collect();
+        assert_eq!(tags, vec!["v1", "v2"], "got {tagged}");
+
+        let untagged = parse(&h.handle(make_req(
+            "ListImages",
+            json!({"repositoryName": "f", "filter": {"tagStatus": "UNTAGGED"}}),
+        )));
+        let ids = untagged["imageIds"].as_array().unwrap();
+        assert_eq!(ids.len(), 1, "got {untagged}");
+        assert!(ids[0]["imageTag"].is_null(), "got {untagged}");
+
+        // moto does not validate tagStatus (live-verified): an unknown
+        // value falls through to ANY instead of erroring.
+        let bogus = parse(&h.handle(make_req(
+            "ListImages",
+            json!({"repositoryName": "f", "filter": {"tagStatus": "BOGUS"}}),
+        )));
+        assert_eq!(bogus["imageIds"].as_array().unwrap().len(), 3);
     }
 }
