@@ -1102,6 +1102,43 @@ impl S3Handler {
         )
     }
 
+    /// GET/HEAD on a delete-marker version id: 405 MethodNotAllowed (the AWS
+    /// S3 treatment moto's `MethodNotAllowed(method, resource_type="DeleteMarker")`
+    /// renders), carrying the delete-marker headers, `Allow: DELETE` and the
+    /// marker's `Last-Modified` (moto PR #10428; head_object precedent).
+    fn delete_marker_version_error(
+        method: &str,
+        version_id: &str,
+        last_modified: u64,
+    ) -> AwsResponse {
+        let mut resp = AwsResponse::error(
+            405,
+            "MethodNotAllowed",
+            "The specified method is not allowed against this resource.",
+        );
+        resp.headers
+            .push(("x-amz-delete-marker".to_string(), "true".to_string()));
+        resp.headers
+            .push(("x-amz-version-id".to_string(), version_id.to_string()));
+        resp.headers
+            .push(("Allow".to_string(), "DELETE".to_string()));
+        resp.headers
+            .push(("Last-Modified".to_string(), httpdate(last_modified)));
+        // moto's method_resource_error extension adds the requested method
+        // and resource type to the error document.
+        resp.body = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<Error>
+  <Code>MethodNotAllowed</Code>
+  <Message>The specified method is not allowed against this resource.</Message>
+  <Method>{method}</Method>
+  <ResourceType>DeleteMarker</ResourceType>
+</Error>"#
+        )
+        .into_bytes();
+        resp
+    }
+
     fn get_object(&self, req: &AwsRequest) -> AwsResponse {
         let (bucket_name, key) = Self::bucket_and_key(req);
         let state = self.get_state(req.account, &req.region);
@@ -1120,25 +1157,60 @@ impl S3Handler {
                 }
             };
             let found = match req.query_params.get("versionId") {
-                Some(vid) => entry
-                    .versions
-                    .iter()
-                    .find(|v| v.version_id == *vid)
-                    .cloned(),
-                None => {
-                    if !entry.is_live() {
-                        None
+                Some(vid) => {
+                    if let Some(v) = entry.versions.iter().find(|v| v.version_id == *vid) {
+                        v.clone()
                     } else {
-                        entry.versions.first().cloned()
+                        // The requested VersionId is a delete marker: AWS
+                        // answers 405 MethodNotAllowed with Allow: DELETE —
+                        // the same error moto's MethodNotAllowed(method="GET",
+                        // resource_type="DeleteMarker") renders (see also
+                        // put_object_tagging's marker handling). Previously
+                        // this fell through to NoSuchKey.
+                        if let Some(m) = entry.markers.iter().find(|m| m.version_id == *vid) {
+                            return Self::delete_marker_version_error(
+                                &req.method,
+                                &m.version_id,
+                                m.last_modified,
+                            );
+                        }
+                        return AwsResponse::error(
+                            404,
+                            "NoSuchKey",
+                            "The specified key does not exist",
+                        );
                     }
                 }
-            };
-            match found {
-                Some(v) => v,
                 None => {
-                    return AwsResponse::error(404, "NoSuchKey", "The specified key does not exist")
+                    if !entry.is_live() {
+                        // Latest record is a delete marker: 404 NoSuchKey,
+                        // but Amazon S3 behaves as if the object was deleted
+                        // and includes x-amz-delete-marker: true plus the
+                        // marker's x-amz-version-id in the response
+                        // (mirror of HeadObject's 404 shape).
+                        let vid = entry
+                            .markers
+                            .first()
+                            .map(|m| m.version_id.clone())
+                            .unwrap_or_default();
+                        let mut resp = AwsResponse::error(
+                            404,
+                            "NoSuchKey",
+                            "The specified key does not exist",
+                        );
+                        resp.headers
+                            .push(("x-amz-delete-marker".to_string(), "true".to_string()));
+                        resp.headers.push(("x-amz-version-id".to_string(), vid));
+                        return resp;
+                    }
+                    entry
+                        .versions
+                        .first()
+                        .cloned()
+                        .expect("is_live() guarantees a live version row")
                 }
-            }
+            };
+            found
         };
 
         // Range handling
@@ -1203,23 +1275,46 @@ impl S3Handler {
                 Some(e) => e,
                 None => return AwsResponse::error(404, "NotFound", "Not Found"),
             };
-            let found = match req.query_params.get("versionId") {
-                Some(vid) => entry
-                    .versions
-                    .iter()
-                    .find(|v| v.version_id == *vid)
-                    .cloned(),
-                None => {
-                    if !entry.is_live() {
-                        None
+            match req.query_params.get("versionId") {
+                Some(vid) => {
+                    if let Some(v) = entry.versions.iter().find(|v| v.version_id == *vid) {
+                        v.clone()
                     } else {
-                        entry.versions.first().cloned()
+                        if let Some(m) = entry.markers.iter().find(|m| m.version_id == *vid) {
+                            // HEAD on a delete-marker version: 405 with the
+                            // delete-marker headers and Allow: DELETE (moto
+                            // HeadOnDeleteMarker path).
+                            return Self::delete_marker_version_error(
+                                &req.method,
+                                &m.version_id,
+                                m.last_modified,
+                            );
+                        }
+                        return AwsResponse::error(404, "NotFound", "Not Found");
                     }
                 }
-            };
-            match found {
-                Some(v) => v,
-                None => return AwsResponse::error(404, "NotFound", "Not Found"),
+                None => {
+                    if !entry.is_live() {
+                        // Latest record is a delete marker: 404, as if the
+                        // object was deleted, with the delete-marker headers
+                        // real AWS and moto send.
+                        let vid = entry
+                            .markers
+                            .first()
+                            .map(|m| m.version_id.clone())
+                            .unwrap_or_default();
+                        let mut resp = AwsResponse::error(404, "NotFound", "Not Found");
+                        resp.headers
+                            .push(("x-amz-delete-marker".to_string(), "true".to_string()));
+                        resp.headers.push(("x-amz-version-id".to_string(), vid));
+                        return resp;
+                    }
+                    entry
+                        .versions
+                        .first()
+                        .cloned()
+                        .expect("is_live() guarantees a live version row")
+                }
             }
         };
 
@@ -4473,5 +4568,228 @@ mod tests {
         let resp = handler.handle(req);
         assert_eq!(resp.status, 200);
         assert!(String::from_utf8_lossy(&resp.body).contains("ListAllMyBucketsResult"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Delete-marker GET semantics (moto PR #10428: get_object() on a delete
+    // marker returns the x-amz-delete-marker header, and 405 for its version).
+    // -----------------------------------------------------------------------
+
+    /// Enable versioning, mirroring the PutBucketVersioning wire shape.
+    fn enable_versioning(handler: &S3Handler, bucket: &str) {
+        let mut vreq = make_req(
+            "PutBucketVersioning",
+            Some(bucket),
+            None,
+            b"<VersioningConfiguration xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Status>Enabled</Status></VersioningConfiguration>",
+        );
+        vreq.query_params
+            .insert("versioning".to_string(), String::new());
+        assert_eq!(handler.handle(vreq).status, 200);
+    }
+
+    fn header_map(resp: &AwsResponse) -> HashMap<String, String> {
+        resp.headers.clone().into_iter().collect()
+    }
+
+    #[test]
+    fn delete_marker_get_without_version_id_returns_marker_headers() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("dm1"), None, b""));
+        enable_versioning(&handler, "dm1");
+        handler.handle(make_req("PutObject", Some("dm1"), Some("the-key"), b"data"));
+        let resp = handler.handle(make_req("DeleteObject", Some("dm1"), Some("the-key"), b""));
+        let marker_id = header_map(&resp)
+            .get("x-amz-version-id")
+            .cloned()
+            .expect("delete_object returns the marker's version id");
+
+        // The current version is a delete marker: 404 NoSuchKey, but the
+        // delete-marker headers carry the marker's identity (moto
+        // MissingKey + x-amz-delete-marker/x-amz-version-id).
+        let resp = handler.handle(make_req("GetObject", Some("dm1"), Some("the-key"), b""));
+        assert_eq!(resp.status, 404);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<Code>NoSuchKey</Code>"), "body: {body}");
+        let headers = header_map(&resp);
+        assert_eq!(
+            headers.get("x-amz-delete-marker").map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(
+            headers.get("x-amz-version-id").map(String::as_str),
+            Some(marker_id.as_str())
+        );
+    }
+
+    #[test]
+    fn delete_marker_get_with_marker_version_id_returns_405() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("dm2"), None, b""));
+        enable_versioning(&handler, "dm2");
+        handler.handle(make_req("PutObject", Some("dm2"), Some("the-key"), b"data"));
+        let resp = handler.handle(make_req("DeleteObject", Some("dm2"), Some("the-key"), b""));
+        let marker_id = header_map(&resp)
+            .get("x-amz-version-id")
+            .cloned()
+            .expect("marker version id");
+
+        // The requested version is a delete marker: 405 MethodNotAllowed
+        // with Allow: DELETE, not NoSuchVersion/NoSuchKey.
+        let mut req = make_req("GetObject", Some("dm2"), Some("the-key"), b"");
+        req.query_params
+            .insert("versionId".to_string(), marker_id.clone());
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 405);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(
+            body.contains("<Code>MethodNotAllowed</Code>"),
+            "body: {body}"
+        );
+        assert!(body.contains("<Method>GET</Method>"), "body: {body}");
+        assert!(
+            body.contains("<ResourceType>DeleteMarker</ResourceType>"),
+            "body: {body}"
+        );
+        let headers = header_map(&resp);
+        assert_eq!(
+            headers.get("x-amz-delete-marker").map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(
+            headers.get("x-amz-version-id").map(String::as_str),
+            Some(marker_id.as_str())
+        );
+        assert_eq!(headers.get("Allow").map(String::as_str), Some("DELETE"));
+        assert!(headers.contains_key("Last-Modified"));
+    }
+
+    #[test]
+    fn delete_marker_get_recreated_key_is_live_again() {
+        // After a re-put the marker no longer shadows the key: plain 200
+        // with no delete-marker headers.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("dm3"), None, b""));
+        enable_versioning(&handler, "dm3");
+        handler.handle(make_req("PutObject", Some("dm3"), Some("the-key"), b"v1"));
+        handler.handle(make_req("DeleteObject", Some("dm3"), Some("the-key"), b""));
+        handler.handle(make_req("PutObject", Some("dm3"), Some("the-key"), b"v2"));
+
+        let resp = handler.handle(make_req("GetObject", Some("dm3"), Some("the-key"), b""));
+        assert_eq!(resp.status, 200);
+        assert_eq!(resp.body, b"v2".to_vec());
+        let headers = header_map(&resp);
+        assert!(!headers.contains_key("x-amz-delete-marker"));
+
+        // The delete-marker version itself still answers 405 after the re-put.
+        let resp = handler.handle(make_req("DeleteObject", Some("dm3"), Some("the-key"), b""));
+        let marker_id = header_map(&resp)
+            .get("x-amz-version-id")
+            .cloned()
+            .expect("second marker version id");
+        let mut req = make_req("GetObject", Some("dm3"), Some("the-key"), b"");
+        req.query_params.insert("versionId".to_string(), marker_id);
+        assert_eq!(handler.handle(req).status, 405);
+    }
+
+    #[test]
+    fn delete_marker_get_head_without_version_id_returns_marker_headers() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("dm4"), None, b""));
+        enable_versioning(&handler, "dm4");
+        handler.handle(make_req("PutObject", Some("dm4"), Some("the-key"), b"data"));
+        let resp = handler.handle(make_req("DeleteObject", Some("dm4"), Some("the-key"), b""));
+        let marker_id = header_map(&resp)
+            .get("x-amz-version-id")
+            .cloned()
+            .expect("marker version id");
+
+        // head_object already routed markers to its 404; ensure the marker
+        // headers ride on the HEAD 404 exactly like moto's head path.
+        let resp = handler.handle(make_req("HeadObject", Some("dm4"), Some("the-key"), b""));
+        assert_eq!(resp.status, 404);
+        let headers = header_map(&resp);
+        assert_eq!(
+            headers.get("x-amz-delete-marker").map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(
+            headers.get("x-amz-version-id").map(String::as_str),
+            Some(marker_id.as_str())
+        );
+    }
+
+    #[test]
+    fn delete_marker_get_head_with_marker_version_id_returns_405() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("dm5"), None, b""));
+        enable_versioning(&handler, "dm5");
+        handler.handle(make_req("PutObject", Some("dm5"), Some("the-key"), b"data"));
+        let resp = handler.handle(make_req("DeleteObject", Some("dm5"), Some("the-key"), b""));
+        let marker_id = header_map(&resp)
+            .get("x-amz-version-id")
+            .cloned()
+            .expect("marker version id");
+
+        let mut req = make_req("HeadObject", Some("dm5"), Some("the-key"), b"");
+        req.query_params
+            .insert("versionId".to_string(), marker_id.clone());
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 405);
+        let headers = header_map(&resp);
+        assert_eq!(
+            headers.get("x-amz-delete-marker").map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(headers.get("Allow").map(String::as_str), Some("DELETE"));
+        assert_eq!(
+            headers.get("x-amz-version-id").map(String::as_str),
+            Some(marker_id.as_str())
+        );
+    }
+
+    #[test]
+    fn delete_marker_get_list_object_versions_placement_untouched() {
+        // Both marker GET shapes must leave ListObjectVersions untouched:
+        // the deleted key keeps its Version row and the DeleteMarker row.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("dm6"), None, b""));
+        enable_versioning(&handler, "dm6");
+        handler.handle(make_req("PutObject", Some("dm6"), Some("the-key"), b"data"));
+        let resp = handler.handle(make_req("DeleteObject", Some("dm6"), Some("the-key"), b""));
+        let marker_id = header_map(&resp)
+            .get("x-amz-version-id")
+            .cloned()
+            .expect("marker version id");
+
+        // Run both marker GET shapes first, like the moto test sequence.
+        let resp = handler.handle(make_req("GetObject", Some("dm6"), Some("the-key"), b""));
+        assert_eq!(resp.status, 404);
+        let mut req = make_req("GetObject", Some("dm6"), Some("the-key"), b"");
+        req.query_params.insert("versionId".to_string(), marker_id);
+        assert_eq!(handler.handle(req).status, 405);
+
+        let resp = handler.handle(make_req("ListObjectVersions", Some("dm6"), None, b""));
+        assert_eq!(resp.status, 200);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert_eq!(body.matches("<Version>").count(), 1);
+        assert_eq!(body.matches("<DeleteMarker>").count(), 1);
+        assert!(body.contains("<IsLatest>false</IsLatest>"));
+    }
+
+    #[test]
+    fn delete_marker_get_missing_key_has_no_marker_headers() {
+        // A never-existed key stays plain NoSuchKey: no marker headers can
+        // leak onto the plain miss (moto only answers markers when the key
+        // entry carries one).
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("dm7"), None, b""));
+        enable_versioning(&handler, "dm7");
+
+        let resp = handler.handle(make_req("GetObject", Some("dm7"), Some("no-such-key"), b""));
+        assert_eq!(resp.status, 404);
+        let headers = header_map(&resp);
+        assert!(!headers.contains_key("x-amz-delete-marker"));
+        assert!(!headers.contains_key("x-amz-version-id"));
     }
 }
