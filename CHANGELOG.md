@@ -16,6 +16,92 @@ registered services answer natively with moto-fidelity recorded per op
 (9,676 working of 10,268 botocore ops; every deny is a recorded decision
 in `tooling/surface-absence.json`).
 
+### Upstream-parity wave (2026-10-26)
+
+- **port/up-ec2** — `RunInstances` launches `MaxCount` instances instead
+  of the MinCount-only bias (moto-vs-AWS bug, `getmoto/moto#10215`).
+- **port/up-events** — event patterns apply nested patterns per element
+  of an object array, fields never mixing across elements (moto PR
+  `getmoto/moto#10360`, event-ruler "JSON Array Matching").
+- **port/up-dynamodb** — `CreateTable`/`DescribeTable` return the
+  WarmThroughput block (moto `table.py` defaults; Terraform provider
+  polling, localstack #13140).
+- **port/up-sqs** — batch entry Id validation across the three batch ops
+  (moto PR `getmoto/moto#10346`) and the 60-second `PurgeQueueInProgress`
+  throttle with HTTP 403 (moto `getmoto/moto#10234`, 5.2.4).
+- **port/up-s3-markers** — object keys percent-decode exactly once for
+  storage, listing and tokens (localstack discussion 54, ex localstack
+  #13745); GET/HEAD on delete markers carry the marker headers and a
+  marker-version GET answers 405 MethodNotAllowed (moto PR
+  `getmoto/moto#10428`).
+- **port/up-dynamodb2** — WarmThroughput on every
+  GlobalSecondaryIndexDescription and in the UpdateTable response (moto
+  `dynamodb/models/table.py`; `update_table` → `table.describe()`).
+- **port/up-swarm6** — s3control `CreateAccessPoint` Tags + token model
+  (moto 5.2.4 changelog), kinesis `ListStreams` Limit/NextToken paging
+  (moto PR `getmoto/moto#10385`), fsx `DeleteFileSystem` raises
+  FileSystemNotFound (moto 5.2.4 changelog), vpclattice listener trio
+  ported from the botocore model.
+- **port/up-events2** — `create_partner_event_source()` returns the
+  EventSourceArn (moto 5.2.2) and `list_event_buses()` gains
+  Limit/NextToken pagination (moto 5.2.3, PAGINATION_MODEL).
+- **port/up-tinies-b** — wafv2 `GetWebACL` accepts an ARN (moto 5.2.0),
+  rds MonitoringRoleArn/MonitoringInterval combination validation
+  (`getmoto/moto#10137` + `#10212`), glue `GetConnection` HidePassword +
+  `GetConnections` Filter (moto 5.2.4).
+- **port/up-tinies-a** — transfer describe responses omit unset members
+  (moto 5.2.3 `getmoto/moto#10068`), route53 alias record sets carry no
+  TTL (moto 5.2.2 `getmoto/moto#10029`), acm CN-less import tolerance +
+  request_certificate Options merge (moto 5.2.2 `getmoto/moto#9912` +
+  `getmoto/moto#10030`).
+- **port/up-ecs** — `RunTask` honors capacityProviderStrategy with moto's
+  launch-type combination rejection (moto 5.2.3) and DescribeServices
+  returns rolloutState/rolloutStateReason/failedTasks (moto 5.2.0
+  changelog, `MOTO_ECS_SERVICE_FAILED_TASKS`).
+- **port/up-cognito** — `RespondToAuthChallenge` PASSWORD_VERIFIER bound
+  to the initiate_auth session (moto PR `getmoto/moto#10243`, for
+  `getmoto/moto#7562`).
+- **port/up-kin-cw** — kinesis put_record/put_records publish
+  IncomingBytes/IncomingRecords to CloudWatch in-process via the
+  cloudwatch ingest bridge (moto 5.2.4 changelog,
+  `KinesisBackend._send_stream_metrics`).
+- **port/up-ddb3** — dynamodb enforces the 409,600-byte item-size limit
+  with AWS Number byte sizing (`getmoto/moto#10176`), iot lists cap pages
+  at AWS's 100-item maximum (moto PR `getmoto/moto#10417`), sqs batch
+  validation precedes queue existence (moto's response-layer order).
+- **port/up-s3-post** — the S3 POST-form (browser presigned-POST) wire
+  path: multipart parsing, SigV4 policy-signature verification and policy
+  condition enforcement with content-length-range and the covered-field
+  rule (localstack `presigned_url.py::validate_post_policy`, AWS S3 POST
+  docs; verification secret pinned per the divergence table below).
+- **port/up-sfn** — native JSONata for `QueryLanguage: JSONATA` states
+  (AWS Step Functions JSONata docs, JSONata 2.0.6 subset) and the
+  AWS-dialect JSONPath filter operators (moto issue `getmoto/moto#10078`
+  with `#7825` singleton shapes and localstack's singleton-collapse fix).
+- **fix wave (port/fx-\*)** — the wave's adversarial review folded before
+  tag: per-service verification lanes (`port/fx-sqs`, `fx-ddb`, `fx-ecr`,
+  `fx-ecscog`, `fx-events`, `fx-iotvp`, `fx-kinlim`, `fx-s3`, `fx-sfn`,
+  `fx-tinies2`) re-deriving lane claims against the pinned moto fork
+  (5.1.23.dev) and live probe corpora, plus this documentation/comment
+  truth lane.
+
+### Documented divergences in 2.0.0
+
+- moto's paginator `parameterChecksum` handling is not embedded:
+  NextTokens are plain tokens, like moto's `@paginate`.
+- ACM: the first-SAN DomainName fallback for CN-less imports is not
+  implemented (stays DomainName `""` / Subject `CN=`).
+- S3 SigV2 POST signatures are accepted unverified (any secret passes).
+- Cognito auth flows do not model the MFA challenge arms.
+- Step Functions JSONata is a deliberate dialect subset (see
+  `crates/stepfunctions/src/jsonata.rs`, "Deliberately not covered").
+- S3 POST-upload SigV4 verification pins the signing secret to `test`
+  (AGENTS.md "Endpoint & credentials" exception row).
+- The 38-significant-digit cap is not enforced in DynamoDB Numbers
+  (shared with moto).
+- `list_event_buses` / kinesis / s3control token checksums are ignored,
+  fail-open like moto (`fail_on_invalid_token: False`).
+
 ### Added
 
 - **Full lambda language support.** python/nodejs/custom run in-process;
