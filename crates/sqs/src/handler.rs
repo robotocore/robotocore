@@ -923,8 +923,15 @@ impl DefaultSqsHandler {
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
 
         let store = self.get_store(account, region);
-        store.delete_queue(&queue_name);
-        super::bridge::clear_pending(account, region, &queue_name);
+        // Remove the queue entry and drop its pending cross-service
+        // deliveries inside the same map-write critical section: a bridge
+        // producer buffering in between the two steps would either be wiped
+        // after the entry is already gone or leave a stale delivery behind
+        // for a re-created queue of the same name.
+        store.with_queues_write(|queues| {
+            queues.remove(&queue_name);
+            super::bridge::clear_pending(account, region, &queue_name);
+        });
 
         let body = json!({}).to_string();
 
@@ -1222,14 +1229,22 @@ impl DefaultSqsHandler {
 
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
         let store = self.get_store(account, region);
-        let queue_arc = store.get_queue(&queue_name).ok_or_else(|| {
-            SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
-        })?;
 
-        {
-            let mut q = queue_arc.write();
-            super::bridge::clear_pending(account, region, &queue_name);
-            q.purge();
+        // Purge under the same map-write critical section as DeleteQueue:
+        // no bridged producer can re-buffer a pending delivery between the
+        // pending clear and the stored-message purge.
+        let purged = store.with_queues_write(|queues| match queues.get(&queue_name) {
+            Some(queue) => {
+                super::bridge::clear_pending(account, region, &queue_name);
+                queue.write().purge();
+                true
+            }
+            None => false,
+        });
+        if !purged {
+            return Err(SqsError::NonExistentQueue(
+                "The specified queue does not exist.".to_string(),
+            ));
         }
 
         let body = json!({}).to_string();

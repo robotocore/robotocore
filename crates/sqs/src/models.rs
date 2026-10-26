@@ -481,6 +481,23 @@ impl SqsStore {
         q.remove(name).is_some()
     }
 
+    /// Run `f` with exclusive access to the queue map.
+    ///
+    /// Cross-service bookkeeping that must not interleave with a map
+    /// mutation sequences under one critical section: DeleteQueue and
+    /// PurgeQueue drop the bridge pending buffer while the map entry is
+    /// removed/purged, so a buffered delivery cannot land between the
+    /// queue-state change and its pending-buffer wipe. Callers must not
+    /// take other locks inside `f` (the queue map is already exclusively
+    /// held here) — resolve handles first, before entering.
+    pub fn with_queues_write<R>(
+        &self,
+        f: impl FnOnce(&mut HashMap<String, Arc<RwLock<Queue>>>) -> R,
+    ) -> R {
+        let mut queues = self.queues.write();
+        f(&mut queues)
+    }
+
     pub fn list_queues(&self) -> Vec<String> {
         let q = self.queues.read();
         q.keys().cloned().collect()

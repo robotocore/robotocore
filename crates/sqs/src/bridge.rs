@@ -101,6 +101,12 @@ pub fn drain_pending(account: u64, region: &str, queue_name: &str, queue: &mut Q
 }
 
 /// Drop pending cross-service messages for a queue (PurgeQueue / DeleteQueue).
+///
+/// DeleteQueue/PurgeQueue call this while holding the store's queue map
+/// write lock (`SqsStore::with_queues_write`) so the pending buffer and the
+/// queue's own state change as one step — a producer racing the deletion
+/// neither loses its delivery silently mid-wipe nor leaves a stale buffered
+/// message for a re-created queue of the same name.
 pub fn clear_pending(account: u64, region: &str, queue_name: &str) {
     pending()
         .write()
