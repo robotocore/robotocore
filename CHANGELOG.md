@@ -113,6 +113,11 @@ recorded decision in `tooling/surface-absence.json`).
   BatchCheckLayerAvailability; `GetDownloadUrlForLayer` mirrors moto's
   `NotImplementedError` absence with the 501 genuine-gap envelope), and
   the round-2 lanes `fx2-*`; plus this documentation/comment truth lane.
+- CloudTrail → EventBridge events for elbv2/autoscaling/ec2 mutations
+  (#347).
+- SSM SendCommand InstanceIds records per-instance invocations (#347).
+- Cognito per-pool JWKS, RS256-signed tokens and OIDC discovery (#347).
+- x-era Powertools redundant-parentheses fix (#283, verified at tip).
 
 ### Documented divergences in 2.0.0
 
