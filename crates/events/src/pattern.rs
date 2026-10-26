@@ -188,10 +188,17 @@ pub fn list_match(pattern_values: &[Value], event_value: &Value) -> bool {
 }
 
 /// One named filter (`{"prefix": "a"}`, `{"exists": true}`, ...) against
-/// the whole event value. moto checks `exists` on the value itself and
+/// the whole event value. moto resolves the filter by the leaf's FIRST
+/// key (`models.py:1022`), checks `exists` on the value itself, and
 /// applies every other named filter per element of an array value.
 fn named_filter_matches(filter: &Map<String, Value>, event_value: &Value) -> bool {
-    if let Some(expected) = filter.get("exists").and_then(Value::as_bool) {
+    let Some((name, target)) = filter.iter().next() else {
+        return false;
+    };
+    if name == "exists" {
+        let Some(expected) = target.as_bool() else {
+            return false;
+        };
         // An `exists` leaf tests literal flattened-key presence, not
         // JSON nullness: moto `_does_item_match_named_filter` computes
         // `exists = item is not UNDEFINED; return exists ==
@@ -210,66 +217,57 @@ fn named_filter_matches(filter: &Map<String, Value>, event_value: &Value) -> boo
         return exists == expected;
     }
     match event_value {
-        Value::Array(arr) => arr.iter().any(|item| evaluate_named_filter(filter, item)),
-        other => evaluate_named_filter(filter, other),
+        Value::Array(arr) => arr
+            .iter()
+            .any(|item| evaluate_named_filter_by(name, target, item)),
+        other => evaluate_named_filter_by(name, target, other),
     }
 }
 
-/// Evaluate a named filter against one (scalar) event value. Several
-/// recognized filter names may appear in one leaf; they OR together.
-/// Deliberate divergence (F5 mid): real AWS rejects such multi-key
-/// leaves at pattern creation and moto evaluates only the FIRST key
-/// (`list(pattern.items())[0]`); this port keeps the
-/// OR-of-recognized-keys reading, behavior unchanged.
-fn evaluate_named_filter(filter: &Map<String, Value>, value: &Value) -> bool {
+/// moto `_does_item_match_named_filter` resolves ONE named filter from
+/// the leaf: `models.py:1022` — `filter_name, filter_value =
+/// list(pattern.items())[0]` — and only that first key is applied
+/// (Python dicts keep insertion order, which serde_json reproduces
+/// under its `preserve_order` feature). Real AWS rejects multi-key
+/// filter leaves at pattern creation, so this only affects hand-fed
+/// patterns. Unrecognized filter names deliberately reject here — the
+/// port's typed-filter divergence from moto, whose `evaluate()` falls
+/// through to `True` for any unknown name (models.py:1097) — and a
+/// filter leaf with no keys rejects instead of raising the IndexError
+/// moto's `list({...items...})[0]` would hit.
+///
+/// Evaluate one filter name/target against one (scalar) event value.
+fn evaluate_named_filter_by(name: &str, target: &Value, value: &Value) -> bool {
     // prefix / suffix: the target is a string, a list of strings, or an
     // {"equals-ignore-case": "..."} object (moto prefix/suffix forms).
-    if let Some(target) = filter.get("prefix") {
-        if string_targets_match(target, value.as_str(), true) {
-            return true;
+    match name {
+        "prefix" => string_targets_match(target, value.as_str(), true),
+        "suffix" => string_targets_match(target, value.as_str(), false),
+        "equals-ignore-case" => {
+            let Some(s) = value.as_str() else {
+                return false;
+            };
+            match target {
+                Value::String(t) => s.to_lowercase() == t.to_lowercase(),
+                Value::Array(list) => list.iter().any(|t| {
+                    t.as_str().map(|t| s.to_lowercase() == t.to_lowercase()) == Some(true)
+                }),
+                _ => false,
+            }
         }
+        // moto numeric: value must be a number and EVERY (op, operand)
+        // pair must hold (models.py:1063-1074). A non-array target is
+        // unfilterable (moto crashes on `5[::2]`; the port rejects).
+        "numeric" => target
+            .as_array()
+            .is_some_and(|ops| match_numeric(ops, value)),
+        // anything-but: the exclusion may be a bare element, a list of
+        // them, or a nested named filter (models.py:1075-1083).
+        "anything-but" => anything_but(target, value),
+        "cidr" => cidr_matches(value, target),
+        "wildcard" => wildcard_targets_match(target, value.as_str()),
+        _ => false,
     }
-    if let Some(target) = filter.get("suffix") {
-        if string_targets_match(target, value.as_str(), false) {
-            return true;
-        }
-    }
-    if let Some(target) = filter.get("equals-ignore-case") {
-        let Some(s) = value.as_str() else {
-            return false;
-        };
-        let matches = match target {
-            Value::String(t) => s.to_lowercase() == t.to_lowercase(),
-            Value::Array(list) => list
-                .iter()
-                .any(|t| t.as_str().map(|t| s.to_lowercase() == t.to_lowercase()) == Some(true)),
-            _ => false,
-        };
-        if matches {
-            return true;
-        }
-    }
-    if let Some(ops) = filter.get("numeric").and_then(Value::as_array) {
-        if match_numeric(ops, value) {
-            return true;
-        }
-    }
-    if let Some(excluded) = filter.get("anything-but") {
-        if anything_but(excluded, value) {
-            return true;
-        }
-    }
-    if let Some(network) = filter.get("cidr") {
-        if cidr_matches(value, network) {
-            return true;
-        }
-    }
-    if let Some(target) = filter.get("wildcard") {
-        if wildcard_targets_match(target, value.as_str()) {
-            return true;
-        }
-    }
-    false
 }
 
 /// String prefix/suffix against a scalar, list, or
@@ -784,6 +782,75 @@ mod tests {
         assert!(!matches_pattern(
             &json!({"detail": [{"exists": false}]}),
             &json!({"detail": [1, 2]})
+        ));
+    }
+
+    // -- first-key rule for multi-key filter leaves (round-2 finding 3, LOW) --
+    //
+    // moto resolves each dict leaf by exactly ONE filter:
+    // `models.py:1022` — `filter_name, filter_value =
+    // list(pattern.items())[0]` — the first key of the leaf in
+    // insertion (Python dict) order, every other key ignored. The pair
+    // below brackets the rule: inserting `prefix` first matches on
+    // "100", swapping the key order flips the leaf to `numeric`, which
+    // sees a non-number and fails. Real AWS rejects multi-key leaves at
+    // pattern creation; the twin evaluates them per moto instead of
+    // erroring. Outcomes live-verified against the pinned fork.
+
+    #[test]
+    fn multi_key_leaf_evaluates_only_the_first_key() {
+        // First key = prefix → True on "100" (the legacy OR reading ran
+        // the numeric filter too, which would have failed the leaf).
+        assert!(matches_pattern(
+            &json!({"count": [{"prefix": "1", "numeric": [">", 5]}]}),
+            &json!({"count": "100"})
+        ));
+        // Same leaf, numeric first: "99" is not a number for the filter —
+        // the ignored `prefix` "9" would have matched under the old OR.
+        assert!(!matches_pattern(
+            &json!({"count": [{"numeric": [">", 5], "prefix": "9"}]}),
+            &json!({"count": "99"})
+        ));
+        // ...and a non-number still fails while the first key is numeric.
+        assert!(!matches_pattern(
+            &json!({"count": [{"numeric": [">", 5], "prefix": "9"}]}),
+            &json!({"count": "abc"})
+        ));
+        // Single-key numeric leaf keeps matching as before (control).
+        assert!(matches_pattern(
+            &json!({"count": [{"numeric": [">", 5]}]}),
+            &json!({"count": 10})
+        ));
+    }
+
+    #[test]
+    fn multi_key_leaf_with_exists_positions_decide() {
+        // `exists` ignored when it is NOT the first key: prefix runs.
+        assert!(matches_pattern(
+            &json!({"detail": [{"prefix": "d", "exists": false}]}),
+            &json!({"detail": "dog"})
+        ));
+        // `exists` first: a present value reads exists=false → no match,
+        // whatever the other (ignored) key would say.
+        assert!(!matches_pattern(
+            &json!({"detail": [{"exists": false, "prefix": "d"}]}),
+            &json!({"detail": "dog"})
+        ));
+        // First key wins among ordinary operators too: suffix matched,
+        // the failing prefix is never consulted (moto: True).
+        assert!(matches_pattern(
+            &json!({"source": [{"suffix": ".png", "prefix": "x"}]}),
+            &json!({"source": "pic.png"})
+        ));
+        assert!(!matches_pattern(
+            &json!({"source": [{"suffix": ".gif", "prefix": "pic."}]}),
+            &json!({"source": "pic.png"})
+        ));
+        // An empty filter leaf has no first key: moto's
+        // `list(pattern.items())[0]` raises IndexError; the port rejects.
+        assert!(!matches_pattern(
+            &json!({"detail": [{}]}),
+            &json!({"detail": "x"})
         ));
     }
 
