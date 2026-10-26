@@ -35,7 +35,12 @@ pub const SERVICE_REGISTRY: &[(&str, &str, &str, &str)] = &[
     ("backup", "moto", "rest-json", "AWS Backup"),
     ("batch", "native", "rest-json", "AWS Batch"),
     ("bedrock", "native", "rest-json", "Bedrock AI"),
-    ("bedrock-agentcore", "native", "rest-json", "Bedrock AgentCore data plane"),
+    (
+        "bedrock-agentcore",
+        "native",
+        "rest-json",
+        "Bedrock AgentCore data plane",
+    ),
     (
         "bedrock-agentcore-control",
         "native",

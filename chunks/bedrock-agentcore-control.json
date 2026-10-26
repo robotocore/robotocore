@@ -16,9 +16,17 @@
     ],
     "size": 4,
     "untested_count": 4,
-    "probe_status": {},
-    "working_untested": [],
-    "working_untested_count": 0
+    "probe_status": {
+      "CreateAgentRuntime": "needs_params",
+      "DeleteAgentRuntime": "working",
+      "GetAgentRuntime": "working",
+      "UpdateAgentRuntime": "needs_params"
+    },
+    "working_untested": [
+      "DeleteAgentRuntime",
+      "GetAgentRuntime"
+    ],
+    "working_untested_count": 2
   },
   {
     "noun": "AgentRuntimeEndpoint",
@@ -37,9 +45,19 @@
     ],
     "size": 4,
     "untested_count": 4,
-    "probe_status": {},
-    "working_untested": [],
-    "working_untested_count": 0
+    "probe_status": {
+      "CreateAgentRuntimeEndpoint": "working",
+      "DeleteAgentRuntimeEndpoint": "working",
+      "GetAgentRuntimeEndpoint": "working",
+      "UpdateAgentRuntimeEndpoint": "working"
+    },
+    "working_untested": [
+      "CreateAgentRuntimeEndpoint",
+      "DeleteAgentRuntimeEndpoint",
+      "GetAgentRuntimeEndpoint",
+      "UpdateAgentRuntimeEndpoint"
+    ],
+    "working_untested_count": 4
   },
   {
     "noun": "AgentRuntimeEndpoints",
@@ -52,9 +70,13 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
-    "working_untested": [],
-    "working_untested_count": 0
+    "probe_status": {
+      "ListAgentRuntimeEndpoints": "working"
+    },
+    "working_untested": [
+      "ListAgentRuntimeEndpoints"
+    ],
+    "working_untested_count": 1
   },
   {
     "noun": "AgentRuntimeVersions",
@@ -67,9 +89,13 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
-    "working_untested": [],
-    "working_untested_count": 0
+    "probe_status": {
+      "ListAgentRuntimeVersions": "working"
+    },
+    "working_untested": [
+      "ListAgentRuntimeVersions"
+    ],
+    "working_untested_count": 1
   },
   {
     "noun": "AgentRuntimes",
@@ -82,9 +108,13 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
-    "working_untested": [],
-    "working_untested_count": 0
+    "probe_status": {
+      "ListAgentRuntimes": "working"
+    },
+    "working_untested": [
+      "ListAgentRuntimes"
+    ],
+    "working_untested_count": 1
   },
   {
     "noun": "ApiKeyCredentialProvider",
@@ -103,7 +133,12 @@
     ],
     "size": 4,
     "untested_count": 4,
-    "probe_status": {},
+    "probe_status": {
+      "CreateApiKeyCredentialProvider": "not_implemented",
+      "DeleteApiKeyCredentialProvider": "not_implemented",
+      "GetApiKeyCredentialProvider": "not_implemented",
+      "UpdateApiKeyCredentialProvider": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -118,7 +153,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "ListApiKeyCredentialProviders": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -137,7 +174,11 @@
     ],
     "size": 3,
     "untested_count": 3,
-    "probe_status": {},
+    "probe_status": {
+      "CreateBrowser": "not_implemented",
+      "DeleteBrowser": "not_implemented",
+      "GetBrowser": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -156,7 +197,11 @@
     ],
     "size": 3,
     "untested_count": 3,
-    "probe_status": {},
+    "probe_status": {
+      "CreateBrowserProfile": "not_implemented",
+      "DeleteBrowserProfile": "not_implemented",
+      "GetBrowserProfile": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -171,7 +216,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "ListBrowserProfiles": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -186,7 +233,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "ListBrowsers": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -205,9 +254,17 @@
     ],
     "size": 3,
     "untested_count": 3,
-    "probe_status": {},
-    "working_untested": [],
-    "working_untested_count": 0
+    "probe_status": {
+      "CreateCodeInterpreter": "working",
+      "DeleteCodeInterpreter": "working",
+      "GetCodeInterpreter": "working"
+    },
+    "working_untested": [
+      "CreateCodeInterpreter",
+      "DeleteCodeInterpreter",
+      "GetCodeInterpreter"
+    ],
+    "working_untested_count": 3
   },
   {
     "noun": "CodeInterpreters",
@@ -220,9 +277,13 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
-    "working_untested": [],
-    "working_untested_count": 0
+    "probe_status": {
+      "ListCodeInterpreters": "working"
+    },
+    "working_untested": [
+      "ListCodeInterpreters"
+    ],
+    "working_untested_count": 1
   },
   {
     "noun": "Evaluator",
@@ -241,7 +302,12 @@
     ],
     "size": 4,
     "untested_count": 4,
-    "probe_status": {},
+    "probe_status": {
+      "CreateEvaluator": "needs_params",
+      "DeleteEvaluator": "not_implemented",
+      "GetEvaluator": "not_implemented",
+      "UpdateEvaluator": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -256,7 +322,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "ListEvaluators": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -277,9 +345,19 @@
     ],
     "size": 4,
     "untested_count": 4,
-    "probe_status": {},
-    "working_untested": [],
-    "working_untested_count": 0
+    "probe_status": {
+      "CreateGateway": "working",
+      "DeleteGateway": "working",
+      "GetGateway": "working",
+      "UpdateGateway": "working"
+    },
+    "working_untested": [
+      "CreateGateway",
+      "DeleteGateway",
+      "GetGateway",
+      "UpdateGateway"
+    ],
+    "working_untested_count": 4
   },
   {
     "noun": "GatewayTarget",
@@ -298,9 +376,17 @@
     ],
     "size": 4,
     "untested_count": 4,
-    "probe_status": {},
-    "working_untested": [],
-    "working_untested_count": 0
+    "probe_status": {
+      "CreateGatewayTarget": "needs_params",
+      "DeleteGatewayTarget": "working",
+      "GetGatewayTarget": "working",
+      "UpdateGatewayTarget": "needs_params"
+    },
+    "working_untested": [
+      "DeleteGatewayTarget",
+      "GetGatewayTarget"
+    ],
+    "working_untested_count": 2
   },
   {
     "noun": "GatewayTargets",
@@ -315,9 +401,14 @@
     ],
     "size": 2,
     "untested_count": 2,
-    "probe_status": {},
-    "working_untested": [],
-    "working_untested_count": 0
+    "probe_status": {
+      "ListGatewayTargets": "working",
+      "SynchronizeGatewayTargets": "not_implemented"
+    },
+    "working_untested": [
+      "ListGatewayTargets"
+    ],
+    "working_untested_count": 1
   },
   {
     "noun": "Gateways",
@@ -330,9 +421,13 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
-    "working_untested": [],
-    "working_untested_count": 0
+    "probe_status": {
+      "ListGateways": "working"
+    },
+    "working_untested": [
+      "ListGateways"
+    ],
+    "working_untested_count": 1
   },
   {
     "noun": "Memories",
@@ -345,9 +440,13 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
-    "working_untested": [],
-    "working_untested_count": 0
+    "probe_status": {
+      "ListMemories": "working"
+    },
+    "working_untested": [
+      "ListMemories"
+    ],
+    "working_untested_count": 1
   },
   {
     "noun": "Memory",
@@ -366,9 +465,19 @@
     ],
     "size": 4,
     "untested_count": 4,
-    "probe_status": {},
-    "working_untested": [],
-    "working_untested_count": 0
+    "probe_status": {
+      "CreateMemory": "working",
+      "DeleteMemory": "working",
+      "GetMemory": "working",
+      "UpdateMemory": "working"
+    },
+    "working_untested": [
+      "CreateMemory",
+      "DeleteMemory",
+      "GetMemory",
+      "UpdateMemory"
+    ],
+    "working_untested_count": 4
   },
   {
     "noun": "Oauth2CredentialProvider",
@@ -387,7 +496,12 @@
     ],
     "size": 4,
     "untested_count": 4,
-    "probe_status": {},
+    "probe_status": {
+      "CreateOauth2CredentialProvider": "needs_params",
+      "DeleteOauth2CredentialProvider": "not_implemented",
+      "GetOauth2CredentialProvider": "not_implemented",
+      "UpdateOauth2CredentialProvider": "needs_params"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -402,7 +516,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "ListOauth2CredentialProviders": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -423,7 +539,12 @@
     ],
     "size": 4,
     "untested_count": 4,
-    "probe_status": {},
+    "probe_status": {
+      "CreateOnlineEvaluationConfig": "needs_params",
+      "DeleteOnlineEvaluationConfig": "not_implemented",
+      "GetOnlineEvaluationConfig": "not_implemented",
+      "UpdateOnlineEvaluationConfig": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -438,7 +559,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "ListOnlineEvaluationConfigs": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -453,7 +576,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "ListPolicies": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -474,7 +599,12 @@
     ],
     "size": 4,
     "untested_count": 4,
-    "probe_status": {},
+    "probe_status": {
+      "CreatePolicy": "needs_params",
+      "DeletePolicy": "not_implemented",
+      "GetPolicy": "not_implemented",
+      "UpdatePolicy": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -495,7 +625,12 @@
     ],
     "size": 4,
     "untested_count": 4,
-    "probe_status": {},
+    "probe_status": {
+      "CreatePolicyEngine": "not_implemented",
+      "DeletePolicyEngine": "not_implemented",
+      "GetPolicyEngine": "not_implemented",
+      "UpdatePolicyEngine": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -510,7 +645,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "ListPolicyEngines": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -527,7 +664,10 @@
     ],
     "size": 2,
     "untested_count": 2,
-    "probe_status": {},
+    "probe_status": {
+      "GetPolicyGeneration": "not_implemented",
+      "StartPolicyGeneration": "needs_params"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -542,7 +682,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "ListPolicyGenerationAssets": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -557,7 +699,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "ListPolicyGenerations": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -574,9 +718,15 @@
     ],
     "size": 2,
     "untested_count": 2,
-    "probe_status": {},
-    "working_untested": [],
-    "working_untested_count": 0
+    "probe_status": {
+      "TagResource": "working",
+      "UntagResource": "working"
+    },
+    "working_untested": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "working_untested_count": 2
   },
   {
     "noun": "ResourcePolicy",
@@ -593,7 +743,11 @@
     ],
     "size": 3,
     "untested_count": 3,
-    "probe_status": {},
+    "probe_status": {
+      "DeleteResourcePolicy": "not_implemented",
+      "GetResourcePolicy": "not_implemented",
+      "PutResourcePolicy": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -608,9 +762,13 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
-    "working_untested": [],
-    "working_untested_count": 0
+    "probe_status": {
+      "ListTagsForResource": "working"
+    },
+    "working_untested": [
+      "ListTagsForResource"
+    ],
+    "working_untested_count": 1
   },
   {
     "noun": "TokenVault",
@@ -623,7 +781,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "GetTokenVault": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -638,7 +798,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "SetTokenVaultCMK": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -653,7 +815,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "ListWorkloadIdentities": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -674,7 +838,12 @@
     ],
     "size": 4,
     "untested_count": 4,
-    "probe_status": {},
+    "probe_status": {
+      "CreateWorkloadIdentity": "not_implemented",
+      "DeleteWorkloadIdentity": "not_implemented",
+      "GetWorkloadIdentity": "not_implemented",
+      "UpdateWorkloadIdentity": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   }

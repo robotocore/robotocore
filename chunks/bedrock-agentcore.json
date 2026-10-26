@@ -10,9 +10,13 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
-    "working_untested": [],
-    "working_untested_count": 0
+    "probe_status": {
+      "ListActors": "working"
+    },
+    "working_untested": [
+      "ListActors"
+    ],
+    "working_untested_count": 1
   },
   {
     "noun": "AgentCard",
@@ -25,7 +29,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "GetAgentCard": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -40,7 +46,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "InvokeAgentRuntime": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -55,7 +63,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "InvokeAgentRuntimeCommand": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -74,7 +84,11 @@
     ],
     "size": 3,
     "untested_count": 3,
-    "probe_status": {},
+    "probe_status": {
+      "GetBrowserSession": "not_implemented",
+      "StartBrowserSession": "not_implemented",
+      "StopBrowserSession": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -89,7 +103,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "SaveBrowserSessionProfile": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -104,7 +120,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "ListBrowserSessions": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -119,7 +137,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "UpdateBrowserStream": "needs_params"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -134,7 +154,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "InvokeCodeInterpreter": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -153,9 +175,17 @@
     ],
     "size": 3,
     "untested_count": 3,
-    "probe_status": {},
-    "working_untested": [],
-    "working_untested_count": 0
+    "probe_status": {
+      "GetCodeInterpreterSession": "working",
+      "StartCodeInterpreterSession": "working",
+      "StopCodeInterpreterSession": "working"
+    },
+    "working_untested": [
+      "GetCodeInterpreterSession",
+      "StartCodeInterpreterSession",
+      "StopCodeInterpreterSession"
+    ],
+    "working_untested_count": 3
   },
   {
     "noun": "CodeInterpreterSessions",
@@ -168,9 +198,13 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
-    "working_untested": [],
-    "working_untested_count": 0
+    "probe_status": {
+      "ListCodeInterpreterSessions": "working"
+    },
+    "working_untested": [
+      "ListCodeInterpreterSessions"
+    ],
+    "working_untested_count": 1
   },
   {
     "noun": "CreateMemoryRecords",
@@ -183,7 +217,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "BatchCreateMemoryRecords": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -198,7 +234,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "BatchDeleteMemoryRecords": "needs_params"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -213,7 +251,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "Evaluate": "needs_params"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -232,9 +272,16 @@
     ],
     "size": 3,
     "untested_count": 3,
-    "probe_status": {},
-    "working_untested": [],
-    "working_untested_count": 0
+    "probe_status": {
+      "CreateEvent": "needs_params",
+      "DeleteEvent": "working",
+      "GetEvent": "working"
+    },
+    "working_untested": [
+      "DeleteEvent",
+      "GetEvent"
+    ],
+    "working_untested_count": 2
   },
   {
     "noun": "Events",
@@ -247,9 +294,13 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
-    "working_untested": [],
-    "working_untested_count": 0
+    "probe_status": {
+      "ListEvents": "working"
+    },
+    "working_untested": [
+      "ListEvents"
+    ],
+    "working_untested_count": 1
   },
   {
     "noun": "MemoryExtractionJob",
@@ -262,7 +313,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "StartMemoryExtractionJob": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -277,7 +330,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "ListMemoryExtractionJobs": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -294,7 +349,10 @@
     ],
     "size": 2,
     "untested_count": 2,
-    "probe_status": {},
+    "probe_status": {
+      "DeleteMemoryRecord": "needs_params",
+      "GetMemoryRecord": "needs_params"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -311,7 +369,10 @@
     ],
     "size": 2,
     "untested_count": 2,
-    "probe_status": {},
+    "probe_status": {
+      "ListMemoryRecords": "not_implemented",
+      "RetrieveMemoryRecords": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -326,7 +387,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "GetResourceApiKey": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -341,7 +404,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "GetResourceOauth2Token": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -356,7 +421,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "CompleteResourceTokenAuth": "needs_params"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -371,7 +438,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "StopRuntimeSession": "needs_params"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -386,9 +455,13 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
-    "working_untested": [],
-    "working_untested_count": 0
+    "probe_status": {
+      "ListSessions": "working"
+    },
+    "working_untested": [
+      "ListSessions"
+    ],
+    "working_untested_count": 1
   },
   {
     "noun": "UpdateMemoryRecords",
@@ -401,7 +474,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "BatchUpdateMemoryRecords": "needs_params"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -416,7 +491,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "GetWorkloadAccessToken": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -431,7 +508,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "GetWorkloadAccessTokenForJWT": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   },
@@ -446,7 +525,9 @@
     ],
     "size": 1,
     "untested_count": 1,
-    "probe_status": {},
+    "probe_status": {
+      "GetWorkloadAccessTokenForUserId": "not_implemented"
+    },
     "working_untested": [],
     "working_untested_count": 0
   }
