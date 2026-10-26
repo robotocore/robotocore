@@ -291,11 +291,18 @@ impl DynamoDbHandler {
                                     .collect()
                             })
                             .unwrap_or_default();
+                        let throughput = g.get("ProvisionedThroughput");
                         Some(crate::models::IndexDefinition {
                             name: g.get("IndexName")?.as_str()?.to_string(),
                             key_schema,
                             projection,
                             non_key_attributes,
+                            provisioned_rcu: throughput
+                                .and_then(|p| p.get("ReadCapacityUnits"))
+                                .and_then(|v| v.as_i64()),
+                            provisioned_wcu: throughput
+                                .and_then(|p| p.get("WriteCapacityUnits"))
+                                .and_then(|v| v.as_i64()),
                         })
                     })
                     .collect()
@@ -525,6 +532,23 @@ impl DynamoDbHandler {
                         index["IndexSizeBytes"] = json!(0);
                         index["ItemCount"] = json!(0);
                         index["ProvisionedThroughput"] = provisioned.clone();
+                        // botocore declares WarmThroughput only on
+                        // GlobalSecondaryIndexDescription — its member shape
+                        // is GlobalSecondaryIndexWarmThroughputDescription
+                        // (Status is the IndexStatus enum; LSI descriptions
+                        // carry no such member). moto reports WarmThroughput
+                        // on every GSI: a provisioned GSI advertises its own
+                        // units, an on-demand GSI moto's 12000/4000 defaults
+                        // (moto/dynamodb/models/table.py GlobalSecondaryIndex).
+                        let (warm_rcu, warm_wcu) = match (i.provisioned_rcu, i.provisioned_wcu) {
+                            (Some(rcu), Some(wcu)) => (rcu, wcu),
+                            _ => (DEFAULT_WARM_THROUGHPUT_RCU, DEFAULT_WARM_THROUGHPUT_WCU),
+                        };
+                        index["WarmThroughput"] = json!({
+                            "ReadUnitsPerSecond": warm_rcu,
+                            "WriteUnitsPerSecond": warm_wcu,
+                            "Status": "ACTIVE",
+                        });
                     }
                     index
                 })
@@ -630,6 +654,9 @@ impl DynamoDbHandler {
                             .collect()
                     })
                     .unwrap_or_default();
+                // moto's GlobalSecondaryIndex.create (used for indexes created
+                // through UpdateTable too) reads the index's own throughput.
+                let throughput = create.get("ProvisionedThroughput");
                 let idx = crate::models::IndexDefinition {
                     name: create
                         .get("IndexName")
@@ -639,6 +666,12 @@ impl DynamoDbHandler {
                     key_schema,
                     projection,
                     non_key_attributes,
+                    provisioned_rcu: throughput
+                        .and_then(|p| p.get("ReadCapacityUnits"))
+                        .and_then(|v| v.as_i64()),
+                    provisioned_wcu: throughput
+                        .and_then(|p| p.get("WriteCapacityUnits"))
+                        .and_then(|v| v.as_i64()),
                 };
                 let mut gsis = table.global_secondary_indexes.write();
                 if !gsis.iter().any(|g| g.name == idx.name) {
@@ -3760,6 +3793,104 @@ mod tests {
             json!({
                 "ReadUnitsPerSecond": 9,
                 "WriteUnitsPerSecond": 21,
+                "Status": "ACTIVE"
+            })
+        );
+    }
+
+    #[test]
+    fn gsi_warmthroughput_present() {
+        let handler = DynamoDbHandler::new();
+
+        // PAY_PER_REQUEST: the on-demand GSI reports moto's default warm
+        // throughput of 12000/4000 (models/table.py GlobalSecondaryIndex).
+        let resp = handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "gsi-warm-ondemand",
+                "KeySchema": [{"AttributeName": "id", "KeyType": "HASH"}],
+                "AttributeDefinitions": [
+                    {"AttributeName": "id", "AttributeType": "S"},
+                    {"AttributeName": "name", "AttributeType": "S"}
+                ],
+                "BillingMode": "PAY_PER_REQUEST",
+                "GlobalSecondaryIndexes": [{
+                    "IndexName": "byname",
+                    "KeySchema": [{"AttributeName": "name", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "ALL"}
+                }],
+                "LocalSecondaryIndexes": [{
+                    "IndexName": "byname-lsi",
+                    "KeySchema": [
+                        {"AttributeName": "id", "KeyType": "HASH"},
+                        {"AttributeName": "name", "KeyType": "RANGE"}
+                    ],
+                    "Projection": {"ProjectionType": "ALL"}
+                }]
+            }),
+        ));
+        // CreateTable and DescribeTable share the renderer, so both carry the
+        // GSI WarmThroughput block; CreateTable wraps in TableDescription.
+        assert_eq!(resp.status, 200);
+        let create_body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            create_body["TableDescription"]["GlobalSecondaryIndexes"][0]["WarmThroughput"],
+            json!({
+                "ReadUnitsPerSecond": 12000,
+                "WriteUnitsPerSecond": 4000,
+                "Status": "ACTIVE"
+            })
+        );
+        let resp = handler.handle(make_req(
+            "DescribeTable",
+            json!({"TableName": "gsi-warm-ondemand"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["Table"]["GlobalSecondaryIndexes"][0]["WarmThroughput"],
+            json!({
+                "ReadUnitsPerSecond": 12000,
+                "WriteUnitsPerSecond": 4000,
+                "Status": "ACTIVE"
+            })
+        );
+        // The member is GSI-only: LocalSecondaryIndexDescription declares no
+        // WarmThroughput, and moto's LSI describe() emits none.
+        assert!(body["Table"]["LocalSecondaryIndexes"][0]
+            .get("WarmThroughput")
+            .is_none());
+
+        // PROVISIONED: the GSI advertises its own provisioned units.
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "gsi-warm-provisioned",
+                "KeySchema": [{"AttributeName": "id", "KeyType": "HASH"}],
+                "AttributeDefinitions": [
+                    {"AttributeName": "id", "AttributeType": "S"},
+                    {"AttributeName": "name", "AttributeType": "S"}
+                ],
+                "ProvisionedThroughput": {"ReadCapacityUnits": 3, "WriteCapacityUnits": 5},
+                "GlobalSecondaryIndexes": [{
+                    "IndexName": "byname",
+                    "KeySchema": [{"AttributeName": "name", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "ALL"},
+                    "ProvisionedThroughput": {"ReadCapacityUnits": 7, "WriteCapacityUnits": 9}
+                }]
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "DescribeTable",
+            json!({"TableName": "gsi-warm-provisioned"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["Table"]["GlobalSecondaryIndexes"][0]["WarmThroughput"],
+            json!({
+                "ReadUnitsPerSecond": 7,
+                "WriteUnitsPerSecond": 9,
                 "Status": "ACTIVE"
             })
         );
