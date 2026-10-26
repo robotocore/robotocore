@@ -4,7 +4,9 @@
 //! (account, region). Requests are routed via method + path + query params.
 
 use base64::Engine;
+use hmac::{Hmac, Mac};
 use parking_lot::RwLock;
+use sha2::Sha256;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -369,6 +371,12 @@ impl PostForm {
             .find(|(k, _)| k.eq_ignore_ascii_case(name))
             .map(|(_, v)| v.as_str())
     }
+
+    fn contains(&self, name: &str) -> bool {
+        self.fields
+            .iter()
+            .any(|(k, _)| k.eq_ignore_ascii_case(name))
+    }
 }
 
 /// Extract the `boundary` parameter of a `Content-Type: multipart/form-data`
@@ -433,6 +441,143 @@ fn part_header_value(headers: &str, name: &str) -> Option<String> {
             .eq_ignore_ascii_case(name)
             .then(|| value.trim().to_string())
     })
+}
+
+// ---------------------------------------------------------------------------
+// POST policy (SigV4 form upload) signature validation
+// ---------------------------------------------------------------------------
+
+/// The form fields a SigV4 pre-signed POST carries (localstack
+/// presigned_url.py SIGNATURE_V4_POST_FIELDS) and the legacy SigV2 pair.
+const POST_V4_FIELDS: [&str; 4] = [
+    "x-amz-signature",
+    "x-amz-algorithm",
+    "x-amz-credential",
+    "x-amz-date",
+];
+const POST_V2_FIELDS: [&str; 2] = ["signature", "awsaccesskeyid"];
+
+/// The signing secret the twin underwrites for POST-upload verification.
+///
+/// The twin's documented credential model is `aws_access_key_id` =
+/// any 12-digit number, `aws_secret_access_key` = `test` (AGENTS.md
+/// "Endpoint & credentials"). A real AWS deployment verifies the POST
+/// signature against the IAM secret of the credentials in the form; the twin
+/// has no secret store (any non-empty secret is accepted on signed
+/// requests), so POST uploads — the one S3 wire path where the twin checks
+/// a signature — pin the verification secret to the documented pair.
+/// Clients using the documented credentials behave exactly as on real AWS;
+/// a signature produced with any other secret answers SignatureDoesNotMatch,
+/// same as a real server would for a wrong key.
+const POST_UPLOAD_SIGNING_SECRET: &str = "test";
+
+/// Which signature version the form declares, detected the localstack way
+/// (`_is_match_with_signature_fields`): knowing ANY field of a version's
+/// field set requires ALL of them, else the missing field names an
+/// InvalidArgument error from the caller.
+enum PostSigVersion {
+    /// Complete SigV4 field set; carries the hex signature form value.
+    V4 { signature: String },
+    /// Complete legacy SigV2 pair; carrying no verification (see the
+    /// residual-gaps notes: the twin validates v4 signatures only).
+    V2,
+    /// Any subset of one field set, naming the first missing field.
+    Incomplete(&'static str),
+    /// Neither version's fields appear at all.
+    Anonymous,
+}
+
+fn post_signature_version(form: &PostForm) -> PostSigVersion {
+    let missing = |fields: &[&'static str]| -> Option<&'static str> {
+        fields.iter().find(|f| !form.contains(f)).copied()
+    };
+    let any_v4 = POST_V4_FIELDS.iter().any(|f| form.contains(f));
+    let any_v2 = POST_V2_FIELDS.iter().any(|f| form.contains(f));
+    if any_v4 {
+        return match missing(&POST_V4_FIELDS) {
+            Some(field) => PostSigVersion::Incomplete(field),
+            None => PostSigVersion::V4 {
+                signature: form.get("x-amz-signature").unwrap_or_default().to_string(),
+            },
+        };
+    }
+    if any_v2 {
+        return match missing(&POST_V2_FIELDS) {
+            Some(field) => PostSigVersion::Incomplete(field),
+            None => PostSigVersion::V2,
+        };
+    }
+    PostSigVersion::Anonymous
+}
+
+/// The user-facing field name (localstack's capitalize helper + its
+/// AWSAccessKeyId special case).
+fn post_argument_display_name(field: &str) -> &str {
+    match field {
+        "x-amz-signature" => "X-Amz-Signature",
+        "x-amz-algorithm" => "X-Amz-Algorithm",
+        "x-amz-credential" => "X-Amz-Credential",
+        "x-amz-date" => "X-Amz-Date",
+        "signature" => "Signature",
+        "awsaccesskeyid" => "AWSAccessKeyId",
+        other => other,
+    }
+}
+
+/// HMAC-SHA256 of `data` under `key`.
+fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
+    let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC-SHA256 accepts any key length");
+    mac.update(data);
+    mac.finalize().into_bytes().into()
+}
+
+/// The expected SigV4 POST-upload signature: `hex(HMAC(signing_key,
+/// base64(policy)))` — the signature covers the base64 policy document and
+/// nothing else (AWS "Constructing an AWS4-HMAC-SHA256 POST policy").
+/// `None` when the credential scope is not a SigV4 string.
+fn expected_post_signature(
+    secret: &str,
+    amz_date: &str,
+    amz_credential: &str,
+    string_to_sign: &str,
+) -> Option<String> {
+    // Scope: <access-key>/<YYYYMMDD>/<region>/s3/aws4_request
+    let parts: Vec<&str> = amz_credential.split('/').collect();
+    if parts.len() != 5 {
+        return None;
+    }
+    let date = amz_date.get(..8)?;
+    let region = parts[2];
+    let key_date = hmac_sha256(format!("AWS4{secret}").as_bytes(), date.as_bytes());
+    let key_region = hmac_sha256(&key_date, region.as_bytes());
+    let key_service = hmac_sha256(&key_region, b"s3");
+    let key_signing = hmac_sha256(&key_service, b"aws4_request");
+    Some(hex::encode(hmac_sha256(
+        &key_signing,
+        string_to_sign.as_bytes(),
+    )))
+}
+
+/// The base64-encoded policy document is the SigV4 POST string-to-sign;
+/// a policy that does not decode into a JSON object means the request was
+/// tampered with, which real AWS reports as a signature mismatch
+/// (localstack validate_post_policy comment: "this means the policy has
+/// been tampered with").
+struct PostPolicy {
+    expiration: Option<String>,
+    #[allow(dead_code)] // consumed by the condition checks in a later commit
+    conditions: Vec<serde_json::Value>,
+}
+
+/// The two expiration formats the AWS docs allow in a POST policy
+/// (localstack POLICY_EXPIRATION_FORMAT1/2).
+fn parse_policy_expiration(value: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    for fmt in ["%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S.%fZ"] {
+        if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(value, fmt) {
+            return Some(naive.and_utc());
+        }
+    }
+    None
 }
 
 /// Percent-encode an object key for a Location header's path, preserving the
@@ -1323,6 +1468,25 @@ impl S3Handler {
             );
         }
 
+        // Policy + signature validation, in the AWS wire order: decode the
+        // policy → expiry → signature → conditions. A form without a policy
+        // document is the publicly-writable-door shape moto and localstack
+        // both store (localstack validate_post_policy early-returns when no
+        // policy field is present).
+        let policy_b64 = form.get("policy").unwrap_or("");
+        if !policy_b64.is_empty() {
+            let policy = match Self::decode_post_policy(policy_b64, &form) {
+                Ok(policy) => policy,
+                Err(e) => return e,
+            };
+            if let Err(e) = Self::check_post_policy_expiration(&policy) {
+                return e;
+            }
+            if let Err(e) = Self::verify_post_signature(policy_b64, &form) {
+                return e;
+            }
+        }
+
         let file = match form.file.as_deref() {
             Some(f) => f,
             // Real AWS answers MalformedPOSTRequest when the form carries no
@@ -1515,6 +1679,138 @@ impl S3Handler {
             if let Ok(account) = access_key.parse::<u64>() {
                 req.account = account;
             }
+        }
+    }
+
+    /// The `SignatureDoesNotMatch` document real AWS answers when the
+    /// server-side check fails: the AWSAccessKeyId attribute the error carries
+    /// plus the provided signature and the string that was signed.
+    fn signature_does_not_match_error(
+        provided: &str,
+        string_to_sign: &str,
+        access_key: &str,
+    ) -> AwsResponse {
+        Self::aws_error_with(
+            403,
+            "SignatureDoesNotMatch",
+            "The request signature we calculated does not match the signature you provided. Check your key and signing method.",
+            &[
+                ("AWSAccessKeyId", access_key),
+                ("SignatureProvided", provided),
+                ("StringToSign", string_to_sign),
+            ],
+        )
+    }
+
+    /// Base64-decode + JSON-parse the form's policy document. Failures mean
+    /// the request was tampered with → SignatureDoesNotMatch (real AWS
+    /// cannot confirm a signature over an unreadable policy either).
+    fn decode_post_policy(policy_b64: &str, form: &PostForm) -> Result<PostPolicy, AwsResponse> {
+        let failed = || {
+            let access_key = form
+                .get("x-amz-credential")
+                .and_then(|c| c.split('/').next())
+                .or_else(|| form.get("awsaccesskeyid"))
+                .unwrap_or("")
+                .to_string();
+            let provided = form
+                .get("x-amz-signature")
+                .or_else(|| form.get("signature"))
+                .unwrap_or("");
+            Self::signature_does_not_match_error(provided, policy_b64, &access_key)
+        };
+        let raw = base64::engine::general_purpose::STANDARD
+            .decode(policy_b64)
+            .map_err(|_| failed())?;
+        let text = String::from_utf8(raw).map_err(|_| failed())?;
+        let value: serde_json::Value = serde_json::from_str(&text).map_err(|_| failed())?;
+        if !value.is_object() {
+            return Err(failed());
+        }
+        let expiration = value
+            .get("expiration")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let conditions = value
+            .get("conditions")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        Ok(PostPolicy {
+            expiration,
+            conditions,
+        })
+    }
+
+    /// Policy expiry (localstack validate_post_policy order: right after
+    /// decoding, before signature and conditions). A value in neither
+    /// documented format (`2007-12-01T12:00:00Z` /
+    /// `2007-12-01T12:00:00.000Z`) is an invalid policy date (AWS docs: 400
+    /// InvalidRequest, "Invalid date"); a past expiry is 403 AccessDenied,
+    /// "Invalid according to Policy: Policy expired."
+    fn check_post_policy_expiration(policy: &PostPolicy) -> Result<(), AwsResponse> {
+        let Some(expiry) = policy.expiration.as_deref() else {
+            return Ok(());
+        };
+        let parsed = parse_policy_expiration(expiry);
+        let Some(exp) = parsed else {
+            return Err(AwsResponse::error(400, "InvalidRequest", "Invalid date"));
+        };
+        if exp < chrono::Utc::now() {
+            return Err(Self::aws_error_with(
+                403,
+                "AccessDenied",
+                "Invalid according to Policy: Policy expired.",
+                &[],
+            ));
+        }
+        Ok(())
+    }
+
+    /// The signature gate (localstack field-set detection + real AWS's
+    /// SigV4 chain). V2-signed forms verify as v4-less here (no SHA-1 in
+    /// this crate; see residual gaps) — they still pass through decode and
+    /// expiry above.
+    fn verify_post_signature(policy_b64: &str, form: &PostForm) -> Result<(), AwsResponse> {
+        match post_signature_version(form) {
+            PostSigVersion::V4 { signature } => {
+                let credential = form.get("x-amz-credential").unwrap_or_default();
+                let amz_date = form.get("x-amz-date").unwrap_or_default();
+                let access_key = credential.split('/').next().unwrap_or_default();
+                let expected = expected_post_signature(
+                    POST_UPLOAD_SIGNING_SECRET,
+                    amz_date,
+                    credential,
+                    policy_b64,
+                );
+                let matches = expected
+                    .as_deref()
+                    .is_some_and(|exp| exp.eq_ignore_ascii_case(&signature));
+                if !matches {
+                    return Err(Self::signature_does_not_match_error(
+                        &signature, policy_b64, access_key,
+                    ));
+                }
+                Ok(())
+            }
+            PostSigVersion::Incomplete(field) => {
+                let name = post_argument_display_name(field);
+                Err(Self::aws_error_with(
+                    400,
+                    "InvalidArgument",
+                    &format!("Bucket POST must contain a field named '{name}'.  If it is specified, please check the order of the fields.",),
+                    &[("ArgumentName", name), ("ArgumentValue", "")],
+                ))
+            }
+            // A form with a policy document but no signature field family is
+            // not a signed upload: AccessDenied, as localstack raises.
+            PostSigVersion::Anonymous => Err(Self::aws_error_with(
+                403,
+                "AccessDenied",
+                "Access Denied",
+                &[],
+            )),
+            PostSigVersion::V2 => Ok(()),
         }
     }
 
@@ -4712,9 +5008,9 @@ mod tests {
         (format!("multipart/form-data; boundary={BOUNDARY}"), body)
     }
 
-    /// A POST upload wire request the way the gateway would hand it over:
-    /// method POST, multipart content-type, operation detected from the
-    /// method+path (the same detect the gateway runs).
+    /// A POST upload wire request the way the gateway delivers it: method
+    /// POST, multipart content-type, operation detected from the method+path
+    /// (the same detect the gateway runs).
     fn form_post_request(
         bucket: &str,
         key_in_url: Option<&str>,
@@ -4729,10 +5025,6 @@ mod tests {
         );
         let operation =
             S3Handler::detect_s3_operation("POST", &path, &HashMap::new()).unwrap_or_default();
-        let mut headers = HashMap::new();
-        headers.insert("host".to_string(), "localhost:4566".to_string());
-        headers.insert("content-type".to_string(), content_type);
-        headers.insert("content-length".to_string(), body.len().to_string());
         AwsRequest {
             service: "s3".to_string(),
             operation,
@@ -4741,7 +5033,47 @@ mod tests {
             bucket: Some(bucket.to_string()),
             key: key_in_url.map(String::from),
             query_params: HashMap::new(),
-            headers,
+            headers: form_post_headers(&content_type, body.len()),
+            method: "POST".to_string(),
+            body: Bytes::copy_from_slice(&body),
+            params: Value::Null,
+        }
+    }
+
+    /// The header set a real multipart POST carries: Host plus the body
+    /// length (browsers/hyper always send Content-Length; the handler's 411
+    /// gate keys off it).
+    fn form_post_headers(content_type: &str, body_len: usize) -> HashMap<String, String> {
+        let mut headers = HashMap::new();
+        headers.insert("host".to_string(), "localhost:4566".to_string());
+        headers.insert("content-type".to_string(), content_type.to_string());
+        headers.insert("content-length".to_string(), body_len.to_string());
+        headers
+    }
+
+    /// A POST upload with owned (policy/signature) form fields, no URL key.
+    fn form_post_request_owned(
+        bucket: &str,
+        fields: &[(String, String)],
+        file_part: Option<(&str, &str, &[u8])>,
+    ) -> AwsRequest {
+        let owned: Vec<(&str, &str)> = fields
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+        let (content_type, body) = multipart_form_body(&owned, file_part);
+        let operation =
+            S3Handler::detect_s3_operation("POST", &format!("/{bucket}"), &HashMap::new())
+                .unwrap_or_default();
+        AwsRequest {
+            service: "s3".to_string(),
+            operation,
+            account: 123456789012,
+            region: "us-east-1".to_string(),
+            bucket: Some(bucket.to_string()),
+            key: None,
+            query_params: HashMap::new(),
+            headers: form_post_headers(&content_type, body.len()),
             method: "POST".to_string(),
             body: Bytes::copy_from_slice(&body),
             params: Value::Null,
@@ -4896,6 +5228,304 @@ mod tests {
         ));
         assert_eq!(get.status, 200);
         assert_eq!(get.body, b"url-key body");
+    }
+
+    // ------------------------------------------------------------------
+    // POST object — policy document + SigV4 signature (auth stage)
+    // ------------------------------------------------------------------
+
+    /// Base64-encode a POST policy document with the caller's conditions.
+    fn post_policy_body(conditions: serde_json::Value, expiration: Option<&str>) -> String {
+        let mut doc = serde_json::Map::new();
+        if let Some(exp) = expiration {
+            doc.insert(
+                "expiration".to_string(),
+                serde_json::Value::String(exp.into()),
+            );
+        }
+        doc.insert("conditions".to_string(), conditions);
+        let text = serde_json::Value::Object(doc).to_string();
+        base64::engine::general_purpose::STANDARD.encode(text)
+    }
+
+    /// The SigV4 POST field family for `policy_b64`, signed with `secret`
+    /// (or corrupted when asked).
+    fn post_v4_fields(
+        policy_b64: &str,
+        secret: &str,
+        corrupt_signature: bool,
+    ) -> Vec<(String, String)> {
+        let amz_date = "20260226T000000Z";
+        let credential = format!("123456789012/{}/us-east-1/s3/aws4_request", &amz_date[..8]);
+        let mut signature =
+            expected_post_signature(secret, amz_date, &credential, policy_b64).unwrap();
+        if corrupt_signature {
+            signature = format!("face{}", &signature[4..]);
+        }
+        vec![
+            (
+                "x-amz-algorithm".to_string(),
+                "AWS4-HMAC-SHA256".to_string(),
+            ),
+            ("x-amz-credential".to_string(), credential),
+            ("x-amz-date".to_string(), amz_date.to_string()),
+            ("x-amz-signature".to_string(), signature),
+        ]
+    }
+
+    #[test]
+    fn post_object_signed_policy_success() {
+        // The documented credential pair (`secret_access_key = test`) signs
+        // a full v4 POST: 204 + the object stored.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([["starts-with", "$key", ""]]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "signed/obj.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("signed.txt", "application/octet-stream", b"signed payload")),
+        ));
+        assert_eq!(
+            resp.status,
+            204,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("signed/obj.txt"),
+            b"",
+        ));
+        assert_eq!(get.body, b"signed payload");
+    }
+
+    #[test]
+    fn post_object_wrong_signature_rejected() {
+        // A bogus x-amz-signature answers 403 SignatureDoesNotMatch carrying
+        // AWSAccessKeyId + SignatureProvided + StringToSign, and stores
+        // nothing.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([["starts-with", "$key", ""]]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "evil.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        fields.extend(post_v4_fields(&policy_b64, "not-the-twin-secret", false));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("evil.txt", "application/octet-stream", b"nope")),
+        ));
+        assert_eq!(
+            resp.status,
+            403,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(
+            body.contains("<Code>SignatureDoesNotMatch</Code>"),
+            "body: {body}"
+        );
+        assert!(
+            body.contains("<AWSAccessKeyId>123456789012</AWSAccessKeyId>"),
+            "body: {body}"
+        );
+        assert!(
+            body.contains(&format!("<StringToSign>{policy_b64}</StringToSign>")),
+            "body: {body}"
+        );
+
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("evil.txt"),
+            b"",
+        ));
+        assert_eq!(get.status, 404, "tampered upload must not store");
+    }
+
+    #[test]
+    fn post_object_corrupt_policy_document_rejected() {
+        // A policy field that decodes but is not a JSON policy document →
+        // SignatureDoesNotMatch (real AWS cannot verify a signature over an
+        // unreadable policy; localstack: "the policy has been tampered with").
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let garbage = base64::engine::general_purpose::STANDARD.encode("plain text, not json");
+        let mut fields = vec![
+            ("key".to_string(), "corrupt.txt".to_string()),
+            ("policy".to_string(), garbage.clone()),
+        ];
+        fields.extend(post_v4_fields(&garbage, POST_UPLOAD_SIGNING_SECRET, false));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("corrupt.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(resp.status, 403);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(
+            body.contains("<Code>SignatureDoesNotMatch</Code>"),
+            "body: {body}"
+        );
+        assert!(
+            body.contains(&format!("<StringToSign>{garbage}</StringToSign>")),
+            "body: {body}"
+        );
+    }
+
+    #[test]
+    fn post_object_expired_policy_rejected() {
+        // Expired policy with a correct signature → 403 AccessDenied,
+        // "Invalid according to Policy: Policy expired." (localstack
+        // validate_post_policy; the policy+signature stage precedes storing).
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([["starts-with", "$key", ""]]),
+            Some("2001-01-01T00:00:00Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "late.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("late.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(
+            resp.status,
+            403,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<Code>AccessDenied</Code>"), "body: {body}");
+        assert!(
+            body.contains("Invalid according to Policy: Policy expired."),
+            "body: {body}"
+        );
+    }
+
+    #[test]
+    fn post_object_bad_expiration_format_400() {
+        // A policy expiration in neither documented format → 400
+        // InvalidRequest "Invalid date" (AWS docs; the parent lane pin).
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([["starts-with", "$key", ""]]),
+            Some("2099-13-99T99:99:99Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "badexp.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("badexp.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(resp.status, 400);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<Code>InvalidRequest</Code>"), "body: {body}");
+        assert!(body.contains("Invalid date"), "body: {body}");
+    }
+
+    #[test]
+    fn post_object_missing_signature_field_400() {
+        // A partial v4 field family → InvalidArgument naming the first
+        // missing field (localstack _is_match_with_signature_fields).
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([["starts-with", "$key", ""]]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let fields = vec![
+            ("key".to_string(), "half-signed.txt".to_string()),
+            ("policy".to_string(), policy_b64),
+            (
+                "x-amz-algorithm".to_string(),
+                "AWS4-HMAC-SHA256".to_string(),
+            ),
+            (
+                "x-amz-credential".to_string(),
+                "123456789012/20260226/us-east-1/s3/aws4_request".to_string(),
+            ),
+        ];
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("half-signed.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(resp.status, 400);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(
+            body.contains("<Code>InvalidArgument</Code>"),
+            "body: {body}"
+        );
+        assert!(body.contains("X-Amz-Signature"), "body: {body}");
+    }
+
+    #[test]
+    fn post_object_policy_without_signature_403() {
+        // A policy document with no signature field family at all is not a
+        // signed upload → 403 AccessDenied (localstack validate_post_policy).
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([["starts-with", "$key", ""]]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let fields = vec![
+            ("key".to_string(), "unsigned.txt".to_string()),
+            ("policy".to_string(), policy_b64),
+        ];
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("unsigned.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(resp.status, 403);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<Code>AccessDenied</Code>"), "body: {body}");
     }
 
     #[test]
