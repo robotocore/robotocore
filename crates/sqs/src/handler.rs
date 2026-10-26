@@ -1388,15 +1388,25 @@ impl DefaultSqsHandler {
             .ok_or_else(|| {
                 SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
             })?;
-        // moto's EmptyBatchRequest wording (live-verified on the pinned
-        // fork); the shared helper also runs moto's batch-Id validation.
-        let entries = Self::validate_batch_entries(params, "SendMessageBatchRequestEntry")?;
 
+        // moto's send_message_batch differs from its delete/visibility
+        // batch siblings: the response layer resolves the queue
+        // (`self.sqs_backend.get_queue`) BEFORE inspecting Entries at all,
+        // so a missing queue answers NonExistentQueue even when the batch
+        // itself is malformed — empty entries, invalid or duplicate Ids
+        // all lose to QueueDoesNotExist (live-verified against the pinned
+        // fork). DeleteMessageBatch/ChangeMessageVisibilityBatch keep
+        // entries-first below; moto checks those in the response layer
+        // and resolves the queue only inside the backend.
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
         let store = self.get_store(account, region);
         let queue_arc = store.get_queue(&queue_name).ok_or_else(|| {
             SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
         })?;
+
+        // moto's EmptyBatchRequest wording (live-verified on the pinned
+        // fork); the shared helper also runs moto's batch-Id validation.
+        let entries = Self::validate_batch_entries(params, "SendMessageBatchRequestEntry")?;
 
         let mut successful: Vec<Value> = Vec::new();
         let mut failed: Vec<Value> = Vec::new();
