@@ -1467,7 +1467,18 @@ fn encode_iot_page_token(values: &[String]) -> String {
 
 /// The inverse of [`encode_iot_page_token`]; the `parameterChecksum` member
 /// moto also embeds (Python's salted `hash()` of the non-pagination
-/// kwargs) is not wire-portable and is ignored, like s3control's.
+/// kwargs) is not wire-portable and is ignored, like s3control's. The
+/// validation variant riding on it is therefore deliberately never emitted
+/// either ("mirror of moto's checksum-validator absent"): moto checks the
+/// checksum at decode time — before any `fail_on_invalid_token` handling —
+/// and answers `InvalidToken` "Invalid Token: Input inconsistent with page
+/// token: {args}" when a token is replayed with CHANGED non-pagination args
+/// (moto/utilities/paginator.py:115; live oracle: replaying a
+/// list_job_executions_for_job token with an added `status` arg answers
+/// exactly that sentence). The twin passes args through, so only two
+/// InvalidToken variants exist here — "Invalid token" for undecodable
+/// tokens and "Resource not found!" when a same-args token names an item
+/// no longer in the list.
 fn decode_iot_page_token(token: &str) -> Option<Vec<String>> {
     crate::services::s3control::decode_s3control_token(token)
         .map(|joined| joined.split('|').map(str::to_owned).collect())
@@ -7030,14 +7041,28 @@ mod tests {
             json!({"__type": "InvalidToken", "message": "Invalid Token: Invalid token"})
         );
 
-        // a token whose thing the current filter list no longer carries is
-        // the fork's resume failure: "...Resource not found!"
+        // a token whose item the list no longer carries answers the fork's
+        // resume failure: "...Resource not found!". The replay must keep the
+        // same args (moto validates them against the token's parameterChecksum
+        // and would answer "Input inconsistent with page token: {args}" for
+        // CHANGED args — that third variant the twin deliberately does not
+        // emit, see decode_iot_page_token; deleted-item resume under EQUAL
+        // args is the moto-faithful "Resource not found!", live-verified).
+        let excluded_name = excluded_arn
+            .as_str()
+            .unwrap_or_default()
+            .rsplit('/')
+            .next()
+            .unwrap_or_default();
+        let removed = dispatch_req(&req(
+            "DELETE",
+            &format!("/things/{excluded_name}"),
+            json!({}),
+        ));
+        assert_eq!(removed.status, 200);
         let dangling = {
             let mut r = req("GET", "/things", json!({}));
-            r.query_string = format!(
-                "attributeName=nope&attributeValue=nope&nextToken={}",
-                pct_encode(&token)
-            );
+            r.query_string = format!("nextToken={}", pct_encode(&token));
             dispatch_req(&r)
         };
         assert_eq!(dangling.status, 400);
