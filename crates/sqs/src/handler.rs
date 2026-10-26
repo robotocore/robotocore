@@ -650,6 +650,27 @@ impl DefaultSqsHandler {
         // the queue only after those batch errors could fire.
         let entries = Self::validate_batch_entries(params, "DeleteMessageBatchRequestEntry")?;
 
+        // moto responses.py delete_message_batch (pinned 5.2.4): a
+        // ReceiptHandle seen twice across entries answers
+        // BatchEntryIdsNotDistinct carrying the SECOND entry's Id ("Id b
+        // repeated."), still before the backend resolves the queue
+        // (live-verified: a repeated handle on a nonexistent queue answers
+        // the batch error, not NonExistentQueue). PR #10346's Id-distinct
+        // check above stays on top of this receipt-distinct check.
+        let mut seen_handles: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        for entry in &entries {
+            let receipt_handle = entry
+                .get("ReceiptHandle")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if !seen_handles.insert(receipt_handle) {
+                let id = entry.get("Id").and_then(|v| v.as_str()).unwrap_or("");
+                return Err(SqsError::BatchEntryIdsNotDistinct(format!(
+                    "Id {id} repeated."
+                )));
+            }
+        }
+
         let queue_name = self.extract_queue_name_from_url(&queue_url)?;
         let store = self.get_store(account, region);
         let queue_opt = store.get_queue(&queue_name);

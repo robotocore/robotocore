@@ -2037,6 +2037,66 @@ fn batch_validate_send_message_batch_empty_entries() {
         .contains("There should be at least one SendMessageBatchRequestEntry in the request."));
 }
 
+/// moto responses.py delete_message_batch (pinned 5.2.4): two entries
+/// sharing one ReceiptHandle answer BatchEntryIdsNotDistinct with the
+/// SECOND entry's Id ("Id b repeated."), before any entry is processed.
+#[test]
+fn batch_validate_delete_message_batch_duplicate_receipt_handle() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-validate-del-dup-handle");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+
+    let resp = handler.handle(make_request(
+        "DeleteMessageBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "a", "ReceiptHandle": handles[0]["ReceiptHandle"]},
+                {"Id": "b", "ReceiptHandle": handles[0]["ReceiptHandle"]},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.BatchEntryIdsNotDistinct"));
+    assert!(resp.body.contains("Id b repeated."));
+
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.1, 2, "no message may be deleted by a rejected batch");
+}
+
+/// The Id-distinct check (PR getmoto/moto#10346) stays on top of the
+/// receipt-handle check: duplicate Ids with DISTINCT handles still fail
+/// the request, before any delete. moto 5.2.4 alone would accept this
+/// (live-verified: 200 with both rows in Successful) — we keep the
+/// stricter port behavior deliberately.
+#[test]
+fn batch_validate_delete_message_batch_duplicate_ids_distinct_handles() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-validate-del-dup-ids");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+
+    let resp = handler.handle(make_request(
+        "DeleteMessageBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "dup", "ReceiptHandle": handles[0]["ReceiptHandle"]},
+                {"Id": "dup", "ReceiptHandle": handles[1]["ReceiptHandle"]},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.BatchEntryIdsNotDistinct"));
+    assert!(resp.body.contains("Id dup repeated."));
+
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.1, 2, "no message may be deleted by a rejected batch");
+}
+
 /// The rewired happy path: valid entries still delete, through the same
 /// helper that rejects the invalid ones.
 #[test]
