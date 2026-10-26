@@ -28,6 +28,23 @@ pub(crate) mod arc_rw {
     }
 }
 
+/// `Vec<u8>` as a base64 string (keeps blob-heavy state compact in snapshots).
+pub(crate) mod b64 {
+    use base64::Engine;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(v: &Vec<u8>, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&base64::engine::general_purpose::STANDARD.encode(v))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
+        let text = String::deserialize(d)?;
+        base64::engine::general_purpose::STANDARD
+            .decode(text.as_bytes())
+            .map_err(serde::de::Error::custom)
+    }
+}
+
 /// Replace one store's contents in place from `v`, preserving `Arc` identity.
 fn store_restore_json(st: &EcrState, v: &Value) {
     let restored: EcrState = serde_json::from_value(v.clone()).unwrap_or_default();
@@ -38,6 +55,8 @@ fn store_restore_json(st: &EcrState, v: &Value) {
     }
     swap!(repositories);
     swap!(images);
+    swap!(uploads);
+    swap!(layers);
     swap!(repository_policies);
     swap!(lifecycle_policies);
     swap!(tags);
@@ -100,5 +119,80 @@ impl crate::handler::EcrHandler {
         for st in states.values_mut() {
             store_restore_json(st, &empty);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use base64::Engine;
+    use bytes::Bytes;
+    use serde_json::json;
+
+    use crate::handler::EcrHandler;
+    use crate::protocol::AwsRequest;
+    use sha2::Digest;
+
+    fn make_req(operation: &str, params: Value) -> AwsRequest {
+        AwsRequest {
+            service: "ecr".to_string(),
+            operation: operation.to_string(),
+            account: 424242424242,
+            region: "eu-west-2".to_string(),
+            params,
+            body: Bytes::new(),
+        }
+    }
+
+    #[test]
+    fn layer_uploads_round_trip_through_snapshot() {
+        let source = EcrHandler::new();
+        source.handle(make_req(
+            "CreateRepository",
+            json!({"repositoryName": "snap"}),
+        ));
+        let init = source.handle(make_req(
+            "InitiateLayerUpload",
+            json!({"repositoryName": "snap"}),
+        ));
+        let upload_id = serde_json::from_str::<Value>(&init.body).unwrap()["uploadId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        source.handle(make_req(
+            "UploadLayerPart",
+            json!({
+                "repositoryName": "snap", "uploadId": upload_id,
+                "partFirstByte": 0, "partLastByte": 4,
+                "layerPartBlob": base64::engine::general_purpose::STANDARD
+                    .encode(b"parts"),
+            }),
+        ));
+
+        let snap = source.snapshot_json();
+        let store = &snap["424242424242|eu-west-2"];
+        // The upload store serializes; the assembled bytes travel as base64.
+        let stored = &store["uploads"]["snap"][&upload_id];
+        assert_eq!(
+            stored["layer_parts"].as_str(),
+            Some("cGFydHM="),
+            "snapshot: {store}"
+        );
+
+        let target = EcrHandler::new();
+        target.restore_json(&snap);
+        // The restored handler continues the same upload id to completion.
+        let complete = target.handle(make_req(
+            "CompleteLayerUpload",
+            json!({"repositoryName": "snap", "uploadId": upload_id, "layerDigests": []}),
+        ));
+        assert_eq!(complete.status, 200, "{}", complete.body);
+        let body = serde_json::from_str::<Value>(&complete.body).unwrap();
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(b"parts");
+        assert_eq!(
+            body["layerDigest"],
+            json!(format!("sha256:{}", hex::encode(hasher.finalize())))
+        );
     }
 }

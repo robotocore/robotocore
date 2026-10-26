@@ -4,6 +4,18 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+/// An in-progress image-layer upload (moto `LayerUpload`).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EcrLayerUpload {
+    pub upload_id: String,
+    pub repository_name: String,
+    pub registry_id: String,
+    /// Bytes received so far, in arrival order; moto keeps a `bytearray`
+    /// and computes the layer digest over the concatenation.
+    #[serde(with = "crate::snapshot::b64")]
+    pub layer_parts: Vec<u8>,
+}
+
 /// A pushed image inside a repository.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EcrImage {
@@ -24,6 +36,14 @@ pub struct EcrState {
     pub repositories: Arc<RwLock<HashMap<String, serde_json::Value>>>,
     #[serde(with = "crate::snapshot::arc_rw")]
     pub images: Arc<RwLock<HashMap<String, Vec<EcrImage>>>>,
+    /// In-progress layer uploads per repository, keyed by uploadId
+    /// (moto `Repository.uploads`).
+    #[serde(with = "crate::snapshot::arc_rw")]
+    pub uploads: Arc<RwLock<HashMap<String, HashMap<String, EcrLayerUpload>>>>,
+    /// Completed layer sizes per repository, keyed by digest
+    /// (moto `Repository.layers`: digest -> size in bytes).
+    #[serde(with = "crate::snapshot::arc_rw")]
+    pub layers: Arc<RwLock<HashMap<String, HashMap<String, i64>>>>,
     #[serde(with = "crate::snapshot::arc_rw")]
     pub repository_policies: Arc<RwLock<HashMap<String, String>>>,
     #[serde(with = "crate::snapshot::arc_rw")]
@@ -53,6 +73,8 @@ impl EcrState {
         Self {
             repositories: Arc::new(RwLock::new(HashMap::new())),
             images: Arc::new(RwLock::new(HashMap::new())),
+            uploads: Arc::new(RwLock::new(HashMap::new())),
+            layers: Arc::new(RwLock::new(HashMap::new())),
             repository_policies: Arc::new(RwLock::new(HashMap::new())),
             lifecycle_policies: Arc::new(RwLock::new(HashMap::new())),
             tags: Arc::new(RwLock::new(HashMap::new())),
