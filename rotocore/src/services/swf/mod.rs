@@ -2465,12 +2465,14 @@ fn start_workflow_execution(st: &mut SwfStore, body: &Value) -> Result<Response,
 /// DescribeWorkflowExecution.
 fn describe_workflow_execution(st: &mut SwfStore, body: &Value) -> Response {
     st.process_timeouts_all();
-    let domain_name = body_str(body, "domain").to_string();
-    with_domain(st, &domain_name, |dm| {
-        let execution = body.get("execution").cloned().unwrap_or(json!({}));
-        let workflow_id = body_str(&execution, "workflowId").to_string();
-        let run_id = opt_str(&execution, "runId");
-        let wfe_idx = match dm.require_wfe(&workflow_id, run_id, false) {
+    let params = match workflow_execution_params(body) {
+        Ok(p) => p,
+        Err(resp) => return resp,
+    };
+    with_domain(st, &params.domain, |dm| {
+        let wfe_idx = match dm
+            .require_wfe(&params.workflow_id, params.run_id.as_deref(), false)
+        {
             Ok(i) => i,
             Err(resp) => return resp,
         };
@@ -2478,15 +2480,87 @@ fn describe_workflow_execution(st: &mut SwfStore, body: &Value) -> Response {
     })
 }
 
+/// Generated workflow-execution params (moto master d3b9faed #10262 —
+/// `_get_workflow_execution_params`): the execution-focused ops must
+/// validate `domain`, `execution.runId` and `execution.workflowId` as
+/// required strings before touching the domain. Missing/null members
+/// answer ValidationException with moto's exact
+/// "N validation {e,}rror(s) detected: Value null at '{name}' failed to
+/// satisfy constraint: Member must not be null" composition (execution
+/// before domain, runId before workflowId); non-string members answer
+/// SerializationException.
+struct WorkflowExecutionParams {
+    domain: String,
+    run_id: Option<String>,
+    workflow_id: String,
+}
+
+fn workflow_execution_params(body: &Value) -> Result<WorkflowExecutionParams, Response> {
+    let execution = body.get("execution").filter(|e| !e.is_null());
+    let mut checks: Vec<(&str, Option<&Value>)> = Vec::new();
+    match execution {
+        None => checks.push(("execution", None)),
+        Some(execution) => {
+            checks.push(("execution.runId", execution.get("runId")));
+            checks.push(("execution.workflowId", execution.get("workflowId")));
+        }
+    }
+    checks.push(("domain", body.get("domain")));
+
+    let mut errors: Vec<String> = Vec::new();
+    for (name, value) in &checks {
+        match value {
+            None => {
+                errors.push(format!(
+                    "Value null at '{name}' failed to satisfy constraint: Member must not be null"
+                ));
+            }
+            Some(v) if !v.is_string() => return Err(serialization_exception(v)),
+            Some(_) => {}
+        }
+    }
+    if !errors.is_empty() {
+        let label = if errors.len() == 1 { "error" } else { "errors" };
+        return Err(validation_exception(&format!(
+            "{} validation {} detected: {}",
+            errors.len(),
+            label,
+            errors.join("; ")
+        )));
+    }
+    let execution = body.get("execution").unwrap_or(&Value::Null);
+    let run_id = execution
+        .get("runId")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+    let workflow_id = execution
+        .get("workflowId")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    Ok(WorkflowExecutionParams {
+        domain: body
+            .get("domain")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        run_id,
+        workflow_id,
+    })
+}
+
 /// GetWorkflowExecutionHistory — the full event list, optionally reversed.
 fn execution_history(st: &mut SwfStore, body: &Value) -> Response {
     st.process_timeouts_all();
-    let domain_name = body_str(body, "domain").to_string();
-    with_domain(st, &domain_name, |dm| {
-        let execution = body.get("execution").cloned().unwrap_or(json!({}));
-        let workflow_id = body_str(&execution, "workflowId").to_string();
-        let run_id = opt_str(&execution, "runId");
-        let wfe_idx = match dm.require_wfe(&workflow_id, run_id, false) {
+    let params = match workflow_execution_params(body) {
+        Ok(p) => p,
+        Err(resp) => return resp,
+    };
+    with_domain(st, &params.domain, |dm| {
+        let wfe_idx = match dm
+            .require_wfe(&params.workflow_id, params.run_id.as_deref(), false)
+        {
             Ok(i) => i,
             Err(resp) => return resp,
         };
@@ -3755,7 +3829,7 @@ mod tests {
         let domain = "timer-domain";
         let task_list = "timer-list";
         setup_workflow(account, domain, task_list);
-        start_exec(account, domain, "wf-timer", task_list);
+        let run_id = start_exec(account, domain, "wf-timer", task_list);
         let (_, decision) = send(
             account,
             "PollForDecisionTask",
@@ -3796,7 +3870,7 @@ mod tests {
             "GetWorkflowExecutionHistory",
             json!({
                 "domain": domain,
-                "execution": { "workflowId": "wf-timer" },
+                "execution": { "workflowId": "wf-timer", "runId": run_id },
             }),
         );
         let types: Vec<String> = history["events"]
@@ -3915,5 +3989,111 @@ mod tests {
         );
         assert_eq!(status, 200);
         assert_eq!(body["startedEventId"], 0);
+    }
+
+    // ---------------------------------------------------------------
+    // moto master d3b9faed (#10262) — DescribeWorkflowExecution /
+    // GetWorkflowExecutionHistory validate the required workflow
+    // execution parameters before touching the domain. Missing/null
+    // members answer 400 ValidationException with moto's exact
+    // composite message; junk-typed members answer 400
+    // SerializationException. (Moto 5.2.4 crashed with a 500 on all of
+    // these — the pre-fix behavior the twin had mirrored as
+    // UnknownResourceFault fall-through.)
+    // ---------------------------------------------------------------
+
+    fn error_code(body: &Value) -> String {
+        body.get("__type")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .rsplit('#')
+            .next()
+            .unwrap_or_default()
+            .to_string()
+    }
+
+    #[test]
+    fn workflow_execution_invalid_parameters() {
+        let account = next_account();
+        for operation in ["DescribeWorkflowExecution", "GetWorkflowExecutionHistory"] {
+            // invalid-type members answer SerializationException.
+            let (status, body) = send(
+                account,
+                operation,
+                json!({ "domain": 123, "execution": { "runId": "r", "workflowId": "w" } }),
+            );
+            assert_eq!(status, 400, "got {body}");
+            assert_eq!(error_code(&body), "SerializationException", "got {body}");
+
+            let (status, body) = send(
+                account,
+                operation,
+                json!({ "domain": "d", "execution": { "runId": 123, "workflowId": "w" } }),
+            );
+            assert_eq!(status, 400);
+            assert_eq!(error_code(&body), "SerializationException", "got {body}");
+
+            let (status, body) = send(
+                account,
+                operation,
+                json!({ "domain": "d", "execution": { "runId": "r", "workflowId": [] } }),
+            );
+            assert_eq!(status, 400);
+            assert_eq!(error_code(&body), "SerializationException", "got {body}");
+        }
+    }
+
+    #[test]
+    fn workflow_execution_missing_or_null_members() {
+        let account = next_account();
+        for operation in ["DescribeWorkflowExecution", "GetWorkflowExecutionHistory"] {
+            // no parameters: 'execution' and 'domain' both null.
+            let (status, body) = send(account, operation, json!({}));
+            assert_eq!(status, 400, "got {body}");
+            assert_eq!(error_code(&body), "ValidationException", "got {body}");
+            assert_eq!(
+                body["message"],
+                "2 validation errors detected: Value null at 'execution' failed to satisfy constraint: Member must not be null; Value null at 'domain' failed to satisfy constraint: Member must not be null",
+                "got {body}"
+            );
+
+            // domain only: 'execution' null.
+            let (status, body) = send(
+                account,
+                operation,
+                json!({ "domain": "test-domain" }),
+            );
+            assert_eq!(status, 400);
+            assert_eq!(error_code(&body), "ValidationException");
+            assert_eq!(
+                body["message"],
+                "1 validation error detected: Value null at 'execution' failed to satisfy constraint: Member must not be null",
+                "got {body}"
+            );
+
+            // empty execution object: runId/workflowId null.
+            let (status, body) = send(
+                account,
+                operation,
+                json!({ "domain": "test-domain", "execution": {} }),
+            );
+            assert_eq!(status, 400);
+            assert_eq!(error_code(&body), "ValidationException");
+            assert_eq!(
+                body["message"],
+                "2 validation errors detected: Value null at 'execution.runId' failed to satisfy constraint: Member must not be null; Value null at 'execution.workflowId' failed to satisfy constraint: Member must not be null",
+                "got {body}"
+            );
+
+            // A well-formed request still reaches the domain lookup — the
+            // unknown domain fault comes after validation.
+            let (status, body) = send(
+                account,
+                operation,
+                json!({ "domain": "no-such-domain", "execution": { "runId": "r", "workflowId": "w" } }),
+            );
+            assert_eq!(status, 400);
+            assert_eq!(error_code(&body), "UnknownResourceFault", "got {body}");
+        }
     }
 }
