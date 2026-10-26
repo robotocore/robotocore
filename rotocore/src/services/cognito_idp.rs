@@ -71,6 +71,17 @@ struct State {
 
 const COGNITO_TOTP_MFA_SECRET: &str = "asdfasdfasdf";
 
+/// PASSWORD_VERIFIER challenge_responses required by Cognito (moto PR
+/// getmoto/moto#10243, fixing #7562). Signature crypto is intentionally not
+/// verified — AWS has no public spec, and moto only checks that these fields
+/// are present and that USERNAME / SECRET_BLOCK match the session.
+const PASSWORD_VERIFIER_REQUIRED_RESPONSES: [&str; 4] = [
+    "USERNAME",
+    "PASSWORD_CLAIM_SIGNATURE",
+    "PASSWORD_CLAIM_SECRET_BLOCK",
+    "TIMESTAMP",
+];
+
 /// moto keeps failed-session lookups case-exact: raise with the raw value.
 fn session_not_found(value: &str) -> Response {
     err("ResourceNotFoundException", value)
@@ -1067,9 +1078,162 @@ fn admin_initiate_auth(s: &mut State, p: &Value, _region: &str) -> Response {
     )
 }
 
+/// moto PR getmoto/moto#10243 `_resolve_password_verifier_session`: every
+/// required response must be present (empty counts as missing), the
+/// PASSWORD_CLAIM_SECRET_BLOCK becomes the session handle, and an explicitly
+/// sent `Session` must agree with it — drivers like pycognito echo the
+/// initiate_auth session under both keys.
+fn password_verifier_session(session: &str, p: &Value) -> Result<String, Response> {
+    let responses = &p["ChallengeResponses"];
+    for field in PASSWORD_VERIFIER_REQUIRED_RESPONSES {
+        if responses[field].as_str().unwrap_or_default().is_empty() {
+            return Err(err(
+                "InvalidParameterException",
+                &format!("Missing required parameter {field}"),
+            ));
+        }
+    }
+    let secret_block = responses["PASSWORD_CLAIM_SECRET_BLOCK"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    if !session.is_empty() && secret_block != session {
+        return Err(err(
+            "NotAuthorizedException",
+            "Incorrect username or password.",
+        ));
+    }
+    Ok(secret_block)
+}
+
+/// moto's `_get_user`: look up by a UsernameAttributes alias first, then the
+/// raw username key.
+fn pool_get_user<'a>(pl: &'a Pool, name: &str) -> Option<&'a Value> {
+    let attr_types: Vec<&str> = pl.pool["UsernameAttributes"]
+        .as_array()
+        .map(|a| a.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    if !name.is_empty() && !attr_types.is_empty() {
+        for (_, user) in pl.users.iter() {
+            if attr_types.iter().any(|t| attribute_value(user, t) == name) {
+                return Some(user);
+            }
+        }
+    }
+    pl.users.iter().find(|(k, _)| k == name).map(|(_, v)| v)
+}
+
+/// moto PR getmoto/moto#10243 `_password_verifier_username_matches`: the
+/// challenge USERNAME must describe the very user the session was started
+/// for — equal to the session username, to its internal username / sub, or
+/// resolving to the same pool user through a UsernameAttributes alias.
+fn password_verifier_username_matches(
+    pl: &Pool,
+    session_username: &str,
+    challenge_username: &str,
+) -> bool {
+    if challenge_username.is_empty() {
+        return false;
+    }
+    if challenge_username == session_username {
+        return true;
+    }
+    let Some(session_user) = pool_get_user(pl, session_username) else {
+        return false;
+    };
+    if challenge_username == session_user["Username"].as_str().unwrap_or_default()
+        || challenge_username == session_user["UserSub"].as_str().unwrap_or_default()
+    {
+        return true;
+    }
+    pool_get_user(pl, challenge_username)
+        .is_some_and(|challenge_user| std::ptr::eq(challenge_user, session_user))
+}
+
+/// moto's respond_to_auth_challenge PASSWORD_VERIFIER branch after the PR's
+/// binding checks: a FORCE_CHANGE_PASSWORD user is re-challenged on the same
+/// session, everyone else is logged in — moto's `_log_user_in`. The MFA arms
+/// (MFA_SETUP / SOFTWARE_TOKEN_MFA / SMS_MFA) answer straight login the way
+/// the twin's other auth flows do, since they were never ported.
+fn password_verifier_finish(
+    s: &mut State,
+    p: &Value,
+    session: &str,
+    session_username: &str,
+    pool_id: &str,
+    client_id: &str,
+) -> Response {
+    let username = p["ChallengeResponses"]["USERNAME"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    let (force_change, sub) = {
+        let Some(pl) = pool_ref(s, pool_id) else {
+            return session_not_found(pool_id);
+        };
+        if !password_verifier_username_matches(pl, session_username, &username) {
+            return err("NotAuthorizedException", "Incorrect username or password.");
+        }
+        // moto: `user = self.admin_get_user(...)` — a session whose user has
+        // since vanished fails with admin_get_user's fixed text.
+        let Some(user) = pool_get_user(pl, &username) else {
+            return user_missing(&username);
+        };
+        (
+            user["UserStatus"].as_str() == Some("FORCE_CHANGE_PASSWORD"),
+            user["UserSub"].as_str().unwrap_or_default().to_string(),
+        )
+    };
+    if force_change {
+        // moto re-challenges with the same session for password setup.
+        return ok_json(&json!({
+            "ChallengeName": "NEW_PASSWORD_REQUIRED",
+            "ChallengeParameters": { "USERNAME": username },
+            "Session": session,
+        }));
+    }
+    let issuer = format!(
+        "https://cognito-idp.{}.amazonaws.com/{pool_id}",
+        pool_region(pool_id)
+    );
+    session_delete(s, session);
+    let tokens = issue_tokens(&issuer, &sub, client_id, &username);
+    track_refresh_token(s, pool_id, &username, &tokens);
+    // moto's `_log_user_in` answers with the bare AuthenticationResult.
+    ok_json(&json!({ "AuthenticationResult": tokens }))
+}
+
 fn respond_to_auth_challenge(s: &mut State, p: &Value, _region: &str) -> Response {
-    let challenge = p["ChallengeName"].as_str().unwrap_or_default();
+    let challenge = p["ChallengeName"].as_str().unwrap_or_default().to_string();
     let client_id = p["ClientId"].as_str().unwrap_or_default().to_string();
+    if challenge == "PASSWORD_VERIFIER" {
+        // moto routes the whole PASSWORD_VERIFIER response through the session
+        // store (PR getmoto/moto#10243): required response fields, the secret
+        // block identifies the session, and the store is consulted before the
+        // session pool's client. Same semantics as the admin flavour below.
+        let session = p["Session"].as_str().unwrap_or_default().to_string();
+        let secret_block = match password_verifier_session(&session, p) {
+            Ok(secret_block) => secret_block,
+            Err(e) => return e,
+        };
+        let Some((session_username, pool_id)) = session_lookup(s, &secret_block) else {
+            return session_not_found(&secret_block);
+        };
+        if !pool_ref(s, &pool_id).is_some_and(|pl| pl.clients.iter().any(|(k, _)| *k == client_id))
+        {
+            // moto: `raise ResourceNotFoundError(client_id)` from the session's pool.
+            return session_not_found(&client_id);
+        }
+        return password_verifier_finish(
+            s,
+            p,
+            &secret_block,
+            &session_username,
+            &pool_id,
+            &client_id,
+        );
+    }
+    let challenge = challenge.as_str();
     if challenge != "NEW_PASSWORD_REQUIRED" {
         return err(
             "InvalidParameterException",
@@ -1115,17 +1279,21 @@ fn respond_to_auth_challenge(s: &mut State, p: &Value, _region: &str) -> Respons
     }))
 }
 
-/// The admin flavour delegates to the public handler the way moto's backend
-/// does (`models.py admin_respond_to_auth_challenge -> respond_to_auth_challenge`),
-/// with the started-session bookkeeping the twin tracks.
+/// moto answers `admin_respond_to_auth_challenge` by delegating to
+/// `respond_to_auth_challenge`; the twin mirrors those semantics with the same
+/// PASSWORD_VERIFIER binding helpers, but keeps the admin op's session lookup
+/// ahead of the challenge arms the way its existing tests pin.
 fn admin_respond_to_auth_challenge(s: &mut State, p: &Value) -> Response {
     let mut session = p["Session"].as_str().unwrap_or_default().to_string();
     let challenge_name = p["ChallengeName"].as_str().unwrap_or_default().to_string();
     if challenge_name == "PASSWORD_VERIFIER" {
-        session = p["ChallengeResponses"]["PASSWORD_CLAIM_SECRET_BLOCK"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string();
+        // PR getmoto/moto#10243: the challenge is bound to the initiate_auth
+        // session — required responses first, then the secret block, which
+        // doubles as the session id; an explicit Session must agree with it.
+        session = match password_verifier_session(&session, p) {
+            Ok(secret_block) => secret_block,
+            Err(e) => return e,
+        };
     }
     let Some((username, pool_id)) = session_lookup(s, &session) else {
         return session_not_found(&session);
@@ -1178,6 +1346,12 @@ fn admin_respond_to_auth_challenge(s: &mut State, p: &Value) -> Response {
                 "AuthenticationResult": tokens,
                 "ChallengeParameters": {},
             }))
+        }
+        // moto's respond_to_auth_challenge PASSWORD_VERIFIER branch, shared by
+        // the admin flavour: bind USERNAME to the session's user, then
+        // re-challenge FORCE_CHANGE_PASSWORD users or log the rest in.
+        "PASSWORD_VERIFIER" => {
+            password_verifier_finish(s, p, &session, &username, &pool_id, &client_id)
         }
         // moto's root fallback for unknown challenges: `return {}`.
         _ => ok_json(&json!({})),
@@ -4235,5 +4409,210 @@ mod tests {
             body(&dispatch(&r).unwrap())["__type"],
             "InvalidParameterException"
         );
+    }
+
+    // --- PASSWORD_VERIFIER binding (moto PR getmoto/moto#10243, fixing #7562)
+    //
+    // The twin has no SRP initiate, so PASSWORD_VERIFIER sessions are minted
+    // the way its other auth flows mint them: a FORCE_CHANGE_PASSWORD user
+    // signs in and the session is kept for RespondToAuthChallenge. moto has no
+    // real SRP either — the signature is never checked, only the binding.
+
+    /// Pool + client + users in FORCE_CHANGE_PASSWORD (the state
+    /// AdminCreateUser leaves them in before a challenge is answered).
+    fn password_verifier_setup(acct: u64, usernames: &[&str]) -> (String, String) {
+        let pool_id = make_pool(acct);
+        let mut r = req(
+            "CreateUserPoolClient",
+            json!({"UserPoolId": &pool_id, "ClientName": "c"}),
+        );
+        r.account = acct;
+        let client_id = body(&dispatch(&r).unwrap())["UserPoolClient"]["ClientId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        for username in usernames {
+            let mut r = req(
+                "AdminCreateUser",
+                json!({
+                    "UserPoolId": &pool_id, "Username": username,
+                    "TemporaryPassword": "TempPass1!", "MessageAction": "SUPPRESS",
+                }),
+            );
+            r.account = acct;
+            assert_eq!(dispatch(&r).unwrap().status, 200, "{username}");
+        }
+        (pool_id, client_id)
+    }
+
+    fn initiate_verifier_session(
+        acct: u64,
+        pool_id: &str,
+        client_id: &str,
+        username: &str,
+    ) -> String {
+        let mut r = req(
+            "AdminInitiateAuth",
+            json!({
+                "UserPoolId": &pool_id, "ClientId": &client_id,
+                "AuthFlow": "ADMIN_USER_PASSWORD_AUTH",
+                "AuthParameters": {"USERNAME": username, "PASSWORD": "TempPass1!"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["ChallengeName"], "NEW_PASSWORD_REQUIRED", "{b}");
+        b["Session"].as_str().unwrap().to_string()
+    }
+
+    fn verifier_responses(session: &str, username: &str) -> Value {
+        json!({
+            "USERNAME": username,
+            "PASSWORD_CLAIM_SIGNATURE": "dummy-signature",
+            "PASSWORD_CLAIM_SECRET_BLOCK": session,
+            "TIMESTAMP": "Mon Jan 1 00:00:00 UTC 2024",
+        })
+    }
+
+    fn respond_password_verifier(
+        acct: u64,
+        op: &str,
+        pool_id: &str,
+        client_id: &str,
+        session: &str,
+        responses: Value,
+    ) -> Value {
+        let mut p = json!({
+            "ClientId": &client_id,
+            "ChallengeName": "PASSWORD_VERIFIER",
+            "Session": session,
+            "ChallengeResponses": responses,
+        });
+        if op == "AdminRespondToAuthChallenge" {
+            p["UserPoolId"] = json!(pool_id);
+        }
+        let mut r = req(op, p);
+        r.account = acct;
+        body(&dispatch(&r).unwrap())
+    }
+
+    #[test]
+    fn cognito_password_verifier_wrong_user_rejected() {
+        let acct = scope();
+        let (pool_id, client_id) = password_verifier_setup(acct, &["user-one", "user-two"]);
+        let session = initiate_verifier_session(acct, &pool_id, &client_id, "user-one");
+
+        // A different pool user's USERNAME must not complete the auth — the
+        // exact swap getmoto/moto#7562 reported, on both flavours.
+        for op in ["RespondToAuthChallenge", "AdminRespondToAuthChallenge"] {
+            let b = respond_password_verifier(
+                acct,
+                op,
+                &pool_id,
+                &client_id,
+                &session,
+                verifier_responses(&session, "user-two"),
+            );
+            assert_eq!(b["__type"], "NotAuthorizedException", "{op}: {b}");
+            assert_eq!(b["message"], "Incorrect username or password.");
+        }
+
+        // The failed attempt consumed nothing: swap again, same error.
+        let b = respond_password_verifier(
+            acct,
+            "RespondToAuthChallenge",
+            &pool_id,
+            &client_id,
+            &session,
+            verifier_responses(&session, "user-two"),
+        );
+        assert_eq!(b["__type"], "NotAuthorizedException", "{b}");
+
+        // Unknown sessions keep moto's `ResourceNotFoundError(session)`.
+        let unknown = "unknown-session-of-forty-characters-xxxxxxxxx";
+        let b = respond_password_verifier(
+            acct,
+            "RespondToAuthChallenge",
+            &pool_id,
+            &client_id,
+            unknown,
+            verifier_responses(unknown, "user-one"),
+        );
+        assert_eq!(b["__type"], "ResourceNotFoundException", "{b}");
+        assert_eq!(b["message"], unknown);
+    }
+
+    #[test]
+    fn cognito_password_verifier_bound_user_accepted() {
+        let acct = scope();
+        let (pool_id, client_id) = password_verifier_setup(acct, &["user-one"]);
+        let session = initiate_verifier_session(acct, &pool_id, &client_id, "user-one");
+
+        // Dummy claim signature — accepted, SRP crypto was never the gate.
+        let b = respond_password_verifier(
+            acct,
+            "RespondToAuthChallenge",
+            &pool_id,
+            &client_id,
+            &session,
+            verifier_responses(&session, "user-one"),
+        );
+        assert_eq!(b["ChallengeName"], "NEW_PASSWORD_REQUIRED", "{b}");
+        assert_eq!(b["Session"].as_str(), Some(session.as_str()));
+        assert_eq!(b["ChallengeParameters"]["USERNAME"], "user-one");
+
+        // The session kept working: finish with the real challenge.
+        let mut r = req(
+            "AdminRespondToAuthChallenge",
+            json!({
+                "UserPoolId": &pool_id, "ClientId": &client_id,
+                "ChallengeName": "NEW_PASSWORD_REQUIRED",
+                "Session": &session,
+                "ChallengeResponses": {"USERNAME": "user-one", "NEW_PASSWORD": "NewPerm1!"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert!(b["AuthenticationResult"]["AccessToken"].is_string(), "{b}");
+    }
+
+    #[test]
+    fn cognito_password_verifier_missing_credentials_rejected() {
+        let acct = scope();
+        let (pool_id, client_id) = password_verifier_setup(acct, &["user-one"]);
+        let session = initiate_verifier_session(acct, &pool_id, &client_id, "user-one");
+        for field in PASSWORD_VERIFIER_REQUIRED_RESPONSES {
+            let mut responses = verifier_responses(&session, "user-one");
+            if let Value::Object(responses) = &mut responses {
+                responses.remove(field);
+            }
+            let b = respond_password_verifier(
+                acct,
+                "RespondToAuthChallenge",
+                &pool_id,
+                &client_id,
+                &session,
+                responses,
+            );
+            assert_eq!(b["__type"], "InvalidParameterException", "{field}: {b}");
+            assert_eq!(b["message"], format!("Missing required parameter {field}"));
+        }
+    }
+
+    #[test]
+    fn cognito_password_verifier_mismatched_secret_block_rejected() {
+        let acct = scope();
+        let (pool_id, client_id) = password_verifier_setup(acct, &["user-one"]);
+        let session = initiate_verifier_session(acct, &pool_id, &client_id, "user-one");
+        let b = respond_password_verifier(
+            acct,
+            "RespondToAuthChallenge",
+            &pool_id,
+            &client_id,
+            &session,
+            verifier_responses("a-strangers-secret-block-acting-as-a-session", "user-one"),
+        );
+        assert_eq!(b["__type"], "NotAuthorizedException", "{b}");
+        assert_eq!(b["message"], "Incorrect username or password.");
     }
 }
