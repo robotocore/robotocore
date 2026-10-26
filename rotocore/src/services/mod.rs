@@ -27,6 +27,7 @@ pub mod batch;
 pub mod bedrock;
 pub mod bedrock_runtime;
 pub mod bedrockagent;
+pub mod bedrockagentcore;
 pub mod budgets;
 pub mod ce;
 pub mod clouddirectory;
@@ -173,6 +174,12 @@ pub fn dispatch(req: &Request) -> Option<Response> {
             .or_else(|| bedrock::dispatch(req)),
         "bedrock-agent" => bedrockagent::dispatch(req),
         "bedrock-runtime" => bedrock_runtime::dispatch(req),
+        // AgentCore: both botocore models sign with scope `bedrock-agentcore`,
+        // so the router delivers every wire request on one arm; the module
+        // splits the (disjoint) URI families into control/data handlers. The
+        // explicit `-control` arm keeps the registered control-plane service
+        // label native for introspection.
+        "bedrock-agentcore" | "bedrock-agentcore-control" => bedrockagentcore::dispatch(req),
         "budgets" => budgets::dispatch(req),
         "ce" => ce::dispatch(req),
         "cloudformation" => Some(self::cloudformation::dispatch(req)),
@@ -363,6 +370,8 @@ pub fn handles_service(service: &str) -> bool {
             | "batch"
             | "bedrock"
             | "bedrock-agent"
+            | "bedrock-agentcore"
+            | "bedrock-agentcore-control"
             | "bedrock-runtime"
             | "bedrockagent"
             | "budgets"

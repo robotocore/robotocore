@@ -16,6 +16,30 @@ registered services answer natively with moto-fidelity recorded per op
 (9,893 working of 10,268 botocore ops; 340 denies — every deny is a
 recorded decision in `tooling/surface-absence.json`).
 
+### Bedrock AgentCore (issue #371, 2026-10-26)
+
+- **port/iss-agentcore** — Amazon Bedrock AgentCore served natively for the
+  first time: `bedrock-agentcore-control` (code interpreters, agent
+  runtimes + versions + endpoints, gateways + targets, memories with
+  strategy CRUD, tags) and `bedrock-agentcore` (memory events CRUD with
+  moto's exact validation messages, code-interpreter session
+  Start/Get/Stop/List, derived ListActors/ListSessions) registered as the
+  159th and 160th native services. Both botocore models sign with scope
+  `bedrock-agentcore`, so one rotocore backend splits the (disjoint) URI
+  families; the introspection table carries both labels.
+- **Exceeds moto**: moto 5.2.4 implements no code-interpreter surface at
+  all (every `*CodeInterpreter*` op answers its 501); the twin serves the
+  full control CRUD and the session family, including the lazily-seeded
+  pre-provisioned SYSTEM interpreter `aws.codeinterpreter.v1` (undeletable).
+  Runtime/gateway/memory CRUD mirrors moto's pinned backend shapes, ids and
+  ManagedState transitions 1:1.
+- **Genuinely absent**: `InvokeCodeInterpreter` (its return shape is an
+  event stream — `CodeInterpreterStreamOutput`, unbidirectional-servable
+  here exactly as in moto), the memory-record and extraction-job families,
+  browser sessions, runtime invocations, workload tokens and the
+  evaluators/policies/identity-provider surfaces — all recorded as
+  modeled 501 denies in the probe corpora.
+
 ### Upstream-parity wave (2026-10-26)
 
 - **port/up-ec2** — `RunInstances` launches `MaxCount` instances instead
