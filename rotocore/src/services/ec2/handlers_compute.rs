@@ -182,7 +182,11 @@ fn run_instances(req: &Request, params: &P) -> Response {
     let image_id = params.str("ImageId");
     let min_count = params.i64("MinCount").unwrap_or(1).max(1);
     let max_count = params.i64("MaxCount").unwrap_or(min_count).max(1);
-    let count = min_count.min(max_count);
+    // Real AWS attempts MaxCount instances and only shrinks to MinCount on
+    // insufficient capacity; without capacity simulation we always launch
+    // MaxCount (moto's MinCount-only bias is a documented bug, see
+    // getmoto/moto#10215).
+    let count = max_count;
     let instance_type = params
         .get("InstanceType")
         .map(|s| s.to_string())

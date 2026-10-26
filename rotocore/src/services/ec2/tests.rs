@@ -941,3 +941,23 @@ fn wave11_tgw_reject_and_replace_route() {
     assert!(search.contains("10.1.0.0/16"), "{search}");
     assert!(!search.contains(">10.0.0.0/8<"), "{search}");
 }
+
+#[test]
+fn run_instances_maxcount_launches_n() {
+    // Real AWS attempts MaxCount instances; MinCount is only the fallback when
+    // MaxCount is omitted (moto launches just MinCount — getmoto/moto#10215).
+    // Each RunInstances response contains one <instanceId> per launched
+    // instance, so counting them asserts the launched count directly.
+    let launch = |extra: &str| {
+        let body = format!("Action=RunInstances&ImageId=ami-12c6146b&InstanceType=t2.micro{extra}");
+        let resp = super::dispatch(&req("RunInstances", &body));
+        assert_eq!(resp.status, 200, "run_instances must launch: {resp:?}");
+        let text = String::from_utf8(resp.body).unwrap();
+        text.matches("<instanceId>").count()
+    };
+    // MaxCount wins over MinCount (the real-AWS behavior this pins).
+    assert_eq!(launch("&MinCount=1&MaxCount=3"), 3);
+    // No MaxCount: fall back to MinCount.
+    assert_eq!(launch("&MinCount=1"), 1);
+    assert_eq!(launch("&MinCount=3"), 3);
+}
