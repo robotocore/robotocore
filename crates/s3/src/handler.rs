@@ -1991,13 +1991,14 @@ impl S3Handler {
                 if !k.starts_with('$') {
                     return Ok(false);
                 }
-                // An empty starts-with value accepts anything the field holds.
-                if bound.is_empty() {
-                    return Ok(true);
-                }
-                Ok(form
-                    .get(k.trim_start_matches('$'))
-                    .is_some_and(|v| v.starts_with(bound)))
+                // An empty starts-with value accepts anything the field
+                // holds — but the field itself must exist: an absent field
+                // is a policy condition failure (AWS/moto 403 AccessDenied
+                // with the Policy-Condition-failed message).
+                let Some(value) = form.get(k.trim_start_matches('$')) else {
+                    return Ok(false);
+                };
+                Ok(bound.is_empty() || value.starts_with(bound))
             }
             _ => Ok(false),
         }
@@ -6042,6 +6043,85 @@ mod tests {
         assert!(
             body.contains(r#"Invalid according to Policy: Policy Condition failed: ["eq","$key","expected.txt"]"#),
             "body: {body}"
+        );
+    }
+
+    #[test]
+    fn post_object_empty_starts_with_requires_field() {
+        // An empty starts-with bound accepts any VALUE of the field, but the
+        // field itself must be present: a policy `["starts-with", "$key", ""]`
+        // with a form that carries no key field (the agent posts through the
+        // URL-key fallback) fails the condition with 403 AccessDenied like
+        // real AWS/moto — the old shortcut returned Ok(true) for the empty
+        // bound even when the field was absent.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([["starts-with", "$key", ""]]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let mut owned = vec![("policy".to_string(), policy_b64.clone())];
+        owned.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        // No `key` form field: the object would come from the URL key.
+        let fields: Vec<(&str, &str)> = owned
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+        let resp = handler.handle(form_post_request(
+            "post-bkt",
+            Some("from-url.txt"),
+            &fields,
+            Some(("f.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(
+            resp.status,
+            403,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<Code>AccessDenied</Code>"), "body: {body}");
+        assert!(
+            body.contains(
+                r#"Invalid according to Policy: Policy Condition failed: ["starts-with","$key",""]"#
+            ),
+            "body: {body}"
+        );
+
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("from-url.txt"),
+            b"",
+        ));
+        assert_eq!(get.status, 404, "failed conditions store nothing");
+
+        // The same policy with an explicit (present) key field succeeds —
+        // the empty bound is only about value freedom once the field exists.
+        let mut with_key = vec![
+            ("key".to_string(), "signed/any.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        with_key.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &with_key,
+            Some(("g.txt", "application/octet-stream", b"2")),
+        ));
+        assert_eq!(
+            resp.status,
+            204,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
         );
     }
 
