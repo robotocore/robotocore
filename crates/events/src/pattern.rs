@@ -192,18 +192,22 @@ pub fn list_match(pattern_values: &[Value], event_value: &Value) -> bool {
 /// applies every other named filter per element of an array value.
 fn named_filter_matches(filter: &Map<String, Value>, event_value: &Value) -> bool {
     if let Some(expected) = filter.get("exists").and_then(Value::as_bool) {
-        // An `exists` leaf tests literal key presence, not JSON
-        // nullness: moto `_does_item_match_named_filter` computes
+        // An `exists` leaf tests literal flattened-key presence, not
+        // JSON nullness: moto `_does_item_match_named_filter` computes
         // `exists = item is not UNDEFINED; return exists ==
         // filter_value`, and a flattened JSON null is a present value
         // (event-ruler's exists machine likewise answers on the key,
         // not its contents). The value in hand is present by
-        // construction — `matches` routes absent keys and null-ancestor
-        // regions through `pattern_matches_undefined` and never feeds
-        // them to a leaf — so `exists: true` matches any value,
-        // explicit null included, and `exists: false` never matches at
-        // a leaf (absence is decided upstream).
-        return expected;
+        // construction — `matches` routes absent keys and null/scalar
+        // ancestors through `pattern_matches_undefined` and never feeds
+        // them to a leaf — except when `_flatten_dict` (models.py:974:
+        // `if isinstance(v, dict) and v`) dropped it: a NON-EMPTY dict
+        // value recurses into dotted sub-keys, so the exists-check path
+        // itself reads back UNDEFINED (`{"detail":{"state":{"a":1}}}`
+        // stores only `detail.state.a`). Empty `{}` is stored as a
+        // leaf, as are null/scalar/list values: all present.
+        let exists = !matches!(event_value, Value::Object(obj) if !obj.is_empty());
+        return exists == expected;
     }
     match event_value {
         Value::Array(arr) => arr.iter().any(|item| evaluate_named_filter(filter, item)),
@@ -697,6 +701,89 @@ mod tests {
         assert!(!matches_pattern(
             &json!({"detail": {"state": [{"prefix": "run"}]}}),
             &json!({"detail": "running"})
+        ));
+    }
+
+    // -- exists vs dict-valued intermediates (round-2 finding 2, MED) --------
+    //
+    // moto `_flatten_dict` (models.py:974-977) drops non-empty dict
+    // INTERMEDIATES: it recurses into them, so the leaf list only ever
+    // contains dotted leaves and the lookup at an intermediate path
+    // reads UNDEFINED (models.py:999-1000). The exists branch
+    // (models.py:1023-1025: `exists = item is not UNDEFINED`) therefore
+    // answers "absent" at that path, and exists:false mirrors it.
+    // Every outcome below is live-verified against the pinned fork.
+
+    #[test]
+    fn exists_true_sees_dict_intermediate_as_absent() {
+        let pattern = json!({"detail": {"state": [{"exists": true}]}});
+        // A non-empty dict at the exists path is flattened away — UNDEFINED.
+        assert!(!matches_pattern(
+            &pattern,
+            &json!({"detail": {"state": {"a": 1}}})
+        ));
+        // Deeper dict intermediates are dropped likewise.
+        assert!(!matches_pattern(
+            &pattern,
+            &json!({"detail": {"state": {"a": {"b": 1}}}})
+        ));
+        // The same rule at the walk's top level: `detail` itself is not a
+        // flattened key when its value is a non-empty dict.
+        assert!(!matches_pattern(
+            &json!({"detail": [{"exists": true}]}),
+            &json!({"detail": {"a": 1}})
+        ));
+    }
+
+    #[test]
+    fn exists_false_matches_dict_intermediates() {
+        let pattern = json!({"detail": {"state": [{"exists": false}]}});
+        // moto: the intermediate path is UNDEFINED, so exists:false matches.
+        assert!(matches_pattern(
+            &pattern,
+            &json!({"detail": {"state": {"a": 1}}})
+        ));
+        assert!(matches_pattern(
+            &json!({"detail": [{"exists": false}]}),
+            &json!({"detail": {"a": 1}})
+        ));
+        // Deep walk through the pattern into a dict intermediate.
+        assert!(matches_pattern(
+            &json!({"detail": {"state": {"a": [{"exists": false}]}}}),
+            &json!({"detail": {"state": {"a": {"b": 1}}}})
+        ));
+    }
+
+    #[test]
+    fn exists_treats_empty_dict_null_scalar_and_list_as_present() {
+        // models.py:974 `and v`: an EMPTY dict is NOT recursed into and is
+        // stored as a leaf — present for exists:true, matching for
+        // exists:false.
+        assert!(matches_pattern(
+            &json!({"detail": {"state": [{"exists": true}]}}),
+            &json!({"detail": {"state": {}}})
+        ));
+        assert!(!matches_pattern(
+            &json!({"detail": {"state": [{"exists": false}]}}),
+            &json!({"detail": {"state": {}}})
+        ));
+        assert!(matches_pattern(
+            &json!({"detail": [{"exists": true}]}),
+            &json!({"detail": {}})
+        ));
+        assert!(!matches_pattern(
+            &json!({"detail": [{"exists": false}]}),
+            &json!({"detail": {}})
+        ));
+        // Present leaves keep the classic exists table (models.py:1024:
+        // null/scalar/list values all read back non-UNDEFINED).
+        assert!(matches_pattern(
+            &json!({"detail": [{"exists": true}]}),
+            &json!({"detail": [1, 2]})
+        ));
+        assert!(!matches_pattern(
+            &json!({"detail": [{"exists": false}]}),
+            &json!({"detail": [1, 2]})
         ));
     }
 
