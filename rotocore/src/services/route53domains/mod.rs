@@ -426,9 +426,8 @@ fn transfer_domain(st: &mut Store, body: &Value) -> Response {
 fn parse_domain_spec(body: &Value, with_nameservers: bool) -> Result<DomainSpec<'_>, Response> {
     let Some(duration) = as_int(body, "DurationInYears") else {
         // Required member; moto crashes on `timedelta(days=365 * None)`.
-        return Err(internal_error(
-            "int() argument must be a string or a number, not 'NoneType'",
-        ));
+        // moto crashes on `timedelta(days=365 * None)` — plain werkzeug 500.
+        return Err(crate::proto::moto_crash_response());
     };
     let admin = contact_entry(body, "AdminContact")?;
     let registrant = contact_entry(body, "RegistrantContact")?;
@@ -462,7 +461,7 @@ fn parse_domain_spec(body: &Value, with_nameservers: bool) -> Result<DomainSpec<
 fn contact_entry(body: &Value, key: &str) -> Result<Value, Response> {
     let contact = match body.get(key) {
         Some(contact) if contact.is_object() => contact,
-        _ => return Err(internal_error("'NoneType' object has no attribute 'get'")),
+        _ => return Err(crate::proto::moto_crash_response()),
     };
     validate_contact(contact)?;
     Ok(contact.clone())
@@ -649,9 +648,7 @@ fn validate_filter(v: &Value) -> Result<DomainsFilter, Response> {
             Ok(x) => Some(x),
             // moto's `fromtimestamp(float(value))` ValueError.
             Err(_) => {
-                return Err(internal_error(
-                    "ValueError: could not convert string to float",
-                ))
+                return Err(crate::proto::moto_crash_response());
             }
         }
     } else {
@@ -863,7 +860,7 @@ fn update_domain_nameservers(st: &mut Store, body: &Value) -> Response {
     }
     let Some(nameservers) = body.get("Nameservers").and_then(Value::as_array) else {
         // Required member; moto crashes on `len(None)`.
-        return internal_error("object of type 'NoneType' has no len()");
+        return crate::proto::moto_crash_response();
     };
     if nameservers.is_empty() {
         errors.push("Must supply nameservers".to_string());
@@ -924,7 +921,7 @@ fn check_domain_availability(st: &mut Store, body: &Value) -> Response {
 fn get_domain_suggestions(body: &Value) -> Response {
     let Some(count) = as_int(body, "SuggestionCount") else {
         // Required member; moto's fork crashes on `len([]) >= None`.
-        return internal_error("'>=' not supported between instances of 'int' and 'NoneType'");
+        return crate::proto::moto_crash_response();
     };
     let base = as_str(body, "DomainName").split('.').next().unwrap_or("");
     let cap = count.max(0) as usize;
@@ -1548,10 +1545,6 @@ fn domain_limit() -> Response {
 
 fn invalid_token(message: &str) -> Response {
     json_error(400, "InvalidToken", &format!("Invalid Token: {message}"))
-}
-
-fn internal_error(message: &str) -> Response {
-    json_error(500, "InternalError", message)
 }
 
 fn as_str<'a>(body: &'a Value, key: &str) -> &'a str {

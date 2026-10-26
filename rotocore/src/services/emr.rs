@@ -2859,7 +2859,7 @@ mod tests {
         assert_eq!(status_of(&resp), 400);
         assert_eq!(body_of(&resp)["__type"], "ValidationException");
         assert_eq!(
-            body_of(&resp)["Message"],
+            body_of(&resp)["message"],
             "Only one AMI version and release label may be specified. Provided AMI: 3.0, release label: emr-6.10.0."
         );
     }
@@ -3479,7 +3479,7 @@ mod tests {
         assert_eq!(status_of(&unsupported), 400);
         assert_eq!(body_of(&unsupported)["__type"], "ValidationException");
         assert_eq!(
-            body_of(&unsupported)["Message"],
+            body_of(&unsupported)["message"],
             "Release label emr-99.99.99 is not supported."
         );
     }
