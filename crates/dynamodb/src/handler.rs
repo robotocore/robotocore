@@ -2227,12 +2227,22 @@ impl DynamoDbHandler {
             );
         }
 
-        AwsResponse::json(200, json!({ "ConsumedCapacity": [] }))
+        // moto transact_write_items answers the constant
+        // {"ConsumedCapacity": [], "ItemCollectionMetrics": {}} on success
+        // (dynamodb/responses.py:1531, live transcript 2026-10-26).
+        AwsResponse::json(
+            200,
+            json!({ "ConsumedCapacity": [], "ItemCollectionMetrics": {} }),
+        )
     }
 
     fn transact_get_items(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
         let mut responses: Vec<Value> = Vec::new();
+        // Per-table hit counts for moto's ConsumedCapacity bookkeeping, in
+        // first-hit order (dynamodb/responses.py:1452-1458).
+        let mut tables: Vec<String> = Vec::new();
+        let mut hits: HashMap<String, u32> = HashMap::new();
         let transact_items = req
             .params
             .get("TransactItems")
@@ -2301,13 +2311,47 @@ impl DynamoDbHandler {
                     None => item_json,
                 };
                 entry_resp.insert("Item".to_string(), projected);
+                // moto transact_get_items (dynamodb/responses.py:1452-1458):
+                // only rows that returned an item add capacity units (the
+                // miss branch `continue`s before the bookkeeping) —
+                // per-table counts, 2.0 units per hit.
+                if !hits.contains_key(&table_name) {
+                    tables.push(table_name.clone());
+                }
+                *hits.entry(table_name.clone()).or_insert(0) += 1;
             }
             responses.push(Value::Object(entry_resp));
         }
-        AwsResponse::json(
-            200,
-            json!({ "Responses": responses, "ConsumedCapacity": [] }),
-        )
+        // moto's ConsumedCapacity member is present only when
+        // ReturnConsumedCapacity is not "NONE" (responses.py:1466-1471;
+        // an omitted member counts as "NONE" — absent from the response),
+        // and the per-table "Table" breakdown renders only for "INDEXES"
+        // (live-transcribed moto 5.2.4, 2026-10-26).
+        let mut body = json!({ "Responses": responses });
+        let ret_consumed_capacity =
+            param_str(&req.params, "ReturnConsumedCapacity").unwrap_or("NONE");
+        if ret_consumed_capacity != "NONE" {
+            // One entry per table that had at least one returning row, in
+            // first-hit order (moto keys its python dict by table name).
+            let capacities: Vec<Value> = tables
+                .iter()
+                .map(|table_name| {
+                    let units = hits.get(table_name).copied().unwrap_or(0) as f64 * 2.0;
+                    let mut capacity = json!({
+                        "TableName": table_name,
+                        "CapacityUnits": units,
+                        "ReadCapacityUnits": units,
+                    });
+                    if ret_consumed_capacity == "INDEXES" {
+                        capacity["Table"] =
+                            json!({"CapacityUnits": units, "ReadCapacityUnits": units});
+                    }
+                    capacity
+                })
+                .collect();
+            body["ConsumedCapacity"] = Value::Array(capacities);
+        }
+        AwsResponse::json(200, body)
     }
 
     fn condition_check(&self, req: &AwsRequest) -> AwsResponse {
@@ -4775,6 +4819,106 @@ mod tests {
             .collect();
         let resp = handler.handle(make_req("TransactGetItems", json!({"TransactItems": rows})));
         assert_eq!(resp.status, 200);
+    }
+
+    // moto's transact 200 shapes (dynamodb/responses.py:1531,
+    // :1437-1471; live-transcribed moto 5.2.4, 2026-10-26):
+    //   TransactWriteItems answers the constant
+    //   {"ConsumedCapacity": [], "ItemCollectionMetrics": {}} — the empty
+    //   ItemCollectionMetrics OBJECT (never per-row entries);
+    //   TransactGetItems omits ConsumedCapacity unless
+    //   ReturnConsumedCapacity is not "NONE", one entry per table that had
+    //   at least one returning row in first-hit order, 2.0 units per hit
+    //   (missing rows contribute nothing), and the "Table" breakdown only
+    //   for "INDEXES".
+    #[test]
+    fn transact_200_shapes_item_collection_metrics_and_capacity() {
+        let handler = DynamoDbHandler::new();
+        for table in ["shapeA", "shapeB"] {
+            handler.handle(make_req(
+                "CreateTable",
+                json!({
+                    "TableName": table,
+                    "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                    "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                    "BillingMode": "PAY_PER_REQUEST"
+                }),
+            ));
+        }
+        handler.handle(make_req(
+            "PutItem",
+            json!({"TableName": "shapeA", "Item": {"pk": {"S": "a1"}, "v": {"N": "1"}}}),
+        ));
+        handler.handle(make_req(
+            "PutItem",
+            json!({"TableName": "shapeB", "Item": {"pk": {"S": "b1"}, "v": {"N": "2"}}}),
+        ));
+
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "shapeA", "Item": {"pk": {"S": "w1"}, "v": {"S": "x"}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 200);
+        assert_eq!(
+            resp.body,
+            json!({"ConsumedCapacity": [], "ItemCollectionMetrics": {}}).to_string()
+        );
+
+        // Omitted ReturnConsumedCapacity: no ConsumedCapacity member at
+        // all — hit row and miss row render {Item}/{None}.
+        let resp = handler.handle(make_req(
+            "TransactGetItems",
+            json!({"TransactItems": [
+                {"Get": {"TableName": "shapeA", "Key": {"pk": {"S": "a1"}}}},
+                {"Get": {"TableName": "shapeA", "Key": {"pk": {"S": "miss"}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["Responses"],
+            json!([{"Item": {"pk": {"S": "a1"}, "v": {"N": "1"}}}, {}])
+        );
+        assert!(body.get("ConsumedCapacity").is_none());
+
+        // TOTAL: one entry for the hit table; 2.0 units per hit.
+        let resp = handler.handle(make_req(
+            "TransactGetItems",
+            json!({"TransactItems": [
+                {"Get": {"TableName": "shapeA", "Key": {"pk": {"S": "a1"}}}},
+                {"Get": {"TableName": "shapeA", "Key": {"pk": {"S": "miss"}}}}
+            ], "ReturnConsumedCapacity": "TOTAL"}),
+        ));
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["ConsumedCapacity"],
+            json!([{"TableName": "shapeA", "CapacityUnits": 2.0, "ReadCapacityUnits": 2.0}])
+        );
+
+        // INDEXES, two tables, repeat hit plus miss: per-table
+        // aggregation (shapeB twice = 4.0; the shapeB miss adds nothing)
+        // in first-hit order, each with the "Table" breakdown.
+        let resp = handler.handle(make_req(
+            "TransactGetItems",
+            json!({"TransactItems": [
+                {"Get": {"TableName": "shapeA", "Key": {"pk": {"S": "a1"}}}},
+                {"Get": {"TableName": "shapeB", "Key": {"pk": {"S": "b1"}}}},
+                {"Get": {"TableName": "shapeB", "Key": {"pk": {"S": "b1"}}}},
+                {"Get": {"TableName": "shapeB", "Key": {"pk": {"S": "miss"}}}}
+            ], "ReturnConsumedCapacity": "INDEXES"}),
+        ));
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["ConsumedCapacity"],
+            json!([
+                {"TableName": "shapeA", "CapacityUnits": 2.0, "ReadCapacityUnits": 2.0,
+                 "Table": {"CapacityUnits": 2.0, "ReadCapacityUnits": 2.0}},
+                {"TableName": "shapeB", "CapacityUnits": 4.0, "ReadCapacityUnits": 4.0,
+                 "Table": {"CapacityUnits": 4.0, "ReadCapacityUnits": 4.0}}
+            ])
+        );
     }
 
     // A TransactWriteItems row that parses to no operation — the zero-op
