@@ -15,6 +15,10 @@ use crate::{Request, Response};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
 use base64::Engine;
 use once_cell::sync::Lazy;
+use rsa::pkcs1v15::SigningKey as RsaSigningKey;
+use rsa::sha2::Sha256;
+use rsa::signature::{SignatureEncoding, Signer};
+use rsa::traits::PublicKeyParts;
 use serde_json::{json, Map, Value};
 
 #[derive(Default)]
@@ -53,6 +57,17 @@ struct Pool {
     client_secrets: Map<String, Value>,
     /// Firehose/CloudWatch log delivery configuration for this pool.
     log_config: Option<Value>,
+    /// RS256 signing key minted once per pool at creation (issue #347): the
+    /// JWTs the pool issues carry `kid = signing_kid` and are signed with
+    /// this key, and the pool-scoped JWKS routes advertise the matching
+    /// public key, so a stock verifier validates the twin's tokens. Not
+    /// snapshot-serialized: rotocore service slots are process-local by
+    /// design (they expose no serde surface at all), so every piece of
+    /// cognito state — pools, users, tokens — ends at restart, and the
+    /// signing key ends with it like all the rest.
+    signing_key: Option<rsa::RsaPrivateKey>,
+    /// Stable JWKS `kid` for `signing_key` (generated with the pool).
+    signing_kid: String,
 }
 
 #[derive(Default)]
@@ -317,9 +332,48 @@ fn uuid_prefix(n: usize) -> String {
     u[..n.min(u.len())].to_string()
 }
 
-/// Structural fake JWT: unsigned payload with a fake signature (matches
-/// the native provider's `_generate_jwt`, which `GetUser` decodes back).
-fn jwt(issuer: &str, sub: &str, audience: &str, token_use: &str, extra: Option<&Value>) -> String {
+/// RS256 (PKCS#1 v1.5 over SHA-256) signature of the JWT signing input,
+/// base64url-encoded — what a JWK-verified client checks.
+fn rs256_signature(key: &rsa::RsaPrivateKey, signing_input: &[u8]) -> String {
+    let signer = RsaSigningKey::<Sha256>::new(key.clone());
+    B64.encode(signer.sign(signing_input).to_bytes())
+}
+
+/// A pool's RSA-2048 keypair, minted once, at pool creation (the kms
+/// crate's `wrapping_keypair` idiom). The `kid` is a fresh identifier so
+/// verifiers resolve exactly this key from the pool's JWKS.
+fn generate_signing_key() -> (rsa::RsaPrivateKey, String) {
+    (
+        rsa::RsaPrivateKey::new(&mut rand::thread_rng(), 2048).expect("RSA keygen failed"),
+        uuid::Uuid::new_v4().to_string(),
+    )
+}
+
+/// (kid, signing key) a pool mints tokens with — `None` only for pools built
+/// outside `create_user_pool` (some tests), which keep the legacy unsigned
+/// token instead of panicking.
+fn pool_signer(pl: &Pool) -> Option<(&str, &rsa::RsaPrivateKey)> {
+    pl.signing_key
+        .as_ref()
+        .map(|key| (pl.signing_kid.as_str(), key))
+}
+
+/// Same, resolved from the shared state by pool id.
+fn state_signer<'a>(s: &'a State, pool_id: &str) -> Option<(&'a str, &'a rsa::RsaPrivateKey)> {
+    pool_ref(s, pool_id).and_then(pool_signer)
+}
+
+/// The JWT a Cognito pool issues: same claim shape the twin has always
+/// minted (sub/iss/aud/token_use/exp/iat/auth_time + extras), now
+/// RS256-signed with `kid` in the header when the pool carries a key.
+fn jwt(
+    issuer: &str,
+    sub: &str,
+    audience: &str,
+    token_use: &str,
+    extra: Option<&Value>,
+    signer: Option<(&str, &rsa::RsaPrivateKey)>,
+) -> String {
     let now = chrono::Utc::now().timestamp();
     let mut payload = json!({
         "sub": sub,
@@ -331,18 +385,30 @@ fn jwt(issuer: &str, sub: &str, audience: &str, token_use: &str, extra: Option<&
         "auth_time": now,
     });
     if let (Some(e), Some(m)) = (extra, payload.as_object_mut()) {
-        for (k, v) in e.as_object().into_iter().flatten() {
-            m.insert(k.clone(), v.clone());
+        if let Some(obj) = e.as_object() {
+            for (k, v) in obj.iter() {
+                m.insert(k.clone(), v.clone());
+            }
         }
     }
-    let enc = |d: &Value| B64.encode(serde_json::to_vec(d).unwrap_or_default());
-    let sig = B64.encode(b"fake-signature");
-    format!(
-        "{}.{}.{}",
-        enc(&json!({"alg": "RS256", "typ": "JWT"})),
-        enc(&payload),
-        sig
-    )
+    let enc = |d: &serde_json::Value| B64.encode(serde_json::to_vec(d).unwrap_or_default());
+    let encoded_payload = enc(&payload);
+    let (header, sig) = match signer {
+        Some((kid, key)) => {
+            let encoded_header = enc(&json!({"alg": "RS256", "typ": "JWT", "kid": kid}));
+            let signature = rs256_signature(
+                key,
+                format!("{encoded_header}.{encoded_payload}").as_bytes(),
+            );
+            (encoded_header, signature)
+        }
+        // Legacy structural token (pool built without a key — tests only).
+        None => (
+            enc(&json!({"alg": "RS256", "typ": "JWT"})),
+            B64.encode(b"fake-signature"),
+        ),
+    };
+    format!("{}.{}.{}", header, encoded_payload, sig)
 }
 
 /// Decode a token the way `_user_from_token` does (b64url payload).
@@ -361,9 +427,179 @@ fn token_payload(access_token: &str) -> Option<Value> {
         .and_then(|b| serde_json::from_slice(&b).ok())
 }
 
+/// The pool record wherever it lives — the well-known GETs are unsigned so
+/// they carry no account/region context (mirror of the auth ops'
+/// RegionAgnostic scan).
+fn find_pool_any_scope<'a>(
+    map: &'a std::collections::HashMap<crate::store::ScopeKey, State>,
+    pool_id: &str,
+) -> Option<&'a Pool> {
+    map.values().find_map(|st| pool_ref(st, pool_id))
+}
+
+/// The JWK entry shape moto's jwks-public.json serves (fields `alg`, `e`,
+/// `kid`, `kty`, `n`, `use`) with the twin's per-pool key instead of moto's
+/// one static dummy key. RS256 PKCS#1 v1.5 — the same algorithm the tokens
+/// above are signed with, so a stock verifier validates end to end.
+fn jwk_entry(kid: &str, key: &rsa::RsaPrivateKey) -> Value {
+    let n = rsa::RsaPublicKey::from(key).n().to_bytes_be();
+    jwk_entry_bytes(kid, &n)
+}
+
+/// JWK entry from a public key that has outlived its private half (the
+/// legacy bare-path key).
+fn jwk_entry_from_public(kid: &str, key: &rsa::RsaPublicKey) -> Value {
+    let n = key.n().to_bytes_be();
+    jwk_entry_bytes(kid, &n)
+}
+
+fn jwk_entry_bytes(kid: &str, n_be: &[u8]) -> Value {
+    json!({
+        "kty": "RSA",
+        "alg": "RS256",
+        "use": "sig",
+        "kid": kid,
+        "n": B64.encode(n_be),
+        "e": "AQAB",
+    })
+}
+
+fn plain_json_response(status: u16, body: &Value) -> Response {
+    Response::new(
+        status,
+        "application/json",
+        serde_json::to_vec(body).unwrap_or_default(),
+    )
+}
+
+/// moto (`cognitoidp/urls.py`) answers an unrouted request with werkzeug's
+/// page — the twin's unknown-pool `.well-known` route keeps that shape
+/// since it has no pool key to advertise.
+fn werkzeug_404() -> Response {
+    Response::new(
+        404,
+        "text/html; charset=utf-8",
+        "<!doctype html>\n\
+         <html lang=en>\n\
+         <title>404 Not Found</title>\n\
+         <h1>Not Found</h1>\n\
+         <p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>\n",
+    )
+}
+
+/// GET `/{pool}/.well-known/jwks.json` — the public key of the pair the
+/// pool's tokens are signed with. moto serves one static dummy key for any
+/// pool id (even nonexistent ones); the twin keys per pool, so a pool that
+/// does not exist has no key to advertise and gets moto's own route-miss
+/// 404 instead.
+fn pool_jwks_response(pl: &Pool) -> Response {
+    let Some((kid, key)) = pool_signer(pl) else {
+        return werkzeug_404();
+    };
+    plain_json_response(200, &json!({ "keys": [jwk_entry(kid, key)] }))
+}
+
+/// GET /{pool}/.well-known/openid-configuration — OIDC discovery document,
+/// mirror of moto master's (getmoto/moto#10377): the issuer equals the
+/// tokens' `iss` claim, the jwks_uri points at the host that was reached
+/// (so server-mode endpoint overrides keep working), and the capabilities
+/// are the pool's static RS256 story.
+fn pool_openid_configuration_response(req: &Request) -> Response {
+    let pool_id = req
+        .path
+        .trim_start_matches('/')
+        .split('/')
+        .next()
+        .unwrap_or("");
+    let region = pool_region(pool_id);
+    let issuer = format!("https://cognito-idp.{region}.amazonaws.com/{pool_id}");
+    let scheme = req
+        .headers
+        .get("x-forwarded-proto")
+        .cloned()
+        .unwrap_or_else(|| "http".to_string());
+    let host = req
+        .headers
+        .get("host")
+        .cloned()
+        .unwrap_or_else(|| "localhost:4566".to_string());
+    let document = json!({
+        "issuer": issuer,
+        "jwks_uri": format!("{scheme}://{host}/{pool_id}/.well-known/jwks.json"),
+        "response_types_supported": ["code", "token"],
+        "scopes_supported": ["openid", "email", "phone", "profile"],
+        "subject_types_supported": ["public"],
+        "id_token_signing_alg_values_supported": ["RS256"],
+    });
+    Response::new(
+        200,
+        "application/json",
+        serde_json::to_vec(&document).unwrap_or_default(),
+    )
+}
+
+/// Legacy bare `/.well-known/jwks.json` from the python twin: a mock key at
+/// the old address so existing clients keep finding key material. No token
+/// references it — pool tokens carry their pool's `kid`, which resolves
+/// against the pool-scoped route — so the key is generated once per process
+/// and purely diagnostic.
+fn legacy_jwks_response() -> Response {
+    static LEGACY: Lazy<rsa::RsaPublicKey> = Lazy::new(|| {
+        let (key, _) = generate_signing_key();
+        rsa::RsaPublicKey::from(&key)
+    });
+    const LEGACY_KID: &str = "robotocore-test-key-1";
+    plain_json_response(
+        200,
+        &json!({ "keys": [jwk_entry_from_public(LEGACY_KID, &LEGACY)] }),
+    )
+}
+
+/// JWKS / OIDC-discovery GETs: `None` when the path is not a well-known one
+/// so the request continues into X-Amz-Target operation dispatch.
+fn handle_well_known_get(req: &Request) -> Option<Response> {
+    let bare_jwks = req.path == "/.well-known/jwks.json";
+    let openid = req
+        .path
+        .trim_start_matches('/')
+        .ends_with("/.well-known/openid-configuration");
+    let pool_scoped_jwks = req
+        .path
+        .strip_prefix('/')
+        .and_then(|rest| rest.strip_suffix("/.well-known/jwks.json"))
+        .map(String::from);
+    if bare_jwks {
+        return Some(legacy_jwks_response());
+    }
+    if openid {
+        // moto master derives the document from the URL alone (it serves
+        // any pool id, existing or not).
+        return Some(pool_openid_configuration_response(req));
+    }
+    let pool_id = pool_scoped_jwks?;
+    let slot = state();
+    let map = slot.read();
+    let Some(pl) = find_pool_any_scope(&map, &pool_id) else {
+        // No pool, no per-pool key to advertise: moto's route-miss answer.
+        return Some(werkzeug_404());
+    };
+    Some(pool_jwks_response(pl))
+}
+
 pub fn dispatch(req: &Request) -> Option<Response> {
     if req.service != "cognito-idp" {
         return None;
+    }
+    // Unauthenticated GET routes a token verifier drives straight at the
+    // twin (issue #347): the pool-scoped OIDC discovery document and JWKS —
+    // real clients resolve the token issuer `https://cognito-idp.<region>.
+    // amazonaws.com/<pool>` onto the twin's endpoint — plus the legacy bare
+    // JWKS the python twin served. They carry no X-Amz-Target, so
+    // `operation` is empty here.
+    if req.method == "GET" {
+        if let Some(resp) = handle_well_known_get(req) {
+            return Some(resp);
+        }
     }
     let op = req.operation.as_str();
     if op.is_empty() {
@@ -372,6 +608,11 @@ pub fn dispatch(req: &Request) -> Option<Response> {
     let p = parse_json_body(&req.body);
     let region = req.region.clone();
     let acct = req.account.to_string();
+
+    // CreateUserPool's RSA keypair is generated while the state lock is NOT
+    // held — 2048-bit prime search is expensive and, under the write lock,
+    // would serialize every concurrent cognito op behind a pool creation.
+    let keygen = (req.operation == "CreateUserPool").then(generate_signing_key);
 
     let slot = state();
     let mut map = slot.write();
@@ -388,7 +629,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
     let s = map.entry(scope).or_default();
 
     match op {
-        "CreateUserPool" => Some(create_user_pool(s, &p, &region, &acct)),
+        "CreateUserPool" => Some(create_user_pool(s, &p, &region, &acct, keygen)),
         "DescribeUserPool" => Some(describe_user_pool(s, &p)),
         "DeleteUserPool" => Some(delete_user_pool(s, &p)),
         "ListUserPools" => Some(list_user_pools(s, &p)),
@@ -556,7 +797,13 @@ fn find_pool_by_client<'a>(s: &'a State, client_id: &str) -> Option<&'a Pool> {
 // User pools
 // ---------------------------------------------------------------------------
 
-fn create_user_pool(s: &mut State, p: &Value, region: &str, account: &str) -> Response {
+fn create_user_pool(
+    s: &mut State,
+    p: &Value,
+    region: &str,
+    account: &str,
+    keygen: Option<(rsa::RsaPrivateKey, String)>,
+) -> Response {
     let pool_name = p["PoolName"].as_str().unwrap_or_default();
     if pool_name.is_empty() {
         return err("InvalidParameterException", "PoolName is required.");
@@ -585,10 +832,18 @@ fn create_user_pool(s: &mut State, p: &Value, region: &str, account: &str) -> Re
             pool[key] = v.clone();
         }
     }
+    // Issue-#347: the pool's RS256 keypair is generated exactly once, at
+    // creation — later tokens sign with it and the pool-scoped JWKS route
+    // advertises the matching public key. `dispatch` pre-generates it
+    // outside the state lock; direct callers (tests) pass None and pay the
+    // keygen here.
+    let (signing_key, signing_kid) = keygen.unwrap_or_else(generate_signing_key);
     s.pools.push((
         pool_id.clone(),
         Pool {
             pool,
+            signing_key: Some(signing_key),
+            signing_kid,
             ..Default::default()
         },
     ));
@@ -957,15 +1212,24 @@ fn confirm_sign_up(s: &mut State, p: &Value, _op: &str) -> Response {
     ok_json(&json!({}))
 }
 
-fn issue_tokens(issuer: &str, sub: &str, client_id: &str, username: &str) -> Value {
+fn issue_tokens(
+    s: &State,
+    pool_id: &str,
+    issuer: &str,
+    sub: &str,
+    client_id: &str,
+    username: &str,
+) -> Value {
+    let signer = state_signer(s, pool_id);
     json!({
-        "AccessToken": jwt(issuer, sub, client_id, "access", None),
+        "AccessToken": jwt(issuer, sub, client_id, "access", None, signer),
         "IdToken": jwt(
             issuer,
             sub,
             client_id,
             "id",
             Some(&json!({ "cognito:username": username })),
+            signer,
         ),
         "RefreshToken": uuid::Uuid::new_v4().to_string(),
         "TokenType": "Bearer",
@@ -1024,7 +1288,7 @@ fn authenticate_user(
         pool_region(pool_id)
     );
     let sub = user["UserSub"].as_str().unwrap_or_default().to_string();
-    let tokens = issue_tokens(&issuer, &sub, client_id, username);
+    let tokens = issue_tokens(s, pool_id, &issuer, &sub, client_id, username);
     record_auth_event(s, pool_id, username, true);
     track_refresh_token(s, pool_id, username, &tokens);
     // moto's public USER_PASSWORD arm returns AuthenticationResult only —
@@ -1212,7 +1476,7 @@ fn admin_authenticate_user(
     record_auth_event(s, pool_id, username, true);
     let issuer = issue_tokens_issuer(pool_id);
     let sub = user["UserSub"].as_str().unwrap_or_default().to_string();
-    let tokens = issue_tokens(&issuer, &sub, client_id, username);
+    let tokens = issue_tokens(s, pool_id, &issuer, &sub, client_id, username);
     track_refresh_token(s, pool_id, username, &tokens);
     ok_json(&json!({
         "ChallengeParameters": {},
@@ -1312,13 +1576,14 @@ fn refresh_token_flow(
     };
     ok_json(&json!({
         "AuthenticationResult": {
-            "AccessToken": jwt(&issuer, &sub, client_id, "access", None),
+            "AccessToken": jwt(&issuer, &sub, client_id, "access", None, state_signer(s, pool_id)),
             "IdToken": jwt(
                 &issuer,
                 &sub,
                 client_id,
                 "id",
                 Some(&json!({ "cognito:username": username })),
+                state_signer(s, pool_id),
             ),
             "TokenType": "Bearer",
             "ExpiresIn": 3600,
@@ -1442,7 +1707,7 @@ fn password_verifier_finish(
     }
     let issuer = issue_tokens_issuer(pool_id);
     session_delete(s, session);
-    let tokens = issue_tokens(&issuer, &sub, client_id, &username);
+    let tokens = issue_tokens(s, pool_id, &issuer, &sub, client_id, &username);
     track_refresh_token(s, pool_id, &username, &tokens);
     // moto's `_log_user_in` returns both keys — ChallengeParameters {}
     // alongside the token bundle (fork models.py:1468-1497).
@@ -1535,7 +1800,7 @@ fn respond_to_auth_challenge(s: &mut State, p: &Value, _region: &str) -> Respons
     // moto: `del self.sessions[session]` before logging the user in — a
     // replay of a spent session fails with ResourceNotFoundError(session).
     session_delete(s, &session);
-    let tokens = issue_tokens(&issuer, &sub, &client_id, &username);
+    let tokens = issue_tokens(s, &pool_id, &issuer, &sub, &client_id, &username);
     track_refresh_token(s, &pool_id, &username, &tokens);
     ok_json(&json!({
         "AuthenticationResult": tokens,
@@ -1604,7 +1869,7 @@ fn admin_respond_to_auth_challenge(s: &mut State, p: &Value) -> Response {
                 (sub, issuer)
             };
             session_delete(s, &session);
-            let tokens = issue_tokens(&issuer, &sub, &client_id, &username);
+            let tokens = issue_tokens(s, &pool_id, &issuer, &sub, &client_id, &username);
             track_refresh_token(s, &pool_id, &username, &tokens);
             ok_json(&json!({
                 "AuthenticationResult": tokens,
@@ -4056,13 +4321,14 @@ fn get_tokens_from_refresh_token(s: &mut State, p: &Value) -> Response {
     );
     ok_json(&json!({
         "AuthenticationResult": {
-            "AccessToken": jwt(&issuer, &sub, &client_id, "access", None),
+            "AccessToken": jwt(&issuer, &sub, &client_id, "access", None, state_signer(s, &pool_id)),
             "IdToken": jwt(
                 &issuer,
                 &sub,
                 &client_id,
                 "id",
                 Some(&json!({ "cognito:username": username })),
+                state_signer(s, &pool_id),
             ),
             "TokenType": "Bearer",
             "ExpiresIn": 3600,
@@ -4114,6 +4380,7 @@ fn get_signing_certificate(s: &mut State, p: &Value) -> Response {
 mod tests {
     use super::*;
     use bytes::Bytes;
+    use rsa::signature::Verifier;
     use std::collections::HashMap;
 
     fn req(op: &str, body: Value) -> Request {
@@ -5668,5 +5935,226 @@ mod tests {
         r.account = acct;
         let b = body(&dispatch(&r).unwrap());
         assert!(b["AuthenticationResult"]["AccessToken"].is_string(), "{b}");
+    }
+
+    // -----------------------------------------------------------------------
+    // Pool-scoped JWKS + RS256 tokens (issue #347): a verifier that resolves
+    // the token issuer onto the twin validates the twin's tokens with the
+    // key the twin itself advertises.
+    // -----------------------------------------------------------------------
+
+    fn get_req(path: &str) -> Request {
+        Request {
+            service: "cognito-idp".into(),
+            operation: String::new(),
+            method: "GET".into(),
+            path: path.into(),
+            query_string: String::new(),
+            headers: HashMap::new(),
+            body: Bytes::new(),
+            account: 123456789012,
+            region: "us-east-1".into(),
+        }
+    }
+
+    fn fetch_jwks(path: &str) -> (u16, Value) {
+        let resp = dispatch(&get_req(path)).unwrap_or_else(|| panic!("no handler for {path}"));
+        (resp.status, body(&resp))
+    }
+
+    /// Decode a base64url JWT segment (padding-normalized); `as_json`
+    /// additionally asserts the bytes decode into a JSON value.
+    fn decode_segment(seg: &str, as_json: bool) -> Vec<u8> {
+        let padded = match seg.len() % 4 {
+            2 => format!("{seg}=="),
+            3 => format!("{seg}="),
+            _ => seg.to_string(),
+        };
+        let bytes = base64::engine::general_purpose::URL_SAFE
+            .decode(padded.as_bytes())
+            .unwrap_or_else(|e| panic!("segment: {e}"));
+        if as_json {
+            serde_json::from_slice::<Value>(&bytes).unwrap();
+        }
+        bytes
+    }
+
+    #[test]
+    fn cognito_jwks_pool_scoped() {
+        let acct = scope();
+        let pool_a = make_pool(acct);
+        let pool_b = make_pool(acct);
+
+        // Each pool advertises its own key: kid and modulus differ.
+        let (status_a, jwks_a) = fetch_jwks(&format!("/{pool_a}/.well-known/jwks.json"));
+        assert_eq!(status_a, 200);
+        let keys_a = jwks_a["keys"].as_array().unwrap();
+        assert_eq!(keys_a.len(), 1);
+        for field in ["alg", "e", "kid", "kty", "n", "use"] {
+            assert!(keys_a[0][field].is_string(), "field {field}: {jwks_a}");
+        }
+        assert_eq!(keys_a[0]["alg"], "RS256");
+        assert_eq!(keys_a[0]["kty"], "RSA");
+        assert_eq!(keys_a[0]["use"], "sig");
+        assert_eq!(keys_a[0]["e"], "AQAB");
+        let n_a = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(keys_a[0]["n"].as_str().unwrap())
+            .unwrap();
+        // RSA-2048: unpadded big-endian modulus is 256 bytes.
+        assert_eq!(n_a.len(), 256);
+        let kid_a = keys_a[0]["kid"].as_str().unwrap().to_string();
+        assert!(!kid_a.is_empty());
+
+        let (status_b, jwks_b) = fetch_jwks(&format!("/{pool_b}/.well-known/jwks.json"));
+        assert_eq!(status_b, 200);
+        let keys_b = jwks_b["keys"].as_array().unwrap();
+        assert_ne!(keys_b[0]["kid"], json!(kid_a), "per-pool kid");
+        assert_ne!(keys_b[0]["n"], keys_a[0]["n"], "per-pool modulus");
+
+        // Refetching the same pool serves the same key: the pair is minted
+        // once per pool.
+        let (_, again) = fetch_jwks(&format!("/{pool_a}/.well-known/jwks.json"));
+        assert_eq!(again["keys"][0]["kid"], json!(kid_a));
+        assert_eq!(again["keys"][0]["n"], keys_a[0]["n"]);
+
+        // OIDC discovery mirrors moto master's document: issuer equals the
+        // tokens' iss claim, jwks_uri rides the host that was reached.
+        let (status, config) = fetch_jwks(&format!("/{pool_a}/.well-known/openid-configuration"));
+        assert_eq!(status, 200);
+        assert_eq!(
+            config["issuer"],
+            json!(format!(
+                "https://cognito-idp.us-east-1.amazonaws.com/{pool_a}"
+            ))
+        );
+        assert_eq!(
+            config["jwks_uri"],
+            json!(format!(
+                "http://localhost:4566/{pool_a}/.well-known/jwks.json"
+            ))
+        );
+        assert_eq!(
+            config["id_token_signing_alg_values_supported"],
+            json!(["RS256"])
+        );
+        assert_eq!(config["response_types_supported"], json!(["code", "token"]));
+        assert_eq!(config["subject_types_supported"], json!(["public"]));
+        assert!(config["scopes_supported"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|s| s == "openid"));
+
+        // The legacy bare address keeps answering with the mock key.
+        let (status, bare) = fetch_jwks("/.well-known/jwks.json");
+        assert_eq!(status, 200);
+        assert_eq!(bare["keys"][0]["kid"], json!("robotocore-test-key-1"));
+        assert_eq!(bare["keys"][0]["alg"], json!("RS256"));
+
+        // Unknown pool: the twin has no per-pool key to advertise, so it
+        // answers moto's own route miss (werkzeug 404 page).
+        let (status, body_404) = fetch_jwks("/us-east-1_nosuchpool/.well-known/jwks.json");
+        assert_eq!(status, 404);
+        assert!(body_404["keys"].is_null(), "{body_404}");
+    }
+
+    #[test]
+    fn cognito_rs256_token_verifies_against_jwks() {
+        let acct = scope();
+        let (pool_id, client_id) = confirmed_setup(acct, "rs-user");
+        let result = login_tokens(acct, &client_id, "rs-user");
+        let tokens = &result["AuthenticationResult"];
+        let id_token = tokens["IdToken"].as_str().unwrap();
+        let access_token = tokens["AccessToken"].as_str().unwrap();
+
+        let (status, jwks) = fetch_jwks(&format!("/{pool_id}/.well-known/jwks.json"));
+        assert_eq!(status, 200);
+        let jwk = &jwks["keys"][0];
+
+        // RS256 = PKCS#1 v1.5 over SHA-256 with the served JWK public key.
+        let n_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(jwk["n"].as_str().unwrap())
+            .unwrap();
+        let e_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(jwk["e"].as_str().unwrap())
+            .unwrap();
+        let public = rsa::RsaPublicKey::new(
+            rsa::BigUint::from_bytes_be(&n_bytes),
+            rsa::BigUint::from_bytes_be(&e_bytes),
+        )
+        .unwrap();
+        let verifying = rsa::pkcs1v15::VerifyingKey::<rsa::sha2::Sha256>::new(public);
+
+        let verify = |token: &str, expected_use: &str| {
+            let segs: Vec<&str> = token.split('.').collect();
+            assert_eq!(segs.len(), 3);
+            let header: Value = serde_json::from_slice(&decode_segment(segs[0], true)).unwrap();
+            let payload: Value = serde_json::from_slice(&decode_segment(segs[1], true)).unwrap();
+            assert_eq!(header["alg"], "RS256", "{header}");
+            assert_eq!(header["typ"], json!("JWT"), "{header}");
+            assert_eq!(
+                header["kid"], jwk["kid"],
+                "token kid resolves to served key"
+            );
+            assert_eq!(payload["aud"], json!(client_id));
+            assert_eq!(payload["token_use"], expected_use);
+            assert_eq!(
+                payload["iss"],
+                json!(format!(
+                    "https://cognito-idp.us-east-1.amazonaws.com/{pool_id}"
+                ))
+            );
+            for claim in ["sub", "exp", "iat", "auth_time"] {
+                assert!(
+                    payload[claim].is_string() || payload[claim].is_i64(),
+                    "{claim} present in {payload}"
+                );
+            }
+            let signature =
+                rsa::pkcs1v15::Signature::try_from(decode_segment(segs[2], false).as_slice())
+                    .unwrap();
+            let signing_input = format!("{}.{}", segs[0], segs[1]);
+            verifying
+                .verify(signing_input.as_bytes(), &signature)
+                .expect("RS256 signature must verify against the served JWKS");
+        };
+        verify(id_token, "id");
+        verify(access_token, "access");
+
+        // The IdToken keeps the legacy claim ride-along.
+        let payload: Value =
+            serde_json::from_slice(&decode_segment(id_token.split('.').nth(1).unwrap(), false))
+                .unwrap();
+        assert_eq!(payload["cognito:username"], "rs-user");
+
+        // Refresh re-mints (public arm) stay signed with the same pool key.
+        // RS256 PKCS#1 v1.5 is deterministic and the claims ride 1s
+        // resolution, so the re-mint may be byte-identical — verify
+        // signature and kid, not textual difference.
+        let refresh = tokens["RefreshToken"].as_str().unwrap().to_string();
+        let mut r = req(
+            "InitiateAuth",
+            json!({
+                "ClientId": &client_id, "AuthFlow": "REFRESH_TOKEN_AUTH",
+                "AuthParameters": {"REFRESH_TOKEN": refresh}
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        let minted = b["AuthenticationResult"]["IdToken"].as_str().unwrap();
+        let header: Value =
+            serde_json::from_slice(&decode_segment(minted.split('.').next().unwrap(), false))
+                .unwrap();
+        assert_eq!(header["kid"], jwk["kid"]);
+        let minted_segs: Vec<&str> = minted.split('.').collect();
+        let minted_sig =
+            rsa::pkcs1v15::Signature::try_from(decode_segment(minted_segs[2], false).as_slice())
+                .unwrap();
+        verifying
+            .verify(
+                format!("{}.{}", minted_segs[0], minted_segs[1]).as_bytes(),
+                &minted_sig,
+            )
+            .expect("refresh-minted token verifies too");
     }
 }

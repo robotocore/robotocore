@@ -37,3 +37,9 @@ dynamodb = { path = "../crates/dynamodb" }
 ecs = { path = "../crates/ecs" }
 # The resourcegroupstaggingapi walker reads live SQS queue tags (moto parity).
 sqs = { path = "../crates/sqs" }
+# Cognito user-pool tokens are RS256-signed with a per-pool key that the
+# pool's own JWKS route advertises (issue #347): a verifier that fetches
+# /{pool}/.well-known/jwks.json validates the twin's tokens end to end.
+# Same `rsa` version the kms crate pins (rsa = "0.9", sha2 + getrandom).
+rand = "0.8"
+rsa = { version = "0.9", features = ["sha2", "getrandom"] }
