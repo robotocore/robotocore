@@ -54,7 +54,11 @@ pub enum QueryLanguage {
 
 impl QueryLanguage {
     /// Resolve the effective language for one state node against the
-    /// machine-level default; unknown values behave like JSONPATH.
+    /// machine-level default: a recognized (case-insensitive) tag
+    /// overrides for that state, while an absent or unrecognized tag
+    /// inherits the machine default — which itself defaults to JSONPath
+    /// (`for_machine`), so only the machine-level unknown value reads as
+    /// JSONPATH.
     pub fn for_state(obj: &Map<String, Value>, machine_default: QueryLanguage) -> QueryLanguage {
         match obj.get("QueryLanguage").and_then(|v| v.as_str()) {
             Some(s) if s.eq_ignore_ascii_case("JSONATA") => QueryLanguage::Jsonata,
@@ -3792,6 +3796,48 @@ mod tests {
         });
         let out = run(&def, json!({"kept": true})).expect("mixed languages");
         assert_eq!(out, json!({"echo": true}));
+    }
+
+    #[test]
+    fn sfn_jsonata_unknown_state_tag_inherits_machine_default() {
+        // An unrecognized per-state QueryLanguage is not a JSONPATH
+        // fallback: for_state inherits the machine default for it. A
+        // recognized tag still overrides.
+        let map = |lang: &str| json!({ "QueryLanguage": lang });
+        assert_eq!(
+            QueryLanguage::for_state(map("JSONATA_").as_object().unwrap(), QueryLanguage::Jsonata),
+            QueryLanguage::Jsonata,
+            "typo'd tag inherits the JSONata machine default"
+        );
+        assert_eq!(
+            QueryLanguage::for_state(
+                map("JSONATA_").as_object().unwrap(),
+                QueryLanguage::JsonPath
+            ),
+            QueryLanguage::JsonPath,
+            "absent-of-override inherits the given machine default"
+        );
+        assert_eq!(
+            QueryLanguage::for_state(map("JSONPATH").as_object().unwrap(), QueryLanguage::Jsonata),
+            QueryLanguage::JsonPath,
+            "a recognized tag overrides the machine default"
+        );
+        // End-to-end: a JSONATA machine whose only state carries a typo'd
+        // tag still evaluates JSONata — the Output template resolves.
+        let def = json!({
+            "QueryLanguage": "JSONATA",
+            "StartAt": "S",
+            "States": {
+                "S": {
+                    "Type": "Pass",
+                    "QueryLanguage": "JSONATA_",
+                    "Output": {"echo": "{% $states.input.kept %}"},
+                    "End": true,
+                },
+            }
+        });
+        let out = run(&def, json!({"kept": true})).expect("typo'd tag inherits JSONata");
+        assert_eq!(out, json!({"echo": true}), "got {out}");
     }
 
     #[test]
