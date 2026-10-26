@@ -590,10 +590,6 @@ fn bad_request(message: &str) -> Response {
     error(400, "BadRequestException", message)
 }
 
-fn validation(message: &str) -> Response {
-    error(400, "ValidationException", message)
-}
-
 fn version_token_mismatch() -> Response {
     conflict("Provided version token does not match the table version token.")
 }
@@ -837,7 +833,7 @@ fn find_table_triple<'a>(
 
 fn bucket_create(st: &mut State, req: &Request, p: &Value) -> Response {
     let Some(name) = param_str(p, "name").map(String::from) else {
-        return validation("name is a required parameter");
+        return bad_request("name is a required parameter");
     };
     if !table_bucket_name_is_valid(&name) {
         return invalid_bucket_name();
@@ -917,7 +913,7 @@ fn bucket_policy_get(st: &State, arn: &str) -> Response {
 
 fn bucket_policy_put(st: &mut State, arn: &str, p: &Value) -> Response {
     let Some(policy) = param_str(p, "resourcePolicy").map(String::from) else {
-        return validation("resourcePolicy is a required parameter");
+        return bad_request("resourcePolicy is a required parameter");
     };
     try_resp!(find_bucket_mut(st, arn)).policy = Some(policy);
     empty_ok()
@@ -969,7 +965,7 @@ fn bucket_encryption_get(st: &State, arn: &str) -> Response {
 
 fn bucket_encryption_put(st: &mut State, arn: &str, p: &Value) -> Response {
     let Some(config) = p.get("encryptionConfiguration") else {
-        return validation("encryptionConfiguration is a required parameter");
+        return bad_request("encryptionConfiguration is a required parameter");
     };
     try_resp!(find_bucket_mut(st, arn)).encryption_configuration = Some(config.clone());
     empty_ok()
@@ -1009,7 +1005,7 @@ fn bucket_storage_get(st: &State, arn: &str) -> Response {
 
 fn bucket_storage_put(st: &mut State, arn: &str, p: &Value) -> Response {
     let Some(config) = p.get("storageClassConfiguration") else {
-        return validation("storageClassConfiguration is a required parameter");
+        return bad_request("storageClassConfiguration is a required parameter");
     };
     try_resp!(find_bucket_mut(st, arn)).storage_class_configuration = config.clone();
     empty_ok()
@@ -1035,7 +1031,7 @@ fn bucket_replication_get(st: &State, arn: &str) -> Response {
 fn bucket_replication_put(st: &mut State, p: &Value) -> Response {
     let arn = param_str(p, "tableBucketARN").unwrap_or_default();
     let Some(configuration) = p.get("configuration") else {
-        return validation("configuration is a required parameter");
+        return bad_request("configuration is a required parameter");
     };
     let token = version_token();
     let b = try_resp!(find_bucket_mut(st, arn));
@@ -1065,7 +1061,7 @@ fn namespace_create(st: &mut State, req: &Request, p: &Value, arn: &str) -> Resp
         .and_then(Value::as_str)
         .unwrap_or_default();
     if name.is_empty() {
-        return validation("namespace is a required parameter");
+        return bad_request("namespace is a required parameter");
     }
     let Some(b) = st.table_buckets.get_mut(arn) else {
         return namespace_resource_not_found();
@@ -1151,10 +1147,10 @@ fn namespace_delete(st: &mut State, arn: &str, ns: &str) -> Response {
 fn table_create(st: &mut State, req: &Request, p: &Value, route: &Route) -> Response {
     let ns = route.tail(0);
     let Some(name) = param_str(p, "name").map(String::from) else {
-        return validation("name is a required parameter");
+        return bad_request("name is a required parameter");
     };
     let Some(format) = param_str(p, "format").map(String::from) else {
-        return validation("format is a required parameter");
+        return bad_request("format is a required parameter");
     };
     if !table_name_is_valid(&name) {
         return bad_request(&format!(
@@ -1297,7 +1293,7 @@ fn table_policy_get(st: &mut State, arn: &str, ns: &str, name: &str) -> Response
 
 fn table_policy_put(st: &mut State, arn: &str, ns: &str, name: &str, p: &Value) -> Response {
     let Some(policy) = param_str(p, "resourcePolicy").map(String::from) else {
-        return validation("resourcePolicy is a required parameter");
+        return bad_request("resourcePolicy is a required parameter");
     };
     try_resp!(find_table_triple(st, arn, ns, name)).policy = Some(policy);
     empty_ok()
@@ -1483,7 +1479,7 @@ fn table_replication_get(st: &mut State, p: &Value) -> Response {
 fn table_replication_put(st: &mut State, p: &Value) -> Response {
     let arn = param_str(p, "tableArn").unwrap_or_default();
     let Some(configuration) = p.get("configuration") else {
-        return validation("configuration is a required parameter");
+        return bad_request("configuration is a required parameter");
     };
     let token = version_token();
     let t = try_resp!(find_table_mut(st, arn));
@@ -1663,6 +1659,18 @@ mod tests {
         ))
         .expect("armed");
         assert_eq!(resp.status, 400);
+    }
+
+    /// moto/s3tables/exceptions.py has no ValidationException — every 400 the
+    /// family raises is a BadRequestException, including the "X is a required
+    /// parameter" missing-member checks.
+    #[test]
+    fn missing_required_params_are_bad_request() {
+        let resp = dispatch(&request("PUT", "/buckets", json!({}), "")).expect("armed");
+        assert_eq!(resp.status, 400);
+        let v = body_of(&resp);
+        assert_eq!(v["__type"], "BadRequestException");
+        assert_eq!(v["message"], "name is a required parameter");
     }
 
     #[test]
