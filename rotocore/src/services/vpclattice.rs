@@ -7,11 +7,23 @@
 //! `als-`) mirror moto's generators, including moto's rule id which renders
 //! the literal string `rule-[0-9a-z]{17}`.
 //!
-//! The listener trio (Create/Get/ListListeners) is outside moto's surface
-//! and is modeled straight from botocore's shapes (`CreateListenerResponse`,
-//! `GetListenerResponse`, `ListenerSummary`), keeping moto's id generators
-//! (`listener-` + 17 uuid chars); DeleteListener/UpdateListener and the
-//! remaining rule operations still answer moto's 501 canon.
+//! The listener trio (Create/Get/ListListeners) mirrors moto 5.2.4
+//! (models.py `VPCLatticeListener`, responses.py create/get/list_listener
+//! handlers) — it is inside moto's surface. Its wire members are checked
+//! against botocore's `CreateListenerResponse`/`GetListenerResponse`/
+//! `ListenerSummary` shapes: create/get carry moto's createdAt/lastUpdated
+//! values, ListListeners items are the narrower botocore `ListenerSummary`
+//! rather than moto's full `to_dict`, and moto's id generator (`listener-`
+//! + 17 uuid chars) is kept. Divergences from moto 5.2.4, deliberate:
+//! - a CreateListener that omits `port` takes real AWS's default (80 for
+//!   HTTP, 443 otherwise) instead of moto's `port or 443`;
+//! - the trio resolves the parent service through ONE source — the same
+//!   call GetService makes, so a missing service answers
+//!   ResourceNotFoundException(bare `{id}`), exactly moto's `get_service`
+//!   error. The missing-listener error keeps moto's message.
+//!
+//! DeleteListener/UpdateListener and the remaining rule operations still
+//! answer moto's 501 canon.
 //!
 //! Routing is moto's two-layer model: a request only reaches the backend
 //! when the path matches one of moto's `urls.py` gate patterns
@@ -30,6 +42,7 @@
 //! id taken after the last `/`, so `arn:…:service/svc-x` resolves as `svc-x`.
 
 use crate::proto::url_decode;
+use crate::services::s3control::{decode_s3control_token, encode_s3control_token};
 use crate::store;
 use crate::{Request, Response};
 use base64::Engine as _;
@@ -123,9 +136,9 @@ struct RuleEntry {
     tags: Value,
 }
 
-/// botocore-modeled listener (`service-2.json`: `CreateListenerResponse`,
-/// `GetListenerResponse` and `ListenerSummary` — no moto-era handler to
-/// mirror, so the shapes follow the model exactly).
+/// moto-modeled listener (`models.py` `VPCLatticeListener`) whose wire
+/// members follow botocore (`service-2.json`: `CreateListenerResponse`,
+/// `GetListenerResponse`, `ListenerSummary`).
 struct ListenerEntry {
     id: String,
     arn: String,
@@ -140,12 +153,17 @@ struct ListenerEntry {
 }
 
 impl ListenerEntry {
-    /// `CreateListenerResponse` (no timestamps).
+    /// `CreateListenerResponse` + moto's timestamps: moto serializes the
+    /// single `to_dict` for both create and get (responses.py
+    /// create_listener returns `json.dumps(service.to_dict())`), so the
+    /// create response carries createdAt/lastUpdatedAt too.
     fn to_create(&self) -> Value {
         json!({
             "arn": self.arn,
+            "createdAt": self.created_at,
             "defaultAction": self.default_action,
             "id": self.id,
+            "lastUpdatedAt": self.last_updated_at,
             "name": self.name,
             "port": self.port,
             "protocol": self.protocol,
@@ -269,6 +287,21 @@ fn not_found(message: impl AsRef<str>) -> Response {
     error(400, "ResourceNotFoundException", message.as_ref())
 }
 
+/// moto's `Paginator` InvalidToken: a `moto.core.exceptions.InvalidToken`
+/// JsonRESTError — `{"__type": "InvalidToken", "message": "Invalid Token:
+/// <reason>"}`, HTTP 400.
+fn invalid_token(reason: &str) -> Response {
+    error(400, "InvalidToken", &format!("Invalid Token: {reason}"))
+}
+
+/// moto's `get_service` lookup failure: `ResourceNotFoundException`
+/// carrying the BARE identifier — the single error wording shared by
+/// GetService and the listener trio (create/get/list listeners all fail
+/// through that backend call).
+fn service_not_found(identifier: &str) -> Response {
+    not_found(identifier)
+}
+
 fn validation(message: impl AsRef<str>) -> Response {
     error(400, "ValidationException", message.as_ref())
 }
@@ -355,7 +388,9 @@ fn segment_after<'a>(path: &'a str, anchor: &str) -> Option<&'a str> {
 }
 
 /// Real-AWS default port when `CreateListener` omits one: 80 for HTTP,
-/// 443 otherwise (HTTPS, TLS_PASSTHROUGH).
+/// 443 otherwise (HTTPS, TLS_PASSTHROUGH). Diverges from moto's `port or
+/// 443` on purpose — plausible for the real API, which distinguishes the
+/// protocol.
 fn default_listener_port(protocol: &str) -> i64 {
     if protocol == "HTTP" {
         80
@@ -813,7 +848,7 @@ pub fn dispatch(req: &Request) -> Option<Response> {
             _ => Some(unrouted()),
         },
         "ListListeners" => match path_segment_after(path, "/services/") {
-            Some(seg) => Some(list_listeners(b, &double_decode(seg))),
+            Some(seg) => Some(list_listeners(b, &double_decode(seg), req)),
             None => Some(unrouted()),
         },
         "CreateServiceNetwork" => Some(create_service_network(b, &req.region, req.account, &body)),
@@ -914,7 +949,7 @@ fn get_service(st: &mut State, path: &str) -> Response {
     let identifier = last_path_segment(path);
     match find_service(st, &identifier) {
         Some(s) => ok(&s.to_wire()),
-        None => not_found(&identifier),
+        None => service_not_found(&identifier),
     }
 }
 
@@ -934,7 +969,7 @@ fn create_listener(
 ) -> Response {
     let svc = trim_resource_identifier(svc_input);
     let Some(service) = find_service(st, &svc) else {
-        return not_found(format!("Resource {svc_input} not found"));
+        return service_not_found(svc_input);
     };
     let id = prefixed_id("listener-");
     let arn = format!("arn:aws:vpc-lattice:{region}:{account}:service/{svc}/listener/{id}");
@@ -971,7 +1006,7 @@ fn find_listener<'a>(st: &'a State, svc_id: &str, id: &str) -> Option<&'a Listen
 fn get_listener(st: &State, svc_input: &str, lid_input: &str) -> Response {
     let svc = trim_resource_identifier(svc_input);
     let Some(_service) = find_service(st, &svc) else {
-        return not_found(format!("Resource {svc_input} not found"));
+        return service_not_found(svc_input);
     };
     let Some(listener) = find_listener(st, &svc, &trim_resource_identifier(lid_input)) else {
         return not_found(format!("Listener {lid_input} not found"));
@@ -979,18 +1014,62 @@ fn get_listener(st: &State, svc_input: &str, lid_input: &str) -> Response {
     ok(&listener.to_wire())
 }
 
-fn list_listeners(st: &State, svc_input: &str) -> Response {
+/// moto's list_listeners: the wire-case members (`maxResults`,
+/// `nextToken`) are read straight from the query string (responses.py
+/// list_listeners) and the backend list is moto's `@paginate`d
+/// `list_listeners` (PAGINATION_MODEL: limit default 50, unique_attribute
+/// "id"), so paging really happens — unlike `list_services`, which reads
+/// wrong-cased members. The token names the listener the page STARTS at
+/// (the first EXCLUDED item of the previous page, in botocore's token
+/// encoding); a page of zero rows or a covered tail mints none. moto raises
+/// its `InvalidToken` JsonRESTError (HTTP 400) for an undecodable token
+/// ("Invalid Token: Invalid token") and for a token naming no listener in
+/// this service ("Invalid Token: Resource not found!") — the
+/// parameterChecksum member of moto's tokens (Python's salted hash) is
+/// ignored, like s3control's.
+fn list_listeners(st: &State, svc_input: &str, req: &Request) -> Response {
     let svc = trim_resource_identifier(svc_input);
     let Some(_service) = find_service(st, &svc) else {
-        return not_found(format!("Resource {svc_input} not found"));
+        return service_not_found(svc_input);
     };
-    let items: Vec<Value> = st
+    let qmap = crate::proto::query_map(&req.query_string);
+    let max = crate::proto::query_first(&qmap, "maxResults")
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|m| *m != 0) // a falsy limit falls back to the model default
+        .unwrap_or(50);
+    let matching: Vec<&ListenerEntry> = st
         .listeners
         .iter()
         .filter(|l| l.service_id == svc)
-        .map(ListenerEntry::to_summary)
         .collect();
-    ok(&paginated_list(items))
+    // moto's Paginator positions the page AT the token's item WITHIN this
+    // service's filtered list: a token naming no listener of the service
+    // raises its InvalidToken ("Resource not found!"), surfacing as the
+    // JsonRESTError JSON body. (Positioning over the whole listener vec
+    // would skew every page by the count of other services' listeners.)
+    let start = match crate::proto::query_first(&qmap, "nextToken") {
+        Some(token) => match decode_s3control_token(token) {
+            Some(id) => match matching.iter().position(|l| l.id == id) {
+                Some(pos) => pos,
+                None => return invalid_token("Resource not found!"),
+            },
+            None => return invalid_token("Invalid token"),
+        },
+        None => 0,
+    };
+    let end = (start + max).min(matching.len());
+    let page: Vec<Value> = matching[start..end]
+        .iter()
+        .map(|l| l.to_summary())
+        .collect();
+    // moto mints the token from `results[index_end]` — the first EXCLUDED
+    // listener — only when the page is non-empty and paging continues.
+    let next_token = if !page.is_empty() && end < matching.len() {
+        Some(encode_s3control_token(&matching[end].id))
+    } else {
+        None
+    };
+    ok(&json!({"items": page, "nextToken": next_token}))
 }
 
 fn create_service_network(st: &mut State, region: &str, account: u64, p: &Value) -> Response {
@@ -1777,10 +1856,151 @@ mod tests {
         assert_eq!(created["protocol"], "HTTP");
         assert_eq!(created["serviceArn"], json!(svc_arn));
         assert_eq!(created["serviceId"], json!(svc_id));
-        // The create summary drops the GetListener timestamps.
-        assert!(created["createdAt"].is_null());
-        assert!(created["lastUpdatedAt"].is_null());
+        // moto serializes the single to_dict for create too: the fresh
+        // timestamps ride along.
+        assert!(created["createdAt"].as_str().is_some());
+        assert!(created["lastUpdatedAt"].as_str().is_some());
         assert!(created["defaultAction"]["forward"]["targetGroups"].is_array());
+    }
+
+    /// moto's list_listeners paginates for real: the response reads the
+    /// query string's `maxResults`/`nextToken` (responses.py:268-283) and
+    /// the backend list carries moto's @paginate model (limit_default 50,
+    /// unique attribute "id"). The token encodes the first EXCLUDED
+    /// listener id and the next page starts AT it; invalid or dangling
+    /// tokens answer moto's 400 InvalidToken.
+    #[test]
+    fn vpclattice_listener_token_pagination() {
+        let acct = next_account();
+        let req = |m: &str, p: &str, q: &str, b: Value| raw_req(acct, m, p, q, b);
+
+        // Another service's listener exists in the vec BEFORE the walked
+        // service's: the resume position is taken within the filtered list
+        // (not the whole vec), else every page skips the extra rows.
+        let seed = dispatch(&req("POST", "/services", "", json!({"name": "seed"}))).unwrap();
+        let seed_path = url_encode_path(json_of(&seed)["arn"].as_str().unwrap());
+        let seed_listener = dispatch(&req(
+            "POST",
+            &format!("/services/{seed_path}/listeners"),
+            "",
+            json!({"name": "seed-l", "protocol": "HTTP", "defaultAction": {"forward": {"targetGroups": [{"targetGroupIdentifier": "tg-12345678901234567"}]}}}),
+        ))
+        .unwrap();
+        assert_eq!(seed_listener.status, 200);
+
+        let service = dispatch(&req("POST", "/services", "", json!({"name": "svc"}))).unwrap();
+        let svc = json_of(&service);
+        let svc_arn_path = url_encode_path(svc["arn"].as_str().unwrap());
+        let act = json!({"forward": {"targetGroups": [{"targetGroupIdentifier": "tg-12345678901234567"}]}});
+        let names: Vec<String> = (0..60).map(|i| format!("l-{i:02}")).collect();
+        for name in &names {
+            let r = dispatch(&req(
+                "POST",
+                &format!("/services/{svc_arn_path}/listeners"),
+                "",
+                json!({"name": name, "protocol": "HTTP", "defaultAction": act}),
+            ));
+            assert_eq!(r.unwrap().status, 200);
+        }
+
+        let list = |q: &str| {
+            json_of(
+                &dispatch(&req(
+                    "GET",
+                    &format!("/services/{svc_arn_path}/listeners"),
+                    q,
+                    json!({}),
+                ))
+                .unwrap(),
+            )
+        };
+
+        // default page: 50 rows + a token naming the first excluded one
+        let first = list("");
+        assert_eq!(first["items"].as_array().unwrap().len(), 50);
+        let token = first["nextToken"].as_str().unwrap().to_string();
+        assert!(
+            decode_s3control_token(&token)
+                .unwrap()
+                .starts_with("listener-"),
+            "token={token}"
+        );
+
+        // resuming from the token fills the remaining 10 and terminates
+        let rest = list(&format!("nextToken={}", url_encode_path(&token)));
+        assert_eq!(rest["items"].as_array().unwrap().len(), 10);
+        assert_eq!(rest["items"][0]["name"], json!("l-50"));
+        assert!(rest["nextToken"].is_null());
+
+        // page boundary: the resumed page starts where the last one ended
+        let pg1 = list("maxResults=7");
+        assert_eq!(pg1["items"].as_array().unwrap()[6]["name"], json!("l-06"));
+        let pg2 = list(&format!(
+            "maxResults=7&nextToken={}",
+            url_encode_path(pg1["nextToken"].as_str().unwrap())
+        ));
+        assert_eq!(pg2["items"].as_array().unwrap()[0]["name"], json!("l-07"));
+
+        // maxResults widening: 100 covers everything in one tokenless page
+        let full = list("maxResults=100");
+        assert_eq!(full["items"].as_array().unwrap().len(), 60);
+        assert!(full["nextToken"].is_null());
+
+        // a paginator-style walk with maxResults=7 terminates without gaps
+        // or repeats: 60 listeners over 9 pages.
+        let mut seen: Vec<String> = Vec::new();
+        let mut cursor: Option<String> = None;
+        loop {
+            let q = match &cursor {
+                None => "maxResults=7".to_string(),
+                Some(t) => format!("maxResults=7&nextToken={}", url_encode_path(t)),
+            };
+            let page = list(&q);
+            seen.extend(
+                page["items"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|i| i["name"].as_str().unwrap().to_string()),
+            );
+            cursor = page["nextToken"].as_str().map(str::to_owned);
+            if cursor.is_none() {
+                break;
+            }
+        }
+        assert_eq!(seen.len(), 60, "walk must reach every listener once");
+        assert_eq!(seen, names);
+
+        // An undecodable token is moto's 400 InvalidToken ("Invalid token").
+        let bad = dispatch(&req(
+            "GET",
+            &format!("/services/{svc_arn_path}/listeners"),
+            "nextToken=garbage!!!",
+            json!({}),
+        ))
+        .unwrap();
+        assert_eq!(bad.status, 400);
+        assert_eq!(
+            json_of(&bad),
+            json!({"__type": "InvalidToken", "message": "Invalid Token: Invalid token"})
+        );
+
+        // A token naming a listener that exists only under another service
+        // never matches the filtered list: "Resource not found!".
+        let svc2 = dispatch(&req("POST", "/services", "", json!({"name": "svc2"}))).unwrap();
+        let svc2_path = url_encode_path(json_of(&svc2)["arn"].as_str().unwrap());
+        let dangling = dispatch(&req(
+            "GET",
+            &format!("/services/{svc2_path}/listeners"),
+            &format!("nextToken={}", url_encode_path(&token)),
+            json!({}),
+        ))
+        .unwrap();
+        assert_eq!(dangling.status, 400);
+        assert_eq!(
+            json_of(&dangling)["message"],
+            "Invalid Token: Resource not found!"
+        );
     }
 
     /// HTTPS omits the port and looks up the service by full ARN.
@@ -1824,10 +2044,13 @@ mod tests {
         assert_eq!(got["serviceArn"], json!(svc_arn));
         assert_eq!(got["serviceId"], json!(svc_id));
         assert_eq!(got["port"], 8443);
+        // GetListener answers the same to_dict members.
         assert!(got["createdAt"].as_str().is_some());
         assert!(got["lastUpdatedAt"].as_str().is_some());
-        // CreateListenerResponse carries no timestamps; GetListener does.
-        assert!(created["createdAt"].is_null());
+        // CreateListener now carries the timestamps moto's create response
+        // includes (its single to_dict).
+        assert!(created["createdAt"].as_str().is_some());
+        assert!(created["lastUpdatedAt"].as_str().is_some());
 
         let listener_path = url_encode_path(created["arn"].as_str().unwrap());
         let got = json_of(
@@ -1878,10 +2101,9 @@ mod tests {
         .unwrap();
         assert_eq!(created.status, 400);
         assert_eq!(json_of(&created)["__type"], "ResourceNotFoundException");
-        assert_eq!(
-            json_of(&created)["message"],
-            "Resource svc-doesnotexist123 not found"
-        );
+        // moto's get_service error is the bare identifier — the same wording
+        // every trio handler answers for a missing parent service.
+        assert_eq!(json_of(&created)["message"], "svc-doesnotexist123");
 
         let got = dispatch(&req(
             "GET",
