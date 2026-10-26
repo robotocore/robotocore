@@ -1426,9 +1426,16 @@ impl S3Handler {
                 )],
             );
         }
-        // moto _bucket_response_post: a POST upload needs an explicit length.
+        // moto _bucket_response_post 411s a POST without an explicit length;
+        // the message text is real AWS's documented MissingContentLength
+        // wording (moto's plain "Content-Length required" sentinel is not
+        // what hits the wire on real AWS).
         if !req.headers.contains_key("content-length") {
-            return AwsResponse::error(411, "MissingContentLength", "Content-Length required");
+            return AwsResponse::error(
+                411,
+                "MissingContentLength",
+                "You must provide the content-length HTTP header.",
+            );
         }
 
         let form = match parse_multipart_form(&req.body, &content_type) {
@@ -5511,6 +5518,28 @@ mod tests {
         assert!(body.contains("PreconditionFailed"), "body: {body}");
         assert!(
             body.contains("enclosure-type multipart/form-data"),
+            "body: {body}"
+        );
+    }
+
+    #[test]
+    fn post_object_requires_content_length() {
+        // moto _bucket_response_post 411s a POST with no explicit length;
+        // the message text is real AWS's MissingContentLength wording.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let mut req = form_post_request("post-bkt", None, &[("key", "k")], Some(("f", "", b"1")));
+        req.headers.remove("content-length");
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 411);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(
+            body.contains("<Code>MissingContentLength</Code>"),
+            "body: {body}"
+        );
+        assert!(
+            body.contains("You must provide the content-length HTTP header."),
             "body: {body}"
         );
     }
