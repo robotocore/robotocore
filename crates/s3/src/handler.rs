@@ -565,7 +565,6 @@ fn expected_post_signature(
 /// been tampered with").
 struct PostPolicy {
     expiration: Option<String>,
-    #[allow(dead_code)] // consumed by the condition checks in a later commit
     conditions: Vec<serde_json::Value>,
 }
 
@@ -578,6 +577,15 @@ fn parse_policy_expiration(value: &str) -> Option<chrono::DateTime<chrono::Utc>>
         }
     }
     None
+}
+
+/// A POST policy JSON value as an integer (localstack coerces
+/// content-length-range bounds with int(), which reads both JSON numbers
+/// and numeric strings).
+fn as_policy_i64(value: &serde_json::Value) -> Option<i64> {
+    value
+        .as_i64()
+        .or_else(|| value.as_str().and_then(|s| s.trim().parse::<i64>().ok()))
 }
 
 /// Percent-encode an object key for a Location header's path, preserving the
@@ -1468,25 +1476,6 @@ impl S3Handler {
             );
         }
 
-        // Policy + signature validation, in the AWS wire order: decode the
-        // policy → expiry → signature → conditions. A form without a policy
-        // document is the publicly-writable-door shape moto and localstack
-        // both store (localstack validate_post_policy early-returns when no
-        // policy field is present).
-        let policy_b64 = form.get("policy").unwrap_or("");
-        if !policy_b64.is_empty() {
-            let policy = match Self::decode_post_policy(policy_b64, &form) {
-                Ok(policy) => policy,
-                Err(e) => return e,
-            };
-            if let Err(e) = Self::check_post_policy_expiration(&policy) {
-                return e;
-            }
-            if let Err(e) = Self::verify_post_signature(policy_b64, &form) {
-                return e;
-            }
-        }
-
         let file = match form.file.as_deref() {
             Some(f) => f,
             // Real AWS answers MalformedPOSTRequest when the form carries no
@@ -1499,6 +1488,33 @@ impl S3Handler {
                 )
             }
         };
+
+        // Policy + signature validation, in the AWS wire order: decode the
+        // policy → expiry → signature → conditions → covered-field rule. A
+        // form without a policy document is the publicly-writable-door shape
+        // moto and localstack both store (localstack validate_post_policy
+        // early-returns when no policy field is present).
+        let policy_b64 = form.get("policy").unwrap_or("");
+        if !policy_b64.is_empty() {
+            let policy = match Self::decode_post_policy(policy_b64, &form) {
+                Ok(policy) => policy,
+                Err(e) => return e,
+            };
+            if let Err(e) = Self::check_post_policy_expiration(&policy) {
+                return e;
+            }
+            if let Err(e) = Self::verify_post_signature(policy_b64, &form) {
+                return e;
+            }
+            // Conditions (localstack walk order), then the covered-field doc
+            // rule, then store.
+            if let Err(e) = Self::check_post_conditions(&policy, &form, &bucket_name, file.len()) {
+                return e;
+            }
+            if let Err(e) = Self::check_post_fields_covered(&policy, &form) {
+                return e;
+            }
+        }
 
         // System metadata the form may set (localstack
         // post_system_settable_headers): the Content-Type form field wins,
@@ -1812,6 +1828,192 @@ impl S3Handler {
             )),
             PostSigVersion::V2 => Ok(()),
         }
+    }
+
+    /// Evaluate every declared policy condition against the form, in order
+    /// (localstack `_verify_condition`). The first failing condition answers
+    /// 403 AccessDenied "Invalid according to Policy: Policy Condition
+    /// failed: [...]"; content-length-range raises the typed
+    /// EntityTooSmall/EntityTooLarge shapes instead.
+    fn check_post_conditions(
+        policy: &PostPolicy,
+        form: &PostForm,
+        bucket_name: &str,
+        content_length: usize,
+    ) -> Result<(), AwsResponse> {
+        for condition in &policy.conditions {
+            if !Self::evaluate_post_condition(condition, form, bucket_name, content_length)? {
+                return Err(Self::aws_error_with(
+                    403,
+                    "AccessDenied",
+                    &format!(
+                        "Invalid according to Policy: Policy Condition failed: {}",
+                        condition
+                    ),
+                    &[],
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// One condition's truth against the parsed form. `Err` is for the typed
+    /// shapes localstack raises mid-walk (EntityTooSmall, EntityTooLarge,
+    /// InvalidPolicyDocument); `Ok(false)` is a plain mismatch.
+    fn evaluate_post_condition(
+        condition: &serde_json::Value,
+        form: &PostForm,
+        bucket_name: &str,
+        content_length: usize,
+    ) -> Result<bool, AwsResponse> {
+        if let Some(dict) = condition.as_object() {
+            // Real AWS/simple-conditions: exactly one property per dict.
+            if dict.len() != 1 {
+                return Err(Self::aws_error_with(
+                    400,
+                    "InvalidPolicyDocument",
+                    "Invalid Policy: Invalid Simple-Condition: Simple-Conditions must have exactly one property specified.",
+                    &[],
+                ));
+            }
+            let (key, value) = dict.iter().next().expect("checked len above");
+            let matched = key.eq_ignore_ascii_case("bucket") && value.as_str() == Some(bucket_name)
+                || !key.eq_ignore_ascii_case("bucket")
+                    && form
+                        .get(key)
+                        .is_some_and(|v| value.as_str().is_some_and(|s| v == s));
+            return Ok(matched);
+        }
+        let Some(parts) = condition.as_array() else {
+            // Unsupported condition shape: treated as failed (localstack's
+            // _verify_condition match falls off for unknown shapes).
+            return Ok(false);
+        };
+        // ["content-length-range", min, max]: bounds arrive as JSON numbers
+        // or numeric strings, coerced the way localstack's int() reads them.
+        if parts.len() == 3
+            && parts.first().and_then(|v| v.as_str()) == Some("content-length-range")
+        {
+            let (Some(min), Some(max)) = (
+                as_policy_i64(parts.get(1).unwrap_or(&serde_json::Value::Null)),
+                as_policy_i64(parts.get(2).unwrap_or(&serde_json::Value::Null)),
+            ) else {
+                // Non-numeric bounds: localstack's try/int ValueError branch
+                // marks the condition failed.
+                return Ok(false);
+            };
+            let size = content_length as i64;
+            if size < min {
+                return Err(Self::aws_error_with(
+                    400,
+                    "EntityTooSmall",
+                    "Your proposed upload is smaller than the minimum allowed size",
+                    &[
+                        ("ProposedSize", &size.to_string()),
+                        ("MinSizeAllowed", &min.to_string()),
+                    ],
+                ));
+            }
+            if size > max {
+                return Err(Self::aws_error_with(
+                    400,
+                    "EntityTooLarge",
+                    "Your proposed upload exceeds the maximum allowed size",
+                    &[
+                        ("ProposedSize", &size.to_string()),
+                        ("MaxSizeAllowed", &max.to_string()),
+                    ],
+                ));
+            }
+            return Ok(true);
+        }
+        // eq / starts-with conditions: operator, `$field`, string value.
+        let Some(op) = parts.first().and_then(|v| v.as_str()) else {
+            return Ok(false);
+        };
+        let Some(field) = parts.get(1).and_then(|v| v.as_str()) else {
+            return Ok(false);
+        };
+        let Some(bound) = parts.get(2).and_then(|v| v.as_str()) else {
+            return Ok(false);
+        };
+        match (op, field, bound) {
+            ("eq", k, bound) => {
+                if k.eq_ignore_ascii_case("$bucket") {
+                    return Ok(bound == bucket_name);
+                }
+                Ok(k.starts_with('$')
+                    && form
+                        .get(k.trim_start_matches('$'))
+                        .is_some_and(|v| v == bound))
+            }
+            ("starts-with", k, bound) => {
+                if !k.starts_with('$') {
+                    return Ok(false);
+                }
+                // An empty starts-with value accepts anything the field holds.
+                if bound.is_empty() {
+                    return Ok(true);
+                }
+                Ok(form
+                    .get(k.trim_start_matches('$'))
+                    .is_some_and(|v| v.starts_with(bound)))
+            }
+            _ => Ok(false),
+        }
+    }
+
+    /// AWS doc rule (sigv4-HTTPPOSTConstructPolicy, enforced the way minio's
+    /// checkPostPolicy cites it): "Each form field that you specify in a
+    /// form (except x-amz-signature, file, policy, and field names that have
+    /// an x-ignore- prefix) must appear in the list of conditions." The
+    /// signature mechanics of both versions are exempt too (the twin
+    /// verifies those, real AWS conditions nothing on them). Violations
+    /// answer 403 AccessDenied.
+    fn check_post_fields_covered(policy: &PostPolicy, form: &PostForm) -> Result<(), AwsResponse> {
+        let mut covered: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for condition in &policy.conditions {
+            if let Some(dict) = condition.as_object() {
+                for key in dict.keys() {
+                    let name = key.to_ascii_lowercase();
+                    if name != "bucket" {
+                        covered.insert(name.trim_start_matches('$').to_string());
+                    }
+                }
+            }
+            if let Some(parts) = condition.as_array() {
+                if parts.len() == 3 {
+                    if let Some(key) = parts.get(1).and_then(|v| v.as_str()) {
+                        if !key.eq_ignore_ascii_case("$bucket") {
+                            covered.insert(
+                                key.to_ascii_lowercase().trim_start_matches('$').to_string(),
+                            );
+                        }
+                    }
+                }
+                // content-length-range covers nothing: it constrains size.
+            }
+        }
+        let exempt = |name: &str| -> bool {
+            matches!(name, "file" | "policy")
+                || POST_V4_FIELDS.contains(&name)
+                || POST_V2_FIELDS.contains(&name)
+                || name.starts_with("x-ignore-")
+        };
+        for (name, _) in &form.fields {
+            let lowered = name.to_ascii_lowercase();
+            if !exempt(&lowered) && !covered.contains(&lowered) {
+                return Err(Self::aws_error_with(
+                    403,
+                    "AccessDenied",
+                    &format!(
+                        "Each form field that you specify in a form must appear in the list of policy conditions. \"{name}\" not specified in the policy."
+                    ),
+                    &[],
+                ));
+            }
+        }
+        Ok(())
     }
 
     fn do_copy_object(
@@ -5526,6 +5728,324 @@ mod tests {
         assert_eq!(resp.status, 403);
         let body = String::from_utf8_lossy(&resp.body);
         assert!(body.contains("<Code>AccessDenied</Code>"), "body: {body}");
+    }
+
+    #[test]
+    fn post_object_eq_condition_mismatch_403() {
+        // An eq condition the form fails → 403 AccessDenied with the AWS
+        // policy-condition-failed message rendering the condition.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([["eq", "$key", "expected.txt"]]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "mismatched.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("m.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(
+            resp.status,
+            403,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<Code>AccessDenied</Code>"), "body: {body}");
+        assert!(
+            body.contains(r#"Invalid according to Policy: Policy Condition failed: ["eq","$key","expected.txt"]"#),
+            "body: {body}"
+        );
+    }
+
+    #[test]
+    fn post_object_uncovered_field_403() {
+        // The AWS doc rule (quoted in minio's checkPostPolicy): every form
+        // field outside the ignore list must appear in the policy's
+        // conditions; posting an uncovered field → 403 AccessDenied.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([["starts-with", "$key", ""]]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "covered-key.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+            // Metadata is conditionable like any other field: uncovered.
+            ("x-amz-meta-owner".to_string(), "me".to_string()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("m.txt", "application/octet-stream", b"body")),
+        ));
+        assert_eq!(
+            resp.status,
+            403,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<Code>AccessDenied</Code>"), "body: {body}");
+        assert!(
+            body.contains(r#""x-amz-meta-owner" not specified in the policy."#),
+            "body: {body}"
+        );
+
+        // The same field WITH a matching condition passes and stores.
+        let policy_b64 = post_policy_body(
+            serde_json::json!([
+                ["starts-with", "$key", ""],
+                ["eq", "$x-amz-meta-owner", "me"]
+            ]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "covered-key2.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+            ("x-amz-meta-owner".to_string(), "me".to_string()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("m.txt", "application/octet-stream", b"body")),
+        ));
+        assert_eq!(
+            resp.status,
+            204,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+    }
+
+    #[test]
+    fn post_object_content_length_range_too_large_400() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([["starts-with", "$key", ""], ["content-length-range", 1, 10]]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "big.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let file_payload = vec![b'x'; 1000];
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("big.txt", "application/octet-stream", &file_payload)),
+        ));
+        assert_eq!(
+            resp.status,
+            400,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<Code>EntityTooLarge</Code>"), "body: {body}");
+        assert!(
+            body.contains("Your proposed upload exceeds the maximum allowed size"),
+            "body: {body}"
+        );
+        assert!(
+            body.contains("<ProposedSize>1000</ProposedSize>"),
+            "body: {body}"
+        );
+        assert!(
+            body.contains("<MaxSizeAllowed>10</MaxSizeAllowed>"),
+            "body: {body}"
+        );
+
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("big.txt"),
+            b"",
+        ));
+        assert_eq!(get.status, 404, "rejected uploads store nothing");
+    }
+
+    #[test]
+    fn post_object_content_length_range_too_small_400() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([
+                ["starts-with", "$key", ""],
+                ["content-length-range", 100, 99999]
+            ]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "tiny.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("tiny.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(resp.status, 400);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<Code>EntityTooSmall</Code>"), "body: {body}");
+        assert!(
+            body.contains("<MinSizeAllowed>100</MinSizeAllowed>"),
+            "body: {body}"
+        );
+    }
+
+    #[test]
+    fn post_object_bucket_condition_mismatch_403() {
+        // {"bucket": name} conditions compare the request's bucket, so a
+        // policy pinned to another bucket fails (localstack
+        // additional_policy_metadata["bucket"]).
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([
+                {"bucket": "some-other-bucket"},
+                ["starts-with", "$key", ""]
+            ]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "cross-posted.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("m.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(resp.status, 403);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(
+            body.contains(r#"Policy Condition failed: {"bucket":"some-other-bucket"}"#),
+            "body: {body}"
+        );
+    }
+
+    #[test]
+    fn post_object_invalid_simple_condition_400() {
+        // A dict condition with more than one property → 400
+        // InvalidPolicyDocument "Invalid Simple-Condition".
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([{"bucket": "post-bkt", "key": "k.txt"}]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "k.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("m.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(resp.status, 400);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(
+            body.contains("<Code>InvalidPolicyDocument</Code>"),
+            "body: {body}"
+        );
+        assert!(
+            body.contains("Simple-Conditions must have exactly one property"),
+            "body: {body}"
+        );
+    }
+
+    #[test]
+    fn post_object_bucket_and_key_conditions_success() {
+        // A policy matching the request exactly: bucket dict condition, key
+        // starts-with, and an in-range content-length-range → stored.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([
+                {"bucket": "post-bkt"},
+                ["starts-with", "$key", "docs/"],
+                ["content-length-range", 1, 1 << 20]
+            ]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        let mut fields = vec![
+            ("key".to_string(), "docs/final.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("final.txt", "application/octet-stream", b"checkpointed")),
+        ));
+        assert_eq!(
+            resp.status,
+            204,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("docs/final.txt"),
+            b"",
+        ));
+        assert_eq!(get.body, b"checkpointed");
     }
 
     #[test]
