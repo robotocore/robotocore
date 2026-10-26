@@ -26,11 +26,17 @@
 //! Operations outside moto's surface answer 501 the same way the sidecar
 //! did: identity-center association, data access, caller grants, the
 //! directory/regional bucket and object-lambda listing/configuration
-//! operations, the bare `bucket/{name}` CRUD routes, and resource tags.
+//! operations, and the bare `bucket/{name}` CRUD routes. The
+//! `tags/…` resource-tags routes and access-point `Tags` follow moto's
+//! s3 TaggingService, keyed by the full resource ARN. Access points
+//! paginate on botocore tokens; garbage tokens answer the modeled
+//! InvalidNextTokenException.
 
 use crate::store::{self, ScopeKey};
 use crate::{Request, Response};
+use base64::Engine as _;
 use parking_lot::RwLock;
+use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
@@ -679,11 +685,13 @@ fn route(
         // is outside moto's surface
         (_, [b, _]) if *b == "bucket" => not_implemented(),
         // -------------------------------------------------------- resource tags
-        ("POST", [t, arn @ ..]) if *t == "tags" => tag_resource(st, &mrap_name_from(arn), body),
-        ("GET", [t, arn @ ..]) if *t == "tags" => list_tags_for_resource(st, &mrap_name_from(arn)),
+        // The tags URI label spans slashes (moto's `(?P<arn>[\w_:%/-]+)`
+        // gate), so the key is the whole tail — the full resource ARN.
+        ("POST", [t, arn @ ..]) if *t == "tags" => tag_resource(st, &arn.join("/"), body),
+        ("GET", [t, arn @ ..]) if *t == "tags" => list_tags_for_resource(st, &arn.join("/")),
         ("DELETE", [t, arn @ ..]) if *t == "tags" => {
             let keys = query.get("tagKeys").cloned().unwrap_or_default();
-            untag_resource(st, &mrap_name_from(arn), &keys)
+            untag_resource(st, &arn.join("/"), &keys)
         }
         // ------------------------------------------- ops outside moto's surface
         (_, [a, p]) if *a == "accessgrantsinstance" && *p == "identitycenter" => not_implemented(),
@@ -822,6 +830,61 @@ fn access_point_not_found(name: &str) -> Response {
     )
 }
 
+/// moto 5.2.4's pagination model raises InvalidNextTokenException for a
+/// nextToken that is not a botocore token; the ServiceException serializer
+/// renders it as the XML ErrorResponse, HTTP 400.
+fn invalid_next_token() -> Response {
+    xml_error(
+        400,
+        "InvalidNextTokenException",
+        "The nextToken provided is invalid",
+        "",
+    )
+}
+
+/// moto's Paginator raises its own InvalidToken when a decodable page token
+/// names an item that is not in the list; that JsonRESTError surfaces as a
+/// JSON body, HTTP 400.
+fn invalid_token_not_found() -> Response {
+    let body = json!({
+        "__type": "InvalidToken",
+        "message": "Invalid Token: Resource not found!",
+    });
+    let mut resp = Response::json(400, serde_json::to_vec(&body).unwrap_or_default());
+    resp.headers
+        .push(("x-amz-ErrorType".to_string(), "InvalidToken:".to_string()));
+    resp
+}
+
+/// botocore's TokenEncoder shape for moto's nextToken: base64 of
+/// `{"uniqueAttributes": "<value>"}`, padding stripped. moto additionally
+/// embeds a parameterChecksum derived from Python's salted `hash()`, which
+/// is not wire-portable, so this twin mints only the attribute — and
+/// likewise ignores the checksum member of an incoming token.
+fn encode_s3control_token(value: &str) -> String {
+    let encoded = base64::engine::general_purpose::STANDARD
+        .encode(json!({ "uniqueAttributes": value }).to_string());
+    encoded.trim_end_matches('=').to_string()
+}
+
+/// `None` when the token does not decode like a botocore page token
+/// (padding optional, JSON object with a `uniqueAttributes` member).
+fn decode_s3control_token(token: &str) -> Option<String> {
+    let mut padded = token.to_string();
+    let rem = padded.len() % 4;
+    if rem != 0 {
+        padded.push_str(&"=".repeat(4 - rem));
+    }
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(padded)
+        .ok()?;
+    let value: Value = serde_json::from_slice(&decoded).ok()?;
+    value
+        .get("uniqueAttributes")
+        .and_then(Value::as_str)
+        .map(String::from)
+}
+
 fn access_point_policy_not_found(name: &str) -> Response {
     xml_error(
         404,
@@ -882,6 +945,23 @@ fn create_access_point(
     let alias = ap.alias.clone();
     let arn = ap.arn.clone();
     st.access_points.insert(name.to_string(), ap);
+    // moto registers request Tags on the s3 TaggingService, keyed by the
+    // access point ARN (`if tags:` — nothing stored without them); boto3
+    // surfaces them through the ListTagsForResource route, not the
+    // get/list access point results (those members have no Tags shape).
+    if let Some(tags) = body.child("Tags") {
+        let pairs = tags.tag_pairs();
+        if !pairs.is_empty() {
+            let row = st.resource_tags.entry(arn.clone()).or_default();
+            // TaggingService.tag_resource upserts key by key.
+            for (key, value) in pairs {
+                match row.iter_mut().find(|(k, _)| *k == key) {
+                    Some(row) => row.1 = value,
+                    None => row.push((key, value)),
+                }
+            }
+        }
+    }
     resp(
         200,
         raw_el(
@@ -892,38 +972,53 @@ fn create_access_point(
 }
 
 /// moto's `list_access_points`: optional bucket filter, `maxResults` paging
-/// keyed on the access point name, default limit 1000.
+/// keyed on the access point name, default limit 1000. The 5.2.4
+/// pagination model validates `nextToken`: the token names the access
+/// point the page starts at, in botocore's token encoding
+/// (base64 `{"uniqueAttributes": "<name>"}`); an undecodable token answers
+/// the modeled `InvalidNextTokenException`.
 fn list_access_points(st: &S3ControlStore, query: &BTreeMap<String, Vec<String>>) -> Response {
     let bucket_filter = query
         .get("bucket")
         .and_then(|v| v.first())
         .cloned()
         .unwrap_or_default();
-    let after = query
+    let start_name = match query
         .get("nextToken")
         .and_then(|v| v.first())
-        .cloned()
-        .unwrap_or_default();
+        .map(String::as_str)
+    {
+        Some(token) => match decode_s3control_token(token) {
+            Some(unique) => unique,
+            None => return invalid_next_token(),
+        },
+        None => String::new(),
+    };
     let max = query
         .get("maxResults")
         .and_then(|v| v.first())
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(1000);
+    let matching: Vec<&AccessPoint> = st
+        .access_points
+        .iter()
+        .filter(|(_, ap)| bucket_filter.is_empty() || ap.bucket == bucket_filter)
+        .map(|(_, ap)| ap)
+        .collect();
+    // moto's Paginator positions the page at the token's access point; a
+    // decodable token naming no access point here raises its InvalidToken
+    // ("Resource not found!"), surfacing as the JsonRESTError JSON body.
+    let start = if start_name.is_empty() {
+        0usize
+    } else {
+        match matching.iter().position(|ap| ap.name == start_name) {
+            Some(pos) => pos,
+            None => return invalid_token_not_found(),
+        }
+    };
+    let page: Vec<&&AccessPoint> = matching[start..].iter().take(max).collect();
     let mut out = String::new();
-    let mut last = String::new();
-    let mut count = 0usize;
-    let mut total = 0usize;
-    for (name, ap) in &st.access_points {
-        if !bucket_filter.is_empty() && ap.bucket != bucket_filter {
-            continue;
-        }
-        total += 1;
-        if !after.is_empty() && *name <= after {
-            continue;
-        }
-        if count >= max {
-            break;
-        }
+    for ap in page {
         out += &raw_el(
             "AccessPoint",
             [
@@ -939,14 +1034,16 @@ fn list_access_points(st: &S3ControlStore, query: &BTreeMap<String, Vec<String>>
             ]
             .concat(),
         );
-        last = name.clone();
-        count += 1;
     }
-    let next_token = if count >= max && count < total && !last.is_empty() {
-        el("NextToken", &last)
-    } else {
-        String::new()
-    };
+    // moto mints the token from `results[index_end]` — the first EXCLUDED
+    // access point — only when the page is non-empty and paging continues.
+    let mut next_token = String::new();
+    if start + max < matching.len() && max > 0 && !out.is_empty() {
+        next_token = el(
+            "NextToken",
+            encode_s3control_token(&matching[start + max].name),
+        );
+    }
     resp(
         200,
         raw_el(
@@ -3360,5 +3457,192 @@ mod tests {
         );
         let resp = request(account, "GET", bucket, "");
         assert!(status_code_str(&resp).contains("<Status>Enabled</Status>"));
+    }
+
+    /// Percent-encode an ARN the way an SDK URI label would (`:` and `/`).
+    fn url_encode_arn(s: &str) -> String {
+        s.replace(':', "%3A").replace('/', "%2F")
+    }
+
+    #[test]
+    fn s3control_access_point_tags() {
+        let account = next_account();
+
+        // create_access_point accepts Tags and registers them on the
+        // resource-tags route under the access point ARN.
+        let create_body = format!(
+            "<CreateAccessPointRequest xmlns=\"{XMLNS}\"><Bucket>bucket-1</Bucket>\
+             <Tags><Tag><Key>env</Key><Value>test</Value></Tag>\
+             <Tag><Key>team</Key><Value>core</Value></Tag></Tags></CreateAccessPointRequest>"
+        );
+        let resp = request(
+            account,
+            "PUT",
+            "/v20180820/accesspoint/tagged-ap",
+            &create_body,
+        );
+        assert_eq!(resp.status, 200);
+        let body = status_code_str(&resp);
+        assert!(body.contains("<AccessPointArn>"));
+        let arn = xml_find(&body, "AccessPointArn").unwrap().to_string();
+        assert!(arn.ends_with(":accesspoint/tagged-ap"), "{arn}");
+
+        let tags = status_code_str(&request(
+            account,
+            "GET",
+            &format!("/v20180820/tags/{}", url_encode_arn(&arn)),
+            "",
+        ));
+        assert!(tags.contains("<Key>env</Key><Value>test</Value>"), "{tags}");
+        assert!(
+            tags.contains("<Key>team</Key><Value>core</Value>"),
+            "{tags}"
+        );
+
+        // Re-creating with an overlapping Tags list upserts per key
+        // (TaggingService.tag_resource): env's value is replaced, team is
+        // kept, the new key is appended.
+        let recreate_body = format!(
+            "<CreateAccessPointRequest xmlns=\"{XMLNS}\"><Bucket>bucket-1</Bucket>\
+             <Tags><Tag><Key>env</Key><Value>prod</Value></Tag>\
+             <Tag><Key>extra</Key><Value>yes</Value></Tag></Tags></CreateAccessPointRequest>"
+        );
+        let resp = request(
+            account,
+            "PUT",
+            "/v20180820/accesspoint/tagged-ap",
+            &recreate_body,
+        );
+        assert_eq!(resp.status, 200);
+        let tags = status_code_str(&request(
+            account,
+            "GET",
+            &format!("/v20180820/tags/{}", url_encode_arn(&arn)),
+            "",
+        ));
+        assert!(tags.contains("<Key>env</Key><Value>prod</Value>"), "{tags}");
+        assert!(
+            tags.contains("<Key>team</Key><Value>core</Value>"),
+            "{tags}"
+        );
+        assert!(
+            tags.contains("<Key>extra</Key><Value>yes</Value>"),
+            "{tags}"
+        );
+
+        // An access point created without Tags carries no tag row.
+        let plain = {
+            let body = status_code_str(&request(
+                account,
+                "PUT",
+                "/v20180820/accesspoint/plain-ap",
+                "<CreateAccessPointRequest xmlns=\"{XMLNS}\"><Bucket>bucket-1</Bucket></CreateAccessPointRequest>",
+            ));
+            xml_find(&body, "AccessPointArn").unwrap().to_string()
+        };
+        let plain_arn = format!("arn:aws:s3:us-east-1:{account}:accesspoint/plain-ap");
+        assert_eq!(plain, plain_arn);
+        let tags = status_code_str(&request(
+            account,
+            "GET",
+            &format!("/v20180820/tags/{}", url_encode_arn(&plain_arn)),
+            "",
+        ));
+        assert!(tags.contains("<ListTagsForResourceResult"), "{tags}");
+        assert!(!tags.contains("<Value>"), "{tags}");
+    }
+
+    /// moto 5.2.4 paginates list_access_points on botocore tokens and
+    /// rejects garbage tokens with the modeled InvalidNextTokenException.
+    #[test]
+    fn s3control_access_points_next_token() {
+        let account = next_account();
+        for name in ["pn-a", "pn-b", "pn-c"] {
+            let resp = request(
+                account,
+                "PUT",
+                &format!("/v20180820/accesspoint/{name}"),
+                "<CreateAccessPointRequest xmlns=\"{XMLNS}\"><Bucket>pn-bucket</Bucket></CreateAccessPointRequest>",
+            );
+            assert_eq!(resp.status, 200);
+        }
+
+        // Page 1: two access points, token pointing at the first excluded.
+        let page1 = status_code_str(&request_query(
+            account,
+            "GET",
+            "/v20180820/accesspoint",
+            "bucket=pn-bucket&maxResults=2",
+            "",
+        ));
+        assert!(page1.contains("<Name>pn-a</Name>"), "{page1}");
+        assert!(page1.contains("<Name>pn-b</Name>"), "{page1}");
+        assert!(!page1.contains("<Name>pn-c</Name>"), "{page1}");
+        let token = xml_find(&page1, "NextToken").unwrap().to_string();
+        assert_eq!(decode_s3control_token(&token), Some("pn-c".to_string()));
+
+        // Page 2 starts AT the token's access point; no NextToken element
+        // once paging is done.
+        let token_query = format!(
+            "bucket=pn-bucket&maxResults=2&nextToken={}",
+            url_encode_query_value(&token)
+        );
+        let page2 = status_code_str(&request_query(
+            account,
+            "GET",
+            "/v20180820/accesspoint",
+            &token_query,
+            "",
+        ));
+        assert!(page2.contains("<Name>pn-c</Name>"), "{page2}");
+        assert!(!page2.contains("NextToken"), "{page2}");
+
+        // Garbage tokens answer the modeled XML error envelope.
+        let resp = request_query(
+            account,
+            "GET",
+            "/v20180820/accesspoint",
+            "nextToken=garbage",
+            "",
+        );
+        assert_eq!(resp.status, 400);
+        let body = status_code_str(&resp);
+        assert!(body.contains("<ErrorResponse>"), "{body}");
+        assert!(
+            body.contains("<Code>InvalidNextTokenException</Code>"),
+            "{body}"
+        );
+        assert!(body.contains("The nextToken provided is invalid"), "{body}");
+
+        // A decodable token naming no access point raises moto's own
+        // InvalidToken (JSON body).
+        let unknown = encode_s3control_token("pn-nope");
+        let resp = request_query(
+            account,
+            "GET",
+            "/v20180820/accesspoint",
+            &format!("nextToken={unknown}"),
+            "",
+        );
+        assert_eq!(resp.status, 400);
+        assert!(
+            status_code_str(&resp).contains("\"__type\":\"InvalidToken\""),
+            "{}",
+            status_code_str(&resp)
+        );
+    }
+
+    /// Percent-encode a query value (base64 tokens carry `+`, `/`, `=`).
+    fn url_encode_query_value(s: &str) -> String {
+        let mut out = String::new();
+        for b in s.bytes() {
+            match b {
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                    out.push(b as char)
+                }
+                other => out.push_str(&format!("%{other:02X}")),
+            }
+        }
+        out
     }
 }
