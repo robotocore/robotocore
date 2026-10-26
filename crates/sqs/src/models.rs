@@ -369,24 +369,60 @@ impl Queue {
         ))
     }
 
-    /// Change the visibility timeout of a message (identified by receipt handle).
-    /// Returns true if the message was found and updated.
-    pub fn change_message_visibility(
+    /// moto's Total-VisibilityTimeout ceiling: the literal `43200` in
+    /// `moto/sqs/models.py` `change_message_visibility` — a change whose
+    /// "given" expiry sits more than 43200s past the message's ORIGINAL
+    /// send time is refused, regardless of the queue-level static cap.
+    const TOTAL_VISIBILITY_TIMEOUT_LIMIT_MS: i64 = 43_200 * 1000;
+
+    /// Change the visibility timeout of a message (identified by receipt
+    /// handle) under moto's `change_message_visibility` semantics
+    /// (moto/sqs/models.py:1082-1096, live-verified against the pinned
+    /// fork):
+    ///
+    /// 1. locate the target message by receipt handle;
+    /// 2. the Total-VisibilityTimeout rule runs BEFORE the apply:
+    ///    `given = now + timeout*1000` is measured against the message's
+    ///    ORIGINAL `sent_timestamp`, so when the accumulated lifetime —
+    ///    message age plus the new timeout, strictly above 43200s — is
+    ///    exceeded, the request answers 400 InvalidParameterValue with
+    ///    moto's exact wording. Live-verified on a fresh message at
+    ///    vis=43200 (age >= 1ms puts the total beyond the limit) and on an
+    ///    aged message at 43195 (total = 43195s + age); while 43195 fresh
+    ///    and 50000-over-cap still answer per the static cap order
+    ///    (exclusive compare: exactly 43200 with age 0 passes);
+    /// 3. apply: moto's `Message.change_visibility` stores
+    ///    `visible_at = now + timeout*1000`, so negatives go into the
+    ///    past and the message becomes visible immediately (live-verified);
+    ///    the store cannot represent a past point, so negatives clamp to
+    ///    0 — the same outcome;
+    /// 4. no match -> moto's bare `raise ReceiptHandleIsInvalid` (400).
+    pub fn change_message_visibility_checked(
         &mut self,
         receipt_handle: &str,
-        timeout_seconds: u32,
-    ) -> bool {
+        timeout_seconds: i64,
+    ) -> Result<(), SqsError> {
+        let now_ms = Utc::now().timestamp_millis();
         if let Some(msg) = self
             .messages
             .iter_mut()
             .find(|m| m.receipt_handle == receipt_handle)
         {
-            msg.set_visibility_timeout(timeout_seconds);
-            self.last_modified = (Utc::now().timestamp_millis()) as u64;
-            true
-        } else {
-            false
+            let given = now_ms.saturating_add(timeout_seconds.saturating_mul(1000));
+            if given - msg.sent_timestamp as i64 > Self::TOTAL_VISIBILITY_TIMEOUT_LIMIT_MS {
+                return Err(SqsError::InvalidParameterValue(format!(
+                    "Value {timeout_seconds} for parameter VisibilityTimeout is invalid. \
+                     Reason: Total VisibilityTimeout for the message is beyond the \
+                     limit [43200 seconds]"
+                )));
+            }
+            msg.set_visibility_timeout(timeout_seconds.max(0) as u32);
+            self.last_modified = now_ms as u64;
+            return Ok(());
         }
+        Err(SqsError::ReceiptHandleIsInvalid(
+            "The input receipt handle is invalid.".to_string(),
+        ))
     }
 
     /// Remove all messages from the queue.

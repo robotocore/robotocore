@@ -2967,3 +2967,342 @@ fn receive_visibility_cap_requires_existing_queue_first() {
         );
     }
 }
+
+/// Pull the first message's original sent_timestamp into the past so the
+/// Total-VisibilityTimeout rule can be exercised at deterministic ages —
+/// the live fork accumulates age with wall-clock time, which unit tests
+/// cannot wait out.
+fn age_first_message(handler: &DefaultSqsHandler, queue_url_for_store: &str, age_seconds: u64) {
+    let queue_name = queue_url_for_store
+        .rsplit('/')
+        .next()
+        .expect("queue name from url");
+    let store = handler.get_store(123456789012, "us-east-1");
+    let queue = store.get_queue(queue_name).expect("queue exists");
+    let mut q = queue.write();
+    let msg = q.messages.front_mut().expect("message exists");
+    msg.sent_timestamp = (Utc::now().timestamp_millis() as u64).saturating_sub(age_seconds * 1000);
+}
+
+/// moto's Total-VisibilityTimeout rule (moto/sqs/models.py:1082-1096):
+/// `ChangeMessageVisibility(43200)` on a message whose accumulated
+/// lifetime (age + new timeout) exceeds 43200s answers 400
+/// InvalidParameterValue with the exact total-rule wording (live-verified:
+/// a fresh message already breaches at vis=43200 because the HTTP round
+/// trip puts it 1ms past send).
+#[test]
+fn total_visibility_timeout_rule_fresh_top_level() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "total-rule-fresh");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "t"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let handle: String = serde_json::from_str::<Value>(&recv.body).expect("json")["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .expect("handle")
+        .to_string();
+
+    // The twin services requests in-process; outcome = age + 43200 > 43200
+    // needs a non-zero age, mirrored here with a small sleep.
+    thread::sleep(Duration::from_millis(5));
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": handle,
+            "VisibilityTimeout": 43200
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(
+        resp.body.contains("InvalidParameterValue"),
+        "got {}",
+        resp.body
+    );
+    assert!(
+        resp.body.contains(
+            "Value 43200 for parameter VisibilityTimeout is invalid. Reason: Total \
+             VisibilityTimeout for the message is beyond the limit [43200 seconds]"
+        ),
+        "got {}",
+        resp.body
+    );
+}
+
+/// The static 43200 cap wins BEFORE the total rule: 50000 is refused by
+/// the response-layer MaxVisibilityTimeout wording, never the total-rule
+/// message (live-verified 1a2).
+#[test]
+fn total_visibility_timeout_rule_static_cap_wins_first() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "total-rule-cap");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "t"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let handle: String = serde_json::from_str::<Value>(&recv.body).expect("json")["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .expect("handle")
+        .to_string();
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": handle,
+            "VisibilityTimeout": 50000
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(
+        resp.body
+            .contains("Invalid request, maximum visibility timeout is 43200"),
+        "got {}",
+        resp.body
+    );
+    assert!(
+        !resp.body.contains("Total VisibilityTimeout"),
+        "the total rule must not fire before the static cap, got {}",
+        resp.body
+    );
+}
+
+/// Aged message: the rule counts from the ORIGINAL send, so an aged
+/// message breaches the total rule even for visibilities under the static
+/// cap; a mid-range visibility with enough headroom still applies (200).
+/// Live-verified 1d: aged(5s) 43200 and 43195 -> 400 total-rule, 42000 ->
+/// 200 OK; the comparison stays exclusive (`> 43200*1000`).
+#[test]
+fn total_visibility_timeout_rule_aged_message_top_level() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "total-rule-aged");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "t"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let handle: String = serde_json::from_str::<Value>(&recv.body).expect("json")["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .expect("handle")
+        .to_string();
+
+    age_first_message(&handler, &queue_url, 120);
+
+    for (label, vis, expect_ok) in [
+        ("43200 on aged (43320 total) breaches", 43200, false),
+        ("43195 on aged (43315 total) breaches", 43195, false),
+        ("42000 on aged (42120 total) applies", 42000, true),
+    ] {
+        let resp = handler.handle(make_request(
+            "ChangeMessageVisibility",
+            json!({
+                "QueueUrl": &queue_url,
+                "ReceiptHandle": handle,
+                "VisibilityTimeout": vis
+            }),
+        ));
+        assert_eq!(
+            resp.status,
+            if expect_ok { 200 } else { 400 },
+            "{label}: got {}",
+            resp.body
+        );
+        if !expect_ok {
+            assert!(
+                resp.body.contains(
+                    "Reason: Total VisibilityTimeout for the message is beyond the limit [43200 seconds]"
+                ),
+                "{label}: got {}",
+                resp.body
+            );
+        }
+    }
+}
+
+/// The batch form does NOT turn a Total-rule breach into a per-row Failed
+/// entry: moto's change_message_visibility_batch catches only
+/// ReceiptHandleIsInvalid, so the raised InvalidParameterValue fails the
+/// WHOLE request (live-verified 1b) and collected rows are discarded.
+#[test]
+fn total_visibility_timeout_rule_batch_whole_request() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "total-rule-batch");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "t"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let handle: String = serde_json::from_str::<Value>(&recv.body).expect("json")["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .expect("handle")
+        .to_string();
+    age_first_message(&handler, &queue_url, 100);
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "a", "ReceiptHandle": handle, "VisibilityTimeout": 43200}
+            ]
+        }),
+    ));
+    assert_eq!(resp.status, 400, "whole request 400, got {}", resp.body);
+    assert!(
+        resp.body.contains("InvalidParameterValue"),
+        "got {}",
+        resp.body
+    );
+    assert!(
+        resp.body.contains(
+            "Reason: Total VisibilityTimeout for the message is beyond the limit [43200 seconds]"
+        ),
+        "got {}",
+        resp.body
+    );
+    // A 400 error envelope carries no batch rows at all.
+    assert!(!resp.body.contains("Failed"), "got {}", resp.body);
+}
+
+/// Per-row over-cap values keep the Failed-row shape — the parse/assert
+/// arm fires before any total-rule consideration — while the aged
+/// under-cap row in the same batch still applies (live-verified 1c2).
+#[test]
+fn total_visibility_timeout_rule_batch_over_cap_keeps_failed_row() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "total-rule-batch-cap");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "t"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let handle: String = serde_json::from_str::<Value>(&recv.body).expect("json")["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .expect("handle")
+        .to_string();
+    age_first_message(&handler, &queue_url, 100);
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "over", "ReceiptHandle": handle, "VisibilityTimeout": 50000},
+                {"Id": "ok", "ReceiptHandle": handle, "VisibilityTimeout": 42000}
+            ]
+        }),
+    ));
+    assert_eq!(
+        resp.status, 200,
+        "over-cap rows stay per-row, got {}",
+        resp.body
+    );
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    let failed = data["Failed"].as_array().expect("Failed array");
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0]["Id"], "over");
+    assert_eq!(failed[0]["Code"], "InvalidParameterValue");
+    assert_eq!(failed[0]["Message"], "Visibility timeout invalid");
+    let successful = data["Successful"].as_array().expect("Successful array");
+    assert_eq!(successful.len(), 1);
+    assert_eq!(successful[0]["Id"], "ok");
+}
+
+/// The total rule takes the timeout signed: a negative timeout on a hugely
+/// aged message still breaches (now + (-5s) - sent_timestamp > 43200s,
+/// live-verified via the C1 signed path; the fresh arm is live-verified
+/// G2: 200 and the message becomes visible immediately).
+#[test]
+fn total_visibility_timeout_rule_signed_with_negatives() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "total-rule-signed");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "t"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let handle: String = serde_json::from_str::<Value>(&recv.body).expect("json")["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .expect("handle")
+        .to_string();
+
+    // Aged far beyond the limit: a negative value still breaches.
+    age_first_message(&handler, &queue_url, 50_000);
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": handle,
+            "VisibilityTimeout": -5
+        }),
+    ));
+    assert_eq!(
+        resp.status, 400,
+        "aged-negative breaches, got {}",
+        resp.body
+    );
+    assert!(
+        resp.body
+            .contains("Value -5 for parameter VisibilityTimeout is invalid"),
+        "got {}",
+        resp.body
+    );
+
+    // Fresh message with a negative timeout: passes the rule, message
+    // becomes visible immediately (pre-existing clamp behavior).
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "fresh"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let handle: String = serde_json::from_str::<Value>(&recv.body).expect("json")["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .expect("handle")
+        .to_string();
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": handle,
+            "VisibilityTimeout": -5
+        }),
+    ));
+    assert_eq!(
+        resp.status, 200,
+        "fresh-negative applies, got {}",
+        resp.body
+    );
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.0, 1, "the message is visible again");
+}

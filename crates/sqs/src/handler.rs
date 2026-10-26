@@ -621,7 +621,6 @@ impl DefaultSqsHandler {
                     continue;
                 }
             };
-
             // moto resolves the queue only inside the per-row backend call
             // (`change_message_visibility` -> `get_queue`,
             // moto/sqs/models.py:1082): QueueDoesNotExist propagates out of
@@ -640,23 +639,36 @@ impl DefaultSqsHandler {
             })?;
 
             let mut q = queue_arc.write();
-            // moto's Message.change_visibility stores visible_at in the
-            // past for negative timeouts and the message becomes visible
-            // immediately (live-verified); the store cannot represent a
-            // past point, so negatives clamp to 0 — the same outcome.
-            if q.change_message_visibility(&receipt_handle, visibility.max(0) as u32) {
-                successful.push(json!({ "Id": id }));
-            } else {
+            // moto's inner change_message_visibility stores visible_at in
+            // the past for negative timeouts (live-verified: a "-5" row
+            // succeeds and the message is re-receivable immediately); the
+            // store cannot represent a past point, so the checked apply
+            // clamps negatives to 0 — the same outcome.
+            //
+            // The TOTAL-VisibilityTimeout rule inside the inner call is
+            // NOT caught by moto's batch loop (it catches only
+            // ReceiptHandleIsInvalid): a rule breach raises out of
+            // change_message_visibility_batch and fails the WHOLE request
+            // with the global 400 InvalidParameterValue envelope
+            // (live-verified; already-collected Failed rows are
+            // discarded).
+            match q.change_message_visibility_checked(&receipt_handle, visibility) {
+                Ok(()) => successful.push(json!({ "Id": id })),
                 // moto rows per-entry ReceiptHandleIsInvalid with
                 // SenderFault true and the ServiceException message
                 // `getattr(e, "message", "")` yields
                 // (moto/sqs/models.py:1128-1136; live-verified).
-                failed.push(json!({
-                    "Id": id,
-                    "SenderFault": true,
-                    "Code": "ReceiptHandleIsInvalid",
-                    "Message": "The input receipt handle is invalid."
-                }));
+                Err(SqsError::ReceiptHandleIsInvalid(_)) => {
+                    failed.push(json!({
+                        "Id": id,
+                        "SenderFault": true,
+                        "Code": "ReceiptHandleIsInvalid",
+                        "Message": "The input receipt handle is invalid."
+                    }));
+                }
+                // Total-rule InvalidParameterValue: propagate as the
+                // whole-request 400, like moto's un-caught raise.
+                Err(err) => return Err(err),
             }
         }
 
@@ -1314,20 +1326,13 @@ impl DefaultSqsHandler {
         // handle, so an over-cap value beats even a nonexistent queue
         // (live-verified) and answers before the missing-ReceiptHandle
         // crash below. Negative values pass the response-layer cap in moto
-        // too; they are clamped below, at the apply step.
+        // too; the Total-VisibilityTimeout rule below takes them signed.
         let timeout = Self::visibility_timeout_of(params.get("VisibilityTimeout")).unwrap_or(30);
         if timeout > Self::MAX_VISIBILITY_TIMEOUT as i64 {
             return Err(SqsError::InvalidParameterValue(
                 Self::MAX_VISIBILITY_TIMEOUT_MESSAGE.to_string(),
             ));
         }
-        // moto accepts negative timeouts (int("-5"); live-verified
-        // top-level: a ChangeMessageVisibility with VisibilityTimeout=-5
-        // answers 200 and the message is re-receivable immediately, moto's
-        // Message.change_visibility stores visible_at in the past). The
-        // store cannot represent a past visibility point, so negatives
-        // clamp to 0 — the same immediately-visible outcome.
-        let timeout = timeout.max(0) as u32; // <= 43200 fits
 
         // moto passes the None ReceiptHandle into method dispatch which
         // escapes as a werkzeug 500 crash (live-verified).
@@ -1342,15 +1347,17 @@ impl DefaultSqsHandler {
             SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
         })?;
 
-        let ok = {
+        // moto's backend change_message_visibility runs the
+        // Total-VisibilityTimeout rule on the matched message before
+        // applying (live-verified: a fresh message at the 43200 boundary
+        // answers the Total rule, not the static cap, because the
+        // message age alone puts the total beyond the limit; the
+        // "handle resolved but rule breached" answer carries the raw
+        // timeout value in moto's exact framing). ReceiptHandleIsInvalid
+        // (no message matches) serializes through the normal error table.
+        {
             let mut q = queue_arc.write();
-            q.change_message_visibility(receipt_handle, timeout)
-        };
-
-        if !ok {
-            return Err(SqsError::ReceiptHandleIsInvalid(
-                "The input receipt handle is invalid.".to_string(),
-            ));
+            q.change_message_visibility_checked(receipt_handle, timeout)?;
         }
 
         let body = json!({}).to_string();
