@@ -1,0 +1,850 @@
+[
+  {
+    "noun": "AgentRuntime",
+    "operations": [
+      "CreateAgentRuntime",
+      "DeleteAgentRuntime",
+      "GetAgentRuntime",
+      "UpdateAgentRuntime"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateAgentRuntime",
+      "DeleteAgentRuntime",
+      "GetAgentRuntime",
+      "UpdateAgentRuntime"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateAgentRuntime": "needs_params",
+      "DeleteAgentRuntime": "working",
+      "GetAgentRuntime": "working",
+      "UpdateAgentRuntime": "needs_params"
+    },
+    "working_untested": [
+      "DeleteAgentRuntime",
+      "GetAgentRuntime"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "AgentRuntimeEndpoint",
+    "operations": [
+      "CreateAgentRuntimeEndpoint",
+      "DeleteAgentRuntimeEndpoint",
+      "GetAgentRuntimeEndpoint",
+      "UpdateAgentRuntimeEndpoint"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateAgentRuntimeEndpoint",
+      "DeleteAgentRuntimeEndpoint",
+      "GetAgentRuntimeEndpoint",
+      "UpdateAgentRuntimeEndpoint"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateAgentRuntimeEndpoint": "working",
+      "DeleteAgentRuntimeEndpoint": "working",
+      "GetAgentRuntimeEndpoint": "working",
+      "UpdateAgentRuntimeEndpoint": "working"
+    },
+    "working_untested": [
+      "CreateAgentRuntimeEndpoint",
+      "DeleteAgentRuntimeEndpoint",
+      "GetAgentRuntimeEndpoint",
+      "UpdateAgentRuntimeEndpoint"
+    ],
+    "working_untested_count": 4
+  },
+  {
+    "noun": "AgentRuntimeEndpoints",
+    "operations": [
+      "ListAgentRuntimeEndpoints"
+    ],
+    "tested": [],
+    "untested": [
+      "ListAgentRuntimeEndpoints"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListAgentRuntimeEndpoints": "working"
+    },
+    "working_untested": [
+      "ListAgentRuntimeEndpoints"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "AgentRuntimeVersions",
+    "operations": [
+      "ListAgentRuntimeVersions"
+    ],
+    "tested": [],
+    "untested": [
+      "ListAgentRuntimeVersions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListAgentRuntimeVersions": "working"
+    },
+    "working_untested": [
+      "ListAgentRuntimeVersions"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "AgentRuntimes",
+    "operations": [
+      "ListAgentRuntimes"
+    ],
+    "tested": [],
+    "untested": [
+      "ListAgentRuntimes"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListAgentRuntimes": "working"
+    },
+    "working_untested": [
+      "ListAgentRuntimes"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "ApiKeyCredentialProvider",
+    "operations": [
+      "CreateApiKeyCredentialProvider",
+      "DeleteApiKeyCredentialProvider",
+      "GetApiKeyCredentialProvider",
+      "UpdateApiKeyCredentialProvider"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateApiKeyCredentialProvider",
+      "DeleteApiKeyCredentialProvider",
+      "GetApiKeyCredentialProvider",
+      "UpdateApiKeyCredentialProvider"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateApiKeyCredentialProvider": "not_implemented",
+      "DeleteApiKeyCredentialProvider": "not_implemented",
+      "GetApiKeyCredentialProvider": "not_implemented",
+      "UpdateApiKeyCredentialProvider": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ApiKeyCredentialProviders",
+    "operations": [
+      "ListApiKeyCredentialProviders"
+    ],
+    "tested": [],
+    "untested": [
+      "ListApiKeyCredentialProviders"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListApiKeyCredentialProviders": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Browser",
+    "operations": [
+      "CreateBrowser",
+      "DeleteBrowser",
+      "GetBrowser"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateBrowser",
+      "DeleteBrowser",
+      "GetBrowser"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateBrowser": "not_implemented",
+      "DeleteBrowser": "not_implemented",
+      "GetBrowser": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "BrowserProfile",
+    "operations": [
+      "CreateBrowserProfile",
+      "DeleteBrowserProfile",
+      "GetBrowserProfile"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateBrowserProfile",
+      "DeleteBrowserProfile",
+      "GetBrowserProfile"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateBrowserProfile": "not_implemented",
+      "DeleteBrowserProfile": "not_implemented",
+      "GetBrowserProfile": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "BrowserProfiles",
+    "operations": [
+      "ListBrowserProfiles"
+    ],
+    "tested": [],
+    "untested": [
+      "ListBrowserProfiles"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListBrowserProfiles": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Browsers",
+    "operations": [
+      "ListBrowsers"
+    ],
+    "tested": [],
+    "untested": [
+      "ListBrowsers"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListBrowsers": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CodeInterpreter",
+    "operations": [
+      "CreateCodeInterpreter",
+      "DeleteCodeInterpreter",
+      "GetCodeInterpreter"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateCodeInterpreter",
+      "DeleteCodeInterpreter",
+      "GetCodeInterpreter"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateCodeInterpreter": "working",
+      "DeleteCodeInterpreter": "working",
+      "GetCodeInterpreter": "working"
+    },
+    "working_untested": [
+      "CreateCodeInterpreter",
+      "DeleteCodeInterpreter",
+      "GetCodeInterpreter"
+    ],
+    "working_untested_count": 3
+  },
+  {
+    "noun": "CodeInterpreters",
+    "operations": [
+      "ListCodeInterpreters"
+    ],
+    "tested": [],
+    "untested": [
+      "ListCodeInterpreters"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListCodeInterpreters": "working"
+    },
+    "working_untested": [
+      "ListCodeInterpreters"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "Evaluator",
+    "operations": [
+      "CreateEvaluator",
+      "DeleteEvaluator",
+      "GetEvaluator",
+      "UpdateEvaluator"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateEvaluator",
+      "DeleteEvaluator",
+      "GetEvaluator",
+      "UpdateEvaluator"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateEvaluator": "needs_params",
+      "DeleteEvaluator": "not_implemented",
+      "GetEvaluator": "not_implemented",
+      "UpdateEvaluator": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Evaluators",
+    "operations": [
+      "ListEvaluators"
+    ],
+    "tested": [],
+    "untested": [
+      "ListEvaluators"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListEvaluators": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Gateway",
+    "operations": [
+      "CreateGateway",
+      "DeleteGateway",
+      "GetGateway",
+      "UpdateGateway"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateGateway",
+      "DeleteGateway",
+      "GetGateway",
+      "UpdateGateway"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateGateway": "working",
+      "DeleteGateway": "working",
+      "GetGateway": "working",
+      "UpdateGateway": "working"
+    },
+    "working_untested": [
+      "CreateGateway",
+      "DeleteGateway",
+      "GetGateway",
+      "UpdateGateway"
+    ],
+    "working_untested_count": 4
+  },
+  {
+    "noun": "GatewayTarget",
+    "operations": [
+      "CreateGatewayTarget",
+      "DeleteGatewayTarget",
+      "GetGatewayTarget",
+      "UpdateGatewayTarget"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateGatewayTarget",
+      "DeleteGatewayTarget",
+      "GetGatewayTarget",
+      "UpdateGatewayTarget"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateGatewayTarget": "needs_params",
+      "DeleteGatewayTarget": "working",
+      "GetGatewayTarget": "working",
+      "UpdateGatewayTarget": "needs_params"
+    },
+    "working_untested": [
+      "DeleteGatewayTarget",
+      "GetGatewayTarget"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "GatewayTargets",
+    "operations": [
+      "ListGatewayTargets",
+      "SynchronizeGatewayTargets"
+    ],
+    "tested": [],
+    "untested": [
+      "ListGatewayTargets",
+      "SynchronizeGatewayTargets"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "ListGatewayTargets": "working",
+      "SynchronizeGatewayTargets": "not_implemented"
+    },
+    "working_untested": [
+      "ListGatewayTargets"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "Gateways",
+    "operations": [
+      "ListGateways"
+    ],
+    "tested": [],
+    "untested": [
+      "ListGateways"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListGateways": "working"
+    },
+    "working_untested": [
+      "ListGateways"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "Memories",
+    "operations": [
+      "ListMemories"
+    ],
+    "tested": [],
+    "untested": [
+      "ListMemories"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListMemories": "working"
+    },
+    "working_untested": [
+      "ListMemories"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "Memory",
+    "operations": [
+      "CreateMemory",
+      "DeleteMemory",
+      "GetMemory",
+      "UpdateMemory"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateMemory",
+      "DeleteMemory",
+      "GetMemory",
+      "UpdateMemory"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateMemory": "working",
+      "DeleteMemory": "working",
+      "GetMemory": "working",
+      "UpdateMemory": "working"
+    },
+    "working_untested": [
+      "CreateMemory",
+      "DeleteMemory",
+      "GetMemory",
+      "UpdateMemory"
+    ],
+    "working_untested_count": 4
+  },
+  {
+    "noun": "Oauth2CredentialProvider",
+    "operations": [
+      "CreateOauth2CredentialProvider",
+      "DeleteOauth2CredentialProvider",
+      "GetOauth2CredentialProvider",
+      "UpdateOauth2CredentialProvider"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateOauth2CredentialProvider",
+      "DeleteOauth2CredentialProvider",
+      "GetOauth2CredentialProvider",
+      "UpdateOauth2CredentialProvider"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateOauth2CredentialProvider": "needs_params",
+      "DeleteOauth2CredentialProvider": "not_implemented",
+      "GetOauth2CredentialProvider": "not_implemented",
+      "UpdateOauth2CredentialProvider": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Oauth2CredentialProviders",
+    "operations": [
+      "ListOauth2CredentialProviders"
+    ],
+    "tested": [],
+    "untested": [
+      "ListOauth2CredentialProviders"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListOauth2CredentialProviders": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "OnlineEvaluationConfig",
+    "operations": [
+      "CreateOnlineEvaluationConfig",
+      "DeleteOnlineEvaluationConfig",
+      "GetOnlineEvaluationConfig",
+      "UpdateOnlineEvaluationConfig"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateOnlineEvaluationConfig",
+      "DeleteOnlineEvaluationConfig",
+      "GetOnlineEvaluationConfig",
+      "UpdateOnlineEvaluationConfig"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateOnlineEvaluationConfig": "needs_params",
+      "DeleteOnlineEvaluationConfig": "not_implemented",
+      "GetOnlineEvaluationConfig": "not_implemented",
+      "UpdateOnlineEvaluationConfig": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "OnlineEvaluationConfigs",
+    "operations": [
+      "ListOnlineEvaluationConfigs"
+    ],
+    "tested": [],
+    "untested": [
+      "ListOnlineEvaluationConfigs"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListOnlineEvaluationConfigs": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Policies",
+    "operations": [
+      "ListPolicies"
+    ],
+    "tested": [],
+    "untested": [
+      "ListPolicies"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListPolicies": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Policy",
+    "operations": [
+      "CreatePolicy",
+      "DeletePolicy",
+      "GetPolicy",
+      "UpdatePolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "CreatePolicy",
+      "DeletePolicy",
+      "GetPolicy",
+      "UpdatePolicy"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreatePolicy": "needs_params",
+      "DeletePolicy": "not_implemented",
+      "GetPolicy": "not_implemented",
+      "UpdatePolicy": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PolicyEngine",
+    "operations": [
+      "CreatePolicyEngine",
+      "DeletePolicyEngine",
+      "GetPolicyEngine",
+      "UpdatePolicyEngine"
+    ],
+    "tested": [],
+    "untested": [
+      "CreatePolicyEngine",
+      "DeletePolicyEngine",
+      "GetPolicyEngine",
+      "UpdatePolicyEngine"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreatePolicyEngine": "not_implemented",
+      "DeletePolicyEngine": "not_implemented",
+      "GetPolicyEngine": "not_implemented",
+      "UpdatePolicyEngine": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PolicyEngines",
+    "operations": [
+      "ListPolicyEngines"
+    ],
+    "tested": [],
+    "untested": [
+      "ListPolicyEngines"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListPolicyEngines": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PolicyGeneration",
+    "operations": [
+      "GetPolicyGeneration",
+      "StartPolicyGeneration"
+    ],
+    "tested": [],
+    "untested": [
+      "GetPolicyGeneration",
+      "StartPolicyGeneration"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "GetPolicyGeneration": "not_implemented",
+      "StartPolicyGeneration": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PolicyGenerationAssets",
+    "operations": [
+      "ListPolicyGenerationAssets"
+    ],
+    "tested": [],
+    "untested": [
+      "ListPolicyGenerationAssets"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListPolicyGenerationAssets": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "PolicyGenerations",
+    "operations": [
+      "ListPolicyGenerations"
+    ],
+    "tested": [],
+    "untested": [
+      "ListPolicyGenerations"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListPolicyGenerations": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Resource",
+    "operations": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "tested": [],
+    "untested": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "TagResource": "working",
+      "UntagResource": "working"
+    },
+    "working_untested": [
+      "TagResource",
+      "UntagResource"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "ResourcePolicy",
+    "operations": [
+      "DeleteResourcePolicy",
+      "GetResourcePolicy",
+      "PutResourcePolicy"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteResourcePolicy",
+      "GetResourcePolicy",
+      "PutResourcePolicy"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "DeleteResourcePolicy": "not_implemented",
+      "GetResourcePolicy": "not_implemented",
+      "PutResourcePolicy": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TagsForResource",
+    "operations": [
+      "ListTagsForResource"
+    ],
+    "tested": [],
+    "untested": [
+      "ListTagsForResource"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListTagsForResource": "working"
+    },
+    "working_untested": [
+      "ListTagsForResource"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "TokenVault",
+    "operations": [
+      "GetTokenVault"
+    ],
+    "tested": [],
+    "untested": [
+      "GetTokenVault"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetTokenVault": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "TokenVaultCMK",
+    "operations": [
+      "SetTokenVaultCMK"
+    ],
+    "tested": [],
+    "untested": [
+      "SetTokenVaultCMK"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SetTokenVaultCMK": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "WorkloadIdentities",
+    "operations": [
+      "ListWorkloadIdentities"
+    ],
+    "tested": [],
+    "untested": [
+      "ListWorkloadIdentities"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListWorkloadIdentities": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "WorkloadIdentity",
+    "operations": [
+      "CreateWorkloadIdentity",
+      "DeleteWorkloadIdentity",
+      "GetWorkloadIdentity",
+      "UpdateWorkloadIdentity"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateWorkloadIdentity",
+      "DeleteWorkloadIdentity",
+      "GetWorkloadIdentity",
+      "UpdateWorkloadIdentity"
+    ],
+    "size": 4,
+    "untested_count": 4,
+    "probe_status": {
+      "CreateWorkloadIdentity": "not_implemented",
+      "DeleteWorkloadIdentity": "not_implemented",
+      "GetWorkloadIdentity": "not_implemented",
+      "UpdateWorkloadIdentity": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

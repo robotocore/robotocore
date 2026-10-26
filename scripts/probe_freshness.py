@@ -68,6 +68,10 @@ IMPL_PATH_OVERRIDES: dict[str, list[str]] = {
     "logs": ["crates/cloudwatch-logs/src/",
              "rotocore/src/services/cloudwatch_logs.rs"],
     "sts": ["src/core/services/sts.rs"],
+    # bedrock-agentcore-control shares bedrockagentcore's module dir: both
+    # botocore models deliver on the `bedrock-agentcore` signing scope and the
+    # union backend lives in one directory (issue #371).
+    "bedrock-agentcore-control": ["rotocore/src/services/bedrockagentcore/"],
 }
 
 

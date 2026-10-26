@@ -115,7 +115,7 @@ service changes.
 
 ## Service Coverage
 
-158 AWS services are registered in the gateway table. Availability is
+160 AWS services are registered in the gateway table. Availability is
 derived from the real tables, not a static claim — ask the twin:
 
 ```bash
@@ -126,7 +126,7 @@ print(dict(collections.Counter(x['status'] for x in s)))"
 ```
 
 `native` = a Rust backend answers in-process (gateway core + rotocore —
-currently all 158). `absent` = requests answer 501 NotImplemented.
+currently all 160). `absent` = requests answer 501 NotImplemented.
 
 ## Adding a New Native Service (Checklist)
 
