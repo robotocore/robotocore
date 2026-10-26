@@ -806,6 +806,23 @@ impl DefaultSqsHandler {
         account: u64,
         region: &str,
     ) -> Result<AwsResponse, SqsError> {
+        // A PRESENT-but-unparseable VisibilityTimeout crashes the receive:
+        // moto's automated parse layer int()s the model-declared integer at
+        // setup — before the response method touches the queue at all — so
+        // the ValueError escapes as a plain werkzeug 500 (live-verified:
+        // "abc" on an EXISTING queue and on a nonexistent one both answer
+        // the 500 HTML page instead of NonExistentQueue). A MISSING value
+        // does not crash: the response layer catches the fallback TypeError
+        // and applies the queue's attribute (live-verified: absent on a
+        // nonexistent queue answers NonExistentQueue like every resolve).
+        // Numeric strings keep the int() coercion of both protocols.
+        if params
+            .get("VisibilityTimeout")
+            .is_some_and(|v| Self::visibility_timeout_of(Some(v)).is_none())
+        {
+            return Err(SqsError::MotoCrash);
+        }
+
         let queue_url = params
             .get("QueueUrl")
             .and_then(|v| v.as_str())
@@ -861,9 +878,14 @@ impl DefaultSqsHandler {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(wait_seconds);
         // Visibility override from the request, if any; otherwise the
         // queue attribute, read under the queue lock during the receive.
+        // The same numeric shapes moto's parser coerces count here
+        // (numbers, numeric strings, booleans as int(True/False)); with
+        // the parse-layer crash above, only numeric values reach this
+        // point.
         let params_visibility = params
             .get("VisibilityTimeout")
-            .and_then(|v| v.as_u64())
+            .and_then(|v| Self::visibility_timeout_of(Some(v)))
+            .filter(|v| *v >= 0)
             .map(|v| v as u32);
         loop {
             messages = {
@@ -1492,6 +1514,12 @@ impl DefaultSqsHandler {
     fn visibility_timeout_of(param: Option<&Value>) -> Option<i64> {
         match param? {
             Value::Number(n) => n.as_i64().or_else(|| n.as_f64().map(|f| f as i64)),
+            // Python's int(True) == 1 / int(False) == 0: moto's model
+            // parser runs the same coercion on a boolean JSON member
+            // (live-verified: ReceiveMessage with VisibilityTimeout=true
+            // answers 200, ChangeMessageVisibility with true passes the
+            // cap as vis=1 and reaches the backend).
+            Value::Bool(b) => Some(if *b { 1 } else { 0 }),
             Value::String(s) => {
                 if let Ok(v) = s.parse::<i64>() {
                     Some(v)

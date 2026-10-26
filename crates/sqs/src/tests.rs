@@ -3458,3 +3458,138 @@ fn cmv_junk_visibility_batch_row_kills_whole_request() {
     assert_eq!(successful.len(), 1);
     assert_eq!(successful[0]["Id"], "ok");
 }
+
+/// A present-but-unparseable ReceiveMessage VisibilityTimeout mirrors
+/// moto's parse-layer crash: the automated parameter parse int()s the
+/// model-declared integer before the response method runs, so `"abc"`,
+/// an object shape or any non-numeric member kills the request as a
+/// plain werkzeug 500 — on an EXISTING queue and on a nonexistent one
+/// alike (live-verified: the crash precedes the queue resolution and
+/// even the QueueUrl handling). A MISSING value does not crash: the
+/// response layer catches the fallback TypeError and applies the queue
+/// attribute (live-verified). Numeric strings and booleans keep moto's
+/// int() coercion (live-verified: "30" is honored, `true` receives at
+/// vis=1).
+#[test]
+fn receive_junk_visibility_crash() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "receive-junk-vis");
+
+    for (label, vis) in [
+        ("junk string", json!("abc")),
+        ("object shape", json!({ "x": 1 })),
+        ("array shape", json!([1])),
+    ] {
+        let resp = handler.handle(make_request(
+            "ReceiveMessage",
+            json!({"QueueUrl": &queue_url, "VisibilityTimeout": vis}),
+        ));
+        assert_eq!(resp.status, 500, "{label}: got {}", resp.body);
+        assert!(
+            resp.body.contains("<!doctype html>")
+                && resp.body.contains("500 Internal Server Error"),
+            "{label}: not the moto crash envelope, got {}",
+            resp.body
+        );
+    }
+
+    // The crash precedes the queue resolution: a nonexistent queue keeps
+    // the same 500 instead of NonExistentQueue.
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": format!("{}x", queue_url), "VisibilityTimeout": "abc"}),
+    ));
+    assert_eq!(
+        resp.status, 500,
+        "crash beats the queue lookup, got {}",
+        resp.body
+    );
+
+    // A missing value takes the queue-attribute fallback (no crash), and a
+    // nonexistent queue still answers NonExistentQueue for it.
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url}),
+    ));
+    assert_eq!(
+        resp.status, 200,
+        "absent vis receives normally, got {}",
+        resp.body
+    );
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": format!("{}x", queue_url)}),
+    ));
+    assert_eq!(
+        resp.status, 400,
+        "absent vis on ghost queue, got {}",
+        resp.body
+    );
+    assert!(
+        resp.body
+            .contains("AWS.SimpleQueueService.NonExistentQueue"),
+        "got {}",
+        resp.body
+    );
+
+    // Numeric strings keep the int() coercion: "0" releases instantly
+    // where the un-parsed 30s queue default would stay in flight.
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "a"}),
+    ));
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "VisibilityTimeout": "0"}),
+    ));
+    assert_eq!(
+        resp.status, 200,
+        "numeric string vis=0 parses, got {}",
+        resp.body
+    );
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.0, 1, "the numeric-string vis=0 was applied");
+    assert_eq!(counts.1, 0);
+
+    // Booleans are Python ints for moto's parser (live-verified:
+    // VisibilityTimeout=true answers 200): int(false) == 0 releases
+    // instantly.
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "b"}),
+    ));
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "VisibilityTimeout": false}),
+    ));
+    assert_eq!(
+        resp.status, 200,
+        "bool is int(False) == 0, got {}",
+        resp.body
+    );
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.0, 2, "the boolean vis=0 was applied instantly");
+    assert_eq!(counts.1, 0);
+
+    // int(true) == 1 puts the message in flight for one second — distinct
+    // from both a crash and the 30s queue default.
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "c"}),
+    ));
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "VisibilityTimeout": true}),
+    ));
+    assert_eq!(
+        resp.status, 200,
+        "bool is int(True) == 1, got {}",
+        resp.body
+    );
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.1, 1, "vis=1 keeps the message in flight");
+    thread::sleep(Duration::from_millis(1100));
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.0, 3, "vis=1 expired; queue-default 30s would not");
+    assert_eq!(counts.1, 0);
+}
