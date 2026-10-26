@@ -1489,10 +1489,19 @@ fn respond_to_auth_challenge(s: &mut State, p: &Value, _region: &str) -> Respons
             &format!("Unsupported challenge: {challenge}"),
         );
     }
-    let pool_id = match find_pool_by_client(s, &client_id) {
-        Some(pool) => pool.pool["Id"].as_str().unwrap_or_default().to_string(),
-        None => return client_missing(&client_id),
+    // moto's respond_to_auth_challenge (fork models.py:1619-1627): the
+    // session must be live before anything else, the pool comes FROM the
+    // session (`_, user_pool = self.sessions[session]`), and the answering
+    // client must live in that pool — a ClientId-only pool lookup let a
+    // session minted for one pool complete under another pool's client.
+    let session = p["Session"].as_str().unwrap_or_default().to_string();
+    let Some((_, pool_id)) = session_lookup(s, &session) else {
+        return session_not_found(&session);
     };
+    if !pool_ref(s, &pool_id).is_some_and(|pl| pl.clients.iter().any(|(k, _)| *k == client_id)) {
+        // moto: `raise ResourceNotFoundError(client_id)` from the session's pool.
+        return session_not_found(&client_id);
+    }
     let username = p["ChallengeResponses"]["USERNAME"]
         .as_str()
         .unwrap_or_default()
@@ -1500,6 +1509,12 @@ fn respond_to_auth_challenge(s: &mut State, p: &Value, _region: &str) -> Respons
     let new_password = p["ChallengeResponses"]["NEW_PASSWORD"]
         .as_str()
         .unwrap_or_default();
+    if new_password.is_empty() {
+        return err(
+            "InvalidPasswordException",
+            "The provided password does not confirm to the configured password policy",
+        );
+    }
     let (sub, issuer) = {
         let pl = pool_mut(s, &pool_id).unwrap();
         let Some(user) = pl
@@ -1514,12 +1529,12 @@ fn respond_to_auth_challenge(s: &mut State, p: &Value, _region: &str) -> Respons
         user["UserStatus"] = json!("CONFIRMED");
         user["LastModifiedDate"] = json!(now());
         let sub = user["UserSub"].as_str().unwrap_or_default().to_string();
-        let issuer = format!(
-            "https://cognito-idp.{}.amazonaws.com/{pool_id}",
-            pool_region(&pool_id)
-        );
+        let issuer = issue_tokens_issuer(&pool_id);
         (sub, issuer)
     };
+    // moto: `del self.sessions[session]` before logging the user in — a
+    // replay of a spent session fails with ResourceNotFoundError(session).
+    session_delete(s, &session);
     let tokens = issue_tokens(&issuer, &sub, &client_id, &username);
     track_refresh_token(s, &pool_id, &username, &tokens);
     ok_json(&json!({
@@ -5281,5 +5296,134 @@ mod tests {
         r.account = acct;
         let b = body(&dispatch(&r).unwrap());
         assert_eq!(b, json!({}), "{b}");
+    }
+
+    /// A user in FORCE_CHANGE_PASSWORD: the public USER_PASSWORD_AUTH login
+    /// mints a NEW_PASSWORD_REQUIRED session (nothing registered client-side
+    /// needed beyond the pool's own client).
+    fn new_password_session(acct: u64, _pool_id: &str, client_id: &str, username: &str) -> String {
+        let mut r = req(
+            "InitiateAuth",
+            json!({
+                "ClientId": client_id,
+                "AuthFlow": "USER_PASSWORD_AUTH",
+                "AuthParameters": {"USERNAME": username, "PASSWORD": "TempPass1!"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["ChallengeName"], "NEW_PASSWORD_REQUIRED", "{b}");
+        b["Session"].as_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn cognito_new_password_required_rejects_stale_session() {
+        let acct = scope();
+        let (pool_id, client_id) = password_verifier_setup(acct, &["u1"]);
+        let session = new_password_session(acct, &pool_id, &client_id, "u1");
+
+        // Completing the challenge succeeds...
+        let mut r = req(
+            "RespondToAuthChallenge",
+            json!({
+                "ClientId": &client_id,
+                "ChallengeName": "NEW_PASSWORD_REQUIRED",
+                "Session": &session,
+                "ChallengeResponses": {"USERNAME": "u1", "NEW_PASSWORD": "NewPerm1!@A"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert!(b["AuthenticationResult"]["AccessToken"].is_string(), "{b}");
+
+        // ...consumes the session: a replay fails like a never-seen one.
+        let mut r = req(
+            "RespondToAuthChallenge",
+            json!({
+                "ClientId": &client_id,
+                "ChallengeName": "NEW_PASSWORD_REQUIRED",
+                "Session": &session,
+                "ChallengeResponses": {"USERNAME": "u1", "NEW_PASSWORD": "Again1!@A"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "ResourceNotFoundException", "{b}");
+        assert_eq!(b["message"], session);
+
+        // A never-seen session id also raises with the raw value.
+        let unknown = "unknown-session-of-forty-characters-xxxxxxxxx";
+        let mut r = req(
+            "RespondToAuthChallenge",
+            json!({
+                "ClientId": &client_id,
+                "ChallengeName": "NEW_PASSWORD_REQUIRED",
+                "Session": unknown,
+                "ChallengeResponses": {"USERNAME": "u1", "NEW_PASSWORD": "NewPerm1!@A"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "ResourceNotFoundException", "{b}");
+        assert_eq!(b["message"], unknown);
+    }
+
+    #[test]
+    fn cognito_new_password_required_binds_session_pool() {
+        // A session minted for pool B cannot be completed through pool A's
+        // client: moto resolves the pool from the session and requires the
+        // client to be listed in it (ResourceNotFoundError(client_id)).
+        let acct = scope();
+        let (pool_b, client_b) = password_verifier_setup(acct, &["u-b"]);
+        let session = new_password_session(acct, &pool_b, &client_b, "u-b");
+
+        // Pool A with its own client.
+        let (pool_a, _client_a_noise) = password_verifier_setup(acct, &["u-a"]);
+        let mut r = req(
+            "CreateUserPoolClient",
+            json!({"UserPoolId": &pool_a, "ClientName": "ca"}),
+        );
+        r.account = acct;
+        let client_a = body(&dispatch(&r).unwrap())["UserPoolClient"]["ClientId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let mut r = req(
+            "RespondToAuthChallenge",
+            json!({
+                "ClientId": &client_a,
+                "ChallengeName": "NEW_PASSWORD_REQUIRED",
+                "Session": &session,
+                "ChallengeResponses": {"USERNAME": "u-b", "NEW_PASSWORD": "NewPerm1!@A"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "ResourceNotFoundException", "{b}");
+        assert_eq!(b["message"], client_a);
+
+        // The pool-B user was not modified by the failed attempt.
+        let mut r = req(
+            "AdminGetUser",
+            json!({"UserPoolId": &pool_b, "Username": "u-b"}),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["UserStatus"], "FORCE_CHANGE_PASSWORD", "{b}");
+
+        // And the same session still completes under pool B's own client.
+        let mut r = req(
+            "RespondToAuthChallenge",
+            json!({
+                "ClientId": &client_b,
+                "ChallengeName": "NEW_PASSWORD_REQUIRED",
+                "Session": &session,
+                "ChallengeResponses": {"USERNAME": "u-b", "NEW_PASSWORD": "NewPerm1!@A"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert!(b["AuthenticationResult"]["AccessToken"].is_string(), "{b}");
     }
 }
