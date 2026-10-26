@@ -1981,9 +1981,23 @@ fn recover_from_error(
     Err(err)
 }
 
+/// A caught-off panic payload as a printable cause (`&str` for
+/// `panic!("static")` messages, `String` for formatted ones).
+fn panic_cause(panic: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = panic.downcast_ref::<&'static str>() {
+        (*s).to_string()
+    } else if let Some(s) = panic.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "unrecognized panic payload".to_string()
+    }
+}
+
 /// Kick off an execution on a detached thread: emits ExecutionStarted, walks
 /// the ASL graph, then records SUCCEEDED/FAILED unless the execution was
-/// aborted in the meantime.
+/// aborted in the meantime. Any panic during the walk is caught off too —
+/// a crashing evaluation records FAILED with a `States.Runtime` error
+/// instead of leaving the execution stuck RUNNING forever.
 pub fn run_on_thread(exec: Arc<Execution>, definition: String) {
     std::thread::spawn(move || {
         exec.push_event(json!({
@@ -1996,7 +2010,7 @@ pub fn run_on_thread(exec: Arc<Execution>, definition: String) {
             },
         }));
         let ctx = Ctx::new(exec.clone());
-        let result = (|| {
+        let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let def: Value = serde_json::from_str(&definition).unwrap_or(Value::Null);
             let states = def
                 .get("States")
@@ -2015,7 +2029,16 @@ pub fn run_on_thread(exec: Arc<Execution>, definition: String) {
                 .map(QueryLanguage::for_machine)
                 .unwrap_or_default();
             run_flow(&ctx, states, start_at, input, machine_default)
-        })();
+        })) {
+            Ok(result) => result,
+            Err(panic) => Err(FlowError::new(
+                "States.Runtime",
+                format!(
+                    "The execution aborted with an internal error: {}",
+                    panic_cause(panic)
+                ),
+            )),
+        };
         let last_event_id = ctx.exec.events.read().len() as i64;
         match result {
             Ok(output) => ctx
