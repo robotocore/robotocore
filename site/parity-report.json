@@ -6743,6 +6743,699 @@
       "error_count": 0,
       "probed": true
     },
+    "bedrock-agentcore": {
+      "status": "native",
+      "protocol": "rest-json",
+      "description": "Bedrock AgentCore data plane",
+      "total_aws_ops": 37,
+      "all_ops": [
+        "BatchCreateMemoryRecords",
+        "BatchDeleteMemoryRecords",
+        "BatchUpdateMemoryRecords",
+        "CompleteResourceTokenAuth",
+        "CreateEvent",
+        "DeleteEvent",
+        "DeleteMemoryRecord",
+        "Evaluate",
+        "GetAgentCard",
+        "GetBrowserSession",
+        "GetCodeInterpreterSession",
+        "GetEvent",
+        "GetMemoryRecord",
+        "GetResourceApiKey",
+        "GetResourceOauth2Token",
+        "GetWorkloadAccessToken",
+        "GetWorkloadAccessTokenForJWT",
+        "GetWorkloadAccessTokenForUserId",
+        "InvokeAgentRuntime",
+        "InvokeAgentRuntimeCommand",
+        "InvokeCodeInterpreter",
+        "ListActors",
+        "ListBrowserSessions",
+        "ListCodeInterpreterSessions",
+        "ListEvents",
+        "ListMemoryExtractionJobs",
+        "ListMemoryRecords",
+        "ListSessions",
+        "RetrieveMemoryRecords",
+        "SaveBrowserSessionProfile",
+        "StartBrowserSession",
+        "StartCodeInterpreterSession",
+        "StartMemoryExtractionJob",
+        "StopBrowserSession",
+        "StopCodeInterpreterSession",
+        "StopRuntimeSession",
+        "UpdateBrowserStream"
+      ],
+      "op_params": {
+        "BatchCreateMemoryRecords": [
+          "memoryId",
+          "records"
+        ],
+        "BatchDeleteMemoryRecords": [
+          "memoryId",
+          "records"
+        ],
+        "BatchUpdateMemoryRecords": [
+          "memoryId",
+          "records"
+        ],
+        "CompleteResourceTokenAuth": [
+          "userIdentifier",
+          "sessionUri"
+        ],
+        "CreateEvent": [
+          "memoryId",
+          "actorId",
+          "eventTimestamp",
+          "payload"
+        ],
+        "DeleteEvent": [
+          "memoryId",
+          "sessionId",
+          "eventId",
+          "actorId"
+        ],
+        "DeleteMemoryRecord": [
+          "memoryId",
+          "memoryRecordId"
+        ],
+        "Evaluate": [
+          "evaluatorId",
+          "evaluationInput"
+        ],
+        "GetAgentCard": [
+          "agentRuntimeArn"
+        ],
+        "GetBrowserSession": [
+          "browserIdentifier",
+          "sessionId"
+        ],
+        "GetCodeInterpreterSession": [
+          "codeInterpreterIdentifier",
+          "sessionId"
+        ],
+        "GetEvent": [
+          "memoryId",
+          "sessionId",
+          "actorId",
+          "eventId"
+        ],
+        "GetMemoryRecord": [
+          "memoryId",
+          "memoryRecordId"
+        ],
+        "GetResourceApiKey": [
+          "workloadIdentityToken",
+          "resourceCredentialProviderName"
+        ],
+        "GetResourceOauth2Token": [
+          "workloadIdentityToken",
+          "resourceCredentialProviderName",
+          "scopes",
+          "oauth2Flow"
+        ],
+        "GetWorkloadAccessToken": [
+          "workloadName"
+        ],
+        "GetWorkloadAccessTokenForJWT": [
+          "workloadName",
+          "userToken"
+        ],
+        "GetWorkloadAccessTokenForUserId": [
+          "workloadName",
+          "userId"
+        ],
+        "InvokeAgentRuntime": [
+          "agentRuntimeArn",
+          "payload"
+        ],
+        "InvokeAgentRuntimeCommand": [
+          "agentRuntimeArn",
+          "body"
+        ],
+        "InvokeCodeInterpreter": [
+          "codeInterpreterIdentifier",
+          "name"
+        ],
+        "ListActors": [
+          "memoryId"
+        ],
+        "ListBrowserSessions": [
+          "browserIdentifier"
+        ],
+        "ListCodeInterpreterSessions": [
+          "codeInterpreterIdentifier"
+        ],
+        "ListEvents": [
+          "memoryId",
+          "sessionId",
+          "actorId"
+        ],
+        "ListMemoryExtractionJobs": [
+          "memoryId"
+        ],
+        "ListMemoryRecords": [
+          "memoryId",
+          "namespace"
+        ],
+        "ListSessions": [
+          "memoryId",
+          "actorId"
+        ],
+        "RetrieveMemoryRecords": [
+          "memoryId",
+          "namespace",
+          "searchCriteria"
+        ],
+        "SaveBrowserSessionProfile": [
+          "profileIdentifier",
+          "browserIdentifier",
+          "sessionId"
+        ],
+        "StartBrowserSession": [
+          "browserIdentifier"
+        ],
+        "StartCodeInterpreterSession": [
+          "codeInterpreterIdentifier"
+        ],
+        "StartMemoryExtractionJob": [
+          "memoryId",
+          "extractionJob"
+        ],
+        "StopBrowserSession": [
+          "browserIdentifier",
+          "sessionId"
+        ],
+        "StopCodeInterpreterSession": [
+          "codeInterpreterIdentifier",
+          "sessionId"
+        ],
+        "StopRuntimeSession": [
+          "runtimeSessionId",
+          "agentRuntimeArn"
+        ],
+        "UpdateBrowserStream": [
+          "browserIdentifier",
+          "sessionId",
+          "streamUpdate"
+        ]
+      },
+      "implemented_ops": [
+        "DeleteEvent",
+        "GetCodeInterpreterSession",
+        "GetEvent",
+        "ListActors",
+        "ListCodeInterpreterSessions",
+        "ListEvents",
+        "ListSessions",
+        "StartCodeInterpreterSession",
+        "StopCodeInterpreterSession"
+      ],
+      "implemented_count": 9,
+      "native_ops": [
+        "DeleteEvent",
+        "GetCodeInterpreterSession",
+        "GetEvent",
+        "ListActors",
+        "ListCodeInterpreterSessions",
+        "ListEvents",
+        "ListSessions",
+        "StartCodeInterpreterSession",
+        "StopCodeInterpreterSession"
+      ],
+      "native_count": 9,
+      "moto_ops": [],
+      "moto_count": 0,
+      "delegates_to_moto": false,
+      "tested_ops": [],
+      "tested_count": 0,
+      "test_method_count": 0,
+      "impl_pct": 24.324324324324326,
+      "test_pct": 0.0,
+      "needs_params_count": 9,
+      "not_implemented_count": 19,
+      "error_count": 0,
+      "probed": true
+    },
+    "bedrock-agentcore-control": {
+      "status": "native",
+      "protocol": "rest-json",
+      "description": "Bedrock AgentCore Control (code interpreters, runtimes, gateways, memory)",
+      "total_aws_ops": 86,
+      "all_ops": [
+        "CreateAgentRuntime",
+        "CreateAgentRuntimeEndpoint",
+        "CreateApiKeyCredentialProvider",
+        "CreateBrowser",
+        "CreateBrowserProfile",
+        "CreateCodeInterpreter",
+        "CreateEvaluator",
+        "CreateGateway",
+        "CreateGatewayTarget",
+        "CreateMemory",
+        "CreateOauth2CredentialProvider",
+        "CreateOnlineEvaluationConfig",
+        "CreatePolicy",
+        "CreatePolicyEngine",
+        "CreateWorkloadIdentity",
+        "DeleteAgentRuntime",
+        "DeleteAgentRuntimeEndpoint",
+        "DeleteApiKeyCredentialProvider",
+        "DeleteBrowser",
+        "DeleteBrowserProfile",
+        "DeleteCodeInterpreter",
+        "DeleteEvaluator",
+        "DeleteGateway",
+        "DeleteGatewayTarget",
+        "DeleteMemory",
+        "DeleteOauth2CredentialProvider",
+        "DeleteOnlineEvaluationConfig",
+        "DeletePolicy",
+        "DeletePolicyEngine",
+        "DeleteResourcePolicy",
+        "DeleteWorkloadIdentity",
+        "GetAgentRuntime",
+        "GetAgentRuntimeEndpoint",
+        "GetApiKeyCredentialProvider",
+        "GetBrowser",
+        "GetBrowserProfile",
+        "GetCodeInterpreter",
+        "GetEvaluator",
+        "GetGateway",
+        "GetGatewayTarget",
+        "GetMemory",
+        "GetOauth2CredentialProvider",
+        "GetOnlineEvaluationConfig",
+        "GetPolicy",
+        "GetPolicyEngine",
+        "GetPolicyGeneration",
+        "GetResourcePolicy",
+        "GetTokenVault",
+        "GetWorkloadIdentity",
+        "ListAgentRuntimeEndpoints",
+        "ListAgentRuntimeVersions",
+        "ListAgentRuntimes",
+        "ListApiKeyCredentialProviders",
+        "ListBrowserProfiles",
+        "ListBrowsers",
+        "ListCodeInterpreters",
+        "ListEvaluators",
+        "ListGatewayTargets",
+        "ListGateways",
+        "ListMemories",
+        "ListOauth2CredentialProviders",
+        "ListOnlineEvaluationConfigs",
+        "ListPolicies",
+        "ListPolicyEngines",
+        "ListPolicyGenerationAssets",
+        "ListPolicyGenerations",
+        "ListTagsForResource",
+        "ListWorkloadIdentities",
+        "PutResourcePolicy",
+        "SetTokenVaultCMK",
+        "StartPolicyGeneration",
+        "SynchronizeGatewayTargets",
+        "TagResource",
+        "UntagResource",
+        "UpdateAgentRuntime",
+        "UpdateAgentRuntimeEndpoint",
+        "UpdateApiKeyCredentialProvider",
+        "UpdateEvaluator",
+        "UpdateGateway",
+        "UpdateGatewayTarget",
+        "UpdateMemory",
+        "UpdateOauth2CredentialProvider",
+        "UpdateOnlineEvaluationConfig",
+        "UpdatePolicy",
+        "UpdatePolicyEngine",
+        "UpdateWorkloadIdentity"
+      ],
+      "op_params": {
+        "CreateAgentRuntime": [
+          "agentRuntimeName",
+          "agentRuntimeArtifact",
+          "roleArn",
+          "networkConfiguration"
+        ],
+        "CreateAgentRuntimeEndpoint": [
+          "agentRuntimeId",
+          "name"
+        ],
+        "CreateApiKeyCredentialProvider": [
+          "name",
+          "apiKey"
+        ],
+        "CreateBrowser": [
+          "name",
+          "networkConfiguration"
+        ],
+        "CreateBrowserProfile": [
+          "name"
+        ],
+        "CreateCodeInterpreter": [
+          "name",
+          "networkConfiguration"
+        ],
+        "CreateEvaluator": [
+          "evaluatorName",
+          "evaluatorConfig",
+          "level"
+        ],
+        "CreateGateway": [
+          "name",
+          "roleArn",
+          "protocolType",
+          "authorizerType"
+        ],
+        "CreateGatewayTarget": [
+          "gatewayIdentifier",
+          "name",
+          "targetConfiguration"
+        ],
+        "CreateMemory": [
+          "name",
+          "eventExpiryDuration"
+        ],
+        "CreateOauth2CredentialProvider": [
+          "name",
+          "credentialProviderVendor",
+          "oauth2ProviderConfigInput"
+        ],
+        "CreateOnlineEvaluationConfig": [
+          "onlineEvaluationConfigName",
+          "rule",
+          "dataSourceConfig",
+          "evaluators",
+          "evaluationExecutionRoleArn",
+          "enableOnCreate"
+        ],
+        "CreatePolicy": [
+          "name",
+          "definition",
+          "policyEngineId"
+        ],
+        "CreatePolicyEngine": [
+          "name"
+        ],
+        "CreateWorkloadIdentity": [
+          "name"
+        ],
+        "DeleteAgentRuntime": [
+          "agentRuntimeId"
+        ],
+        "DeleteAgentRuntimeEndpoint": [
+          "agentRuntimeId",
+          "endpointName"
+        ],
+        "DeleteApiKeyCredentialProvider": [
+          "name"
+        ],
+        "DeleteBrowser": [
+          "browserId"
+        ],
+        "DeleteBrowserProfile": [
+          "profileId"
+        ],
+        "DeleteCodeInterpreter": [
+          "codeInterpreterId"
+        ],
+        "DeleteEvaluator": [
+          "evaluatorId"
+        ],
+        "DeleteGateway": [
+          "gatewayIdentifier"
+        ],
+        "DeleteGatewayTarget": [
+          "gatewayIdentifier",
+          "targetId"
+        ],
+        "DeleteMemory": [
+          "memoryId"
+        ],
+        "DeleteOauth2CredentialProvider": [
+          "name"
+        ],
+        "DeleteOnlineEvaluationConfig": [
+          "onlineEvaluationConfigId"
+        ],
+        "DeletePolicy": [
+          "policyEngineId",
+          "policyId"
+        ],
+        "DeletePolicyEngine": [
+          "policyEngineId"
+        ],
+        "DeleteResourcePolicy": [
+          "resourceArn"
+        ],
+        "DeleteWorkloadIdentity": [
+          "name"
+        ],
+        "GetAgentRuntime": [
+          "agentRuntimeId"
+        ],
+        "GetAgentRuntimeEndpoint": [
+          "agentRuntimeId",
+          "endpointName"
+        ],
+        "GetApiKeyCredentialProvider": [
+          "name"
+        ],
+        "GetBrowser": [
+          "browserId"
+        ],
+        "GetBrowserProfile": [
+          "profileId"
+        ],
+        "GetCodeInterpreter": [
+          "codeInterpreterId"
+        ],
+        "GetEvaluator": [
+          "evaluatorId"
+        ],
+        "GetGateway": [
+          "gatewayIdentifier"
+        ],
+        "GetGatewayTarget": [
+          "gatewayIdentifier",
+          "targetId"
+        ],
+        "GetMemory": [
+          "memoryId"
+        ],
+        "GetOauth2CredentialProvider": [
+          "name"
+        ],
+        "GetOnlineEvaluationConfig": [
+          "onlineEvaluationConfigId"
+        ],
+        "GetPolicy": [
+          "policyEngineId",
+          "policyId"
+        ],
+        "GetPolicyEngine": [
+          "policyEngineId"
+        ],
+        "GetPolicyGeneration": [
+          "policyGenerationId",
+          "policyEngineId"
+        ],
+        "GetResourcePolicy": [
+          "resourceArn"
+        ],
+        "GetTokenVault": [],
+        "GetWorkloadIdentity": [
+          "name"
+        ],
+        "ListAgentRuntimeEndpoints": [
+          "agentRuntimeId"
+        ],
+        "ListAgentRuntimeVersions": [
+          "agentRuntimeId"
+        ],
+        "ListAgentRuntimes": [],
+        "ListApiKeyCredentialProviders": [],
+        "ListBrowserProfiles": [],
+        "ListBrowsers": [],
+        "ListCodeInterpreters": [],
+        "ListEvaluators": [],
+        "ListGatewayTargets": [
+          "gatewayIdentifier"
+        ],
+        "ListGateways": [],
+        "ListMemories": [],
+        "ListOauth2CredentialProviders": [],
+        "ListOnlineEvaluationConfigs": [],
+        "ListPolicies": [
+          "policyEngineId"
+        ],
+        "ListPolicyEngines": [],
+        "ListPolicyGenerationAssets": [
+          "policyGenerationId",
+          "policyEngineId"
+        ],
+        "ListPolicyGenerations": [
+          "policyEngineId"
+        ],
+        "ListTagsForResource": [
+          "resourceArn"
+        ],
+        "ListWorkloadIdentities": [],
+        "PutResourcePolicy": [
+          "resourceArn",
+          "policy"
+        ],
+        "SetTokenVaultCMK": [
+          "kmsConfiguration"
+        ],
+        "StartPolicyGeneration": [
+          "policyEngineId",
+          "resource",
+          "content",
+          "name"
+        ],
+        "SynchronizeGatewayTargets": [
+          "gatewayIdentifier",
+          "targetIdList"
+        ],
+        "TagResource": [
+          "resourceArn",
+          "tags"
+        ],
+        "UntagResource": [
+          "resourceArn",
+          "tagKeys"
+        ],
+        "UpdateAgentRuntime": [
+          "agentRuntimeId",
+          "agentRuntimeArtifact",
+          "roleArn",
+          "networkConfiguration"
+        ],
+        "UpdateAgentRuntimeEndpoint": [
+          "agentRuntimeId",
+          "endpointName"
+        ],
+        "UpdateApiKeyCredentialProvider": [
+          "name",
+          "apiKey"
+        ],
+        "UpdateEvaluator": [
+          "evaluatorId"
+        ],
+        "UpdateGateway": [
+          "gatewayIdentifier",
+          "name",
+          "roleArn",
+          "protocolType",
+          "authorizerType"
+        ],
+        "UpdateGatewayTarget": [
+          "gatewayIdentifier",
+          "targetId",
+          "name",
+          "targetConfiguration"
+        ],
+        "UpdateMemory": [
+          "memoryId"
+        ],
+        "UpdateOauth2CredentialProvider": [
+          "name",
+          "credentialProviderVendor",
+          "oauth2ProviderConfigInput"
+        ],
+        "UpdateOnlineEvaluationConfig": [
+          "onlineEvaluationConfigId"
+        ],
+        "UpdatePolicy": [
+          "policyEngineId",
+          "policyId"
+        ],
+        "UpdatePolicyEngine": [
+          "policyEngineId"
+        ],
+        "UpdateWorkloadIdentity": [
+          "name"
+        ]
+      },
+      "implemented_ops": [
+        "CreateAgentRuntimeEndpoint",
+        "CreateCodeInterpreter",
+        "CreateGateway",
+        "CreateMemory",
+        "DeleteAgentRuntime",
+        "DeleteAgentRuntimeEndpoint",
+        "DeleteCodeInterpreter",
+        "DeleteGateway",
+        "DeleteGatewayTarget",
+        "DeleteMemory",
+        "GetAgentRuntime",
+        "GetAgentRuntimeEndpoint",
+        "GetCodeInterpreter",
+        "GetGateway",
+        "GetGatewayTarget",
+        "GetMemory",
+        "ListAgentRuntimeEndpoints",
+        "ListAgentRuntimeVersions",
+        "ListAgentRuntimes",
+        "ListCodeInterpreters",
+        "ListGatewayTargets",
+        "ListGateways",
+        "ListMemories",
+        "ListTagsForResource",
+        "TagResource",
+        "UntagResource",
+        "UpdateAgentRuntimeEndpoint",
+        "UpdateGateway",
+        "UpdateMemory"
+      ],
+      "implemented_count": 29,
+      "native_ops": [
+        "CreateAgentRuntimeEndpoint",
+        "CreateCodeInterpreter",
+        "CreateGateway",
+        "CreateMemory",
+        "DeleteAgentRuntime",
+        "DeleteAgentRuntimeEndpoint",
+        "DeleteCodeInterpreter",
+        "DeleteGateway",
+        "DeleteGatewayTarget",
+        "DeleteMemory",
+        "GetAgentRuntime",
+        "GetAgentRuntimeEndpoint",
+        "GetCodeInterpreter",
+        "GetGateway",
+        "GetGatewayTarget",
+        "GetMemory",
+        "ListAgentRuntimeEndpoints",
+        "ListAgentRuntimeVersions",
+        "ListAgentRuntimes",
+        "ListCodeInterpreters",
+        "ListGatewayTargets",
+        "ListGateways",
+        "ListMemories",
+        "ListTagsForResource",
+        "TagResource",
+        "UntagResource",
+        "UpdateAgentRuntimeEndpoint",
+        "UpdateGateway",
+        "UpdateMemory"
+      ],
+      "native_count": 29,
+      "moto_ops": [],
+      "moto_count": 0,
+      "delegates_to_moto": false,
+      "tested_ops": [],
+      "tested_count": 0,
+      "test_method_count": 0,
+      "impl_pct": 33.72093023255814,
+      "test_pct": 0.0,
+      "needs_params_count": 10,
+      "not_implemented_count": 47,
+      "error_count": 0,
+      "probed": true
+    },
     "bedrock-runtime": {
       "status": "native",
       "protocol": "rest-json",
@@ -21565,7 +22258,6 @@
         "Scan",
         "TagResource",
         "TransactGetItems",
-        "TransactWriteItems",
         "UntagResource",
         "UpdateContinuousBackups",
         "UpdateContributorInsights",
@@ -21573,11 +22265,10 @@
         "UpdateGlobalTableSettings",
         "UpdateItem",
         "UpdateKinesisStreamingDestination",
-        "UpdateTable",
         "UpdateTableReplicaAutoScaling",
         "UpdateTimeToLive"
       ],
-      "implemented_count": 56,
+      "implemented_count": 54,
       "native_ops": [
         "BatchExecuteStatement",
         "BatchGetItem",
@@ -21624,7 +22315,6 @@
         "Scan",
         "TagResource",
         "TransactGetItems",
-        "TransactWriteItems",
         "UntagResource",
         "UpdateContinuousBackups",
         "UpdateContributorInsights",
@@ -21632,11 +22322,10 @@
         "UpdateGlobalTableSettings",
         "UpdateItem",
         "UpdateKinesisStreamingDestination",
-        "UpdateTable",
         "UpdateTableReplicaAutoScaling",
         "UpdateTimeToLive"
       ],
-      "native_count": 56,
+      "native_count": 54,
       "moto_ops": [],
       "moto_count": 0,
       "delegates_to_moto": false,
@@ -21700,11 +22389,11 @@
       ],
       "tested_count": 56,
       "test_method_count": 178,
-      "impl_pct": 100.0,
+      "impl_pct": 96.42857142857143,
       "test_pct": 100.0,
       "needs_params_count": 0,
       "not_implemented_count": 0,
-      "error_count": 0,
+      "error_count": 2,
       "probed": true
     },
     "dynamodbstreams": {
@@ -26980,7 +27669,6 @@
         "DescribeRepositoryCreationTemplates",
         "GetAccountSetting",
         "GetAuthorizationToken",
-        "GetDownloadUrlForLayer",
         "GetLifecyclePolicy",
         "GetLifecyclePolicyPreview",
         "GetRegistryPolicy",
@@ -27013,7 +27701,7 @@
         "UploadLayerPart",
         "ValidatePullThroughCacheRule"
       ],
-      "implemented_count": 58,
+      "implemented_count": 57,
       "native_ops": [
         "BatchCheckLayerAvailability",
         "BatchDeleteImage",
@@ -27041,7 +27729,6 @@
         "DescribeRepositoryCreationTemplates",
         "GetAccountSetting",
         "GetAuthorizationToken",
-        "GetDownloadUrlForLayer",
         "GetLifecyclePolicy",
         "GetLifecyclePolicyPreview",
         "GetRegistryPolicy",
@@ -27074,7 +27761,7 @@
         "UploadLayerPart",
         "ValidatePullThroughCacheRule"
       ],
-      "native_count": 58,
+      "native_count": 57,
       "moto_ops": [],
       "moto_count": 0,
       "delegates_to_moto": false,
@@ -27128,10 +27815,10 @@
       ],
       "tested_count": 46,
       "test_method_count": 68,
-      "impl_pct": 100.0,
+      "impl_pct": 98.27586206896551,
       "test_pct": 79.3103448275862,
       "needs_params_count": 0,
-      "not_implemented_count": 0,
+      "not_implemented_count": 1,
       "error_count": 0,
       "probed": true
     },
@@ -31979,6 +32666,7 @@
         "DeleteBackup",
         "DeleteDataRepositoryAssociation",
         "DeleteFileCache",
+        "DeleteFileSystem",
         "DeleteSnapshot",
         "DeleteStorageVirtualMachine",
         "DeleteVolume",
@@ -32007,7 +32695,7 @@
         "UpdateSnapshot",
         "UpdateStorageVirtualMachine"
       ],
-      "implemented_count": 44,
+      "implemented_count": 45,
       "native_ops": [
         "AssociateFileSystemAliases",
         "CancelDataRepositoryTask",
@@ -32026,6 +32714,7 @@
         "DeleteBackup",
         "DeleteDataRepositoryAssociation",
         "DeleteFileCache",
+        "DeleteFileSystem",
         "DeleteSnapshot",
         "DeleteStorageVirtualMachine",
         "DeleteVolume",
@@ -32054,7 +32743,7 @@
         "UpdateSnapshot",
         "UpdateStorageVirtualMachine"
       ],
-      "native_count": 44,
+      "native_count": 45,
       "moto_ops": [],
       "moto_count": 0,
       "delegates_to_moto": false,
@@ -32103,11 +32792,11 @@
       ],
       "tested_count": 41,
       "test_method_count": 61,
-      "impl_pct": 91.66666666666666,
+      "impl_pct": 93.75,
       "test_pct": 85.41666666666666,
       "needs_params_count": 0,
       "not_implemented_count": 3,
-      "error_count": 1,
+      "error_count": 0,
       "probed": true
     },
     "glacier": {
@@ -69903,15 +70592,17 @@
         "SendTaskHeartbeat",
         "SendTaskSuccess",
         "StartExecution",
+        "StartSyncExecution",
         "StopExecution",
         "TagResource",
+        "TestState",
         "UntagResource",
         "UpdateMapRun",
         "UpdateStateMachine",
         "UpdateStateMachineAlias",
         "ValidateStateMachineDefinition"
       ],
-      "implemented_count": 35,
+      "implemented_count": 37,
       "native_ops": [
         "CreateActivity",
         "CreateStateMachine",
@@ -69941,15 +70632,17 @@
         "SendTaskHeartbeat",
         "SendTaskSuccess",
         "StartExecution",
+        "StartSyncExecution",
         "StopExecution",
         "TagResource",
+        "TestState",
         "UntagResource",
         "UpdateMapRun",
         "UpdateStateMachine",
         "UpdateStateMachineAlias",
         "ValidateStateMachineDefinition"
       ],
-      "native_count": 35,
+      "native_count": 37,
       "moto_ops": [],
       "moto_count": 0,
       "delegates_to_moto": false,
@@ -69994,7 +70687,7 @@
       ],
       "tested_count": 37,
       "test_method_count": 73,
-      "impl_pct": 94.5945945945946,
+      "impl_pct": 100.0,
       "test_pct": 100.0,
       "needs_params_count": 0,
       "not_implemented_count": 0,
@@ -72135,6 +72828,7 @@
       "op_params": {},
       "implemented_ops": [
         "CreateAccessLogSubscription",
+        "CreateListener",
         "CreateResourceConfiguration",
         "CreateResourceGateway",
         "CreateRule",
@@ -72159,6 +72853,7 @@
         "GetAccessLogSubscription",
         "GetAuthPolicy",
         "GetDomainVerification",
+        "GetListener",
         "GetResourceConfiguration",
         "GetResourceGateway",
         "GetResourcePolicy",
@@ -72170,6 +72865,7 @@
         "GetTargetGroup",
         "ListAccessLogSubscriptions",
         "ListDomainVerifications",
+        "ListListeners",
         "ListResourceConfigurations",
         "ListResourceEndpointAssociations",
         "ListResourceGateways",
@@ -72193,9 +72889,10 @@
         "UpdateServiceNetworkVpcAssociation",
         "UpdateTargetGroup"
       ],
-      "implemented_count": 58,
+      "implemented_count": 61,
       "native_ops": [
         "CreateAccessLogSubscription",
+        "CreateListener",
         "CreateResourceConfiguration",
         "CreateResourceGateway",
         "CreateRule",
@@ -72220,6 +72917,7 @@
         "GetAccessLogSubscription",
         "GetAuthPolicy",
         "GetDomainVerification",
+        "GetListener",
         "GetResourceConfiguration",
         "GetResourceGateway",
         "GetResourcePolicy",
@@ -72231,6 +72929,7 @@
         "GetTargetGroup",
         "ListAccessLogSubscriptions",
         "ListDomainVerifications",
+        "ListListeners",
         "ListResourceConfigurations",
         "ListResourceEndpointAssociations",
         "ListResourceGateways",
@@ -72254,17 +72953,17 @@
         "UpdateServiceNetworkVpcAssociation",
         "UpdateTargetGroup"
       ],
-      "native_count": 58,
+      "native_count": 61,
       "moto_ops": [],
       "moto_count": 0,
       "delegates_to_moto": false,
       "tested_ops": [],
       "tested_count": 0,
       "test_method_count": 8,
-      "impl_pct": 79.45205479452055,
+      "impl_pct": 83.56164383561644,
       "test_pct": 0.0,
       "needs_params_count": 0,
-      "not_implemented_count": 15,
+      "not_implemented_count": 12,
       "error_count": 0,
       "probed": true
     },
@@ -73866,28 +74565,28 @@
     }
   },
   "summary": {
-    "total_services": 158,
-    "native_services": 158,
+    "total_services": 160,
+    "native_services": 160,
     "absent_services": 0,
-    "total_aws_operations": 10268,
-    "total_implemented": 9888,
+    "total_aws_operations": 10391,
+    "total_implemented": 9929,
     "total_tested": 8355,
     "total_test_methods": 12516,
     "unmapped_test_methods": 438,
-    "impl_pct": 96.2991819244254,
-    "test_pct": 81.3693026879626,
-    "probed_services": 158,
-    "needs_params_operations": 2,
-    "not_implemented_operations": 342,
-    "error_operations": 29,
+    "impl_pct": 95.55384467327495,
+    "test_pct": 80.40612068135887,
+    "probed_services": 160,
+    "needs_params_operations": 21,
+    "not_implemented_operations": 406,
+    "error_operations": 30,
     "absence": {
       "manifest": "tooling/surface-absence.json",
-      "rows": 342,
+      "rows": 406,
       "classes": {
-        "absent_moto_crash_faithful": 1,
-        "absent_no_handler": 255,
+        "absent_moto_crash_faithful": 2,
+        "absent_no_handler": 317,
         "legacy_gap": 3,
-        "modeled_deny": 83
+        "modeled_deny": 84
       }
     }
   },
@@ -73897,6 +74596,6 @@
     "generated_by": "scripts/generate_parity_report.py",
     "note": "Destructive operations (TerminateInstances, DeleteBucket, DeleteVpc, \u2026) are excluded from probes \u2014 see SKIP_OPERATIONS in scripts/probe_service.py"
   },
-  "generated_at": "2026-10-26T04:31:16.335481+00:00",
-  "commit": "0d33f2a9"
+  "generated_at": "2026-10-26T23:11:52.009480+00:00",
+  "commit": "41e41fd8"
 }

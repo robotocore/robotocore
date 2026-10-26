@@ -258,7 +258,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_message": "implemented (ValidationException)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -6913,7 +6913,7 @@
     "absence": {
      "class": "modeled_deny",
      "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "twin unit test pins the deny at rotocore/src/services/autoscaling.rs:4442; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): autoscaling/responses.py has no `launch_instances` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "evidence": "twin unit test pins the deny at rotocore/src/services/autoscaling.rs:4518; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): autoscaling/responses.py has no `launch_instances` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
      "status": "not_implemented"
     },
     "bucket": "absent_modeled_deny",
@@ -9947,6 +9947,1701 @@
   },
   "total": 98
  },
+ "bedrock-agentcore": {
+  "covered": 9,
+  "ops": {
+   "BatchCreateMemoryRecords": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for BatchCreateMemoryRecords; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "BatchDeleteMemoryRecords": {
+    "absence": null,
+    "bucket": "pending_fill",
+    "conformance": null,
+    "probe_message": "client-side validation (never contacted server)",
+    "probe_status": "needs_params",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "BatchUpdateMemoryRecords": {
+    "absence": null,
+    "bucket": "pending_fill",
+    "conformance": null,
+    "probe_message": "client-side validation (never contacted server)",
+    "probe_status": "needs_params",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "CompleteResourceTokenAuth": {
+    "absence": null,
+    "bucket": "pending_fill",
+    "conformance": null,
+    "probe_message": "client-side validation (never contacted server)",
+    "probe_status": "needs_params",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "CreateEvent": {
+    "absence": null,
+    "bucket": "pending_fill",
+    "conformance": null,
+    "probe_message": "client-side validation (never contacted server)",
+    "probe_status": "needs_params",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "DeleteEvent": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "DeleteMemoryRecord": {
+    "absence": null,
+    "bucket": "pending_fill",
+    "conformance": null,
+    "probe_message": "client-side validation (never contacted server)",
+    "probe_status": "needs_params",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "Evaluate": {
+    "absence": null,
+    "bucket": "pending_fill",
+    "conformance": null,
+    "probe_message": "client-side validation (never contacted server)",
+    "probe_status": "needs_params",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetAgentCard": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for GetAgentCard; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetBrowserSession": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for GetBrowserSession; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetCodeInterpreterSession": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetEvent": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetMemoryRecord": {
+    "absence": null,
+    "bucket": "pending_fill",
+    "conformance": null,
+    "probe_message": "client-side validation (never contacted server)",
+    "probe_status": "needs_params",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetResourceApiKey": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for GetResourceApiKey; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetResourceOauth2Token": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for GetResourceOauth2Token; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetWorkloadAccessToken": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for GetWorkloadAccessToken; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetWorkloadAccessTokenForJWT": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for GetWorkloadAccessTokenForJWT; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetWorkloadAccessTokenForUserId": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for GetWorkloadAccessTokenForUserId; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "InvokeAgentRuntime": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for InvokeAgentRuntime; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "InvokeAgentRuntimeCommand": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for InvokeAgentRuntimeCommand; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "InvokeCodeInterpreter": {
+    "absence": {
+     "class": "modeled_deny",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "twin deny arm at rotocore/src/services/bedrockagentcore/data.rs:30; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for InvokeCodeInterpreter; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_modeled_deny",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListActors": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "OK",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListBrowserSessions": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for ListBrowserSessions; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListCodeInterpreterSessions": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListEvents": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "OK",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListMemoryExtractionJobs": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for ListMemoryExtractionJobs; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListMemoryRecords": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for ListMemoryRecords; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListSessions": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "OK",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "RetrieveMemoryRecords": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for RetrieveMemoryRecords; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "SaveBrowserSessionProfile": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for SaveBrowserSessionProfile; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "StartBrowserSession": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for StartBrowserSession; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "StartCodeInterpreterSession": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented via required-only (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "StartMemoryExtractionJob": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for StartMemoryExtractionJob; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "StopBrowserSession": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore) \u2014 moto answers 404/501 for StopBrowserSession; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "StopCodeInterpreterSession": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented via required-only (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "StopRuntimeSession": {
+    "absence": null,
+    "bucket": "pending_fill",
+    "conformance": null,
+    "probe_message": "client-side validation (never contacted server)",
+    "probe_status": "needs_params",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "UpdateBrowserStream": {
+    "absence": null,
+    "bucket": "pending_fill",
+    "conformance": null,
+    "probe_message": "client-side validation (never contacted server)",
+    "probe_status": "needs_params",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   }
+  },
+  "total": 37
+ },
+ "bedrock-agentcore-control": {
+  "covered": 29,
+  "ops": {
+   "CreateAgentRuntime": {
+    "absence": null,
+    "bucket": "pending_fill",
+    "conformance": null,
+    "probe_message": "client-side validation (never contacted server)",
+    "probe_status": "needs_params",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "CreateAgentRuntimeEndpoint": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented via required-only (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "CreateApiKeyCredentialProvider": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for CreateApiKeyCredentialProvider; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "CreateBrowser": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for CreateBrowser; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "CreateBrowserProfile": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for CreateBrowserProfile; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "CreateCodeInterpreter": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "OK (required-only fill)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "CreateEvaluator": {
+    "absence": null,
+    "bucket": "pending_fill",
+    "conformance": null,
+    "probe_message": "client-side validation (never contacted server)",
+    "probe_status": "needs_params",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "CreateGateway": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "OK (required-only fill)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "CreateGatewayTarget": {
+    "absence": null,
+    "bucket": "pending_fill",
+    "conformance": null,
+    "probe_message": "client-side validation (never contacted server)",
+    "probe_status": "needs_params",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "CreateMemory": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "OK",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "CreateOauth2CredentialProvider": {
+    "absence": null,
+    "bucket": "pending_fill",
+    "conformance": null,
+    "probe_message": "client-side validation (never contacted server)",
+    "probe_status": "needs_params",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "CreateOnlineEvaluationConfig": {
+    "absence": null,
+    "bucket": "pending_fill",
+    "conformance": null,
+    "probe_message": "client-side validation (never contacted server)",
+    "probe_status": "needs_params",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "CreatePolicy": {
+    "absence": null,
+    "bucket": "pending_fill",
+    "conformance": null,
+    "probe_message": "client-side validation (never contacted server)",
+    "probe_status": "needs_params",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "CreatePolicyEngine": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for CreatePolicyEngine; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "CreateWorkloadIdentity": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for CreateWorkloadIdentity; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "DeleteAgentRuntime": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented via required-only (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "DeleteAgentRuntimeEndpoint": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented via required-only (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "DeleteApiKeyCredentialProvider": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for DeleteApiKeyCredentialProvider; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "DeleteBrowser": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for DeleteBrowser; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "DeleteBrowserProfile": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for DeleteBrowserProfile; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "DeleteCodeInterpreter": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented via required-only (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "DeleteEvaluator": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for DeleteEvaluator; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "DeleteGateway": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "DeleteGatewayTarget": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "DeleteMemory": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "DeleteOauth2CredentialProvider": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for DeleteOauth2CredentialProvider; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "DeleteOnlineEvaluationConfig": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for DeleteOnlineEvaluationConfig; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "DeletePolicy": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for DeletePolicy; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "DeletePolicyEngine": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for DeletePolicyEngine; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "DeleteResourcePolicy": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for DeleteResourcePolicy; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "DeleteWorkloadIdentity": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for DeleteWorkloadIdentity; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetAgentRuntime": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetAgentRuntimeEndpoint": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetApiKeyCredentialProvider": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetApiKeyCredentialProvider; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetBrowser": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetBrowser; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetBrowserProfile": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetBrowserProfile; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetCodeInterpreter": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetEvaluator": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetEvaluator; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetGateway": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetGatewayTarget": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetMemory": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetOauth2CredentialProvider": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetOauth2CredentialProvider; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetOnlineEvaluationConfig": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetOnlineEvaluationConfig; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetPolicy": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetPolicy; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetPolicyEngine": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetPolicyEngine; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetPolicyGeneration": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetPolicyGeneration; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetResourcePolicy": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetResourcePolicy; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetTokenVault": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetTokenVault; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "GetWorkloadIdentity": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for GetWorkloadIdentity; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListAgentRuntimeEndpoints": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListAgentRuntimeVersions": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListAgentRuntimes": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "OK",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListApiKeyCredentialProviders": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for ListApiKeyCredentialProviders; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListBrowserProfiles": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for ListBrowserProfiles; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListBrowsers": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for ListBrowsers; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListCodeInterpreters": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "OK",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListEvaluators": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for ListEvaluators; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListGatewayTargets": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListGateways": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "OK",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListMemories": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "OK",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListOauth2CredentialProviders": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for ListOauth2CredentialProviders; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListOnlineEvaluationConfigs": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for ListOnlineEvaluationConfigs; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListPolicies": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for ListPolicies; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListPolicyEngines": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for ListPolicyEngines; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListPolicyGenerationAssets": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for ListPolicyGenerationAssets; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListPolicyGenerations": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for ListPolicyGenerations; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListTagsForResource": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "OK",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "ListWorkloadIdentities": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for ListWorkloadIdentities; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "PutResourcePolicy": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for PutResourcePolicy; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "SetTokenVaultCMK": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for SetTokenVaultCMK; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "StartPolicyGeneration": {
+    "absence": null,
+    "bucket": "pending_fill",
+    "conformance": null,
+    "probe_message": "client-side validation (never contacted server)",
+    "probe_status": "needs_params",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "SynchronizeGatewayTargets": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for SynchronizeGatewayTargets; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "TagResource": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "OK",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "UntagResource": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "OK",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "UpdateAgentRuntime": {
+    "absence": null,
+    "bucket": "pending_fill",
+    "conformance": null,
+    "probe_message": "client-side validation (never contacted server)",
+    "probe_status": "needs_params",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "UpdateAgentRuntimeEndpoint": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented via required-only (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "UpdateApiKeyCredentialProvider": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for UpdateApiKeyCredentialProvider; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "UpdateEvaluator": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for UpdateEvaluator; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "UpdateGateway": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented via required-only (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "UpdateGatewayTarget": {
+    "absence": null,
+    "bucket": "pending_fill",
+    "conformance": null,
+    "probe_message": "client-side validation (never contacted server)",
+    "probe_status": "needs_params",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "UpdateMemory": {
+    "absence": null,
+    "bucket": "working",
+    "conformance": null,
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "UpdateOauth2CredentialProvider": {
+    "absence": null,
+    "bucket": "pending_fill",
+    "conformance": null,
+    "probe_message": "client-side validation (never contacted server)",
+    "probe_status": "needs_params",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "UpdateOnlineEvaluationConfig": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for UpdateOnlineEvaluationConfig; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "UpdatePolicy": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for UpdatePolicy; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "UpdatePolicyEngine": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for UpdatePolicyEngine; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   },
+   "UpdateWorkloadIdentity": {
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): service unmodeled (no moto module for bedrock-agentcore-control) \u2014 moto answers 404/501 for UpdateWorkloadIdentity; the twin mirrors the absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
+    "conformance": null,
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
+    "screens": {
+     "probe": true,
+     "unit": false
+    }
+   }
+  },
+  "total": 86
+ },
  "bedrock-runtime": {
   "covered": 1,
   "ops": {
@@ -12862,7 +14557,7 @@
     "absence": {
      "class": "modeled_deny",
      "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3788; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `describe_type_registration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3795; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `describe_type_registration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
      "status": "not_implemented"
     },
     "bucket": "absent_modeled_deny",
@@ -13274,7 +14969,7 @@
     "absence": {
      "class": "modeled_deny",
      "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3788; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `register_type` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3795; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `register_type` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
      "status": "not_implemented"
     },
     "bucket": "absent_modeled_deny",
@@ -13312,7 +15007,7 @@
     "absence": {
      "class": "modeled_deny",
      "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3788; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `set_type_configuration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "evidence": "twin deny arm at rotocore/src/services/cloudformation/ops.rs:3795; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): cloudformation/responses.py has no `set_type_configuration` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
      "status": "not_implemented"
     },
     "bucket": "absent_modeled_deny",
@@ -19311,7 +21006,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "implemented via required-only (ResourceNotFoundException)",
+    "probe_message": "implemented via required-only (InvalidParameterException)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -19498,7 +21193,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NotAuthorizedException: probe-token-6617)",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-3813)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -19509,7 +21204,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NotAuthorizedException: probe-token-6617)",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-3813)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -19696,7 +21391,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NotAuthorizedException: probe-token-6617)",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-3813)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -19767,7 +21462,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NotAuthorizedException: probe-token-6617)",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-3813)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -19888,7 +21583,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NotAuthorizedException: probe-token-6617)",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-3813)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -19921,7 +21616,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NotAuthorizedException: probe-token-6617)",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-3813)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -20053,7 +21748,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "implemented via required-only (InvalidParameterException)",
+    "probe_message": "implemented via required-only (ResourceNotFoundException)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -20064,7 +21759,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NotAuthorizedException: probe-token-6617)",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-3813)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -20196,7 +21891,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NotAuthorizedException: probe-token-6617)",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-3813)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -20273,7 +21968,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NotAuthorizedException: probe-token-6617)",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-3813)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -20328,7 +22023,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NotAuthorizedException: probe-token-6617)",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-3813)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -20383,7 +22078,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NotAuthorizedException: probe-token-6617)",
+    "probe_message": "likely implemented (NotAuthorizedException: probe-token-3813)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -31875,13 +33570,13 @@
   "total": 11
  },
  "dynamodb": {
-  "covered": 56,
+  "covered": 54,
   "ops": {
    "BatchExecuteStatement": {
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "implemented (ValidationException)",
+    "probe_message": "OK",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -32374,10 +34069,10 @@
    },
    "TransactWriteItems": {
     "absence": null,
-    "bucket": "working",
+    "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "implemented (ValidationException)",
-    "probe_status": "working",
+    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
+    "probe_status": "500_error",
     "screens": {
      "probe": true,
      "unit": true
@@ -32462,10 +34157,10 @@
    },
    "UpdateTable": {
     "absence": null,
-    "bucket": "working",
+    "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "OK",
-    "probe_status": "working",
+    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
+    "probe_status": "500_error",
     "screens": {
      "probe": true,
      "unit": true
@@ -32691,7 +34386,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-70046eef' does not exist)",
+    "probe_message": "likely implemented (InvalidVpcEndpointServiceId.NotFound: The VpcEndpointService Id 'vpce-svc-a01fb908' does not exist)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -40925,13 +42620,13 @@
   "total": 2
  },
  "ecr": {
-  "covered": 58,
+  "covered": 57,
   "ops": {
    "BatchCheckLayerAvailability": {
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (RepositoryNotFoundException)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -40975,7 +42670,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (InvalidAction: Could not find operation CompleteLayerUpload)",
+    "probe_message": "implemented (RepositoryNotFoundException)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -41214,11 +42909,16 @@
     }
    },
    "GetDownloadUrlForLayer": {
-    "absence": null,
-    "bucket": "working",
+    "absence": {
+     "class": "absent_moto_crash_faithful",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "fork handler ecr/responses.py:174 \u2014 the `get_download_url_for_layer` handler body is a bare `raise NotImplementedError(...)` so moto 501s the op at runtime; the twin has no arm answering it, so the gateway NotImplemented 501 mirrors what moto returns at runtime",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_moto_crash_faithful",
     "conformance": null,
-    "probe_message": "likely implemented (InvalidAction: Could not find operation GetDownloadUrlForLayer)",
-    "probe_status": "working",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -41294,7 +42994,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (InvalidAction: Could not find operation InitiateLayerUpload)",
+    "probe_message": "implemented (RepositoryNotFoundException)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -41547,7 +43247,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (InvalidAction: Could not find operation UploadLayerPart)",
+    "probe_message": "implemented (RepositoryNotFoundException)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -42059,7 +43759,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (InvalidParameterException)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -48777,7 +50477,7 @@
   "total": 63
  },
  "fsx": {
-  "covered": 44,
+  "covered": 45,
   "ops": {
    "AssociateFileSystemAliases": {
     "absence": null,
@@ -48816,7 +50516,7 @@
     "absence": {
      "class": "modeled_deny",
      "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "twin unit test pins the deny at rotocore/src/services/fsx/mod.rs:2948; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): fsx/responses.py has no `copy_snapshot_and_update_volume` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "evidence": "twin unit test pins the deny at rotocore/src/services/fsx/mod.rs:2960; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): fsx/responses.py has no `copy_snapshot_and_update_volume` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
      "status": "not_implemented"
     },
     "bucket": "absent_modeled_deny",
@@ -48984,10 +50684,10 @@
    },
    "DeleteFileSystem": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
-    "probe_status": "500_error",
+    "probe_message": "likely implemented (FileSystemNotFound: File system 'probe-file-system-id-id' does not exist.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -49195,7 +50895,7 @@
     "absence": {
      "class": "modeled_deny",
      "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "twin unit test pins the deny at rotocore/src/services/fsx/mod.rs:2949; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): fsx/responses.py has no `restore_volume_from_snapshot` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "evidence": "twin unit test pins the deny at rotocore/src/services/fsx/mod.rs:2961; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): fsx/responses.py has no `restore_volume_from_snapshot` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
      "status": "not_implemented"
     },
     "bucket": "absent_modeled_deny",
@@ -49310,7 +51010,7 @@
     "absence": {
      "class": "modeled_deny",
      "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "twin unit test pins the deny at rotocore/src/services/fsx/mod.rs:2950; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): fsx/responses.py has no `update_volume` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "evidence": "twin unit test pins the deny at rotocore/src/services/fsx/mod.rs:2962; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): fsx/responses.py has no `update_volume` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
      "status": "not_implemented"
     },
     "bucket": "absent_modeled_deny",
@@ -50834,7 +52534,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (InvalidToken: Invalid Token: Invalid token)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -59318,7 +61018,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (InvalidToken: Invalid Token: Invalid token)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -59472,7 +61172,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (InvalidToken: Invalid Token: Invalid token)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -59483,7 +61183,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (InvalidToken: Invalid Token: Invalid token)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -59494,7 +61194,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (InvalidToken: Invalid Token: Invalid token)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -59505,7 +61205,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (InvalidToken: Invalid Token: Invalid token)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -59857,7 +61557,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (InvalidToken: Invalid Token: Invalid token)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -59868,7 +61568,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (InvalidToken: Invalid Token: Invalid token)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91030,7 +92730,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91041,7 +92741,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NoSuchUpload: The specified multipart upload does not exist (upload might )",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91074,7 +92774,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91085,7 +92785,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91096,7 +92796,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91107,7 +92807,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (InvalidRequest: CreateSession is only supported for directory buckets.)",
+    "probe_message": "OK",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91118,7 +92818,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91129,7 +92829,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91140,7 +92840,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91151,7 +92851,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91162,7 +92862,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91173,7 +92873,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91184,7 +92884,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91195,7 +92895,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91206,7 +92906,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91217,7 +92917,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91228,7 +92928,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91239,7 +92939,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91250,7 +92950,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91261,7 +92961,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91272,7 +92972,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91283,7 +92983,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91294,7 +92994,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91305,7 +93005,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91316,7 +93016,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91327,7 +93027,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91349,7 +93049,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NoSuchConfiguration: The specified configuration does not exist)",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91360,7 +93060,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NoSuchCORSConfiguration: The CORS configuration does not exist)",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91371,7 +93071,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (ServerSideEncryptionConfigurationNotFoundError: The server side encryption configuration was not found)",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91382,7 +93082,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NoSuchConfiguration: The specified configuration does not exist)",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91393,7 +93093,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NoSuchConfiguration: The specified configuration does not exist)",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91404,7 +93104,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NoSuchLifecycleConfiguration: The lifecycle configuration does not exist)",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91415,7 +93115,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NoSuchLifecycleConfiguration: The lifecycle configuration does not exist)",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91426,7 +93126,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91437,7 +93137,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91448,7 +93148,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91459,7 +93159,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91470,7 +93170,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NoSuchConfiguration: The specified configuration does not exist)",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91481,7 +93181,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91492,7 +93192,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91503,7 +93203,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (OwnershipControlsNotFoundError: The bucket ownership controls were not found)",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91514,7 +93214,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NoSuchBucketPolicy: The bucket policy does not exist)",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91525,7 +93225,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91536,7 +93236,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (ReplicationConfigurationNotFoundError: The replication configuration was not found)",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91547,7 +93247,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91558,7 +93258,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NoSuchTagSet: The TagSet does not exist)",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91569,7 +93269,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91580,7 +93280,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NoSuchWebsiteConfiguration: The specified bucket does not have a website configuration)",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91591,7 +93291,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NoSuchKey: The specified key does not exist)",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91613,7 +93313,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NoSuchKey: The specified key does not exist)",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91624,7 +93324,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "implemented (NoSuchObjectLockConfiguration)",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91635,7 +93335,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91646,7 +93346,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "implemented (NoSuchObjectLockConfiguration)",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91657,7 +93357,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91668,7 +93368,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91679,7 +93379,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NoSuchPublicAccessBlockConfiguration: The public access block configuration was not found)",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91690,7 +93390,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (404: Not Found)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91712,7 +93412,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91723,7 +93423,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91734,7 +93434,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91745,7 +93445,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91778,7 +93478,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91789,7 +93489,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91800,7 +93500,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91811,7 +93511,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -91822,7 +93522,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (NoSuchUpload: The specified multipart upload does not exist (upload might )",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -92009,7 +93709,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (InvalidRequest: Versioning must be 'Enabled' on the source bucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -92239,7 +93939,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (PreconditionFailed: At least one of the pre-conditions you specified did not hol)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -92475,7 +94175,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -92486,7 +94186,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -92497,7 +94197,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -92508,7 +94208,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -92787,7 +94487,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -92809,7 +94509,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -92831,7 +94531,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -92990,7 +94690,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "likely implemented (InvalidNextTokenException: The nextToken provided is invalid)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -93180,7 +94880,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -93191,7 +94891,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -93202,7 +94902,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -93213,7 +94913,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "OK",
+    "probe_message": "implemented (NoSuchBucket)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -107982,7 +109682,7 @@
   "total": 79
  },
  "stepfunctions": {
-  "covered": 35,
+  "covered": 37,
   "ops": {
    "CreateActivity": {
     "absence": null,
@@ -108252,7 +109952,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (TaskDoesNotExist: Task token not found: probe-token-0473)",
+    "probe_message": "likely implemented (TaskDoesNotExist: Task token not found: probe-token-2188)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -108263,7 +109963,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (TaskDoesNotExist: Task token not found: probe-token-0473)",
+    "probe_message": "likely implemented (TaskDoesNotExist: Task token not found: probe-token-2188)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -108274,7 +109974,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (TaskDoesNotExist: Task token not found: probe-token-0473)",
+    "probe_message": "likely implemented (TaskDoesNotExist: Task token not found: probe-token-2188)",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -108294,10 +109994,10 @@
    },
    "StartSyncExecution": {
     "absence": null,
-    "bucket": "unreachable",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://sync-localhos)",
-    "probe_status": "timeout",
+    "probe_message": "likely implemented (StateMachineDoesNotExist: State machine arn:aws:stepfunctions:us-east-1:123456789012:t)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -108327,10 +110027,10 @@
    },
    "TestState": {
     "absence": null,
-    "bucket": "unreachable",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://sync-localhos)",
-    "probe_status": "timeout",
+    "probe_message": "likely implemented (NotImplemented: The test_state action has not been implemented)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -111629,7 +113329,7 @@
   "total": 71
  },
  "vpclattice": {
-  "covered": 58,
+  "covered": 61,
   "ops": {
    "BatchUpdateRule": {
     "absence": {
@@ -111659,19 +113359,14 @@
     }
    },
    "CreateListener": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `create_listener` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
-     "unit": false
+     "unit": true
     }
    },
    "CreateResourceConfiguration": {
@@ -111819,7 +113514,7 @@
     "probe_status": "not_implemented",
     "screens": {
      "probe": true,
-     "unit": false
+     "unit": true
     }
    },
    "DeleteResourceConfiguration": {
@@ -112003,19 +113698,14 @@
     }
    },
    "GetListener": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `get_listener` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
-     "unit": false
+     "unit": true
     }
    },
    "GetResourceConfiguration": {
@@ -112156,16 +113846,11 @@
     }
    },
    "ListListeners": {
-    "absence": {
-     "class": "absent_no_handler",
-     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): vpclattice/responses.py has no `list_listeners` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
-     "status": "not_implemented"
-    },
-    "bucket": "absent_no_handler",
+    "absence": null,
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "not implemented (501)",
-    "probe_status": "not_implemented",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -112217,7 +113902,7 @@
     "probe_status": "not_implemented",
     "screens": {
      "probe": true,
-     "unit": false
+     "unit": true
     }
    },
    "ListServiceNetworkResourceAssociations": {
@@ -112849,7 +114534,7 @@
     "absence": {
      "class": "modeled_deny",
      "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "twin unit test pins the deny at rotocore/src/services/wafv2/mod.rs:2559; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): wafv2/responses.py has no `get_top_path_statistics_by_traffic` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "evidence": "twin unit test pins the deny at rotocore/src/services/wafv2/mod.rs:2635; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): wafv2/responses.py has no `get_top_path_statistics_by_traffic` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
      "status": "not_implemented"
     },
     "bucket": "absent_modeled_deny",
