@@ -1283,20 +1283,20 @@ impl DefaultSqsHandler {
 
         // Purge under the same map-write critical section as DeleteQueue:
         // no bridged producer can re-buffer a pending delivery between the
-        // pending clear and the stored-message purge.
+        // pending clear and the stored-message purge. The 60-second
+        // re-purge throttle (moto's purge_queue) rejects the whole
+        // operation, leaving messages and pending buffer untouched.
         let purged = store.with_queues_write(|queues| match queues.get(&queue_name) {
             Some(queue) => {
+                queue.write().purge_with_throttle()?;
                 super::bridge::clear_pending(account, region, &queue_name);
-                queue.write().purge();
-                true
+                Ok(())
             }
-            None => false,
-        });
-        if !purged {
-            return Err(SqsError::NonExistentQueue(
+            None => Err(SqsError::NonExistentQueue(
                 "The specified queue does not exist.".to_string(),
-            ));
-        }
+            )),
+        });
+        purged?;
 
         let body = json!({}).to_string();
         Ok(AwsResponse {

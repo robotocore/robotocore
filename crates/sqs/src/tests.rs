@@ -5,6 +5,7 @@ use crate::handler::DefaultSqsHandler;
 use crate::models::{Queue, SqsStore};
 use crate::protocol::{AwsRequest, SqsHandler};
 use bytes::Bytes;
+use chrono::Utc;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::mpsc;
@@ -1233,6 +1234,16 @@ fn test_bridged_message_gets_real_receipt_handle() {
     assert_eq!(remaining, 0);
 }
 
+fn create_queue(handler: &DefaultSqsHandler, name: &str) -> String {
+    let resp = handler.handle(make_request("CreateQueue", json!({"QueueName": name})));
+    assert_eq!(resp.status, 200);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    data["QueueUrl"]
+        .as_str()
+        .expect("Missing QueueUrl")
+        .to_string()
+}
+
 fn create_fifo_queue(handler: &DefaultSqsHandler, name: &str, content_dedup: bool) -> String {
     let attrs = if content_dedup {
         json!({"FifoQueue": "true", "ContentBasedDeduplication": "true"})
@@ -1530,5 +1541,110 @@ fn test_redrive_move_to_dlq_preserves_message_id() {
             .map(|m| m.is_empty())
             .unwrap_or(true),
         "moved messages leave the source queue"
+    );
+}
+
+/// A second PurgeQueue on the same queue within 60 seconds answers
+/// moto's PurgeQueueInProgress (HTTP 403) and leaves every earlier
+/// message in place, exactly as the pinned fork's `purge_queue` does.
+#[test]
+fn purge_throttle_second_purge_within_60s_rejected() {
+    let handler = DefaultSqsHandler::new();
+    let name = "purge-throttle-repeated";
+    let queue_url = create_queue(&handler, name);
+
+    let first = handler.handle(make_request("PurgeQueue", json!({"QueueUrl": &queue_url})));
+    assert_eq!(first.status, 200);
+
+    // A message that arrives after the first purge must still be there
+    // when the throttled second purge is rejected.
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "survivor"}),
+    ));
+
+    let second = handler.handle(make_request("PurgeQueue", json!({"QueueUrl": &queue_url})));
+    assert_eq!(second.status, 403);
+    assert!(
+        second
+            .body
+            .contains("AWS.SimpleQueueService.PurgeQueueInProgress"),
+        "throttled purge must carry the PurgeQueueInProgress code, got {}",
+        second.body
+    );
+    assert!(
+        second.body.contains(&format!(
+            "Only one PurgeQueue operation on {name} is allowed every 60 seconds."
+        )),
+        "throttled purge must carry moto's exact wording, got {}",
+        second.body
+    );
+
+    // The rejected purge must not have touched the queue's messages.
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 10}),
+    ));
+    let data: Value = serde_json::from_str(&recv.body).expect("Invalid JSON");
+    assert_eq!(
+        data["Messages"].as_array().map(|m| m.len()),
+        Some(1),
+        "a PurgeQueueInProgress rejection must leave stored messages alone"
+    );
+}
+
+/// The throttle is per queue: purging one queue never blocks a purge of
+/// another queue (each queue carries its own purge timestamp).
+#[test]
+fn purge_throttle_is_per_queue() {
+    let handler = DefaultSqsHandler::new();
+    let url_a = create_queue(&handler, "purge-throttle-a");
+    let url_b = create_queue(&handler, "purge-throttle-b");
+
+    assert_eq!(
+        handler
+            .handle(make_request("PurgeQueue", json!({"QueueUrl": &url_a})))
+            .status,
+        200
+    );
+    // Same instant, different queue: allowed.
+    assert_eq!(
+        handler
+            .handle(make_request("PurgeQueue", json!({"QueueUrl": &url_b})))
+            .status,
+        200
+    );
+}
+
+/// Once 60 seconds have passed since the last purge, purging succeeds
+/// again. The stored timestamp is rewound directly instead of sleeping.
+#[test]
+fn purge_throttle_expires_after_60_seconds() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "purge-throttle-expiry");
+
+    let first = handler.handle(make_request("PurgeQueue", json!({"QueueUrl": &queue_url})));
+    assert_eq!(first.status, 200);
+    assert_eq!(
+        handler
+            .handle(make_request("PurgeQueue", json!({"QueueUrl": &queue_url})))
+            .status,
+        403,
+        "the second immediate purge must still be throttled"
+    );
+
+    // Rewind the recorded purge 61 seconds back.
+    let now_ms = (Utc::now().timestamp_millis()) as u64;
+    let queue_name = "purge-throttle-expiry";
+    let store = handler.get_store(123456789012, "us-east-1");
+    let queue_arc = store.get_queue(queue_name).expect("queue must exist");
+    queue_arc.write().last_purged_at = Some(now_ms - 61_000);
+
+    assert_eq!(
+        handler
+            .handle(make_request("PurgeQueue", json!({"QueueUrl": &queue_url})))
+            .status,
+        200,
+        "a purge after the 60-second window must succeed again"
     );
 }
