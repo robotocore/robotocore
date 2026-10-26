@@ -2861,6 +2861,124 @@ fn receive_null_max_and_wait_take_defaults() {
     );
 }
 
+/// A null ReceiptHandle in a batch ROW crashes the whole request: moto's
+/// parse layer drops null members, so the row reaches the backend without
+/// the key and the `entry["ReceiptHandle"]` KeyError — raised OUTSIDE the
+/// per-row bare except — fails everything as a werkzeug 500 (live-verified,
+/// same shape as the missing-key crash). The twin previously steered the
+/// null into moto's None-mode match and bumped the FIRST message's
+/// visibility — a state mutation this test also guards against: after the
+/// crash the untouched first message must still be immediately receivable.
+#[test]
+fn cmv_batch_null_receipt_handle_crashes_like_missing() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "cmv-batch-null-handle");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+    // Return both messages to the visible pool so a None-mode bump would
+    // be observable as a silent state change.
+    handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "a", "ReceiptHandle": handles[0]["ReceiptHandle"], "VisibilityTimeout": 0},
+                {"Id": "b", "ReceiptHandle": handles[1]["ReceiptHandle"], "VisibilityTimeout": 0},
+            ],
+        }),
+    ));
+
+    for (label, queue) in [
+        ("existing queue", json!(&queue_url)),
+        (
+            "ghost queue keeps the crash",
+            json!(format!("{}x", queue_url)),
+        ),
+    ] {
+        let resp = handler.handle(make_request(
+            "ChangeMessageVisibilityBatch",
+            json!({
+                "QueueUrl": queue,
+                "Entries": [{"Id": "x", "ReceiptHandle": Value::Null, "VisibilityTimeout": 30}],
+            }),
+        ));
+        assert_eq!(resp.status, 500, "{label}: got {}", resp.body);
+        assert!(
+            resp.body.contains("<!doctype html>")
+                && resp.body.contains("500 Internal Server Error"),
+            "{label}: not the moto crash envelope, got {}",
+            resp.body
+        );
+    }
+
+    // No row touched the queue: the first visible message is still
+    // immediately receivable (the dropped-null route must not fall into
+    // the None-mode bump the top-level op takes).
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let data: Value = serde_json::from_str(&recv.body).expect("json");
+    assert_eq!(
+        data["Messages"].as_array().map(|m| m.len()),
+        Some(1),
+        "the 500 must leave the first message untouched, got {}",
+        recv.body
+    );
+}
+
+/// The top-level ChangeMessageVisibility null handle is the OPPOSITE
+/// shape: the dropped member reaches the backend as None, and
+/// `None in all_receipt_handles` matches every extant message's
+/// pre-receive slot — the FIRST message in queue order gets bumped, 200
+/// (live-verified: the bump silences the message, and a null on an empty
+/// queue falls out to ReceiptHandleIsInvalid like the missing-key pin).
+/// Batch rows never take this route (pinned separately).
+#[test]
+fn cmv_null_receipt_handle_matches_first_message() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "cmv-null-handle");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "t"}),
+    ));
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": Value::Null,
+            "VisibilityTimeout": 300,
+        }),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    assert!(
+        serde_json::from_str::<Value>(&recv.body)
+            .expect("json")
+            .get("Messages")
+            .is_none(),
+        "the null handle bump applies like a missing handle, got {}",
+        recv.body
+    );
+
+    // On an empty queue the None-mode match falls out to
+    // ReceiptHandleIsInvalid, like the missing-key pin.
+    let empty = create_queue(&handler, "cmv-null-empty");
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({"QueueUrl": &empty, "ReceiptHandle": Value::Null, "VisibilityTimeout": 30}),
+    ));
+    assert_eq!(resp.status, 400, "got {}", resp.body);
+    assert!(
+        resp.body.contains("ReceiptHandleIsInvalid"),
+        "got {}",
+        resp.body
+    );
+}
+
 /// The rewired happy path: valid entries still delete, through the same
 /// helper that rejects the invalid ones.
 #[test]

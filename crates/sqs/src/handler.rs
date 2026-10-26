@@ -654,13 +654,17 @@ impl DefaultSqsHandler {
             // guarding only the visibility parse — and crashes the whole
             // request as a werkzeug 500 (live-verified, and it precedes
             // the per-row queue lookup so a ghost queue keeps the crash).
-            // A null-valued member travels as None and takes moto's
-            // None-mode match (first extant message); other non-string
-            // values never match.
+            // A null member never reaches that lookup as a value either:
+            // moto's parse layer drops null members outright, so a row
+            // carrying ReceiptHandle:null answers the SAME KeyError crash
+            // (live-verified; the twin previously steered the null into
+            // moto's None-mode match, mutating the first message's
+            // visibility — a state change moto never performs here).
+            // Other non-string values can never match moto's membership
+            // test and take the per-row ReceiptHandleIsInvalid arm.
             let receipt_handle: Option<&str> = match entry.get("ReceiptHandle") {
-                None => return Err(SqsError::MotoCrash),
-                Some(Value::Null) => None,
                 Some(Value::String(s)) => Some(s.as_str()),
+                None | Some(Value::Null) => return Err(SqsError::MotoCrash),
                 Some(_) => Some(""),
             };
             // moto resolves the queue only inside the per-row backend call
