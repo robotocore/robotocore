@@ -496,11 +496,21 @@ enum Node {
     Lambda(Vec<String>, Box<Node>),
 }
 
-const PARSE_DEPTH_CAP: u32 = 64;
+/// Upper bound on parser nesting: every descent into a nested expression
+/// (paren group, argument, literal member, predicate bracket, lambda body,
+/// ternary branch, unary `not` / `-`) counts against this, so the parser's
+/// own recursion can never exhaust the thread stack. 128 levels keeps the
+/// worst-case parser stack near 1MB, comfortably inside the 2MiB stacks
+/// test and runtime worker threads run on.
+const PARSE_DEPTH_CAP: u32 = 128;
 
 struct P {
     toks: Vec<Tok>,
     i: usize,
+    /// Current nesting depth: incremented at every descent into a nested
+    /// expression, decremented when that sub-parse completes. All recursive
+    /// descents go through `enter()`, which refuses past the cap.
+    depth: u32,
 }
 
 impl P {
@@ -538,21 +548,32 @@ impl P {
         }
     }
 
-    fn whole_expr_paren(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        let inner = self.ternary(self_depth)?;
+    fn whole_expr_paren(&mut self) -> Result<Node, EvalError> {
+        let inner = self.nested_expr()?;
         self.expect(Op::RParen)?;
         Ok(inner)
     }
 
-    fn expr_arg(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        self.ternary(self_depth)
+    /// One nested expression argument (call arguments, postfix predicate
+    /// brackets, object/array members); each is its own descent.
+    fn nested_expr(&mut self) -> Result<Node, EvalError> {
+        self.enter()?;
+        let node = self.ternary();
+        self.depth -= 1;
+        node
+    }
+
+    /// Descend one nesting level, refusing past the cap. The matching pop
+    /// happens after the sub-parse; on error the whole parse aborts anyway.
+    fn enter(&mut self) -> Result<(), EvalError> {
+        self.depth += 1;
+        check_depth(self.depth)
     }
 
     /// `cond ? then : else` — the loosest operator; a missing `:` reads as
     /// the JSONata no-output else branch.
-    fn ternary(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        check_depth(self_depth)?;
-        let cond = self.default(self_depth)?;
+    fn ternary(&mut self) -> Result<Node, EvalError> {
+        let cond = self.default()?;
         if self.eat_op(Op::Question) {
             if self.eat_op(Op::Colon) {
                 return Ok(Node::Ternary(
@@ -561,9 +582,9 @@ impl P {
                     None,
                 ));
             }
-            let then = self.ternary(self_depth + 1)?;
+            let then = self.nested_expr()?;
             if self.eat_op(Op::Colon) {
-                let other = self.ternary(self_depth + 1)?;
+                let other = self.nested_expr()?;
                 return Ok(Node::Ternary(
                     Box::new(cond),
                     Box::new(then),
@@ -578,60 +599,62 @@ impl P {
     }
 
     /// `a ?? b`.
-    fn default(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        let mut left = self.or_expr(self_depth)?;
+    fn default(&mut self) -> Result<Node, EvalError> {
+        let mut left = self.or_expr()?;
         while self.eat_op(Op::QuestionDefault) {
-            let right = self.or_expr(self_depth)?;
+            let right = self.or_expr()?;
             left = Node::Default(Box::new(left), Box::new(right));
         }
         Ok(left)
     }
 
-    fn or_expr(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        let mut left = self.and_expr(self_depth)?;
+    fn or_expr(&mut self) -> Result<Node, EvalError> {
+        let mut left = self.and_expr()?;
         loop {
             let is_or = self.eat_word("or") || self.eat_op(Op::OrOr);
             if !is_or {
                 return Ok(left);
             }
-            let right = self.and_expr(self_depth)?;
+            let right = self.and_expr()?;
             left = Node::Bin(BinOp::Or, Box::new(left), Box::new(right));
         }
     }
 
-    fn and_expr(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        let mut left = self.range_expr(self_depth)?;
+    fn and_expr(&mut self) -> Result<Node, EvalError> {
+        let mut left = self.range_expr()?;
         loop {
             let is_and = self.eat_word("and") || self.eat_op(Op::AndAnd);
             if !is_and {
                 return Ok(left);
             }
-            let right = self.range_expr(self_depth)?;
+            let right = self.range_expr()?;
             left = Node::Bin(BinOp::And, Box::new(left), Box::new(right));
         }
     }
 
     /// `a..b` (integer range, inclusive).
-    fn range_expr(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        let mut left = self.not_expr(self_depth)?;
+    fn range_expr(&mut self) -> Result<Node, EvalError> {
+        let mut left = self.not_expr()?;
         while self.peek() == Tok::Op(Op::DotDot) {
             self.i += 1;
-            let right = self.not_expr(self_depth)?;
+            let right = self.not_expr()?;
             left = Node::Range(Box::new(left), Box::new(right));
         }
         Ok(left)
     }
 
-    fn not_expr(&mut self, self_depth: u32) -> Result<Node, EvalError> {
+    fn not_expr(&mut self) -> Result<Node, EvalError> {
         if self.eat_word("not") {
-            let inner = self.not_expr(self_depth)?;
-            return Ok(Node::Not(Box::new(inner)));
+            self.enter()?;
+            let inner = self.not_expr();
+            self.depth -= 1;
+            return Ok(Node::Not(Box::new(inner?)));
         }
-        self.cmp_expr(self_depth)
+        self.cmp_expr()
     }
 
-    fn cmp_expr(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        let mut left = self.concat_expr(self_depth)?;
+    fn cmp_expr(&mut self) -> Result<Node, EvalError> {
+        let mut left = self.concat_expr()?;
         loop {
             let op = match self.peek() {
                 Tok::Op(Op::Eq) => BinOp::Eq,
@@ -644,24 +667,24 @@ impl P {
                 _ => break,
             };
             self.i += 1;
-            let right = self.concat_expr(self_depth)?;
+            let right = self.concat_expr()?;
             left = Node::Bin(op, Box::new(left), Box::new(right));
         }
         Ok(left)
     }
 
-    fn concat_expr(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        let mut left = self.add_expr(self_depth)?;
+    fn concat_expr(&mut self) -> Result<Node, EvalError> {
+        let mut left = self.add_expr()?;
         while self.peek() == Tok::Op(Op::Amp) {
             self.i += 1;
-            let right = self.add_expr(self_depth)?;
+            let right = self.add_expr()?;
             left = Node::Bin(BinOp::Concat, Box::new(left), Box::new(right));
         }
         Ok(left)
     }
 
-    fn add_expr(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        let mut left = self.mul_expr(self_depth)?;
+    fn add_expr(&mut self) -> Result<Node, EvalError> {
+        let mut left = self.mul_expr()?;
         loop {
             let op = match self.peek() {
                 Tok::Op(Op::Plus) => BinOp::Add,
@@ -669,14 +692,14 @@ impl P {
                 _ => break,
             };
             self.i += 1;
-            let right = self.mul_expr(self_depth)?;
+            let right = self.mul_expr()?;
             left = Node::Bin(op, Box::new(left), Box::new(right));
         }
         Ok(left)
     }
 
-    fn mul_expr(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        let mut left = self.unary(self_depth)?;
+    fn mul_expr(&mut self) -> Result<Node, EvalError> {
+        let mut left = self.unary()?;
         loop {
             let op = match self.peek() {
                 Tok::Op(Op::Star) => BinOp::Mul,
@@ -685,22 +708,24 @@ impl P {
                 _ => break,
             };
             self.i += 1;
-            let right = self.unary(self_depth)?;
+            let right = self.unary()?;
             left = Node::Bin(op, Box::new(left), Box::new(right));
         }
         Ok(left)
     }
 
-    fn unary(&mut self, self_depth: u32) -> Result<Node, EvalError> {
+    fn unary(&mut self) -> Result<Node, EvalError> {
         if self.eat_op(Op::Minus) {
-            let inner = self.unary(self_depth)?;
-            return Ok(Node::Neg(Box::new(inner)));
+            self.enter()?;
+            let inner = self.unary();
+            self.depth -= 1;
+            return Ok(Node::Neg(Box::new(inner?)));
         }
-        let node = self.primary(self_depth)?;
-        self.postfix(node, self_depth)
+        let node = self.primary()?;
+        self.postfix(node)
     }
 
-    fn postfix(&mut self, mut node: Node, self_depth: u32) -> Result<Node, EvalError> {
+    fn postfix(&mut self, mut node: Node) -> Result<Node, EvalError> {
         loop {
             match self.peek() {
                 Tok::Op(Op::Dot) => {
@@ -721,7 +746,7 @@ impl P {
                         node = Node::ForceSeq(Box::new(node));
                         continue;
                     }
-                    let first = self.expr_arg(self_depth)?;
+                    let first = self.nested_expr()?;
                     if self.peek() == Tok::Op(Op::Colon) {
                         // JSONata 2.0.6 has no slicing operator; a `:` inside
                         // a predicate is a syntax error there too.
@@ -741,7 +766,7 @@ impl P {
                     let mut args = Vec::new();
                     if self.peek() != Tok::Op(Op::RParen) {
                         loop {
-                            args.push(self.expr_arg(self_depth)?);
+                            args.push(self.nested_expr()?);
                             if !self.eat_op(Op::Comma) {
                                 break;
                             }
@@ -778,18 +803,17 @@ impl P {
         }
     }
 
-    fn primary(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        check_depth(self_depth)?;
+    fn primary(&mut self) -> Result<Node, EvalError> {
         match self.peek() {
             Tok::Op(Op::LParen) => {
                 self.i += 1;
-                self.whole_expr_paren(self_depth)
+                self.whole_expr_paren()
             }
             Tok::Op(Op::LBracket) => {
                 self.i += 1;
                 let mut items = Vec::new();
                 while self.peek() != Tok::Op(Op::RBracket) {
-                    items.push(self.expr_arg(self_depth)?);
+                    items.push(self.nested_expr()?);
                     if !self.eat_op(Op::Comma) {
                         break;
                     }
@@ -820,7 +844,7 @@ impl P {
                     self.expect(Op::Colon)?;
                     // Function-style shorthands like `{a: $x}` take a full
                     // expression after the colon.
-                    let value = self.expr_arg(self_depth)?;
+                    let value = self.nested_expr()?;
                     pairs.push((key, value));
                     if !self.eat_op(Op::Comma) {
                         break;
@@ -847,7 +871,7 @@ impl P {
                     "true" => Ok(Node::Lit(Value::Bool(true))),
                     "false" => Ok(Node::Lit(Value::Bool(false))),
                     "null" => Ok(Node::Lit(Value::Null)),
-                    "function" => self.lambda(self_depth),
+                    "function" => self.lambda(),
                     "and" | "or" | "not" | "in" => Err(EvalError::new(format!(
                         "the keyword '{}' cannot start an expression",
                         word
@@ -864,7 +888,7 @@ impl P {
     }
 
     /// `function($a, $b) { expr }`.
-    fn lambda(&mut self, self_depth: u32) -> Result<Node, EvalError> {
+    fn lambda(&mut self) -> Result<Node, EvalError> {
         // The `function` keyword was consumed by the caller.
         self.expect(Op::LParen)?;
         let mut params = Vec::new();
@@ -889,7 +913,7 @@ impl P {
         }
         self.expect(Op::RParen)?;
         self.expect(Op::LBrace)?;
-        let body = self.ternary(self_depth)?;
+        let body = self.nested_expr()?;
         self.expect(Op::RBrace)?;
         Ok(Node::Lambda(params, Box::new(body)))
     }
@@ -936,8 +960,12 @@ fn parse(src: &str) -> Result<Node, EvalError> {
     if matches!(toks.first(), Some(Tok::End)) {
         return Err(EvalError::new("The expression is empty".to_string()));
     }
-    let mut p = P { toks, i: 0 };
-    let node = p.ternary(0)?;
+    let mut p = P {
+        toks,
+        i: 0,
+        depth: 0,
+    };
+    let node = p.ternary()?;
     if !matches!(p.peek(), Tok::End) {
         return Err(EvalError::new(format!(
             "Unexpected token at position {}: the expression is not valid JSONata syntax",
@@ -2252,4 +2280,47 @@ fn parse_iso_millis(iso: &str) -> Result<Jv, EvalError> {
     Err(EvalError::new(
         "The $toMillis argument is not a valid ISO 8601 timestamp".to_string(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn eval_input(src: &str, input: &Value) -> Result<Value, EvalError> {
+        eval(src, &StatesCtx::input_only(input, &json!({})))
+    }
+
+    #[test]
+    fn parser_depth_cap_stops_runaway_paren_nesting() {
+        // ~800 paren pairs used to escape the cap and abort the process;
+        // every descent now counts, so this returns a clean EvalError.
+        let src = format!("{}1{}", "(".repeat(10_000), ")".repeat(10_000));
+        let err = eval_input(&src, &json!({})).unwrap_err();
+        assert!(err.message.contains("too deeply nested"), "{}", err.message);
+    }
+
+    #[test]
+    fn paren_nesting_within_the_cap_still_parses() {
+        let src = format!("{}1{}", "(".repeat(100), ")".repeat(100));
+        assert_eq!(eval_input(&src, &json!({})).unwrap(), json!(1));
+    }
+
+    #[test]
+    fn sibling_arguments_do_not_accumulate_parse_depth() {
+        // Depth is per nesting level, not per descent: a flat literal with
+        // 200 members and 200 call arguments parse like their 2-member
+        // versions.
+        let items: String = (0..200).map(|_| "1").collect::<Vec<_>>().join(",");
+        let expected = Value::Array((0..200).map(|_| json!(1)).collect());
+        assert_eq!(
+            eval_input(&format!("[{items}]"), &json!({})).unwrap(),
+            expected
+        );
+        let args: String = (0..200).map(|_| "1").collect::<Vec<_>>().join(",");
+        assert_eq!(
+            eval_input(&format!("$sum([{args}])"), &json!({})).unwrap(),
+            json!(200)
+        );
+    }
 }
