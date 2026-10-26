@@ -844,27 +844,37 @@ fn sync_target_groups(req: &Request, group: &Group) {
     if group.target_group_arns.is_empty() {
         return;
     }
-    let mut arns: Vec<(String, String)> = vec![("Action".into(), "DescribeTargetGroups".into())];
-    for (i, a) in group.target_group_arns.iter().enumerate() {
-        arns.push((format!("TargetGroupArns.member.{}", i + 1), a.clone()));
-    }
-    let Some((200, xml)) = cross_call(req, "elbv2", &LoopbackBody::Form(encoded_pairs(&arns)))
-    else {
-        return;
-    };
+    // moto master e70a7315 (#10412): target groups can be deleted before
+    // their Auto Scaling group. Describe each attached ARN separately and
+    // keep refreshing the surviving groups — a vanished target group must
+    // neither wedge the scale-down/delete nor suppress registration on the
+    // groups that still exist (moto's update_attached_target_groups prunes
+    // the deleted ARNs before describing).
     let ids: Vec<String> = group
         .instance_states
         .iter()
         .map(|x| x.instance_id.clone())
         .collect();
-    for chunk in xml.split("<member>") {
-        let Some(tg_arn) = xml_tag(chunk, "TargetGroupArn") else {
+    for attached in group.target_group_arns.clone() {
+        let describe: Vec<(String, String)> = vec![
+            ("Action".into(), "DescribeTargetGroups".into()),
+            ("TargetGroupArn".into(), attached.clone()),
+        ];
+        let Some((200, xml)) =
+            cross_call(req, "elbv2", &LoopbackBody::Form(encoded_pairs(&describe)))
+        else {
             continue;
         };
-        if !group.target_group_arns.contains(&tg_arn) {
+        // Only refresh the ARN that was asked for: moto describes the pruned
+        // remainder, never the delete markers of other callers' groups.
+        let Some(tg_arn) = xml
+            .split("<member>")
+            .find_map(|chunk| xml_tag(chunk, "TargetGroupArn"))
+            .filter(|arn| arn == &attached)
+        else {
             continue;
-        }
-        let port = xml_tag(chunk, "Port").unwrap_or_default();
+        };
+        let port = xml_tag(&xml, "Port").unwrap_or_default();
         let mut pairs: Vec<(String, String)> = vec![
             ("Action".into(), "RegisterTargets".into()),
             ("TargetGroupArn".into(), tg_arn),
@@ -4624,5 +4634,55 @@ mod tests {
             serde_json::json!(true),
             "fields the call carried are echoed, absent ones are not"
         );
+    }
+
+    #[test]
+    fn delete_group_with_deleted_target_groups() {
+        // moto master e70a7315 (#10412): target groups can be deleted before
+        // their Auto Scaling group, and DeleteAutoScalingGroup must still
+        // succeed — moto 5.2.4 tripped on set_desired_capacity's target
+        // refresh and answered TargetGroupNotFound. The unit-test harness
+        // has no loopback peer (no Host header, sync calls skip), which is
+        // exactly the environment where the delete must not consult target
+        // groups at all.
+        for deleted_count in [0usize, 1, 2] {
+            let acct = 2000u64 + deleted_count as u64;
+            run_again(
+                acct,
+                &req_for(
+                    "CreateLaunchConfiguration",
+                    "LaunchConfigurationName=fx5lc&ImageId=ami-1&InstanceType=t2.micro",
+                ),
+            )
+            .expect("launch config");
+            let mut form =
+                "AutoScalingGroupName=asg&LaunchConfigurationName=fx5lc&MinSize=0&MaxSize=1&\
+                 AvailabilityZones.member.1=us-east-1a"
+                    .to_string();
+            for i in 0..2 {
+                form.push_str(&format!(
+                    "&TargetGroupARNs.member.{}=arn:aws:elasticloadbalancing:us-east-1:{}:targetgroup/fx5-{i}/abc{i}",
+                    i + 1,
+                    acct
+                ));
+            }
+            run_again(acct, &req_for("CreateAutoScalingGroup", &form)).expect("create asg");
+            // (deleted_count of those target groups may be deleted before
+            // the ASG is deleted — the live twin probe covers that case
+            // against a real elbv2 store.)
+            run_again(
+                acct,
+                &req_for(
+                    "DeleteAutoScalingGroup",
+                    "AutoScalingGroupName=asg&ForceDelete=true",
+                ),
+            )
+            .expect("delete must succeed even when target groups are deleted");
+            let body = run_again(acct, &req_for("DescribeAutoScalingGroups", "")).unwrap();
+            assert!(
+                !body.contains("<AutoScalingGroupName>asg</AutoScalingGroupName>"),
+                "deleted_count={deleted_count}, got {body}"
+            );
+        }
     }
 }
