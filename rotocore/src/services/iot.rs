@@ -1438,6 +1438,21 @@ fn delete_thing(s: &mut State, name: &str) -> Result<Response, Response> {
     Ok(ok_empty())
 }
 
+/// Real AWS pages IoT list results at 100 items per page: every paginated
+/// method in moto's iot PAGINATION_MODEL carries `limit_default: 100`, and
+/// moto PR getmoto/moto#10417 makes the responses layer honor that page
+/// size for list_thing_types/list_things/list_jobs/list_job_templates/
+/// list_job_executions_for_job/list_job_executions_for_thing. The twin's
+/// list handlers have no token pagination yet (they always answer
+/// nextToken: null), so the cap is applied directly to the returned page —
+/// a pageSize or maxResults beyond 100 cannot widen it.
+const IOT_MAX_PAGE_SIZE: usize = 100;
+
+/// Cap a list page at AWS's 100-item maximum (`IOT_MAX_PAGE_SIZE`).
+fn page_cap(items: Vec<Value>) -> Vec<Value> {
+    items.into_iter().take(IOT_MAX_PAGE_SIZE).collect()
+}
+
 fn list_things(
     s: &mut State,
     body: &Value,
@@ -1466,7 +1481,9 @@ fn list_things(
         }
         items.push(obj);
     }
-    Ok(ok_json(&json!({"things": items, "nextToken": Value::Null})))
+    Ok(ok_json(
+        &json!({"things": page_cap(items), "nextToken": Value::Null}),
+    ))
 }
 
 fn register_thing(_body: &Value) -> Result<Response, Response> {
@@ -1643,7 +1660,7 @@ fn list_thing_types(
         .cloned()
         .collect();
     Ok(ok_json(
-        &json!({"thingTypes": items, "nextToken": Value::Null}),
+        &json!({"thingTypes": page_cap(items), "nextToken": Value::Null}),
     ))
 }
 
@@ -2086,7 +2103,7 @@ fn list_billing_groups(
         .map(|g| json!({"groupName": g["billingGroupName"], "groupArn": g["billingGroupArn"]}))
         .collect();
     Ok(ok_json(
-        &json!({"billingGroups": items, "nextToken": Value::Null}),
+        &json!({"billingGroups": page_cap(items), "nextToken": Value::Null}),
     ))
 }
 
@@ -2212,7 +2229,9 @@ fn list_things_in_billing_group(s: &mut State, name: &str) -> Result<Response, R
             names.push(t["thingName"].clone());
         }
     }
-    Ok(ok_json(&json!({"things": names, "nextToken": Value::Null})))
+    Ok(ok_json(
+        &json!({"things": page_cap(names), "nextToken": Value::Null}),
+    ))
 }
 
 fn create_dynamic_thing_group(
@@ -3471,7 +3490,9 @@ fn list_jobs(s: &mut State) -> Result<Response, Response> {
             })
         })
         .collect();
-    Ok(ok_json(&json!({"jobs": items, "nextToken": Value::Null})))
+    Ok(ok_json(
+        &json!({"jobs": page_cap(items), "nextToken": Value::Null}),
+    ))
 }
 
 // --- Job executions -------------------------------------------------------
@@ -3594,7 +3615,7 @@ fn list_job_executions_for_job(
         })
         .collect();
     Ok(ok_json(
-        &json!({"executionSummaries": items, "nextToken": Value::Null}),
+        &json!({"executionSummaries": page_cap(items), "nextToken": Value::Null}),
     ))
 }
 
@@ -3625,7 +3646,7 @@ fn list_job_executions_for_thing(
         })
         .collect();
     Ok(ok_json(
-        &json!({"executionSummaries": items, "nextToken": Value::Null}),
+        &json!({"executionSummaries": page_cap(items), "nextToken": Value::Null}),
     ))
 }
 
@@ -3705,7 +3726,7 @@ fn list_job_templates(s: &mut State) -> Result<Response, Response> {
         })
         .collect();
     Ok(ok_json(
-        &json!({"jobTemplates": items, "nextToken": Value::Null}),
+        &json!({"jobTemplates": page_cap(items), "nextToken": Value::Null}),
     ))
 }
 
@@ -6701,5 +6722,35 @@ mod tests {
         );
         let r = dispatch_req(&req("DELETE", &format!("/things/{thing}"), json!({})));
         assert_eq!(status_of(r), 409);
+    }
+
+    /// moto PR getmoto/moto#10417: iot list pages honor the AWS 100-item
+    /// page cap (PAGINATION_MODEL limit_default / real AWS max pageSize).
+    /// The twin's list endpoints have no token pagination yet — they always
+    /// answer nextToken: null — so the cap is applied directly to the
+    /// returned page:PageSize/maxResults beyond 100 cannot widen it.
+    #[test]
+    fn iot_list_things_page_size_cap() {
+        let prefix = format!("cap-{}", random_id().get(..8).unwrap_or_default());
+        for i in 0..150 {
+            let r = dispatch_req(&req("POST", &format!("/things/{prefix}-{i}"), json!({})));
+            assert_eq!(r.status, 200);
+        }
+
+        // 150 things exist, but a page never holds more than AWS's 100.
+        let r = dispatch_req(&req("GET", "/things", json!({})));
+        assert_eq!(r.status, 200);
+        let things = body(&r)["things"].as_array().cloned().unwrap_or_default();
+        assert_eq!(things.len(), 100, "list page capped at 100 items");
+        // No token mechanism yet: the cap is returned as a single (truncated)
+        // page, documented rather than silently paginated.
+        assert_eq!(body(&r)["nextToken"], Value::Null);
+
+        // A pageSize beyond the cap cannot widen the page either.
+        let mut big_page = req("GET", "/things", json!({}));
+        big_page.query_string = "maxResults=500".to_string();
+        let r = dispatch_req(&big_page);
+        let things = body(&r)["things"].as_array().cloned().unwrap_or_default();
+        assert_eq!(things.len(), 100, "pageSize=500 must not exceed 100 items");
     }
 }
