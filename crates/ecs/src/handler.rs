@@ -2437,10 +2437,11 @@ fn now_f64() -> f64 {
 
 /// moto's env-var count parsing (fork ecs/models.py Service.__init__):
 /// `max(int(value), 0)` with a ValueError falling back to 0 — negative
-/// values are not allowed.
+/// values are not allowed. Python's int() accepts surrounding whitespace,
+/// so trim before parsing.
 fn parse_env_count(value: Option<&str>) -> i64 {
     value
-        .and_then(|v| v.parse::<i64>().ok())
+        .and_then(|v| v.trim().parse::<i64>().ok())
         .map_or(0, |v| v.max(0))
 }
 
@@ -2794,6 +2795,9 @@ mod tests {
         assert_eq!(parse_env_count(Some("+3")), 3);
         assert_eq!(parse_env_count(Some("-5")), 0);
         assert_eq!(parse_env_count(Some("running")), 0);
+        // Python's int(' 2 ') accepts surrounding whitespace.
+        assert_eq!(parse_env_count(Some(" 2 ")), 2);
+        assert_eq!(parse_env_count(Some("\t2\n")), 2);
     }
 
     #[test]
