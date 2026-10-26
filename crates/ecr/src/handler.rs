@@ -2658,3 +2658,41 @@ mod tests {
         );
     }
 }
+
+/// moto master f56ca268: get_authorization_token's expiresAt must not depend
+/// on the host timezone (moto computed mktime() on a naive datetime).
+/// The twin renders the fixed UTC instant 2015-01-01T00:00:00Z — epoch
+/// 1420070400 — as a compile-time constant, so it is timezone-free by
+/// construction; this pins that value (moto master live probe: expiresAt
+/// parses as 2015-01-01 00:00:00+00:00).
+#[cfg(test)]
+mod catchup_fx5_expires_at_tests {
+    use super::*;
+    use bytes::Bytes;
+    use serde_json::json;
+
+    fn make_req(operation: &str, params: Value) -> AwsRequest {
+        AwsRequest {
+            service: "ecr".to_string(),
+            operation: operation.to_string(),
+            account: 123456789012,
+            region: "us-fx5-catchup".to_string(),
+            params,
+            body: Bytes::new(),
+        }
+    }
+
+    #[test]
+    fn get_authorization_token_expires_at_is_fixed_utc() {
+        let handler = EcrHandler::new();
+        let resp = handler.handle(make_req("GetAuthorizationToken", json!({})));
+        assert_eq!(resp.status, 200, "got {}", resp.body);
+        let data: Value = serde_json::from_str(&resp.body).unwrap();
+        let expires_at = data["authorizationData"][0]["expiresAt"]
+            .as_i64()
+            .expect("expiresAt rendered");
+        // 1420070400 == 2015-01-01T00:00:00Z — the fixed UTC instant moto
+        // master returns, independent of the host's timezone.
+        assert_eq!(expires_at, 1420070400);
+    }
+}
