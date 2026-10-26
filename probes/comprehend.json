@@ -1,6 +1,6 @@
 {
   "service": "comprehend",
-  "generated_at": "2026-10-25T19:42:15.070021+00:00",
+  "generated_at": "2026-10-26T01:27:29.231958+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 85,

@@ -1,6 +1,6 @@
 {
   "service": "acm",
-  "generated_at": "2026-10-25T19:41:45.575819+00:00",
+  "generated_at": "2026-10-26T01:27:26.495525+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 16,

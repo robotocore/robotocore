@@ -1,6 +1,6 @@
 {
   "service": "appsync",
-  "generated_at": "2026-10-25T19:41:51.912426+00:00",
+  "generated_at": "2026-10-26T01:27:27.568961+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 69,
