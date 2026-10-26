@@ -1636,45 +1636,61 @@ impl DefaultSqsHandler {
         })?;
 
         // Resolve the target queue: explicit DestinationArn, else the queue
-        // whose RedrivePolicy points at this DLQ.
-        let target_name = if let Some(dest) = &destination_arn {
-            store.get_queue_by_arn(dest).map(|q| q.read().name.clone())
+        // whose RedrivePolicy points at this DLQ. Both handles must exist
+        // before any queue lock is taken, so the pair below can be locked
+        // in canonical queue-name order.
+        let dest = if let Some(dest) = &destination_arn {
+            store.get_queue_by_arn(dest)
         } else {
-            store
-                .dead_letter_sources(&source_arn)
-                .first()
-                .map(|q| q.read().name.clone())
+            store.dead_letter_sources(&source_arn).into_iter().next()
         };
 
         let mut moved: u64 = 0;
-        {
-            let mut dl = source.write();
-            if let Some(dest_name) = &target_name {
-                if let Some(dest) = store.get_queue(dest_name) {
-                    let mut kept = VecDeque::new();
-                    let mut dest_queue = dest.write();
-                    for msg in dl.messages.drain(..) {
-                        if msg.is_visible() {
-                            moved += 1;
-                            let mut new_msg = msg.clone();
-                            new_msg.message_id = Uuid::new_v4().to_string();
-                            new_msg.receive_count = 0;
-                            new_msg.first_receive_timestamp = None;
-                            new_msg.visibility_until = None;
-                            new_msg.available_at = None;
-                            dest_queue.send_message(new_msg);
-                        } else {
-                            kept.push_back(msg);
-                        }
+        match dest.as_ref() {
+            // Hold both write locks for the transfer, in canonical
+            // queue-name order: a mirrored move task (X->Y racing Y->X)
+            // holds one queue while acquiring the other, and only a total
+            // order on queue names prevents the two from deadlocking.
+            Some(dest) if !Arc::ptr_eq(&source, dest) => {
+                let src_first = source.read().name.clone() <= dest.read().name.clone();
+                let (mut src_q, mut dest_q) = if src_first {
+                    let src_q = source.write();
+                    let dest_q = dest.write();
+                    (src_q, dest_q)
+                } else {
+                    let dest_q = dest.write();
+                    let src_q = source.write();
+                    (src_q, dest_q)
+                };
+                let mut kept = VecDeque::new();
+                for msg in src_q.messages.drain(..) {
+                    if msg.is_visible() {
+                        moved += 1;
+                        let mut new_msg = msg.clone();
+                        new_msg.message_id = Uuid::new_v4().to_string();
+                        new_msg.receive_count = 0;
+                        new_msg.first_receive_timestamp = None;
+                        new_msg.visibility_until = None;
+                        new_msg.available_at = None;
+                        dest_q.send_message(new_msg);
+                    } else {
+                        kept.push_back(msg);
                     }
-                    dl.messages = kept;
                 }
+                src_q.messages = kept;
+                src_q.last_modified = Utc::now().timestamp_millis() as u64;
             }
-            dl.last_modified = Utc::now().timestamp_millis() as u64;
+            // No target (FAILED), or a target resolving to the source queue
+            // itself (nothing to move; the nested same-queue lock would
+            // wedge): touch nothing but the source's last_modified.
+            _ => {
+                let mut dl = source.write();
+                dl.last_modified = Utc::now().timestamp_millis() as u64;
+            }
         }
         let to_move = moved;
 
-        let status = if target_name.is_none() {
+        let status = if dest.is_none() {
             "FAILED".to_string()
         } else {
             "COMPLETED".to_string()
