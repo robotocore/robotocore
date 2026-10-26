@@ -830,12 +830,6 @@ impl DefaultSqsHandler {
                 SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
             })?;
 
-        let max_messages = params
-            .get("MaxNumberOfMessages")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(1)
-            .min(10) as usize;
-
         // Extract queue name from URL
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
 
@@ -844,17 +838,55 @@ impl DefaultSqsHandler {
             SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
         })?;
 
+        // moto validates the bounds in its RESPONSE layer, after the queue
+        // resolution (responses.py receive_message calls get_queue before
+        // touching the parameters): an out-of-range MaxNumberOfMessages on
+        // a nonexistent queue answers NonExistentQueue first (live-
+        // verified), as does WaitTimeSeconds=25. The 1..=10 bounds fire
+        // before the wait bounds, both before the VisibilityTimeout cap
+        // (live-verified: Max=0 with Wait=25 answers the Max error; Wait=25
+        // with an over-cap VisibilityTimeout answers the Wait error). The
+        // message wordings are moto's exact strings (live-verified), the
+        // wait one including its html-escaped oddity, and the parsed
+        // numeric shapes are the model-parser ones (numbers, numeric
+        // strings; a non-numeric value keeps being treated as absent on
+        // this path — moto would die in its parse layer, outside this
+        // lane's scope).
+        let max_requested = Self::visibility_timeout_of(params.get("MaxNumberOfMessages"));
+        if let Some(v) = max_requested {
+            if !(1..=10).contains(&v) {
+                return Err(SqsError::InvalidParameterValue(format!(
+                    "An error occurred (InvalidParameterValue) when calling the \
+                     ReceiveMessage operation: Value {v} for parameter \
+                     MaxNumberOfMessages is invalid. Reason: must be between 1 and \
+                     10, if provided."
+                )));
+            }
+        }
+        let max_messages = max_requested.unwrap_or(1).min(10) as usize;
+
         // Long poll: WaitTimeSeconds wins, else the queue-level attribute.
-        let queue_wait = queue_arc.read().attributes.receive_message_wait_time;
-        let wait_seconds = params
-            .get("WaitTimeSeconds")
-            .and_then(|v| v.as_u64())
-            .map(|v| v.min(20))
-            .unwrap_or(queue_wait.min(20) as u64);
+        // The bounds apply to whichever wins — moto validates the queue
+        // attribute too (live-verified: ReceiveMessageWaitTimeSeconds=25 on
+        // the queue makes a plain receive answer the WaitTimeSeconds error
+        // with Value 25).
+        let queue_wait = queue_arc.read().attributes.receive_message_wait_time as i64;
+        let wait_seconds =
+            Self::visibility_timeout_of(params.get("WaitTimeSeconds")).unwrap_or(queue_wait);
+        if !(0..=20).contains(&wait_seconds) {
+            return Err(SqsError::InvalidParameterValue(format!(
+                "An error occurred (InvalidParameterValue) when calling the \
+                 ReceiveMessage operation: Value {wait_seconds} for parameter \
+                 WaitTimeSeconds is invalid. Reason: must be &lt;= 0 and &gt;= 20 \
+                 if provided."
+            )));
+        }
+        let wait_seconds = wait_seconds as u64;
 
         // moto validates the requested VisibilityTimeout in its response
         // layer (`_get_validated_visibility_timeout` → MaxVisibilityTimeout,
-        // moto/sqs/responses.py receive_message) AFTER the queue lookup but
+        // moto/sqs/responses.py receive_message) AFTER the queue lookup AND
+        // after the MaxNumberOfMessages/WaitTimeSeconds bounds, but
         // BEFORE the backend receive/long-poll: an over-cap value answers
         // 400 InvalidParameterValue "Invalid request, maximum visibility
         // timeout is 43200" (live-verified: receive_message with

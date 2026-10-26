@@ -1171,14 +1171,24 @@ fn test_receive_message_max_count_validation() {
         .expect("Missing QueueUrl")
         .to_string();
 
-    // MaxNumberOfMessages > 10 should be clamped (or error)
+    // moto 400s an out-of-range MaxNumberOfMessages in its response layer
+    // (live-verified: "Value 11 for parameter MaxNumberOfMessages is
+    // invalid. Reason: must be between 1 and 10, if provided." — the
+    // old twin clamp is the divergence this closes).
     let recv_req = make_request(
         "ReceiveMessage",
         json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 11}),
     );
     let recv_resp = handler.handle(recv_req);
-    // The handler clamps to 10, so this should succeed with empty result
-    assert_eq!(recv_resp.status, 200);
+    assert_eq!(recv_resp.status, 400);
+    assert!(
+        recv_resp.body.contains(
+            "Value 11 for parameter MaxNumberOfMessages is invalid. Reason: must be \
+             between 1 and 10, if provided."
+        ),
+        "got {}",
+        recv_resp.body
+    );
 }
 
 #[test]
@@ -3592,4 +3602,231 @@ fn receive_junk_visibility_crash() {
     let counts = queued_message_counts(&handler, &queue_url);
     assert_eq!(counts.0, 3, "vis=1 expired; queue-default 30s would not");
     assert_eq!(counts.1, 0);
+}
+
+/// moto 400s an out-of-range MaxNumberOfMessages in the ReceiveMessage
+/// response layer, after the queue resolution (live-verified wording:
+/// "An error occurred (InvalidParameterValue) when calling the
+/// ReceiveMessage operation: Value 0 for parameter MaxNumberOfMessages is
+/// invalid. Reason: must be between 1 and 10, if provided."). Boundaries:
+/// 0 and 11 fail, 1 and 10 pass. The message stays deliverable for
+/// remaining requests (validation happens before any receive).
+#[test]
+fn receive_bounds_max_number_of_messages() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "recv-bounds-max");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "b"}),
+    ));
+
+    for (label, max, expect_ok) in [
+        ("0 below range", 0, false),
+        ("11 above range", 11, false),
+        ("100 above range", 100, false),
+        ("1 at floor", 1, true),
+        ("10 at ceiling", 10, true),
+    ] {
+        let resp = handler.handle(make_request(
+            "ReceiveMessage",
+            json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": max, "VisibilityTimeout": 0}),
+        ));
+        assert_eq!(
+            resp.status,
+            if expect_ok { 200 } else { 400 },
+            "{label}: got {}",
+            resp.body
+        );
+        if !expect_ok {
+            assert!(
+                resp.body.contains(&format!(
+                    "Value {max} for parameter MaxNumberOfMessages is invalid. Reason: \
+                     must be between 1 and 10, if provided."
+                )),
+                "{label}: got {}",
+                resp.body
+            );
+            assert!(
+                resp.body.contains(
+                    "An error occurred (InvalidParameterValue) when calling the ReceiveMessage operation:"
+                ),
+                "{label}: moto frames the message with the operation prefix, got {}",
+                resp.body
+            );
+        }
+    }
+
+    // The numeric-string shape the query protocol delivers parses the same
+    // way (moto's model parser int()s it, live-verified behavior).
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": "0"}),
+    ));
+    assert_eq!(resp.status, 400, "numeric string parses, got {}", resp.body);
+    assert!(
+        resp.body
+            .contains("Value 0 for parameter MaxNumberOfMessages"),
+        "got {}",
+        resp.body
+    );
+}
+
+/// The bounds ride AFTER the queue resolution: both an out-of-range
+/// MaxNumberOfMessages and a WaitTimeSeconds=25 on a nonexistent queue
+/// answer NonExistentQueue (live-verified ordering).
+#[test]
+fn receive_bounds_ghost_queue_answers_nonexistent_first() {
+    let handler = DefaultSqsHandler::new();
+    let ghost = format!("{}x", create_queue(&handler, "recv-bounds-ghost"));
+
+    for (label, req) in [
+        (
+            "Max=0",
+            json!({"QueueUrl": &ghost, "MaxNumberOfMessages": 0}),
+        ),
+        (
+            "Max=11",
+            json!({"QueueUrl": &ghost, "MaxNumberOfMessages": 11}),
+        ),
+        (
+            "Wait=25",
+            json!({"QueueUrl": &ghost, "WaitTimeSeconds": 25}),
+        ),
+        (
+            "Max=0 Wait=25",
+            json!({"QueueUrl": &ghost, "MaxNumberOfMessages": 0, "WaitTimeSeconds": 25}),
+        ),
+    ] {
+        let resp = handler.handle(make_request("ReceiveMessage", req));
+        assert_eq!(resp.status, 400, "{label}: got {}", resp.body);
+        assert!(
+            resp.body
+                .contains("AWS.SimpleQueueService.NonExistentQueue"),
+            "{label}: the queue lookup precedes the bounds, got {}",
+            resp.body
+        );
+    }
+}
+
+/// moto validates the wait bounds on the EFFECTIVE wait — the request
+/// value or the queue attribute (live-verified: a queue configured with
+/// ReceiveMessageWaitTimeSeconds=25 makes a plain receive answer the
+/// WaitTimeSeconds error). The wait bounds lose to the Max bounds and win
+/// over the VisibilityTimeout cap. The wordings are moto's exact strings,
+/// including the wait message's html-escaped oddity.
+#[test]
+fn receive_bounds_wait_time_seconds() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "recv-bounds-wait");
+    // A queued message keeps the in-range receives fast (no long poll).
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "b"}),
+    ));
+
+    for (label, wait, expect_ok) in [
+        ("25 above range", 25, false),
+        ("100 above range", 100, false),
+        ("-1 below range", -1, false),
+        ("0 low boundary", 0, true),
+        ("20 high boundary", 20, true),
+    ] {
+        let resp = handler.handle(make_request(
+            "ReceiveMessage",
+            json!({
+                "QueueUrl": &queue_url,
+                "WaitTimeSeconds": wait,
+                // keep the message re-available for the next sub-case
+                "VisibilityTimeout": 0
+            }),
+        ));
+        assert_eq!(
+            resp.status,
+            if expect_ok { 200 } else { 400 },
+            "{label}: got {}",
+            resp.body
+        );
+        if !expect_ok {
+            assert!(
+                resp.body.contains(&format!(
+                    "Value {wait} for parameter WaitTimeSeconds is invalid. Reason: \
+                     must be &lt;= 0 and &gt;= 20 if provided."
+                )),
+                "{label}: got {}",
+                resp.body
+            );
+        }
+    }
+
+    // Numeric strings parse the same way (int("-25") = -25 errors with
+    // the same wording).
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "WaitTimeSeconds": "-25"}),
+    ));
+    assert_eq!(resp.status, 400, "got {}", resp.body);
+    assert!(
+        resp.body
+            .contains("Value -25 for parameter WaitTimeSeconds is invalid"),
+        "got {}",
+        resp.body
+    );
+
+    // Order: Max bounds beat Wait bounds; both bounds beat the
+    // VisibilityTimeout cap (live-verified pairings).
+    for (label, req, expected) in [
+        (
+            "Max error beats Wait",
+            json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 0, "WaitTimeSeconds": 25}),
+            "Value 0 for parameter MaxNumberOfMessages is invalid",
+        ),
+        (
+            "Wait error beats the vis cap",
+            json!({"QueueUrl": &queue_url, "WaitTimeSeconds": 25, "VisibilityTimeout": 50000}),
+            "Value 25 for parameter WaitTimeSeconds is invalid",
+        ),
+        (
+            "Max error beats the vis cap",
+            json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 0, "VisibilityTimeout": 50000}),
+            "Value 0 for parameter MaxNumberOfMessages is invalid",
+        ),
+        (
+            "vis cap alone still errors",
+            json!({"QueueUrl": &queue_url, "VisibilityTimeout": 50000}),
+            "Invalid request, maximum visibility timeout is 43200",
+        ),
+    ] {
+        let resp = handler.handle(make_request("ReceiveMessage", req));
+        assert_eq!(resp.status, 400, "{label}: got {}", resp.body);
+        assert!(
+            resp.body.contains(expected),
+            "{label}: expected {expected}, got {}",
+            resp.body
+        );
+    }
+
+    // Queue attribute participates: ReceiveMessageWaitTimeSeconds=25 makes
+    // a plain receive answer the WaitTimeSeconds error (live-verified:
+    // Value 25 wording identical to the request-parameter one).
+    let q25 = create_queue(&handler, "recv-wait-attr");
+    let resp = handler.handle(make_request(
+        "SetQueueAttributes",
+        json!({
+            "QueueUrl": &q25,
+            "Attributes": {"ReceiveMessageWaitTimeSeconds": "25"}
+        }),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+    let resp = handler.handle(make_request("ReceiveMessage", json!({"QueueUrl": &q25})));
+    assert_eq!(
+        resp.status, 400,
+        "queue wait=25 must error, got {}",
+        resp.body
+    );
+    assert!(
+        resp.body
+            .contains("Value 25 for parameter WaitTimeSeconds is invalid"),
+        "got {}",
+        resp.body
+    );
 }
