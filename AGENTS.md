@@ -66,6 +66,7 @@ print(sts.get_caller_identity())
 | Endpoint | `http://localhost:4566` |
 | Access key ID | any 12-digit number — this IS your account ID |
 | Secret key | any non-empty string |
+| Secret key (one exception) | S3 POST-form (browser presigned-POST) uploads verify the SigV4 policy signature, and that check currently pins the secret to the literal `test` — see [Troubleshooting](#troubleshooting) |
 | Session token | not required |
 | Region | any valid AWS region name; `us-east-1` is a safe default |
 
@@ -241,6 +242,29 @@ s3.create_bucket(
     CreateBucketConfiguration={"LocationConstraint": "eu-west-1"},
 )
 ```
+
+**Presigned-POST (browser form) uploads** work too. The twin verifies the
+form's SigV4 policy signature, and that verification currently pins the
+secret to `test`, so generate the form from a client carrying the
+documented `aws_secret_access_key`:
+
+```python
+from botocore.config import Config
+
+s3v4 = boto3.client("s3", **{**SESSION, "config": Config(signature_version="s3v4")})
+data = s3v4.generate_presigned_post(Bucket="my-bucket", Key="form-upload.txt", ExpiresIn=3600)
+
+import requests
+resp = requests.post(
+    data["url"],
+    data=data["fields"],
+    files={"file": ("form-upload.txt", b"uploaded by browser form")},
+)
+resp.status_code        # 204 — the policy was signed with secret `test`
+```
+
+A form signed with any other secret answers `403 SignatureDoesNotMatch`;
+a plain unsigned form (no policy/signature fields) uploads anonymously.
 
 ### SQS
 
@@ -520,6 +544,7 @@ Reset a single account's state without restarting: use a new account ID (new 12-
 | Resources bleed between tests | Shared account ID | Use a unique 12-digit ID per test |
 | `InvalidClientTokenId` | Non-numeric access key | Use a 12-digit number: `"123456789012"` |
 | S3 `CreateBucket` fails in non-`us-east-1` region | Missing location constraint | Add `CreateBucketConfiguration={"LocationConstraint": region}` |
+| S3 POST upload answers `403 SignatureDoesNotMatch` | POST-form (presigned-POST) uploads verify the SigV4 policy signature with the pinned secret `test` | Generate the form with secret `test`, or send a plain unsigned form |
 | `ResourceNotFoundException` right after `create_table` | Table not ready | Call `table.wait_until_exists()` before use |
 | HTTP 501 `NotImplemented` | Operation genuinely absent | [Does robotocore implement operation X?](#does-robotocore-implement-operation-x) |
 
