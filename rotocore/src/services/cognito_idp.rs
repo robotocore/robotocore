@@ -1028,10 +1028,10 @@ fn authenticate_user(
     let tokens = issue_tokens(&issuer, &sub, client_id, username);
     record_auth_event(s, pool_id, username, true);
     track_refresh_token(s, pool_id, username, &tokens);
-    ok_json(&json!({
-        "AuthenticationResult": tokens,
-        "ChallengeParameters": {},
-    }))
+    // moto's public USER_PASSWORD arm returns AuthenticationResult only —
+    // the `ChallengeParameters: {}` pair is `_log_user_in`'s, which the
+    // admin arms use (fork models.py:2155-2162 vs 1468-1497).
+    ok_json(&json!({ "AuthenticationResult": tokens }))
 }
 
 /// moto's AuthFlow enum (fork models.py:59-67) in declaration order — the
@@ -5301,6 +5301,21 @@ mod tests {
             assert_eq!(b["__type"], "NotAuthorizedException", "{op}: {b}");
             assert_eq!(b["message"], expected, "{op}");
         }
+    }
+
+    #[test]
+    fn cognito_user_password_auth_returns_authentication_result_only() {
+        // moto's public USER_PASSWORD success carries AuthenticationResult
+        // only (fork models.py:2155-2162) — `ChallengeParameters: {}` is
+        // _log_user_in's shape, sent by the admin arms, not the public login.
+        let acct = scope();
+        let (_pool_id, client_id) = confirmed_setup(acct, "upa-user");
+        let b = login_tokens(acct, &client_id, "upa-user");
+        assert!(b["AuthenticationResult"]["AccessToken"].is_string(), "{b}");
+        assert!(b["AuthenticationResult"]["RefreshToken"].is_string(), "{b}");
+        assert!(b["ChallengeName"].is_null(), "{b}");
+        assert!(b["Session"].is_null(), "{b}");
+        assert!(b["ChallengeParameters"].is_null(), "{b}");
     }
 
     #[test]
