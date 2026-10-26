@@ -142,21 +142,13 @@ impl PipesState {
     fn op_describe(&mut self, name: &str) -> Response {
         match self.pipes.get(name) {
             Some(pipe) => Response::json_status(200, &without_nulls_entries(pipe.clone())),
-            None => bad(
-                404,
-                "NotFoundException",
-                &format!("Pipe {name} does not exist."),
-            ),
+            None => bad(404, "NotFoundException", &format!("Pipe {name} not found")),
         }
     }
 
     fn op_update(&mut self, name: &str, p: &Value) -> Response {
         let Some(pipe) = self.pipes.get_mut(name) else {
-            return bad(
-                404,
-                "NotFoundException",
-                &format!("Pipe {name} does not exist."),
-            );
+            return bad(404, "NotFoundException", &format!("Pipe {name} not found"));
         };
         for key in [
             "SourceParameters",
@@ -202,11 +194,7 @@ impl PipesState {
 
     fn op_toggle(&mut self, name: &str, dir: &str) -> Response {
         let Some(pipe) = self.pipes.get_mut(name) else {
-            return bad(
-                404,
-                "NotFoundException",
-                &format!("Pipe {name} does not exist."),
-            );
+            return bad(404, "NotFoundException", &format!("Pipe {name} not found"));
         };
         if dir == "start" {
             pipe["DesiredState"] = json!("RUNNING");
@@ -231,11 +219,7 @@ impl PipesState {
 
     fn op_delete(&mut self, name: &str) -> Response {
         let Some(mut pipe) = self.pipes.remove(name) else {
-            return bad(
-                404,
-                "NotFoundException",
-                &format!("Pipe {name} does not exist."),
-            );
+            return bad(404, "NotFoundException", &format!("Pipe {name} not found"));
         };
         pipe["CurrentState"] = json!("DELETING");
         Response::json_status(
@@ -328,7 +312,7 @@ impl PipesState {
             return bad(
                 404,
                 "NotFoundException",
-                &format!("Pipe does not exist: {arn}"),
+                &format!("Resource {arn} not found"),
             );
         };
         Response::json_status(
@@ -347,7 +331,7 @@ impl PipesState {
             return bad(
                 404,
                 "NotFoundException",
-                &format!("Pipe does not exist: {arn}"),
+                &format!("Resource {arn} not found"),
             );
         };
         let Some(tags) = p.get("Tags").or_else(|| p.get("tags")) else {
@@ -382,7 +366,7 @@ impl PipesState {
             return bad(
                 404,
                 "NotFoundException",
-                &format!("Pipe does not exist: {arn}"),
+                &format!("Resource {arn} not found"),
             );
         };
         if let Some(tags) = pipe["Tags"].as_object_mut() {
