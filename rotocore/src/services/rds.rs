@@ -2954,19 +2954,6 @@ fn create_db_instance(
             .unwrap_or("")
             .to_string(),
     };
-    let supplied_og = p_string(p, "OptionGroupName");
-    let option_group = match &supplied_og {
-        Some(name) => {
-            if !st.option_groups.contains_key(&name.to_lowercase()) {
-                return Err(RdsError::not_found404(
-                    "OptionGroupNotFoundFault",
-                    format!("Specified OptionGroupName: {name} not found."),
-                ));
-            }
-            name.clone()
-        }
-        None => DBCluster::compute_default_option_group(&engine, &engine_version),
-    };
     let supplied_db_subnet = p_string(p, "DBSubnetGroupName");
     if let Some(group) = &supplied_db_subnet {
         if !st.subnet_groups.contains_key(&group.to_lowercase()) {
@@ -2987,6 +2974,47 @@ fn create_db_instance(
             ));
         }
     }
+    // moto Database.__init__ validates the monitoring-parameter combination
+    // after the subnet-group/parameter-group reads and before the
+    // option-group resolution (live-probed on moto 5.2.4: the monitoring
+    // errors beat OptionGroupNotFoundFault, while DBSubnetGroupNotFoundFault
+    // beats them); an empty MonitoringRoleArn counts as absent (moto #10212).
+    let monitoring_role_arn = p_string(p, "MonitoringRoleArn");
+    let monitoring_interval = p_i64(p, "MonitoringInterval").unwrap_or(0);
+    if monitoring_role_arn
+        .as_deref()
+        .is_some_and(|arn| !arn.is_empty())
+        && monitoring_interval == 0
+    {
+        return Err(RdsError::client400(
+            "InvalidParameterCombination",
+            "You must specify a MonitoringInterval value other than 0 when you specify a MonitoringRoleARN value.",
+        ));
+    }
+    if monitoring_role_arn
+        .as_deref()
+        .map(str::is_empty)
+        .unwrap_or(true)
+        && monitoring_interval != 0
+    {
+        return Err(RdsError::client400(
+            "InvalidParameterCombination",
+            "A MonitoringRoleARN value is required if you specify a MonitoringInterval value other than 0.",
+        ));
+    }
+    let supplied_og = p_string(p, "OptionGroupName");
+    let option_group = match &supplied_og {
+        Some(name) => {
+            if !st.option_groups.contains_key(&name.to_lowercase()) {
+                return Err(RdsError::not_found404(
+                    "OptionGroupNotFoundFault",
+                    format!("Specified OptionGroupName: {name} not found."),
+                ));
+            }
+            name.clone()
+        }
+        None => DBCluster::compute_default_option_group(&engine, &engine_version),
+    };
     let master_username = p_string(p, "MasterUsername");
     let cluster_name = p_string(p, "DBClusterIdentifier");
     let cluster_ref = cluster_name.clone().map(|s| s.to_lowercase());
@@ -3014,31 +3042,6 @@ fn create_db_instance(
         return Err(RdsError::client400(
             "InvalidParameterCombination",
             format!("The engine name requested for your DB instance ({engine}) doesn't match the engine name of your DB cluster ({ce})."),
-        ));
-    }
-    // moto Database.__init__ validates the monitoring-parameter combination:
-    // an empty MonitoringRoleArn counts as absent (moto #10212).
-    let monitoring_role_arn = p_string(p, "MonitoringRoleArn");
-    let monitoring_interval = p_i64(p, "MonitoringInterval").unwrap_or(0);
-    if monitoring_role_arn
-        .as_deref()
-        .is_some_and(|arn| !arn.is_empty())
-        && monitoring_interval == 0
-    {
-        return Err(RdsError::client400(
-            "InvalidParameterCombination",
-            "You must specify a MonitoringInterval value other than 0 when you specify a MonitoringRoleARN value.",
-        ));
-    }
-    if monitoring_role_arn
-        .as_deref()
-        .map(str::is_empty)
-        .unwrap_or(true)
-        && monitoring_interval != 0
-    {
-        return Err(RdsError::client400(
-            "InvalidParameterCombination",
-            "A MonitoringRoleARN value is required if you specify a MonitoringInterval value other than 0.",
         ));
     }
     let db = DBInstance {
@@ -8849,6 +8852,36 @@ mod op_tests {
             "DBInstanceIdentifier=mon-ea&DBInstanceClass=db.t3.micro&Engine=mysql&MasterUsername=admin&MasterUserPassword=password123&MonitoringRoleArn=&MonitoringInterval=0",
         );
         assert!(empty_arn.is_ok(), "empty arn failed: {:?}", empty_arn.err());
+
+        // Dual-invalid ordering mirrors moto's DBInstance.__init__
+        // (live-probed on moto 5.2.4): the monitoring combination beats a
+        // missing option group, and a missing subnet group beats both.
+        let mon_vs_option = run(
+            "CreateDBInstance",
+            "DBInstanceIdentifier=mon-ord1&DBInstanceClass=db.t3.micro&Engine=mysql&MasterUsername=admin&MasterUserPassword=password123&MonitoringInterval=60&OptionGroupName=no-such-og",
+        );
+        let err = mon_vs_option.err().unwrap();
+        assert_eq!(err.code, "InvalidParameterCombination");
+        assert_eq!(
+            err.message,
+            "A MonitoringRoleARN value is required if you specify a MonitoringInterval value other than 0."
+        );
+        let subnet_vs_monitoring = run(
+            "CreateDBInstance",
+            "DBInstanceIdentifier=mon-ord2&DBInstanceClass=db.t3.micro&Engine=mysql&MasterUsername=admin&MasterUserPassword=password123&MonitoringInterval=60&DBSubnetGroupName=no-such-subnet-group",
+        );
+        assert_eq!(
+            subnet_vs_monitoring.err().unwrap().code,
+            "DBSubnetGroupNotFoundFault"
+        );
+        let subnet_vs_option = run(
+            "CreateDBInstance",
+            "DBInstanceIdentifier=mon-ord3&DBInstanceClass=db.t3.micro&Engine=mysql&MasterUsername=admin&MasterUserPassword=password123&OptionGroupName=no-such-og&DBSubnetGroupName=no-such-subnet-group",
+        );
+        assert_eq!(
+            subnet_vs_option.err().unwrap().code,
+            "DBSubnetGroupNotFoundFault"
+        );
     }
 
     #[test]
