@@ -1775,11 +1775,21 @@ impl DynamoDbHandler {
             table: Arc<Table>,
             key: String,
         }
+        /// One entry per TransactWriteItems row (moto transact_write_items
+        /// `errors` list of (Code, Message, Item) tuples):
+        /// `code: None` = the row passed, `item` = the row's pre-transaction
+        /// attributes when moto's ReturnValuesOnConditionCheckFailure=ALL_OLD
+        /// asked for them on a failed row (models/__init__.py:666-671,
+        /// exceptions.py TransactionCanceledException:251-255).
+        struct RowCancellation {
+            code: Option<String>,
+            item: Option<AttrMap>,
+        }
 
         let mut puts: Vec<PendingPut> = Vec::new();
         let mut updates: Vec<PendingUpdate> = Vec::new();
         let mut deletes: Vec<PendingDelete> = Vec::new();
-        let mut cancellation: Vec<Option<String>> = Vec::new();
+        let mut cancellation: Vec<RowCancellation> = Vec::new();
         let mut failed = false;
         // moto transact_write_items check_unicity
         // (dynamodb/models/__init__.py:617-623): every row across the request
@@ -1869,6 +1879,19 @@ impl DynamoDbHandler {
                 table.items.read().get(key).map(|i| i.attributes.clone())
             };
 
+            // moto transact_write_items (models/__init__.py:663-671): when a
+            // row's condition fails, ReturnValuesOnConditionCheckFailure=
+            // ALL_OLD attaches that row's pre-transaction item to its
+            // cancellation reason — skipped when the caller did not ask for
+            // ALL_OLD or the row does not exist.
+            let reason_item = |item: &Option<AttrMap>| -> Option<AttrMap> {
+                if param_str(op, "ReturnValuesOnConditionCheckFailure") == Some("ALL_OLD") {
+                    item.clone()
+                } else {
+                    None
+                }
+            };
+
             match op_name {
                 "Put" => {
                     let item_json = op.get("Item").cloned().unwrap_or(Value::Null);
@@ -1909,7 +1932,10 @@ impl DynamoDbHandler {
                             if let Some(e) = check_item_size(&attrs, false) {
                                 return e;
                             }
-                            cancellation.push(None);
+                            cancellation.push(RowCancellation {
+                                code: None,
+                                item: None,
+                            });
                             puts.push(PendingPut {
                                 table,
                                 key,
@@ -1918,7 +1944,10 @@ impl DynamoDbHandler {
                         }
                         Err(_) => {
                             failed = true;
-                            cancellation.push(Some("ConditionalCheckFailed".to_string()));
+                            cancellation.push(RowCancellation {
+                                code: Some("ConditionalCheckFailed".to_string()),
+                                item: reason_item(&pre),
+                            });
                         }
                     }
                 }
@@ -1982,7 +2011,10 @@ impl DynamoDbHandler {
                             if let Some(e) = check_item_size(&new_attrs, true) {
                                 return e;
                             }
-                            cancellation.push(None);
+                            cancellation.push(RowCancellation {
+                                code: None,
+                                item: None,
+                            });
                             updates.push(PendingUpdate {
                                 table,
                                 key,
@@ -1991,7 +2023,10 @@ impl DynamoDbHandler {
                         }
                         Err(_) => {
                             failed = true;
-                            cancellation.push(Some("ConditionalCheckFailed".to_string()));
+                            cancellation.push(RowCancellation {
+                                code: Some("ConditionalCheckFailed".to_string()),
+                                item: reason_item(&pre),
+                            });
                         }
                     }
                 }
@@ -2019,12 +2054,18 @@ impl DynamoDbHandler {
                     );
                     match check {
                         Ok(()) => {
-                            cancellation.push(None);
+                            cancellation.push(RowCancellation {
+                                code: None,
+                                item: None,
+                            });
                             deletes.push(PendingDelete { table, key });
                         }
                         Err(_) => {
                             failed = true;
-                            cancellation.push(Some("ConditionalCheckFailed".to_string()));
+                            cancellation.push(RowCancellation {
+                                code: Some("ConditionalCheckFailed".to_string()),
+                                item: reason_item(&pre),
+                            });
                         }
                     }
                 }
@@ -2054,10 +2095,16 @@ impl DynamoDbHandler {
                         );
                     }
                     match Self::check_condition(req, cond, pre.as_ref().map(|m| m as &AttrMap)) {
-                        Ok(()) => cancellation.push(None),
+                        Ok(()) => cancellation.push(RowCancellation {
+                            code: None,
+                            item: None,
+                        }),
                         Err(_) => {
                             failed = true;
-                            cancellation.push(Some("ConditionalCheckFailed".to_string()));
+                            cancellation.push(RowCancellation {
+                                code: Some("ConditionalCheckFailed".to_string()),
+                                item: reason_item(&pre),
+                            });
                         }
                     }
                 }
@@ -2067,21 +2114,39 @@ impl DynamoDbHandler {
         if failed {
             let reasons_text = cancellation
                 .iter()
-                .map(|r| r.clone().unwrap_or_else(|| "None".to_string()))
+                .map(|r| r.code.clone().unwrap_or_else(|| "None".to_string()))
                 .collect::<Vec<_>>()
                 .join(", ");
             // moto's TransactionCanceledException describes both the summary
             // message and one CancellationReasons entry per row
             // (dynamodb/exceptions.py TransactionCanceledException):
             // {"Code": <code>, "Message": <...>} for a failed row, {"Code":
-            // "None"} for a passing one. Phase 1 only cancels on failed
+            // "None"} for a passing one, and an extra "Item" member with the
+            // row's old attributes when the failed row carried
+            // ReturnValuesOnConditionCheckFailure=ALL_OLD
+            // (models/__init__.py:666-671). Phase 1 only cancels on failed
             // conditions, so the only code here is ConditionalCheckFailed
             // with moto's "The conditional request failed" message.
+            //
+            // Wire shape: moto renders the summary as top-level "Message"
+            // (uppercase — exceptions.py:261) and the fully-qualified error
+            // type com.amazonaws.dynamodb.v20120810#
+            // TransactionCanceledException, unlike real AWS's lowercase
+            // `message` (live transcript 2026-10-26, moto 5.2.4).
             let reasons = cancellation
                 .iter()
-                .map(|r| match r {
+                .map(|r| match &r.code {
                     Some(code) => {
-                        json!({"Code": code, "Message": "The conditional request failed"})
+                        let mut reason = json!({
+                            "Code": code,
+                            "Message": "The conditional request failed",
+                        });
+                        if let Some(item) = &r.item {
+                            if !item.is_empty() {
+                                reason["Item"] = map_to_value(item);
+                            }
+                        }
+                        reason
                     }
                     None => json!({"Code": "None"}),
                 })
@@ -2089,9 +2154,9 @@ impl DynamoDbHandler {
             return AwsResponse::error_with_body(
                 400,
                 json!({
-                    "__type": "TransactionCanceledException",
+                    "__type": "com.amazonaws.dynamodb.v20120810#TransactionCanceledException",
                     "CancellationReasons": reasons,
-                    "message": format!(
+                    "Message": format!(
                         "Transaction cancelled, please refer cancellation reasons \
                          for specific reasons [{reasons_text}]"
                     ),
@@ -4921,9 +4986,14 @@ mod tests {
         ));
         assert_eq!(resp.status, 400);
         let body: Value = serde_json::from_str(&resp.body).unwrap();
-        assert_eq!(body["__type"], "TransactionCanceledException");
+        // moto renders the fully-qualified error type and uppercase "Message"
+        // (exceptions.py:261; live transcript 2026-10-26).
         assert_eq!(
-            body["message"],
+            body["__type"],
+            "com.amazonaws.dynamodb.v20120810#TransactionCanceledException"
+        );
+        assert_eq!(
+            body["Message"],
             "Transaction cancelled, please refer cancellation reasons for specific reasons \
              [ConditionalCheckFailed]"
         );
@@ -4954,7 +5024,7 @@ mod tests {
         assert_eq!(resp.status, 400);
         let body: Value = serde_json::from_str(&resp.body).unwrap();
         assert_eq!(
-            body["message"],
+            body["Message"],
             "Transaction cancelled, please refer cancellation reasons for specific reasons \
              [None, ConditionalCheckFailed]"
         );
@@ -4998,11 +5068,166 @@ mod tests {
         ));
         assert_eq!(resp.status, 400);
         let body: Value = serde_json::from_str(&resp.body).unwrap();
-        assert_eq!(body["__type"], "TransactionCanceledException");
+        assert_eq!(
+            body["__type"],
+            "com.amazonaws.dynamodb.v20120810#TransactionCanceledException"
+        );
         assert_eq!(
             body["CancellationReasons"],
             json!([{"Code": "ConditionalCheckFailed",
                     "Message": "The conditional request failed"}])
+        );
+    }
+
+    // ReturnValuesOnConditionCheckFailure=ALL_OLD on a failing condition
+    // row attaches that row's pre-transaction attributes as the reason's
+    // "Item" member (moto models/__init__.py:666-671 — original_item =
+    // current.to_json()["Attributes"] — rendered by
+    // TransactionCanceledException, exceptions.py:251-255). Only failing
+    // rows gain it: passing rows stay {"Code": "None"} even when they
+    // carry ALL_OLD, a failed condition on a nonexistent row carries no
+    // Item (empty `current`), and rows without ALL_OLD never do. All four
+    // op arms share moto's condition block, so Put/Update/Delete/
+    // ConditionCheck fail-row reasons all carry the item. Live-transcribed
+    // (moto 5.2.4, 2026-10-26).
+    #[test]
+    fn transact_failing_condition_all_old_includes_old_item() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "allold",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "PutItem",
+            json!({"TableName": "allold",
+                   "Item": {"pk": {"S": "r1"}, "v": {"N": "3"}, "s": {"S": "old"}}}),
+        ));
+        assert_eq!(resp.status, 200);
+
+        let failing_put = || {
+            json!({"Put": {"TableName": "allold",
+                           "Item": {"pk": {"S": "r1"}, "v": {"N": "99"}},
+                           "ConditionExpression": "attribute_not_exists(pk)",
+                           "ReturnValuesOnConditionCheckFailure": "ALL_OLD"}})
+        };
+
+        // Failing Put + ALL_OLD on an existing row: the reason gains Item.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [failing_put()]}),
+        ));
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["CancellationReasons"],
+            json!([{"Code": "ConditionalCheckFailed",
+                    "Message": "The conditional request failed",
+                    "Item": {"pk": {"S": "r1"}, "v": {"N": "3"}, "s": {"S": "old"}}}])
+        );
+        assert_eq!(
+            body["Message"],
+            "Transaction cancelled, please refer cancellation reasons for specific reasons \
+             [ConditionalCheckFailed]"
+        );
+
+        // Passing row centered ahead of the failing one: {"Code": "None"}
+        // even though the passing row also carries ALL_OLD; only the
+        // failing row gains Item. Nothing is committed either way.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "allold",
+                         "Item": {"pk": {"S": "newA"}, "v": {"S": "p"}},
+                         "ConditionExpression": "attribute_not_exists(pk)",
+                         "ReturnValuesOnConditionCheckFailure": "ALL_OLD"}},
+                failing_put()
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["CancellationReasons"],
+            json!([{"Code": "None"},
+                   {"Code": "ConditionalCheckFailed",
+                    "Message": "The conditional request failed",
+                    "Item": {"pk": {"S": "r1"}, "v": {"N": "3"}, "s": {"S": "old"}}}])
+        );
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "allold", "Key": {"pk": {"S": "newA"}}}),
+        ));
+        assert_eq!(resp.body, "{}");
+
+        // Without ALL_OLD the failing row carries no Item.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "allold",
+                         "Item": {"pk": {"S": "r1"}, "v": {"N": "99"}},
+                         "ConditionExpression": "attribute_not_exists(pk)"}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["CancellationReasons"],
+            json!([{"Code": "ConditionalCheckFailed",
+                    "Message": "The conditional request failed"}])
+        );
+
+        // A failed condition on a row that does not exist carries no Item
+        // even with ALL_OLD (moto skips the empty `current`).
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "allold",
+                         "Item": {"pk": {"S": "ghost"}, "v": {"N": "1"}},
+                         "ConditionExpression": "attribute_exists(pk)",
+                         "ReturnValuesOnConditionCheckFailure": "ALL_OLD"}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["CancellationReasons"],
+            json!([{"Code": "ConditionalCheckFailed",
+                    "Message": "The conditional request failed"}])
+        );
+
+        // The Update row reads the same `ReturnValuesOnConditionCheckFailure`
+        // member: a failed condition carries the old item too.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Update": {"TableName": "allold", "Key": {"pk": {"S": "r1"}},
+                            "UpdateExpression": "SET v = :one",
+                            "ExpressionAttributeValues": {":one": {"N": "9"}},
+                            "ConditionExpression": "attribute_not_exists(v)",
+                            "ReturnValuesOnConditionCheckFailure": "ALL_OLD"}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["CancellationReasons"],
+            json!([{"Code": "ConditionalCheckFailed",
+                    "Message": "The conditional request failed",
+                    "Item": {"pk": {"S": "r1"}, "v": {"N": "3"}, "s": {"S": "old"}}}])
+        );
+
+        // The conditional failures cancelled every write: r1 untouched.
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "allold", "Key": {"pk": {"S": "r1"}}}),
+        ));
+        assert_eq!(
+            resp.body,
+            json!({"Item": {"pk": {"S": "r1"}, "v": {"N": "3"}, "s": {"S": "old"}}}).to_string()
         );
     }
 
