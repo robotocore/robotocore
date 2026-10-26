@@ -362,11 +362,18 @@ fn take_number(cur: &mut Cursor) -> Option<f64> {
 // ---- Filter expression grammar -------------------------------------------
 
 /// Upper bound on filter-expression nesting: every descent into a `!` or
-/// `(`-group counts against this (128 levels keeps the worst-case parser
-/// stack inside the 2MiB thread stacks, like the JSONata parser's cap).
-/// Past the cap the expression reads as off-dialect syntax — a missing
-/// value — instead of recursing once per group and aborting the process.
-const MAX_FILTER_DEPTH: usize = 128;
+/// `(`-group counts against this. Past the cap the expression reads as
+/// off-dialect syntax — a missing value — instead of recursing once per
+/// group and aborting the process.
+///
+/// The chain here costs only ~4 KB per paren group of debug codegen (three
+/// frames: `parse_filter_or`/`parse_filter_and`/`parse_filter_unary`), so a
+/// default 2MiB debug thread — the same stack over which the JSONata
+/// parser's ~19 KB-per-level descent stops at 109 levels — parses this
+/// chain cleanly up to 550 groups and overflows at 551. The cap mirrors
+/// `PARSE_DEPTH_CAP` at 64, leaving ~8x margin under that measured
+/// ceiling.
+const MAX_FILTER_DEPTH: usize = 64;
 
 /// A char cursor over a path / filter / pattern source, positioned by
 /// `char` index (sources are pre-collected into a `Vec<char>`).
@@ -1441,12 +1448,12 @@ mod tests {
     fn filter_nesting_within_the_cap_evaluates_and_beyond_reads_missing() {
         // Every `(` group descends one counted level — the `[?(` envelope
         // itself is eaten by the bracket parser outside the count, so the
-        // cap bites a group past `MAX_FILTER_DEPTH` levels. ≤100 parens
-        // still parse and evaluate ...
+        // cap bites a group past `MAX_FILTER_DEPTH` levels. ≤56 parens
+        // (under the 64 cap) still parse and evaluate ...
         let input = json!({"a": [{"b": true}]});
         let parenthesised = |n: usize| format!("$.a[?{}@.b{}]", "(".repeat(n), ")".repeat(n));
         assert_eq!(
-            resolve(&parenthesised(100), &input),
+            resolve(&parenthesised(56), &input),
             Some(json!([{"b": true}]))
         );
         // ... a body over the cap reads as off-dialect syntax (a missing

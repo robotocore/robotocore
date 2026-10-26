@@ -2002,55 +2002,69 @@ fn panic_cause(panic: Box<dyn std::any::Any + Send>) -> String {
 /// aborted in the meantime. Any panic during the walk is caught off too —
 /// a crashing evaluation records FAILED with a `States.Runtime` error
 /// instead of leaving the execution stuck RUNNING forever.
+///
+/// The explicit 16MiB stack here is the outer runaway guard:
+/// `catch_unwind` below cannot catch a stack overflow — overflowing the
+/// thread aborts the process before any unwind can even start — so the
+/// thread itself must have the stack that a capped-but-deep eval of hostile
+/// ASL takes, in any build profile, without depending on
+/// `RUST_MIN_STACK` or an inheriting thread's default. StartSyncExecution
+/// instead evaluates inline on tokio's default 2MiB blocking threads; there
+/// the parse caps (sized for a 2MiB debug thread) are what turns a
+/// too-nested expression into a clean evaluation error rather than an
+/// abort.
 pub fn run_on_thread(exec: Arc<Execution>, definition: String) {
-    std::thread::spawn(move || {
-        exec.push_event(json!({
-            "timestamp": now_f(),
-            "type": "ExecutionStarted",
-            "previousEventId": 0,
-            "executionStartedEventDetails": {
-                "input": exec.input,
-                "roleArn": "",
-            },
-        }));
-        let ctx = Ctx::new(exec.clone());
-        let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let def: Value = serde_json::from_str(&definition).unwrap_or(Value::Null);
-            let states = def
-                .get("States")
-                .and_then(|s| s.as_object())
-                .ok_or_else(|| {
-                    FlowError::new("States.StatesMissing", "States is required".to_string())
-                })?;
-            let start_at = def
-                .get("StartAt")
-                .and_then(|s| s.as_str())
-                .unwrap_or_default()
-                .to_string();
-            let input: Value = serde_json::from_str(&exec.input).unwrap_or_else(|_| json!({}));
-            let machine_default = def
-                .as_object()
-                .map(QueryLanguage::for_machine)
-                .unwrap_or_default();
-            run_flow(&ctx, states, start_at, input, machine_default)
-        })) {
-            Ok(result) => result,
-            Err(panic) => Err(FlowError::new(
-                "States.Runtime",
-                format!(
-                    "The execution aborted with an internal error: {}",
-                    panic_cause(panic)
-                ),
-            )),
-        };
-        let last_event_id = ctx.exec.events.read().len() as i64;
-        match result {
-            Ok(output) => ctx
-                .exec
-                .mark_succeeded(value_to_string(&output), last_event_id),
-            Err(e) => ctx.exec.mark_failed(e.error, e.cause, last_event_id),
-        }
-    });
+    std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .spawn(move || {
+            exec.push_event(json!({
+                "timestamp": now_f(),
+                "type": "ExecutionStarted",
+                "previousEventId": 0,
+                "executionStartedEventDetails": {
+                    "input": exec.input,
+                    "roleArn": "",
+                },
+            }));
+            let ctx = Ctx::new(exec.clone());
+            let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let def: Value = serde_json::from_str(&definition).unwrap_or(Value::Null);
+                let states = def
+                    .get("States")
+                    .and_then(|s| s.as_object())
+                    .ok_or_else(|| {
+                        FlowError::new("States.StatesMissing", "States is required".to_string())
+                    })?;
+                let start_at = def
+                    .get("StartAt")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let input: Value = serde_json::from_str(&exec.input).unwrap_or_else(|_| json!({}));
+                let machine_default = def
+                    .as_object()
+                    .map(QueryLanguage::for_machine)
+                    .unwrap_or_default();
+                run_flow(&ctx, states, start_at, input, machine_default)
+            })) {
+                Ok(result) => result,
+                Err(panic) => Err(FlowError::new(
+                    "States.Runtime",
+                    format!(
+                        "The execution aborted with an internal error: {}",
+                        panic_cause(panic)
+                    ),
+                )),
+            };
+            let last_event_id = ctx.exec.events.read().len() as i64;
+            match result {
+                Ok(output) => ctx
+                    .exec
+                    .mark_succeeded(value_to_string(&output), last_event_id),
+                Err(e) => ctx.exec.mark_failed(e.error, e.cause, last_event_id),
+            }
+        })
+        .expect("spawn detached execution thread");
 }
 
 #[cfg(test)]
@@ -2433,10 +2447,10 @@ mod tests {
             })
         };
         let input = json!({"a": [{"b": true}]});
-        // ≤100 parens still parse and evaluate: the filter matches, the
+        // ≤64 parens still parse and evaluate: the filter matches, the
         // matched route (Next) is taken.
-        let out = run(&def(parens(100)), input.clone()).expect("within the cap");
-        assert_eq!(out, json!({"hit": true}), "100 parens evaluate: {out}");
+        let out = run(&def(parens(56)), input.clone()).expect("within the cap");
+        assert_eq!(out, json!({"hit": true}), "56 parens evaluate: {out}");
         // 5k parens exceed the filter depth cap: the rule misses, Default
         // routes, SUCCEEDED.
         let out = run(&def(parens(5_000)), input).expect("past the cap is a miss");
