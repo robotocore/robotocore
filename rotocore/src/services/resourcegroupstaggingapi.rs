@@ -11,6 +11,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use super::connect;
 use crate::proto::{json_error, parse_json_body};
 use crate::store::{self, ScopeKey};
 use crate::{Request, Response};
@@ -285,6 +286,21 @@ fn get_resources(req: &Request) -> Response {
                 }
             }
         }
+        // connect instances: moto master 95cecea8 wires connect into the
+        // Resource Groups Tagging API via TaggableResourcesMixin (filter
+        // "connect" matches every "connect:*" type, "connect:instance" is
+        // exact).
+        if resource_type_filters.is_empty()
+            || resource_type_filters
+                .iter()
+                .any(|f| f == "connect" || f == "connect:instance")
+        {
+            for (arn, tags) in connect::tagged_instances(req.account, &req.region) {
+                if tags_match_filters(&tags, &filters) {
+                    all.push(json!({ "ResourceARN": arn, "Tags": tags }));
+                }
+            }
+        }
         // moto's page cut: stop once the resource limit is reached, with the
         // token table holding the generator for the remainder. The compat
         // suite never crosses a page boundary, so a single cut + fresh token
@@ -329,6 +345,14 @@ fn get_tag_keys(req: &Request) -> Response {
             }
         }
     }
+    // connect instances join the walk through the connect store.
+    for (_, tags) in connect::tagged_instances(req.account, &req.region) {
+        for tag in tags {
+            if let Some(k) = tag.get("Key").and_then(|k| k.as_str()) {
+                keys.push(k.to_string());
+            }
+        }
+    }
     keys.sort();
     keys.dedup();
     Response::json_status(200, &json!({ "TagKeys": keys, "PaginationToken": "" }))
@@ -339,6 +363,15 @@ fn get_tag_values(req: &Request) -> Response {
     let key = body.get("Key").and_then(|k| k.as_str()).unwrap_or_default();
     let mut values = with_state(req, |s| s.tag_values(key));
     for (_, tags) in sqs::bridge::tagged_queues() {
+        for tag in tags {
+            if tag.get("Key").and_then(|k| k.as_str()) == Some(key) {
+                if let Some(v) = tag.get("Value").and_then(|v| v.as_str()) {
+                    values.push(v.to_string());
+                }
+            }
+        }
+    }
+    for (_, tags) in connect::tagged_instances(req.account, &req.region) {
         for tag in tags {
             if tag.get("Key").and_then(|k| k.as_str()) == Some(key) {
                 if let Some(v) = tag.get("Value").and_then(|v| v.as_str()) {
@@ -376,9 +409,20 @@ fn tag_resources(req: &Request) -> Response {
         .unwrap_or_default();
     let tags = parse_tag_map(&body);
     let partition = partition_of(&req.region);
+    // connect instance ARNs are written through to the connect tag state
+    // (moto master 95cecea8: ConnectBackend carries TaggableResourcesMixin,
+    // so RGT TagResources tags via the connect backend instead of failing
+    // with "Service not yet supported").
+    let connect_arns: Vec<String> = arns
+        .iter()
+        .filter(|arn| connect::instance_arn(arn))
+        .cloned()
+        .collect();
     let unsupported: Vec<String> = arns
         .iter()
-        .filter(|arn| !supported_partition_arn(partition, arn))
+        .filter(|arn| {
+            !supported_partition_arn(partition, arn) && !connect::instance_arn(arn)
+        })
         .cloned()
         .collect();
     let mut failed = serde_json::Map::new();
@@ -392,9 +436,13 @@ fn tag_resources(req: &Request) -> Response {
             }),
         );
     }
+    let pairs: Vec<(&str, &str)> = tags.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    connect::tag_instances(req.account, &req.region, &connect_arns, &pairs);
     with_state(req, |s| {
-        let pairs: Vec<(&str, &str)> = tags.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
         for arn in &arns {
+            if connect::instance_arn(arn) {
+                continue;
+            }
             s.tag_resource(partition, arn, &pairs);
         }
     });
@@ -422,9 +470,16 @@ fn untag_resources(req: &Request) -> Response {
         })
         .unwrap_or_default();
     let partition = partition_of(&req.region);
+    let connect_arns: Vec<String> = arns
+        .iter()
+        .filter(|arn| connect::instance_arn(arn))
+        .cloned()
+        .collect();
     let unsupported: Vec<String> = arns
         .iter()
-        .filter(|arn| !supported_partition_arn(partition, arn))
+        .filter(|arn| {
+            !supported_partition_arn(partition, arn) && !connect::instance_arn(arn)
+        })
         .cloned()
         .collect();
     let mut failed = serde_json::Map::new();
@@ -438,8 +493,12 @@ fn untag_resources(req: &Request) -> Response {
             }),
         );
     }
+    connect::untag_instances(req.account, &req.region, &connect_arns, &keys);
     with_state(req, |s| {
         for arn in &arns {
+            if connect::instance_arn(arn) {
+                continue;
+            }
             s.untag_resource(partition, arn, &keys);
         }
     });
@@ -456,6 +515,23 @@ mod tests {
     struct Ctx(u64);
 
     impl Ctx {
+        /// A connect request in this test's (account, region) scope — the
+        /// Resource Groups Tagging API bridge enumerates the connect
+        /// store keyed by the same scope.
+        fn connect_req(&self, method: &str, path: &str, body: Value) -> Request {
+            Request {
+                service: "connect".into(),
+                operation: String::new(),
+                method: method.into(),
+                path: path.into(),
+                query_string: String::new(),
+                headers: Default::default(),
+                body: Bytes::from(serde_json::to_vec(&body).unwrap()),
+                account: self.0,
+                region: "us-east-1".into(),
+            }
+        }
+
         fn req(&self, op: &str, body: Value) -> Request {
             Request {
                 service: "resourcegroupstaggingapi".into(),
@@ -676,5 +752,114 @@ mod tests {
             dispatch(&ctx.req("StartReportCreation", json!({ "S3Bucket": "b" }))).status,
             200
         );
+    }
+
+    /// moto master 95cecea8 — connect instances join the Resource Groups
+    /// Tagging API: GetResources with "connect"/"connect:instance" filters
+    /// lists tagged instances, untagged instances never surface, RGT
+    /// TagResources/UntagResources write through to the connect tag state,
+    /// and GetTagKeys/GetTagValues walk the same tags.
+    #[test]
+    fn connect_instances_enumerate_with_tag_filters() {
+        let ctx = fresh_ctx();
+        let tag_key = "fx5rtapi";
+        let tag_val = "fx5tagval";
+
+        // Tagged connect instance (moto: create_instance(..., Tags=...)).
+        let create = connect::dispatch(&ctx.connect_req(
+            "PUT",
+            "/instance",
+            json!({
+                "IdentityManagementType": "CONNECT_MANAGED",
+                "InstanceAlias": "rtapi-test",
+                "Tags": { tag_key: tag_val },
+            }),
+        ));
+        assert_eq!(create.status, 200, "connect create failed: {}", create.status);
+        let arn = serde_json::from_slice::<Value>(&create.body).unwrap()["Arn"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // Untagged instance: must not be listed.
+        let untagged = connect::dispatch(&ctx.connect_req(
+            "PUT",
+            "/instance",
+            json!({"IdentityManagementType": "CONNECT_MANAGED"}),
+        ));
+        assert_eq!(untagged.status, 200);
+
+        for filters in [["connect"], ["connect:instance"]] {
+            let list = body_of(&dispatch(
+                &ctx.req("GetResources", json!({ "ResourceTypeFilters": filters })),
+            ));
+            let mappings = list["ResourceTagMappingList"].as_array().unwrap();
+            assert_eq!(mappings.len(), 1, "filters {filters:?}: got {list}");
+            assert_eq!(mappings[0]["ResourceARN"], arn.clone());
+            assert_eq!(
+                mappings[0]["Tags"],
+                json!([{ "Key": tag_key, "Value": tag_val }])
+            );
+        }
+
+        // TagFilters match like moto's TaggableResourcesMixin consumers.
+        let list = body_of(&dispatch(&ctx.req(
+            "GetResources",
+            json!({ "TagFilters": [{ "Key": tag_key, "Values": [tag_val] }] }),
+        )));
+        let mappings = list["ResourceTagMappingList"].as_array().unwrap();
+        assert_eq!(mappings.len(), 1, "tag filter: got {list}");
+        assert_eq!(mappings[0]["ResourceARN"], arn);
+
+        // Keys/values walk the connect tags too.
+        let keys = body_of(&dispatch(&ctx.req("GetTagKeys", json!({}))));
+        assert_eq!(keys["TagKeys"], json!([tag_key]));
+        let values = body_of(&dispatch(&ctx.req("GetTagValues", json!({ "Key": tag_key }))));
+        assert_eq!(values["TagValues"], json!([tag_val]));
+
+        // RGT TagResources tags a fresh connect instance through the
+        // connect store (FailedResourcesMap stays empty).
+        let second = serde_json::from_slice::<Value>(&untagged.body).unwrap()["Arn"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let tag_resp = body_of(&dispatch(
+            &ctx.req(
+                "TagResources",
+                json!({ "ResourceARNList": [second], "Tags": { "vk": "vv" } }),
+            ),
+        ));
+        assert!(tag_resp["FailedResourcesMap"]
+            .as_object()
+            .unwrap()
+            .is_empty(), "got {tag_resp}");
+        let list = body_of(&dispatch(&ctx.req(
+            "GetResources",
+            json!({ "ResourceTypeFilters": ["connect"] }),
+        )));
+        let arns_on_list: Vec<&str> = list["ResourceTagMappingList"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["ResourceARN"].as_str().unwrap())
+            .collect();
+        assert_eq!(arns_on_list.len(), 2, "got {list}");
+        assert!(arns_on_list.contains(&second.as_str()));
+
+        // UntagResources removes the tag and untagged resources drop off.
+        let untag_resp = body_of(&dispatch(
+            &ctx.req(
+                "UntagResources",
+                json!({ "ResourceARNList": [second], "TagKeys": ["vk"] }),
+            ),
+        ));
+        assert!(untag_resp["FailedResourcesMap"]
+            .as_object()
+            .unwrap()
+            .is_empty(), "got {untag_resp}");
+        let list = body_of(&dispatch(
+            &ctx.req("GetResources", json!({ "ResourceTypeFilters": ["connect"] })),
+        ));
+        assert_eq!(list["ResourceTagMappingList"].as_array().unwrap().len(), 1);
     }
 }

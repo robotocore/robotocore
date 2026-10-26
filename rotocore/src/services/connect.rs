@@ -902,6 +902,95 @@ fn tag_resource(st: &mut ConnectState, arn: &str, tags: Option<Value>) {
 }
 
 // ---------------------------------------------------------------------------
+// Resource Groups Tagging API bridge (moto master 95cecea8 — ConnectBackend
+// mixes in TaggableResourcesMixin, so RGT GetResources/GetTagKeys/
+// GetTagValues enumerate connect instances and RGT TagResources/
+// UntagResources write through to the connect tag state).
+// ---------------------------------------------------------------------------
+
+/// True when `arn` looks like a connect instance ARN (moto's
+/// TaggableResourcesMixin::owns_arn matches on the `arn:<partition>:connect:`
+/// prefix).
+pub fn instance_arn(arn: &str) -> bool {
+    let parts: Vec<&str> = arn.split(':').collect();
+    parts.len() == 6 && parts[2] == "connect" && parts[5].starts_with("instance/")
+}
+
+/// (instance ARN, ordered Key/Value tag rows) for every tagged connect
+/// instance in one (account, region) scope. Untagged resources are skipped —
+/// the RGT walker only lists tagged or previously tagged resources. Sorted
+/// for stable snapshots.
+pub fn tagged_instances(account: u64, region: &str) -> Vec<(String, Vec<Value>)> {
+    let slot = op_state();
+    let map = slot.read();
+    let Some(st) = map.get(&(account, region.to_string())) else {
+        return Vec::new();
+    };
+    let mut out: Vec<(String, Vec<Value>)> = st
+        .instances
+        .values()
+        .filter_map(|i| i.get("Arn").and_then(|v| v.as_str()).map(String::from))
+        .filter_map(|arn| {
+            let tags = st.tags.get(&arn)?;
+            let mut pairs: Vec<(String, String)> = tags
+                .iter()
+                .filter_map(|(k, v)| v.as_str().map(|v| (k.clone(), v.to_string())))
+                .collect();
+            if pairs.is_empty() {
+                return None;
+            }
+            pairs.sort();
+            Some((
+                arn,
+                pairs
+                    .into_iter()
+                    .map(|(k, v)| json!({ "Key": k, "Value": v }))
+                    .collect(),
+            ))
+        })
+        .collect();
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
+}
+
+/// RGT TagResources / UntagResources write-through for connect instance ARNs
+/// (moto routes these through the backend's tag_resource/untag_resource).
+/// Keys live in the connect tag state, tagged or not, like moto's tagger.
+pub fn tag_instances(account: u64, region: &str, arns: &[String], adds: &[(&str, &str)]) {
+    let slot = op_state();
+    let mut map = slot.write();
+    let st = map.entry((account, region.to_string())).or_default();
+    for arn in arns {
+        if !instance_arn(arn) {
+            continue;
+        }
+        let entry = st.tags.entry(arn.to_string()).or_default();
+        for (k, v) in adds {
+            entry.insert((*k).to_string(), json!(v));
+        }
+    }
+}
+
+pub fn untag_instances(account: u64, region: &str, arns: &[String], keys: &[String]) {
+    let slot = op_state();
+    let mut map = slot.write();
+    let st = map.entry((account, region.to_string())).or_default();
+    for arn in arns {
+        if !instance_arn(arn) {
+            continue;
+        }
+        if let Some(entry) = st.tags.get_mut(arn) {
+            for k in keys {
+                entry.remove(k);
+            }
+            if entry.is_empty() {
+                st.tags.remove(arn);
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // dispatch
 // ---------------------------------------------------------------------------
 

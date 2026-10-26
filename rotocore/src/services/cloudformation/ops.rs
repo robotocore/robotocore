@@ -3497,9 +3497,16 @@ fn get_template_summary(
     }
     let mut result = json!({
         "ResourceTypes": resource_types,
-        "Version": template.get("AWSTemplateFormatVersion").cloned().unwrap_or(Value::String("2010-09-09".to_string())),
         "Parameters": members,
     });
+    // moto master d42f0477 (#10425): AWSTemplateFormatVersion is optional in
+    // a template, so only render Version when the template declares it.
+    if let Some(version) = template.get("AWSTemplateFormatVersion") {
+        let _ = result
+            .as_object_mut()
+            .unwrap()
+            .insert("Version".to_string(), version.clone());
+    }
     if let Some(Value::String(desc)) = template.get("Description") {
         let _ = result
             .as_object_mut()
@@ -4022,5 +4029,229 @@ mod cfnresponse_finalize_tests {
             0,
         );
         assert_eq!(got.ok(), Some(json!("special value")));
+    }
+}
+
+/// moto master d42f0477 (#10425): GetTemplateSummary without
+/// AWSTemplateFormatVersion answers with resource-type summaries and no
+/// Version member (moto read the header by subscript and crashed with a
+/// KeyError before the fix).
+#[cfg(test)]
+mod catchup_fx5_tests {
+    use super::*;
+
+    // Unique spot so tests running in parallel cannot collide with each
+    // other or live suites.
+    const REGION: &str = "us-fx5-catchup";
+
+    fn cfx_req(op: &str, rest: &str) -> Request {
+        Request {
+            service: "cloudformation".into(),
+            operation: op.into(),
+            method: "POST".into(),
+            path: "/".into(),
+            query_string: format!("Action={op}&Version=2010-09-09&{rest}"),
+            headers: Default::default(),
+            body: bytes::Bytes::new(),
+            account: 123456789012,
+            region: REGION.into(),
+        }
+    }
+
+    fn form_encode(s: &str) -> String {
+        let mut out = String::new();
+        for b in s.bytes() {
+            match b {
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                    out.push(b as char)
+                }
+                _ => out.push_str(&format!("%{b:02X}")),
+            }
+        }
+        out
+    }
+
+    fn run(acct: u64, req: &Request) -> Response {
+        let mut scoped = req.clone();
+        scoped.account = acct;
+        handle(&scoped)
+    }
+
+    #[test]
+    fn get_template_summary_without_template_format_version() {
+        let acct = 424242524242;
+
+        // JSON template without the header.
+        let template = r#"{"Resources":{"Queue":{"Type":"AWS::SQS::Queue"}}}"#;
+        let resp = run(
+            acct,
+            &cfx_req(
+                "GetTemplateSummary",
+                &format!("TemplateBody={}", form_encode(template)),
+            ),
+        );
+        assert_eq!(resp.status, 200, "got {}", String::from_utf8_lossy(&resp.body));
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("AWS::SQS::Queue"), "got {body}");
+        assert!(!body.contains("<Version>"), "got {body}");
+
+        // YAML template without the header behaves the same.
+        let yaml = "Resources:\n  Queue:\n    Type: AWS::SQS::Queue\n";
+        let resp = run(
+            acct,
+            &cfx_req(
+                "GetTemplateSummary",
+                &format!("TemplateBody={}", form_encode(yaml)),
+            ),
+        );
+        assert_eq!(resp.status, 200, "got {}", String::from_utf8_lossy(&resp.body));
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("AWS::SQS::Queue"), "got {body}");
+        assert!(!body.contains("<Version>"), "got {body}");
+
+        // Same summary by StackName over a stack created from a header-less
+        // template (moto's third assertion).
+        let resp = run(
+            acct,
+            &cfx_req(
+                "CreateStack",
+                &format!(
+                    "StackName=f5x-no-version-stack&TemplateBody={}",
+                    form_encode(template)
+                ),
+            ),
+        );
+        assert_eq!(resp.status, 200, "got {}", String::from_utf8_lossy(&resp.body));
+        let resp = run(
+            acct,
+            &cfx_req("GetTemplateSummary", "StackName=f5x-no-version-stack"),
+        );
+        assert_eq!(resp.status, 200, "got {}", String::from_utf8_lossy(&resp.body));
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("AWS::SQS::Queue"), "got {body}");
+        assert!(!body.contains("<Version>"), "got {body}");
+
+        // A template that does declare the version still reports it.
+        let versioned =
+            r#"{"AWSTemplateFormatVersion":"2010-09-09","Resources":{"Queue":{"Type":"AWS::SQS::Queue"}}}"#;
+        let resp = run(
+            acct,
+            &cfx_req(
+                "GetTemplateSummary",
+                &format!("TemplateBody={}", form_encode(versioned)),
+            ),
+        );
+        assert_eq!(resp.status, 200, "got {}", String::from_utf8_lossy(&resp.body));
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<Version>2010-09-09</Version>"), "got {body}");
+    }
+}
+
+/// moto master f0a2584c (#10424): ListStackResources must render
+/// LastUpdatedTimestamp. Moto before the fix used the misspelled member
+/// name LastUpdateTimestamp with a hard-coded 2011 date, so the
+/// serializer dropped it and every summary was missing the required
+/// member. The twin sources it from the stack's creation time.
+#[cfg(test)]
+mod catchup_fx5_last_updated_tests {
+    use super::*;
+
+    const ACCOUNT_NUM: u64 = 424242524243;
+    const REGION: &str = "us-fx5-catchup";
+
+    fn cfx_req(op: &str, rest: &str) -> Request {
+        Request {
+            service: "cloudformation".into(),
+            operation: op.into(),
+            method: "POST".into(),
+            path: "/".into(),
+            query_string: format!("Action={op}&Version=2010-09-09&{rest}"),
+            headers: Default::default(),
+            body: bytes::Bytes::new(),
+            account: 123456789012,
+            region: REGION.into(),
+        }
+    }
+
+    fn form_encode(s: &str) -> String {
+        let mut out = String::new();
+        for b in s.bytes() {
+            match b {
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                    out.push(b as char)
+                }
+                _ => out.push_str(&format!("%{b:02X}")),
+            }
+        }
+        out
+    }
+
+    fn run(acct: u64, req: &Request) -> Response {
+        let mut scoped = req.clone();
+        scoped.account = acct;
+        handle(&scoped)
+    }
+
+    fn extract(body: &str, tag: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut rest = body;
+        while let Some(pos) = rest.find(&format!("<{tag}>")) {
+            let starts = pos + tag.len() + 2;
+            let remainder = &rest[starts..];
+            match remainder.find(&format!("</{tag}>")) {
+                Some(end) => {
+                    out.push(remainder[..end].to_string());
+                    rest = &remainder[end..];
+                }
+                None => break,
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn list_stack_resources_returns_last_updated_timestamp() {
+        let acct = ACCOUNT_NUM;
+        let template = r#"{"Resources":{"Queue":{"Type":"AWS::SQS::Queue"}}}"#;
+        let resp = run(
+            acct,
+            &cfx_req(
+                "CreateStack",
+                &format!(
+                    "StackName=f5x-lsrs-stack&TemplateBody={}",
+                    form_encode(template)
+                ),
+            ),
+        );
+        assert_eq!(resp.status, 200, "got {}", String::from_utf8_lossy(&resp.body));
+
+        let describe = run(acct, &cfx_req("DescribeStacks", "StackName=f5x-lsrs-stack"));
+        assert_eq!(describe.status, 200, "got {}", String::from_utf8_lossy(&describe.body));
+        let creation = extract(
+            &String::from_utf8_lossy(&describe.body),
+            "CreationTime",
+        )
+        .pop()
+        .expect("CreationTime rendered");
+
+        let resp = run(acct, &cfx_req("ListStackResources", "StackName=f5x-lsrs-stack"));
+        assert_eq!(resp.status, 200, "got {}", String::from_utf8_lossy(&resp.body));
+        let body = String::from_utf8_lossy(&resp.body);
+        let stamps = extract(&body, "LastUpdatedTimestamp");
+        assert_eq!(stamps.len(), 1, "got {body}");
+        // moto master f0a2584c renders the stack's creation time — not the
+        // hard-coded "2011-06-21T20:15:58Z" moto used before the fix.
+        assert_eq!(stamps[0], creation, "got {body}");
+        assert_ne!(stamps[0], "2011-06-21T20:15:58Z", "got {body}");
+        // The old, misspelled member name must never reappear.
+        assert!(!body.contains("<LastUpdateTimestamp>"), "got {body}");
+    }
+
+    #[test]
+    fn list_stack_resources_missing_stack_errors() {
+        let acct = ACCOUNT_NUM;
+        let resp = run(acct, &cfx_req("ListStackResources", "StackName=nope-fx5"));
+        assert_eq!(resp.status, 400);
+        assert!(String::from_utf8_lossy(&resp.body).contains("does not exist"));
     }
 }
