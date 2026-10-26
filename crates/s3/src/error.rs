@@ -55,9 +55,7 @@ impl S3Error {
             | S3Error::NoSuchBucketPolicy
             | S3Error::NoSuchCORSConfiguration => 404,
             S3Error::BucketAlreadyExists | S3Error::BucketAlreadyOwnedByYou => 409,
-            S3Error::InvalidBucketName
-            | S3Error::InvalidPart
-            | S3Error::EntityTooSmall => 400,
+            S3Error::InvalidBucketName | S3Error::InvalidPart | S3Error::EntityTooSmall => 400,
             S3Error::AccessDenied => 403,
             S3Error::MethodNotAllowed => 405,
             S3Error::Other(_) => 400,
