@@ -3306,3 +3306,155 @@ fn total_visibility_timeout_rule_signed_with_negatives() {
     let counts = queued_message_counts(&handler, &queue_url);
     assert_eq!(counts.0, 1, "the message is visible again");
 }
+
+/// moto crashes (plain werkzeug-500 HTML, no AWS envelope) on a top-level
+/// ChangeMessageVisibility whose VisibilityTimeout is missing or
+/// unparseable: `int("abc")` raises ValueError inside the automated parse
+/// layer and a missing value reaches `_get_validated_visibility_timeout`'s
+/// `None > 43200` TypeError (live-verified both shapes). Numeric strings
+/// stay honored — the query protocol delivers them and moto's model parser
+/// coerces with int() (live-verified: "30" applies). The crash precedes
+/// the queue resolution entirely (live-verified: junk vis on a nonexistent
+/// queue answers the 500, not NonExistentQueue; a missing QueueUrl with a
+/// missing VisibilityTimeout answers 500 as well).
+#[test]
+fn cmv_junk_visibility_crash_mirrors_moto() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "cmv-junk-mirror");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "t"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let handle: String = serde_json::from_str::<Value>(&recv.body).expect("json")["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .expect("handle")
+        .to_string();
+
+    let base = |extra: Value| {
+        let mut params = serde_json::Map::new();
+        params.insert("QueueUrl".into(), json!(queue_url));
+        params.insert("ReceiptHandle".into(), json!(handle));
+        if let Some(obj) = extra.as_object() {
+            for (k, v) in obj {
+                params.insert(k.clone(), v.clone());
+            }
+        }
+        handler.handle(make_request(
+            "ChangeMessageVisibility",
+            Value::Object(params),
+        ))
+    };
+
+    for (label, extra) in [
+        ("junk string vis", json!({"VisibilityTimeout": "abc"})),
+        ("missing vis", json!({})),
+        ("object vis shape", json!({"VisibilityTimeout": {"x": 1}})),
+        (
+            "junk vis on ghost queue",
+            json!({"QueueUrl": format!("{}x", queue_url), "VisibilityTimeout": "abc"}),
+        ),
+        (
+            "QueueUrl null and missing vis",
+            json!({"QueueUrl": Value::Null}),
+        ),
+    ] {
+        let resp = base(extra);
+        assert_eq!(resp.status, 500, "{label}: got {}", resp.body);
+        assert!(
+            resp.body.contains("<!doctype html>")
+                && resp.body.contains("500 Internal Server Error"),
+            "{label}: not the moto crash envelope, got {}",
+            resp.body
+        );
+    }
+
+    // The numeric-string shape still parses and applies (query-protocol
+    // form values are coerced by moto's model parser, live-verified).
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": handle,
+            "VisibilityTimeout": "30"
+        }),
+    ));
+    assert_eq!(
+        resp.status, 200,
+        "numeric strings are honored, got {}",
+        resp.body
+    );
+}
+
+/// Batch counterpart: moto's automated parse int()s every row's
+/// VisibilityTimeout before the response layer runs, so ONE junk row
+/// anywhere in Entries kills the whole request with the werkzeug 500 —
+/// the backend's broad `except:` never gets to see that value
+/// (live-verified: a lone "abc" row and a [valid, junk] mix both crash).
+/// A MISSING key does not crash: the response-layer bare except catches
+/// the lookup failure and answers the per-row Failed arm, which the twin
+/// already models.
+#[test]
+fn cmv_junk_visibility_batch_row_kills_whole_request() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "cmv-junk-batch");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+
+    for (label, entries) in [
+        (
+            "lone junk row",
+            json!([{"Id": "j", "ReceiptHandle": handles[0]["ReceiptHandle"], "VisibilityTimeout": "abc"}]),
+        ),
+        (
+            "valid row then junk row",
+            json!([
+                {"Id": "ok", "ReceiptHandle": handles[0]["ReceiptHandle"], "VisibilityTimeout": 30},
+                {"Id": "j", "ReceiptHandle": handles[1]["ReceiptHandle"], "VisibilityTimeout": "abc"},
+            ]),
+        ),
+    ] {
+        let resp = handler.handle(make_request(
+            "ChangeMessageVisibilityBatch",
+            json!({"QueueUrl": &queue_url, "Entries": entries}),
+        ));
+        assert_eq!(resp.status, 500, "{label}: got {}", resp.body);
+        assert!(
+            resp.body.contains("<!doctype html>")
+                && resp.body.contains("500 Internal Server Error"),
+            "{label}: not the moto crash envelope, got {}",
+            resp.body
+        );
+        // The crash discards any other rows: no batch result at all.
+        assert!(!resp.body.contains("Failed"), "{label}: got {}", resp.body);
+    }
+
+    // Missing-key rows keep the Failed-row arm (no crash), on a live
+    // queue: moto's per-row bare except catches the absent key.
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "novis", "ReceiptHandle": handles[0]["ReceiptHandle"]},
+                {"Id": "ok", "ReceiptHandle": handles[1]["ReceiptHandle"], "VisibilityTimeout": 30},
+            ]
+        }),
+    ));
+    assert_eq!(
+        resp.status, 200,
+        "absent-key rows stay per-row, got {}",
+        resp.body
+    );
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    let failed = data["Failed"].as_array().expect("Failed array");
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0]["Code"], "InvalidParameterValue");
+    assert_eq!(failed[0]["Message"], "Visibility timeout invalid");
+    let successful = data["Successful"].as_array().expect("Successful array");
+    assert_eq!(successful.len(), 1);
+    assert_eq!(successful[0]["Id"], "ok");
+}
