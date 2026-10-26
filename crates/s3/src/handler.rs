@@ -645,8 +645,30 @@ impl S3Handler {
     fn bucket_and_key(req: &AwsRequest) -> (String, String) {
         (
             req.bucket.clone().unwrap_or_default(),
-            req.key.clone().unwrap_or_default(),
+            req.key
+                .as_deref()
+                .map(Self::decoded_key)
+                .unwrap_or_default(),
         )
+    }
+
+    /// S3 object keys arrive from the gateway in the raw wire form: a
+    /// percent-encoded path segment. Botocore quotes `%` and non-ASCII bytes;
+    /// other sub-delims such as `=` may legally appear raw. Normalize to the
+    /// decoded key once, here, so stored state, listing comparisons
+    /// (prefix/marker/StartAfter), pagination tokens and lookups all use the
+    /// decoded form — real AWS stores the decoded key (moto's S3 response
+    /// layer decodes the same way; localstack discussion 54).
+    ///
+    /// A single decode keeps the round-trip faithful: a literal `%20` uploaded
+    /// raw arrives as `%2520` and decodes exactly once to `%20`, never to a
+    /// space. Parameters read from `query_params` are already decoded by the
+    /// gateway, so `StartAfter`-style comparisons against state keys need no
+    /// re-encoding either.
+    fn decoded_key(key: &str) -> String {
+        urlencoding::decode(key)
+            .map(String::from)
+            .unwrap_or_else(|_| key.to_string())
     }
 
     fn bucket_or_404(state: &S3State, name: &str) -> Result<Arc<Bucket>, AwsResponse> {
@@ -1102,6 +1124,43 @@ impl S3Handler {
         )
     }
 
+    /// GET/HEAD on a delete-marker version id: 405 MethodNotAllowed (the AWS
+    /// S3 treatment moto's `MethodNotAllowed(method, resource_type="DeleteMarker")`
+    /// renders), carrying the delete-marker headers, `Allow: DELETE` and the
+    /// marker's `Last-Modified` (moto PR #10428; head_object precedent).
+    fn delete_marker_version_error(
+        method: &str,
+        version_id: &str,
+        last_modified: u64,
+    ) -> AwsResponse {
+        let mut resp = AwsResponse::error(
+            405,
+            "MethodNotAllowed",
+            "The specified method is not allowed against this resource.",
+        );
+        resp.headers
+            .push(("x-amz-delete-marker".to_string(), "true".to_string()));
+        resp.headers
+            .push(("x-amz-version-id".to_string(), version_id.to_string()));
+        resp.headers
+            .push(("Allow".to_string(), "DELETE".to_string()));
+        resp.headers
+            .push(("Last-Modified".to_string(), httpdate(last_modified)));
+        // moto's method_resource_error extension adds the requested method
+        // and resource type to the error document.
+        resp.body = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<Error>
+  <Code>MethodNotAllowed</Code>
+  <Message>The specified method is not allowed against this resource.</Message>
+  <Method>{method}</Method>
+  <ResourceType>DeleteMarker</ResourceType>
+</Error>"#
+        )
+        .into_bytes();
+        resp
+    }
+
     fn get_object(&self, req: &AwsRequest) -> AwsResponse {
         let (bucket_name, key) = Self::bucket_and_key(req);
         let state = self.get_state(req.account, &req.region);
@@ -1120,25 +1179,60 @@ impl S3Handler {
                 }
             };
             let found = match req.query_params.get("versionId") {
-                Some(vid) => entry
-                    .versions
-                    .iter()
-                    .find(|v| v.version_id == *vid)
-                    .cloned(),
-                None => {
-                    if !entry.is_live() {
-                        None
+                Some(vid) => {
+                    if let Some(v) = entry.versions.iter().find(|v| v.version_id == *vid) {
+                        v.clone()
                     } else {
-                        entry.versions.first().cloned()
+                        // The requested VersionId is a delete marker: AWS
+                        // answers 405 MethodNotAllowed with Allow: DELETE —
+                        // the same error moto's MethodNotAllowed(method="GET",
+                        // resource_type="DeleteMarker") renders (see also
+                        // put_object_tagging's marker handling). Previously
+                        // this fell through to NoSuchKey.
+                        if let Some(m) = entry.markers.iter().find(|m| m.version_id == *vid) {
+                            return Self::delete_marker_version_error(
+                                &req.method,
+                                &m.version_id,
+                                m.last_modified,
+                            );
+                        }
+                        return AwsResponse::error(
+                            404,
+                            "NoSuchKey",
+                            "The specified key does not exist",
+                        );
                     }
                 }
-            };
-            match found {
-                Some(v) => v,
                 None => {
-                    return AwsResponse::error(404, "NoSuchKey", "The specified key does not exist")
+                    if !entry.is_live() {
+                        // Latest record is a delete marker: 404 NoSuchKey,
+                        // but Amazon S3 behaves as if the object was deleted
+                        // and includes x-amz-delete-marker: true plus the
+                        // marker's x-amz-version-id in the response
+                        // (mirror of HeadObject's 404 shape).
+                        let vid = entry
+                            .markers
+                            .first()
+                            .map(|m| m.version_id.clone())
+                            .unwrap_or_default();
+                        let mut resp = AwsResponse::error(
+                            404,
+                            "NoSuchKey",
+                            "The specified key does not exist",
+                        );
+                        resp.headers
+                            .push(("x-amz-delete-marker".to_string(), "true".to_string()));
+                        resp.headers.push(("x-amz-version-id".to_string(), vid));
+                        return resp;
+                    }
+                    entry
+                        .versions
+                        .first()
+                        .cloned()
+                        .expect("is_live() guarantees a live version row")
                 }
-            }
+            };
+            found
         };
 
         // Range handling
@@ -1203,23 +1297,46 @@ impl S3Handler {
                 Some(e) => e,
                 None => return AwsResponse::error(404, "NotFound", "Not Found"),
             };
-            let found = match req.query_params.get("versionId") {
-                Some(vid) => entry
-                    .versions
-                    .iter()
-                    .find(|v| v.version_id == *vid)
-                    .cloned(),
-                None => {
-                    if !entry.is_live() {
-                        None
+            match req.query_params.get("versionId") {
+                Some(vid) => {
+                    if let Some(v) = entry.versions.iter().find(|v| v.version_id == *vid) {
+                        v.clone()
                     } else {
-                        entry.versions.first().cloned()
+                        if let Some(m) = entry.markers.iter().find(|m| m.version_id == *vid) {
+                            // HEAD on a delete-marker version: 405 with the
+                            // delete-marker headers and Allow: DELETE (moto
+                            // HeadOnDeleteMarker path).
+                            return Self::delete_marker_version_error(
+                                &req.method,
+                                &m.version_id,
+                                m.last_modified,
+                            );
+                        }
+                        return AwsResponse::error(404, "NotFound", "Not Found");
                     }
                 }
-            };
-            match found {
-                Some(v) => v,
-                None => return AwsResponse::error(404, "NotFound", "Not Found"),
+                None => {
+                    if !entry.is_live() {
+                        // Latest record is a delete marker: 404, as if the
+                        // object was deleted, with the delete-marker headers
+                        // real AWS and moto send.
+                        let vid = entry
+                            .markers
+                            .first()
+                            .map(|m| m.version_id.clone())
+                            .unwrap_or_default();
+                        let mut resp = AwsResponse::error(404, "NotFound", "Not Found");
+                        resp.headers
+                            .push(("x-amz-delete-marker".to_string(), "true".to_string()));
+                        resp.headers.push(("x-amz-version-id".to_string(), vid));
+                        return resp;
+                    }
+                    entry
+                        .versions
+                        .first()
+                        .cloned()
+                        .expect("is_live() guarantees a live version row")
+                }
             }
         };
 
@@ -4473,5 +4590,505 @@ mod tests {
         let resp = handler.handle(req);
         assert_eq!(resp.status, 200);
         assert!(String::from_utf8_lossy(&resp.body).contains("ListAllMyBucketsResult"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Delete-marker GET semantics (moto PR #10428: get_object() on a delete
+    // marker returns the x-amz-delete-marker header, and 405 for its version).
+    // -----------------------------------------------------------------------
+
+    /// Enable versioning, mirroring the PutBucketVersioning wire shape.
+    fn enable_versioning(handler: &S3Handler, bucket: &str) {
+        let mut vreq = make_req(
+            "PutBucketVersioning",
+            Some(bucket),
+            None,
+            b"<VersioningConfiguration xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Status>Enabled</Status></VersioningConfiguration>",
+        );
+        vreq.query_params
+            .insert("versioning".to_string(), String::new());
+        assert_eq!(handler.handle(vreq).status, 200);
+    }
+
+    fn header_map(resp: &AwsResponse) -> HashMap<String, String> {
+        resp.headers.clone().into_iter().collect()
+    }
+
+    #[test]
+    fn delete_marker_get_without_version_id_returns_marker_headers() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("dm1"), None, b""));
+        enable_versioning(&handler, "dm1");
+        handler.handle(make_req("PutObject", Some("dm1"), Some("the-key"), b"data"));
+        let resp = handler.handle(make_req("DeleteObject", Some("dm1"), Some("the-key"), b""));
+        let marker_id = header_map(&resp)
+            .get("x-amz-version-id")
+            .cloned()
+            .expect("delete_object returns the marker's version id");
+
+        // The current version is a delete marker: 404 NoSuchKey, but the
+        // delete-marker headers carry the marker's identity (moto
+        // MissingKey + x-amz-delete-marker/x-amz-version-id).
+        let resp = handler.handle(make_req("GetObject", Some("dm1"), Some("the-key"), b""));
+        assert_eq!(resp.status, 404);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<Code>NoSuchKey</Code>"), "body: {body}");
+        let headers = header_map(&resp);
+        assert_eq!(
+            headers.get("x-amz-delete-marker").map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(
+            headers.get("x-amz-version-id").map(String::as_str),
+            Some(marker_id.as_str())
+        );
+    }
+
+    #[test]
+    fn delete_marker_get_with_marker_version_id_returns_405() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("dm2"), None, b""));
+        enable_versioning(&handler, "dm2");
+        handler.handle(make_req("PutObject", Some("dm2"), Some("the-key"), b"data"));
+        let resp = handler.handle(make_req("DeleteObject", Some("dm2"), Some("the-key"), b""));
+        let marker_id = header_map(&resp)
+            .get("x-amz-version-id")
+            .cloned()
+            .expect("marker version id");
+
+        // The requested version is a delete marker: 405 MethodNotAllowed
+        // with Allow: DELETE, not NoSuchVersion/NoSuchKey.
+        let mut req = make_req("GetObject", Some("dm2"), Some("the-key"), b"");
+        req.query_params
+            .insert("versionId".to_string(), marker_id.clone());
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 405);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(
+            body.contains("<Code>MethodNotAllowed</Code>"),
+            "body: {body}"
+        );
+        assert!(body.contains("<Method>GET</Method>"), "body: {body}");
+        assert!(
+            body.contains("<ResourceType>DeleteMarker</ResourceType>"),
+            "body: {body}"
+        );
+        let headers = header_map(&resp);
+        assert_eq!(
+            headers.get("x-amz-delete-marker").map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(
+            headers.get("x-amz-version-id").map(String::as_str),
+            Some(marker_id.as_str())
+        );
+        assert_eq!(headers.get("Allow").map(String::as_str), Some("DELETE"));
+        assert!(headers.contains_key("Last-Modified"));
+    }
+
+    #[test]
+    fn delete_marker_get_recreated_key_is_live_again() {
+        // After a re-put the marker no longer shadows the key: plain 200
+        // with no delete-marker headers.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("dm3"), None, b""));
+        enable_versioning(&handler, "dm3");
+        handler.handle(make_req("PutObject", Some("dm3"), Some("the-key"), b"v1"));
+        handler.handle(make_req("DeleteObject", Some("dm3"), Some("the-key"), b""));
+        handler.handle(make_req("PutObject", Some("dm3"), Some("the-key"), b"v2"));
+
+        let resp = handler.handle(make_req("GetObject", Some("dm3"), Some("the-key"), b""));
+        assert_eq!(resp.status, 200);
+        assert_eq!(resp.body, b"v2".to_vec());
+        let headers = header_map(&resp);
+        assert!(!headers.contains_key("x-amz-delete-marker"));
+
+        // The delete-marker version itself still answers 405 after the re-put.
+        let resp = handler.handle(make_req("DeleteObject", Some("dm3"), Some("the-key"), b""));
+        let marker_id = header_map(&resp)
+            .get("x-amz-version-id")
+            .cloned()
+            .expect("second marker version id");
+        let mut req = make_req("GetObject", Some("dm3"), Some("the-key"), b"");
+        req.query_params.insert("versionId".to_string(), marker_id);
+        assert_eq!(handler.handle(req).status, 405);
+    }
+
+    #[test]
+    fn delete_marker_get_head_without_version_id_returns_marker_headers() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("dm4"), None, b""));
+        enable_versioning(&handler, "dm4");
+        handler.handle(make_req("PutObject", Some("dm4"), Some("the-key"), b"data"));
+        let resp = handler.handle(make_req("DeleteObject", Some("dm4"), Some("the-key"), b""));
+        let marker_id = header_map(&resp)
+            .get("x-amz-version-id")
+            .cloned()
+            .expect("marker version id");
+
+        // head_object already routed markers to its 404; ensure the marker
+        // headers ride on the HEAD 404 exactly like moto's head path.
+        let resp = handler.handle(make_req("HeadObject", Some("dm4"), Some("the-key"), b""));
+        assert_eq!(resp.status, 404);
+        let headers = header_map(&resp);
+        assert_eq!(
+            headers.get("x-amz-delete-marker").map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(
+            headers.get("x-amz-version-id").map(String::as_str),
+            Some(marker_id.as_str())
+        );
+    }
+
+    #[test]
+    fn delete_marker_get_head_with_marker_version_id_returns_405() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("dm5"), None, b""));
+        enable_versioning(&handler, "dm5");
+        handler.handle(make_req("PutObject", Some("dm5"), Some("the-key"), b"data"));
+        let resp = handler.handle(make_req("DeleteObject", Some("dm5"), Some("the-key"), b""));
+        let marker_id = header_map(&resp)
+            .get("x-amz-version-id")
+            .cloned()
+            .expect("marker version id");
+
+        let mut req = make_req("HeadObject", Some("dm5"), Some("the-key"), b"");
+        req.query_params
+            .insert("versionId".to_string(), marker_id.clone());
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 405);
+        let headers = header_map(&resp);
+        assert_eq!(
+            headers.get("x-amz-delete-marker").map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(headers.get("Allow").map(String::as_str), Some("DELETE"));
+        assert_eq!(
+            headers.get("x-amz-version-id").map(String::as_str),
+            Some(marker_id.as_str())
+        );
+    }
+
+    #[test]
+    fn delete_marker_get_list_object_versions_placement_untouched() {
+        // Both marker GET shapes must leave ListObjectVersions untouched:
+        // the deleted key keeps its Version row and the DeleteMarker row.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("dm6"), None, b""));
+        enable_versioning(&handler, "dm6");
+        handler.handle(make_req("PutObject", Some("dm6"), Some("the-key"), b"data"));
+        let resp = handler.handle(make_req("DeleteObject", Some("dm6"), Some("the-key"), b""));
+        let marker_id = header_map(&resp)
+            .get("x-amz-version-id")
+            .cloned()
+            .expect("marker version id");
+
+        // Run both marker GET shapes first, like the moto test sequence.
+        let resp = handler.handle(make_req("GetObject", Some("dm6"), Some("the-key"), b""));
+        assert_eq!(resp.status, 404);
+        let mut req = make_req("GetObject", Some("dm6"), Some("the-key"), b"");
+        req.query_params.insert("versionId".to_string(), marker_id);
+        assert_eq!(handler.handle(req).status, 405);
+
+        let resp = handler.handle(make_req("ListObjectVersions", Some("dm6"), None, b""));
+        assert_eq!(resp.status, 200);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert_eq!(body.matches("<Version>").count(), 1);
+        assert_eq!(body.matches("<DeleteMarker>").count(), 1);
+        assert!(body.contains("<IsLatest>false</IsLatest>"));
+    }
+
+    #[test]
+    fn delete_marker_get_missing_key_has_no_marker_headers() {
+        // A never-existed key stays plain NoSuchKey: no marker headers can
+        // leak onto the plain miss (moto only answers markers when the key
+        // entry carries one).
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("dm7"), None, b""));
+        enable_versioning(&handler, "dm7");
+
+        let resp = handler.handle(make_req("GetObject", Some("dm7"), Some("no-such-key"), b""));
+        assert_eq!(resp.status, 404);
+        let headers = header_map(&resp);
+        assert!(!headers.contains_key("x-amz-delete-marker"));
+        assert!(!headers.contains_key("x-amz-version-id"));
+    }
+
+    // -----------------------------------------------------------------------
+    // S3 key percent-encoding round-trip (localstack discussion 54, ex
+    // localstack #13745): the wire path may percent-encode parts of a key;
+    // stored state must be the DECODED key everywhere — object storage key,
+    // StartAfter comparison, continuation tokens, prefix filtering, delete,
+    // get, head and copy.
+    // -----------------------------------------------------------------------
+
+    /// The decoded set of `<Key>` entries in a ListObjectsV2 body.
+    fn listed_keys(handler: &S3Handler, bucket: &str) -> Vec<String> {
+        let resp = handler.handle(make_req("ListObjectsV2", Some(bucket), None, b""));
+        assert_eq!(resp.status, 200);
+        let body = String::from_utf8_lossy(&resp.body).to_string();
+        xml_sections(&body, "Key")
+            .iter()
+            .map(|k| xml_unescape(k))
+            .collect()
+    }
+
+    /// Query listing with pre-decoded params, exactly as the gateway
+    /// delivers them (src/core/server.rs decodes query params once).
+    fn list_query(handler: &S3Handler, bucket: &str, query: &[(&str, &str)]) -> String {
+        let mut req = make_req("ListObjectsV2", Some(bucket), None, b"");
+        for (k, v) in query {
+            req.query_params.insert(k.to_string(), v.to_string());
+        }
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+        String::from_utf8_lossy(&resp.body).to_string()
+    }
+
+    #[test]
+    fn key_decode_equals_key_round_trip_with_start_after() {
+        // The observed bug: PUT wire key "data/NE%3DABC/quz" stored
+        // "%3D" instead of "=", so the key never listed or compared
+        // against its decoded StartAfter.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("enc1"), None, b""));
+
+        // Wire form as botocore quotes it: "=" sent raw is legal, "%3D"
+        // is its encoded spelling; both must land in the same entry.
+        let resp = handler.handle(make_req(
+            "PutObject",
+            Some("enc1"),
+            Some("data/NE=ABC/quz"),
+            b"v1",
+        ));
+        assert_eq!(resp.status, 200);
+        let resp = handler.handle(make_req(
+            "PutObject",
+            Some("enc1"),
+            Some("data/NE%3DABC/quz"),
+            b"v2",
+        ));
+        assert_eq!(resp.status, 200);
+
+        // One entry under the decoded key, holding the second write.
+        assert_eq!(listed_keys(&handler, "enc1"), ["data/NE=ABC/quz"]);
+
+        // Decoded and encoded GET spellings both resolve to it.
+        let resp = handler.handle(make_req(
+            "GetObject",
+            Some("enc1"),
+            Some("data/NE=ABC/quz"),
+            b"",
+        ));
+        assert_eq!(resp.body, b"v2".to_vec());
+        let resp = handler.handle(make_req(
+            "GetObject",
+            Some("enc1"),
+            Some("data/NE%3DABC/quz"),
+            b"",
+        ));
+        assert_eq!(resp.body, b"v2".to_vec());
+        let resp = handler.handle(make_req(
+            "HeadObject",
+            Some("enc1"),
+            Some("data/NE=ABC/quz"),
+            b"",
+        ));
+        assert_eq!(resp.status, 200);
+        let headers = header_map(&resp);
+        assert_eq!(headers.get("Content-Length").map(String::as_str), Some("2"));
+
+        // StartAfter with raw '=' against decoded state still paginates.
+        let body = list_query(&handler, "enc1", &[("start-after", "data/NE=ABC/")]);
+        assert!(
+            xml_unescape(&xml_text(&body, "Key").expect("the key after the prefix"))
+                .contains("data/NE=ABC/quz"),
+            "body: {body}"
+        );
+    }
+
+    #[test]
+    fn key_decode_start_after_excludes_earlier_keys() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("enc2"), None, b""));
+        for key in ["before", "data/NE=ABC/one", "data/NE=ABC/quz"] {
+            handler.handle(make_req("PutObject", Some("enc2"), Some(key), b"x"));
+        }
+
+        // Real AWS returns the objects after the (decoded) StartAfter;
+        // the stored-encoded-key bug returned an empty result.
+        let body = list_query(&handler, "enc2", &[("start-after", "data/NE=ABC/")]);
+        let keys = xml_sections(&body, "Key")
+            .iter()
+            .map(|k| xml_unescape(k))
+            .collect::<Vec<_>>();
+        assert_eq!(keys, ["data/NE=ABC/one", "data/NE=ABC/quz"]);
+
+        // StartAfter itself is excluded; and a marker carrying '>' and '='
+        // raw ("k>=1" on the wire) compares against the DECODED keys — the
+        // stored-encoded-key bug would sort the keys below the marker.
+        for key in ["ka", "k=a", "k<a"] {
+            handler.handle(make_req("PutObject", Some("enc2"), Some(key), b"x"));
+        }
+        // Sorting: "k<a" < "k=a" < "ka" ('<' < '=' < 'a'); only "ka" sorts
+        // above the marker.
+        let body = list_query(&handler, "enc2", &[("start-after", "k>=1")]);
+        let keys = xml_sections(&body, "Key")
+            .iter()
+            .map(|k| xml_unescape(k))
+            .collect::<Vec<_>>();
+        assert_eq!(keys, ["ka"]);
+    }
+
+    #[test]
+    fn key_decode_literal_percent_is_decoded_once() {
+        // A literal "%20" uploaded raw arrives as "%2520"; a single decode
+        // recovers the literal characters, never a space. The client sends
+        // the same "%2520" spelling back to GET it.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("enc3"), None, b""));
+        let resp = handler.handle(make_req(
+            "PutObject",
+            Some("enc3"),
+            Some("a%2520b.txt"),
+            b"literal",
+        ));
+        assert_eq!(resp.status, 200);
+
+        let resp = handler.handle(make_req(
+            "GetObject",
+            Some("enc3"),
+            Some("a%2520b.txt"),
+            b"",
+        ));
+        assert_eq!(resp.status, 200);
+        assert_eq!(resp.body, b"literal".to_vec());
+
+        // A literal space and a literal percent sign coexist as distinct keys;
+        // the DECODED spellings are what the state holds and what the listing
+        // shows.
+        let resp = handler.handle(make_req(
+            "PutObject",
+            Some("enc3"),
+            Some("sp%20ace.txt"),
+            b"spacey",
+        ));
+        assert_eq!(resp.status, 200);
+        let resp = handler.handle(make_req("GetObject", Some("enc3"), Some("sp ace.txt"), b""));
+        assert_eq!(resp.body, b"spacey".to_vec());
+
+        let keys = listed_keys(&handler, "enc3");
+        assert_eq!(keys, ["a%20b.txt", "sp ace.txt"]);
+    }
+
+    #[test]
+    fn key_decode_unicode_key_round_trip() {
+        // botocore quotes UTF-8 as %E2%80%94 for the em dash.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("enc4"), None, b""));
+        let resp = handler.handle(make_req(
+            "PutObject",
+            Some("enc4"),
+            Some("uni%E2%80%94d.txt"),
+            b"\xe2\x80\x94-body",
+        ));
+        assert_eq!(resp.status, 200);
+
+        let resp = handler.handle(make_req(
+            "GetObject",
+            Some("enc4"),
+            Some("uni\u{2014}d.txt"),
+            b"",
+        ));
+        assert_eq!(resp.status, 200);
+        assert_eq!(resp.body, "\u{2014}-body".as_bytes().to_vec());
+
+        // The listing shows the decoded, xml-escaped key.
+        let body = list_query(&handler, "enc4", &[]);
+        assert!(body.contains("<Key>uni\u{2014}d.txt</Key>"), "body: {body}");
+    }
+
+    #[test]
+    fn key_decode_delete_encoded_key() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("enc4b"), None, b""));
+        handler.handle(make_req(
+            "PutObject",
+            Some("enc4b"),
+            Some("del%20k.txt"),
+            b"gone",
+        ));
+        // Delete sent in the encoded wire spelling removes the decoded key.
+        let resp = handler.handle(make_req(
+            "DeleteObject",
+            Some("enc4b"),
+            Some("del%20k.txt"),
+            b"",
+        ));
+        assert_eq!(resp.status, 204);
+
+        let resp = handler.handle(make_req("GetObject", Some("enc4b"), Some("del k.txt"), b""));
+        assert_eq!(resp.status, 404);
+        assert_eq!(listed_keys(&handler, "enc4b"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn key_decode_copy_from_encoded_source() {
+        // x-amz-copy-source quotes the source key; copy must write the
+        // destination under its decoded key.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("enc5"), None, b""));
+        handler.handle(make_req("PutObject", Some("enc5"), Some("src%3D1"), b"z"));
+
+        let mut req = make_req("CopyObject", Some("enc5"), Some("cp%20d.txt"), b"");
+        req.headers
+            .insert("x-amz-copy-source".to_string(), "/enc5/src%3D1".to_string());
+        req.headers
+            .insert("content-type".to_string(), "application/xml".to_string());
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+
+        let mut req = make_req("GetObject", Some("enc5"), Some("cp d.txt"), b"");
+        req.headers.remove("x-amz-copy-source");
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+        assert_eq!(resp.body, b"z".to_vec());
+        assert_eq!(listed_keys(&handler, "enc5"), ["cp d.txt", "src=1"]);
+    }
+
+    #[test]
+    fn key_decode_pagination_across_continuation_tokens() {
+        // Continuation tokens are opaque base64 of the stored key; page
+        // through '>'/'=' keys and confirm the decoded sequence.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("enc6"), None, b""));
+        // String order: "k=1" < "k>=" < "z9" ('=' < '>' < 'z').
+        for key in ["z9", "k=1", "k>="] {
+            handler.handle(make_req("PutObject", Some("enc6"), Some(key), b"row"));
+        }
+
+        let mut keys = Vec::new();
+        let mut token = String::new();
+        loop {
+            let query: Vec<(&str, &str)> = if token.is_empty() {
+                vec![("max-keys", "2")]
+            } else {
+                vec![("max-keys", "2"), ("continuation-token", token.as_str())]
+            };
+            let body = list_query(&handler, "enc6", &query);
+            keys.extend(xml_sections(&body, "Key").iter().map(|k| xml_unescape(k)));
+            match xml_text(&body, "NextContinuationToken") {
+                Some(next) => token = next,
+                None => break,
+            }
+        }
+        assert_eq!(keys, ["k=1", "k>=", "z9"]);
+
+        // The token is derived from the decoded key, not the wire form.
+        let body = list_query(&handler, "enc6", &[("max-keys", "2")]);
+        let token = xml_text(&body, "NextContinuationToken").expect("token");
+        let decoded = decode_token(&token).expect("base64 key token");
+        assert_eq!(decoded, "k>=");
     }
 }
