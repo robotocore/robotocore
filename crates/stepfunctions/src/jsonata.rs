@@ -2321,6 +2321,20 @@ mod tests {
     }
 
     #[test]
+    fn paren_nesting_below_the_old_cap_errors_instead_of_aborting() {
+        // Regression for the preserve_order stack-overflow class: 120 paren
+        // pairs sat under the old cap (128), but with the workspace's
+        // widen-by-preserve_order debug frames a 120-level descent overran a
+        // default 2MiB thread and SIGABRT'd the process before the cap could
+        // fire. The present cap (64) refuses all-paren bodies deeper than
+        // itself, so this exact expression is the deterministic abort-class
+        // input: it must return the same clean EvalError, never crash.
+        let src = format!("{}1{}", "(".repeat(120), ")".repeat(120));
+        let err = eval_input(&src, &json!({})).unwrap_err();
+        assert!(err.message.contains("too deeply nested"), "{}", err.message);
+    }
+
+    #[test]
     fn range_over_the_item_cap_errors_instead_of_materialising() {
         // `(.0)..(.9e30)`: the f64->i64 casts saturate and the range
         // collector used to keep allocating until the capacity panic
