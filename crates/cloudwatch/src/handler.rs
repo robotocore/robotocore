@@ -52,10 +52,33 @@ fn field_str_or(v: &Value, key: &str, fallback: &str) -> String {
     }
 }
 
-/// Parse an ISO8601 timestamp (or epoch seconds) into epoch milliseconds.
+/// Unit decision for bare numeric epochs, at the parse boundary. botocore
+/// ships CloudWatch timestamps as epoch-SECONDS numbers in the JSON wire
+/// body — live capture (botocore 1.43.116, `Content-Type:
+/// application/x-amz-json-1.0`, `X-Amz-Target:
+/// GraniteServiceVersion20100801.PutMetricData`): body
+/// `{"Namespace": "W", "MetricData": [{"MetricName": "M", "Value": 1,
+/// "Timestamp": 1792974600}]}`, and GetMetricStatistics carries
+/// `{"StartTime": 1792974600, "EndTime": 1792974900}` — while datapoints are
+/// stored as epoch-MILLISECONDS (`MetricDatum::timestamp`). A magnitude
+/// under 1e11 cannot be a present-day ms epoch (1e11 ms = Mar 1973), so it
+/// is seconds and is scaled x1000; >= 1e11 is already ms and passes through
+/// unchanged (the twin's pre-existing ms behavior, which moto does not
+/// accept — moto reads all numeric timestamps as seconds).
+fn epoch_scalar_to_millis(seconds_or_millis: f64) -> Option<i64> {
+    let ms = if seconds_or_millis.abs() >= 1e11 {
+        seconds_or_millis
+    } else {
+        seconds_or_millis * 1000.0
+    };
+    Some(ms as i64)
+}
+
+/// Parse an ISO8601 timestamp (or a bare numeric epoch, per
+/// [`epoch_scalar_to_millis`]) into epoch milliseconds.
 fn parse_iso_ts(s: &str) -> Option<i64> {
-    if let Ok(secs) = s.trim().parse::<i64>() {
-        return Some(secs * 1000);
+    if let Ok(n) = s.trim().parse::<f64>() {
+        return epoch_scalar_to_millis(n);
     }
     let t = s.replace(' ', "T");
     chrono::DateTime::parse_from_rfc3339(&t)
@@ -460,7 +483,9 @@ impl CloudwatchHandler {
     fn ts_param(params: &Value, key: &str) -> i64 {
         match params.get(key) {
             Some(Value::String(s)) => parse_iso_ts(s),
-            Some(Value::Number(n)) => n.as_i64().or_else(|| n.as_f64().map(|f| f as i64)),
+            // GetMetricStatistics StartTime/EndTime arrive as epoch-seconds
+            // floats on the JSON wire (unit decision: epoch_scalar_to_millis).
+            Some(Value::Number(n)) => n.as_f64().and_then(epoch_scalar_to_millis),
             _ => None,
         }
         .unwrap_or_else(now_millis)
@@ -611,7 +636,9 @@ impl CloudwatchHandler {
             });
             let timestamp: i64 = match dp.get("Timestamp") {
                 Some(Value::String(s)) => parse_iso_ts(s),
-                Some(Value::Number(n)) => n.as_i64().or_else(|| n.as_f64().map(|f| f as i64)),
+                // botocore sends MetricData[].Timestamp as epoch-seconds
+                // floats (unit decision: epoch_scalar_to_millis).
+                Some(Value::Number(n)) => n.as_f64().and_then(epoch_scalar_to_millis),
                 _ => None,
             }
             .unwrap_or_else(now_millis);
@@ -1751,5 +1778,86 @@ mod tests {
                 .status,
             400
         );
+    }
+
+    /// botocore sends CloudWatch timestamps as epoch-SECONDS numbers in the
+    /// JSON body (live wire: `"Timestamp": 1792974600` in the
+    /// PutMetricData body, `"StartTime": 1792974600, "EndTime": 1792974900`
+    /// in GetMetricStatistics — x-amz-json-1.0), while datapoints are stored
+    /// as epoch-milliseconds; taking the number raw used to skew both sides
+    /// by 1000x, so GetMetricStatistics answered zero datapoints for a
+    /// window the caller had just produced. Parse boundaries resolve the
+    /// unit: < 1e11 is seconds, >= 1e11 is already ms (the twin keeps ms
+    /// numeric epochs, which moto does not accept).
+    #[test]
+    fn cloudwatch_timestamp_units_seconds_accepted() {
+        let handler = CloudwatchHandler::new();
+        // seconds float — exactly what botocore puts on the wire
+        let secs: f64 = 1_700_000_000.5;
+        handler.handle(make_req(
+            "PutMetricData",
+            json!({
+                "Namespace": "NS",
+                "MetricData": [{"MetricName": "Sec", "Value": 42.0, "Timestamp": secs}]
+            }),
+        ));
+        // window in epoch-seconds, like botocore's GetMetricStatistics body
+        let resp = handler.handle(make_req(
+            "GetMetricStatistics",
+            json!({
+                "Namespace": "NS", "MetricName": "Sec",
+                "StartTime": secs - 30.0, "EndTime": secs + 30.0,
+                "Period": 60, "Statistics": ["Average"]
+            }),
+        ));
+        let body = parse(&resp);
+        let dps = body["Datapoints"].as_array().unwrap();
+        assert_eq!(dps.len(), 1, "the epoch-seconds datapoint must be found");
+        assert_eq!(dps[0]["Average"], 42.0);
+
+        // a fractional-seconds string epoch is accepted as seconds too
+        let resp = handler.handle(make_req(
+            "PutMetricData",
+            json!({
+                "Namespace": "NS",
+                "MetricData": [{"MetricName": "Str", "Value": 9.0,
+                                "Timestamp": (secs - 5.0).to_string()}]
+            }),
+        ));
+        assert_eq!(resp.status, 200);
+        let resp2 = handler.handle(make_req(
+            "GetMetricStatistics",
+            json!({
+                "Namespace": "NS", "MetricName": "Str",
+                "StartTime": secs - 30.0, "EndTime": secs + 30.0,
+                "Period": 60, "Statistics": ["Average"]
+            }),
+        ));
+        let body2 = parse(&resp2);
+        let dps2 = body2["Datapoints"].as_array().unwrap();
+        assert_eq!(dps2.len(), 1);
+        assert_eq!(dps2[0]["Average"], 9.0);
+
+        // an already-milliseconds magnitude keeps its pre-existing pass-through
+        let ms: i64 = 1_700_100_000_500;
+        handler.handle(make_req(
+            "PutMetricData",
+            json!({
+                "Namespace": "NS",
+                "MetricData": [{"MetricName": "Ms", "Value": 3.0, "Timestamp": ms}]
+            }),
+        ));
+        let resp3 = handler.handle(make_req(
+            "GetMetricStatistics",
+            json!({
+                "Namespace": "NS", "MetricName": "Ms",
+                "StartTime": ms - 30_000i64, "EndTime": ms + 30_000i64,
+                "Period": 60, "Statistics": ["Average"]
+            }),
+        ));
+        let body3 = parse(&resp3);
+        let dps3 = body3["Datapoints"].as_array().unwrap();
+        assert_eq!(dps3.len(), 1, "epoch-ms numbers keep their ms meaning");
+        assert_eq!(dps3[0]["Average"], 3.0);
     }
 }
