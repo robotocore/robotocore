@@ -34,7 +34,9 @@ fn matches(pattern: &Map<String, Value>, event: &Map<String, Value>) -> bool {
         let event_value = match event.get(key) {
             Some(v) => v,
             None => {
-                // Absent key: only a list whose sole match is "exists": false passes.
+                // Absent key: a filter list passes when ANY of its members
+                // is an `{"exists": false}` filter (the code's `any`
+                // applies to the membership, not a sole-match requirement).
                 let absent_ok = pattern_value.as_array().is_some_and(|list| {
                     list.iter().any(|pv| {
                         pv.as_object()
@@ -136,6 +138,20 @@ fn array_objects_match(pattern: &Map<String, Value>, arr: &[Value]) -> bool {
     })
 }
 
+/// Filter-path element equality. moto compares filter values with
+/// Python `==`/`in`, which fold numeric representations together
+/// (`2 == 2.0`); event-ruler canonicalizes Numbers the same way.
+/// JSON-level `Value` equality is representation-sensitive (`2` and
+/// `2.0` are distinct variants), so two Numbers compare by `as_f64()`
+/// value. Everything else stays strict (Python's `True == 1` is NOT
+/// emulated).
+fn values_equal(a: &Value, b: &Value) -> bool {
+    if let (Some(x), Some(y)) = (a.as_f64(), b.as_f64()) {
+        return x == y;
+    }
+    a == b
+}
+
 /// A list of acceptable values/matchers for one event field.
 ///
 /// Public so the Lambda event-source-mapping engine can reuse the exact
@@ -144,18 +160,22 @@ fn array_objects_match(pattern: &Map<String, Value>, arr: &[Value]) -> bool {
 ///
 /// Dict leaves are moto's `_does_item_match_named_filter`: the `exists`
 /// filter applies to the value itself, every other named filter is
-/// evaluated per element of an array value, and unnamed dict leaves never
-/// match (era: no branch fires).
+/// evaluated per element of an array value, and dict leaves whose filter
+/// name is unrecognized never match. That rejection is deliberate: moto's
+/// `evaluate()` falls through to `True` for an unrecognized name (verified
+/// live: `{"x":[{"bogus":"v"}]}` matches anything), so an unknown filter
+/// name would silently match every event; a typed filter should reject
+/// instead of swallow malformed patterns.
 pub fn list_match(pattern_values: &[Value], event_value: &Value) -> bool {
     for pv in pattern_values {
         if let Some(filter) = pv.as_object() {
             if named_filter_matches(filter, event_value) {
                 return true;
             }
-        } else if event_value == pv {
+        } else if values_equal(event_value, pv) {
             return true;
         } else if let Some(arr) = event_value.as_array() {
-            if arr.contains(pv) {
+            if arr.iter().any(|item| values_equal(item, pv)) {
                 return true;
             }
         }
@@ -189,6 +209,10 @@ fn named_filter_matches(filter: &Map<String, Value>, event_value: &Value) -> boo
 
 /// Evaluate a named filter against one (scalar) event value. Several
 /// recognized filter names may appear in one leaf; they OR together.
+/// Deliberate divergence (F5 mid): real AWS rejects such multi-key
+/// leaves at pattern creation and moto evaluates only the FIRST key
+/// (`list(pattern.items())[0]`); this port keeps the
+/// OR-of-recognized-keys reading, behavior unchanged.
 fn evaluate_named_filter(filter: &Map<String, Value>, value: &Value) -> bool {
     // prefix / suffix: the target is a string, a list of strings, or an
     // {"equals-ignore-case": "..."} object (moto prefix/suffix forms).
@@ -350,14 +374,14 @@ fn anything_but(excluded: &Value, event_value: &Value) -> bool {
             // previous all-elements-differ reading inverted the operator
             // (era parity: `if not any(v in excluded for v in event_value)`
             // — era's scalar branch adds the residual case below).
-            Value::Array(ex) => arr.iter().any(|v| !ex.contains(v)),
+            Value::Array(ex) => arr.iter().any(|v| !ex.iter().any(|e| values_equal(e, v))),
             Value::Object(obj) => arr.iter().any(|v| !named_filter_matches(obj, v)),
-            _ => arr.iter().any(|v| v != excluded),
+            _ => arr.iter().any(|v| !values_equal(v, excluded)),
         },
         _ => match excluded {
             Value::Object(obj) => !named_filter_matches(obj, event_value),
-            Value::Array(ex) => !ex.contains(event_value),
-            _ => event_value != excluded,
+            Value::Array(ex) => !ex.iter().any(|e| values_equal(e, event_value)),
+            _ => !values_equal(event_value, excluded),
         },
     }
 }
@@ -660,6 +684,61 @@ mod tests {
         assert!(!matches_pattern(
             &pattern,
             &json!({"detail": {"state": ["a", "a"]}})
+        ));
+    }
+
+    // -- number equality folds representations (fix 3c) -------------------------
+    // moto compares filter values with Python `==`/`in` (`2 == 2.0` is
+    // True) and event-ruler canonicalizes Numbers likewise; this port
+    // folds two Numbers through `as_f64()` and keeps every other type
+    // strict.
+
+    #[test]
+    fn number_equality_spans_representations() {
+        // Integer pattern vs float event value: matches (moto: True).
+        let pattern = json!({"count": [2]});
+        assert!(matches_pattern(&pattern, &json!({"count": 2.0})));
+        // ...and the mirror direction.
+        assert!(matches_pattern(
+            &json!({"count": [2.0]}),
+            &json!({"count": 2})
+        ));
+        // Membership scan again folds (`f in item`).
+        assert!(matches_pattern(&pattern, &json!({"count": [1, 2.0]})));
+        // Non-equal magnitudes still miss.
+        assert!(!matches_pattern(&pattern, &json!({"count": 3.0})));
+        assert!(!matches_pattern(&pattern, &json!({"count": [1, 3.0]})));
+        // Other types stay strict: no string/number folding.
+        assert!(!matches_pattern(&pattern, &json!({"count": "2"})));
+        assert!(!matches_pattern(&pattern, &json!({"count": true})));
+    }
+
+    #[test]
+    fn anything_but_excludes_numbers_across_representations() {
+        // moto's `val not in filter_value` folds 2.0 == 2: an event of
+        // 2.0 is NOT "anything but 2".
+        assert!(!matches_pattern(
+            &json!({"count": [{"anything-but": 2}]}),
+            &json!({"count": 2.0})
+        ));
+        assert!(matches_pattern(
+            &json!({"count": [{"anything-but": 2}]}),
+            &json!({"count": 3.0})
+        ));
+        // Array-valued events fold per element: 2.0 alone is fully
+        // excluded by [2] (`2.0 in [2]` folds), while any differing
+        // element lets the array through (moto `any(evaluate(i))`).
+        assert!(!matches_pattern(
+            &json!({"count": [{"anything-but": [2]}]}),
+            &json!({"count": [2.0]})
+        ));
+        assert!(matches_pattern(
+            &json!({"count": [{"anything-but": [2]}]}),
+            &json!({"count": [3.0, 4.0]})
+        ));
+        assert!(matches_pattern(
+            &json!({"count": [{"anything-but": [2]}]}),
+            &json!({"count": [3.0, 2.0]})
         ));
     }
 
