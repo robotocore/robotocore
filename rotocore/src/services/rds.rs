@@ -3016,6 +3016,31 @@ fn create_db_instance(
             format!("The engine name requested for your DB instance ({engine}) doesn't match the engine name of your DB cluster ({ce})."),
         ));
     }
+    // moto Database.__init__ validates the monitoring-parameter combination:
+    // an empty MonitoringRoleArn counts as absent (moto #10212).
+    let monitoring_role_arn = p_string(p, "MonitoringRoleArn");
+    let monitoring_interval = p_i64(p, "MonitoringInterval").unwrap_or(0);
+    if monitoring_role_arn
+        .as_deref()
+        .is_some_and(|arn| !arn.is_empty())
+        && monitoring_interval == 0
+    {
+        return Err(RdsError::client400(
+            "InvalidParameterCombination",
+            "You must specify a MonitoringInterval value other than 0 when you specify a MonitoringRoleARN value.",
+        ));
+    }
+    if monitoring_role_arn
+        .as_deref()
+        .map(str::is_empty)
+        .unwrap_or(true)
+        && monitoring_interval != 0
+    {
+        return Err(RdsError::client400(
+            "InvalidParameterCombination",
+            "A MonitoringRoleARN value is required if you specify a MonitoringInterval value other than 0.",
+        ));
+    }
     let db = DBInstance {
         id: id.clone(),
         original_id: identifier.clone(),
@@ -8782,6 +8807,48 @@ mod op_tests {
         // after delete: not found
         let desc2 = run("DescribeDBInstances", "DBInstanceIdentifier=i1");
         assert_eq!(desc2.err().unwrap().code, "DBInstanceNotFound");
+    }
+
+    /// moto 5.2.3 (tests from moto #10137/#10212): CreateDBInstance
+    /// validates MonitoringRoleArn/MonitoringInterval in combination.
+    #[test]
+    fn rds_monitoring_role_validation() {
+        // MonitoringInterval > 0 without a monitoring role.
+        let no_role = run(
+            "CreateDBInstance",
+            "DBInstanceIdentifier=mon-i1&DBInstanceClass=db.t3.micro&Engine=mysql&MasterUsername=admin&MasterUserPassword=password123&MonitoringInterval=60",
+        );
+        let err = no_role.err().unwrap();
+        assert_eq!(err.code, "InvalidParameterCombination");
+        assert_eq!(
+            err.message,
+            "A MonitoringRoleARN value is required if you specify a MonitoringInterval value other than 0."
+        );
+
+        // MonitoringRoleArn with MonitoringInterval=0 (the default).
+        let with_role = run(
+            "CreateDBInstance",
+            "DBInstanceIdentifier=mon-i2&DBInstanceClass=db.t3.micro&Engine=mysql&MasterUsername=admin&MasterUserPassword=password123&MonitoringRoleArn=arn:aws:iam::123456789012:role/rds-monitor&MonitoringInterval=0",
+        );
+        let err = with_role.err().unwrap();
+        assert_eq!(err.code, "InvalidParameterCombination");
+        assert_eq!(
+            err.message,
+            "You must specify a MonitoringInterval value other than 0 when you specify a MonitoringRoleARN value."
+        );
+
+        // The matching pair creates fine; an empty MonitoringRoleArn counts as
+        // absent (moto master #10212).
+        let valid = run(
+            "CreateDBInstance",
+            "DBInstanceIdentifier=mon-ok&DBInstanceClass=db.t3.micro&Engine=mysql&MasterUsername=admin&MasterUserPassword=password123&MonitoringRoleArn=arn:aws:iam::123456789012:role/rds-monitor&MonitoringInterval=60",
+        );
+        assert!(valid.is_ok(), "valid pair failed: {:?}", valid.err());
+        let empty_arn = run(
+            "CreateDBInstance",
+            "DBInstanceIdentifier=mon-ea&DBInstanceClass=db.t3.micro&Engine=mysql&MasterUsername=admin&MasterUserPassword=password123&MonitoringRoleArn=&MonitoringInterval=0",
+        );
+        assert!(empty_arn.is_ok(), "empty arn failed: {:?}", empty_arn.err());
     }
 
     #[test]

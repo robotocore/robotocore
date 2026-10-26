@@ -675,7 +675,7 @@ fn handle(req: &Request, g: &mut GlueState, op: &str, p: &Value) -> Response {
         // --- Connections -------------------------------------------------------
         "CreateConnection" => try_resp!(create_connection(req, g, p)),
         "GetConnection" => try_resp!(get_connection(g, p)),
-        "GetConnections" => try_resp!(get_connections(g)),
+        "GetConnections" => try_resp!(get_connections(g, p)),
         "UpdateConnection" => try_resp!(update_connection(g, p)),
         "DeleteConnection" => try_resp!(delete_connection(g, p)),
         "BatchDeleteConnection" => try_resp!(batch_delete_connection(g, p)),
@@ -5287,11 +5287,23 @@ fn cancel_statement(g: &mut GlueState, p: &Value) -> Result<Response, Response> 
 // Connections
 // ---------------------------------------------------------------------------
 
-fn connection_dict(rec: &ConnectionRec) -> Value {
+/// moto's `FakeConnection.as_dict(hide_password)` — `HidePassword=true` drops
+/// the `PASSWORD` entry from the properties entirely rather than blanking it.
+fn connection_dict(rec: &ConnectionRec, hide_password: bool) -> Value {
+    let mut properties = match rec.input.get("ConnectionProperties") {
+        Some(props @ Value::Object(_)) => props.clone(),
+        // Absent members keep serializing as null and are dropped below.
+        _ => Value::Null,
+    };
+    if hide_password {
+        if let Some(map) = properties.as_object_mut() {
+            map.remove("PASSWORD");
+        }
+    }
     let mut obj = json!({
         "Name": rec.name,
         "Description": rec.input["Description"],
-        "ConnectionProperties": rec.input["ConnectionProperties"],
+        "ConnectionProperties": properties,
         "AthenaProperties": rec.input["AthenaProperties"],
         "SparkProperties": rec.input["SparkProperties"],
         "PythonProperties": rec.input["PythonProperties"],
@@ -5346,12 +5358,65 @@ fn create_connection(req: &Request, g: &mut GlueState, p: &Value) -> Result<Resp
 }
 
 fn get_connection(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let hide_password = p
+        .get("HidePassword")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     let rec = find_connection_mut(g, p)?;
-    Ok(ok(&json!({ "Connection": connection_dict(rec) })))
+    Ok(ok(
+        &json!({ "Connection": connection_dict(rec, hide_password) }),
+    ))
 }
 
-fn get_connections(g: &mut GlueState) -> Result<Response, Response> {
-    let list: Vec<Value> = g.connections.values().map(connection_dict).collect();
+/// moto's get_connections `Filter` semantics: a `ConnectionType` criterion
+/// matches the connection's own type exactly, and every `MatchCriteria`
+/// string must be recorded on the connection (subset match — a connection
+/// with no criteria of its own therefore matches nothing).
+fn connection_matches(rec: &ConnectionRec, filter: &Value) -> bool {
+    if let Some(wanted) = filter
+        .get("ConnectionType")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+    {
+        if rec.input.get("ConnectionType").and_then(Value::as_str) != Some(wanted) {
+            return false;
+        }
+    }
+    if let Some(wanted) = filter
+        .get("MatchCriteria")
+        .and_then(Value::as_array)
+        .filter(|list| !list.is_empty())
+    {
+        let have: Vec<&str> = rec
+            .input
+            .get("MatchCriteria")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        if !wanted
+            .iter()
+            .all(|s| s.as_str().is_some_and(|s| have.contains(&s)))
+        {
+            return false;
+        }
+    }
+    true
+}
+
+fn get_connections(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
+    let hide_password = p
+        .get("HidePassword")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let filter = p.get("Filter").cloned().unwrap_or(Value::Null);
+    // moto: an empty filter returns everything.
+    let filtered = matches!(&filter, Value::Object(map) if !map.is_empty());
+    let list: Vec<Value> = g
+        .connections
+        .values()
+        .filter(|rec| !filtered || connection_matches(rec, &filter))
+        .map(|rec| connection_dict(rec, hide_password))
+        .collect();
     Ok(ok(&json!({ "ConnectionList": list })))
 }
 
@@ -5737,6 +5802,86 @@ mod family4_tests {
         assert_eq!(
             err_code(&d(acct, "GetConnection", json!({"Name": "c1"}))),
             "EntityNotFoundException"
+        );
+    }
+
+    #[test]
+    fn glue_get_connection_hide_password() {
+        let acct = scope();
+        let input = json!({
+            "Name": "cp", "ConnectionType": "JDBC",
+            "ConnectionProperties": {"USERNAME": "u", "PASSWORD": "s3cret", "JDBC_URL": "jdbc:x"}
+        });
+        let r = d(acct, "CreateConnection", json!({"ConnectionInput": input}));
+        assert_eq!(r.status, 200);
+
+        // Default: the password is part of the properties.
+        let b = body(&d(acct, "GetConnection", json!({"Name": "cp"})));
+        assert_eq!(
+            b["Connection"]["ConnectionProperties"]["PASSWORD"],
+            "s3cret"
+        );
+
+        // HidePassword=true leaves the PASSWORD entry out entirely (moto:
+        // FakeConnection.as_dict(hide_password)), and does not mutate state.
+        let b = body(&d(
+            acct,
+            "GetConnection",
+            json!({"Name": "cp", "HidePassword": true}),
+        ));
+        assert_eq!(b["Connection"]["ConnectionProperties"]["USERNAME"], "u");
+        assert!(b["Connection"]["ConnectionProperties"]
+            .get("PASSWORD")
+            .is_none());
+
+        let b = body(&d(acct, "GetConnections", json!({"HidePassword": true})));
+        assert!(b["ConnectionList"][0]["ConnectionProperties"]
+            .get("PASSWORD")
+            .is_none());
+
+        let b = body(&d(acct, "GetConnection", json!({"Name": "cp"})));
+        assert_eq!(
+            b["Connection"]["ConnectionProperties"]["PASSWORD"],
+            "s3cret"
+        );
+    }
+
+    #[test]
+    fn glue_get_connections_filter() {
+        let acct = scope();
+        for (name, ctype, criteria) in [
+            ("cj1", "JDBC", vec!["prod", "mysql"]),
+            ("cj2", "JDBC", vec!["dev"]),
+            ("csa", "SSH", Vec::<&str>::new()),
+        ] {
+            let mut input = json!({"Name": name, "ConnectionType": ctype});
+            if !criteria.is_empty() {
+                input["MatchCriteria"] = json!(criteria);
+            }
+            let r = d(acct, "CreateConnection", json!({"ConnectionInput": input}));
+            assert_eq!(r.status, 200);
+        }
+
+        let len = |filter: Value| -> usize {
+            let b = body(&d(acct, "GetConnections", json!({"Filter": filter})));
+            b["ConnectionList"].as_array().unwrap().len()
+        };
+
+        // An empty filter returns everything (moto: `if not filter`).
+        assert_eq!(len(json!({})), 3);
+        // ConnectionType matches the connection's own type exactly.
+        assert_eq!(len(json!({"ConnectionType": "JDBC"})), 2);
+        assert_eq!(len(json!({"ConnectionType": "NOPE"})), 0);
+        // MatchCriteria: every criterion must be on the connection.
+        assert_eq!(len(json!({"MatchCriteria": ["prod"]})), 1);
+        assert_eq!(len(json!({"MatchCriteria": ["prod", "mysql"]})), 1);
+        assert_eq!(len(json!({"MatchCriteria": ["prod", "dev"]})), 0);
+        // A connection with no MatchCriteria of its own matches nothing.
+        assert_eq!(len(json!({"MatchCriteria": ["Prod"]})), 0);
+        // Both criteria together.
+        assert_eq!(
+            len(json!({"ConnectionType": "JDBC", "MatchCriteria": ["dev"]})),
+            1
         );
     }
 
