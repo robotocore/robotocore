@@ -13,6 +13,15 @@
 //!   TracesProcessedCount, TraceSummaries) with py-engine-style summaries
 //! - insight get/check ops raise InvalidRequestException like moto; the
 //!   retrieval ops keep state per (account, region)
+//!
+//! ERROR-CANON: the missing-required-parameter arms on BatchGetTraces and
+//! the four retrieval ops answer the modeled InvalidRequestException shape.
+//! moto's xray module defines only BadSegmentException and serves its
+//! hand-rolled `{"__type": "MissingParameter"}` string there — an unmodeled
+//! `__type` — while the botocore xray model declares InvalidRequestException
+//! for all five ops (it generates the typed `InvalidRequestException`
+//! ClientError only for modeled names), so the canon names the modeled
+//! shape; messages keep moto's "Parameter <X> is missing" wording.
 
 use crate::store;
 use crate::{Request, Response};
@@ -653,7 +662,7 @@ impl XrayState {
         let Some(ids) = params.get("TraceIds").and_then(Value::as_array) else {
             return crate::proto::json_error(
                 400,
-                "MissingParameter",
+                "InvalidRequestException",
                 "Parameter TraceIds is missing",
             );
         };
@@ -846,21 +855,21 @@ impl XrayState {
         if params.get("TraceIds").is_none() {
             return crate::proto::json_error(
                 400,
-                "MissingParameter",
+                "InvalidRequestException",
                 "Parameter TraceIds is missing",
             );
         }
         if params.get("StartTime").is_none() {
             return crate::proto::json_error(
                 400,
-                "MissingParameter",
+                "InvalidRequestException",
                 "Parameter StartTime is missing",
             );
         }
         if params.get("EndTime").is_none() {
             return crate::proto::json_error(
                 400,
-                "MissingParameter",
+                "InvalidRequestException",
                 "Parameter EndTime is missing",
             );
         }
@@ -874,7 +883,7 @@ impl XrayState {
         let Some(token) = params.get("RetrievalToken").and_then(Value::as_str) else {
             return crate::proto::json_error(
                 400,
-                "MissingParameter",
+                "InvalidRequestException",
                 "Parameter RetrievalToken is missing",
             );
         };
@@ -888,7 +897,7 @@ impl XrayState {
         let Some(token) = params.get("RetrievalToken").and_then(Value::as_str) else {
             return crate::proto::json_error(
                 400,
-                "MissingParameter",
+                "InvalidRequestException",
                 "Parameter RetrievalToken is missing",
             );
         };
@@ -905,7 +914,7 @@ impl XrayState {
         let Some(token) = params.get("RetrievalToken").and_then(Value::as_str) else {
             return crate::proto::json_error(
                 400,
-                "MissingParameter",
+                "InvalidRequestException",
                 "Parameter RetrievalToken is missing",
             );
         };
@@ -1260,5 +1269,64 @@ mod tests {
             json!({"RetrievalToken": token}),
         )));
         assert_eq!(after["RetrievalStatus"], "CANCELLED");
+    }
+
+    // ---- ERROR-CANON: missing required params answer the modeled ----------
+    // InvalidRequestException (botocore declares it for all five ops; moto's
+    // hand-rolled `{"__type": "MissingParameter"}` is not a modeled shape).
+
+    #[test]
+    fn missing_params_are_invalid_request_exception() {
+        let cases: &[(&str, &str)] = &[
+            ("Traces", "Parameter TraceIds is missing"),
+            ("StartTraceRetrieval", "Parameter TraceIds is missing"),
+        ];
+        for (op, message) in cases {
+            let err = dispatch(&req("POST", op, json!({})));
+            assert_eq!(err.status, 400, "{op} (Traces routes BatchGetTraces)");
+            let err_body: Value = serde_json::from_slice(&err.body).unwrap();
+            assert_eq!(err_body["__type"], "InvalidRequestException", "{op}");
+            assert_eq!(err_body["message"], *message, "{op}");
+        }
+    }
+
+    #[test]
+    fn start_retrieval_times_invalid_request_exception() {
+        let missing_start = dispatch(&req(
+            "POST",
+            "StartTraceRetrieval",
+            json!({"TraceIds": ["1-12345678-abcdef012345678901234567"], "EndTime": 1001.0}),
+        ));
+        assert_eq!(missing_start.status, 400);
+        let start_body: Value = serde_json::from_slice(&missing_start.body).unwrap();
+        assert_eq!(start_body["__type"], "InvalidRequestException");
+        assert_eq!(start_body["message"], "Parameter StartTime is missing");
+
+        let missing_end = dispatch(&req(
+            "POST",
+            "StartTraceRetrieval",
+            json!({"TraceIds": ["1-12345678-abcdef012345678901234567"], "StartTime": 1000.0}),
+        ));
+        let end_body: Value = serde_json::from_slice(&missing_end.body).unwrap();
+        assert_eq!(end_body["message"], "Parameter EndTime is missing");
+    }
+
+    #[test]
+    fn retrieval_token_ops_invalid_request_exception() {
+        let token_ops = [
+            "CancelTraceRetrieval",
+            "GetRetrievedTracesGraph",
+            "ListRetrievedTraces",
+        ];
+        for op in token_ops {
+            let err = dispatch(&req("POST", op, json!({})));
+            assert_eq!(err.status, 400, "{op}");
+            let err_body: Value = serde_json::from_slice(&err.body).unwrap();
+            assert_eq!(err_body["__type"], "InvalidRequestException", "{op}");
+            assert_eq!(
+                err_body["message"], "Parameter RetrievalToken is missing",
+                "{op}"
+            );
+        }
     }
 }
