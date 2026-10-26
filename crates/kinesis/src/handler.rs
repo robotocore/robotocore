@@ -386,6 +386,12 @@ impl KinesisHandler {
             Some((shard, record)) => {
                 // moto 5.2.4 KinesisBackend.put_record → _send_stream_metrics:
                 // IncomingBytes = len(record data) + len(partition key),
+                // where the partition-key length is counted in CODE POINTS
+                // (moto's len(str), not UTF-8 bytes — deliberately inherited
+                // from moto; real AWS counts bytes. Live-verified on the
+                // pinned 5.2.4 fork: a record whose data + 4-code-point
+                // partition key totals exactly 1048576 code points is
+                // accepted, though it exceeds 1048576 UTF-8 bytes).
                 // IncomingRecords = 1, dimensioned by StreamName only.
                 cloudwatch::bridge::ingest_kinesis_put_metrics(
                     req.account,
@@ -428,23 +434,73 @@ impl KinesisHandler {
             .and_then(|v| v.as_array())
             .cloned()
             .unwrap_or_default();
+        // moto 5.2.4 KinesisBackend.put_records validates before storing any
+        // record and before _send_stream_metrics (moto/kinesis/models.py
+        // ::put_records): record count first, then the call's total size,
+        // then the first per-record offender. A record's size is its data
+        // length plus the partition-key length in code points, matching the
+        // metric accounting below and moto's len(str) — live-verified: a
+        // record whose data+partition-key code points total exactly
+        // 1048576 is accepted.
+        if records_input.len() > 500 {
+            // moto kinesis/exceptions.py :: TooManyRecords.
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                "1 validation error detected: Value at 'records' failed to satisfy constraint: Member must have length less than or equal to 500",
+            );
+        }
         // moto accounts every input record into the call's aggregated
-        // datapoint (data size + partition-key size), successful or not.
-        let record_count = records_input.len();
+        // datapoint (data size + partition-key size in code points),
+        // successful or not.
         let mut incoming_bytes: u64 = 0;
-        let mut result_records = Vec::with_capacity(records_input.len());
-        for rec in records_input {
+        let mut over_limit_position: Option<usize> = None;
+        let mut decoded_records: Vec<(String, Vec<u8>, Option<String>)> =
+            Vec::with_capacity(records_input.len());
+        for (idx, rec) in records_input.iter().enumerate() {
             let partition_key = rec
                 .get("PartitionKey")
                 .and_then(|v| v.as_str())
-                .unwrap_or_default();
+                .unwrap_or_default()
+                .to_string();
             let data_b64 = rec.get("Data").and_then(|v| v.as_str()).unwrap_or_default();
             let data = base64::engine::general_purpose::STANDARD
                 .decode(data_b64)
                 .unwrap_or_default();
-            incoming_bytes += (data.len() + partition_key.chars().count()) as u64;
-            let explicit = rec.get("ExplicitHashKey").and_then(|v| v.as_str());
-            if let Some((shard, record)) = stream.put_record(partition_key, data, explicit) {
+            let size = data.len() + partition_key.chars().count();
+            incoming_bytes += size as u64;
+            if size > 1048576 && over_limit_position.is_none() {
+                over_limit_position = Some(idx + 1);
+            }
+            let explicit = rec
+                .get("ExplicitHashKey")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+            decoded_records.push((partition_key, data, explicit));
+        }
+        if incoming_bytes > 5242880 {
+            // moto kinesis/exceptions.py :: TotalRecordsSizeExceedsLimit.
+            return AwsResponse::error(
+                400,
+                "InvalidArgumentException",
+                "Records size exceeds 5 MB limit",
+            );
+        }
+        if let Some(position) = over_limit_position {
+            // moto kinesis/exceptions.py :: RecordSizeExceedsLimit (1-based).
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                &format!(
+                    "1 validation error detected: Value at 'records.{position}.member.data' failed to satisfy constraint: Member must have length less than or equal to 1048576"
+                ),
+            );
+        }
+        let mut result_records = Vec::with_capacity(decoded_records.len());
+        for (partition_key, data, explicit) in decoded_records {
+            if let Some((shard, record)) =
+                stream.put_record(&partition_key, data, explicit.as_deref())
+            {
                 result_records.push(json!({
                     "ShardId": shard.shard_id,
                     "SequenceNumber": record.sequence_number
@@ -459,7 +515,7 @@ impl KinesisHandler {
             &req.region,
             name,
             incoming_bytes,
-            record_count as u64,
+            records_input.len() as u64,
         );
         AwsResponse::json(
             200,
@@ -1952,6 +2008,11 @@ mod tests {
     /// StreamName dimension, one aggregated datapoint pair per call).
     #[test]
     fn kput_emits_cloudwatch_metrics() {
+        // The ingest registry is process-global and first-wins; reset it so
+        // this test binds its own handler regardless of test order in this
+        // binary (sole-registrant contract documented in
+        // cloudwatch::bridge::reset_registry).
+        cloudwatch::bridge::reset_registry();
         // The cloudwatch handler registers itself into the process-global
         // ingest bridge on construction; account scoping keeps the
         // datapoints isolated from other tests sharing this process.
@@ -2072,6 +2133,263 @@ mod tests {
             )
         }));
         assert_eq!(other["Datapoints"].as_array().unwrap().len(), 0);
+    }
+
+    fn encode_bytes(data: &[u8]) -> String {
+        base64::engine::general_purpose::STANDARD.encode(data)
+    }
+
+    /// The limit rejections must fire before any CloudWatch ingest (moto
+    /// raises in put_records before storing and before _send_stream_metrics).
+    /// The bridge is process-global and possibly bound to another test's
+    /// handler (kput_emits_cloudwatch_metrics registers one in parallel
+    /// threads), but each call below uses a per-test account that no other
+    /// test pushes to, and a failing put never reaches the ingest — so
+    /// whichever handler is bound, this account shows no datapoints.
+    fn assert_no_put_metrics(account: u64, stream: &str) {
+        let cw = cloudwatch::bridge::test_registered_handler()
+            .unwrap_or_else(|| Arc::new(cloudwatch::handler::CloudwatchHandler::new()));
+        let now = chrono::Utc::now().timestamp_millis();
+        let cw_req = |operation: &str, params: Value| cloudwatch::AwsRequest {
+            service: "cloudwatch".to_string(),
+            operation: operation.to_string(),
+            account,
+            region: "us-east-1".to_string(),
+            params,
+            body: Bytes::new(),
+        };
+        for metric in ["IncomingBytes", "IncomingRecords"] {
+            let stats: Value = serde_json::from_str(
+                &cw.handle(cw_req(
+                    "GetMetricStatistics",
+                    json!({
+                        "Namespace": "AWS/Kinesis",
+                        "MetricName": metric,
+                        "Statistics": ["Sum", "SampleCount"],
+                        "Period": 60,
+                        "StartTime": now - 3_600_000,
+                        "EndTime": now + 3_600_000,
+                    }),
+                ))
+                .body,
+            )
+            .unwrap();
+            assert!(
+                stats["Datapoints"].as_array().unwrap().is_empty(),
+                "{stream}: unexpected {metric} datapoints: {stats}"
+            );
+        }
+    }
+
+    #[test]
+    fn kput_records_limits_over_count() {
+        let handler = KinesisHandler::new();
+        let account: u64 = 447089000555;
+        let req = |operation: &str, params: Value| AwsRequest {
+            service: "kinesis".to_string(),
+            operation: operation.to_string(),
+            account,
+            region: "us-east-1".to_string(),
+            params,
+            body: Bytes::new(),
+        };
+        handler.handle(req(
+            "CreateStream",
+            json!({"StreamName": "lim-count", "ShardCount": 1}),
+        ));
+        // moto kinesis/exceptions.py :: TooManyRecords — first (before the
+        // size checks), 400 ValidationException.
+        let over = parse_body(&handler.handle(req(
+            "PutRecords",
+            json!({
+                "StreamName": "lim-count",
+                "Records": (0..501)
+                    .map(|_| json!({"Data": encode_data("x"), "PartitionKey": "p"}))
+                    .collect::<Vec<_>>(),
+            }),
+        )));
+        assert_eq!(over["__type"], json!("ValidationException"));
+        assert_eq!(
+            over["message"],
+            json!("1 validation error detected: Value at 'records' failed to satisfy constraint: Member must have length less than or equal to 500")
+        );
+        assert_no_put_metrics(account, "lim-count");
+    }
+
+    #[test]
+    fn kput_records_limits_over_total() {
+        let handler = KinesisHandler::new();
+        let account: u64 = 447089000556;
+        let req = |operation: &str, params: Value| AwsRequest {
+            service: "kinesis".to_string(),
+            operation: operation.to_string(),
+            account,
+            region: "us-east-1".to_string(),
+            params,
+            body: Bytes::new(),
+        };
+        handler.handle(req(
+            "CreateStream",
+            json!({"StreamName": "lim-total", "ShardCount": 1}),
+        ));
+        // Six 1-MiB records: each within the per-record limit, but the call
+        // sum (6291456) exceeds 5242880. moto kinesis/exceptions.py ::
+        // TotalRecordsSizeExceedsLimit (400 InvalidArgumentException).
+        let megabyte_b64 = encode_bytes(&vec![b'a'; 1048576]);
+        let over = parse_body(&handler.handle(req(
+            "PutRecords",
+            json!({
+                "StreamName": "lim-total",
+                "Records": (0..6)
+                    .map(|_| json!({"Data": megabyte_b64, "PartitionKey": "p"}))
+                    .collect::<Vec<_>>(),
+            }),
+        )));
+        assert_eq!(over["__type"], json!("InvalidArgumentException"));
+        assert_eq!(over["message"], json!("Records size exceeds 5 MB limit"));
+        assert_no_put_metrics(account, "lim-total");
+    }
+
+    #[test]
+    fn kput_records_limits_single_over() {
+        let handler = KinesisHandler::new();
+        let account: u64 = 447089000557;
+        let req = |operation: &str, params: Value| AwsRequest {
+            service: "kinesis".to_string(),
+            operation: operation.to_string(),
+            account,
+            region: "us-east-1".to_string(),
+            params,
+            body: Bytes::new(),
+        };
+        handler.handle(req(
+            "CreateStream",
+            json!({"StreamName": "lim-one", "ShardCount": 1}),
+        ));
+        // One record over the 1 MiB limit. moto kinesis/exceptions.py ::
+        // RecordSizeExceedsLimit (400 ValidationException, 1-based position).
+        let over = parse_body(&handler.handle(req(
+            "PutRecords",
+            json!({
+                "StreamName": "lim-one",
+                "Records": [{"Data": encode_bytes(&[b'a'; 1048577]), "PartitionKey": "p"}],
+            }),
+        )));
+        assert_eq!(over["__type"], json!("ValidationException"));
+        assert_eq!(
+            over["message"],
+            json!("1 validation error detected: Value at 'records.1.member.data' failed to satisfy constraint: Member must have length less than or equal to 1048576")
+        );
+
+        // The first offender names the position: record #2 here.
+        let over2 = parse_body(&handler.handle(req(
+            "PutRecords",
+            json!({
+                "StreamName": "lim-one",
+                "Records": [
+                    {"Data": encode_data("x"), "PartitionKey": "p"},
+                    {"Data": encode_bytes(&[b'a'; 1048577]), "PartitionKey": "p"},
+                    {"Data": encode_data("x"), "PartitionKey": "p"},
+                ],
+            }),
+        )));
+        assert_eq!(
+            over2["message"],
+            json!("1 validation error detected: Value at 'records.2.member.data' failed to satisfy constraint: Member must have length less than or equal to 1048576")
+        );
+
+        assert_no_put_metrics(account, "lim-one");
+
+        // The rejected calls must have stored nothing: a following valid
+        // put is the only record a reader sees.
+        handler.handle(req(
+            "PutRecords",
+            json!({
+                "StreamName": "lim-one",
+                "Records": [{"Data": encode_data("kept"), "PartitionKey": "p"}],
+            }),
+        ));
+        let shard =
+            parse_body(&handler.handle(req("ListShards", json!({"StreamName": "lim-one"}))))
+                ["Shards"][0]["ShardId"]
+                .as_str()
+                .unwrap()
+                .to_string();
+        let iter = parse_body(&handler.handle(req(
+            "GetShardIterator",
+            json!({
+                "StreamName": "lim-one",
+                "ShardId": shard,
+                "ShardIteratorType": "TRIM_HORIZON"
+            }),
+        )))["ShardIterator"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let recs = parse_body(&handler.handle(req("GetRecords", json!({"ShardIterator": iter}))));
+        let records = recs["Records"].as_array().unwrap();
+        assert_eq!(records.len(), 1, "got {records:?}");
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(records[0]["Data"].as_str().unwrap())
+                .unwrap(),
+            b"kept"
+        );
+    }
+
+    #[test]
+    fn kput_records_limits_within_bounds() {
+        let handler = KinesisHandler::new();
+        let account: u64 = 447089000558;
+        let req = |operation: &str, params: Value| AwsRequest {
+            service: "kinesis".to_string(),
+            operation: operation.to_string(),
+            account,
+            region: "us-east-1".to_string(),
+            params,
+            body: Bytes::new(),
+        };
+        handler.handle(req(
+            "CreateStream",
+            json!({"StreamName": "lim-ok", "ShardCount": 1}),
+        ));
+        let tiny = json!({"Data": encode_data("x"), "PartitionKey": "p"});
+        // Live-verified on moto 5.2.4: the checks are strict — exactly 500
+        // records, a record summing to exactly 1048576 (data 1048575 +
+        // 1-code-point key) and a call totalling exactly 5242880 all pass.
+        let ok = parse_body(&handler.handle(req(
+            "PutRecords",
+            json!({
+                "StreamName": "lim-ok",
+                "Records": (0..500).map(|_| tiny.clone()).collect::<Vec<_>>(),
+            }),
+        )));
+        assert_eq!(ok["FailedRecordCount"], json!(0));
+        assert_eq!(ok["Records"].as_array().unwrap().len(), 500);
+
+        let at_limit = parse_body(&handler.handle(req(
+            "PutRecords",
+            json!({
+                "StreamName": "lim-ok",
+                "Records": [
+                    {"Data": encode_bytes(&[b'a'; 1048575]), "PartitionKey": "p"}
+                ],
+            }),
+        )));
+        assert_eq!(at_limit["FailedRecordCount"], json!(0));
+        assert_eq!(at_limit["Records"].as_array().unwrap().len(), 1);
+
+        let at_total = parse_body(&handler.handle(req(
+            "PutRecords",
+            json!({
+                "StreamName": "lim-ok",
+                "Records": (0..5)
+                    .map(|_| json!({"Data": encode_bytes(&[b'a'; 1048575]), "PartitionKey": "p"}))
+                    .collect::<Vec<_>>(),
+            }),
+        )));
+        assert_eq!(at_total["FailedRecordCount"], json!(0));
+        assert_eq!(at_total["Records"].as_array().unwrap().len(), 5);
     }
 
     #[test]
