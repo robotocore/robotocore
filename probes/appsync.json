@@ -1,10 +1,10 @@
 {
   "service": "appsync",
-  "generated_at": "2026-10-26T01:27:27.568961+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T03:42:45.439279+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 69,
-    "needs_params": 3,
+    "working": 72,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -272,8 +272,8 @@
     },
     {
       "operation": "ListTagsForResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListTypes",
@@ -307,13 +307,13 @@
     },
     {
       "operation": "TagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateApi",

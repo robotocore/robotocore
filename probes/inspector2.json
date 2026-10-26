@@ -1,10 +1,10 @@
 {
   "service": "inspector2",
-  "generated_at": "2026-10-25T19:43:38.201777+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T03:43:05.989573+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 73,
-    "needs_params": 2,
+    "working": 75,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -67,8 +67,8 @@
     },
     {
       "operation": "CreateCisScanConfiguration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateCodeSecurityIntegration",
@@ -347,8 +347,8 @@
     },
     {
       "operation": "UpdateCodeSecurityIntegration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateCodeSecurityScanConfiguration",

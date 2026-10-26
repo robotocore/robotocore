@@ -1,12 +1,12 @@
 {
   "service": "dms",
-  "generated_at": "2026-10-25T19:42:33.022153+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T03:43:02.287509+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 114,
-    "needs_params": 1,
+    "working": 119,
+    "needs_params": 0,
     "not_implemented": 0,
-    "500_error": 4,
+    "500_error": 0,
     "timeout": 0
   },
   "operations": [
@@ -47,8 +47,8 @@
     },
     {
       "operation": "CreateDataProvider",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateEndpoint",
@@ -187,8 +187,8 @@
     },
     {
       "operation": "DescribeConnections",
-      "status": "500_error",
-      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeConversionConfiguration",
@@ -217,8 +217,8 @@
     },
     {
       "operation": "DescribeEndpoints",
-      "status": "500_error",
-      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeEngineVersions",
@@ -362,8 +362,8 @@
     },
     {
       "operation": "DescribeReplicationSubnetGroups",
-      "status": "500_error",
-      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeReplicationTableStatistics",
@@ -422,8 +422,8 @@
     },
     {
       "operation": "ListTagsForResource",
-      "status": "500_error",
-      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ModifyConversionConfiguration",

@@ -1,10 +1,10 @@
 {
   "service": "opensearch",
-  "generated_at": "2026-10-25T19:44:08.152659+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T03:43:19.644703+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 80,
-    "needs_params": 2,
+    "working": 82,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -22,8 +22,8 @@
     },
     {
       "operation": "AddDirectQueryDataSource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "AddTags",
@@ -382,8 +382,8 @@
     },
     {
       "operation": "UpdateDirectQueryDataSource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateDomainConfig",

@@ -1,19 +1,19 @@
 {
   "service": "bedrock-runtime",
-  "generated_at": "2026-10-25T19:41:58.377905+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T03:42:47.370139+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
     "working": 1,
-    "needs_params": 3,
-    "not_implemented": 6,
+    "needs_params": 1,
+    "not_implemented": 8,
     "500_error": 0,
     "timeout": 0
   },
   "operations": [
     {
       "operation": "ApplyGuardrail",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "Converse",
@@ -27,8 +27,8 @@
     },
     {
       "operation": "CountTokens",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "GetAsyncInvoke",

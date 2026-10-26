@@ -1,11 +1,11 @@
 {
   "service": "connect",
-  "generated_at": "2026-10-25T19:42:28.331369+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T03:43:00.139898+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
     "working": 365,
-    "needs_params": 1,
-    "not_implemented": 0,
+    "needs_params": 0,
+    "not_implemented": 1,
     "500_error": 0,
     "timeout": 0
   },
@@ -1647,8 +1647,8 @@
     },
     {
       "operation": "UpdateParticipantRoleConfig",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "UpdatePhoneNumber",

@@ -1,10 +1,10 @@
 {
   "service": "bedrock",
-  "generated_at": "2026-10-25T19:41:58.109717+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T03:42:47.213569+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 95,
-    "needs_params": 3,
+    "working": 98,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -32,8 +32,8 @@
     },
     {
       "operation": "CreateAutomatedReasoningPolicyVersion",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateCustomModel",
@@ -47,8 +47,8 @@
     },
     {
       "operation": "CreateEvaluationJob",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateFoundationModelAgreement",
@@ -472,8 +472,8 @@
     },
     {
       "operation": "UpdateAutomatedReasoningPolicyAnnotations",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateAutomatedReasoningPolicyTestCase",

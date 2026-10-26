@@ -1,10 +1,10 @@
 {
   "service": "workspaces",
-  "generated_at": "2026-10-25T19:45:18.307528+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T03:43:31.571859+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 83,
-    "needs_params": 4,
+    "working": 87,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 4,
     "timeout": 0
@@ -107,8 +107,8 @@
     },
     {
       "operation": "DeleteConnectClientAddIn",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteConnectionAlias",
@@ -292,8 +292,8 @@
     },
     {
       "operation": "ImportCustomWorkspaceImage",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ImportWorkspaceImage",
@@ -432,13 +432,13 @@
     },
     {
       "operation": "TerminateWorkspacesPoolSession",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateConnectClientAddIn",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateConnectionAliasPermission",

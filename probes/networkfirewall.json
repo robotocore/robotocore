@@ -1,10 +1,10 @@
 {
   "service": "networkfirewall",
-  "generated_at": "2026-10-25T19:44:05.354871+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T03:43:18.366371+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 77,
-    "needs_params": 2,
+    "working": 79,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -152,8 +152,8 @@
     },
     {
       "operation": "DescribeFlowOperation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeLoggingConfiguration",
@@ -247,8 +247,8 @@
     },
     {
       "operation": "ListFlowOperationResults",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListFlowOperations",

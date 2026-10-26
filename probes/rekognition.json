@@ -1,11 +1,11 @@
 {
   "service": "rekognition",
-  "generated_at": "2026-10-25T19:44:30.370405+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T03:43:23.763206+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 65,
-    "needs_params": 2,
-    "not_implemented": 8,
+    "working": 66,
+    "needs_params": 0,
+    "not_implemented": 9,
     "500_error": 0,
     "timeout": 0
   },
@@ -162,8 +162,8 @@
     },
     {
       "operation": "DistributeDatasetEntries",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "GetCelebrityInfo",
@@ -187,8 +187,8 @@
     },
     {
       "operation": "GetFaceLivenessSessionResults",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (SessionNotFoundException: The session was not found.)"
     },
     {
       "operation": "GetFaceSearch",

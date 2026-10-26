@@ -1,10 +1,10 @@
 {
   "service": "mediaconnect",
-  "generated_at": "2026-10-25T19:43:58.476385+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T03:43:16.693509+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 79,
-    "needs_params": 3,
+    "working": 82,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -72,18 +72,18 @@
     },
     {
       "operation": "CreateRouterInput",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateRouterNetworkInterface",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateRouterOutput",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteBridge",

@@ -1,10 +1,10 @@
 {
   "service": "route53resolver",
-  "generated_at": "2026-10-25T19:44:34.163645+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T03:43:24.611167+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 67,
-    "needs_params": 1,
+    "working": 68,
+    "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
     "timeout": 0
@@ -52,8 +52,8 @@
     },
     {
       "operation": "CreateResolverEndpoint",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateResolverQueryLogConfig",
