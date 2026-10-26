@@ -362,9 +362,11 @@ fn resource_not_found(message: &str) -> Response {
 }
 
 fn validation(message: &str) -> Response {
+    // moto/real-AWS JSON 1.1 key ordering: lowercase "message"
+    // (moto/core/exceptions.py error_json template).
     Response::json_status(
         400,
-        &json!({"__type": "ValidationException", "Message": message}),
+        &json!({"__type": "ValidationException", "message": message}),
     )
 }
 

@@ -411,10 +411,9 @@ fn op_workspaces(
         },
         _ => match workspace_id {
             Some(id) => workspace_missing(id),
-            None => json_resp(
-                400,
-                &json!({ "__type": "BadRequest", "message": "unsupported method" }),
-            ),
+            // moto's amp handlers answer unsupported verbs with a bare 400
+            // and an empty body (moto/amp/responses.py `_r("{}", 400)`).
+            None => json_resp(400, &json!({})),
         },
     }
 }
@@ -726,10 +725,8 @@ fn op_workspace_logging(
             ws.logging_config = None;
             json_resp(202, &json!({}))
         }
-        _ => json_resp(
-            400,
-            &json!({ "__type": "BadRequest", "message": "unsupported" }),
-        ),
+        // moto's fallthrough for unsupported verbs: plain 400, empty body.
+        _ => json_resp(400, &json!({})),
     }
 }
 
@@ -783,10 +780,9 @@ fn op_query_logging(
             ws.query_logging = None;
             json_resp(202, &json!({}))
         }
-        _ => json_resp(
-            400,
-            &json!({ "__type": "BadRequest", "message": "unsupported method" }),
-        ),
+        // moto's amp handlers answer unsupported verbs with a bare 400 and
+        // an empty "{}" body (moto/amp/responses.py `_r("{}", 400)`)
+        _ => json_resp(400, &json!({})),
     }
 }
 
@@ -829,10 +825,9 @@ fn op_workspace_policy(
             ws.resource_policy = None;
             json_resp(202, &json!({}))
         }
-        _ => json_resp(
-            400,
-            &json!({ "__type": "BadRequest", "message": "unsupported method" }),
-        ),
+        // moto's amp handlers answer unsupported verbs with a bare 400 and
+        // an empty "{}" body (moto/amp/responses.py `_r("{}", 400)`)
+        _ => json_resp(400, &json!({})),
     }
 }
 
@@ -872,10 +867,9 @@ fn op_workspace_configuration(
             ws.workspace_configuration = Some(config);
             json_resp(202, &json!({ "status": { "statusCode": "ACTIVE" } }))
         }
-        _ => json_resp(
-            400,
-            &json!({ "__type": "BadRequest", "message": "unsupported method" }),
-        ),
+        // moto's amp handlers answer unsupported verbs with a bare 400 and
+        // an empty "{}" body (moto/amp/responses.py `_r("{}", 400)`)
+        _ => json_resp(400, &json!({})),
     }
 }
 
@@ -1148,10 +1142,9 @@ fn op_scrapers(
                 not_found("Scraper not found", id, "AWS::APS::Scraper")
             }
         }
-        _ => json_resp(
-            400,
-            &json!({ "__type": "BadRequest", "message": "unsupported method" }),
-        ),
+        // moto's amp handlers answer unsupported verbs with a bare 400 and
+        // an empty "{}" body (moto/amp/responses.py `_r("{}", 400)`)
+        _ => json_resp(400, &json!({})),
     }
 }
 
@@ -1197,10 +1190,9 @@ fn op_scraper_logging(
             scraper.last_modified_at = now_epoch();
             json_resp(202, &json!({}))
         }
-        _ => json_resp(
-            400,
-            &json!({ "__type": "BadRequest", "message": "unsupported method" }),
-        ),
+        // moto's amp handlers answer unsupported verbs with a bare 400 and
+        // an empty "{}" body (moto/amp/responses.py `_r("{}", 400)`)
+        _ => json_resp(400, &json!({})),
     }
 }
 
@@ -1211,10 +1203,10 @@ const DEFAULT_SCRAPER_CONFIG: &str = "global:\n  scrape_interval: 30s\nscrape_co
 fn op_tags(state: &mut AmpState, method: &str, path: &str, body: &Value, query: &str) -> Response {
     let arn = arn_from_tags_path(path);
     if arn.is_empty() {
-        return json_resp(
-            400,
-            &json!({ "__type": "BadRequest", "message": "missing resource ARN" }),
-        );
+        // Unreachable through the route table (the ARN segment is required);
+        // keep the moto `tags()` fallthrough shape instead of an invented
+        // error envelope.
+        return json_resp(400, &json!({}));
     }
     match method {
         "GET" => json_resp(200, &json!({ "tags": tag_map(state, &arn) })),
@@ -1234,10 +1226,9 @@ fn op_tags(state: &mut AmpState, method: &str, path: &str, body: &Value, query: 
             }
             json_resp(200, &json!({}))
         }
-        _ => json_resp(
-            400,
-            &json!({ "__type": "BadRequest", "message": "unsupported method" }),
-        ),
+        // moto's amp handlers answer unsupported verbs with a bare 400 and
+        // an empty "{}" body (moto/amp/responses.py `_r("{}", 400)`)
+        _ => json_resp(400, &json!({})),
     }
 }
 
