@@ -598,7 +598,6 @@ impl DynamoDbHandler {
             );
         };
 
-        let mut provisioned: Option<Value> = None;
         if let Some(pt) = req.params.get("ProvisionedThroughput") {
             let rcu = pt
                 .get("ReadCapacityUnits")
@@ -610,7 +609,6 @@ impl DynamoDbHandler {
                 .unwrap_or(0);
             *table.provisioned_rcu.write() = rcu;
             *table.provisioned_wcu.write() = wcu;
-            provisioned = Some(json!({"ReadCapacityUnits": rcu, "WriteCapacityUnits": wcu}));
         }
 
         // Merge attribute definitions supplied alongside index updates.
@@ -688,19 +686,14 @@ impl DynamoDbHandler {
             }
         }
 
-        let mut description = json!({
-            "TableName": table.name,
-            "TableStatus": *table.status.read(),
-        });
-        if let Some(pt) = provisioned {
-            description["ProvisionedThroughput"] = pt;
-        }
-        // moto's UpdateTable response is Table.describe(), so it carries the
-        // same WarmThroughput block as DescribeTable — computed after the
-        // mutations above, so PROVISIONED tables report the possibly-updated
-        // units (moto/dynamodb/models/__init__.py update_table + Table.describe).
-        description["WarmThroughput"] = Self::table_warm_throughput(&table);
-        AwsResponse::json(200, json!({ "TableDescription": description }))
+        // moto's UpdateTable response is Table.describe() — the full base_key
+        // "TableDescription" payload (moto/dynamodb/models/__init__.py
+        // update_table + Table.describe). Route through the shared renderer so
+        // the response carries all of it — BillingModeSummary, KeySchema,
+        // AttributeDefinitions, GlobalSecondaryIndexes (each with its own
+        // ProvisionedThroughput/WarmThroughput) and the table-level
+        // WarmThroughput computed after the mutations above.
+        Self::describe_table_response(req, &table, 200, "TableDescription")
     }
 }
 
@@ -4281,5 +4274,64 @@ mod tests {
             json!({"TableName": "pq", "Key": {"pk": {"S": "bad-row"}}}),
         ));
         assert!(!resp.body.contains("Item"));
+    }
+
+    // moto's UpdateTable response is Table.describe() (base_key
+    // TableDescription), so it carries the full payload — BillingModeSummary,
+    // KeySchema, and every GSI with its ProvisionedThroughput and
+    // WarmThroughput — not just the changed fields (moto server probe:
+    // creating a GSI through UpdateTable answers GSI[0].WarmThroughput
+    // 7/9 through the shared renderer).
+    #[test]
+    fn update_table_response_includes_gsi_warm_throughput() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "upd-spec",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "ProvisionedThroughput": {"ReadCapacityUnits": 3, "WriteCapacityUnits": 5}
+            }),
+        ));
+        // Sanity: no GSI before the update.
+        let resp = handler.handle(make_req("DescribeTable", json!({"TableName": "upd-spec"})));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert!(body["Table"]["GlobalSecondaryIndexes"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+
+        let resp = handler.handle(make_req(
+            "UpdateTable",
+            json!({
+                "TableName": "upd-spec",
+                "AttributeDefinitions": [{"AttributeName": "name", "AttributeType": "S"}],
+                "GlobalSecondaryIndexUpdates": [{"Create": {
+                    "IndexName": "byname",
+                    "KeySchema": [{"AttributeName": "name", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "ALL"},
+                    "ProvisionedThroughput": {"ReadCapacityUnits": 7, "WriteCapacityUnits": 9}
+                }}]
+            }),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        let td = &body["TableDescription"];
+        assert_eq!(td["WarmThroughput"]["Status"], "ACTIVE");
+        assert_eq!(
+            td["GlobalSecondaryIndexes"][0]["WarmThroughput"],
+            json!({
+                "ReadUnitsPerSecond": 7,
+                "WriteUnitsPerSecond": 9,
+                "Status": "ACTIVE"
+            })
+        );
+        // The full describe payload, not just the changed fields.
+        assert_eq!(td["BillingModeSummary"]["BillingMode"], "PROVISIONED");
+        assert_eq!(td["KeySchema"][0]["AttributeName"], "pk");
+        assert!(td.get("AttributeDefinitions").is_some());
+        assert!(td.get("TableArn").is_some());
     }
 }
