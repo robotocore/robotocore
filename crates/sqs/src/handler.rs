@@ -616,30 +616,20 @@ impl DefaultSqsHandler {
                 .and_then(|v| v.as_str())
                 .unwrap_or_default()
                 .to_string();
-            // moto's backend reads entry["ReceiptHandle"] STRICTLY: a row
-            // without the key raises KeyError inside the batch loop —
-            // OUTSIDE the broad `except:` guarding only the visibility
-            // parse — and crashes the whole request as a werkzeug 500
-            // (live-verified, and it precedes the per-row queue lookup so
-            // a ghost queue keeps the crash). A null-valued member travels
-            // as None and takes moto's None-mode match (first extant
-            // message); other non-string values never match.
-            let receipt_handle: Option<&str> = match entry.get("ReceiptHandle") {
-                None => return Err(SqsError::MotoCrash),
-                Some(Value::Null) => None,
-                Some(Value::String(s)) => Some(s.as_str()),
-                Some(_) => Some(""),
-            };
             // moto's change_message_visibility_batch backend wraps the
             // per-entry `int(entry["VisibilityTimeout"])` parse and the
-            // MAXIMUM_VISIBILITY_TIMEOUT assert in one bare except:
-            // anything above the cap answers a per-entry Failed row
+            // MAXIMUM_VISIBILITY_TIMEOUT assert in one bare except: a row
+            // whose VisibilityTimeout is MISSING (KeyError inside the
+            // arm) or above the cap answers a per-entry Failed row
             // (live-verified shape: SenderFault true / Code
             // InvalidParameterValue / Message "Visibility timeout
-            // invalid"), and a u64-overflowing value takes the same row.
-            // Negatives parse and PASS the assert (moto 5.2.4, live
+            // invalid"; a row carrying NEITHER key fails this arm first,
+            // live-verified: Entries=[{"Id":"m1"}] answers 200 with the
+            // Failed row), and a u64-overflowing value takes the same
+            // row. Negatives parse and PASS the assert (moto 5.2.4, live
             // verified: a "-5" row succeeds on a valid handle and the
-            // message becomes visible immediately).
+            // message becomes visible immediately). This arm runs BEFORE
+            // the ReceiptHandle lookup below is ever touched.
             let visibility = Self::visibility_timeout_of(entry.get("VisibilityTimeout"));
             let visibility = match visibility {
                 Some(v) if v <= Self::MAX_VISIBILITY_TIMEOUT as i64 => v,
@@ -652,6 +642,21 @@ impl DefaultSqsHandler {
                     }));
                     continue;
                 }
+            };
+            // moto's backend reads entry["ReceiptHandle"] STRICTLY, after
+            // the per-row visibility arm: a row without the key raises
+            // KeyError inside the batch loop — OUTSIDE the broad `except:`
+            // guarding only the visibility parse — and crashes the whole
+            // request as a werkzeug 500 (live-verified, and it precedes
+            // the per-row queue lookup so a ghost queue keeps the crash).
+            // A null-valued member travels as None and takes moto's
+            // None-mode match (first extant message); other non-string
+            // values never match.
+            let receipt_handle: Option<&str> = match entry.get("ReceiptHandle") {
+                None => return Err(SqsError::MotoCrash),
+                Some(Value::Null) => None,
+                Some(Value::String(s)) => Some(s.as_str()),
+                Some(_) => Some(""),
             };
             // moto resolves the queue only inside the per-row backend call
             // (`change_message_visibility` -> `get_queue`,

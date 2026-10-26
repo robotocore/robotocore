@@ -2684,6 +2684,45 @@ fn negative_visibility_overflow_string_immediately_visible() {
     );
 }
 
+/// moto's per-row arm ORDER in change_message_visibility_batch
+/// (moto/sqs/models.py:1106-1126): the VisibilityTimeout parse + cap
+/// assert run inside one broad bare except BEFORE
+/// `entry["ReceiptHandle"]` is read. A row carrying NEITHER key fails
+/// the visibility arm first and answers the per-row Failed entry
+/// (live-verified: Entries=[{"Id":"m1"}] answers 200 with Failed
+/// SenderFault/InvalidParameterValue/"Visibility timeout invalid"),
+/// while a row whose visibility PARSED fine still crashes the whole
+/// request on the absent handle key (pinned separately).
+#[test]
+fn cmv_batch_row_missing_both_keys_answers_failed_row() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "cmv-batch-both-missing");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "ok", "ReceiptHandle": handles[0]["ReceiptHandle"], "VisibilityTimeout": 0},
+                {"Id": "m1"},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    let successful = data["Successful"].as_array().expect("Successful array");
+    assert_eq!(successful.len(), 1, "the first row applied before row 2");
+    assert_eq!(successful[0]["Id"], "ok");
+
+    let failed = data["Failed"].as_array().expect("Failed array");
+    assert_eq!(failed.len(), 1, "the keyless row fails the visibility arm");
+    assert_eq!(failed[0]["Id"], "m1");
+    assert_eq!(failed[0]["SenderFault"], true);
+    assert_eq!(failed[0]["Code"], "InvalidParameterValue");
+    assert_eq!(failed[0]["Message"], "Visibility timeout invalid");
+}
+
 /// The rewired happy path: valid entries still delete, through the same
 /// helper that rejects the invalid ones.
 #[test]
