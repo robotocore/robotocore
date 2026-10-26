@@ -17,6 +17,9 @@ use crate::protocol::{AwsRequest, AwsResponse};
 /// moto DEFAULT_LAYER_PART_SIZE: the advisory part size returned by
 /// InitiateLayerUpload; Amazon ECR does not strictly enforce this value.
 const DEFAULT_LAYER_PART_SIZE: i64 = 10 * 1024 * 1024;
+/// moto LAYER_MEDIA_TYPE: media type reported for image layers by
+/// BatchCheckLayerAvailability.
+const LAYER_MEDIA_TYPE: &str = "application/vnd.docker.image.rootfs.diff.tar.gzip";
 
 pub struct EcrHandler {
     pub(crate) state: RwLock<HashMap<(u64, String), EcrState>>,
@@ -863,24 +866,48 @@ impl EcrHandler {
             .get("repositoryName")
             .and_then(|v| v.as_str())
             .unwrap_or_default();
+        let (state, _registry_id) = match self.require_layer_repository(req, repo_name) {
+            Ok(v) => v,
+            Err(e) => return e,
+        };
         let digests = req
             .params
             .get("layerDigests")
             .and_then(|v| v.as_array())
             .cloned()
             .unwrap_or_default();
-        let layers: Vec<Value> = digests
-            .iter()
-            .map(|d| {
-                json!({
-                    "layerDigest": d,
-                    "layerAvailability": "UNAVAILABLE",
-                    "repositoryName": repo_name,
-                    "registryId": req.account.to_string(),
-                })
-            })
-            .collect();
-        AwsResponse::json(200, json!({ "layers": layers, "failures": [] }))
+        let stored = state
+            .layers
+            .read()
+            .get(repo_name)
+            .cloned()
+            .unwrap_or_default();
+        let mut layers: Vec<Value> = Vec::new();
+        let mut failures: Vec<Value> = Vec::new();
+        for digest in digests.iter().filter_map(|v| v.as_str()) {
+            // moto validates each digest against `sha256:[a-f0-9]{64}`.
+            if !is_sha256_layer_digest(digest) {
+                failures.push(json!({
+                    "layerDigest": digest,
+                    "failureCode": "InvalidLayerDigest",
+                    "failureReason": format!("Invalid layer digest '{digest}'"),
+                }));
+            } else if let Some(&size) = stored.get(digest) {
+                layers.push(json!({
+                    "layerDigest": digest,
+                    "layerAvailability": "AVAILABLE",
+                    "layerSize": size,
+                    "mediaType": LAYER_MEDIA_TYPE,
+                }));
+            } else {
+                failures.push(json!({
+                    "layerDigest": digest,
+                    "failureCode": "MissingLayerDigest",
+                    "failureReason": format!("Layer digest '{digest}' could not be found"),
+                }));
+            }
+        }
+        AwsResponse::json(200, json!({ "layers": layers, "failures": failures }))
     }
 
     fn get_authorization_token(&self, req: &AwsRequest) -> AwsResponse {
@@ -1997,6 +2024,15 @@ fn is_valid_digest(d: &str) -> bool {
         && hex_part.chars().all(|c| c.is_ascii_hexdigit())
 }
 
+/// moto's batch-check digest match: `re.fullmatch(r"sha256:[a-f0-9]{64}", d)`.
+fn is_sha256_layer_digest(d: &str) -> bool {
+    let hex_part = d.strip_prefix("sha256:").unwrap_or("");
+    hex_part.len() == 64
+        && hex_part
+            .chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+}
+
 fn parse_repo_arn(value: Option<&str>) -> Option<(&str, String)> {
     let arn = value?;
     let repo_name = arn.split("repository/").nth(1)?;
@@ -2348,6 +2384,49 @@ mod tests {
         ));
         assert_eq!(twice.status, 400);
         assert!(twice.body.contains("UploadNotFoundException"));
+
+        // BatchCheckLayerAvailability now reads the stored layer: AVAILABLE
+        // with the stored size, missing digests fail; this mirrors moto's
+        // batch_check_layer_availability and is what docker push polls.
+        let check = parse(&h.handle(make_req(
+            "BatchCheckLayerAvailability",
+            json!({
+                "repositoryName": "rt",
+                "layerDigests": [
+                    expected,
+                    format!("sha256:{}", "a".repeat(64)),
+                    "not-a-digest",
+                ],
+            }),
+        )));
+        assert_eq!(
+            check["layers"],
+            json!([{
+                "layerDigest": expected,
+                "layerAvailability": "AVAILABLE",
+                "layerSize": p1.len() as i64 + p2.len() as i64,
+                "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
+            }])
+        );
+        assert_eq!(
+            check["failures"][0],
+            json!({
+                "layerDigest": format!("sha256:{}", "a".repeat(64)),
+                "failureCode": "MissingLayerDigest",
+                "failureReason": format!(
+                    "Layer digest 'sha256:{}' could not be found",
+                    "a".repeat(64)
+                ),
+            })
+        );
+        assert_eq!(
+            check["failures"][1],
+            json!({
+                "layerDigest": "not-a-digest",
+                "failureCode": "InvalidLayerDigest",
+                "failureReason": "Invalid layer digest 'not-a-digest'",
+            })
+        );
     }
 
     #[test]
@@ -2474,6 +2553,14 @@ mod tests {
         assert!(ghost_registry
             .body
             .contains("in the registry with id '999999999999'"));
+
+        // BatchCheckLayerAvailability goes through the same repository check.
+        let batch_ghost = h.handle(make_req(
+            "BatchCheckLayerAvailability",
+            json!({"repositoryName": "ghost", "layerDigests": []}),
+        ));
+        assert_eq!(batch_ghost.status, 400);
+        assert!(batch_ghost.body.contains("RepositoryNotFoundException"));
 
         // Unknown upload ids on an existing repository.
         let no_upload = h.handle(make_req(
