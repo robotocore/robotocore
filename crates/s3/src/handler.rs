@@ -617,6 +617,7 @@ fn parse_multipart_form(body: &[u8], content_type: &str) -> Option<PostForm> {
 
     // Preamble (everything before the first --boundary) is discarded.
     let mut pos = mem_find(body, &part_delim, 0)? + part_delim.len();
+    let mut saw_terminal = false;
     let mut form = PostForm {
         fields: Vec::new(),
         file: None,
@@ -631,6 +632,7 @@ fn parse_multipart_form(body: &[u8], content_type: &str) -> Option<PostForm> {
         // `--boundary--` terminal marker (optional trailing transport padding
         // after it is ignored, matching real parsers).
         if body[pos..].starts_with(b"--") {
+            saw_terminal = true;
             break;
         }
         // Each part's headers begin right after CRLF.
@@ -685,6 +687,13 @@ fn parse_multipart_form(body: &[u8], content_type: &str) -> Option<PostForm> {
         }
     }
 
+    // A body that simply runs out before the closing `--boundary--` marker
+    // was never terminated: the multipart envelope is truncated (the Python
+    // form parsers this mirror refuse it — the loop must not "succeed" at
+    // end-of-body). MalformedPOSTRequest.
+    if !saw_terminal {
+        return None;
+    }
     Some(form)
 }
 
@@ -5502,6 +5511,63 @@ mod tests {
         ));
         assert_eq!(get.status, 200);
         assert_eq!(get.body, b"url-key body");
+    }
+
+    #[test]
+    fn post_object_truncated_form_rejected() {
+        // A multipart body that ends before the closing `--boundary--`
+        // terminal marker is truncated: parse_multipart_form must refuse it
+        // (MalformedPOSTRequest) instead of accepting whatever parts fit —
+        // the werkzeug/Flask form parsers the wire path mirrors only return
+        // a form when the closing delimiter is present, and real AWS 400s
+        // the same way. Nothing is stored.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let (content_type, full_body) = multipart_form_body(
+            &[("key", "trunc.txt")],
+            Some(("f.txt", "application/octet-stream", b"payload")),
+        );
+        // Drop the final `--\r\n` so the body ends at the bare `--boundary`
+        // delimiter with no terminal `--boundary--` (and no trailing CRLF).
+        let truncated = full_body[..full_body.len() - 4].to_vec();
+
+        let path = "/post-bkt";
+        let operation =
+            S3Handler::detect_s3_operation("POST", path, &HashMap::new()).unwrap_or_default();
+        let req = AwsRequest {
+            service: "s3".to_string(),
+            operation,
+            account: 123456789012,
+            region: "us-east-1".to_string(),
+            bucket: Some("post-bkt".to_string()),
+            key: None,
+            query_params: HashMap::new(),
+            headers: form_post_headers(&content_type, truncated.len()),
+            method: "POST".to_string(),
+            body: Bytes::copy_from_slice(&truncated),
+            params: Value::Null,
+        };
+        let resp = handler.handle(req);
+        assert_eq!(
+            resp.status,
+            400,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(
+            body.contains("<Code>MalformedPOSTRequest</Code>"),
+            "body: {body}"
+        );
+
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("trunc.txt"),
+            b"",
+        ));
+        assert_eq!(get.status, 404, "truncated uploads store nothing");
     }
 
     // ------------------------------------------------------------------
