@@ -1448,10 +1448,14 @@ impl S3Handler {
             Err(e) => return e,
         };
 
-        // The form's `key` field is authoritative on the wire; the URL key
-        // (POST /{Bucket}/{Key}) is the fallback when the form omits it. Both
-        // funnel through the crate's decoded_key so stored state uses the
-        // decoded form like every other S3 operation.
+        // The form's `key` field is authoritative on the wire and is stored
+        // VERBATIM: a multipart field value is form payload, not a URI path
+        // component, so percent sequences in it are literal. moto keys the
+        // object from the parsed form value as-is (its form IS the
+        // querystring; s3/responses.py `_bucket_response_post` reads
+        // `self.querystring["key"][0]`), and real AWS does the same. Only the
+        // URL key (POST /{Bucket}/{Key}), the fallback when the form omits
+        // the field, is a path segment and keeps the crate's decoded_key.
         let key = match form.get("key") {
             Some(k) => {
                 let mut k = k.to_string();
@@ -1461,7 +1465,7 @@ impl S3Handler {
                         k = k.replace("${filename}", name);
                     }
                 }
-                Self::decoded_key(&k)
+                k
             }
             None => Self::bucket_and_key(&req).1,
         };
@@ -5338,6 +5342,45 @@ mod tests {
             got_headers.get("ETag").map(String::as_str),
             Some(etag.as_str())
         );
+
+        // moto keys a POST upload from the form's `key` field verbatim
+        // (moto/s3/responses.py `_bucket_response_post`: `key =
+        // self.querystring["key"][0]`; `moto/core/responses.py` feeds the
+        // multipart form into that querystring without URL-decoding) — a
+        // form value is payload, not a URI path segment. A literal `a%3Db`
+        // uploaded via the form therefore stores as `a%3Db`, reachable only
+        // through the once-decoded wire spelling `a%253Db`.
+        let resp = handler.handle(form_post_request(
+            "post-bkt",
+            None,
+            &[("key", "a%3Db")],
+            Some(("pct.txt", "application/octet-stream", b"verbatim")),
+        ));
+        assert_eq!(
+            resp.status,
+            204,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let location = header_map(&resp).get("Location").expect("Location").clone();
+        assert_eq!(location, "http://localhost:4566/post-bkt/a%253Db");
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("a%253Db"), // the literal `a%3Db` form key, wire spelling
+            b"",
+        ));
+        assert_eq!(get.status, 200, "form key must be stored verbatim");
+        assert_eq!(get.body, b"verbatim");
+        // The path-decoded spelling is a different key: the form key was
+        // never run through decoded_key.
+        let decoded = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("a%3Db"), // decodes once to `a=b`, which was never uploaded
+            b"",
+        ));
+        assert_eq!(decoded.status, 404, "form key must not be path-decoded");
     }
 
     #[test]
