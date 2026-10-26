@@ -1734,6 +1734,17 @@ impl DynamoDbHandler {
             .cloned()
             .unwrap_or_default();
 
+        // moto transact_write_items (dynamodb/models/__init__.py:604-606)
+        // rejects >100 rows up front with TooManyTransactionsException.
+        if transact_items.len() > 100 {
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                "1 validation error detected at 'transactItems' failed to satisfy constraint: \
+                 Member must have length less than or equal to 100.",
+            );
+        }
+
         for entry in &transact_items {
             let (op_name, op) = match ["Put", "Update", "Delete", "ConditionCheck"]
                 .iter()
@@ -2043,13 +2054,38 @@ impl DynamoDbHandler {
     fn transact_get_items(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
         let mut responses: Vec<Value> = Vec::new();
-        for entry in req
+        let transact_items = req
             .params
             .get("TransactItems")
             .and_then(|v| v.as_array())
             .cloned()
-            .unwrap_or_default()
-        {
+            .unwrap_or_default();
+
+        // moto transact_get_items (dynamodb/responses.py:1419-1435,
+        // TRANSACTION_MAX_ITEMS = 25) rejects >25 rows with a per-row
+        // TransactGetItem id list — sequential 0x10000001 onward, lowercase
+        // hex, and a constraint line without the trailing period.
+        if transact_items.len() > 25 {
+            let ids: Vec<String> = (1..=transact_items.len())
+                .map(|i| {
+                    format!(
+                        "com.amazonaws.dynamodb.v20120810.TransactGetItem@{:x}",
+                        268435456u64 + i as u64
+                    )
+                })
+                .collect();
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                &format!(
+                    "1 validation error detected: Value '[{}] at 'transactItems' failed to \
+                     satisfy constraint: Member must have length less than or equal to 25",
+                    ids.join(", ")
+                ),
+            );
+        }
+
+        for entry in transact_items {
             let get = entry.get("Get").cloned().unwrap_or(Value::Null);
             let table_name = param_str(&get, "TableName").unwrap_or("").to_string();
             let Some(table) = state.get_table(&table_name) else {
@@ -4326,18 +4362,101 @@ mod tests {
         let resp = handler.handle(make_req(
             "TransactWriteItems",
             json!({"TransactItems": [
-                {"Put": {"TableName": "unicity", "Item": {"pk": {"S": "multi"}, "v": {"S": "x"}}}},
-                {"Put": {"TableName": "unicity2", "Item": {"pk": {"S": "multi"}, "v": {"S": "y"}}}}
-            ]}),
-        ));
-        assert_eq!(resp.status, 200);
-        let resp = handler.handle(make_req(
-            "TransactWriteItems",
-            json!({"TransactItems": [
                 {"Put": {"TableName": "unicity", "Item": {"pk": {"S": "a"}, "v": {"S": "x"}}}},
                 {"Put": {"TableName": "unicity", "Item": {"pk": {"S": "b"}, "v": {"S": "y"}}}}
             ]}),
         ));
+        assert_eq!(resp.status, 200);
+    }
+
+    // moto caps both Transact* batches: transact_write_items >100 rows raises
+    // TooManyTransactionsException
+    // ("1 validation error detected at 'transactItems' failed to satisfy
+    // constraint: Member must have length less than or equal to 100." — note
+    // the trailing period), while transact_get_items >25 rows
+    // (TRANSACTION_MAX_ITEMS, dynamodb/responses.py:1419-1435) uses its own
+    // message with a per-row TransactGetItem@id list and no trailing period.
+    #[test]
+    fn transact_items_length_caps_write_100_get_25() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "cap",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+
+        // 101 write rows -> 400.
+        let rows: Vec<Value> = (0..101)
+            .map(|i| json!({"Put": {"TableName": "cap", "Item": {"pk": {"S": format!("bulk{i}")}, "v": {"S": "x"}}}}))
+            .collect();
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": rows}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            resp.body,
+            json!({
+                "__type": "ValidationException",
+                "message": "1 validation error detected at 'transactItems' failed to satisfy \
+                            constraint: Member must have length less than or equal to 100."
+            })
+            .to_string()
+        );
+        // Nothing from the rejected batch was written.
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "cap", "Key": {"pk": {"S": "bulk0"}}}),
+        ));
+        assert_eq!(resp.body, "{}");
+
+        // Exactly 100 write rows pass.
+        let rows: Vec<Value> = (0..100)
+            .map(|i| json!({"Put": {"TableName": "cap", "Item": {"pk": {"S": format!("ok{i}")}}}}))
+            .collect();
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": rows}),
+        ));
+        assert_eq!(resp.status, 200);
+
+        // 26 get rows -> 400 with moto's TransactGetItem list. The ids run
+        // sequential 0x10000001.. in lowercase hex (responses.py request_id).
+        let rows: Vec<Value> = (0..26)
+            .map(|i| json!({"Get": {"TableName": "cap", "Key": {"pk": {"S": format!("bulk{i}")}}}}))
+            .collect();
+        let resp = handler.handle(make_req("TransactGetItems", json!({"TransactItems": rows})));
+        assert_eq!(resp.status, 400);
+        let ids: String = (1..=26)
+            .map(|i| {
+                format!(
+                    "com.amazonaws.dynamodb.v20120810.TransactGetItem@{:x}",
+                    268435456u64 + i
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        assert_eq!(
+            resp.body,
+            json!({
+                "__type": "ValidationException",
+                "message": format!(
+                    "1 validation error detected: Value '[{ids}] at 'transactItems' failed to \
+                     satisfy constraint: Member must have length less than or equal to 25"
+                ),
+            })
+            .to_string()
+        );
+
+        // Exactly 25 get rows pass.
+        let rows: Vec<Value> = (0..25)
+            .map(|i| json!({"Get": {"TableName": "cap", "Key": {"pk": {"S": format!("ok{i}")}}}}))
+            .collect();
+        let resp = handler.handle(make_req("TransactGetItems", json!({"TransactItems": rows})));
         assert_eq!(resp.status, 200);
     }
 
