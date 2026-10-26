@@ -3316,6 +3316,91 @@ fn receive_junk_bounds_members_crash_like_moto() {
     );
 }
 
+/// moto's bounds errors interpolate the parsed python integer's REAL
+/// digits — python int() is unbounded, so the echoed digits are the wire
+/// value even far beyond i64 (live-verified: MaxNumberOfMessages of 30
+/// nines answers 400 "Value 999999999999999999999999999999 for parameter
+/// MaxNumberOfMessages is invalid. Reason: must be between 1 and 10, if
+/// provided."; a 21-digit WaitTimeSeconds echoes its full digits; the
+/// example "Value 5555..." cell echoes 55555555555555555555). The
+/// wording carries str(int(member)) — CANONICALIZED: surrounding
+/// whitespace and leading zeros vanish (" -3 " echoes -3), unicode Nd
+/// digits echo as ASCII ("٣٠" echoes 30), and a JSON float member whose
+/// value is exactly 2^64 echoes the same digits python int()s
+/// ("18446744073709551616.0" truncates to 18446744073709551616 both
+/// sides). The saturated i64::MAX never appears in any wording.
+#[test]
+fn receive_bounds_echo_raw_wire_digits() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "recv-echo-digits");
+
+    for (label, name, member, expected) in [
+        (
+            "30 nines",
+            "MaxNumberOfMessages",
+            json!("999999999999999999999999999999"),
+            "999999999999999999999999999999",
+        ),
+        (
+            "55-digit wire text",
+            "MaxNumberOfMessages",
+            json!("55555555555555555555"),
+            "55555555555555555555",
+        ),
+        (
+            "whitespace-padded negative",
+            "MaxNumberOfMessages",
+            json!(" -3 "),
+            "-3",
+        ),
+        ("unicode digits", "MaxNumberOfMessages", json!("٣٠"), "30"),
+        (
+            "exact float truncation of 2^64",
+            "MaxNumberOfMessages",
+            json!(18446744073709551616.0),
+            "18446744073709551616",
+        ),
+    ] {
+        let resp = handler.handle(make_request(
+            "ReceiveMessage",
+            json!({"QueueUrl": &queue_url, name: member}),
+        ));
+        assert_eq!(resp.status, 400, "{label}: got {}", resp.body);
+        assert!(
+            resp.body
+                .contains(&format!("Value {expected} for parameter {name} is invalid")),
+            "{label}: expected the real digits in the wording, got {}",
+            resp.body
+        );
+        assert!(
+            !resp.body.contains("9223372036854775807"),
+            "{label}: the saturated i64::MAX must never appear, got {}",
+            resp.body
+        );
+    }
+
+    // A 21-digit WaitTimeSeconds member echoes its full digits too.
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "WaitTimeSeconds": "432000000000000000000"}),
+    ));
+    assert_eq!(resp.status, 400, "got {}", resp.body);
+    assert!(
+        resp.body
+            .contains("Value 432000000000000000000 for parameter WaitTimeSeconds"),
+        "got {}",
+        resp.body
+    );
+
+    // In-bounds members stay clear of the wording entirely: "00005"
+    // parses to 5 and the receive answers 200 (live-verified).
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": "00005"}),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+}
+
 /// The rewired happy path: valid entries still delete, through the same
 /// helper that rejects the invalid ones.
 #[test]

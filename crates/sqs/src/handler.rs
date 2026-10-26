@@ -96,9 +96,7 @@ enum MotoInt {
     /// int() accepted. `value` is the i64-saturated comparison value;
     /// `echo` is python's str(int(member)) — the canonical digits moto
     /// interpolates into its error messages instead of the saturated
-    /// value. The consumers (the receive bounds' wording) land with the
-    /// raw-wire-echo lane; until then the field is construction-only.
-    #[allow(dead_code)]
+    /// value (the receive Max/Wait bounds wordings).
     Parsed { value: i64, echo: String },
     /// Present but int()-raising: moto's parse layer kills the request
     /// as a plain werkzeug 500 before the response method runs.
@@ -966,37 +964,48 @@ impl DefaultSqsHandler {
         // here, live-verified).
         let max_requested = match Self::moto_int(params.get("MaxNumberOfMessages")) {
             MotoInt::Junk => return Err(SqsError::MotoCrash),
-            MotoInt::Parsed { value, .. } => Some(value),
+            MotoInt::Parsed { value, echo } => Some((value, echo)),
             MotoInt::Absent => None,
         };
-        if let Some(v) = max_requested {
-            if !(1..=10).contains(&v) {
+        // moto interpolates the parsed python integer into this wording —
+        // the canonical str(int()) digits, NOT an i64-saturated value
+        // (live-verified: "Value 999999999999999999999999999999 ..." with
+        // a 30-digit member; "Value 18446744073709551616" through the u64
+        // range; " -3 " echoes the canonical -3; "٣٠" echoes ASCII 30).
+        if let Some((v, echo)) = &max_requested {
+            if !(1..=10).contains(v) {
                 return Err(SqsError::InvalidParameterValue(format!(
                     "An error occurred (InvalidParameterValue) when calling the \
-                     ReceiveMessage operation: Value {v} for parameter \
+                     ReceiveMessage operation: Value {echo} for parameter \
                      MaxNumberOfMessages is invalid. Reason: must be between 1 and \
                      10, if provided."
                 )));
             }
         }
-        let max_messages = max_requested.unwrap_or(1).min(10) as usize;
+        let max_messages = max_requested.map_or(1, |(v, _)| v).min(10) as usize;
 
         // Long poll: WaitTimeSeconds wins, else the queue-level attribute.
         // The bounds apply to whichever wins — moto validates the queue
         // attribute too (live-verified: ReceiveMessageWaitTimeSeconds=25 on
         // the queue makes a plain receive answer the WaitTimeSeconds error
-        // with Value 25). Junk crashes at the top with its sibling.
+        // with Value 25). Junk crashes at the top with its sibling, and
+        // the wording carries the same canonical echo (live-verified:
+        // a 21-digit member echoes its full digits).
         let wait_requested = match Self::moto_int(params.get("WaitTimeSeconds")) {
             MotoInt::Junk => return Err(SqsError::MotoCrash),
-            MotoInt::Parsed { value, .. } => Some(value),
+            MotoInt::Parsed { value, echo } => Some((value, echo)),
             MotoInt::Absent => None,
         };
         let queue_wait = queue_arc.read().attributes.receive_message_wait_time as i64;
-        let wait_seconds = wait_requested.unwrap_or(queue_wait);
+        let wait_seconds = wait_requested.as_ref().map_or(queue_wait, |(v, _)| *v);
         if !(0..=20).contains(&wait_seconds) {
+            let echo = wait_requested
+                .as_ref()
+                .map(|(_, echo)| echo.clone())
+                .unwrap_or_else(|| queue_wait.to_string());
             return Err(SqsError::InvalidParameterValue(format!(
                 "An error occurred (InvalidParameterValue) when calling the \
-                 ReceiveMessage operation: Value {wait_seconds} for parameter \
+                 ReceiveMessage operation: Value {echo} for parameter \
                  WaitTimeSeconds is invalid. Reason: must be &lt;= 0 and &gt;= 20 \
                  if provided."
             )));
