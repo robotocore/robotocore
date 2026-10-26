@@ -11,8 +11,12 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
-use crate::models::{EcrImage, EcrState};
+use crate::models::{EcrImage, EcrLayerUpload, EcrState};
 use crate::protocol::{AwsRequest, AwsResponse};
+
+/// moto DEFAULT_LAYER_PART_SIZE: the advisory part size returned by
+/// InitiateLayerUpload; Amazon ECR does not strictly enforce this value.
+const DEFAULT_LAYER_PART_SIZE: i64 = 10 * 1024 * 1024;
 
 pub struct EcrHandler {
     pub(crate) state: RwLock<HashMap<(u64, String), EcrState>>,
@@ -64,6 +68,9 @@ impl EcrHandler {
             "PutImageScanningConfiguration" => self.put_image_scanning_config(&req),
             "PutImageTagMutability" => self.put_image_tag_mutability(&req),
             "BatchCheckLayerAvailability" => self.batch_check_layer(&req),
+            "InitiateLayerUpload" => self.initiate_layer_upload(&req),
+            "UploadLayerPart" => self.upload_layer_part(&req),
+            "CompleteLayerUpload" => self.complete_layer_upload(&req),
             "DescribeRegistry" => self.describe_registry(&req),
             "PutLifecyclePolicy" => self.put_lifecycle_policy(&req),
             "GetLifecyclePolicy" => self.get_lifecycle_policy(&req),
@@ -197,6 +204,8 @@ impl EcrHandler {
             None => return repo_not_found(req, name),
         };
         state.images.write().remove(name);
+        state.uploads.write().remove(name);
+        state.layers.write().remove(name);
         state.repository_policies.write().remove(name);
         state.lifecycle_policies.write().remove(name);
         state.scanning_configs.write().remove(name);
@@ -653,6 +662,191 @@ impl EcrHandler {
     // ------------------------------------------------------------------
     // Layer API
     // ------------------------------------------------------------------
+
+    /// moto's `_get_repository`: the `registryId` request param wins over the
+    /// account id, and both absence and mismatch raise
+    /// RegistryNotFoundException named with the requested registry id.
+    fn require_layer_repository(
+        &self,
+        req: &AwsRequest,
+        name: &str,
+    ) -> Result<(EcrState, String), AwsResponse> {
+        let reg_id = req
+            .params
+            .get("registryId")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .unwrap_or_else(|| req.account.to_string());
+        let state = self.get_state(req.account, &req.region);
+        let found = state
+            .repositories
+            .read()
+            .get(name)
+            .and_then(|r| r.get("registryId").and_then(|v| v.as_str()))
+            .is_some_and(|id| id == reg_id);
+        if found {
+            Ok((state, reg_id))
+        } else {
+            Err(AwsResponse::error(
+                400,
+                "RepositoryNotFoundException",
+                &format!(
+                    "The repository with name '{}' does not exist in the registry with id '{}'",
+                    name, reg_id
+                ),
+            ))
+        }
+    }
+
+    fn initiate_layer_upload(&self, req: &AwsRequest) -> AwsResponse {
+        let name = req
+            .params
+            .get("repositoryName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let (state, registry_id) = match self.require_layer_repository(req, name) {
+            Ok(v) => v,
+            Err(e) => return e,
+        };
+        let upload_id = uuid::Uuid::new_v4().to_string();
+        let upload = EcrLayerUpload {
+            upload_id: upload_id.clone(),
+            repository_name: name.to_string(),
+            registry_id: registry_id.clone(),
+            layer_parts: Vec::new(),
+        };
+        state
+            .uploads
+            .write()
+            .entry(name.to_string())
+            .or_default()
+            .insert(upload_id.clone(), upload);
+        AwsResponse::json(
+            200,
+            json!({
+                "uploadId": upload_id,
+                "partSize": DEFAULT_LAYER_PART_SIZE,
+            }),
+        )
+    }
+
+    fn upload_layer_part(&self, req: &AwsRequest) -> AwsResponse {
+        let name = req
+            .params
+            .get("repositoryName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let upload_id = req
+            .params
+            .get("uploadId")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let part_first_byte = req
+            .params
+            .get("partFirstByte")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(-1);
+        // The JSON protocol carries the blob as a base64 string (botocore).
+        let blob = req
+            .params
+            .get("layerPartBlob")
+            .and_then(|v| v.as_str())
+            .map(|s| base64::engine::general_purpose::STANDARD.decode(s))
+            .transpose()
+            .unwrap_or_default()
+            .unwrap_or_default();
+        let (state, registry_id) = match self.require_layer_repository(req, name) {
+            Ok(v) => v,
+            Err(e) => return e,
+        };
+        let mut uploads = state.uploads.write();
+        let Some(upload) = uploads.get_mut(name).and_then(|m| m.get_mut(upload_id)) else {
+            return AwsResponse::error(
+                400,
+                "UploadNotFoundException",
+                &format!(
+                    "Upload with id '{}' could not be found for the repository with name '{}' in the registry with id '{}'",
+                    upload_id, name, registry_id
+                ),
+            );
+        };
+        // moto: parts must arrive contiguously; `partLastByte` is not checked
+        // because the blob length decides the assembled size.
+        if part_first_byte != upload.layer_parts.len() as i64 {
+            return AwsResponse::error(
+                400,
+                "InvalidLayerPartException",
+                &format!(
+                    "Invalid layer part upload for upload with id '{}' in the repository with name '{}' in the registry with id '{}'",
+                    upload_id, name, registry_id
+                ),
+            );
+        }
+        upload.layer_parts.extend_from_slice(&blob);
+        AwsResponse::json(
+            200,
+            json!({
+                "registryId": registry_id,
+                "repositoryName": name,
+                "uploadId": upload_id,
+                "lastByteReceived": upload.layer_parts.len() as i64 - 1,
+            }),
+        )
+    }
+
+    fn complete_layer_upload(&self, req: &AwsRequest) -> AwsResponse {
+        let name = req
+            .params
+            .get("repositoryName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let upload_id = req
+            .params
+            .get("uploadId")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let (state, registry_id) = match self.require_layer_repository(req, name) {
+            Ok(v) => v,
+            Err(e) => return e,
+        };
+        let Some(upload) = state
+            .uploads
+            .write()
+            .get_mut(name)
+            .and_then(|m| m.remove(upload_id))
+        else {
+            return AwsResponse::error(
+                400,
+                "UploadNotFoundException",
+                &format!(
+                    "Upload with id '{}' could not be found for the repository with name '{}' in the registry with id '{}'",
+                    upload_id, name, registry_id
+                ),
+            );
+        };
+        // Amazon ECR computes the layer digest from the uploaded bytes. Moto
+        // does the same (its `layerDigests` param is not validated) so that
+        // BatchCheckLayerAvailability can later find the layer.
+        let mut hasher = Sha256::new();
+        hasher.update(&upload.layer_parts);
+        let digest = format!("sha256:{}", hex::encode(hasher.finalize()));
+        state
+            .layers
+            .write()
+            .entry(name.to_string())
+            .or_default()
+            .insert(digest.clone(), upload.layer_parts.len() as i64);
+        AwsResponse::json(
+            200,
+            json!({
+                "registryId": registry_id,
+                "repositoryName": name,
+                "uploadId": upload_id,
+                "layerDigest": digest,
+            }),
+        )
+    }
 
     fn batch_check_layer(&self, req: &AwsRequest) -> AwsResponse {
         let repo_name = req
@@ -2056,5 +2250,243 @@ mod tests {
             json!({"repositoryName": "f", "filter": {"tagStatus": "BOGUS"}}),
         )));
         assert_eq!(bogus["imageIds"].as_array().unwrap().len(), 3);
+    }
+
+    /// JSON-protocol blobs travel as base64 (botocore encodes them).
+    fn blob_param(bytes: &[u8]) -> String {
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    }
+
+    fn initiate_upload(h: &EcrHandler, repo: &str) -> String {
+        let init = serde_json::from_str::<Value>(
+            &h.handle(make_req(
+                "InitiateLayerUpload",
+                json!({"repositoryName": repo}),
+            ))
+            .body,
+        )
+        .unwrap();
+        init["uploadId"].as_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn ecr_layer_upload_round_trip() {
+        let h = EcrHandler::new();
+        let parse = |resp: &AwsResponse| serde_json::from_str::<Value>(&resp.body).unwrap();
+        h.handle(make_req(
+            "CreateRepository",
+            json!({"repositoryName": "rt"}),
+        ));
+
+        let uid = initiate_upload(&h, "rt");
+        let p1 = b"layer-content-first";
+        let p2 = b"-and-second-half";
+        let up1 = parse(&h.handle(make_req(
+            "UploadLayerPart",
+            json!({
+                "repositoryName": "rt", "uploadId": uid,
+                "partFirstByte": 0, "partLastByte": p1.len() as i64 - 1,
+                "layerPartBlob": blob_param(p1),
+            }),
+        )));
+        assert_eq!(up1["lastByteReceived"], json!(p1.len() as i64 - 1));
+        parse(&h.handle(make_req(
+            "UploadLayerPart",
+            json!({
+                "repositoryName": "rt", "uploadId": uid,
+                "partFirstByte": p1.len() as i64,
+                "partLastByte": (p1.len() + p2.len()) as i64 - 1,
+                "layerPartBlob": blob_param(p2),
+            }),
+        )));
+
+        // A part that does not continue where the last one ended is rejected
+        // the way ECR does (moto upload_layer_part).
+        let overlap = h.handle(make_req(
+            "UploadLayerPart",
+            json!({
+                "repositoryName": "rt", "uploadId": uid,
+                "partFirstByte": 5, "partLastByte": 7,
+                "layerPartBlob": blob_param(b"xyz"),
+            }),
+        ));
+        assert_eq!(overlap.status, 400);
+        assert!(overlap.body.contains("InvalidLayerPartException"));
+
+        let expected = {
+            let mut hasher = Sha256::new();
+            hasher.update([p1.as_slice(), p2.as_slice()].concat());
+            format!("sha256:{}", hex::encode(hasher.finalize()))
+        };
+        let complete = parse(&h.handle(make_req(
+            "CompleteLayerUpload",
+            json!({
+                "repositoryName": "rt", "uploadId": uid,
+                // moto never validates this list; the digest comes from bytes.
+                "layerDigests": ["sha256:0000000000000000000000000000000000000000000000000000000000000000"],
+            }),
+        )));
+        assert_eq!(complete["layerDigest"], json!(expected));
+
+        // The upload id is consumed by completion.
+        let twice = h.handle(make_req(
+            "UploadLayerPart",
+            json!({
+                "repositoryName": "rt", "uploadId": uid,
+                "partFirstByte": 0, "partLastByte": 2,
+                "layerPartBlob": blob_param(b"xyz"),
+            }),
+        ));
+        assert_eq!(twice.status, 400);
+        assert!(twice.body.contains("UploadNotFoundException"));
+    }
+
+    #[test]
+    fn ecr_layer_upload_shapes_per_moto() {
+        let h = EcrHandler::new();
+        let parse = |resp: &AwsResponse| serde_json::from_str::<Value>(&resp.body).unwrap();
+        h.handle(make_req(
+            "CreateRepository",
+            json!({"repositoryName": "sh"}),
+        ));
+
+        // initiate: exactly {uploadId, partSize}; partSize is moto's
+        // DEFAULT_LAYER_PART_SIZE (10 MiB), uploadId is a dashed uuid4.
+        let init = parse(&h.handle(make_req(
+            "InitiateLayerUpload",
+            json!({"repositoryName": "sh"}),
+        )));
+        let init_keys: Vec<String> = init.as_object().unwrap().keys().cloned().collect();
+        assert_eq!(init_keys, vec!["partSize", "uploadId"]);
+        assert_eq!(init["partSize"], json!(10 * 1024 * 1024));
+        let uid = init["uploadId"].as_str().unwrap();
+        assert_eq!(uid.len(), 36);
+        assert_eq!(uid.matches('-').count(), 4);
+
+        // A zero-byte first part is accepted and reports lastByteReceived = -1
+        // (len(parts) - 1), then the real contiguous part builds on it.
+        let zst = parse(&h.handle(make_req(
+            "UploadLayerPart",
+            json!({
+                "repositoryName": "sh", "uploadId": uid,
+                "partFirstByte": 0, "partLastByte": 0, "layerPartBlob": "",
+            }),
+        )));
+        assert_eq!(
+            {
+                let mut k: Vec<String> = zst.as_object().unwrap().keys().cloned().collect();
+                k.sort();
+                k
+            },
+            vec![
+                "lastByteReceived",
+                "registryId",
+                "repositoryName",
+                "uploadId"
+            ]
+        );
+        assert_eq!(zst["lastByteReceived"], json!(-1));
+        assert_eq!(zst["registryId"], json!("123456789012"));
+        assert_eq!(zst["repositoryName"], json!("sh"));
+        assert_eq!(zst["uploadId"], json!(uid));
+
+        let blob = b"eight-bytes";
+        let up = parse(&h.handle(make_req(
+            "UploadLayerPart",
+            json!({
+                "repositoryName": "sh", "uploadId": uid,
+                "partFirstByte": 0, "partLastByte": blob.len() as i64 - 1,
+                "layerPartBlob": blob_param(blob),
+            }),
+        )));
+        assert_eq!(up["lastByteReceived"], json!(blob.len() as i64 - 1));
+
+        // complete: exactly {registryId, repositoryName, uploadId, layerDigest}
+        let expected = {
+            let mut hasher = Sha256::new();
+            hasher.update(blob);
+            format!("sha256:{}", hex::encode(hasher.finalize()))
+        };
+        let comp = parse(&h.handle(make_req(
+            "CompleteLayerUpload",
+            json!({
+                "repositoryName": "sh", "uploadId": uid, "layerDigests": [],
+            }),
+        )));
+        let mut comp_keys: Vec<String> = comp.as_object().unwrap().keys().cloned().collect();
+        comp_keys.sort();
+        assert_eq!(
+            comp_keys,
+            vec!["layerDigest", "registryId", "repositoryName", "uploadId"]
+        );
+        assert_eq!(comp["layerDigest"], json!(expected));
+        assert_eq!(comp["uploadId"], json!(uid));
+    }
+
+    #[test]
+    fn ecr_unknown_repo_errors() {
+        let h = EcrHandler::new();
+        h.handle(make_req(
+            "CreateRepository",
+            json!({"repositoryName": "real"}),
+        ));
+
+        // All three layer-upload ops route through moto's `_get_repository`
+        // and name the requested repository and registry in the error.
+        for op in [
+            "InitiateLayerUpload",
+            "UploadLayerPart",
+            "CompleteLayerUpload",
+        ] {
+            let resp = h.handle(make_req(
+                op,
+                json!({
+                    "repositoryName": "ghost",
+                    "uploadId": "0e6d92fb-0000-4000-8000-000000000000",
+                }),
+            ));
+            assert_eq!(resp.status, 400, "{op}");
+            assert!(resp.body.contains("RepositoryNotFoundException"), "{op}");
+            assert!(
+                resp.body.contains(
+                    "The repository with name 'ghost' does not exist in the registry with id '123456789012'"
+                ),
+                "{}: {}",
+                op,
+                resp.body
+            );
+        }
+
+        // An explicit registryId mismatch reports the requested registry id.
+        let ghost_registry = h.handle(make_req(
+            "InitiateLayerUpload",
+            json!({"repositoryName": "real", "registryId": "999999999999"}),
+        ));
+        assert!(ghost_registry
+            .body
+            .contains("in the registry with id '999999999999'"));
+
+        // Unknown upload ids on an existing repository.
+        let no_upload = h.handle(make_req(
+            "UploadLayerPart",
+            json!({
+                "repositoryName": "real", "uploadId": "0e6d92fb-0000-4000-8000-000000000000",
+                "partFirstByte": 0, "partLastByte": 2, "layerPartBlob": blob_param(b"abc"),
+            }),
+        ));
+        assert_eq!(no_upload.status, 400);
+        assert!(no_upload
+            .body
+            .contains("Upload with id '0e6d92fb-0000-4000-8000-000000000000' could not be found"));
+        let no_upload_complete = h.handle(make_req(
+            "CompleteLayerUpload",
+            json!({
+                "repositoryName": "real",
+                "uploadId": "0e6d92fb-0000-4000-8000-000000000000",
+                "layerDigests": [],
+            }),
+        ));
+        assert_eq!(no_upload_complete.status, 400);
+        assert!(no_upload_complete.body.contains("UploadNotFoundException"));
     }
 }

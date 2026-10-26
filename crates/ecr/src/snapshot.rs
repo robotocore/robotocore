@@ -28,6 +28,23 @@ pub(crate) mod arc_rw {
     }
 }
 
+/// `Vec<u8>` as a base64 string (keeps blob-heavy state compact in snapshots).
+pub(crate) mod b64 {
+    use base64::Engine;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(v: &Vec<u8>, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&base64::engine::general_purpose::STANDARD.encode(v))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
+        let text = String::deserialize(d)?;
+        base64::engine::general_purpose::STANDARD
+            .decode(text.as_bytes())
+            .map_err(serde::de::Error::custom)
+    }
+}
+
 /// Replace one store's contents in place from `v`, preserving `Arc` identity.
 fn store_restore_json(st: &EcrState, v: &Value) {
     let restored: EcrState = serde_json::from_value(v.clone()).unwrap_or_default();
@@ -38,6 +55,8 @@ fn store_restore_json(st: &EcrState, v: &Value) {
     }
     swap!(repositories);
     swap!(images);
+    swap!(uploads);
+    swap!(layers);
     swap!(repository_policies);
     swap!(lifecycle_policies);
     swap!(tags);
