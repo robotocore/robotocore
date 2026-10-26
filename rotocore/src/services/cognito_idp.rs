@@ -1008,15 +1008,14 @@ fn authenticate_user(
     }
     if user["UserStatus"].as_str() == Some("FORCE_CHANGE_PASSWORD") {
         // moto stores the challenge session (models.py `self.sessions[...]`)
-        // so RespondToAuthChallenge can pick it up later.
+        // so RespondToAuthChallenge can pick it up later. Its initiated
+        // challenge carries just the internal USERNAME
+        // (fork models.py:2121-2126).
         record_auth_event(s, pool_id, username, true);
         let session = session_register(s, username, pool_id);
         return ok_json(&json!({
             "ChallengeName": "NEW_PASSWORD_REQUIRED",
-            "ChallengeParameters": {
-                "USER_ID_FOR_SRP": username,
-                "requiredAttributes": "[]",
-            },
+            "ChallengeParameters": { "USERNAME": username },
             "Session": session,
         }));
     }
@@ -1028,10 +1027,10 @@ fn authenticate_user(
     let tokens = issue_tokens(&issuer, &sub, client_id, username);
     record_auth_event(s, pool_id, username, true);
     track_refresh_token(s, pool_id, username, &tokens);
-    ok_json(&json!({
-        "AuthenticationResult": tokens,
-        "ChallengeParameters": {},
-    }))
+    // moto's public USER_PASSWORD arm returns AuthenticationResult only —
+    // the `ChallengeParameters: {}` pair is `_log_user_in`'s, which the
+    // admin arms use (fork models.py:2155-2162 vs 1468-1497).
+    ok_json(&json!({ "AuthenticationResult": tokens }))
 }
 
 /// moto's AuthFlow enum (fork models.py:59-67) in declaration order — the
@@ -2139,6 +2138,8 @@ fn admin_user_global_sign_out(s: &mut State, p: &Value) -> Response {
     if pl.users.iter().all(|(k, _)| *k != username) {
         return user_missing(&username);
     }
+    // moto: `user_pool.sign_out(username)` (fork models.py:1887-1890).
+    revoke_refresh_grants(s, &pool_id, &username);
     ok_json(&json!({}))
 }
 
@@ -2147,10 +2148,16 @@ fn global_sign_out(s: &mut State, p: &Value) -> Response {
     if access_token.is_empty() {
         return err("NotAuthorizedException", "Missing access token.");
     }
-    match user_from_token(s, access_token) {
-        Ok(_) => ok_json(&json!({})),
-        Err(e) => e,
-    }
+    let (pool_id, username) = match user_from_token(s, access_token) {
+        Ok((user, pool_id)) => (
+            pool_id,
+            user["Username"].as_str().unwrap_or_default().to_string(),
+        ),
+        Err(e) => return e,
+    };
+    // moto: `user_pool.sign_out(username)` (fork models.py:1893-1899).
+    revoke_refresh_grants(s, &pool_id, &username);
+    ok_json(&json!({}))
 }
 
 fn update_user_attributes(s: &mut State, p: &Value) -> Response {
@@ -2916,6 +2923,16 @@ fn track_refresh_token(s: &mut State, pool_id: &str, username: &str, tokens: &Va
         s.refresh_tokens
             .push((token.to_string(), pool_id.to_string(), username.to_string()));
     }
+}
+
+/// moto's `CognitoIdpUserPool.sign_out` (fork models.py:673-682) kills every
+/// grant the user holds: refresh tokens are tombstoned to `None` and the
+/// access-token entries are popped. The tombstone behaves like an absent
+/// grant — refresh flows reject with `Refresh Token has been revoked` — so
+/// the twin, which does not track access tokens, drops the user's grants.
+fn revoke_refresh_grants(s: &mut State, pool_id: &str, username: &str) {
+    s.refresh_tokens
+        .retain(|(_, pid, uname)| !(pid == pool_id && uname == username));
 }
 
 // ---------------------------------------------------------------------------
@@ -5117,6 +5134,228 @@ mod tests {
         r.account = acct;
         let b = body(&dispatch(&r).unwrap());
         assert_eq!(b["__type"], "NotAuthorizedException", "{b}");
+    }
+
+    #[test]
+    fn cognito_global_sign_out_revokes_refresh_tokens() {
+        // moto's GlobalSignOut / AdminUserGlobalSignOut reach
+        // CognitoIdpUserPool.sign_out (fork models.py:673-682, called from
+        // 1887-1900), which leaves every grant the user holds answering
+        // `Refresh Token has been revoked` (public wording) or the token
+        // echo (admin — NotAuthorizedError(refresh_token) from
+        // create_tokens_from_refresh_token).
+        let acct = scope();
+        let (pool_id, client_id) = confirmed_setup(acct, "gs-user");
+        let tokens = login_tokens(acct, &client_id, "gs-user");
+        let refresh = tokens["AuthenticationResult"]["RefreshToken"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let access = tokens["AuthenticationResult"]["AccessToken"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // A live grant refreshes before the sign-out...
+        let mut r = req(
+            "InitiateAuth",
+            json!({
+                "ClientId": &client_id, "AuthFlow": "REFRESH_TOKEN_AUTH",
+                "AuthParameters": {"REFRESH_TOKEN": &refresh},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert!(b["AuthenticationResult"]["AccessToken"].is_string(), "{b}");
+
+        // ...GlobalSignOut answers `{}` and kills it...
+        let mut r = req("GlobalSignOut", json!({"AccessToken": &access}));
+        r.account = acct;
+        assert_eq!(dispatch(&r).unwrap().status, 200);
+        let mut r = req(
+            "InitiateAuth",
+            json!({
+                "ClientId": &client_id, "AuthFlow": "REFRESH_TOKEN_AUTH",
+                "AuthParameters": {"REFRESH_TOKEN": &refresh},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "NotAuthorizedException", "{b}");
+        assert_eq!(b["message"], "Refresh Token has been revoked");
+
+        // ...including through the admin flavour, which echoes the token.
+        let mut r = req(
+            "AdminInitiateAuth",
+            json!({
+                "UserPoolId": &pool_id, "ClientId": &client_id,
+                "AuthFlow": "REFRESH_TOKEN_AUTH",
+                "AuthParameters": {"REFRESH_TOKEN": &refresh},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "NotAuthorizedException", "{b}");
+        assert_eq!(b["message"], refresh);
+
+        // A peer user's grant survives the revocation, and a repeat
+        // sign-out for a user with no grants still answers 200.
+        let mut r = req(
+            "AdminCreateUser",
+            json!({
+                "UserPoolId": &pool_id, "Username": "gs-peer",
+                "TemporaryPassword": "TempPass1!", "MessageAction": "SUPPRESS",
+            }),
+        );
+        r.account = acct;
+        assert_eq!(dispatch(&r).unwrap().status, 200);
+        let mut r = req(
+            "AdminSetUserPassword",
+            json!({
+                "UserPoolId": &pool_id, "Username": "gs-peer",
+                "Password": "Perm1!@A", "Permanent": true,
+            }),
+        );
+        r.account = acct;
+        assert_eq!(dispatch(&r).unwrap().status, 200);
+        let peer_tokens = login_tokens(acct, &client_id, "gs-peer");
+        let peer_refresh = peer_tokens["AuthenticationResult"]["RefreshToken"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let mut r = req(
+            "AdminUserGlobalSignOut",
+            json!({"UserPoolId": &pool_id, "Username": "gs-ghost"}),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["__type"], "UserNotFoundException", "{b}");
+        assert_eq!(b["message"], "User does not exist.");
+        let mut r = req(
+            "AdminUserGlobalSignOut",
+            json!({"UserPoolId": &pool_id, "Username": "gs-user"}),
+        );
+        r.account = acct;
+        assert_eq!(dispatch(&r).unwrap().status, 200);
+        let mut r = req(
+            "InitiateAuth",
+            json!({
+                "ClientId": &client_id, "AuthFlow": "REFRESH_TOKEN_AUTH",
+                "AuthParameters": {"REFRESH_TOKEN": peer_refresh},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert!(b["AuthenticationResult"]["AccessToken"].is_string(), "{b}");
+
+        // The admin-flavoured sign-out revokes through the public refresh
+        // flow as well: moto scopes the tombstones to the pool and user.
+        let mut r = req(
+            "AdminInitiateAuth",
+            json!({
+                "UserPoolId": &pool_id, "ClientId": &client_id,
+                "AuthFlow": "ADMIN_USER_PASSWORD_AUTH",
+                "AuthParameters": {"USERNAME": "gs-peer", "PASSWORD": "Perm1!@A"},
+            }),
+        );
+        r.account = acct;
+        let admin_tokens = body(&dispatch(&r).unwrap());
+        assert!(
+            admin_tokens["AuthenticationResult"]["RefreshToken"].is_string(),
+            "{admin_tokens}"
+        );
+        let admin_refresh = admin_tokens["AuthenticationResult"]["RefreshToken"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let mut r = req(
+            "AdminUserGlobalSignOut",
+            json!({"UserPoolId": &pool_id, "Username": "gs-peer"}),
+        );
+        r.account = acct;
+        assert_eq!(dispatch(&r).unwrap().status, 200);
+        for (op, payload, expected) in [
+            (
+                "AdminInitiateAuth",
+                json!({
+                    "UserPoolId": &pool_id, "ClientId": &client_id,
+                    "AuthFlow": "REFRESH_TOKEN_AUTH",
+                    "AuthParameters": {"REFRESH_TOKEN": admin_refresh},
+                }),
+                admin_refresh.clone(),
+            ),
+            (
+                "InitiateAuth",
+                json!({
+                    "ClientId": &client_id, "AuthFlow": "REFRESH_TOKEN_AUTH",
+                    "AuthParameters": {"REFRESH_TOKEN": admin_refresh},
+                }),
+                "Refresh Token has been revoked".to_string(),
+            ),
+        ] {
+            assert_eq!(payload["UserPoolId"].is_null(), op == "InitiateAuth");
+            let mut r = req(op, payload);
+            r.account = acct;
+            let b = body(&dispatch(&r).unwrap());
+            assert_eq!(b["__type"], "NotAuthorizedException", "{op}: {b}");
+            assert_eq!(b["message"], expected, "{op}");
+        }
+    }
+
+    #[test]
+    fn cognito_user_password_auth_returns_authentication_result_only() {
+        // moto's public USER_PASSWORD success carries AuthenticationResult
+        // only (fork models.py:2155-2162) — `ChallengeParameters: {}` is
+        // _log_user_in's shape, sent by the admin arms, not the public login.
+        let acct = scope();
+        let (_pool_id, client_id) = confirmed_setup(acct, "upa-user");
+        let b = login_tokens(acct, &client_id, "upa-user");
+        assert!(b["AuthenticationResult"]["AccessToken"].is_string(), "{b}");
+        assert!(b["AuthenticationResult"]["RefreshToken"].is_string(), "{b}");
+        assert!(b["ChallengeName"].is_null(), "{b}");
+        assert!(b["Session"].is_null(), "{b}");
+        assert!(b["ChallengeParameters"].is_null(), "{b}");
+    }
+
+    #[test]
+    fn cognito_user_password_auth_force_challenge_parameters() {
+        // moto's FORCE_CHANGE_PASSWORD initiate returns ChallengeParameters
+        // {"USERNAME": user.username} only — no USER_ID_FOR_SRP, no
+        // requiredAttributes (fork models.py:2121-2126).
+        let acct = scope();
+        let (_pool_id, client_id) = password_verifier_setup(acct, &["fcp-user"]);
+        let mut r = req(
+            "InitiateAuth",
+            json!({
+                "ClientId": &client_id,
+                "AuthFlow": "USER_PASSWORD_AUTH",
+                "AuthParameters": {"USERNAME": "fcp-user", "PASSWORD": "TempPass1!"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert_eq!(b["ChallengeName"], "NEW_PASSWORD_REQUIRED", "{b}");
+        assert_eq!(
+            b["ChallengeParameters"],
+            json!({"USERNAME": "fcp-user"}),
+            "{b}"
+        );
+        assert!(b["Session"].is_string(), "{b}");
+
+        // The session still completes the challenge into tokens.
+        let session = b["Session"].as_str().unwrap().to_string();
+        let mut r = req(
+            "RespondToAuthChallenge",
+            json!({
+                "ClientId": &client_id,
+                "ChallengeName": "NEW_PASSWORD_REQUIRED",
+                "Session": &session,
+                "ChallengeResponses": {"USERNAME": "fcp-user", "NEW_PASSWORD": "NewPerm1!"},
+            }),
+        );
+        r.account = acct;
+        let b = body(&dispatch(&r).unwrap());
+        assert!(b["AuthenticationResult"]["AccessToken"].is_string(), "{b}");
     }
 
     #[test]
