@@ -308,7 +308,7 @@ impl IamHandler {
     fn create_user(&self, req: &AwsRequest) -> AwsResponse {
         let username = get_param(req, "UserName").unwrap_or_default();
         if username.is_empty() {
-            return err(400, "MissingParameterValue", "UserName is required");
+            return err(400, "ValidationError", "UserName is required");
         }
         let path = get_param(req, "Path").unwrap_or_else(|| "/".into());
         let state = self.get_state(req.account);
@@ -730,7 +730,7 @@ impl IamHandler {
         let role_name = get_param(req, "RoleName").unwrap_or_default();
         let assume_policy = get_param(req, "AssumeRolePolicyDocument").unwrap_or_default();
         if role_name.is_empty() {
-            return err(400, "MissingParameterValue", "RoleName is required");
+            return err(400, "ValidationError", "RoleName is required");
         }
         let path = get_param(req, "Path").unwrap_or_else(|| "/".into());
         let description = get_param(req, "Description").unwrap_or_default();
@@ -1027,7 +1027,7 @@ impl IamHandler {
     fn create_group(&self, req: &AwsRequest) -> AwsResponse {
         let group_name = get_param(req, "GroupName").unwrap_or_default();
         if group_name.is_empty() {
-            return err(400, "MissingParameterValue", "GroupName is required");
+            return err(400, "ValidationError", "GroupName is required");
         }
         let path = get_param(req, "Path").unwrap_or_else(|| "/".into());
         let state = self.get_state(req.account);
@@ -1395,7 +1395,7 @@ impl IamHandler {
     fn create_policy(&self, req: &AwsRequest) -> AwsResponse {
         let policy_name = get_param(req, "PolicyName").unwrap_or_default();
         if policy_name.is_empty() {
-            return err(400, "MissingParameterValue", "PolicyName is required");
+            return err(400, "ValidationError", "PolicyName is required");
         }
         let path = get_param(req, "Path").unwrap_or_else(|| "/".into());
         let description = get_param(req, "Description").unwrap_or_default();
@@ -2020,11 +2020,7 @@ impl IamHandler {
     fn create_virtual_mfa_device(&self, req: &AwsRequest) -> AwsResponse {
         let name = get_param(req, "VirtualMFADeviceName").unwrap_or_default();
         if name.is_empty() {
-            return err(
-                400,
-                "MissingParameterValue",
-                "VirtualMFADeviceName is required",
-            );
+            return err(400, "ValidationError", "VirtualMFADeviceName is required");
         }
         let mut path = get_param(req, "Path").unwrap_or_else(|| "/".into());
         if path.is_empty() {
@@ -2345,7 +2341,7 @@ impl IamHandler {
         let name = get_param(req, "Name").unwrap_or_else(|| "unknown".into());
         let metadata = get_param(req, "SAMLMetadataDocument").unwrap_or_default();
         if name.is_empty() {
-            return err(400, "MissingParameterValue", "Name is required");
+            return err(400, "ValidationError", "Name is required");
         }
         let state = self.get_state(req.account);
         if state.saml_providers.read().contains_key(&name) {
@@ -2523,7 +2519,7 @@ impl IamHandler {
     fn create_oidc_provider(&self, req: &AwsRequest) -> AwsResponse {
         let url_full = get_param(req, "Url").unwrap_or_default();
         if url_full.is_empty() {
-            return err(400, "MissingParameterValue", "Url is required");
+            return err(400, "ValidationError", "Url is required");
         }
         let thumbprints = string_vec(req, "ThumbprintList");
         let client_ids = string_vec(req, "ClientIDList");
@@ -2762,11 +2758,7 @@ impl IamHandler {
     fn create_instance_profile(&self, req: &AwsRequest) -> AwsResponse {
         let name = get_param(req, "InstanceProfileName").unwrap_or_default();
         if name.is_empty() {
-            return err(
-                400,
-                "MissingParameterValue",
-                "InstanceProfileName is required",
-            );
+            return err(400, "ValidationError", "InstanceProfileName is required");
         }
         let state = self.get_state(req.account);
         if state.instance_profiles.read().contains_key(&name) {
@@ -3083,11 +3075,7 @@ impl IamHandler {
     fn upload_server_certificate(&self, req: &AwsRequest) -> AwsResponse {
         let name = get_param(req, "ServerCertificateName").unwrap_or_default();
         if name.is_empty() {
-            return err(
-                400,
-                "MissingParameterValue",
-                "ServerCertificateName is required",
-            );
+            return err(400, "ValidationError", "ServerCertificateName is required");
         }
         let body = get_param(req, "CertificateBody").unwrap_or_default();
         let private_key = get_param(req, "PrivateKey").unwrap_or_default();
@@ -3539,7 +3527,7 @@ impl IamHandler {
     fn create_service_linked_role(&self, req: &AwsRequest) -> AwsResponse {
         let service_name = get_param(req, "AWSServiceName").unwrap_or_default();
         if service_name.is_empty() {
-            return err(400, "MissingParameterValue", "AWSServiceName is required");
+            return err(400, "ValidationError", "AWSServiceName is required");
         }
         let description = get_param(req, "Description").unwrap_or_default();
         let suffix = get_param(req, "CustomSuffix").unwrap_or_default();
@@ -3662,7 +3650,7 @@ impl IamHandler {
         let state = self.get_state(req.account);
         let actions = string_vec(req, "ActionNames");
         if actions.is_empty() {
-            return err(400, "MissingParameterValue", "ActionNames is required");
+            return err(400, "ValidationError", "ActionNames is required");
         }
         // Policy documents: custom inputs or the principal's attached/in-
         // line policies. Unparseable documents are skipped (they simply
@@ -4443,6 +4431,24 @@ mod tests {
         let resp = handler.handle(make_req("GetUser", json!({ "UserName": "testuser" })));
         assert_eq!(resp.status, 200);
         assert!(resp.body.contains("testuser"));
+    }
+
+    /// moto's IAM canon for missing required values is `ValidationError`
+    /// (moto/iam/exceptions.py); the fabricated MissingParameterValue code is
+    /// gone from every create-with-required-name op.
+    #[test]
+    fn test_missing_required_param_is_validation_error() {
+        let handler = IamHandler::new();
+        for op in ["CreateUser", "CreateRole", "CreateGroup", "CreatePolicy"] {
+            let resp = handler.handle(make_req(op, json!({})));
+            assert_eq!(resp.status, 400, "op={op}");
+            assert!(
+                resp.body.contains("<Code>ValidationError</Code>"),
+                "op={op} body={}",
+                resp.body
+            );
+            assert!(!resp.body.contains("MissingParameterValue"), "op={op}");
+        }
     }
 
     #[test]
