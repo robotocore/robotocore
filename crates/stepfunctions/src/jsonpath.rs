@@ -870,6 +870,14 @@ fn slice_indices(
         // loop would never advance.
         return Vec::new();
     }
+    // A huge step (`$a[1:2:1e300]` saturates the cast) overflowed the
+    // running index `i`: debug builds panicked on `i += step`, release
+    // builds wrapped and indexed garbage. Clamp the effective magnitude to
+    // the collection length so a stride from an in-range index cannot wrap,
+    // and stride with saturating adds — no panic or wrap in either build
+    // profile.
+    let bound = len.min(i64::MAX as usize) as i64;
+    let step = step.clamp(-bound, bound);
     let adjust = |v: f64| -> i64 {
         let i = v.floor() as i64;
         if i < 0 {
@@ -885,7 +893,7 @@ fn slice_indices(
         let mut i = s;
         while i < e {
             out.push(i as usize);
-            i += step;
+            i = i.saturating_add(step);
         }
     } else {
         let s = start
@@ -896,7 +904,7 @@ fn slice_indices(
         let mut i = s;
         while i > e {
             out.push(i as usize);
-            i += step;
+            i = i.saturating_add(step);
         }
     }
     out
@@ -1477,6 +1485,23 @@ mod tests {
         for parens in [130usize, 1_000, 5_000] {
             assert_eq!(resolve(&parenthesised(parens), &input), None, "{parens}");
         }
+    }
+
+    #[test]
+    fn huge_step_slice_yields_a_result_without_overflowing() {
+        // `$.a[1:2:1e300]` used to overflow the running index (`i += step`
+        // with the step saturated to i64::MAX): a panic in debug builds and
+        // wrap-to-garbage indexing in release. The effective magnitude is
+        // clamped and strides saturating, so every huge-step slice —
+        // positive and negative alike — returns one element (the start)
+        // without panicking in either build profile.
+        let input = json!({"a": [10, 20, 30, 40]});
+        assert_eq!(resolve("$.a[1:2:1e300]", &input), Some(json!([20])));
+        assert_eq!(resolve("$.a[0:4:1e300]", &input), Some(json!([10])));
+        assert_eq!(resolve("$.a[-4::1e300]", &input), Some(json!([10])));
+        assert_eq!(resolve("$.a[::-1e300]", &input), Some(json!([40])));
+        // Sanity: one-integer steps still stride every element.
+        assert_eq!(resolve("$.a[0:4:1]", &input), Some(json!([10, 20, 30, 40])));
     }
 
     #[test]
