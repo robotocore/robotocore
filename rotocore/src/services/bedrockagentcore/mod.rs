@@ -665,11 +665,9 @@ pub(crate) struct AgentCoreStore {
     memories: BTreeMap<String, Memory>,
     /// ARN -> {tag key: value} — moto's TaggingService.
     tags: BTreeMap<String, BTreeMap<String, Value>>,
-    // --- data plane (consumed by the #371 data-plane commit) ---
-    #[allow(dead_code)]
+    // --- data plane ---
     events: BTreeMap<(String, String, String), Vec<EventRecord>>,
     /// (codeInterpreterId, sessionId) -> session
-    #[allow(dead_code)]
     code_interpreter_sessions: BTreeMap<(String, String), CodeInterpreterSession>,
 }
 
@@ -1619,7 +1617,6 @@ impl CodeInterpreter {
     }
 }
 
-#[allow(dead_code)]
 pub(crate) struct CodeInterpreterSession {
     pub ci_id: String,
     pub session_id: String,
@@ -1631,7 +1628,6 @@ pub(crate) struct CodeInterpreterSession {
     pub last_updated_at: String,
 }
 
-#[allow(dead_code)]
 impl CodeInterpreterSession {
     pub fn new(ci_id: &str, body: &Value) -> Self {
         CodeInterpreterSession {
@@ -1674,7 +1670,6 @@ impl CodeInterpreterSession {
 }
 
 #[derive(Clone)]
-#[allow(dead_code)]
 pub(crate) struct EventRecord {
     pub memory_id: String,
     pub actor_id: String,
@@ -1688,7 +1683,6 @@ pub(crate) struct EventRecord {
     pub metadata: Value,
 }
 
-#[allow(dead_code)]
 impl EventRecord {
     /// moto's `Event.to_dict` — payload only when requested, metadata only
     /// when truthy.

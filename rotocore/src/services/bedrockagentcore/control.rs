@@ -10,7 +10,7 @@
 //! Unmodeled control operations answer the generic modeled 501.
 
 use super::*;
-use crate::proto::query_map;
+use crate::proto::{query_map, url_decode};
 
 // ---------------------------------------------------------------------------
 // dispatch
@@ -59,7 +59,9 @@ pub(crate) fn route(req: &Request, op: &str, st: &mut AgentCoreStore) -> Respons
 /// the fork's `tag_resource` stores whatever ARN it is given).
 pub(crate) fn route_tags(req: &Request, op: &str, st: &mut AgentCoreStore) -> Response {
     let body = parse_body(req);
-    let arn = req.path.trim_start_matches("/tags/").to_string();
+    // moto: resource_arn = unquote(self.path.split("/tags/")[-1]) — botocore
+    // sends the ARN percent-encoded; the sibling module decodes it too.
+    let arn = url_decode(req.path.trim_start_matches("/tags/"));
     match op {
         "TagResource" => {
             if let Some(resp) = require(&body, &["tags"]) {
@@ -221,7 +223,7 @@ fn get_code_interpreter(
         return ci_not_found(&id);
     };
     tick_ready(record);
-    ok(json!({ "codeInterpreter": record.to_dict(region, account) }))
+    ok(record.to_dict(region, account))
 }
 
 fn delete_code_interpreter(req: &Request, st: &mut AgentCoreStore) -> Response {
@@ -852,16 +854,10 @@ mod tests {
             json!({}),
             account,
         )));
-        assert_eq!(got["codeInterpreter"]["status"], "READY");
-        assert_eq!(got["codeInterpreter"]["name"], "my-interp");
-        assert_eq!(
-            got["codeInterpreter"]["networkConfiguration"]["networkMode"],
-            "SANDBOX"
-        );
-        let ci_arn = got["codeInterpreter"]["codeInterpreterArn"]
-            .as_str()
-            .unwrap()
-            .to_string();
+        assert_eq!(got["status"], "READY");
+        assert_eq!(got["name"], "my-interp");
+        assert_eq!(got["networkConfiguration"]["networkMode"], "SANDBOX");
+        let ci_arn = got["codeInterpreterArn"].as_str().unwrap().to_string();
 
         // tags ride the control plane's ARN-greedy /tags/{arn} routes
         assert_eq!(
@@ -940,7 +936,7 @@ mod tests {
             json!({}),
             account,
         )));
-        assert_eq!(system["codeInterpreter"]["status"], "READY");
+        assert_eq!(system["status"], "READY");
         let sys_delete = dispatch(&reqacct(
             "DELETE",
             "/code-interpreters/aws.codeinterpreter.v1",
@@ -1355,5 +1351,39 @@ mod tests {
         );
         // the data plane answers through the same arm (its own handlers
         // land with the data-plane commit; see data.rs tests)
+    }
+
+    // botocore percent-encodes the {resourceArn} URI label; create-time tag
+    // rows are keyed by the decoded ARN (caught live against a boto3 client —
+    // the encoded lookup answered the empty tags map).
+    #[test]
+    fn tags_resolve_through_percent_encoded_arns() {
+        let account = 999000000778u64;
+        let mk = |method: &str, path: &str, body: Value| Request {
+            service: "bedrock-agentcore".into(),
+            operation: String::new(),
+            method: method.into(),
+            path: path.into(),
+            query_string: String::new(),
+            headers: std::collections::HashMap::new(),
+            body: bytes::Bytes::from(serde_json::to_vec(&body).unwrap()),
+            account,
+            region: "us-east-1".into(),
+        };
+        let created = dispatch(&mk(
+            "PUT",
+            "/code-interpreters",
+            serde_json::json!({"name": "wtest", "networkConfiguration": {"networkMode": "SANDBOX"}, "tags": {"env": "x"}, "clientToken": "1e9e8145-401f-450c-81f8-56c0c7b36ba2"}),
+        ))
+        .unwrap();
+        let saved = serde_json::from_slice::<Value>(&created.body).unwrap();
+        let arn = saved["codeInterpreterArn"]
+            .as_str()
+            .unwrap()
+            .replace(':', "%3A")
+            .replace('/', "%2F");
+        let listed = dispatch(&mk("GET", &format!("/tags/{arn}"), json!({}))).unwrap();
+        let out = serde_json::from_slice::<Value>(&listed.body).unwrap();
+        assert_eq!(out["tags"]["env"], "x");
     }
 }
