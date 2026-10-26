@@ -246,6 +246,14 @@ pub struct IndexDefinition {
     pub projection: String,
     #[serde(default)]
     pub non_key_attributes: Vec<String>,
+    /// Per-index ProvisionedThroughput, absent for an on-demand index (LSI
+    /// specs never carry one). Drives the GSI WarmThroughput value selection
+    /// mirroring moto's `GlobalSecondaryIndex.__init__`: a provisioned GSI
+    /// advertises its own units, an on-demand GSI moto's 12000/4000 defaults.
+    #[serde(default)]
+    pub provisioned_rcu: Option<i64>,
+    #[serde(default)]
+    pub provisioned_wcu: Option<i64>,
 }
 
 impl IndexDefinition {
