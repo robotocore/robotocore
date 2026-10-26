@@ -68,12 +68,16 @@ fn matches(pattern: &Map<String, Value>, event: &Map<String, Value>) -> bool {
                 let ok = match event_value {
                     Value::Object(obj) => matches(sub_pattern, obj),
                     Value::Array(arr) => array_objects_match(sub_pattern, arr),
-                    // An explicit null ancestor behaves like an absent
-                    // one for moto: the flattened event stores
-                    // `"detail": null` as a terminal leaf and the
-                    // pattern walk beneath it resolves UNDEFINED.
-                    Value::Null => pattern_matches_undefined(sub_pattern),
-                    _ => false,
+                    // Absent keys never reach this arm. For every other
+                    // non-object ancestor — an explicit null or a scalar
+                    // (Number/String/Bool) — moto's `_flatten_dict`
+                    // (models.py:971-977) stores the ancestor itself as a
+                    // terminal leaf and `_does_event_match` resolves every
+                    // leaf beneath it as UNDEFINED (upstream PR #10360
+                    // preserves this walk even with array matching), so
+                    // the subtree passes only through its `{"exists":
+                    // false}` filters, exactly like behind an absent key.
+                    _ => pattern_matches_undefined(sub_pattern),
                 };
                 if !ok {
                     return false;
@@ -646,6 +650,53 @@ mod tests {
         assert!(!matches_pattern(
             &json!({"detail": {"a": {"b": [{"exists": false}]}}}),
             &json!({"detail": {"a": {"b": "x"}}})
+        ));
+    }
+
+    // -- scalar ancestors under nested patterns (round-2 finding 1, HIGH) --
+    //
+    // moto `_flatten_dict` (models.py:971-977) stores a scalar/null
+    // ancestor as a terminal leaf of the flattened event and the dotted
+    // pattern walk resolves every leaf beneath it as UNDEFINED —
+    // upstream PR #10360 preserves this. A nested pattern is therefore
+    // satisfied beneath a scalar exactly as behind an absent key: only
+    // its `{"exists": false}` filters can see the subtree.
+
+    #[test]
+    fn scalar_ancestor_under_nested_pattern_walks_undefined() {
+        let pattern = json!({"detail": {"state": [{"exists": false}]}});
+        // The three scalar shapes all resolve leaves as UNDEFINED and
+        // pass the exists:false filter (moto: True, live-verified).
+        assert!(matches_pattern(&pattern, &json!({"detail": "x"})));
+        assert!(matches_pattern(&pattern, &json!({"detail": 5})));
+        assert!(matches_pattern(&pattern, &json!({"detail": true})));
+    }
+
+    #[test]
+    fn scalar_ancestor_rejects_filters_that_need_a_value() {
+        // Without an escape exists:false every leaf underneath is
+        // UNDEFINED and the pattern cannot match (moto: False).
+        assert!(!matches_pattern(
+            &json!({"detail": {"state": ["running"]}}),
+            &json!({"detail": "x"})
+        ));
+        assert!(!matches_pattern(
+            &json!({"detail": {"state": [{"exists": true}]}}),
+            &json!({"detail": 5})
+        ));
+        // Deeper subtrees walk the same way.
+        assert!(matches_pattern(
+            &json!({"detail": {"state": {"a": [{"exists": false}]}}}),
+            &json!({"detail": true})
+        ));
+        assert!(!matches_pattern(
+            &json!({"detail": {"state": {"a": [{"exists": true}]}}}),
+            &json!({"detail": "x"})
+        ));
+        // A named value filter under a scalar ancestor sees nothing.
+        assert!(!matches_pattern(
+            &json!({"detail": {"state": [{"prefix": "run"}]}}),
+            &json!({"detail": "running"})
         ));
     }
 
