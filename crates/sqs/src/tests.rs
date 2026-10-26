@@ -3830,3 +3830,208 @@ fn receive_bounds_wait_time_seconds() {
         resp.body
     );
 }
+
+/// Re-adjudication of the round-1 MotoCrash pin for a MISSING top-level
+/// ChangeMessageVisibility ReceiptHandle (round-2 could not reproduce the
+/// 500). Live-verified verdict against the pinned fork: moto does NOT
+/// crash — the backend matches `None in all_receipt_handles`, and every
+/// extant moto Message keeps its pre-receive None in that list, so the
+/// FIRST message in queue order wins and the visibility bump applies
+/// (200 OK, MessageNotVisible counter reflects the bump; a ghost queue
+/// still answers NonExistentQueue first). The MotoCrash answer is removed.
+#[test]
+fn cmv_missing_receipt_handle_matches_first_message() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "cmv-none-handle");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "t"}),
+    ));
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({"QueueUrl": &queue_url, "VisibilityTimeout": 300}),
+    ));
+    assert_eq!(
+        resp.status, 200,
+        "a missing handle matches the first message like moto, got {}",
+        resp.body
+    );
+    // The 300s bump silenced the first message: the short poll finds
+    // nothing. (message_counts() keeps never-received messages in the
+    // visible bucket — its is_inflight gate predates this lane — so the
+    // receive wire shape is the discriminating check here.)
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    assert!(
+        serde_json::from_str::<Value>(&recv.body)
+            .expect("json")
+            .get("Messages")
+            .is_none(),
+        "the bumped message must be invisible, got {}",
+        recv.body
+    );
+
+    // Release the bump through the same None-mode (vis 0), then run the
+    // with-handle arm: the same 200 flows for the real handle
+    // (live-verified 54).
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({"QueueUrl": &queue_url, "VisibilityTimeout": 0}),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1, "VisibilityTimeout": 0}),
+    ));
+    let handle: String = serde_json::from_str::<Value>(&recv.body).expect("json")["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .expect("handle")
+        .to_string();
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({"QueueUrl": &queue_url, "ReceiptHandle": handle, "VisibilityTimeout": 10}),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(
+        counts.1, 1,
+        "the with-handle bump kept the received message in flight"
+    );
+}
+
+/// The None-mode match only exists while a message is present: on an
+/// empty (or all-unmatched) queue moto's loop falls out to the bare
+/// `raise ReceiptHandleIsInvalid` (live-verified B1: 400 with ". The
+/// input receipt handle is invalid." wording).
+#[test]
+fn cmv_missing_receipt_handle_empty_queue_is_invalid() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "cmv-none-empty");
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({"QueueUrl": &queue_url, "VisibilityTimeout": 30}),
+    ));
+    assert_eq!(resp.status, 400, "got {}", resp.body);
+    assert!(
+        resp.body.contains("ReceiptHandleIsInvalid"),
+        "got {}",
+        resp.body
+    );
+    assert!(
+        resp.body.contains("The input receipt handle is invalid."),
+        "got {}",
+        resp.body
+    );
+}
+
+/// The total rule runs on the message the None-mode match found
+/// (live-verified C1: a missing handle with vis=43200 on an aged message
+/// answers the Total-rule 400, not 200).
+#[test]
+fn cmv_missing_receipt_handle_runs_total_rule() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "cmv-none-total");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "t"}),
+    ));
+    age_first_message(&handler, &queue_url, 100);
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({"QueueUrl": &queue_url, "VisibilityTimeout": 43200}),
+    ));
+    assert_eq!(resp.status, 400, "got {}", resp.body);
+    assert!(
+        resp.body.contains(
+            "Reason: Total VisibilityTimeout for the message is beyond the limit [43200 seconds]"
+        ),
+        "got {}",
+        resp.body
+    );
+}
+
+/// Ordering stands: the queue resolution precedes the handle match, so a
+/// missing handle on a ghost queue answers NonExistentQueue, not the moto
+/// None-mode 200 nor an invalid-handle error (live-verified 53).
+#[test]
+fn cmv_missing_receipt_handle_ghost_queue_answers_nonexistent() {
+    let handler = DefaultSqsHandler::new();
+    let ghost = format!("{}x", create_queue(&handler, "cmv-none-ghost"));
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({"QueueUrl": &ghost, "VisibilityTimeout": 30}),
+    ));
+    assert_eq!(resp.status, 400, "got {}", resp.body);
+    assert!(
+        resp.body
+            .contains("AWS.SimpleQueueService.NonExistentQueue"),
+        "got {}",
+        resp.body
+    );
+}
+
+/// The SPLIT for batch rows: moto reads entry["ReceiptHandle"] strictly —
+/// a row without the key raises KeyError outside the visibility bare-
+/// except and crashes the WHOLE request as a werkzeug 500 (live-verified;
+/// it also precedes the per-row queue lookup), while a present bogus or
+/// empty handle keeps the per-row Failed arm.
+#[test]
+fn cmv_batch_row_without_receipt_handle_key_crashes_like_moto() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "cmv-none-batch");
+
+    for (label, queue) in [
+        ("existing queue", json!(&queue_url)),
+        (
+            "ghost queue keeps the crash",
+            json!(format!("{}x", queue_url)),
+        ),
+    ] {
+        let resp = handler.handle(make_request(
+            "ChangeMessageVisibilityBatch",
+            json!({
+                "QueueUrl": queue,
+                "Entries": [{"Id": "a", "VisibilityTimeout": 30}]
+            }),
+        ));
+        assert_eq!(resp.status, 500, "{label}: got {}", resp.body);
+        assert!(
+            resp.body.contains("<!doctype html>")
+                && resp.body.contains("500 Internal Server Error"),
+            "{label}: not the moto crash envelope, got {}",
+            resp.body
+        );
+    }
+
+    // The with-handle arm keeps the Failed row for unmatched values
+    // (live-verified 56/57: empty-string and bogus handles answer 200
+    // with a ReceiptHandleIsInvalid Failed entry).
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "e", "ReceiptHandle": "", "VisibilityTimeout": 30},
+                {"Id": "b", "ReceiptHandle": handles[0]["ReceiptHandle"], "VisibilityTimeout": 30},
+            ]
+        }),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    let failed = data["Failed"].as_array().expect("Failed array");
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0]["Code"], "ReceiptHandleIsInvalid");
+    assert_eq!(failed[0]["Message"], "The input receipt handle is invalid.");
+    let successful = data["Successful"].as_array().expect("Successful array");
+    assert_eq!(successful.len(), 1);
+    assert_eq!(successful[0]["Id"], "b");
+}

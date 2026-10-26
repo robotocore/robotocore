@@ -6,7 +6,9 @@ use serde_json::json;
 /// moto's unhandled-exception page (werkzeug plain 500): the recorded
 /// wire shape for paths where the pinned moto fork crashes outright
 /// (missing QueueName on CreateQueue / missing MessageBody on SendMessage,
-/// missing ReceiptHandle on ChangeMessageVisibility, unknown actions).
+/// missing/junk VisibilityTimeout on ChangeMessageVisibility and
+/// ReceiveMessage, a batch row without its ReceiptHandle key, unknown
+/// actions).
 const MOTO_CRASH_HTML: &str = "<!doctype html>\n\
      <html lang=en>\n\
      <title>500 Internal Server Error</title>\n\

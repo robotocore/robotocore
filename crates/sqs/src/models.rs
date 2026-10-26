@@ -375,12 +375,18 @@ impl Queue {
     /// send time is refused, regardless of the queue-level static cap.
     const TOTAL_VISIBILITY_TIMEOUT_LIMIT_MS: i64 = 43_200 * 1000;
 
-    /// Change the visibility timeout of a message (identified by receipt
-    /// handle) under moto's `change_message_visibility` semantics
-    /// (moto/sqs/models.py:1082-1096, live-verified against the pinned
-    /// fork):
+    /// Change the visibility timeout of a message under moto's
+    /// `change_message_visibility` semantics (moto/sqs/models.py:1082-1096,
+    /// live-verified against the pinned fork):
     ///
-    /// 1. locate the target message by receipt handle;
+    /// 1. locate the target message by receipt handle. A MISSING handle
+    ///    (`None`) mirrors moto's backend matching `None in
+    ///    all_receipt_handles`: every extant moto Message keeps the
+    ///    pre-receive None in its handle list, so the FIRST message in
+    ///    queue order wins and the bump applies to it (live-verified);
+    ///    an empty (or all-unmatched) queue falls through to moto's bare
+    ///    `raise ReceiptHandleIsInvalid` (400). A non-string handle value
+    ///    never matches either (list membership with another type).
     /// 2. the Total-VisibilityTimeout rule runs BEFORE the apply:
     ///    `given = now + timeout*1000` is measured against the message's
     ///    ORIGINAL `sent_timestamp`, so when the accumulated lifetime —
@@ -399,14 +405,14 @@ impl Queue {
     /// 4. no match -> moto's bare `raise ReceiptHandleIsInvalid` (400).
     pub fn change_message_visibility_checked(
         &mut self,
-        receipt_handle: &str,
+        receipt_handle: Option<&str>,
         timeout_seconds: i64,
     ) -> Result<(), SqsError> {
         let now_ms = Utc::now().timestamp_millis();
         if let Some(msg) = self
             .messages
             .iter_mut()
-            .find(|m| m.receipt_handle == receipt_handle)
+            .find(|m| receipt_handle.is_none_or(|h| m.receipt_handle == h))
         {
             let given = now_ms.saturating_add(timeout_seconds.saturating_mul(1000));
             if given - msg.sent_timestamp as i64 > Self::TOTAL_VISIBILITY_TIMEOUT_LIMIT_MS {

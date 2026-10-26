@@ -616,11 +616,20 @@ impl DefaultSqsHandler {
                 .and_then(|v| v.as_str())
                 .unwrap_or_default()
                 .to_string();
-            let receipt_handle = entry
-                .get("ReceiptHandle")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_string();
+            // moto's backend reads entry["ReceiptHandle"] STRICTLY: a row
+            // without the key raises KeyError inside the batch loop —
+            // OUTSIDE the broad `except:` guarding only the visibility
+            // parse — and crashes the whole request as a werkzeug 500
+            // (live-verified, and it precedes the per-row queue lookup so
+            // a ghost queue keeps the crash). A null-valued member travels
+            // as None and takes moto's None-mode match (first extant
+            // message); other non-string values never match.
+            let receipt_handle: Option<&str> = match entry.get("ReceiptHandle") {
+                None => return Err(SqsError::MotoCrash),
+                Some(Value::Null) => None,
+                Some(Value::String(s)) => Some(s.as_str()),
+                Some(_) => Some(""),
+            };
             // moto's change_message_visibility_batch backend wraps the
             // per-entry `int(entry["VisibilityTimeout"])` parse and the
             // MAXIMUM_VISIBILITY_TIMEOUT assert in one bare except:
@@ -675,7 +684,7 @@ impl DefaultSqsHandler {
             // with the global 400 InvalidParameterValue envelope
             // (live-verified; already-collected Failed rows are
             // discarded).
-            match q.change_message_visibility_checked(&receipt_handle, visibility) {
+            match q.change_message_visibility_checked(receipt_handle, visibility) {
                 Ok(()) => successful.push(json!({ "Id": id })),
                 // moto rows per-entry ReceiptHandleIsInvalid with
                 // SenderFault true and the ServiceException message
@@ -1408,11 +1417,11 @@ impl DefaultSqsHandler {
         };
         // moto validates the visibility timeout in the RESPONSE layer
         // (`_get_validated_visibility_timeout` → MaxVisibilityTimeout)
-        // before the backend resolves either the queue or the receipt
+        // before the backend resolves the queue or matches the receipt
         // handle, so an over-cap value beats even a nonexistent queue
-        // (live-verified) and answers before the missing-ReceiptHandle
-        // crash below. Negative values pass the response-layer cap in moto
-        // too; the Total-VisibilityTimeout rule below takes them signed.
+        // (live-verified). Negative values pass the response-layer cap in
+        // moto too; the Total-VisibilityTimeout rule below takes them
+        // signed.
         if timeout > Self::MAX_VISIBILITY_TIMEOUT as i64 {
             return Err(SqsError::InvalidParameterValue(
                 Self::MAX_VISIBILITY_TIMEOUT_MESSAGE.to_string(),
@@ -1426,12 +1435,20 @@ impl DefaultSqsHandler {
                 SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
             })?;
 
-        // moto passes the None ReceiptHandle into method dispatch which
-        // escapes as a werkzeug 500 crash (live-verified).
-        let receipt_handle = params
-            .get("ReceiptHandle")
-            .and_then(|v| v.as_str())
-            .ok_or(SqsError::MotoCrash)?;
+        // The ReceiptHandle resolution mirrors moto's split (re-adjudicated
+        // live against the pinned fork, replacing the round-1 MotoCrash
+        // pin): a MISSING handle travels to the backend as None, and
+        // `None in all_receipt_handles` matches EVERY extant moto Message
+        // (the pre-receive handle slot is None), so the FIRST message in
+        // queue order wins and the bump applies to it — 200 OK
+        // (live-verified, including the total rule on that message and the
+        // empty queue answering ReceiptHandleIsInvalid). A non-string
+        // handle value (a raw-JSON corner) can never match either.
+        let receipt_handle: Option<&str> = match params.get("ReceiptHandle") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(s)) => Some(s.as_str()),
+            Some(_) => Some(""),
+        };
 
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
         let store = self.get_store(account, region);
