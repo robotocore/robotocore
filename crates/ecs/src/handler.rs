@@ -753,6 +753,21 @@ impl EcsHandler {
             .get("taskDefinition")
             .and_then(|v| v.as_str())
             .unwrap_or_default();
+        let desired_count = req.params.get("desiredCount").cloned().unwrap_or(json!(1));
+        // moto 5.2.0 computes the rollout state at service creation: the
+        // primary deployment reports COMPLETED once its runningCount reaches
+        // desiredCount, IN_PROGRESS while tasks are still coming up. The
+        // deployment created below starts at runningCount 0.
+        let running_count = 0i64;
+        let (rollout_state, rollout_state_reason) =
+            if running_count >= desired_count.as_i64().unwrap_or(0) {
+                ("COMPLETED", format!("ECS deployment {dep_id} completed."))
+            } else {
+                (
+                    "IN_PROGRESS",
+                    format!("ECS deployment {dep_id} in progress."),
+                )
+            };
         let svc_arn = format!(
             "arn:aws:ecs:{}:{}:service/{}/{}",
             req.region, req.account, cluster_name, svc_name
@@ -775,7 +790,7 @@ impl EcsHandler {
             "serviceName": svc_name,
             "clusterArn": cluster_arn,
             "taskDefinition": task_definition,
-            "desiredCount": req.params.get("desiredCount").cloned().unwrap_or(json!(1)),
+            "desiredCount": desired_count.clone(),
             "runningCount": 0,
             "pendingCount": 0,
             "status": "ACTIVE",
@@ -786,9 +801,12 @@ impl EcsHandler {
                 "id": dep_id,
                 "status": "PRIMARY",
                 "taskDefinition": task_definition,
-                "desiredCount": req.params.get("desiredCount").cloned().unwrap_or(json!(1)),
+                "desiredCount": desired_count,
                 "runningCount": 0,
                 "pendingCount": 0,
+                "failedTasks": env_failed_tasks(),
+                "rolloutState": rollout_state,
+                "rolloutStateReason": rollout_state_reason,
                 "createdAt": now,
                 "updatedAt": now,
             }],
@@ -988,6 +1006,22 @@ impl EcsHandler {
                 .map(|v| v.as_str().unwrap_or("default"))
                 .unwrap_or("default"),
         );
+        // moto 5.2.3: an explicit capacity provider strategy cannot be
+        // combined with a launch type.
+        let launch_type_param = req.params.get("launchType").and_then(|v| v.as_str());
+        let explicit_strategy = req
+            .params
+            .get("capacityProviderStrategy")
+            .and_then(|v| v.as_array())
+            .filter(|a| !a.is_empty());
+        let has_launch_type = launch_type_param.is_some_and(|t| !t.is_empty());
+        if has_launch_type && explicit_strategy.is_some() {
+            return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                "Specify either Launch Type or Capacity Provider Strategy, but not both.",
+            );
+        }
         let state = self.get_state(req.account, &req.region);
         if !state.clusters.read().contains_key(cluster_name) {
             return cluster_not_found(cluster_name);
@@ -1014,11 +1048,27 @@ impl EcsHandler {
             .unwrap_or(1);
         let now = now_f64();
         let clusters = state.clusters.read();
-        let cluster_arn = clusters
-            .get(cluster_name)
+        let cluster = clusters.get(cluster_name);
+        let cluster_arn = cluster
             .and_then(|c| c.get("clusterArn"))
             .cloned()
             .unwrap_or(Value::Null);
+        // moto 5.2.3: with neither an explicit strategy nor a launch type, the
+        // cluster's default capacity provider strategy applies.
+        let cluster_default = if !has_launch_type {
+            cluster
+                .and_then(|c| c.get("defaultCapacityProviderStrategy"))
+                .and_then(|v| v.as_array())
+                .filter(|a| !a.is_empty())
+        } else {
+            None
+        };
+        let strategy = explicit_strategy.or(cluster_default);
+        let capacity_provider_name = strategy
+            .and_then(|items| items.first())
+            .and_then(|item| item.get("capacityProvider"))
+            .and_then(|v| v.as_str())
+            .map(String::from);
         drop(clusters);
         let containers: Vec<Value> = td
             .get("containerDefinitions")
@@ -1060,7 +1110,7 @@ impl EcsHandler {
                     .write()
                     .insert(task_arn.clone(), json!(task_tags.clone()));
             }
-            let task = json!({
+            let mut task = json!({
                 "taskArn": task_arn.clone(),
                 "taskDefinitionArn": td["taskDefinitionArn"].clone(),
                 "clusterArn": cluster_arn,
@@ -1075,6 +1125,11 @@ impl EcsHandler {
                 "tags": [],
                 "overrides": req.params.get("overrides").cloned().unwrap_or(json!({})),
             });
+            // moto 5.2.3 surfaces the strategy's primary provider as the Task
+            // model's capacityProviderName member.
+            if let Some(provider) = &capacity_provider_name {
+                task["capacityProviderName"] = json!(provider);
+            }
             tasks.push(task.clone());
             inserted.push((task_id, task));
         }
@@ -2365,6 +2420,15 @@ fn now_f64() -> f64 {
     UNIX_EPOCH.elapsed().map(|d| d.as_secs_f64()).unwrap_or(0.0)
 }
 
+/// `MOTO_ECS_SERVICE_FAILED_TASKS` (moto 5.2.0): failedTasks reported in the
+/// service's primary deployment; non-numeric or negative values fall back to 0.
+fn env_failed_tasks() -> i64 {
+    std::env::var("MOTO_ECS_SERVICE_FAILED_TASKS")
+        .ok()
+        .and_then(|v| v.parse::<i64>().ok())
+        .map_or(0, |v| v.max(0))
+}
+
 fn cluster_not_found(name: &str) -> AwsResponse {
     AwsResponse::error(
         400,
@@ -2593,5 +2657,191 @@ mod tests {
             }),
         ));
         assert!(deleted.body.contains("INACTIVE"));
+    }
+
+    // ------------------------------------------------------------------
+    // moto 5.2.0: deployment rollout members on service responses
+    // ------------------------------------------------------------------
+
+    fn setup_cluster_and_task_family(h: &EcsHandler, cluster: &str, family: &str) {
+        h.handle(make_req("CreateCluster", json!({"clusterName": cluster})));
+        h.handle(make_req(
+            "RegisterTaskDefinition",
+            json!({
+                "family": family,
+                "containerDefinitions": [{"name": "app", "image": "nginx", "memory": 128}],
+            }),
+        ));
+    }
+
+    #[test]
+    fn describe_services_rollout_state() {
+        let h = EcsHandler::new();
+        setup_cluster_and_task_family(&h, "cls", "fam");
+        let create = h.handle(make_req(
+            "CreateService",
+            json!({
+                "cluster": "cls", "serviceName": "s1", "desiredCount": 1,
+                "taskDefinition": "fam:1",
+            }),
+        ));
+        assert_eq!(create.status, 200);
+        let created: Value = serde_json::from_str(&create.body).unwrap();
+        let dep = created["service"]["deployments"][0].clone();
+        // runningCount 0 < desiredCount 1 -> rollout still in progress.
+        assert_eq!(dep["rolloutState"], json!("IN_PROGRESS"));
+        assert_eq!(
+            dep["rolloutStateReason"],
+            json!(format!(
+                "ECS deployment {} in progress.",
+                dep["id"].as_str().unwrap()
+            ))
+        );
+
+        // A zero desired count is already complete; the describe renderer
+        // echoes the stored members.
+        h.handle(make_req(
+            "CreateService",
+            json!({
+                "cluster": "cls", "serviceName": "s0", "desiredCount": 0,
+                "taskDefinition": "fam:1",
+            }),
+        ));
+        let described = h.handle(make_req(
+            "DescribeServices",
+            json!({"cluster": "cls", "services": ["s0"]}),
+        ));
+        assert_eq!(described.status, 200);
+        let described: Value = serde_json::from_str(&described.body).unwrap();
+        let dep0 = described["services"][0]["deployments"][0].clone();
+        assert_eq!(dep0["rolloutState"], json!("COMPLETED"));
+        assert_eq!(
+            dep0["rolloutStateReason"],
+            json!(format!(
+                "ECS deployment {} completed.",
+                dep0["id"].as_str().unwrap()
+            ))
+        );
+    }
+
+    #[test]
+    fn describe_services_rollout_failed_tasks() {
+        // MOTO_ECS_SERVICE_FAILED_TASKS unset -> failedTasks defaults to 0.
+        let h = EcsHandler::new();
+        setup_cluster_and_task_family(&h, "cls", "fam");
+        h.handle(make_req(
+            "CreateService",
+            json!({
+                "cluster": "cls", "serviceName": "s1", "desiredCount": 1,
+                "taskDefinition": "fam:1",
+            }),
+        ));
+        let described = h.handle(make_req(
+            "DescribeServices",
+            json!({"cluster": "cls", "services": ["s1"]}),
+        ));
+        let described: Value = serde_json::from_str(&described.body).unwrap();
+        assert_eq!(
+            described["services"][0]["deployments"][0]["failedTasks"],
+            json!(0)
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // moto 5.2.3: run_task capacityProviderStrategy
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn run_task_capacity_provider_strategy() {
+        let h = EcsHandler::new();
+        setup_cluster_and_task_family(&h, "cls", "fam");
+        let run = h.handle(make_req(
+            "RunTask",
+            json!({
+                "cluster": "cls",
+                "taskDefinition": "fam:1",
+                "capacityProviderStrategy": [{"capacityProvider": "FARGATE_SPOT", "weight": 1}],
+            }),
+        ));
+        assert_eq!(run.status, 200);
+        let run: Value = serde_json::from_str(&run.body).unwrap();
+        assert_eq!(
+            run["tasks"][0]["capacityProviderName"],
+            json!("FARGATE_SPOT")
+        );
+
+        // The stored member is echoed by describe_tasks.
+        let arn = run["tasks"][0]["taskArn"].as_str().unwrap().to_string();
+        let described = h.handle(make_req(
+            "DescribeTasks",
+            json!({"cluster": "cls", "tasks": [arn]}),
+        ));
+        let described: Value = serde_json::from_str(&described.body).unwrap();
+        assert_eq!(
+            described["tasks"][0]["capacityProviderName"],
+            json!("FARGATE_SPOT")
+        );
+    }
+
+    #[test]
+    fn run_task_capacity_provider_launch_type_conflict() {
+        let h = EcsHandler::new();
+        setup_cluster_and_task_family(&h, "cls", "fam");
+        let both = h.handle(make_req(
+            "RunTask",
+            json!({
+                "cluster": "cls",
+                "taskDefinition": "fam:1",
+                "launchType": "FARGATE",
+                "capacityProviderStrategy": [{"capacityProvider": "FARGATE_SPOT"}],
+            }),
+        ));
+        assert_eq!(both.status, 400);
+        let body: Value = serde_json::from_str(&both.body).unwrap();
+        assert_eq!(body["__type"], json!("InvalidParameterException"));
+        assert_eq!(
+            body["message"],
+            json!("Specify either Launch Type or Capacity Provider Strategy, but not both.")
+        );
+    }
+
+    #[test]
+    fn run_task_capacity_provider_cluster_default() {
+        let h = EcsHandler::new();
+        setup_cluster_and_task_family(&h, "cls", "fam");
+        h.handle(make_req(
+            "PutClusterCapacityProviders",
+            json!({
+                "cluster": "cls",
+                "capacityProviders": ["FARGATE"],
+                "defaultCapacityProviderStrategy":
+                    [{"capacityProvider": "FARGATE", "weight": 1, "base": 1}],
+            }),
+        ));
+        let run = h.handle(make_req(
+            "RunTask",
+            json!({
+                "cluster": "cls",
+                "taskDefinition": "fam:1",
+            }),
+        ));
+        assert_eq!(run.status, 200);
+        let run: Value = serde_json::from_str(&run.body).unwrap();
+        assert_eq!(run["tasks"][0]["capacityProviderName"], json!("FARGATE"));
+
+        // A strategy on the task wins over the cluster default.
+        let run = h.handle(make_req(
+            "RunTask",
+            json!({
+                "cluster": "cls",
+                "taskDefinition": "fam:1",
+                "capacityProviderStrategy": [{"capacityProvider": "EC2_PROVIDER"}],
+            }),
+        ));
+        let run: Value = serde_json::from_str(&run.body).unwrap();
+        assert_eq!(
+            run["tasks"][0]["capacityProviderName"],
+            json!("EC2_PROVIDER")
+        );
     }
 }
