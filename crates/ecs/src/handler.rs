@@ -1006,6 +1006,22 @@ impl EcsHandler {
                 .map(|v| v.as_str().unwrap_or("default"))
                 .unwrap_or("default"),
         );
+        // moto 5.2.3: an explicit capacity provider strategy cannot be
+        // combined with a launch type.
+        let launch_type_param = req.params.get("launchType").and_then(|v| v.as_str());
+        let explicit_strategy = req
+            .params
+            .get("capacityProviderStrategy")
+            .and_then(|v| v.as_array())
+            .filter(|a| !a.is_empty());
+        let has_launch_type = launch_type_param.is_some_and(|t| !t.is_empty());
+        if has_launch_type && explicit_strategy.is_some() {
+            return AwsResponse::error(
+                400,
+                "InvalidParameterException",
+                "Specify either Launch Type or Capacity Provider Strategy, but not both.",
+            );
+        }
         let state = self.get_state(req.account, &req.region);
         if !state.clusters.read().contains_key(cluster_name) {
             return cluster_not_found(cluster_name);
@@ -1032,11 +1048,27 @@ impl EcsHandler {
             .unwrap_or(1);
         let now = now_f64();
         let clusters = state.clusters.read();
-        let cluster_arn = clusters
-            .get(cluster_name)
+        let cluster = clusters.get(cluster_name);
+        let cluster_arn = cluster
             .and_then(|c| c.get("clusterArn"))
             .cloned()
             .unwrap_or(Value::Null);
+        // moto 5.2.3: with neither an explicit strategy nor a launch type, the
+        // cluster's default capacity provider strategy applies.
+        let cluster_default = if !has_launch_type {
+            cluster
+                .and_then(|c| c.get("defaultCapacityProviderStrategy"))
+                .and_then(|v| v.as_array())
+                .filter(|a| !a.is_empty())
+        } else {
+            None
+        };
+        let strategy = explicit_strategy.or(cluster_default);
+        let capacity_provider_name = strategy
+            .and_then(|items| items.first())
+            .and_then(|item| item.get("capacityProvider"))
+            .and_then(|v| v.as_str())
+            .map(String::from);
         drop(clusters);
         let containers: Vec<Value> = td
             .get("containerDefinitions")
@@ -1078,7 +1110,7 @@ impl EcsHandler {
                     .write()
                     .insert(task_arn.clone(), json!(task_tags.clone()));
             }
-            let task = json!({
+            let mut task = json!({
                 "taskArn": task_arn.clone(),
                 "taskDefinitionArn": td["taskDefinitionArn"].clone(),
                 "clusterArn": cluster_arn,
@@ -1093,6 +1125,11 @@ impl EcsHandler {
                 "tags": [],
                 "overrides": req.params.get("overrides").cloned().unwrap_or(json!({})),
             });
+            // moto 5.2.3 surfaces the strategy's primary provider as the Task
+            // model's capacityProviderName member.
+            if let Some(provider) = &capacity_provider_name {
+                task["capacityProviderName"] = json!(provider);
+            }
             tasks.push(task.clone());
             inserted.push((task_id, task));
         }
@@ -2707,6 +2744,104 @@ mod tests {
         assert_eq!(
             described["services"][0]["deployments"][0]["failedTasks"],
             json!(0)
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // moto 5.2.3: run_task capacityProviderStrategy
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn run_task_capacity_provider_strategy() {
+        let h = EcsHandler::new();
+        setup_cluster_and_task_family(&h, "cls", "fam");
+        let run = h.handle(make_req(
+            "RunTask",
+            json!({
+                "cluster": "cls",
+                "taskDefinition": "fam:1",
+                "capacityProviderStrategy": [{"capacityProvider": "FARGATE_SPOT", "weight": 1}],
+            }),
+        ));
+        assert_eq!(run.status, 200);
+        let run: Value = serde_json::from_str(&run.body).unwrap();
+        assert_eq!(
+            run["tasks"][0]["capacityProviderName"],
+            json!("FARGATE_SPOT")
+        );
+
+        // The stored member is echoed by describe_tasks.
+        let arn = run["tasks"][0]["taskArn"].as_str().unwrap().to_string();
+        let described = h.handle(make_req(
+            "DescribeTasks",
+            json!({"cluster": "cls", "tasks": [arn]}),
+        ));
+        let described: Value = serde_json::from_str(&described.body).unwrap();
+        assert_eq!(
+            described["tasks"][0]["capacityProviderName"],
+            json!("FARGATE_SPOT")
+        );
+    }
+
+    #[test]
+    fn run_task_capacity_provider_launch_type_conflict() {
+        let h = EcsHandler::new();
+        setup_cluster_and_task_family(&h, "cls", "fam");
+        let both = h.handle(make_req(
+            "RunTask",
+            json!({
+                "cluster": "cls",
+                "taskDefinition": "fam:1",
+                "launchType": "FARGATE",
+                "capacityProviderStrategy": [{"capacityProvider": "FARGATE_SPOT"}],
+            }),
+        ));
+        assert_eq!(both.status, 400);
+        let body: Value = serde_json::from_str(&both.body).unwrap();
+        assert_eq!(body["__type"], json!("InvalidParameterException"));
+        assert_eq!(
+            body["message"],
+            json!("Specify either Launch Type or Capacity Provider Strategy, but not both.")
+        );
+    }
+
+    #[test]
+    fn run_task_capacity_provider_cluster_default() {
+        let h = EcsHandler::new();
+        setup_cluster_and_task_family(&h, "cls", "fam");
+        h.handle(make_req(
+            "PutClusterCapacityProviders",
+            json!({
+                "cluster": "cls",
+                "capacityProviders": ["FARGATE"],
+                "defaultCapacityProviderStrategy":
+                    [{"capacityProvider": "FARGATE", "weight": 1, "base": 1}],
+            }),
+        ));
+        let run = h.handle(make_req(
+            "RunTask",
+            json!({
+                "cluster": "cls",
+                "taskDefinition": "fam:1",
+            }),
+        ));
+        assert_eq!(run.status, 200);
+        let run: Value = serde_json::from_str(&run.body).unwrap();
+        assert_eq!(run["tasks"][0]["capacityProviderName"], json!("FARGATE"));
+
+        // A strategy on the task wins over the cluster default.
+        let run = h.handle(make_req(
+            "RunTask",
+            json!({
+                "cluster": "cls",
+                "taskDefinition": "fam:1",
+                "capacityProviderStrategy": [{"capacityProvider": "EC2_PROVIDER"}],
+            }),
+        ));
+        let run: Value = serde_json::from_str(&run.body).unwrap();
+        assert_eq!(
+            run["tasks"][0]["capacityProviderName"],
+            json!("EC2_PROVIDER")
         );
     }
 }
