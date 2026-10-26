@@ -66,4 +66,24 @@ impl AwsResponse {
             body: serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string()),
         }
     }
+
+    /// An error response carrying the caller-built JSON body — same headers
+    /// as `error`, for codes that need extra members beyond `__type`/`message`
+    /// (e.g. moto's TransactionCanceledException with per-row CancellationReasons).
+    pub fn error_with_body(status: u16, body: Value) -> Self {
+        Self {
+            status,
+            headers: vec![
+                (
+                    "Content-Type".to_string(),
+                    "application/x-amz-json-1.0".to_string(),
+                ),
+                (
+                    "x-amzn-RequestId".to_string(),
+                    uuid::Uuid::new_v4().to_string(),
+                ),
+            ],
+            body: serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string()),
+        }
+    }
 }

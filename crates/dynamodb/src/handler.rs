@@ -2,7 +2,7 @@
 
 use parking_lot::RwLock;
 use serde_json::{json, Map, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::expr::{self as expr_engine, Names, Values};
@@ -363,6 +363,14 @@ impl DynamoDbHandler {
         *table.provisioned_rcu.write() = rcu;
         *table.provisioned_wcu.write() = wcu;
 
+        // moto create_table forwards DeletionProtectionEnabled
+        // (dynamodb/responses.py:356, default False).
+        *table.deletion_protection_enabled.write() = req
+            .params
+            .get("DeletionProtectionEnabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+
         *table.global_secondary_indexes.write() =
             Self::parse_indexes(req.params.get("GlobalSecondaryIndexes"));
         *table.local_secondary_indexes.write() =
@@ -471,7 +479,7 @@ impl DynamoDbHandler {
     /// botocore's TableWarmThroughputDescription, whose Status member is the
     /// TableStatus enum.
     fn table_warm_throughput(table: &Table) -> Value {
-        if table.billing_mode == "PAY_PER_REQUEST" {
+        if *table.billing_mode.read() == "PAY_PER_REQUEST" {
             json!({
                 "ReadUnitsPerSecond": DEFAULT_WARM_THROUGHPUT_RCU,
                 "WriteUnitsPerSecond": DEFAULT_WARM_THROUGHPUT_WCU,
@@ -486,6 +494,15 @@ impl DynamoDbHandler {
         }
     }
 
+    /// The single renderer of a table description, shared by DescribeTable,
+    /// CreateTable and UpdateTable (moto renders all three from
+    /// `Table.describe()` with a base key; the twin keeps one code path).
+    ///
+    /// TableId: moto itself omits TableId from Table.describe() (verified
+    /// against moto 5.2.4 — no member on the description map), while real AWS
+    /// renders one; the twin renders the STORED stable id (`Table.table_id`,
+    /// minted once in `Table::new`), so every describes-rendering operation
+    /// reports the same value instead of a fresh random uuid per call.
     fn describe_table_response(
         _req: &AwsRequest,
         table: &Table,
@@ -570,7 +587,7 @@ impl DynamoDbHandler {
         let mut description = json!({
             "TableName": table.name,
             "TableStatus": *table.status.read(),
-            "TableId": format!("{}", uuid::Uuid::new_v4()),
+            "TableId": table.table_id.clone(),
             "TableArn": *table.table_arn.read(),
             "KeySchema": key_schema_json,
             "AttributeDefinitions": attr_defs_json,
@@ -580,8 +597,8 @@ impl DynamoDbHandler {
             "ProvisionedThroughput": provisioned,
             "LocalSecondaryIndexes": index_json(&lsis, false),
             "GlobalSecondaryIndexes": index_json(&gsis, true),
-            "DeletionProtectionEnabled": false,
-            "BillingModeSummary": { "BillingMode": table.billing_mode },
+            "DeletionProtectionEnabled": *table.deletion_protection_enabled.read(),
+            "BillingModeSummary": { "BillingMode": *table.billing_mode.read() },
             "TableClassSummary": { "TableClass": "STANDARD" },
             "WarmThroughput": warm_throughput,
         });
@@ -621,6 +638,52 @@ impl DynamoDbHandler {
                 .unwrap_or(0);
             *table.provisioned_rcu.write() = rcu;
             *table.provisioned_wcu.write() = wcu;
+        }
+
+        // moto update_table (dynamodb/models/__init__.py:186-187): a BillingMode
+        // member mutates the stored mode, so this and the next DescribeTable
+        // echo the new mode — and the derived WarmThroughput follows it (the
+        // twin treats a PAY_PER_REQUEST table as moto's 12000/4000 on-demand
+        // defaults).
+        if let Some(mode) = param_str(&req.params, "BillingMode") {
+            if !mode.is_empty() {
+                *table.billing_mode.write() = mode.to_string();
+            }
+        }
+
+        // moto update_table: stream_spec is applied through
+        // update_table_streams (dynamodb/models/__init__.py:197-205) —
+        // re-enabling a table that already carries a stream label raises
+        // ResourceInUseException ("Cannot enable stream"); otherwise an
+        // enabled-or-view-typed spec attaches the shard and stream label the
+        // way set_stream_specification does, and any other spec disables the
+        // stream (the label/shard linger there, as in moto).
+        if let Some(spec) = req.params.get("StreamSpecification") {
+            let enabled = spec
+                .get("StreamEnabled")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let view_type = spec.get("StreamViewType").and_then(Value::as_str);
+            if (enabled || view_type.is_some()) && table.stream_label.read().is_some() {
+                return AwsResponse::error(400, "ResourceInUseException", "Cannot enable stream");
+            }
+            if enabled || view_type.is_some() {
+                *table.stream_view_type.write() = view_type.map(String::from);
+                *table.stream_enabled.write() = true;
+                streaming::enable_stream(&table);
+            } else {
+                *table.stream_enabled.write() = false;
+            }
+        }
+
+        // moto update_table (dynamodb/models/__init__.py:190-191): a present
+        // boolean DeletionProtectionEnabled member mutates the stored value.
+        if let Some(enabled) = req
+            .params
+            .get("DeletionProtectionEnabled")
+            .and_then(Value::as_bool)
+        {
+            *table.deletion_protection_enabled.write() = enabled;
         }
 
         // Merge attribute definitions supplied alongside index updates.
@@ -1718,6 +1781,14 @@ impl DynamoDbHandler {
         let mut deletes: Vec<PendingDelete> = Vec::new();
         let mut cancellation: Vec<Option<String>> = Vec::new();
         let mut failed = false;
+        // moto transact_write_items check_unicity
+        // (dynamodb/models/__init__.py:617-623): every row across the request
+        // names a (table, key) pair; a second row on the same pair cancels the
+        // request up front with MultipleTransactionsException ("Transaction
+        // request cannot include multiple operations on one item"). Put rows
+        // hash the key carried in their Item, Update/Delete/ConditionCheck
+        // rows their own Key — both resolve to the same storage key here.
+        let mut target_items: HashSet<(String, String)> = HashSet::new();
 
         let transact_items = req
             .params
@@ -1726,17 +1797,42 @@ impl DynamoDbHandler {
             .cloned()
             .unwrap_or_default();
 
+        // moto transact_write_items (dynamodb/models/__init__.py:604-606)
+        // rejects >100 rows up front with TooManyTransactionsException.
+        if transact_items.len() > 100 {
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                "1 validation error detected at 'transactItems' failed to satisfy constraint: \
+                 Member must have length less than or equal to 100.",
+            );
+        }
+
         for entry in &transact_items {
+            // moto's row-loop head (dynamodb/models/__init__.py:630-632,
+            // TransactWriteSingleOpException): exactly one of Put, Update,
+            // Delete or ConditionCheck per row — a row carrying two ops is
+            // rejected up front ("TransactItems can only contain one of
+            // Check, Put, Update or Delete").
+            if entry.as_object().is_some_and(|m| m.len() > 1) {
+                return AwsResponse::error(
+                    400,
+                    "ValidationException",
+                    "TransactItems can only contain one of Check, Put, Update or Delete",
+                );
+            }
             let (op_name, op) = match ["Put", "Update", "Delete", "ConditionCheck"]
                 .iter()
                 .find_map(|k| entry.get(k).map(|o| (*k, Some(o))))
             {
                 Some((k, Some(o))) => (k, o),
-                _ => return AwsResponse::error(
-                    400,
-                    "ValidationException",
-                    "TransactItems can only contain one of Put, Update, Delete or ConditionCheck",
-                ),
+                _ => {
+                    return AwsResponse::error(
+                        400,
+                        "ValidationException",
+                        "TransactItems can only contain one of Check, Put, Update or Delete",
+                    )
+                }
             };
             let table_name = param_str(op, "TableName").unwrap_or("").to_string();
             let table = match self
@@ -1775,11 +1871,19 @@ impl DynamoDbHandler {
                             "The provided key element does not match the schema",
                         );
                     };
-                    // moto's transactional Put runs the same LimitedSizeDict
-                    // check when it builds the Item (getmoto/moto#1874).
-                    if let Some(e) = check_item_size(&attrs, false) {
-                        return e;
+                    if !target_items.insert((table.name.clone(), key.clone())) {
+                        return AwsResponse::error(
+                            400,
+                            "ValidationException",
+                            "Transaction request cannot include multiple operations on one item",
+                        );
                     }
+                    // moto evaluates the condition BEFORE the item-size check
+                    // (dynamodb/models/__init__.py:647-671: the condition runs
+                    // in the row loop, the size check inside self.put_item), so
+                    // an oversized Put under a failing condition cancels the
+                    // transaction (ConditionalCheckFailed row) instead of
+                    // answering the size ValidationException.
                     let pre = existing(&table, &key);
                     let check = Self::eval_condition_on(
                         expr_str(op.get("ConditionExpression")),
@@ -1789,6 +1893,12 @@ impl DynamoDbHandler {
                     );
                     match check {
                         Ok(()) => {
+                            // moto's transactional Put runs the same
+                            // LimitedSizeDict check when it builds the Item
+                            // (getmoto/moto#1874).
+                            if let Some(e) = check_item_size(&attrs, false) {
+                                return e;
+                            }
                             cancellation.push(None);
                             puts.push(PendingPut {
                                 table,
@@ -1810,6 +1920,13 @@ impl DynamoDbHandler {
                             "The provided key element does not match the schema",
                         );
                     };
+                    if !target_items.insert((table.name.clone(), key.clone())) {
+                        return AwsResponse::error(
+                            400,
+                            "ValidationException",
+                            "Transaction request cannot include multiple operations on one item",
+                        );
+                    }
                     let pre = existing(&table, &key);
                     let check = Self::eval_condition_on(
                         expr_str(op.get("ConditionExpression")),
@@ -1876,6 +1993,13 @@ impl DynamoDbHandler {
                             "The provided key element does not match the schema",
                         );
                     };
+                    if !target_items.insert((table.name.clone(), key.clone())) {
+                        return AwsResponse::error(
+                            400,
+                            "ValidationException",
+                            "Transaction request cannot include multiple operations on one item",
+                        );
+                    }
                     let pre = existing(&table, &key);
                     let check = Self::eval_condition_on(
                         expr_str(op.get("ConditionExpression")),
@@ -1903,6 +2027,13 @@ impl DynamoDbHandler {
                             "The provided key element does not match the schema",
                         );
                     };
+                    if !target_items.insert((table.name.clone(), key.clone())) {
+                        return AwsResponse::error(
+                            400,
+                            "ValidationException",
+                            "Transaction request cannot include multiple operations on one item",
+                        );
+                    }
                     let pre = existing(&table, &key);
                     let cond = expr_str(op.get("ConditionExpression"));
                     if cond.is_none() {
@@ -1924,17 +2055,37 @@ impl DynamoDbHandler {
         }
 
         if failed {
-            let reasons = cancellation
+            let reasons_text = cancellation
                 .iter()
                 .map(|r| r.clone().unwrap_or_else(|| "None".to_string()))
                 .collect::<Vec<_>>()
                 .join(", ");
-            return AwsResponse::error(
+            // moto's TransactionCanceledException describes both the summary
+            // message and one CancellationReasons entry per row
+            // (dynamodb/exceptions.py TransactionCanceledException):
+            // {"Code": <code>, "Message": <...>} for a failed row, {"Code":
+            // "None"} for a passing one. Phase 1 only cancels on failed
+            // conditions, so the only code here is ConditionalCheckFailed
+            // with moto's "The conditional request failed" message.
+            let reasons = cancellation
+                .iter()
+                .map(|r| match r {
+                    Some(code) => {
+                        json!({"Code": code, "Message": "The conditional request failed"})
+                    }
+                    None => json!({"Code": "None"}),
+                })
+                .collect::<Vec<_>>();
+            return AwsResponse::error_with_body(
                 400,
-                "TransactionCanceledException",
-                &format!(
-                    "Transaction cancelled, please refer cancellation reasons for specific reasons [{reasons}]"
-                ),
+                json!({
+                    "__type": "TransactionCanceledException",
+                    "CancellationReasons": reasons,
+                    "message": format!(
+                        "Transaction cancelled, please refer cancellation reasons \
+                         for specific reasons [{reasons_text}]"
+                    ),
+                }),
             );
         }
 
@@ -2007,13 +2158,38 @@ impl DynamoDbHandler {
     fn transact_get_items(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
         let mut responses: Vec<Value> = Vec::new();
-        for entry in req
+        let transact_items = req
             .params
             .get("TransactItems")
             .and_then(|v| v.as_array())
             .cloned()
-            .unwrap_or_default()
-        {
+            .unwrap_or_default();
+
+        // moto transact_get_items (dynamodb/responses.py:1419-1435,
+        // TRANSACTION_MAX_ITEMS = 25) rejects >25 rows with a per-row
+        // TransactGetItem id list — sequential 0x10000001 onward, lowercase
+        // hex, and a constraint line without the trailing period.
+        if transact_items.len() > 25 {
+            let ids: Vec<String> = (1..=transact_items.len())
+                .map(|i| {
+                    format!(
+                        "com.amazonaws.dynamodb.v20120810.TransactGetItem@{:x}",
+                        268435456u64 + i as u64
+                    )
+                })
+                .collect();
+            return AwsResponse::error(
+                400,
+                "ValidationException",
+                &format!(
+                    "1 validation error detected: Value '[{}] at 'transactItems' failed to \
+                     satisfy constraint: Member must have length less than or equal to 25",
+                    ids.join(", ")
+                ),
+            );
+        }
+
+        for entry in transact_items {
             let get = entry.get("Get").cloned().unwrap_or(Value::Null);
             let table_name = param_str(&get, "TableName").unwrap_or("").to_string();
             let Some(table) = state.get_table(&table_name) else {
@@ -2999,7 +3175,7 @@ impl DynamoDbHandler {
             req.region.clone(),
             source.key_schema.clone(),
             source.attribute_definitions.read().clone(),
-            source.billing_mode.clone(),
+            source.billing_mode.read().clone(),
         ));
         {
             let source_items = source.items.read();
@@ -3904,6 +4080,143 @@ mod tests {
         );
     }
 
+    // moto update_table mutates the BillingMode, DeletionProtectionEnabled and
+    // StreamSpecification members it is given (dynamodb/models/__init__.py:
+    // 186-191, update_table_streams), and the re-routed describe payload
+    // (Table.describe) echoes the new values: a PROVISIONED table switched to
+    // PAY_PER_REQUEST describes BillingModeSummary {"BillingMode":
+    // "PAY_PER_REQUEST"} and the on-demand 12000/4000 warm throughput.
+    #[test]
+    fn update_table_applies_billing_mode_protection_stream() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "utm",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 7}
+            }),
+        ));
+
+        // Switch the billing mode: the UpdateTable response echoes the new
+        // mode, and the derived WarmThroughput follows it.
+        let resp = handler.handle(make_req(
+            "UpdateTable",
+            json!({"TableName": "utm", "BillingMode": "PAY_PER_REQUEST"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["TableDescription"]["BillingModeSummary"],
+            json!({"BillingMode": "PAY_PER_REQUEST"})
+        );
+        assert_eq!(
+            body["TableDescription"]["WarmThroughput"],
+            json!({
+                "ReadUnitsPerSecond": 12000,
+                "WriteUnitsPerSecond": 4000,
+                "Status": "ACTIVE"
+            })
+        );
+
+        // The next DescribeTable echoes it too.
+        let resp = handler.handle(make_req("DescribeTable", json!({"TableName": "utm"})));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["Table"]["BillingModeSummary"],
+            json!({"BillingMode": "PAY_PER_REQUEST"})
+        );
+        assert_eq!(
+            body["Table"]["WarmThroughput"],
+            json!({
+                "ReadUnitsPerSecond": 12000,
+                "WriteUnitsPerSecond": 4000,
+                "Status": "ACTIVE"
+            })
+        );
+
+        // DeletionProtectionEnabled mutates on both describe surfaces.
+        let resp = handler.handle(make_req(
+            "UpdateTable",
+            json!({"TableName": "utm", "DeletionProtectionEnabled": true}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert!(body["TableDescription"]["DeletionProtectionEnabled"]
+            .as_bool()
+            .unwrap());
+        let resp = handler.handle(make_req("DescribeTable", json!({"TableName": "utm"})));
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert!(body["Table"]["DeletionProtectionEnabled"]
+            .as_bool()
+            .unwrap());
+        let resp = handler.handle(make_req(
+            "UpdateTable",
+            json!({"TableName": "utm", "DeletionProtectionEnabled": false}),
+        ));
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert!(!body["TableDescription"]["DeletionProtectionEnabled"]
+            .as_bool()
+            .unwrap());
+
+        // A StreamSpecification-on update attaches the stream (label + shard),
+        // echoed on this response and the next describe; re-enabling a live
+        // stream answers moto's StreamAlreadyEnabledException ("Cannot enable
+        // stream", ResourceInUseException); an off-spec disables it.
+        let resp = handler.handle(make_req(
+            "UpdateTable",
+            json!({"TableName": "utm",
+                   "StreamSpecification": {"StreamEnabled": true, "StreamViewType": "NEW_AND_OLD_IMAGES"}}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert!(body["TableDescription"]["LatestStreamLabel"].is_string());
+        assert!(body["TableDescription"]["LatestStreamArn"]
+            .as_str()
+            .unwrap()
+            .starts_with("arn:aws:dynamodb:us-east-1:123456789012:table/utm/stream/"));
+        let resp = handler.handle(make_req(
+            "UpdateTable",
+            json!({"TableName": "utm",
+                   "StreamSpecification": {"StreamEnabled": true, "StreamViewType": "NEW_IMAGE"}}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            resp.body,
+            json!({"__type": "ResourceInUseException", "message": "Cannot enable stream"})
+                .to_string()
+        );
+        let resp = handler.handle(make_req(
+            "UpdateTable",
+            json!({"TableName": "utm", "StreamSpecification": {"StreamEnabled": false}}),
+        ));
+        assert_eq!(resp.status, 200);
+
+        // … and switching BACK to PROVISIONED describes the stored mode again,
+        // warm throughput off the provisioned units (moto keeps its stored
+        // throughput across mode switches).
+        let resp = handler.handle(make_req(
+            "UpdateTable",
+            json!({"TableName": "utm", "BillingMode": "PROVISIONED"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["TableDescription"]["BillingModeSummary"],
+            json!({"BillingMode": "PROVISIONED"})
+        );
+        assert_eq!(
+            body["TableDescription"]["WarmThroughput"],
+            json!({
+                "ReadUnitsPerSecond": 5,
+                "WriteUnitsPerSecond": 7,
+                "Status": "ACTIVE"
+            })
+        );
+    }
+
     #[test]
     fn gsi_warmthroughput_present() {
         let handler = DynamoDbHandler::new();
@@ -4206,6 +4519,345 @@ mod tests {
         }
     }
 
+    // moto's transact_write_items check_unicity
+    // (dynamodb/models/__init__.py:617-623): two rows addressed at the same
+    // (table, key) raise MultipleTransactionsException — "Transaction request
+    // cannot include multiple operations on one item" — before anything runs,
+    // so NOTHING is written, not even the first row. Put rows target the key
+    // hidden in their Item; Update/Delete/ConditionCheck rows their own Key.
+    #[test]
+    fn transact_same_key_rows_rejected_400_nothing_written() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "unicity",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+
+        // Two Update rows on one key.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Update": {"TableName": "unicity", "Key": {"pk": {"S": "u1"}},
+                            "UpdateExpression": "SET a = :a",
+                            "ExpressionAttributeValues": {":a": {"S": "1"}}}},
+                {"Update": {"TableName": "unicity", "Key": {"pk": {"S": "u1"}},
+                            "UpdateExpression": "SET b = :b",
+                            "ExpressionAttributeValues": {":b": {"S": "2"}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp
+            .body
+            .contains("Transaction request cannot include multiple operations on one item"));
+        // Nothing written: the earlier row must be absent too.
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "unicity", "Key": {"pk": {"S": "u1"}}}),
+        ));
+        assert_eq!(resp.body, "{}", "unicity must cancel the whole request");
+
+        // Mixed-op row kinds on one key: Put row (key from Item) + Update row
+        // (key from Key), and ConditionCheck + Delete.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "unicity", "Item": {"pk": {"S": "p1"}, "v": {"S": "x"}}}},
+                {"Update": {"TableName": "unicity", "Key": {"pk": {"S": "p1"}},
+                            "UpdateExpression": "SET w = :w",
+                            "ExpressionAttributeValues": {":w": {"S": "2"}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp
+            .body
+            .contains("Transaction request cannot include multiple operations on one item"));
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"ConditionCheck": {"TableName": "unicity", "Key": {"pk": {"S": "p1"}},
+                                    "ConditionExpression": "attribute_exists(pk)"}},
+                {"Delete": {"TableName": "unicity", "Key": {"pk": {"S": "p1"}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp
+            .body
+            .contains("Transaction request cannot include multiple operations on one item"));
+
+        // Distinct keys — even across tables (moto hashes (table, key)) — stay
+        // valid.
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "unicity2",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "unicity", "Item": {"pk": {"S": "a"}, "v": {"S": "x"}}}},
+                {"Put": {"TableName": "unicity", "Item": {"pk": {"S": "b"}, "v": {"S": "y"}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 200);
+    }
+
+    // moto caps both Transact* batches: transact_write_items >100 rows raises
+    // TooManyTransactionsException
+    // ("1 validation error detected at 'transactItems' failed to satisfy
+    // constraint: Member must have length less than or equal to 100." — note
+    // the trailing period), while transact_get_items >25 rows
+    // (TRANSACTION_MAX_ITEMS, dynamodb/responses.py:1419-1435) uses its own
+    // message with a per-row TransactGetItem@id list and no trailing period.
+    #[test]
+    fn transact_items_length_caps_write_100_get_25() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "cap",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+
+        // 101 write rows -> 400.
+        let rows: Vec<Value> = (0..101)
+            .map(|i| json!({"Put": {"TableName": "cap", "Item": {"pk": {"S": format!("bulk{i}")}, "v": {"S": "x"}}}}))
+            .collect();
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": rows}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            resp.body,
+            json!({
+                "__type": "ValidationException",
+                "message": "1 validation error detected at 'transactItems' failed to satisfy \
+                            constraint: Member must have length less than or equal to 100."
+            })
+            .to_string()
+        );
+        // Nothing from the rejected batch was written.
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "cap", "Key": {"pk": {"S": "bulk0"}}}),
+        ));
+        assert_eq!(resp.body, "{}");
+
+        // Exactly 100 write rows pass.
+        let rows: Vec<Value> = (0..100)
+            .map(|i| json!({"Put": {"TableName": "cap", "Item": {"pk": {"S": format!("ok{i}")}}}}))
+            .collect();
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": rows}),
+        ));
+        assert_eq!(resp.status, 200);
+
+        // 26 get rows -> 400 with moto's TransactGetItem list. The ids run
+        // sequential 0x10000001.. in lowercase hex (responses.py request_id).
+        let rows: Vec<Value> = (0..26)
+            .map(|i| json!({"Get": {"TableName": "cap", "Key": {"pk": {"S": format!("bulk{i}")}}}}))
+            .collect();
+        let resp = handler.handle(make_req("TransactGetItems", json!({"TransactItems": rows})));
+        assert_eq!(resp.status, 400);
+        let ids: String = (1..=26)
+            .map(|i| {
+                format!(
+                    "com.amazonaws.dynamodb.v20120810.TransactGetItem@{:x}",
+                    268435456u64 + i
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        assert_eq!(
+            resp.body,
+            json!({
+                "__type": "ValidationException",
+                "message": format!(
+                    "1 validation error detected: Value '[{ids}] at 'transactItems' failed to \
+                     satisfy constraint: Member must have length less than or equal to 25"
+                ),
+            })
+            .to_string()
+        );
+
+        // Exactly 25 get rows pass.
+        let rows: Vec<Value> = (0..25)
+            .map(|i| json!({"Get": {"TableName": "cap", "Key": {"pk": {"S": format!("ok{i}")}}}}))
+            .collect();
+        let resp = handler.handle(make_req("TransactGetItems", json!({"TransactItems": rows})));
+        assert_eq!(resp.status, 200);
+    }
+
+    // moto's row-loop head raises TransactWriteSingleOpException when one
+    // TransactItems row carries two ops (models/__init__.py:630-632):
+    // "TransactItems can only contain one of Check, Put, Update or Delete"
+    // — byte-for-byte, and before any op of the row runs.
+    #[test]
+    fn transact_two_ops_single_row_single_op_wording() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "singleop",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "singleop", "Item": {"pk": {"S": "p"}, "v": {"S": "x"}}},
+                 "Delete": {"TableName": "singleop", "Key": {"pk": {"S": "p"}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            resp.body,
+            json!({
+                "__type": "ValidationException",
+                "message": "TransactItems can only contain one of Check, Put, Update or Delete"
+            })
+            .to_string()
+        );
+        // moto raised before running either op: nothing written.
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "singleop", "Key": {"pk": {"S": "p"}}}),
+        ));
+        assert_eq!(resp.body, "{}");
+    }
+
+    // moto evaluates the ConditionExpression BEFORE the item-size check on a
+    // transactional Put row (dynamodb/models/__init__.py:647-671 — the
+    // condition runs in the row loop, the LimitedSizeDict check inside
+    // self.put_item), so an oversized Put under a FAILING condition answers
+    // TransactionCanceledException with per-row CancellationReasons; with a
+    // passing condition (or none) it answers the plain size ValidationException.
+    #[test]
+    fn transact_put_condition_evaluated_before_size_check() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "ordcond",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        let big_string = "z".repeat(500_000);
+
+        // Oversized Put + failing condition -> TransactionCanceledException
+        // naming the row, with moto's CancellationReasons envelope.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "ordcond",
+                         "Item": {"pk": {"S": "big"}, "v": {"S": big_string}},
+                         "ConditionExpression": "attribute_exists(v)"}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(body["__type"], "TransactionCanceledException");
+        assert_eq!(
+            body["message"],
+            "Transaction cancelled, please refer cancellation reasons for specific reasons \
+             [ConditionalCheckFailed]"
+        );
+        assert_eq!(
+            body["CancellationReasons"],
+            json!([{"Code": "ConditionalCheckFailed",
+                    "Message": "The conditional request failed"}])
+        );
+        // Nothing written either way.
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "ordcond", "Key": {"pk": {"S": "big"}}}),
+        ));
+        assert_eq!(resp.body, "{}");
+
+        // A passing row ahead of the failing one: the reasons array carries
+        // {"Code": "None"} for the passing row, in request order.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "ordcond",
+                         "Item": {"pk": {"S": "small"}, "v": {"S": "fine"}}}},
+                {"Put": {"TableName": "ordcond",
+                         "Item": {"pk": {"S": "big2"}, "v": {"S": big_string}},
+                         "ConditionExpression": "attribute_exists(v)"}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["message"],
+            "Transaction cancelled, please refer cancellation reasons for specific reasons \
+             [None, ConditionalCheckFailed]"
+        );
+        assert_eq!(
+            body["CancellationReasons"],
+            json!([{"Code": "None"},
+                   {"Code": "ConditionalCheckFailed",
+                    "Message": "The conditional request failed"}])
+        );
+        // The passing row is NOT visible after the cancellation (atomic).
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "ordcond", "Key": {"pk": {"S": "small"}}}),
+        ));
+        assert_eq!(resp.body, "{}");
+
+        // Oversized Put WITHOUT a condition (moto: condition passes, size check
+        // raises in put_item) still answers the plain size ValidationException.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "ordcond",
+                         "Item": {"pk": {"S": "big3"}, "v": {"S": big_string.clone()}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp
+            .body
+            .contains("Item size has exceeded the maximum allowed size"));
+
+        // The Update row evaluates its condition before the (update-flavored)
+        // size check the same way (moto update_item: condition first).
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Update": {"TableName": "ordcond", "Key": {"pk": {"S": "big4"}},
+                            "UpdateExpression": "SET v = :v",
+                            "ExpressionAttributeValues": {":v": {"S": big_string}},
+                            "ConditionExpression": "attribute_exists(v)"}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(body["__type"], "TransactionCanceledException");
+        assert_eq!(
+            body["CancellationReasons"],
+            json!([{"Code": "ConditionalCheckFailed",
+                    "Message": "The conditional request failed"}])
+        );
+    }
+
     // moto routes PartiQL INSERT and UPDATE writes through table.put_item
     // (dynamo_backend.execute_statement calls table.put_item for both the
     // CREATE and UPDATE cases), so the 400 KB item limit applies there too —
@@ -4345,6 +4997,42 @@ mod tests {
         assert_eq!(td["KeySchema"][0]["AttributeName"], "pk");
         assert!(td.get("AttributeDefinitions").is_some());
         assert!(td.get("TableArn").is_some());
+    }
+
+    // TableId is rendered from the Table's STORED id (Table::new mints it
+    // once), so two consecutive describes are identical and UpdateTable's
+    // re-routed describe payload matches a fresh describe. moto's own
+    // Table.describe() omits TableId entirely (moto 5.2.4); real AWS renders
+    // one, like the twin does.
+    #[test]
+    fn describe_table_table_id_is_stable() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "stable-id",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        let first = handler.handle(make_req("DescribeTable", json!({"TableName": "stable-id"})));
+        assert_eq!(first.status, 200);
+        let second = handler.handle(make_req("DescribeTable", json!({"TableName": "stable-id"})));
+        let body_a: Value = serde_json::from_str(&first.body).unwrap();
+        let body_b: Value = serde_json::from_str(&second.body).unwrap();
+        let id_a = body_a["Table"]["TableId"].as_str().unwrap().to_string();
+        let id_b = body_b["Table"]["TableId"].as_str().unwrap().to_string();
+        assert!(!id_a.is_empty(), "describe renders a TableId");
+        assert_eq!(id_a, id_b, "two describing calls report the same TableId");
+
+        // UpdateTable's TableDescription carries the stored id too.
+        let resp = handler.handle(make_req(
+            "UpdateTable",
+            json!({"TableName": "stable-id", "BillingMode": "PROVISIONED"}),
+        ));
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(body["TableDescription"]["TableId"], id_a);
     }
 
     // moto renders each GSI's own ProvisionedThroughput
