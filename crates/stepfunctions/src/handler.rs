@@ -1145,3 +1145,102 @@ mod tests {
         );
     }
 }
+
+/// moto master 96a7b09e (#10405): create_state_machine() must store the
+/// requested `type` (previously every machine reported STANDARD) and
+/// list_state_machines() must include the type of each machine.
+/// DescribeStateMachine already echoed `type`; moto master renders both
+/// forms.
+#[cfg(test)]
+mod catchup_fx5_type_tests {
+    use super::*;
+    use bytes::Bytes;
+
+    fn make_req(operation: &str, params: Value) -> AwsRequest {
+        AwsRequest {
+            service: "stepfunctions".to_string(),
+            operation: operation.to_string(),
+            account: 876543210987,
+            region: "us-fx5-catchup".to_string(),
+            params,
+            body: Bytes::new(),
+        }
+    }
+
+    fn body(resp: &AwsResponse) -> Value {
+        serde_json::from_str(&resp.body).unwrap()
+    }
+
+    fn handler() -> StepfunctionsHandler {
+        StepfunctionsHandler::new()
+    }
+
+    fn definition() -> String {
+        json!({"StartAt": "Pass", "States": {"Pass": {"Type": "Pass", "End": true}}}).to_string()
+    }
+
+    #[test]
+    fn state_machine_creation_stores_the_requested_type() {
+        let h = handler();
+        let _ = h.handle(make_req(
+            "CreateStateMachine",
+            json!({
+                "stateMachineName": "standard",
+                "definition": definition(),
+                "roleArn": "arn:aws:iam::876543210987:role/sfn-role",
+            }),
+        ));
+        let _ = h.handle(make_req(
+            "CreateStateMachine",
+            json!({
+                "stateMachineName": "express",
+                "definition": definition(),
+                "roleArn": "arn:aws:iam::876543210987:role/sfn-role",
+                "type": "EXPRESS",
+            }),
+        ));
+
+        let standard = body(&h.handle(make_req(
+            "DescribeStateMachine",
+            json!({"stateMachineArn": "arn:aws:states:us-fx5-catchup:876543210987:stateMachine:standard"}),
+        )));
+        assert_eq!(standard["type"], "STANDARD");
+
+        let express = body(&h.handle(make_req(
+            "DescribeStateMachine",
+            json!({"stateMachineArn": "arn:aws:states:us-fx5-catchup:876543210987:stateMachine:express"}),
+        )));
+        assert_eq!(express["type"], "EXPRESS");
+    }
+
+    #[test]
+    fn state_machine_list_returns_the_type_of_each_state_machine() {
+        let h = handler();
+        let _ = h.handle(make_req(
+            "CreateStateMachine",
+            json!({
+                "stateMachineName": "standard",
+                "definition": definition(),
+                "roleArn": "arn:aws:iam::876543210987:role/sfn-role",
+            }),
+        ));
+        let _ = h.handle(make_req(
+            "CreateStateMachine",
+            json!({
+                "stateMachineName": "express",
+                "definition": definition(),
+                "roleArn": "arn:aws:iam::876543210987:role/sfn-role",
+                "type": "EXPRESS",
+            }),
+        ));
+
+        let list = body(&h.handle(make_req("ListStateMachines", json!({}))));
+        let rows = list["stateMachines"].as_array().unwrap();
+        let types: Vec<(&str, &str)> = rows
+            .iter()
+            .map(|r| (r["name"].as_str().unwrap(), r["type"].as_str().unwrap()))
+            .collect();
+        assert!(types.contains(&("standard", "STANDARD")), "got {types:?}");
+        assert!(types.contains(&("express", "EXPRESS")), "got {types:?}");
+    }
+}
