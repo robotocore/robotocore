@@ -453,6 +453,32 @@ impl DynamoDbHandler {
         }
     }
 
+    /// The table-level WarmThroughput block shared by every renderer of a
+    /// table description (CreateTable, DescribeTable, UpdateTable).
+    ///
+    /// Real AWS reports WarmThroughput on every table — Terraform AWS
+    /// provider v6.13+ polls DescribeTable for it (localstack #13140).
+    /// moto mirrors it unconditionally in Table.describe(): PAY_PER_REQUEST
+    /// tables report moto's default 12000/4000 warm units, PROVISIONED tables
+    /// their provisioned units, Status ACTIVE. The member shape follows
+    /// botocore's TableWarmThroughputDescription, whose Status member is the
+    /// TableStatus enum.
+    fn table_warm_throughput(table: &Table) -> Value {
+        if table.billing_mode == "PAY_PER_REQUEST" {
+            json!({
+                "ReadUnitsPerSecond": DEFAULT_WARM_THROUGHPUT_RCU,
+                "WriteUnitsPerSecond": DEFAULT_WARM_THROUGHPUT_WCU,
+                "Status": "ACTIVE",
+            })
+        } else {
+            json!({
+                "ReadUnitsPerSecond": *table.provisioned_rcu.read(),
+                "WriteUnitsPerSecond": *table.provisioned_wcu.read(),
+                "Status": "ACTIVE",
+            })
+        }
+    }
+
     fn describe_table_response(
         _req: &AwsRequest,
         table: &Table,
@@ -478,24 +504,7 @@ impl DynamoDbHandler {
             "WriteCapacityUnits": *table.provisioned_wcu.read(),
         });
 
-        // Real AWS reports WarmThroughput on every table — Terraform AWS
-        // provider v6.13+ polls DescribeTable for it (localstack #13140).
-        // moto mirrors it unconditionally in Table.describe(); the member
-        // shape follows botocore's TableWarmThroughputDescription, whose
-        // Status member is the TableStatus enum.
-        let warm_throughput = if table.billing_mode == "PAY_PER_REQUEST" {
-            json!({
-                "ReadUnitsPerSecond": DEFAULT_WARM_THROUGHPUT_RCU,
-                "WriteUnitsPerSecond": DEFAULT_WARM_THROUGHPUT_WCU,
-                "Status": "ACTIVE",
-            })
-        } else {
-            json!({
-                "ReadUnitsPerSecond": *table.provisioned_rcu.read(),
-                "WriteUnitsPerSecond": *table.provisioned_wcu.read(),
-                "Status": "ACTIVE",
-            })
-        };
+        let warm_throughput = Self::table_warm_throughput(table);
 
         let index_arn_base = table.table_arn.read().clone();
         let index_json = |indexes: &[crate::models::IndexDefinition], is_gsi: bool| -> Vec<Value> {
@@ -653,6 +662,11 @@ impl DynamoDbHandler {
         if let Some(pt) = provisioned {
             description["ProvisionedThroughput"] = pt;
         }
+        // moto's UpdateTable response is Table.describe(), so it carries the
+        // same WarmThroughput block as DescribeTable — computed after the
+        // mutations above, so PROVISIONED tables report the possibly-updated
+        // units (moto/dynamodb/models/__init__.py update_table + Table.describe).
+        description["WarmThroughput"] = Self::table_warm_throughput(&table);
         AwsResponse::json(200, json!({ "TableDescription": description }))
     }
 }
@@ -3670,6 +3684,82 @@ mod tests {
             json!({
                 "ReadUnitsPerSecond": 3,
                 "WriteUnitsPerSecond": 5,
+                "Status": "ACTIVE"
+            })
+        );
+    }
+
+    #[test]
+    fn update_table_warmthroughput_present() {
+        let handler = DynamoDbHandler::new();
+
+        // PAY_PER_REQUEST: on-demand tables keep moto's default warm
+        // throughput of 12000/4000 on UpdateTable.
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "upd-warm-ondemand",
+                "KeySchema": [{"AttributeName": "id", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "id", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "UpdateTable",
+            json!({"TableName": "upd-warm-ondemand"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["TableDescription"]["WarmThroughput"],
+            json!({
+                "ReadUnitsPerSecond": 12000,
+                "WriteUnitsPerSecond": 4000,
+                "Status": "ACTIVE"
+            })
+        );
+
+        // PROVISIONED: warm throughput mirrors the provisioned units after
+        // the update applies.
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "upd-warm-provisioned",
+                "KeySchema": [{"AttributeName": "id", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "id", "AttributeType": "S"}],
+                "ProvisionedThroughput": {"ReadCapacityUnits": 3, "WriteCapacityUnits": 5}
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "UpdateTable",
+            json!({
+                "TableName": "upd-warm-provisioned",
+                "ProvisionedThroughput": {"ReadCapacityUnits": 9, "WriteCapacityUnits": 21}
+            }),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["TableDescription"]["WarmThroughput"],
+            json!({
+                "ReadUnitsPerSecond": 9,
+                "WriteUnitsPerSecond": 21,
+                "Status": "ACTIVE"
+            })
+        );
+
+        // A later DescribeTable reports the updated units too.
+        let resp = handler.handle(make_req(
+            "DescribeTable",
+            json!({"TableName": "upd-warm-provisioned"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["Table"]["WarmThroughput"],
+            json!({
+                "ReadUnitsPerSecond": 9,
+                "WriteUnitsPerSecond": 21,
                 "Status": "ACTIVE"
             })
         );
