@@ -164,6 +164,15 @@ impl EcsHandler {
             .and_then(|v| v.as_array())
             .cloned()
             .unwrap_or_default();
+        // moto's Cluster model carries the cluster-default strategy so
+        // run_task can fall back to it when neither a launch type nor an
+        // explicit strategy is given (fork ecs/models.py run_task).
+        let default_strategy: Vec<Value> = req
+            .params
+            .get("defaultCapacityProviderStrategy")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
         let arn = format!(
             "arn:aws:ecs:{}:{}:cluster/{}",
             req.region, req.account, name
@@ -178,6 +187,7 @@ impl EcsHandler {
             "activeServicesCount": 0,
             "settings": settings,
             "capacityProviders": providers,
+            "defaultCapacityProviderStrategy": default_strategy,
             "tags": tags.clone(),
         });
         if !tags.is_empty() {
@@ -2842,6 +2852,48 @@ mod tests {
         assert_eq!(
             run["tasks"][0]["capacityProviderName"],
             json!("EC2_PROVIDER")
+        );
+    }
+
+    #[test]
+    fn run_task_capacity_provider_cluster_default_v2() {
+        // moto's Cluster model stores defaultCapacityProviderStrategy from
+        // CreateCluster itself (fork ecs/models.py Cluster.__init__), so the
+        // run_task fallback works without a PutClusterCapacityProviders call
+        // and DescribeClusters echoes the member.
+        let h = EcsHandler::new();
+        setup_cluster_and_task_family(&h, "cds", "fam");
+        let created = h.handle(make_req(
+            "CreateCluster",
+            json!({
+                "clusterName": "cds",
+                "capacityProviders": ["FARGATE", "FARGATE_SPOT"],
+                "defaultCapacityProviderStrategy":
+                    [{"capacityProvider": "FARGATE", "weight": 1, "base": 1}],
+            }),
+        ));
+        let created: Value = serde_json::from_str(&created.body).unwrap();
+        assert_eq!(
+            created["cluster"]["defaultCapacityProviderStrategy"][0]["capacityProvider"],
+            json!("FARGATE")
+        );
+
+        let run = h.handle(make_req(
+            "RunTask",
+            json!({
+                "cluster": "cds",
+                "taskDefinition": "fam:1",
+            }),
+        ));
+        assert_eq!(run.status, 200);
+        let run: Value = serde_json::from_str(&run.body).unwrap();
+        assert_eq!(run["tasks"][0]["capacityProviderName"], json!("FARGATE"));
+
+        let described = h.handle(make_req("DescribeClusters", json!({"clusters": ["cds"]})));
+        let described: Value = serde_json::from_str(&described.body).unwrap();
+        assert_eq!(
+            described["clusters"][0]["defaultCapacityProviderStrategy"][0]["capacityProvider"],
+            json!("FARGATE")
         );
     }
 }
