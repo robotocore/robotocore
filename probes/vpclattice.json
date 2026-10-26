@@ -1,11 +1,11 @@
 {
   "service": "vpclattice",
-  "generated_at": "2026-10-26T03:11:26.893476+00:00",
+  "generated_at": "2026-10-26T09:23:55.616934+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 58,
+    "working": 61,
     "needs_params": 0,
-    "not_implemented": 15,
+    "not_implemented": 12,
     "500_error": 0,
     "timeout": 0
   },
@@ -22,8 +22,8 @@
     },
     {
       "operation": "CreateListener",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateResourceConfiguration",
@@ -167,8 +167,8 @@
     },
     {
       "operation": "GetListener",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetResourceConfiguration",
@@ -232,8 +232,8 @@
     },
     {
       "operation": "ListListeners",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListResourceConfigurations",

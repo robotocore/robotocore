@@ -1,12 +1,12 @@
 {
   "service": "fsx",
-  "generated_at": "2026-10-26T05:04:43.425850+00:00",
+  "generated_at": "2026-10-26T09:23:48.775973+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 44,
+    "working": 45,
     "needs_params": 0,
     "not_implemented": 3,
-    "500_error": 1,
+    "500_error": 0,
     "timeout": 0
   },
   "operations": [
@@ -102,8 +102,8 @@
     },
     {
       "operation": "DeleteFileSystem",
-      "status": "500_error",
-      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-file-system-id-id' does not exist.)"
     },
     {
       "operation": "DeleteSnapshot",

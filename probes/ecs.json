@@ -1,6 +1,6 @@
 {
   "service": "ecs",
-  "generated_at": "2026-10-25T19:43:14.083916+00:00",
+  "generated_at": "2026-10-26T09:23:47.997929+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 63,
@@ -233,7 +233,7 @@
     {
       "operation": "RunTask",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (InvalidParameterException)"
     },
     {
       "operation": "StartTask",

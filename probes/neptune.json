@@ -1,6 +1,6 @@
 {
   "service": "neptune",
-  "generated_at": "2026-10-25T19:44:04.021212+00:00",
+  "generated_at": "2026-10-26T09:23:49.863720+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 68,
@@ -318,7 +318,7 @@
     {
       "operation": "ResetDBClusterParameterGroup",
       "status": "working",
-      "message": "likely implemented (DBParameterGroupNotFound: DBClusterParameterGroup not found: probe-test-value)"
+      "message": "OK"
     },
     {
       "operation": "ResetDBParameterGroup",
