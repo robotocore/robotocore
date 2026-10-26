@@ -627,6 +627,165 @@ impl DynamoDbHandler {
             );
         };
 
+        // moto update_table (dynamodb/models/__init__.py:168-195) applies
+        // its members in a fixed order — attribute definitions, global
+        // secondary index updates, provisioned throughput, billing mode,
+        // stream specification, deletion protection — stopping at the
+        // first failure, so a member positioned earlier that raises
+        // shadows later members entirely (nothing after it is applied).
+        // The twin previously ran throughput → billing → stream →
+        // protection → attrs → GSI; reordered to moto's per-source order.
+
+        // 1. moto replaces table.attr wholesale with a non-empty
+        // AttributeDefinitions member (models/__init__.py:180-181 —
+        // `table.attr = attr_definitions`; live-transcribed 2026-10-26,
+        // a request carrying only [extra] dropped the earlier [id]). The
+        // twin keeps its long-standing merge behavior — flagged as an
+        // observed divergence, not mirrored in this lane.
+        if let Some(defs) = req.params.get("AttributeDefinitions") {
+            let mut existing_defs = table.attribute_definitions.write();
+            for def in Self::parse_attr_defs(Some(defs)) {
+                if !existing_defs
+                    .iter()
+                    .any(|d| d.attribute_name == def.attribute_name)
+                {
+                    existing_defs.push(def);
+                }
+            }
+        }
+
+        // 2. GlobalSecondaryIndexUpdates. moto's
+        // update_table_global_indexes (models/__init__.py:207-247) walks
+        // each member's verbs in Delete → Update → Create order and
+        // raises ValueError — a plain werkzeug 500 through moto_server —
+        // when a verb names an index that does not exist ("Global
+        // Secondary Index does not exist, but tried to delete/update:
+        // {name}") or re-creates a name that exists ("Global Secondary
+        // Index already exists: {name}"), plus a KeyError 500 when a
+        // Create lacks one of its required IndexName/KeySchema/Projection
+        // members (an empty KeySchema ARRAY is accepted — live-transcribed
+        // moto 5.2.4, 2026-10-26). Deletes and creates mutate a staging
+        // list committed only when every member succeeded (moto assigns
+        // table.global_indexes after the loop); Updates mutate the live
+        // entry and survive a later member's failure (live-transcribed:
+        // Update g1x→9/1 then Delete ghost answered the 500 and g1x kept
+        // 9/1).
+        let index_updates = req
+            .params
+            .get("GlobalSecondaryIndexUpdates")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let mut staged = table.global_secondary_indexes.read().clone();
+        for update in index_updates {
+            if let Some(delete) = update.get("Delete") {
+                let Some(name) = delete.get("IndexName").and_then(Value::as_str) else {
+                    return AwsResponse::werkzeug_500();
+                };
+                let Some(pos) = staged.iter().position(|g| g.name == name) else {
+                    return AwsResponse::werkzeug_500();
+                };
+                staged.remove(pos);
+            }
+            if let Some(gsi_update) = update.get("Update") {
+                let Some(name) = gsi_update.get("IndexName").and_then(Value::as_str) else {
+                    return AwsResponse::werkzeug_500();
+                };
+                let Some(pos) = staged.iter().position(|g| g.name == name) else {
+                    return AwsResponse::werkzeug_500();
+                };
+                // moto's IndexDefinition.update replaces the members the
+                // update carries (dynamodb/models/table.py:149-155).
+                let idx = &mut staged[pos];
+                if let Some(key_schema_json) = gsi_update.get("KeySchema") {
+                    idx.key_schema = Self::parse_key_schema(Some(key_schema_json));
+                }
+                if let Some(proj) = gsi_update.get("Projection") {
+                    idx.projection = proj
+                        .get("ProjectionType")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("ALL")
+                        .to_string();
+                    idx.non_key_attributes = proj
+                        .get("NonKeyAttributes")
+                        .and_then(|n| n.as_array())
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(|x| x.as_str().map(String::from))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                }
+                if let Some(throughput) = gsi_update.get("ProvisionedThroughput") {
+                    idx.provisioned_rcu =
+                        throughput.get("ReadCapacityUnits").and_then(|v| v.as_i64());
+                    idx.provisioned_wcu = throughput
+                        .get("WriteCapacityUnits")
+                        .and_then(|v| v.as_i64());
+                }
+                // moto mutates the LIVE index object here — mirror on the
+                // stored entry so the change also survives a later member
+                // failing.
+                let mut stored = table.global_secondary_indexes.write();
+                if let Some(stored_idx) = stored.iter_mut().find(|g| g.name == name) {
+                    *stored_idx = idx.clone();
+                }
+            }
+            if let Some(create) = update.get("Create") {
+                let (index_name, key_schema_json, projection_json) = match (
+                    create.get("IndexName").and_then(Value::as_str),
+                    create.get("KeySchema"),
+                    create.get("Projection"),
+                ) {
+                    (Some(name), Some(ks), Some(p)) if !name.is_empty() => (name, ks, p),
+                    // moto's GlobalSecondaryIndex.create does dct[...] — a
+                    // missing required member IndexErrors out.
+                    _ => return AwsResponse::werkzeug_500(),
+                };
+                if staged.iter().any(|g| g.name == index_name) {
+                    return AwsResponse::werkzeug_500();
+                }
+                let key_schema = Self::parse_key_schema(Some(key_schema_json));
+                let projection = projection_json
+                    .get("ProjectionType")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("ALL")
+                    .to_string();
+                let non_key_attributes = projection_json
+                    .get("NonKeyAttributes")
+                    .and_then(|n| n.as_array())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|x| x.as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                // moto's GlobalSecondaryIndex.create (used for indexes
+                // created through UpdateTable too) reads the index's own
+                // throughput.
+                let throughput = create.get("ProvisionedThroughput");
+                staged.push(crate::models::IndexDefinition {
+                    name: index_name.to_string(),
+                    key_schema,
+                    projection,
+                    non_key_attributes,
+                    provisioned_rcu: throughput
+                        .and_then(|p| p.get("ReadCapacityUnits"))
+                        .and_then(|v| v.as_i64()),
+                    provisioned_wcu: throughput
+                        .and_then(|p| p.get("WriteCapacityUnits"))
+                        .and_then(|v| v.as_i64()),
+                });
+            }
+        }
+        // Committed only when every member succeeded (moto assigns
+        // table.global_indexes after its loop; on an error we already
+        // returned).
+        *table.global_secondary_indexes.write() = staged;
+
+        // 3. moto update_table: a present throughput member replaces the
+        // stored units — nothing validates the values server-side (live:
+        // 0/0 stored verbatim, 2026-10-26).
         if let Some(pt) = req.params.get("ProvisionedThroughput") {
             let rcu = pt
                 .get("ReadCapacityUnits")
@@ -640,7 +799,7 @@ impl DynamoDbHandler {
             *table.provisioned_wcu.write() = wcu;
         }
 
-        // moto update_table (dynamodb/models/__init__.py:186-187): a BillingMode
+        // 4. moto update_table (dynamodb/models/__init__.py:186-187): a BillingMode
         // member mutates the stored mode, so this and the next DescribeTable
         // echo the new mode — and the derived WarmThroughput follows it (the
         // twin treats a PAY_PER_REQUEST table as moto's 12000/4000 on-demand
@@ -651,7 +810,7 @@ impl DynamoDbHandler {
             }
         }
 
-        // moto update_table: stream_spec is applied through
+        // 5. moto update_table: stream_spec is applied through
         // update_table_streams (dynamodb/models/__init__.py:197-205) —
         // re-enabling a table that already carries a stream label raises
         // ResourceInUseException ("Cannot enable stream"); otherwise an
@@ -676,7 +835,7 @@ impl DynamoDbHandler {
             }
         }
 
-        // moto update_table (dynamodb/models/__init__.py:190-191): a present
+        // 6. moto update_table (dynamodb/models/__init__.py:190-191): a present
         // boolean DeletionProtectionEnabled member mutates the stored value.
         if let Some(enabled) = req
             .params
@@ -684,81 +843,6 @@ impl DynamoDbHandler {
             .and_then(Value::as_bool)
         {
             *table.deletion_protection_enabled.write() = enabled;
-        }
-
-        // Merge attribute definitions supplied alongside index updates.
-        if let Some(defs) = req.params.get("AttributeDefinitions") {
-            let mut existing_defs = table.attribute_definitions.write();
-            for def in Self::parse_attr_defs(Some(defs)) {
-                if !existing_defs
-                    .iter()
-                    .any(|d| d.attribute_name == def.attribute_name)
-                {
-                    existing_defs.push(def);
-                }
-            }
-        }
-
-        for update in req
-            .params
-            .get("GlobalSecondaryIndexUpdates")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default()
-        {
-            if let Some(create) = update.get("Create") {
-                let key_schema = Self::parse_key_schema(create.get("KeySchema"));
-                if key_schema.is_empty() {
-                    continue;
-                }
-                let projection = create
-                    .get("Projection")
-                    .and_then(|p| p.get("ProjectionType"))
-                    .and_then(|t| t.as_str())
-                    .unwrap_or("ALL")
-                    .to_string();
-                let non_key_attributes = create
-                    .get("Projection")
-                    .and_then(|p| p.get("NonKeyAttributes"))
-                    .and_then(|n| n.as_array())
-                    .map(|a| {
-                        a.iter()
-                            .filter_map(|x| x.as_str().map(String::from))
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                // moto's GlobalSecondaryIndex.create (used for indexes created
-                // through UpdateTable too) reads the index's own throughput.
-                let throughput = create.get("ProvisionedThroughput");
-                let idx = crate::models::IndexDefinition {
-                    name: create
-                        .get("IndexName")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or_default()
-                        .to_string(),
-                    key_schema,
-                    projection,
-                    non_key_attributes,
-                    provisioned_rcu: throughput
-                        .and_then(|p| p.get("ReadCapacityUnits"))
-                        .and_then(|v| v.as_i64()),
-                    provisioned_wcu: throughput
-                        .and_then(|p| p.get("WriteCapacityUnits"))
-                        .and_then(|v| v.as_i64()),
-                };
-                let mut gsis = table.global_secondary_indexes.write();
-                if !gsis.iter().any(|g| g.name == idx.name) {
-                    gsis.push(idx);
-                }
-            }
-            if let Some(delete) = update.get("Delete") {
-                if let Some(name) = delete.get("IndexName").and_then(|v| v.as_str()) {
-                    table
-                        .global_secondary_indexes
-                        .write()
-                        .retain(|g| g.name != name);
-                }
-            }
         }
 
         // moto's UpdateTable response is Table.describe() — the full base_key
@@ -1775,11 +1859,21 @@ impl DynamoDbHandler {
             table: Arc<Table>,
             key: String,
         }
+        /// One entry per TransactWriteItems row (moto transact_write_items
+        /// `errors` list of (Code, Message, Item) tuples):
+        /// `code: None` = the row passed, `item` = the row's pre-transaction
+        /// attributes when moto's ReturnValuesOnConditionCheckFailure=ALL_OLD
+        /// asked for them on a failed row (models/__init__.py:666-671,
+        /// exceptions.py TransactionCanceledException:251-255).
+        struct RowCancellation {
+            code: Option<String>,
+            item: Option<AttrMap>,
+        }
 
         let mut puts: Vec<PendingPut> = Vec::new();
         let mut updates: Vec<PendingUpdate> = Vec::new();
         let mut deletes: Vec<PendingDelete> = Vec::new();
-        let mut cancellation: Vec<Option<String>> = Vec::new();
+        let mut cancellation: Vec<RowCancellation> = Vec::new();
         let mut failed = false;
         // moto transact_write_items check_unicity
         // (dynamodb/models/__init__.py:617-623): every row across the request
@@ -1809,30 +1903,40 @@ impl DynamoDbHandler {
         }
 
         for entry in &transact_items {
-            // moto's row-loop head (dynamodb/models/__init__.py:630-632,
-            // TransactWriteSingleOpException): exactly one of Put, Update,
-            // Delete or ConditionCheck per row — a row carrying two ops is
-            // rejected up front ("TransactItems can only contain one of
-            // Check, Put, Update or Delete").
-            if entry.as_object().is_some_and(|m| m.len() > 1) {
+            // moto's response layer crashes on a row that parses to no
+            // operation: `item_values = list(item.values())[0]` raises
+            // IndexError (dynamodb/responses.py:1478) before the model's
+            // row loop (models/__init__.py:635) could ever raise
+            // StopIteration, so moto_server answers the plain werkzeug 500
+            // page instead of a cancellation envelope. Whole-request, and
+            // atomically writes nothing (mirror: live transcript
+            // 2026-10-26, moto 5.2.4).
+            //
+            // moto's parse (moto/core/parse.py BaseJSONParser
+            // ._parse_structure) keeps ONLY the modeled Put/Update/Delete/
+            // ConditionCheck members of each row — any other key (e.g. a
+            // "Get" write row) is dropped before the backend ever sees it,
+            // so the model's ValueError("Unsupported transaction
+            // operation") branch is unreachable over HTTP. Mirror the
+            // parsed shape: count modeled members for both the single-op
+            // check and op selection (live-transcribed 2026-10-26):
+            //   Put + Get          -> executes as a plain Put (200)
+            //   Put + Delete + Get -> single-op ValidationException
+            //   Get only           -> parses to {} -> werkzeug 500
+            let modeled: Vec<(&str, &Value)> = ["Put", "Update", "Delete", "ConditionCheck"]
+                .iter()
+                .filter_map(|k| entry.get(*k).map(|o| (*k, o)))
+                .collect();
+            if modeled.len() > 1 {
                 return AwsResponse::error(
                     400,
                     "ValidationException",
                     "TransactItems can only contain one of Check, Put, Update or Delete",
                 );
             }
-            let (op_name, op) = match ["Put", "Update", "Delete", "ConditionCheck"]
-                .iter()
-                .find_map(|k| entry.get(k).map(|o| (*k, Some(o))))
-            {
-                Some((k, Some(o))) => (k, o),
-                _ => {
-                    return AwsResponse::error(
-                        400,
-                        "ValidationException",
-                        "TransactItems can only contain one of Check, Put, Update or Delete",
-                    )
-                }
+            let (op_name, op) = match modeled.into_iter().next() {
+                Some(t) => t,
+                None => return AwsResponse::werkzeug_500(),
             };
             let table_name = param_str(op, "TableName").unwrap_or("").to_string();
             let table = match self
@@ -1857,6 +1961,19 @@ impl DynamoDbHandler {
 
             let existing = |table: &Table, key: &str| -> Option<AttrMap> {
                 table.items.read().get(key).map(|i| i.attributes.clone())
+            };
+
+            // moto transact_write_items (models/__init__.py:663-671): when a
+            // row's condition fails, ReturnValuesOnConditionCheckFailure=
+            // ALL_OLD attaches that row's pre-transaction item to its
+            // cancellation reason — skipped when the caller did not ask for
+            // ALL_OLD or the row does not exist.
+            let reason_item = |item: &Option<AttrMap>| -> Option<AttrMap> {
+                if param_str(op, "ReturnValuesOnConditionCheckFailure") == Some("ALL_OLD") {
+                    item.clone()
+                } else {
+                    None
+                }
             };
 
             match op_name {
@@ -1899,7 +2016,10 @@ impl DynamoDbHandler {
                             if let Some(e) = check_item_size(&attrs, false) {
                                 return e;
                             }
-                            cancellation.push(None);
+                            cancellation.push(RowCancellation {
+                                code: None,
+                                item: None,
+                            });
                             puts.push(PendingPut {
                                 table,
                                 key,
@@ -1908,7 +2028,10 @@ impl DynamoDbHandler {
                         }
                         Err(_) => {
                             failed = true;
-                            cancellation.push(Some("ConditionalCheckFailed".to_string()));
+                            cancellation.push(RowCancellation {
+                                code: Some("ConditionalCheckFailed".to_string()),
+                                item: reason_item(&pre),
+                            });
                         }
                     }
                 }
@@ -1972,7 +2095,10 @@ impl DynamoDbHandler {
                             if let Some(e) = check_item_size(&new_attrs, true) {
                                 return e;
                             }
-                            cancellation.push(None);
+                            cancellation.push(RowCancellation {
+                                code: None,
+                                item: None,
+                            });
                             updates.push(PendingUpdate {
                                 table,
                                 key,
@@ -1981,7 +2107,10 @@ impl DynamoDbHandler {
                         }
                         Err(_) => {
                             failed = true;
-                            cancellation.push(Some("ConditionalCheckFailed".to_string()));
+                            cancellation.push(RowCancellation {
+                                code: Some("ConditionalCheckFailed".to_string()),
+                                item: reason_item(&pre),
+                            });
                         }
                     }
                 }
@@ -2009,12 +2138,18 @@ impl DynamoDbHandler {
                     );
                     match check {
                         Ok(()) => {
-                            cancellation.push(None);
+                            cancellation.push(RowCancellation {
+                                code: None,
+                                item: None,
+                            });
                             deletes.push(PendingDelete { table, key });
                         }
                         Err(_) => {
                             failed = true;
-                            cancellation.push(Some("ConditionalCheckFailed".to_string()));
+                            cancellation.push(RowCancellation {
+                                code: Some("ConditionalCheckFailed".to_string()),
+                                item: reason_item(&pre),
+                            });
                         }
                     }
                 }
@@ -2044,10 +2179,16 @@ impl DynamoDbHandler {
                         );
                     }
                     match Self::check_condition(req, cond, pre.as_ref().map(|m| m as &AttrMap)) {
-                        Ok(()) => cancellation.push(None),
+                        Ok(()) => cancellation.push(RowCancellation {
+                            code: None,
+                            item: None,
+                        }),
                         Err(_) => {
                             failed = true;
-                            cancellation.push(Some("ConditionalCheckFailed".to_string()));
+                            cancellation.push(RowCancellation {
+                                code: Some("ConditionalCheckFailed".to_string()),
+                                item: reason_item(&pre),
+                            });
                         }
                     }
                 }
@@ -2057,21 +2198,39 @@ impl DynamoDbHandler {
         if failed {
             let reasons_text = cancellation
                 .iter()
-                .map(|r| r.clone().unwrap_or_else(|| "None".to_string()))
+                .map(|r| r.code.clone().unwrap_or_else(|| "None".to_string()))
                 .collect::<Vec<_>>()
                 .join(", ");
             // moto's TransactionCanceledException describes both the summary
             // message and one CancellationReasons entry per row
             // (dynamodb/exceptions.py TransactionCanceledException):
             // {"Code": <code>, "Message": <...>} for a failed row, {"Code":
-            // "None"} for a passing one. Phase 1 only cancels on failed
+            // "None"} for a passing one, and an extra "Item" member with the
+            // row's old attributes when the failed row carried
+            // ReturnValuesOnConditionCheckFailure=ALL_OLD
+            // (models/__init__.py:666-671). Phase 1 only cancels on failed
             // conditions, so the only code here is ConditionalCheckFailed
             // with moto's "The conditional request failed" message.
+            //
+            // Wire shape: moto renders the summary as top-level "Message"
+            // (uppercase — exceptions.py:261) and the fully-qualified error
+            // type com.amazonaws.dynamodb.v20120810#
+            // TransactionCanceledException, unlike real AWS's lowercase
+            // `message` (live transcript 2026-10-26, moto 5.2.4).
             let reasons = cancellation
                 .iter()
-                .map(|r| match r {
+                .map(|r| match &r.code {
                     Some(code) => {
-                        json!({"Code": code, "Message": "The conditional request failed"})
+                        let mut reason = json!({
+                            "Code": code,
+                            "Message": "The conditional request failed",
+                        });
+                        if let Some(item) = &r.item {
+                            if !item.is_empty() {
+                                reason["Item"] = map_to_value(item);
+                            }
+                        }
+                        reason
                     }
                     None => json!({"Code": "None"}),
                 })
@@ -2079,9 +2238,9 @@ impl DynamoDbHandler {
             return AwsResponse::error_with_body(
                 400,
                 json!({
-                    "__type": "TransactionCanceledException",
+                    "__type": "com.amazonaws.dynamodb.v20120810#TransactionCanceledException",
                     "CancellationReasons": reasons,
-                    "message": format!(
+                    "Message": format!(
                         "Transaction cancelled, please refer cancellation reasons \
                          for specific reasons [{reasons_text}]"
                     ),
@@ -2152,12 +2311,22 @@ impl DynamoDbHandler {
             );
         }
 
-        AwsResponse::json(200, json!({ "ConsumedCapacity": [] }))
+        // moto transact_write_items answers the constant
+        // {"ConsumedCapacity": [], "ItemCollectionMetrics": {}} on success
+        // (dynamodb/responses.py:1531, live transcript 2026-10-26).
+        AwsResponse::json(
+            200,
+            json!({ "ConsumedCapacity": [], "ItemCollectionMetrics": {} }),
+        )
     }
 
     fn transact_get_items(&self, req: &AwsRequest) -> AwsResponse {
         let state = self.get_state(req.account, &req.region);
         let mut responses: Vec<Value> = Vec::new();
+        // Per-table hit counts for moto's ConsumedCapacity bookkeeping, in
+        // first-hit order (dynamodb/responses.py:1452-1458).
+        let mut tables: Vec<String> = Vec::new();
+        let mut hits: HashMap<String, u32> = HashMap::new();
         let transact_items = req
             .params
             .get("TransactItems")
@@ -2226,13 +2395,47 @@ impl DynamoDbHandler {
                     None => item_json,
                 };
                 entry_resp.insert("Item".to_string(), projected);
+                // moto transact_get_items (dynamodb/responses.py:1452-1458):
+                // only rows that returned an item add capacity units (the
+                // miss branch `continue`s before the bookkeeping) —
+                // per-table counts, 2.0 units per hit.
+                if !hits.contains_key(&table_name) {
+                    tables.push(table_name.clone());
+                }
+                *hits.entry(table_name.clone()).or_insert(0) += 1;
             }
             responses.push(Value::Object(entry_resp));
         }
-        AwsResponse::json(
-            200,
-            json!({ "Responses": responses, "ConsumedCapacity": [] }),
-        )
+        // moto's ConsumedCapacity member is present only when
+        // ReturnConsumedCapacity is not "NONE" (responses.py:1466-1471;
+        // an omitted member counts as "NONE" — absent from the response),
+        // and the per-table "Table" breakdown renders only for "INDEXES"
+        // (live-transcribed moto 5.2.4, 2026-10-26).
+        let mut body = json!({ "Responses": responses });
+        let ret_consumed_capacity =
+            param_str(&req.params, "ReturnConsumedCapacity").unwrap_or("NONE");
+        if ret_consumed_capacity != "NONE" {
+            // One entry per table that had at least one returning row, in
+            // first-hit order (moto keys its python dict by table name).
+            let capacities: Vec<Value> = tables
+                .iter()
+                .map(|table_name| {
+                    let units = hits.get(table_name).copied().unwrap_or(0) as f64 * 2.0;
+                    let mut capacity = json!({
+                        "TableName": table_name,
+                        "CapacityUnits": units,
+                        "ReadCapacityUnits": units,
+                    });
+                    if ret_consumed_capacity == "INDEXES" {
+                        capacity["Table"] =
+                            json!({"CapacityUnits": units, "ReadCapacityUnits": units});
+                    }
+                    capacity
+                })
+                .collect();
+            body["ConsumedCapacity"] = Value::Array(capacities);
+        }
+        AwsResponse::json(200, body)
     }
 
     fn condition_check(&self, req: &AwsRequest) -> AwsResponse {
@@ -3822,6 +4025,7 @@ fn compare_seq(candidate: &str, after: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::MOTO_SERVER_WERKZEUG_500;
     use bytes::Bytes;
 
     fn make_req(operation: &str, params: Value) -> AwsRequest {
@@ -4701,6 +4905,243 @@ mod tests {
         assert_eq!(resp.status, 200);
     }
 
+    // moto's transact 200 shapes (dynamodb/responses.py:1531,
+    // :1437-1471; live-transcribed moto 5.2.4, 2026-10-26):
+    //   TransactWriteItems answers the constant
+    //   {"ConsumedCapacity": [], "ItemCollectionMetrics": {}} — the empty
+    //   ItemCollectionMetrics OBJECT (never per-row entries);
+    //   TransactGetItems omits ConsumedCapacity unless
+    //   ReturnConsumedCapacity is not "NONE", one entry per table that had
+    //   at least one returning row in first-hit order, 2.0 units per hit
+    //   (missing rows contribute nothing), and the "Table" breakdown only
+    //   for "INDEXES".
+    #[test]
+    fn transact_200_shapes_item_collection_metrics_and_capacity() {
+        let handler = DynamoDbHandler::new();
+        for table in ["shapeA", "shapeB"] {
+            handler.handle(make_req(
+                "CreateTable",
+                json!({
+                    "TableName": table,
+                    "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                    "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                    "BillingMode": "PAY_PER_REQUEST"
+                }),
+            ));
+        }
+        handler.handle(make_req(
+            "PutItem",
+            json!({"TableName": "shapeA", "Item": {"pk": {"S": "a1"}, "v": {"N": "1"}}}),
+        ));
+        handler.handle(make_req(
+            "PutItem",
+            json!({"TableName": "shapeB", "Item": {"pk": {"S": "b1"}, "v": {"N": "2"}}}),
+        ));
+
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "shapeA", "Item": {"pk": {"S": "w1"}, "v": {"S": "x"}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 200);
+        assert_eq!(
+            resp.body,
+            json!({"ConsumedCapacity": [], "ItemCollectionMetrics": {}}).to_string()
+        );
+
+        // Omitted ReturnConsumedCapacity: no ConsumedCapacity member at
+        // all — hit row and miss row render {Item}/{None}.
+        let resp = handler.handle(make_req(
+            "TransactGetItems",
+            json!({"TransactItems": [
+                {"Get": {"TableName": "shapeA", "Key": {"pk": {"S": "a1"}}}},
+                {"Get": {"TableName": "shapeA", "Key": {"pk": {"S": "miss"}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["Responses"],
+            json!([{"Item": {"pk": {"S": "a1"}, "v": {"N": "1"}}}, {}])
+        );
+        assert!(body.get("ConsumedCapacity").is_none());
+
+        // TOTAL: one entry for the hit table; 2.0 units per hit.
+        let resp = handler.handle(make_req(
+            "TransactGetItems",
+            json!({"TransactItems": [
+                {"Get": {"TableName": "shapeA", "Key": {"pk": {"S": "a1"}}}},
+                {"Get": {"TableName": "shapeA", "Key": {"pk": {"S": "miss"}}}}
+            ], "ReturnConsumedCapacity": "TOTAL"}),
+        ));
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["ConsumedCapacity"],
+            json!([{"TableName": "shapeA", "CapacityUnits": 2.0, "ReadCapacityUnits": 2.0}])
+        );
+
+        // INDEXES, two tables, repeat hit plus miss: per-table
+        // aggregation (shapeB twice = 4.0; the shapeB miss adds nothing)
+        // in first-hit order, each with the "Table" breakdown.
+        let resp = handler.handle(make_req(
+            "TransactGetItems",
+            json!({"TransactItems": [
+                {"Get": {"TableName": "shapeA", "Key": {"pk": {"S": "a1"}}}},
+                {"Get": {"TableName": "shapeB", "Key": {"pk": {"S": "b1"}}}},
+                {"Get": {"TableName": "shapeB", "Key": {"pk": {"S": "b1"}}}},
+                {"Get": {"TableName": "shapeB", "Key": {"pk": {"S": "miss"}}}}
+            ], "ReturnConsumedCapacity": "INDEXES"}),
+        ));
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["ConsumedCapacity"],
+            json!([
+                {"TableName": "shapeA", "CapacityUnits": 2.0, "ReadCapacityUnits": 2.0,
+                 "Table": {"CapacityUnits": 2.0, "ReadCapacityUnits": 2.0}},
+                {"TableName": "shapeB", "CapacityUnits": 4.0, "ReadCapacityUnits": 4.0,
+                 "Table": {"CapacityUnits": 4.0, "ReadCapacityUnits": 4.0}}
+            ])
+        );
+    }
+
+    // A TransactWriteItems row that parses to no operation — the zero-op
+    // `{}` row — crashes moto's response-layer validation:
+    // `item_values = list(item.values())[0]` raises IndexError
+    // (dynamodb/responses.py:1478) before the model's row loop
+    // (models/__init__.py:635 next(iter(item.items())) → StopIteration)
+    // could ever build a cancellation envelope, so moto_server answers the
+    // werkzeug plain 500 page. Verified live against moto 5.2.4
+    // (moto_server, 2026-10-26): HTTP 500, text/html, the exact bytes
+    // below, and — because the crash happens before any row runs — the
+    // transaction writes nothing.
+    #[test]
+    fn transact_zero_op_row_renders_moto_server_werkzeug_500() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "zeroop",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [{}]}),
+        ));
+        assert_eq!(resp.status, 500);
+        assert_eq!(resp.body, MOTO_SERVER_WERKZEUG_500);
+        assert_eq!(resp.body.len(), 265);
+        let content_type = resp
+            .headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+            .map(|(_, v)| v.clone())
+            .unwrap_or_default();
+        assert_eq!(content_type, "text/html; charset=utf-8");
+
+        // The moto 500 sits ahead of the single-op validation in moto's
+        // response layer, so a valid Put row sharing the request with the
+        // zero-op row is NOT committed either.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "zeroop", "Item": {"pk": {"S": "p"}, "v": {"S": "x"}}}},
+                {}
+            ]}),
+        ));
+        assert_eq!(resp.status, 500);
+        assert_eq!(resp.body, MOTO_SERVER_WERKZEUG_500);
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "zeroop", "Key": {"pk": {"S": "p"}}}),
+        ));
+        assert_eq!(resp.body, "{}");
+    }
+
+    // moto's response-layer parse drops unmodeled keys from each
+    // TransactWrite row (moto/core/parse.py BaseJSONParser
+    // ._parse_structure keeps only the modeled Put/Update/Delete/
+    // ConditionCheck members), so:
+    //   - a row keyed only by an unknown op ("Get") parses to {} and
+    //     crashes the validation (`list(item.values())[0]` IndexError,
+    //     dynamodb/responses.py:1478) -> werkzeug 500 page. The
+    //     model-level ValueError("Unsupported transaction operation")
+    //     branch (models/__init__.py:636-637) is unreachable over HTTP
+    //     because the key never reaches the backend — no
+    //     TransactionCancelled envelope with a per-row "ValueError" code
+    //     is produced for this input;
+    //   - a Put row carrying an extra unmodeled "Get" key executes as a
+    //     plain single-op Put;
+    //   - two modeled ops sharing the row with unmodeled junk still
+    //     answer the single-op ValidationException.
+    // Live-transcribed against moto 5.2.4 (2026-10-26).
+    #[test]
+    fn transact_unmodeled_op_row_parse_drop_mirror() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "getdrop",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+
+        // "Get"—only write row -> moto's werkzeug 500 page.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Get": {"TableName": "getdrop", "Key": {"pk": {"S": "r1"}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 500);
+        assert_eq!(resp.body, MOTO_SERVER_WERKZEUG_500);
+
+        // Put + Get executes as a plain Put, and the row commits.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "getdrop",
+                         "Item": {"pk": {"S": "r2"}, "v": {"S": "x"}}},
+                 "Get": {"TableName": "getdrop", "Key": {"pk": {"S": "r2"}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 200);
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "getdrop", "Key": {"pk": {"S": "r2"}}}),
+        ));
+        assert_eq!(
+            resp.body,
+            json!({"Item": {"pk": {"S": "r2"}, "v": {"S": "x"}}}).to_string()
+        );
+
+        // Put + Delete + Get: the two modeled members keep the row under
+        // the single-op check.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "getdrop",
+                         "Item": {"pk": {"S": "r3"}, "v": {"S": "x"}}},
+                 "Delete": {"TableName": "getdrop", "Key": {"pk": {"S": "r3"}}},
+                 "Get": {"TableName": "getdrop", "Key": {"pk": {"S": "r3"}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            resp.body,
+            json!({
+                "__type": "ValidationException",
+                "message": "TransactItems can only contain one of Check, Put, Update or Delete"
+            })
+            .to_string()
+        );
+    }
+
     // moto's row-loop head raises TransactWriteSingleOpException when one
     // TransactItems row carries two ops (models/__init__.py:630-632):
     // "TransactItems can only contain one of Check, Put, Update or Delete"
@@ -4773,9 +5214,14 @@ mod tests {
         ));
         assert_eq!(resp.status, 400);
         let body: Value = serde_json::from_str(&resp.body).unwrap();
-        assert_eq!(body["__type"], "TransactionCanceledException");
+        // moto renders the fully-qualified error type and uppercase "Message"
+        // (exceptions.py:261; live transcript 2026-10-26).
         assert_eq!(
-            body["message"],
+            body["__type"],
+            "com.amazonaws.dynamodb.v20120810#TransactionCanceledException"
+        );
+        assert_eq!(
+            body["Message"],
             "Transaction cancelled, please refer cancellation reasons for specific reasons \
              [ConditionalCheckFailed]"
         );
@@ -4806,7 +5252,7 @@ mod tests {
         assert_eq!(resp.status, 400);
         let body: Value = serde_json::from_str(&resp.body).unwrap();
         assert_eq!(
-            body["message"],
+            body["Message"],
             "Transaction cancelled, please refer cancellation reasons for specific reasons \
              [None, ConditionalCheckFailed]"
         );
@@ -4850,11 +5296,166 @@ mod tests {
         ));
         assert_eq!(resp.status, 400);
         let body: Value = serde_json::from_str(&resp.body).unwrap();
-        assert_eq!(body["__type"], "TransactionCanceledException");
+        assert_eq!(
+            body["__type"],
+            "com.amazonaws.dynamodb.v20120810#TransactionCanceledException"
+        );
         assert_eq!(
             body["CancellationReasons"],
             json!([{"Code": "ConditionalCheckFailed",
                     "Message": "The conditional request failed"}])
+        );
+    }
+
+    // ReturnValuesOnConditionCheckFailure=ALL_OLD on a failing condition
+    // row attaches that row's pre-transaction attributes as the reason's
+    // "Item" member (moto models/__init__.py:666-671 — original_item =
+    // current.to_json()["Attributes"] — rendered by
+    // TransactionCanceledException, exceptions.py:251-255). Only failing
+    // rows gain it: passing rows stay {"Code": "None"} even when they
+    // carry ALL_OLD, a failed condition on a nonexistent row carries no
+    // Item (empty `current`), and rows without ALL_OLD never do. All four
+    // op arms share moto's condition block, so Put/Update/Delete/
+    // ConditionCheck fail-row reasons all carry the item. Live-transcribed
+    // (moto 5.2.4, 2026-10-26).
+    #[test]
+    fn transact_failing_condition_all_old_includes_old_item() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "allold",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "PutItem",
+            json!({"TableName": "allold",
+                   "Item": {"pk": {"S": "r1"}, "v": {"N": "3"}, "s": {"S": "old"}}}),
+        ));
+        assert_eq!(resp.status, 200);
+
+        let failing_put = || {
+            json!({"Put": {"TableName": "allold",
+                           "Item": {"pk": {"S": "r1"}, "v": {"N": "99"}},
+                           "ConditionExpression": "attribute_not_exists(pk)",
+                           "ReturnValuesOnConditionCheckFailure": "ALL_OLD"}})
+        };
+
+        // Failing Put + ALL_OLD on an existing row: the reason gains Item.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [failing_put()]}),
+        ));
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["CancellationReasons"],
+            json!([{"Code": "ConditionalCheckFailed",
+                    "Message": "The conditional request failed",
+                    "Item": {"pk": {"S": "r1"}, "v": {"N": "3"}, "s": {"S": "old"}}}])
+        );
+        assert_eq!(
+            body["Message"],
+            "Transaction cancelled, please refer cancellation reasons for specific reasons \
+             [ConditionalCheckFailed]"
+        );
+
+        // Passing row centered ahead of the failing one: {"Code": "None"}
+        // even though the passing row also carries ALL_OLD; only the
+        // failing row gains Item. Nothing is committed either way.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "allold",
+                         "Item": {"pk": {"S": "newA"}, "v": {"S": "p"}},
+                         "ConditionExpression": "attribute_not_exists(pk)",
+                         "ReturnValuesOnConditionCheckFailure": "ALL_OLD"}},
+                failing_put()
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["CancellationReasons"],
+            json!([{"Code": "None"},
+                   {"Code": "ConditionalCheckFailed",
+                    "Message": "The conditional request failed",
+                    "Item": {"pk": {"S": "r1"}, "v": {"N": "3"}, "s": {"S": "old"}}}])
+        );
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "allold", "Key": {"pk": {"S": "newA"}}}),
+        ));
+        assert_eq!(resp.body, "{}");
+
+        // Without ALL_OLD the failing row carries no Item.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "allold",
+                         "Item": {"pk": {"S": "r1"}, "v": {"N": "99"}},
+                         "ConditionExpression": "attribute_not_exists(pk)"}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["CancellationReasons"],
+            json!([{"Code": "ConditionalCheckFailed",
+                    "Message": "The conditional request failed"}])
+        );
+
+        // A failed condition on a row that does not exist carries no Item
+        // even with ALL_OLD (moto skips the empty `current`).
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "allold",
+                         "Item": {"pk": {"S": "ghost"}, "v": {"N": "1"}},
+                         "ConditionExpression": "attribute_exists(pk)",
+                         "ReturnValuesOnConditionCheckFailure": "ALL_OLD"}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["CancellationReasons"],
+            json!([{"Code": "ConditionalCheckFailed",
+                    "Message": "The conditional request failed"}])
+        );
+
+        // The Update row reads the same `ReturnValuesOnConditionCheckFailure`
+        // member: a failed condition carries the old item too.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Update": {"TableName": "allold", "Key": {"pk": {"S": "r1"}},
+                            "UpdateExpression": "SET v = :one",
+                            "ExpressionAttributeValues": {":one": {"N": "9"}},
+                            "ConditionExpression": "attribute_not_exists(v)",
+                            "ReturnValuesOnConditionCheckFailure": "ALL_OLD"}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["CancellationReasons"],
+            json!([{"Code": "ConditionalCheckFailed",
+                    "Message": "The conditional request failed",
+                    "Item": {"pk": {"S": "r1"}, "v": {"N": "3"}, "s": {"S": "old"}}}])
+        );
+
+        // The conditional failures cancelled every write: r1 untouched.
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "allold", "Key": {"pk": {"S": "r1"}}}),
+        ));
+        assert_eq!(
+            resp.body,
+            json!({"Item": {"pk": {"S": "r1"}, "v": {"N": "3"}, "s": {"S": "old"}}}).to_string()
         );
     }
 
