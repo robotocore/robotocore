@@ -203,9 +203,15 @@ impl EcrHandler {
                 .map(|v| !v.is_empty())
                 .unwrap_or(false);
             if has_images {
-                return AwsResponse::error(400, "RepositoryNotEmptyException",
-                    &format!("The repository with name '{}' cannot be deleted as it still contains images",
-                        name));
+                // moto/ecr/exceptions.py RepositoryNotEmptyException — the
+                // registry id is echoed and the wording is moto's verbatim
+                // (live oracle: "The repository with name 'r2repo6205749' in
+                // registry with id '123456789012' cannot be deleted because
+                // it still contains images").
+                return AwsResponse::error(400,
+                    "RepositoryNotEmptyException",
+                    &format!("The repository with name '{}' in registry with id '{}' cannot be deleted because it still contains images",
+                        name, req.account));
             }
         }
         // A concurrent DeleteRepository can remove the entry between the
@@ -2187,6 +2193,45 @@ mod tests {
             json!({"repositoryNames": ["nope"]}),
         ));
         assert!(missing.body.contains("RepositoryNotFoundException"));
+    }
+
+    #[test]
+    fn ecr_delete_not_empty_message() {
+        // moto/ecr/exceptions.py RepositoryNotEmptyException: the message
+        // names the registry id and says the deletion fails "because it
+        // still contains images" (live oracle: moto 5.2.4 answers exactly
+        // this sentence with the account id echoed).
+        let h = EcrHandler::new();
+        h.handle(make_req("CreateRepository", json!({"repositoryName": "n"})));
+        h.handle(make_req(
+            "PutImage",
+            json!({
+                "repositoryName": "n",
+                "imageManifest": manifest("seed"),
+                "imageTag": "t1"
+            }),
+        ));
+        let got = h.handle(make_req("DeleteRepository", json!({"repositoryName": "n"})));
+        assert_eq!(got.status, 400);
+        assert!(
+            got.body.contains("RepositoryNotEmptyException"),
+            "{}",
+            got.body
+        );
+        assert!(
+            got.body.contains(
+                "The repository with name 'n' in registry with id '123456789012' \
+                 cannot be deleted because it still contains images"
+            ),
+            "{}",
+            got.body
+        );
+        // force keeps working: the deletion succeeds past the images
+        let gone = h.handle(make_req(
+            "DeleteRepository",
+            json!({"repositoryName": "n", "force": true}),
+        ));
+        assert_eq!(gone.status, 200);
     }
 
     #[test]
