@@ -472,9 +472,10 @@ enum Node {
     Field(Box<Node>, String),
     /// `a.*`.
     Wildcard(Box<Node>),
-    /// `a[i]` — a numeric predicate is a positional index (zero offset,
-    /// negative counts from the end, exactly jsonata's `evaluateFilter`);
-    /// anything else filters by imported truthiness.
+    /// `a[pred]` — the predicate evaluates per item with the item as
+    /// context (jsonata's `evaluateFilter`): a numeric result
+    /// position-selects that item (zero offset, negative counts from the
+    /// end), anything else filters by imported truthiness.
     Bracket {
         base: Box<Node>,
         pred: Box<Node>,
@@ -1300,9 +1301,14 @@ fn wildcard_of(base: &Jv, depth: u32) -> Result<Jv, EvalError> {
     }
 }
 
-/// jsonata's `evaluateFilter`: a numeric predicate is a positional index
-/// (zero offset, floor-rounded, negative counts from the end), an array of
-/// numbers selects those positions, anything else is a truthiness filter.
+/// jsonata's `evaluateFilter`: the predicate evaluates per item with the
+/// item as context. A numeric result selects THIS item when its
+/// floor-rounded value equals the item's position in the sequence (zero
+/// offset, negative counts from the end), an all-numeric array selects any
+/// listed position, and any other result includes the item by truthiness —
+/// mixed numeric and boolean predicates mix both effects. Afterwards a
+/// one-element result reads as that element (jsonata's singleton
+/// equivalence; `[]` on the step forces the array shape back).
 fn eval_bracket(
     base: Jv,
     pred: &Node,
@@ -1319,37 +1325,19 @@ fn eval_bracket(
         }
         Jv::Val(_) => return Ok(Jv::Missing),
     };
-    let mut was_number = false;
-    let mut first = None;
     let mut out = Vec::new();
     for (idx, item) in items.iter().enumerate() {
         let frame = child_scope(scope, ("root".to_string(), Jv::Val(item.clone())));
         let res = eval_node(pred, &frame, states, depth + 1)?;
         match res {
             Jv::Val(Value::Number(n)) => {
-                // A numeric predicate selects exactly the item at that
-                // position (round down; negative counts from the end).
-                was_number = true;
-                let target = floor_number(n.as_f64().unwrap_or(0.0)) as i64;
-                let pos = if target < 0 {
-                    items.len() as i64 + target
-                } else {
-                    target
-                };
-                if pos == idx as i64 {
-                    first = Some(item.clone());
+                if index_hits(n.as_f64().unwrap_or(0.0), idx, items.len()) {
                     out.push(item.clone());
                 }
             }
             Jv::Val(Value::Array(nums)) if nums.iter().all(|n| n.is_number()) => {
                 for n in nums {
-                    let target = floor_number(n.as_f64().unwrap_or(0.0)) as i64;
-                    let pos = if target < 0 {
-                        items.len() as i64 + target
-                    } else {
-                        target
-                    };
-                    if pos == idx as i64 {
+                    if index_hits(n.as_f64().unwrap_or(0.0), idx, items.len()) {
                         out.push(item.clone());
                         break;
                     }
@@ -1366,21 +1354,23 @@ fn eval_bracket(
     if out.is_empty() {
         return Ok(Jv::Missing);
     }
-    if was_number {
-        // A number predicate references a definite item (jsonata's
-        // `input[index]`), so the result is the item itself.
-        return Ok(Jv::Val(first.expect("matched")));
-    }
-    // Sequences of one read as that value (jsonata's "singleton array and
-    // value equivalence"); `[]` on the step forces the array shape back.
     if out.len() == 1 {
         return Ok(Jv::Val(out.remove(0)));
     }
     Ok(Jv::Val(Value::Array(out)))
 }
 
-fn floor_number(n: f64) -> f64 {
-    n.floor()
+/// The `evaluateFilter` position test for one candidate item: a numeric
+/// predicate rounds down (negative counts from the end) and selects the
+/// item at that offset in the sequence.
+fn index_hits(n: f64, idx: usize, len: usize) -> bool {
+    let target = n.floor() as i64;
+    let pos = if target < 0 {
+        len as i64 + target
+    } else {
+        target
+    };
+    pos == idx as i64
 }
 
 fn jv_truthy(v: &Jv) -> bool {
@@ -2321,6 +2311,49 @@ mod tests {
         assert_eq!(
             eval_input(&format!("$sum([{args}])"), &json!({})).unwrap(),
             json!(200)
+        );
+    }
+
+    #[test]
+    fn mixed_numeric_and_truthy_predicates_unwrap_singletons() {
+        // The review case: a numerically-failing item plus a truthy item used
+        // to panic on `first.expect(...)`; truthy inclusion wins its place
+        // and the one-element result reads as that element.
+        let input = json!({"items": [{"v": 5}, {"v": "y"}]});
+        assert_eq!(eval_input("items[v]", &input).unwrap(), json!({"v": "y"}));
+    }
+
+    #[test]
+    fn multi_numeric_predicates_select_every_matching_position() {
+        // Both items carry the index matching their own position; the old
+        // was_number/first pair silently dropped every match but the last.
+        let input = json!({"vals": [10, 20], "items": [{"v": 0}, {"v": 1}]});
+        assert_eq!(
+            eval_input("items[v]", &input).unwrap(),
+            json!([{"v": 0}, {"v": 1}])
+        );
+        // A literal position still reads as the definite item's value.
+        assert_eq!(
+            eval_input("vals[1]", &json!({"vals": [10, 20]})).unwrap(),
+            json!(20)
+        );
+    }
+
+    #[test]
+    fn bracket_never_panics_on_mixed_multi_numeric() {
+        // Numeric items, truthy items and multi-element numeric arrays in
+        // one filter: numbers position-select their own item, strings
+        // include, empty multi-numeric excludes — no panic in any mixture.
+        let input = json!({"items": [
+            {"v": 0},
+            {"v": "y"},
+            {"v": [0, 2]},
+            {"v": []},
+            {"v": 4}
+        ]});
+        assert_eq!(
+            eval_input("items[v]", &input).unwrap(),
+            json!([{"v": 0}, {"v": "y"}, {"v": [0, 2]}, {"v": 4}])
         );
     }
 }
