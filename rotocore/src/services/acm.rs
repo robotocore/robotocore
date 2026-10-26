@@ -11,11 +11,19 @@
 //!   `MOTO_ACM_VALIDATION_WAIT` window (default 60s) elapses.
 //! - `IdempotencyToken` maps to an ARN for one hour and replays when the
 //!   request tags match.
+//! - `ImportCertificate` PEM bodies get a minimal envelope check in moto's
+//!   `CertBundle` order (private key first, then the certificate): the
+//!   `-----BEGIN/-END-----` armor must be present and the body must
+//!   base64-decode, else moto's wire wording ("The private key is not
+//!   PEM-encoded or is not valid." / "The certificate is not PEM-encoded or
+//!   is not valid."). moto additionally ASN.1-parses the DER and checks
+//!   expiry — a syntactically enveloped garbage body (`QUJDREVG` inside
+//!   CERTIFICATE armor) therefore still imports here where moto rejects it.
 //! - `ImportCertificate` keeps the caller's PEM and answers GetCertificate
 //!   with `chain + AWS_ROOT_CA`.
-//! - Certificates without a CN import fine (moto 5.2.2 #9912); with the PEM
-//!   unparsed, `DomainName`/`Subject` render moto's no-CN-no-SAN fallback
-//!   shape (`""` / `"CN="`).
+//! - Certificates without a CN import fine (moto 5.2.2 #9912); the now-valid
+//!   PEM is still not parsed, so `DomainName`/`Subject` never take moto's
+//!   first-SAN fallback and render the no-CN-no-SAN shape (`""` / `"CN="`).
 //! - `RequestCertificate` merges partial `Options` over the default
 //!   CTLogging/Export pair instead of replacing them (moto 5.2.2 #10030).
 //! - Tag stage/validation mirrors moto's `TagHolder`.
@@ -654,6 +662,11 @@ fn op_import_certificate(body: &Value, account: u64, region: &str) -> OpResult {
         },
         None => None,
     };
+    // moto parses the decrypted blobs in CertBundle order: the private key
+    // first, then the certificate; the chain follows. Envelope failures get
+    // the exact wire wording.
+    check_pem_envelope(&key_pem, "private key")?;
+    check_pem_envelope(&cert_pem, "certificate")?;
     let now = now_epoch();
     with_state(account, region, |state| {
         let arn = match body.get("CertificateArn").and_then(Value::as_str) {
@@ -697,6 +710,36 @@ fn op_import_certificate(body: &Value, account: u64, region: &str) -> OpResult {
 /// botocore sends blobs base64-encoded; moto decodes them before storing.
 fn decode_utf8_input(b64: &str) -> Option<String> {
     b64_decode(b64).and_then(|bytes| String::from_utf8(bytes).ok())
+}
+
+/// Minimal PEM envelope validation for the import path, mirroring moto's
+/// `CertBundle.validate_pk`/`validate_certificate`: the `-BEGIN/-END-` armor
+/// must label both ends and the body must base64-decode. moto's cryptography
+/// parse additionally decodes the ASN.1 payload, checks expiry, and matches
+/// the key format against its header — deliberately not re-implemented, so an
+/// enveloped garbage body still imports where moto would reject it.
+fn check_pem_envelope(pem: &str, subject: &str) -> Result<(), Response> {
+    let ok = (|| {
+        let rest = pem.strip_prefix("-----BEGIN ")?;
+        let label_end = rest.find("-----")?;
+        let label = &rest[..label_end];
+        let end_marker = format!("-----END {label}-----");
+        let end_index = pem.find(&end_marker)?;
+        // Body runs from just past the BEGIN line's hyphen run to the marker.
+        let body_start = pem.len() - rest.len() + label_end + "-----".len();
+        if body_start >= end_index {
+            return None;
+        }
+        let body = &pem[body_start..end_index];
+        (body.chars().any(|c| !c.is_whitespace()) && b64_decode(body).is_some()).then_some(())
+    })();
+    if ok.is_some() {
+        Ok(())
+    } else {
+        Err(validation(&format!(
+            "The {subject} is not PEM-encoded or is not valid."
+        )))
+    }
 }
 
 fn op_get_account_configuration(account: u64, region: &str) -> OpResult {
@@ -1027,7 +1070,7 @@ mod tests {
     #[test]
     fn import_roundtrip_and_get_certificate() {
         const CERT: &str = "-----BEGIN CERTIFICATE-----\nQUJD\n-----END CERTIFICATE-----";
-        let key = b64_encode(b"testkey");
+        let key = b64_encode(EC_KEY_PEM.as_bytes());
         let cert = b64_encode(CERT.as_bytes());
         let resp = run(
             "ImportCertificate",
@@ -1149,8 +1192,8 @@ mod tests {
 
     #[test]
     fn export_non_private_is_validation_error() {
-        let cert = b64_encode(b"-----BEGIN CERTIFICATE-----\nQUJD\n-----END CERTIFICATE-----");
-        let key = b64_encode(b"testkey");
+        let cert = b64_encode(CN_LESS_VALID_CERT.as_bytes());
+        let key = b64_encode(EC_KEY_PEM.as_bytes());
         let arn = body_of(&run(
             "ImportCertificate",
             json!({"Certificate": cert, "PrivateKey": key}),
@@ -1209,17 +1252,32 @@ mod tests {
         assert_eq!(decoded, payload);
     }
 
+    /// Valid self-signed EC P-256 key (PKCS8) — passes botocore→moto's
+    /// private-key PEM parse.
+    const EC_KEY_PEM: &str = "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgfDGZ+2yOtfvBnbhM\n8M876jj5668QXEucdYWWWikr44ihRANCAATd8/vMk/APRN2meCHaCwcpJhqdki4Q\n2loizSZUnBiUlVUgAWQ7imNhdGF0igjkOG3usGQf2tNkAX9RwD91qBoL\n-----END PRIVATE KEY-----";
+
+    /// Valid self-signed cert with a SAN and no CN (moto 5.2.2 #9912's
+    /// `test_import_certificate_without_cn` shape): CAB Forum makes the CN
+    /// optional, so the import succeeds.
+    const CN_LESS_VALID_CERT: &str = "-----BEGIN CERTIFICATE-----\nMIIBMjCB2aADAgECAhRJqlqRkiV7NDHd4i9QBfjJXmDyBzAKBggqhkjOPQQDAjAA\nMB4XDTI1MDEwMTAwMDAwMFoXDTM0MTIzMDAwMDAwMFowADBZMBMGByqGSM49AgEG\nCCqGSM49AwEHA0IABN3z+8yT8A9E3aZ4IdoLBykmGp2SLhDaWiLNJlScGJSVVSAB\nZDuKY2F0YXSKCOQ4be6wZB/a02QBf1HAP3WoGgujMTAvMBwGA1UdEQQVMBOCEW5v\nLWNuLmV4YW1wbGUuY29tMA8GA1UdEwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDSAAw\nRQIhAL+uaUrVbGiPj7czwizjwjSRw0B37Lsy3JvOqO+OwqkwAiBd1w4EGYp4JpNv\naSoBBHZ6mj3pt7IhV9FUVEkmLbJRzQ==\n-----END CERTIFICATE-----";
+
+    /// A broken armor with valid-looking base64 inside: moto's cryptography
+    /// parse rejects it (`The certificate is not PEM-encoded...`), while the
+    /// minimal envelope check here cannot — pinned as a documented gap.
+    const ENVELOP_GARBAGE_CERT: &str =
+        "-----BEGIN CERTIFICATE-----\nQUJDREVG\n-----END CERTIFICATE-----";
+
     #[test]
     fn acm_import_without_cn() {
         // CN is optional per the CAB Forum baseline (moto 5.2.2 #9912,
-        // `test_import_certificate_without_cn`): importing succeeds and the
-        // description keeps moto's fallback shape. robotocore does not parse
-        // the stored PEM, so "no CN" and "any PEM" are indistinguishable and
-        // the metadata lands on moto's no-CN-no-SAN fallback.
-        const CN_LESS_CERT: &str =
-            "-----BEGIN CERTIFICATE-----\nQUJDREVG\n-----END CERTIFICATE-----";
-        let cert = b64_encode(CN_LESS_CERT.as_bytes());
-        let key = b64_encode(b"testkey");
+        // `test_import_certificate_without_cn`): a syntactically valid
+        // CN-less PEM imports, and the description keeps moto's no-CN-no-SAN
+        // fallback shape — the stored PEM is not parsed, so moto's first-SAN
+        // `DomainName` fallback (live-verified: `DomainName`
+        // "no-cn.example.com", `Subject` "CN=no-cn.example.com") is not
+        // implemented and stays off.
+        let cert = b64_encode(CN_LESS_VALID_CERT.as_bytes());
+        let key = b64_encode(EC_KEY_PEM.as_bytes());
         let resp = run(
             "ImportCertificate",
             json!({"Certificate": cert, "PrivateKey": key}),
@@ -1237,6 +1295,53 @@ mod tests {
         assert_eq!(detail["DomainName"], "");
         assert_eq!(detail["Subject"], "CN=");
         assert_eq!(detail["Issuer"], "");
+    }
+
+    #[test]
+    fn import_envelope_validation() {
+        // Missing armor → moto's exact wording for the subject. The private
+        // key is validated before the certificate (CertBundle order).
+        let key = b64_encode(EC_KEY_PEM.as_bytes());
+        let resp = run(
+            "ImportCertificate",
+            json!({"Certificate": b64_encode(b"QUJDREVG"), "PrivateKey": key}),
+        );
+        assert_eq!(status_of(&resp), 400);
+        let err = body_of(&resp);
+        assert_eq!(err["__type"], "ValidationException");
+        assert_eq!(
+            err["message"],
+            "The certificate is not PEM-encoded or is not valid."
+        );
+
+        let key_err = run(
+            "ImportCertificate",
+            json!({"Certificate": b64_encode(ENVELOP_GARBAGE_CERT.as_bytes()),
+                   "PrivateKey": b64_encode(b"not a pem")}),
+        );
+        let key_err = body_of(&key_err);
+        assert_eq!(key_err["__type"], "ValidationException");
+        assert_eq!(
+            key_err["message"],
+            "The private key is not PEM-encoded or is not valid."
+        );
+
+        // Armor with a non-base64 body fails the envelope too.
+        let bad_body = run(
+            "ImportCertificate",
+            json!({"Certificate": b64_encode(b"-----BEGIN CERTIFICATE-----\n!!! no base64 !!!\n-----END CERTIFICATE-----"),
+                   "PrivateKey": key}),
+        );
+        assert_eq!(body_of(&bad_body)["__type"], "ValidationException");
+
+        // An envelope-clean garbage body still imports: moto's ASN.1 parse is
+        // deliberately not re-implemented (see the module doc).
+        let garbage_ok = run(
+            "ImportCertificate",
+            json!({"Certificate": b64_encode(ENVELOP_GARBAGE_CERT.as_bytes()),
+                   "PrivateKey": key}),
+        );
+        assert_eq!(status_of(&garbage_ok), 200);
     }
 
     #[test]

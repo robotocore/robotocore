@@ -777,9 +777,10 @@ fn connector_record(region: &str, account: u64, p: &Value) -> Value {
 }
 
 /// `Connector.to_dict()` — egress addresses get their mock default at render
-/// time; As2Config/SftpConfig render with moto's snake_case keys; unset
-/// members are omitted (moto 5.2.3 #10068 `prune_unset`), never serialized
-/// as null.
+/// time; As2Config/SftpConfig are re-camelized from the snake_case storage
+/// (moto looks each member up off the stored record, so unknown keys are
+/// dropped); unset members are omitted (moto 5.2.3 #10068 `prune_unset`),
+/// never serialized as null.
 fn connector_to_dict(rec: &Value) -> Value {
     let mut out = json!({
         "Arn": rec["arn"],
@@ -793,10 +794,32 @@ fn connector_to_dict(rec: &Value) -> Value {
     });
     let obj = out.as_object_mut().expect("object");
     if rec.get("as2_config").and_then(Value::as_object).is_some() {
-        obj.insert("As2Config".into(), rec["as2_config"].clone());
+        obj.insert(
+            "As2Config".into(),
+            json!({
+                "LocalProfileId": rec["as2_config"]["local_profile_id"],
+                "PartnerProfileId": rec["as2_config"]["partner_profile_id"],
+                "MessageSubject": rec["as2_config"]["message_subject"],
+                "Compression": rec["as2_config"]["compression"],
+                "EncryptionAlgorithm": rec["as2_config"]["encryption_algorithm"],
+                "SigningAlgorithm": rec["as2_config"]["signing_algorithm"],
+                "MdnSigningAlgorithm": rec["as2_config"]["mdn_signing_algorithm"],
+                "MdnResponse": rec["as2_config"]["mdn_response"],
+                "BasicAuthSecretId": rec["as2_config"]["basic_auth_secret_id"],
+                "PreserveContentType": rec["as2_config"]["preserve_content_type"],
+            }),
+        );
     }
     if rec.get("sftp_config").and_then(Value::as_object).is_some() {
-        obj.insert("SftpConfig".into(), rec["sftp_config"].clone());
+        obj.insert(
+            "SftpConfig".into(),
+            json!({
+                "UserSecretId": rec["sftp_config"]["user_secret_id"],
+                "TrustedHostKeys": rec["sftp_config"]["trusted_host_keys"],
+                "MaxConcurrentConnections": rec["sftp_config"]
+                    ["max_concurrent_connections"],
+            }),
+        );
     }
     prune_unset(&out)
 }
@@ -2765,7 +2788,7 @@ mod tests {
     }
 
     #[test]
-    fn connectors_error_codes_and_snakified_config() {
+    fn connectors_error_codes_and_config_rendering() {
         // Describe/update/delete: HTTP 400; test_connection: HTTP 404.
         let (status, err) = run(
             "DescribeConnector",
@@ -2788,6 +2811,7 @@ mod tests {
             json!({
                 "Url": "sftp://example.com",
                 "As2Config": {"LocalProfileId": "p1", "MdnResponse": "SYNC"},
+                "SftpConfig": {"UserSecretId": "secret-1", "MaxConcurrentConnections": 3},
                 "AccessRole": "arn:aws:iam::1:role/r",
             }),
         );
@@ -2798,8 +2822,13 @@ mod tests {
         let (_, body) = run("DescribeConnector", json!({"ConnectorId": connector_id}));
         let connector = &body["Connector"];
         assert_eq!(connector["Url"], "sftp://example.com");
-        // moto rewrites config keys snake_case.
-        assert_eq!(connector["As2Config"]["local_profile_id"], "p1");
+        // Storage is snake_case, but moto re-camelizes at render time.
+        assert_eq!(connector["As2Config"]["LocalProfileId"], "p1");
+        assert_eq!(connector["As2Config"]["MdnResponse"], "SYNC");
+        assert!(connector["As2Config"].get("local_profile_id").is_none());
+        assert_eq!(connector["SftpConfig"]["UserSecretId"], "secret-1");
+        assert_eq!(connector["SftpConfig"]["MaxConcurrentConnections"], 3);
+        assert!(connector["SftpConfig"].get("user_secret_id").is_none());
         assert_eq!(
             connector["ServiceManagedEgressIpAddresses"],
             json!(["127.0.0.1", "127.0.0.2"])

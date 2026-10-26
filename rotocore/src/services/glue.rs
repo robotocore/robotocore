@@ -5417,7 +5417,97 @@ fn get_connections(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
         .filter(|rec| !filtered || connection_matches(rec, &filter))
         .map(|rec| connection_dict(rec, hide_password))
         .collect();
-    Ok(ok(&json!({ "ConnectionList": list })))
+
+    // moto's @paginate for get_connections (PAGINATION_MODEL: limit_default
+    // 100, unique_attribute "name"): resume AT the item the token names (the
+    // first item excluded from the previous page); a token naming no listed
+    // connection raises InvalidToken("Resource not found!"). The token
+    // mirrors moto's TokenEncoder minus its process-scoped
+    // parameterChecksum, which is not reproducible.
+    let mut index_start = 0usize;
+    if let Some(token) = p.get("NextToken").and_then(Value::as_str) {
+        let resume = decode_paginator_token(token)?;
+        match list
+            .iter()
+            .position(|c| c["Name"].as_str() == Some(resume.as_str()))
+        {
+            Some(pos) => index_start = pos,
+            None => return Err(invalid_token("Resource not found!")),
+        }
+    }
+    let limit = p
+        .get("MaxResults")
+        .and_then(Value::as_i64)
+        .filter(|v| *v != 0)
+        .unwrap_or(100) // moto's limit_default
+        .max(0) as usize;
+    let index_end = (index_start + limit).min(list.len());
+    let page: Vec<Value> = list[index_start..index_end].to_vec();
+    let next_token = if index_end < list.len() && !page.is_empty() {
+        json!(encode_paginator_token(
+            list[index_end]["Name"].as_str().unwrap_or_default()
+        ))
+    } else {
+        Value::Null
+    };
+    Ok(ok(
+        &json!({ "ConnectionList": page, "NextToken": next_token }),
+    ))
+}
+
+/// moto's `TokenEncoder` output (minus the process-scoped
+/// parameterChecksum): base64(json.dumps({"uniqueAttributes": item})).
+fn encode_paginator_token(unique_attributes: &str) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(format!(
+        "{{\"uniqueAttributes\": {}}}",
+        py_str(unique_attributes)
+    ))
+}
+
+/// Base64(JSON) → the `uniqueAttributes` value; undecodable tokens raise
+/// moto's `InvalidToken("Invalid token")`.
+fn decode_paginator_token(token: &str) -> Result<String, Response> {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD
+        .decode(token.as_bytes())
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+        .and_then(|value| {
+            value
+                .get("uniqueAttributes")
+                .and_then(Value::as_str)
+                .map(String::from)
+        })
+        .ok_or_else(|| invalid_token("Invalid token"))
+}
+
+/// Python `json.dumps(ensure_ascii=True)` string escaping for the token
+/// payload (the connect.rs `fmt_py_str` essentials).
+fn py_str(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 || (c as u32) >= 0x7f => {
+                out.push_str(&format!("\\u{:04x}", c as u32))
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// moto's `InvalidToken`: `{"__type": "InvalidToken",
+/// "message": "Invalid Token: {message}"}` over HTTP 400.
+fn invalid_token(message: &str) -> Response {
+    err(400, "InvalidToken", &format!("Invalid Token: {message}"))
 }
 
 fn update_connection(g: &mut GlueState, p: &Value) -> Result<Response, Response> {
@@ -5601,6 +5691,14 @@ mod family4_tests {
             .as_str()
             .unwrap_or_default()
             .to_string()
+    }
+
+    /// Hand-built resume token: base64 of `{"uniqueAttributes": name}` —
+    /// moto's TokenEncoder shape minus its process-scoped checksum.
+    fn base64_unique_attributes(name: &str) -> String {
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD
+            .encode(json!({ "uniqueAttributes": name }).to_string().as_bytes())
     }
 
     #[test]
@@ -5883,6 +5981,102 @@ mod family4_tests {
             len(json!({"ConnectionType": "JDBC", "MatchCriteria": ["dev"]})),
             1
         );
+    }
+
+    #[test]
+    fn glue_get_connections_paginates() {
+        let acct = scope();
+        for i in 0..7 {
+            let input = json!({
+                "Name": format!("pc{i:02}"), "ConnectionType": "JDBC",
+                "ConnectionProperties": {"USERNAME": "u"}
+            });
+            let r = d(acct, "CreateConnection", json!({"ConnectionInput": input}));
+            assert_eq!(r.status, 200);
+        }
+
+        // Default page size is 100 (moto's PAGINATION_MODEL limit_default):
+        // all 7 fit and no token is minted.
+        let b = body(&d(acct, "GetConnections", json!({})));
+        assert_eq!(b["ConnectionList"].as_array().unwrap().len(), 7);
+        assert!(b.get("NextToken").is_none());
+
+        // MaxResults bounds the page; the token names the first excluded
+        // connection (moto @paginate: results_page[index_end]).
+        let b = body(&d(acct, "GetConnections", json!({"MaxResults": 3})));
+        let names: Vec<&str> = b["ConnectionList"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["Name"].as_str().unwrap())
+            .collect();
+        assert_eq!(names, ["pc00", "pc01", "pc02"]);
+        let token = b["NextToken"].as_str().expect("token minted").to_string();
+        // moto's TokenEncoder bytes: json.dumps({"uniqueAttributes": name})
+        // with the space after the colon, then standard base64.
+        use base64::Engine;
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(token.as_bytes())
+                .and_then(|raw| String::from_utf8(raw)
+                    .map_err(|_| base64::DecodeError::InvalidByte(0, 0)))
+                .unwrap(),
+            r#"{"uniqueAttributes": "pc03"}"#
+        );
+
+        // Resume starts AT the token-named connection.
+        let b = body(&d(
+            acct,
+            "GetConnections",
+            json!({"MaxResults": 3, "NextToken": token}),
+        ));
+        let names: Vec<&str> = b["ConnectionList"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["Name"].as_str().unwrap())
+            .collect();
+        assert_eq!(names, ["pc03", "pc04", "pc05"]);
+        let token = b["NextToken"].as_str().expect("token minted").to_string();
+
+        // Final page: last row, no token.
+        let b = body(&d(
+            acct,
+            "GetConnections",
+            json!({"MaxResults": 3, "NextToken": token}),
+        ));
+        let names: Vec<&str> = b["ConnectionList"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["Name"].as_str().unwrap())
+            .collect();
+        assert_eq!(names, ["pc06"]);
+        assert!(b.get("NextToken").is_none());
+
+        // MaxResults=0 falls back to moto's limit_default.
+        let b = body(&d(acct, "GetConnections", json!({"MaxResults": 0})));
+        assert_eq!(b["ConnectionList"].as_array().unwrap().len(), 7);
+        assert!(b.get("NextToken").is_none());
+
+        // Undecodable tokens raise moto's InvalidToken("Invalid token").
+        let r = d(acct, "GetConnections", json!({"NextToken": "not-a-token"}));
+        assert_eq!(r.status, 400);
+        let b = body(&r);
+        assert_eq!(b["__type"], "InvalidToken");
+        assert_eq!(b["message"], "Invalid Token: Invalid token");
+
+        // A decodable token naming no listed connection raises
+        // InvalidToken("Resource not found!").
+        let r = d(
+            acct,
+            "GetConnections",
+            json!({"NextToken": base64_unique_attributes("pc99")}),
+        );
+        assert_eq!(r.status, 400);
+        let b = body(&r);
+        assert_eq!(b["__type"], "InvalidToken");
+        assert_eq!(b["message"], "Invalid Token: Resource not found!");
     }
 
     #[test]

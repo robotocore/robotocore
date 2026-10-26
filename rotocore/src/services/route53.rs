@@ -322,11 +322,11 @@ impl RrSet {
         if let Some(region) = &self.region {
             out += &el("Region", region);
         }
-        // Alias records have no TTL of their own — Route53 inherits it from
-        // the aliased target — so the TTL member is never rendered for them
-        // (real AWS behavior; moto 5.2.2 #10029). Even an explicitly supplied
-        // TTL is dropped, matching list_resource_record_sets().
-        if self.alias_target.is_none() && self.ttl.unwrap_or(0) != 0 {
+        // moto stores a client-supplied TTL verbatim and echoes it even on
+        // alias sets (list_resource_record_sets() live-verified); it only
+        // omits the member when none was supplied. Real AWS rejects the
+        // TTL+AliasTarget combination at write time — we deliberately do not.
+        if self.ttl.unwrap_or(0) != 0 {
             out += &el("TTL", self.ttl.unwrap().to_string());
         }
         if let Some(failover) = &self.failover {
@@ -2884,11 +2884,11 @@ mod tests {
 
     #[test]
     fn route53_alias_no_ttl() {
-        // Alias records have no TTL of their own: Route53 inherits it from
-        // the alias target, so list_resource_record_sets() must never return
-        // a TTL member for them (moto 5.2.2 #10029,
-        // test_alias_record_set_omits_ttl). Even an explicitly supplied TTL
-        // is not echoed back for an alias set.
+        // moto stores the record's TTL verbatim (RecordSet.__init__: `TTL =
+        // kwargs.get("TTL")`) and echoes it even on alias sets; only an alias
+        // created without a TTL omits the member on list
+        // (list_resource_record_sets() live-verified on moto 5.2.4). Real AWS
+        // rejects TTL+AliasTarget at write time — we deliberately do not.
         let account =
             12_000_000_000_000 + (uuid::Uuid::new_v4().as_u128() % 1_000_000_000_000) as u64;
         let create = dispatch(&test_req(
@@ -2912,7 +2912,7 @@ mod tests {
             account,
             "POST",
             &format!("hostedzone/{id}/rrset/"),
-            r#"<ChangeResourceRecordSetsRequest xmlns="https://route53.amazonaws.com/doc/2013-04-01/"><ChangeBatch><Changes><Change><Action>CREATE</Action><ResourceRecordSet><Name>target.aliasttl.test.com</Name><Type>A</Type><TTL>60</TTL><ResourceRecords><ResourceRecord><Value>10.0.0.5</Value></ResourceRecord></ResourceRecords></ResourceRecordSet></Change><Change><Action>CREATE</Action><ResourceRecordSet><Name>alias.aliasttl.test.com</Name><Type>A</Type><TTL>60</TTL><AliasTarget><HostedZoneId>/hostedzone/ID</HostedZoneId><DNSName>target.aliasttl.test.com</DNSName><EvaluateTargetHealth>false</EvaluateTargetHealth></AliasTarget></ResourceRecordSet></Change></Changes></ChangeBatch></ChangeResourceRecordSetsRequest>"#,
+            r#"<ChangeResourceRecordSetsRequest xmlns="https://route53.amazonaws.com/doc/2013-04-01/"><ChangeBatch><Changes><Change><Action>CREATE</Action><ResourceRecordSet><Name>target.aliasttl.test.com</Name><Type>A</Type><TTL>60</TTL><ResourceRecords><ResourceRecord><Value>10.0.0.5</Value></ResourceRecord></ResourceRecords></ResourceRecordSet></Change><Change><Action>CREATE</Action><ResourceRecordSet><Name>alias.aliasttl.test.com</Name><Type>A</Type><TTL>60</TTL><AliasTarget><HostedZoneId>/hostedzone/ID</HostedZoneId><DNSName>target.aliasttl.test.com</DNSName><EvaluateTargetHealth>false</EvaluateTargetHealth></AliasTarget></ResourceRecordSet></Change><Change><Action>CREATE</Action><ResourceRecordSet><Name>plain.aliasttl.test.com</Name><Type>A</Type><AliasTarget><HostedZoneId>/hostedzone/ID</HostedZoneId><DNSName>target.aliasttl.test.com</DNSName><EvaluateTargetHealth>false</EvaluateTargetHealth></AliasTarget></ResourceRecordSet></Change></Changes></ChangeBatch></ChangeResourceRecordSetsRequest>"#,
         ));
         assert_eq!(change.status, 200);
 
@@ -2936,6 +2936,7 @@ mod tests {
             })
             .collect();
 
+        // Alias created with an explicit TTL: moto echoes the supplied value.
         let alias_chunk = alias_chunks.iter().find(|chunk| {
             chunk.contains("<Name>alias.aliasttl.test.com.</Name>")
                 && chunk.contains("<AliasTarget>")
@@ -2944,8 +2945,21 @@ mod tests {
             panic!("alias set not listed: {body}");
         };
         assert!(
-            !alias_chunk.contains("<TTL>"),
-            "alias set must not render a TTL: {alias_chunk}"
+            alias_chunk.contains("<TTL>60</TTL>"),
+            "explicit TTL on an alias set must be echoed: {alias_chunk}"
+        );
+
+        // Alias created without a TTL: no TTL member.
+        let plain_chunk = alias_chunks.iter().find(|chunk| {
+            chunk.contains("<Name>plain.aliasttl.test.com.</Name>")
+                && chunk.contains("<AliasTarget>")
+        });
+        let Some(plain_chunk) = plain_chunk else {
+            panic!("no-TTL alias set not listed: {body}");
+        };
+        assert!(
+            !plain_chunk.contains("<TTL>"),
+            "alias set without a supplied TTL must not render one: {plain_chunk}"
         );
 
         // Non-alias sets (and the zone's default SOA) keep their TTLs.
