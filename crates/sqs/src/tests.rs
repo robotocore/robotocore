@@ -2037,6 +2037,315 @@ fn batch_validate_send_message_batch_empty_entries() {
         .contains("There should be at least one SendMessageBatchRequestEntry in the request."));
 }
 
+/// moto models.py send_message_batch backend (live-verified): the summed
+/// entry bodies above MAXIMUM_MESSAGE_LENGTH (1048576 chars) answer
+/// BatchRequestTooLong with moto's exact wording, beating the Id and
+/// entry-count checks, and nothing may be enqueued by a rejected batch.
+/// A huge aggregate against a nonexistent queue follows moto's
+/// response-layer order and answers NonExistentQueue instead (queue
+/// lookup first on the send op).
+#[test]
+fn batch_request_too_long_send_message_batch_rejects_over_cap() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-too-long");
+
+    let big = "x".repeat(524289);
+    let resp = handler.handle(make_request(
+        "SendMessageBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "a", "MessageBody": big},
+                {"Id": "b", "MessageBody": big},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.BatchRequestTooLong"));
+    assert!(resp.body.contains(
+        "Batch requests cannot be longer than 1048576 bytes. You have sent 1048578 bytes."
+    ));
+
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.0, 0, "nothing may be enqueued by a rejected batch");
+
+    // The queue resolution runs before the aggregate check (item: send op
+    // resolves the queue first), so TooLong never fires on a ghost queue.
+    let ghost = format!("{}x", queue_url);
+    let resp = handler.handle(make_request(
+        "SendMessageBatch",
+        json!({
+            "QueueUrl": &ghost,
+            "Entries": [{"Id": "a", "MessageBody": "y".repeat(1048577u32 as usize)}],
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.NonExistentQueue"));
+    assert!(
+        !resp
+            .body
+            .contains("AWS.SimpleQueueService.BatchRequestTooLong"),
+        "queue lookup must precede the aggregate limit"
+    );
+}
+
+/// Exactly 1048576 chars is under moto's strictly-greater check
+/// (live-verified) and the batch is sent.
+#[test]
+fn batch_request_too_long_send_message_batch_exact_cap_sent() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-too-long-boundary");
+
+    let resp = handler.handle(make_request(
+        "SendMessageBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [{"Id": "a", "MessageBody": "x".repeat(1048576u32 as usize)}],
+        }),
+    ));
+    assert_eq!(resp.status, 200);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    let successful = data["Successful"].as_array().expect("Successful array");
+    assert_eq!(successful.len(), 1);
+    assert_eq!(successful[0]["Id"], "a");
+    assert_eq!(
+        successful[0]["MD5OfMessageBody"], "b561f87202d04959e37588ee05cf5b10",
+        "verify the full 1 MiB body traveled"
+    );
+}
+
+/// moto's backend order (live-verified): the aggregate check fires
+/// before TooManyEntriesInBatchRequest, so eleven over-cap entries
+/// answer BatchRequestTooLong rather than the entry-count error.
+#[test]
+fn batch_request_too_long_beats_too_many_entries() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-too-long-vs-too-many");
+
+    let entries: Vec<Value> = (0..11)
+        .map(|i| json!({"Id": format!("id_{i}"), "MessageBody": "z".repeat(200000u32 as usize)}))
+        .collect();
+    let resp = handler.handle(make_request(
+        "SendMessageBatch",
+        json!({"QueueUrl": &queue_url, "Entries": entries}),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.BatchRequestTooLong"));
+    assert!(
+        !resp
+            .body
+            .contains("AWS.SimpleQueueService.TooManyEntriesInBatchRequest"),
+        "the aggregate limit must precede the entry-count check"
+    );
+}
+
+/// moto/sqs/models.py Queue defaults report MAXIMUM_MESSAGE_LENGTH as the
+/// default MaximumMessageSize queue attribute (live-verified: a fresh
+/// GetQueueAttributes answers 1048576, not the 262144 figure the
+/// previous default carried).
+#[test]
+fn attribute_defaults_maximum_message_size_matches_moto() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "attr-default-max-size");
+
+    let resp = handler.handle(make_request(
+        "GetQueueAttributes",
+        json!({"QueueUrl": &queue_url, "AttributeNames": ["All"]}),
+    ));
+    assert_eq!(resp.status, 200);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    assert_eq!(data["Attributes"]["MaximumMessageSize"], "1048576");
+}
+
+/// moto responses.py delete_message_batch (pinned 5.2.4): two entries
+/// sharing one ReceiptHandle answer BatchEntryIdsNotDistinct with the
+/// SECOND entry's Id ("Id b repeated."), before any entry is processed.
+#[test]
+fn batch_validate_delete_message_batch_duplicate_receipt_handle() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-validate-del-dup-handle");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+
+    let resp = handler.handle(make_request(
+        "DeleteMessageBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "a", "ReceiptHandle": handles[0]["ReceiptHandle"]},
+                {"Id": "b", "ReceiptHandle": handles[0]["ReceiptHandle"]},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.BatchEntryIdsNotDistinct"));
+    assert!(resp.body.contains("Id b repeated."));
+
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.1, 2, "no message may be deleted by a rejected batch");
+}
+
+/// The Id-distinct check (PR getmoto/moto#10346) stays on top of the
+/// receipt-handle check: duplicate Ids with DISTINCT handles still fail
+/// the request, before any delete. moto 5.2.4 alone would accept this
+/// (live-verified: 200 with both rows in Successful) — we keep the
+/// stricter port behavior deliberately.
+#[test]
+fn batch_validate_delete_message_batch_duplicate_ids_distinct_handles() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-validate-del-dup-ids");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+
+    let resp = handler.handle(make_request(
+        "DeleteMessageBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "dup", "ReceiptHandle": handles[0]["ReceiptHandle"]},
+                {"Id": "dup", "ReceiptHandle": handles[1]["ReceiptHandle"]},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.BatchEntryIdsNotDistinct"));
+    assert!(resp.body.contains("Id dup repeated."));
+
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.1, 2, "no message may be deleted by a rejected batch");
+}
+
+/// The response layer caps ChangeMessageVisibility at moto's
+/// MAXIMUM_VISIBILITY_TIMEOUT (43200) before the queue or receipt handle
+/// are resolved: an over-cap value answers InvalidParameterValue with
+/// moto's exact wording, and still does on a nonexistent queue (both
+/// live-verified against the pinned fork). A u32-overflowing value takes
+/// the same path, whether it arrives as a JSON number or a numeric
+/// string the way the gateway's query-protocol parser produces them.
+#[test]
+fn visibility_cap_change_message_visibility_over_limit() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "vis-cap-single");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "capped"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let receipt_handle: String = serde_json::from_str::<Value>(&recv.body).unwrap()["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .unwrap()
+        .into();
+
+    for (value, label) in [
+        (json!(43201u64), "over-cap"),
+        (json!(4294967300u64), "u32-overflow number"),
+        (json!("4294967300"), "u32-overflow numeric string"),
+    ] {
+        let resp = handler.handle(make_request(
+            "ChangeMessageVisibility",
+            json!({
+                "QueueUrl": &queue_url,
+                "ReceiptHandle": receipt_handle,
+                "VisibilityTimeout": value,
+            }),
+        ));
+        assert_eq!(resp.status, 400, "cap breach {label} must answer 400");
+        assert!(resp.body.contains("InvalidParameterValue"));
+        assert!(
+            resp.body
+                .contains("Invalid request, maximum visibility timeout is 43200"),
+            "over-cap ChangeMessageVisibility must carry moto's wording, got {}",
+            resp.body
+        );
+    }
+
+    // The rejected change left the message in flight untouched.
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(
+        counts.1, 1,
+        "a rejected cap breach must not change flight state"
+    );
+
+    // moto validates the timeout in the response layer, before the
+    // backend queue lookup: the cap error beats a nonexistent queue too.
+    let ghost = format!("{}x", queue_url);
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &ghost,
+            "ReceiptHandle": "anything",
+            "VisibilityTimeout": 43201,
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp.body.contains("InvalidParameterValue"));
+    assert!(resp
+        .body
+        .contains("Invalid request, maximum visibility timeout is 43200"));
+    assert!(
+        !resp
+            .body
+            .contains("AWS.SimpleQueueService.NonExistentQueue"),
+        "the cap check must precede the queue lookup"
+    );
+}
+
+/// ChangeMessageVisibilityBatch turns an over-cap (or u32-overflowing)
+/// per-entry timeout into a Failed row with moto's live-verified shape
+/// — SenderFault true, Code InvalidParameterValue, Message "Visibility
+/// timeout invalid" — while valid entries still apply.
+#[test]
+fn visibility_cap_change_message_visibility_batch_over_limit_rows() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "vis-cap-batch");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "ok", "ReceiptHandle": handles[0]["ReceiptHandle"], "VisibilityTimeout": 0},
+                {"Id": "cap", "ReceiptHandle": handles[1]["ReceiptHandle"], "VisibilityTimeout": 43201},
+                {"Id": "huge", "ReceiptHandle": handles[0]["ReceiptHandle"], "VisibilityTimeout": 4294967300u64},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 200);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    let successful = data["Successful"].as_array().expect("Successful array");
+    assert_eq!(successful.len(), 1);
+    assert_eq!(successful[0]["Id"], "ok");
+
+    let failed = data["Failed"].as_array().expect("Failed array");
+    assert_eq!(failed.len(), 2);
+    assert_eq!(failed[0]["Id"], "cap");
+    assert_eq!(failed[1]["Id"], "huge");
+    for row in failed {
+        assert_eq!(row["SenderFault"], true);
+        assert_eq!(row["Code"], "InvalidParameterValue");
+        assert_eq!(row["Message"], "Visibility timeout invalid");
+    }
+
+    // The "ok" entry returned its message to the visible pool; entries
+    // rejected for the cap unchanged (still in flight).
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.0, 1, "the zeroed entry is visible again");
+    assert_eq!(counts.1, 1, "the rejected entries stay in flight");
+}
+
 /// The rewired happy path: valid entries still delete, through the same
 /// helper that rejects the invalid ones.
 #[test]
@@ -2111,18 +2420,20 @@ fn batch_validate_change_message_visibility_batch_valid_entries_still_apply() {
     );
 }
 
-/// A batch whose Ids duplicate, aimed at a queue that does not exist, must
-/// answer the batch error: moto validates the Entries before the backend
-/// resolves the queue (responses.py raises EmptyBatchRequest without
-/// touching the queue; delete/change visibility look the queue up only
-/// inside the backend), so batch errors beat QueueDoesNotExist. The
-/// "/x" suffix turns the real queue's URL into one for a queue that was
-/// never created without hardcoding an endpoint.
+/// SendMessageBatch mirrors moto responses.py `send_message_batch`, which
+/// resolves the queue via the backend BEFORE inspecting Entries: a
+/// missing queue answers NonExistentQueue even with a malformed batch,
+/// and the batch Id errors only fire against a real queue (both
+/// live-verified against the pinned fork). The "/x" suffix turns the real
+/// queue's URL into one for a queue that was never created without
+/// hardcoding an endpoint.
 #[test]
-fn batch_validate_before_queue_lookup_send_message_batch() {
+fn send_message_batch_resolves_queue_before_batch_validation() {
     let handler = DefaultSqsHandler::new();
     let queue_url = format!("{}x", create_queue(&handler, "bq-lookup-send-anchor"));
 
+    // Nonexistent queue wins over every batch-shaped error, even with
+    // duplicate Ids that themselves would fail the request.
     let resp = handler.handle(make_request(
         "SendMessageBatch",
         json!({
@@ -2136,14 +2447,45 @@ fn batch_validate_before_queue_lookup_send_message_batch() {
     assert_eq!(resp.status, 400);
     assert!(resp
         .body
-        .contains("AWS.SimpleQueueService.BatchEntryIdsNotDistinct"));
-    assert!(resp.body.contains("Id dup repeated."));
+        .contains("AWS.SimpleQueueService.NonExistentQueue"));
     assert!(
         !resp
             .body
-            .contains("AWS.SimpleQueueService.NonExistentQueue"),
-        "batch validation must be answered before the queue lookup"
+            .contains("AWS.SimpleQueueService.BatchEntryIdsNotDistinct"),
+        "queue lookup must fire before batch Id validation on send"
     );
+    assert!(
+        !resp
+            .body
+            .contains("AWS.SimpleQueueService.EmptyBatchRequest"),
+        "queue lookup must fire before the entries check on send"
+    );
+
+    // A real queue lets the batch validation answer for a malformed batch.
+    let real_url = create_queue(&handler, "bq-lookup-send-real");
+    let resp = handler.handle(make_request(
+        "SendMessageBatch",
+        json!({
+            "QueueUrl": &real_url,
+            "Entries": [
+                {"Id": "dup", "MessageBody": "one"},
+                {"Id": "dup", "MessageBody": "two"},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.BatchEntryIdsNotDistinct"));
+    assert!(resp.body.contains("Id dup repeated."));
+    let resp = handler.handle(make_request(
+        "SendMessageBatch",
+        json!({"QueueUrl": &real_url, "Entries": []}),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.EmptyBatchRequest"));
 }
 
 /// DeleteMessageBatch with duplicate Ids on a missing queue must answer

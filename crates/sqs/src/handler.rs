@@ -573,9 +573,11 @@ impl DefaultSqsHandler {
             .to_string();
 
         // moto validates the batch Entries in the response layer before the
-        // backend resolves the queue (moto responses.py answers
-        // EmptyBatchRequest/batch-Id errors without touching the queue), so
-        // a malformed batch beats QueueDoesNotExist.
+        // backend resolves the queue: EmptyBatchRequest is moto 5.2.4
+        // response-layer behavior, and the batch-Id errors ride the same
+        // layer (UNMERGED PR getmoto/moto#10346 at 5.2.4, ported
+        // deliberately for real-AWS parity), so a malformed batch beats
+        // QueueDoesNotExist.
         let entries =
             Self::validate_batch_entries(params, "ChangeMessageVisibilityBatchRequestEntry")?;
 
@@ -600,10 +602,26 @@ impl DefaultSqsHandler {
                 .and_then(|v| v.as_str())
                 .unwrap_or_default()
                 .to_string();
-            let visibility = entry
-                .get("VisibilityTimeout")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(30);
+            // moto's change_message_visibility_batch backend wraps the
+            // per-entry `int(entry["VisibilityTimeout"])` parse and the
+            // MAXIMUM_VISIBILITY_TIMEOUT assert in one bare except:
+            // anything above the cap answers a per-entry Failed row
+            // (live-verified shape: SenderFault true / Code
+            // InvalidParameterValue / Message "Visibility timeout
+            // invalid"), and a u32-overflowing value takes the same row.
+            let visibility = Self::visibility_timeout_of(entry.get("VisibilityTimeout"));
+            let visibility = match visibility {
+                Some(v) if v <= Self::MAX_VISIBILITY_TIMEOUT => v,
+                _ => {
+                    failed.push(json!({
+                        "Id": id,
+                        "SenderFault": true,
+                        "Code": "InvalidParameterValue",
+                        "Message": "Visibility timeout invalid",
+                    }));
+                    continue;
+                }
+            };
             let mut q = queue_arc.write();
             if q.change_message_visibility(&receipt_handle, visibility as u32) {
                 successful.push(json!({ "Id": id }));
@@ -646,9 +664,31 @@ impl DefaultSqsHandler {
 
         // moto answers an empty Entries list with EmptyBatchRequest before
         // touching the queue (live-verified wording), then the shared helper
-        // runs moto's batch-Id validation (PR getmoto/moto#10346) — resolve
-        // the queue only after those batch errors could fire.
+        // runs the batch-Id validation (UNMERGED PR getmoto/moto#10346 at
+        // moto 5.2.4; real-AWS-better for DELETE/VIS) — resolve the queue
+        // only after those batch errors could fire.
         let entries = Self::validate_batch_entries(params, "DeleteMessageBatchRequestEntry")?;
+
+        // moto responses.py delete_message_batch (pinned 5.2.4): a
+        // ReceiptHandle seen twice across entries answers
+        // BatchEntryIdsNotDistinct carrying the SECOND entry's Id ("Id b
+        // repeated."), still before the backend resolves the queue
+        // (live-verified: a repeated handle on a nonexistent queue answers
+        // the batch error, not NonExistentQueue). PR #10346's Id-distinct
+        // check above stays on top of this receipt-distinct check.
+        let mut seen_handles: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        for entry in &entries {
+            let receipt_handle = entry
+                .get("ReceiptHandle")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if !seen_handles.insert(receipt_handle) {
+                let id = entry.get("Id").and_then(|v| v.as_str()).unwrap_or("");
+                return Err(SqsError::BatchEntryIdsNotDistinct(format!(
+                    "Id {id} repeated."
+                )));
+            }
+        }
 
         let queue_name = self.extract_queue_name_from_url(&queue_url)?;
         let store = self.get_store(account, region);
@@ -1220,17 +1260,26 @@ impl DefaultSqsHandler {
                 SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
             })?;
 
+        // moto validates the visibility timeout in the RESPONSE layer
+        // (`_get_validated_visibility_timeout` → MaxVisibilityTimeout)
+        // before the backend resolves either the queue or the receipt
+        // handle, so an over-cap value beats even a nonexistent queue
+        // (live-verified) and answers before the missing-ReceiptHandle
+        // crash below.
+        let timeout = Self::visibility_timeout_of(params.get("VisibilityTimeout")).unwrap_or(30);
+        if timeout > Self::MAX_VISIBILITY_TIMEOUT {
+            return Err(SqsError::InvalidParameterValue(
+                Self::MAX_VISIBILITY_TIMEOUT_MESSAGE.to_string(),
+            ));
+        }
+        let timeout = timeout as u32; // <= 43200 fits
+
         // moto passes the None ReceiptHandle into method dispatch which
         // escapes as a werkzeug 500 crash (live-verified).
         let receipt_handle = params
             .get("ReceiptHandle")
             .and_then(|v| v.as_str())
             .ok_or(SqsError::MotoCrash)?;
-
-        let timeout = params
-            .get("VisibilityTimeout")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(30) as u32;
 
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
         let store = self.get_store(account, region);
@@ -1301,20 +1350,65 @@ impl DefaultSqsHandler {
         })
     }
 
+    /// `MAXIMUM_VISIBILITY_TIMEOUT` (moto/sqs/constants.py): the cap the
+    /// response layer applies to every ChangeMessageVisibility input.
+    /// A value above it answers InvalidParameterValue, not the queue or
+    /// handle checks (live-verified: a nonexistent queue with an
+    /// over-cap timeout still answers the cap error).
+    const MAX_VISIBILITY_TIMEOUT: u64 = 43200;
+
+    /// `MAXIMUM_MESSAGE_LENGTH` (moto/sqs/constants.py): the aggregate
+    /// entry-body ceiling the send_message_batch backend enforces
+    /// (`BatchRequestTooLong`). moto also reports this same constant as
+    /// the default `MaximumMessageSize` queue attribute
+    /// (`moto/sqs/models.py` Queue defaults, live-verified: a fresh
+    /// GetQueueAttributes answers 1048576).
+    const MAXIMUM_BATCH_BODY_LENGTH: usize = 1_048_576;
+
+    /// moto exceptions.MaxVisibilityTimeout.message (live-verified).
+    const MAX_VISIBILITY_TIMEOUT_MESSAGE: &str =
+        "Invalid request, maximum visibility timeout is 43200";
+
+    /// VisibilityTimeout as it reaches the API: the JSON protocol passes
+    /// numbers natively, while the gateway's query-protocol parser hands
+    /// scalars over as strings — moto's smithy-lite parser coerces the
+    /// form value with `int()` (`moto/core/parse.py` `_parse_integer`), so
+    /// a numeric string is honored here too. A number beyond u64 keeps
+    /// its magnitude through the saturating f64 cast; an all-digit
+    /// string that overflows u64 does the same (moto's `int(value)` has
+    /// no limit). Unparseable junk counts as the parameter being absent,
+    /// like every non-numeric `Value` shape.
+    fn visibility_timeout_of(param: Option<&Value>) -> Option<u64> {
+        match param? {
+            Value::Number(n) => n.as_u64().or_else(|| n.as_f64().map(|f| f as u64)),
+            Value::String(s) => s
+                .parse::<u64>()
+                .ok()
+                .or_else(|| s.chars().all(|c| c.is_ascii_digit()).then_some(u64::MAX)),
+            _ => None,
+        }
+    }
+
     /// Validate a batch operation's `Entries` list, raising moto's batch
     /// errors before any entry is processed:
     ///
-    /// `EmptyBatchRequest` (per-operation entry noun), then moto
-    /// models.py `_validate_batch_entry_ids` — InvalidBatchEntryId when
-    /// any Id fails python's `^[\w-]{1,80}$` regex, BatchEntryIdsNotDistinct
-    /// for the first repeated Id, and TooManyEntriesInBatchRequest above
-    /// 10 entries — each a top-level 400.
+    /// `EmptyBatchRequest` (per-operation entry noun), then the batch-Id
+    /// checks — InvalidBatchEntryId when any Id fails python's
+    /// `^[\w-]{1,80}$` regex, BatchEntryIdsNotDistinct for the first
+    /// repeated Id, and TooManyEntriesInBatchRequest above 10 entries —
+    /// each a top-level 400.
     ///
-    /// Shared by SendMessageBatch / DeleteMessageBatch /
-    /// ChangeMessageVisibilityBatch (PR getmoto/moto#10346; wordings
-    /// live-verified on the pinned fork). `entry_noun` fills the
-    /// EmptyBatchRequest wording the way moto responses.py's
-    /// `EmptyBatchRequest(action=...)` interpolates the action name.
+    /// moto 5.2.4 alone validates batch Ids only on SendMessageBatch and
+    /// only inside its backend (`moto/sqs/models.py`
+    /// `send_message_batch`); for DeleteMessageBatch and
+    /// ChangeMessageVisibilityBatch the Id checks exist solely in
+    /// UNMERGED PR getmoto/moto#10346, ported here deliberately: real AWS
+    /// documents TooManyEntriesInBatchRequest for every batch operation,
+    /// so DELETE/VIS were given the shared Id checks instead of dropping
+    /// them. The message wordings are live-verified on the pinned fork;
+    /// `entry_noun` fills the EmptyBatchRequest wording the way moto
+    /// responses.py's `EmptyBatchRequest(action=...)` interpolates the
+    /// action name.
     fn validate_batch_entries(
         params: &Value,
         entry_noun: &'static str,
@@ -1343,6 +1437,37 @@ impl DefaultSqsHandler {
         });
         if invalid_id {
             return Err(SqsError::InvalidBatchEntryId);
+        }
+
+        // moto models.py send_message_batch backend (live-verified):
+        // InvalidBatchEntryId, then BatchRequestTooLong when the summed
+        // entry bodies exceed MAXIMUM_MESSAGE_LENGTH (1048576,
+        // moto/sqs/constants.py) — strictly greater: exactly 1048576
+        // sends (live-verified). Python len(str) counts characters, so
+        // the same char count is used here. The sum only ever computes on
+        // Send entries (delete/visibility entries carry no MessageBody),
+        // which is the only op whose moto backend enforces it; it fires
+        // before the Id-distinct and TooManyEntries checks, matching the
+        // backend order (live-verified: an 11-entry over-cap batch
+        // answers BatchRequestTooLong, not TooManyEntries).
+        if entry_noun == "SendMessageBatchRequestEntry" {
+            let body_chars: usize = entries
+                .iter()
+                .map(|entry| {
+                    entry
+                        .get("MessageBody")
+                        .and_then(|v| v.as_str())
+                        .map(|body| body.chars().count())
+                        .unwrap_or(0)
+                })
+                .sum();
+            if body_chars > Self::MAXIMUM_BATCH_BODY_LENGTH {
+                return Err(SqsError::BatchRequestTooLong(format!(
+                    "Batch requests cannot be longer than {} bytes. You have sent {} bytes.",
+                    Self::MAXIMUM_BATCH_BODY_LENGTH,
+                    body_chars
+                )));
+            }
         }
 
         // moto's _get_first_duplicate_id: the first Id seen twice wins.
@@ -1388,15 +1513,25 @@ impl DefaultSqsHandler {
             .ok_or_else(|| {
                 SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
             })?;
-        // moto's EmptyBatchRequest wording (live-verified on the pinned
-        // fork); the shared helper also runs moto's batch-Id validation.
-        let entries = Self::validate_batch_entries(params, "SendMessageBatchRequestEntry")?;
 
+        // moto's send_message_batch differs from its delete/visibility
+        // batch siblings: the response layer resolves the queue
+        // (`self.sqs_backend.get_queue`) BEFORE inspecting Entries at all,
+        // so a missing queue answers NonExistentQueue even when the batch
+        // itself is malformed — empty entries, invalid or duplicate Ids
+        // all lose to QueueDoesNotExist (live-verified against the pinned
+        // fork). DeleteMessageBatch/ChangeMessageVisibilityBatch keep
+        // entries-first below; moto checks those in the response layer
+        // and resolves the queue only inside the backend.
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
         let store = self.get_store(account, region);
         let queue_arc = store.get_queue(&queue_name).ok_or_else(|| {
             SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
         })?;
+
+        // moto's EmptyBatchRequest wording (live-verified on the pinned
+        // fork); the shared helper also runs moto's batch-Id validation.
+        let entries = Self::validate_batch_entries(params, "SendMessageBatchRequestEntry")?;
 
         let mut successful: Vec<Value> = Vec::new();
         let mut failed: Vec<Value> = Vec::new();
