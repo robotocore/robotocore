@@ -531,7 +531,19 @@ impl DynamoDbHandler {
                     if is_gsi {
                         index["IndexSizeBytes"] = json!(0);
                         index["ItemCount"] = json!(0);
-                        index["ProvisionedThroughput"] = provisioned.clone();
+                        // moto renders each GSI's OWN throughput
+                        // (dynamodb/models/table.py GlobalSecondaryIndex
+                        // __init__ + describe): the index echoes what its own
+                        // request carried — a PROVISIONED table's GSI spec'd
+                        // at 7/9 describes 7/9 while the table itself
+                        // describes its own units. An on-demand GSI (no spec
+                        // throughput, e.g. any index on a PAY_PER_REQUEST
+                        // table) describes a zero block, mirroring moto's
+                        // zeroed throughput default.
+                        index["ProvisionedThroughput"] = json!({
+                            "ReadCapacityUnits": i.provisioned_rcu.unwrap_or(0),
+                            "WriteCapacityUnits": i.provisioned_wcu.unwrap_or(0),
+                        });
                         // botocore declares WarmThroughput only on
                         // GlobalSecondaryIndexDescription — its member shape
                         // is GlobalSecondaryIndexWarmThroughputDescription
@@ -4333,5 +4345,108 @@ mod tests {
         assert_eq!(td["KeySchema"][0]["AttributeName"], "pk");
         assert!(td.get("AttributeDefinitions").is_some());
         assert!(td.get("TableArn").is_some());
+    }
+
+    // moto renders each GSI's own ProvisionedThroughput
+    // (dynamodb/models/table.py GlobalSecondaryIndex.describe): the PROVISIONED
+    // 3/5 table keeps describing its own units, while its GSI (spec'd 7/9)
+    // describes 7/9 — the table-level block is not copied into indexes. Oracle
+    // (moto_server): GSI PT {7,9}, table PT {3,5}; on-demand GSIs (no spec
+    // throughput) describe {0, 0}.
+    #[test]
+    fn gsi_provisioned_throughput_echoes_index_spec() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "gsi-pt-echo",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [
+                    {"AttributeName": "pk", "AttributeType": "S"},
+                    {"AttributeName": "name", "AttributeType": "S"}
+                ],
+                "ProvisionedThroughput": {"ReadCapacityUnits": 3, "WriteCapacityUnits": 5},
+                "GlobalSecondaryIndexes": [{
+                    "IndexName": "byname",
+                    "KeySchema": [{"AttributeName": "name", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "ALL"},
+                    "ProvisionedThroughput": {"ReadCapacityUnits": 7, "WriteCapacityUnits": 9}
+                }]
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "DescribeTable",
+            json!({"TableName": "gsi-pt-echo"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        let table = &body["Table"];
+        // The index echoes its own spec, not the table's units...
+        assert_eq!(
+            table["GlobalSecondaryIndexes"][0]["ProvisionedThroughput"],
+            json!({"ReadCapacityUnits": 7, "WriteCapacityUnits": 9})
+        );
+        // ... and the table keeps its own.
+        assert_eq!(
+            table["ProvisionedThroughput"],
+            json!({"ReadCapacityUnits": 3, "WriteCapacityUnits": 5})
+        );
+        // UpdateTable-created indexes likewise echo their own spec.
+        let resp = handler.handle(make_req(
+            "UpdateTable",
+            json!({
+                "TableName": "gsi-pt-echo",
+                "GlobalSecondaryIndexUpdates": [{"Create": {
+                    "IndexName": "upd",
+                    "KeySchema": [{"AttributeName": "name", "KeyType": "RANGE"}],
+                    "Projection": {"ProjectionType": "ALL"},
+                    "ProvisionedThroughput": {"ReadCapacityUnits": 11, "WriteCapacityUnits": 13}
+                }}]
+            }),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["TableDescription"]["GlobalSecondaryIndexes"][1]["ProvisionedThroughput"],
+            json!({"ReadCapacityUnits": 11, "WriteCapacityUnits": 13})
+        );
+        let body = handler.handle(make_req(
+            "DescribeTable",
+            json!({"TableName": "gsi-pt-echo"}),
+        ));
+        let body: Value = serde_json::from_str(&body.body).unwrap();
+        assert_eq!(
+            body["Table"]["GlobalSecondaryIndexes"][1]["ProvisionedThroughput"],
+            json!({"ReadCapacityUnits": 11, "WriteCapacityUnits": 13})
+        );
+
+        // An on-demand GSI (no spec throughput) describes moto's zero block.
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "gsi-pt-ondemand",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [
+                    {"AttributeName": "pk", "AttributeType": "S"},
+                    {"AttributeName": "who", "AttributeType": "S"}
+                ],
+                "BillingMode": "PAY_PER_REQUEST",
+                "GlobalSecondaryIndexes": [{
+                    "IndexName": "byname",
+                    "KeySchema": [{"AttributeName": "who", "KeyType": "HASH"}],
+                    "Projection": {"ProjectionType": "ALL"}
+                }]
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "DescribeTable",
+            json!({"TableName": "gsi-pt-ondemand"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["Table"]["GlobalSecondaryIndexes"][0]["ProvisionedThroughput"],
+            json!({"ReadCapacityUnits": 0, "WriteCapacityUnits": 0})
+        );
     }
 }
