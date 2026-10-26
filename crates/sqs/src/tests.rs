@@ -2037,6 +2037,132 @@ fn batch_validate_send_message_batch_empty_entries() {
         .contains("There should be at least one SendMessageBatchRequestEntry in the request."));
 }
 
+/// moto models.py send_message_batch backend (live-verified): the summed
+/// entry bodies above MAXIMUM_MESSAGE_LENGTH (1048576 chars) answer
+/// BatchRequestTooLong with moto's exact wording, beating the Id and
+/// entry-count checks, and nothing may be enqueued by a rejected batch.
+/// A huge aggregate against a nonexistent queue follows moto's
+/// response-layer order and answers NonExistentQueue instead (queue
+/// lookup first on the send op).
+#[test]
+fn batch_request_too_long_send_message_batch_rejects_over_cap() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-too-long");
+
+    let big = "x".repeat(524289);
+    let resp = handler.handle(make_request(
+        "SendMessageBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "a", "MessageBody": big},
+                {"Id": "b", "MessageBody": big},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.BatchRequestTooLong"));
+    assert!(resp.body.contains(
+        "Batch requests cannot be longer than 1048576 bytes. You have sent 1048578 bytes."
+    ));
+
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.0, 0, "nothing may be enqueued by a rejected batch");
+
+    // The queue resolution runs before the aggregate check (item: send op
+    // resolves the queue first), so TooLong never fires on a ghost queue.
+    let ghost = format!("{}x", queue_url);
+    let resp = handler.handle(make_request(
+        "SendMessageBatch",
+        json!({
+            "QueueUrl": &ghost,
+            "Entries": [{"Id": "a", "MessageBody": "y".repeat(1048577u32 as usize)}],
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.NonExistentQueue"));
+    assert!(
+        !resp
+            .body
+            .contains("AWS.SimpleQueueService.BatchRequestTooLong"),
+        "queue lookup must precede the aggregate limit"
+    );
+}
+
+/// Exactly 1048576 chars is under moto's strictly-greater check
+/// (live-verified) and the batch is sent.
+#[test]
+fn batch_request_too_long_send_message_batch_exact_cap_sent() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-too-long-boundary");
+
+    let resp = handler.handle(make_request(
+        "SendMessageBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [{"Id": "a", "MessageBody": "x".repeat(1048576u32 as usize)}],
+        }),
+    ));
+    assert_eq!(resp.status, 200);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    let successful = data["Successful"].as_array().expect("Successful array");
+    assert_eq!(successful.len(), 1);
+    assert_eq!(successful[0]["Id"], "a");
+    assert_eq!(
+        successful[0]["MD5OfMessageBody"], "b561f87202d04959e37588ee05cf5b10",
+        "verify the full 1 MiB body traveled"
+    );
+}
+
+/// moto's backend order (live-verified): the aggregate check fires
+/// before TooManyEntriesInBatchRequest, so eleven over-cap entries
+/// answer BatchRequestTooLong rather than the entry-count error.
+#[test]
+fn batch_request_too_long_beats_too_many_entries() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "batch-too-long-vs-too-many");
+
+    let entries: Vec<Value> = (0..11)
+        .map(|i| json!({"Id": format!("id_{i}"), "MessageBody": "z".repeat(200000u32 as usize)}))
+        .collect();
+    let resp = handler.handle(make_request(
+        "SendMessageBatch",
+        json!({"QueueUrl": &queue_url, "Entries": entries}),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp
+        .body
+        .contains("AWS.SimpleQueueService.BatchRequestTooLong"));
+    assert!(
+        !resp
+            .body
+            .contains("AWS.SimpleQueueService.TooManyEntriesInBatchRequest"),
+        "the aggregate limit must precede the entry-count check"
+    );
+}
+
+/// moto/sqs/models.py Queue defaults report MAXIMUM_MESSAGE_LENGTH as the
+/// default MaximumMessageSize queue attribute (live-verified: a fresh
+/// GetQueueAttributes answers 1048576, not the 262144 figure the
+/// previous default carried).
+#[test]
+fn attribute_defaults_maximum_message_size_matches_moto() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "attr-default-max-size");
+
+    let resp = handler.handle(make_request(
+        "GetQueueAttributes",
+        json!({"QueueUrl": &queue_url, "AttributeNames": ["All"]}),
+    ));
+    assert_eq!(resp.status, 200);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    assert_eq!(data["Attributes"]["MaximumMessageSize"], "1048576");
+}
+
 /// moto responses.py delete_message_batch (pinned 5.2.4): two entries
 /// sharing one ReceiptHandle answer BatchEntryIdsNotDistinct with the
 /// SECOND entry's Id ("Id b repeated."), before any entry is processed.

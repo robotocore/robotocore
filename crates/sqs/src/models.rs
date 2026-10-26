@@ -77,7 +77,7 @@ impl SqsMessage {
 pub struct QueueAttributes {
     pub visibility_timeout: u32,        // default 30
     pub message_retention_period: u32,  // default 345600 (4 days)
-    pub maximum_message_size: u32,      // default 262144 (256 KB)
+    pub maximum_message_size: u32,      // default 1048576 (1 MiB, moto's MAXIMUM_MESSAGE_LENGTH)
     pub delay_seconds: u32,             // default 0
     pub receive_message_wait_time: u32, // default 0
     pub policy: Option<String>,
@@ -93,7 +93,11 @@ impl Default for QueueAttributes {
         Self {
             visibility_timeout: 30,
             message_retention_period: 345600,
-            maximum_message_size: 262144,
+            // moto/sqs/models.py Queue defaults: "MaximumMessageSize":
+            // MAXIMUM_MESSAGE_LENGTH (1048576, moto/sqs/constants.py) —
+            // live-verified via GetQueueAttributes on a fresh queue, this
+            // is the reported default rather than AWS's 256 KB figure.
+            maximum_message_size: 1_048_576,
             delay_seconds: 0,
             receive_message_wait_time: 0,
             policy: None,

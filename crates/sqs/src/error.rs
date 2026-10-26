@@ -35,6 +35,14 @@ pub enum SqsError {
     /// moto's `TooManyEntriesInBatchRequest`: carries the formatted
     /// "Maximum number of entries per request are 10. You have sent {n}."
     TooManyEntriesInBatchRequest(String),
+    /// moto's `BatchRequestTooLong` (moto/sqs/exceptions.py): the
+    /// send_message_batch backend answers it when the summed entry bodies
+    /// exceed MAXIMUM_MESSAGE_LENGTH (1048576; moto/sqs/constants.py).
+    /// The wire code is service-prefixed — moto's
+    /// service-2.moto-extras.json.gz overlay declares the shape's
+    /// error.code as AWS.SimpleQueueService.BatchRequestTooLong
+    /// (live-verified). The message carries moto's exact wording.
+    BatchRequestTooLong(String),
     /// moto's `PurgeQueueInProgress` (moto/sqs/exceptions.py): a queue
     /// purged within the last 60 seconds blocks every further purge —
     /// regardless of which client issued the first one. The 403 status
@@ -67,6 +75,7 @@ impl SqsError {
             SqsError::TooManyEntriesInBatchRequest(_) => {
                 "AWS.SimpleQueueService.TooManyEntriesInBatchRequest"
             }
+            SqsError::BatchRequestTooLong(_) => "AWS.SimpleQueueService.BatchRequestTooLong",
             SqsError::PurgeQueueInProgress(_) => "AWS.SimpleQueueService.PurgeQueueInProgress",
             SqsError::MotoCrash => "InternalError",
         }
@@ -87,6 +96,7 @@ impl SqsError {
             }
             SqsError::BatchEntryIdsNotDistinct(msg) => msg,
             SqsError::TooManyEntriesInBatchRequest(msg) => msg,
+            SqsError::BatchRequestTooLong(msg) => msg,
             SqsError::PurgeQueueInProgress(msg) => msg,
             SqsError::MotoCrash => "",
         }
@@ -107,6 +117,7 @@ impl SqsError {
             SqsError::InvalidBatchEntryId => 400,
             SqsError::BatchEntryIdsNotDistinct(_) => 400,
             SqsError::TooManyEntriesInBatchRequest(_) => 400,
+            SqsError::BatchRequestTooLong(_) => 400,
             SqsError::PurgeQueueInProgress(_) => 403,
             SqsError::MotoCrash => 500,
         }

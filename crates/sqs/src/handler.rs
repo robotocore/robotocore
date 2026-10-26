@@ -1357,6 +1357,14 @@ impl DefaultSqsHandler {
     /// over-cap timeout still answers the cap error).
     const MAX_VISIBILITY_TIMEOUT: u64 = 43200;
 
+    /// `MAXIMUM_MESSAGE_LENGTH` (moto/sqs/constants.py): the aggregate
+    /// entry-body ceiling the send_message_batch backend enforces
+    /// (`BatchRequestTooLong`). moto also reports this same constant as
+    /// the default `MaximumMessageSize` queue attribute
+    /// (`moto/sqs/models.py` Queue defaults, live-verified: a fresh
+    /// GetQueueAttributes answers 1048576).
+    const MAXIMUM_BATCH_BODY_LENGTH: usize = 1_048_576;
+
     /// moto exceptions.MaxVisibilityTimeout.message (live-verified).
     const MAX_VISIBILITY_TIMEOUT_MESSAGE: &str =
         "Invalid request, maximum visibility timeout is 43200";
@@ -1429,6 +1437,37 @@ impl DefaultSqsHandler {
         });
         if invalid_id {
             return Err(SqsError::InvalidBatchEntryId);
+        }
+
+        // moto models.py send_message_batch backend (live-verified):
+        // InvalidBatchEntryId, then BatchRequestTooLong when the summed
+        // entry bodies exceed MAXIMUM_MESSAGE_LENGTH (1048576,
+        // moto/sqs/constants.py) — strictly greater: exactly 1048576
+        // sends (live-verified). Python len(str) counts characters, so
+        // the same char count is used here. The sum only ever computes on
+        // Send entries (delete/visibility entries carry no MessageBody),
+        // which is the only op whose moto backend enforces it; it fires
+        // before the Id-distinct and TooManyEntries checks, matching the
+        // backend order (live-verified: an 11-entry over-cap batch
+        // answers BatchRequestTooLong, not TooManyEntries).
+        if entry_noun == "SendMessageBatchRequestEntry" {
+            let body_chars: usize = entries
+                .iter()
+                .map(|entry| {
+                    entry
+                        .get("MessageBody")
+                        .and_then(|v| v.as_str())
+                        .map(|body| body.chars().count())
+                        .unwrap_or(0)
+                })
+                .sum();
+            if body_chars > Self::MAXIMUM_BATCH_BODY_LENGTH {
+                return Err(SqsError::BatchRequestTooLong(format!(
+                    "Batch requests cannot be longer than {} bytes. You have sent {} bytes.",
+                    Self::MAXIMUM_BATCH_BODY_LENGTH,
+                    body_chars
+                )));
+            }
         }
 
         // moto's _get_first_duplicate_id: the first Id seen twice wins.
