@@ -509,10 +509,22 @@ enum Node {
 /// Upper bound on parser nesting: every descent into a nested expression
 /// (paren group, argument, literal member, predicate bracket, lambda body,
 /// ternary branch, unary `not` / `-`) counts against this, so the parser's
-/// own recursion can never exhaust the thread stack. 128 levels keeps the
-/// worst-case parser stack near 1MB, comfortably inside the 2MiB stacks
-/// test and runtime worker threads run on.
-const PARSE_DEPTH_CAP: u32 = 128;
+/// own recursion can never exhaust the thread stack.
+///
+/// Empirically fitted for this workspace's current debug codegen:
+/// `serde_json/preserve_order` (enabled workspace-wide by the events crate;
+/// feature unification propagates it) widens the parser's per-descent
+/// frames, so one paren level now costs ~19 KB of stack. Measuring
+/// `(((…1…)))` parses on a default debug thread (libtest's 2MiB stack,
+/// `RUST_MIN_STACK` unset) stops cleanly at 109 levels and overflows at
+/// 110. A cap of 64 keeps over a third of such a thread for the parser and
+/// evaluator combined, so tests, tokio's default 2MiB blocking threads
+/// (StartSyncExecution) and any other default-sized thread surface the
+/// clean "too deeply nested" error instead of a stack-overflow abort.
+/// Release builds have far greater headroom, and StartExecution's
+/// evaluation threads additionally run with an explicit 16MiB stack (see
+/// `run_on_thread` in asl.rs).
+const PARSE_DEPTH_CAP: u32 = 64;
 
 struct P {
     toks: Vec<Tok>,
@@ -2349,7 +2361,10 @@ mod tests {
 
     #[test]
     fn paren_nesting_within_the_cap_still_parses() {
-        let src = format!("{}1{}", "(".repeat(100), ")".repeat(100));
+        // 56 levels sit under the cap (64) with margin, and far under the
+        // measured 109-level clean ceiling of a default 2MiB debug thread;
+        // every paren-descent frame still runs.
+        let src = format!("{}1{}", "(".repeat(56), ")".repeat(56));
         assert_eq!(eval_input(&src, &json!({})).unwrap(), json!(1));
     }
 

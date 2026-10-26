@@ -2433,10 +2433,10 @@ mod tests {
             })
         };
         let input = json!({"a": [{"b": true}]});
-        // ≤100 parens still parse and evaluate: the filter matches, the
+        // ≤64 parens still parse and evaluate: the filter matches, the
         // matched route (Next) is taken.
-        let out = run(&def(parens(100)), input.clone()).expect("within the cap");
-        assert_eq!(out, json!({"hit": true}), "100 parens evaluate: {out}");
+        let out = run(&def(parens(56)), input.clone()).expect("within the cap");
+        assert_eq!(out, json!({"hit": true}), "56 parens evaluate: {out}");
         // 5k parens exceed the filter depth cap: the rule misses, Default
         // routes, SUCCEEDED.
         let out = run(&def(parens(5_000)), input).expect("past the cap is a miss");
