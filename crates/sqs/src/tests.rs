@@ -2369,7 +2369,10 @@ fn visibility_batch_ghost_queue_failed_rows_never_resolve_queue() {
             ],
         }),
     ));
-    assert_eq!(resp.status, 200, "per-row parse failures must beat the queue lookup");
+    assert_eq!(
+        resp.status, 200,
+        "per-row parse failures must beat the queue lookup"
+    );
     assert!(
         !resp.body.contains("NonExistentQueue"),
         "a batch whose every row fails parsing must never resolve the queue, got {}",
@@ -2398,14 +2401,20 @@ fn visibility_batch_ghost_queue_valid_row_answers_nonexistent_discarding_rows() 
     let ghost = format!("{}x", queue_url);
 
     for (label, entries) in [
-        ("over-cap then valid", json!([
-            {"Id": "cap", "ReceiptHandle": "bogus", "VisibilityTimeout": 50000},
-            {"Id": "ok", "ReceiptHandle": "bogus", "VisibilityTimeout": 30},
-        ])),
-        ("missing-visibility then valid", json!([
-            {"Id": "novis", "ReceiptHandle": "bogus"},
-            {"Id": "ok", "ReceiptHandle": "bogus", "VisibilityTimeout": 30},
-        ])),
+        (
+            "over-cap then valid",
+            json!([
+                {"Id": "cap", "ReceiptHandle": "bogus", "VisibilityTimeout": 50000},
+                {"Id": "ok", "ReceiptHandle": "bogus", "VisibilityTimeout": 30},
+            ]),
+        ),
+        (
+            "missing-visibility then valid",
+            json!([
+                {"Id": "novis", "ReceiptHandle": "bogus"},
+                {"Id": "ok", "ReceiptHandle": "bogus", "VisibilityTimeout": 30},
+            ]),
+        ),
     ] {
         let resp = handler.handle(make_request(
             "ChangeMessageVisibilityBatch",
@@ -2413,7 +2422,8 @@ fn visibility_batch_ghost_queue_valid_row_answers_nonexistent_discarding_rows() 
         ));
         assert_eq!(resp.status, 400, "{label} must answer 400");
         assert!(
-            resp.body.contains("AWS.SimpleQueueService.NonExistentQueue"),
+            resp.body
+                .contains("AWS.SimpleQueueService.NonExistentQueue"),
             "{label}: the valid row resolves the queue and wins over prior rows, got {}",
             resp.body
         );
@@ -2501,8 +2511,15 @@ fn negative_visibility_top_level_immediately_visible() {
             .as_array()
             .map(|m| m.iter().filter_map(|x| x["Body"].as_str()).collect())
             .unwrap_or_default();
-        assert_eq!(bodies, vec!["0"], "{shape} negative must make the message visible immediately");
-        receipt_handle = data["Messages"][0]["ReceiptHandle"].as_str().unwrap().into();
+        assert_eq!(
+            bodies,
+            vec!["0"],
+            "{shape} negative must make the message visible immediately"
+        );
+        receipt_handle = data["Messages"][0]["ReceiptHandle"]
+            .as_str()
+            .unwrap()
+            .into();
     }
 
     // A large negative behaves the same.
@@ -2571,7 +2588,10 @@ fn negative_visibility_batch_row_applies_and_unhides() {
             vec!["0"],
             "{shape} negative row must unhide message 0 only"
         );
-        handle = data["Messages"][0]["ReceiptHandle"].as_str().unwrap().into();
+        handle = data["Messages"][0]["ReceiptHandle"]
+            .as_str()
+            .unwrap()
+            .into();
     }
 }
 
@@ -2891,7 +2911,10 @@ fn receive_visibility_over_cap_answers_max_visibility_wording() {
             "ReceiveMessage",
             json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1, "VisibilityTimeout": value}),
         ));
-        assert_eq!(resp.status, 400, "over-cap receive ({shape}) must answer 400");
+        assert_eq!(
+            resp.status, 400,
+            "over-cap receive ({shape}) must answer 400"
+        );
         assert!(
             resp.body.contains("InvalidParameterValue"),
             "over-cap receive ({shape}) must be InvalidParameterValue, got {}",
@@ -2905,8 +2928,14 @@ fn receive_visibility_over_cap_answers_max_visibility_wording() {
         );
     }
     let counts = queued_message_counts(&handler, &queue_url);
-    assert_eq!(counts.0, 1, "the rejected receive must not consume the message");
-    assert_eq!(counts.1, 0, "the rejected receive must not touch flight state");
+    assert_eq!(
+        counts.0, 1,
+        "the rejected receive must not consume the message"
+    );
+    assert_eq!(
+        counts.1, 0,
+        "the rejected receive must not touch flight state"
+    );
 }
 
 /// moto validates the receive VisibilityTimeout AFTER the queue lookup
@@ -2931,7 +2960,8 @@ fn receive_visibility_cap_requires_existing_queue_first() {
         let resp = handler.handle(make_request("ReceiveMessage", entry));
         assert_eq!(resp.status, 400, "{label} must answer 400");
         assert!(
-            resp.body.contains("AWS.SimpleQueueService.NonExistentQueue"),
+            resp.body
+                .contains("AWS.SimpleQueueService.NonExistentQueue"),
             "{label}: the queue lookup precedes the receive cap (live-verified order), got {}",
             resp.body
         );

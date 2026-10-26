@@ -1446,7 +1446,9 @@ impl DefaultSqsHandler {
             Value::String(s) => {
                 if let Ok(v) = s.parse::<i64>() {
                     Some(v)
-                } else if s.len() > 1 && s.starts_with('-') && s[1..].chars().all(|c| c.is_ascii_digit())
+                } else if s.len() > 1
+                    && s.starts_with('-')
+                    && s[1..].chars().all(|c| c.is_ascii_digit())
                 {
                     // "-<huge>": moto's unbounded int() is negative; the
                     // saturating i64::MIN lands in the clamp-to-immediate
