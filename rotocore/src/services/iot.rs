@@ -3763,6 +3763,12 @@ fn list_job_executions_for_job(
     query: &BTreeMap<String, Vec<String>>,
 ) -> Result<Response, Response> {
     let status_filter = p_str(body, query, "status").unwrap_or_default();
+    // The moto Paginator paginates the MODEL objects, which carry both
+    // declared unique attributes ("job_id", "thing_arn") — so the items fed
+    // to paginate_list carry both too; the wire item the responses layer
+    // serializes is only the JobExecutionSummaryForJob shape (thingArn +
+    // jobExecutionSummary — live oracle: moto's raw list body has no jobId
+    // member, while its to_dict adds one for the model).
     let items: Vec<Value> = s
         .job_executions
         .iter()
@@ -3772,6 +3778,7 @@ fn list_job_executions_for_job(
         .map(|(_, e)| {
             json!({
                 "jobId": e["jobId"],
+                "thingArn": e["thingArn"],
                 "jobExecutionSummary": {
                     "status": e["status"],
                     "queuedAt": e["queuedAt"],
@@ -3786,15 +3793,24 @@ fn list_job_executions_for_job(
     // unique_attributes (["job_id", "thing_arn"]) — tokens carry both,
     // joined "|" by the Paginator — in front of a responses layer whose
     // maxResults defaults to 50.
-    let (items, token) = paginate_list(
+    let (page, token) = paginate_list(
         &items,
         &["jobId", "thingArn"],
         p_str(body, query, "nextToken").as_deref(),
         p_usize(body, query, "maxResults"),
         50,
     )?;
+    let summaries: Vec<Value> = page
+        .iter()
+        .map(|it| {
+            json!({
+                "thingArn": it["thingArn"],
+                "jobExecutionSummary": it["jobExecutionSummary"],
+            })
+        })
+        .collect();
     Ok(ok_json(
-        &json!({"executionSummaries": items, "nextToken": token}),
+        &json!({"executionSummaries": summaries, "nextToken": token}),
     ))
 }
 
@@ -7092,6 +7108,120 @@ mod tests {
         assert_eq!(seen.len(), 120);
         assert_eq!(seen[0], format!("{prefix}000"));
         assert_eq!(seen.last().unwrap(), &format!("{prefix}119"));
+    }
+
+    /// list_job_executions_for_job pages per moto's @paginate'd backend
+    /// (PAGINATION_MODEL: unique_attributes ["job_id", "thing_arn"],
+    /// maxResults default 50): each summary item carries thingArn (moto's
+    /// JobExecutionSummaryForJob wire shape — live oracle: no jobId member),
+    /// the token joins "<jobId>|<thingArn>", a moto-shaped token (with the
+    /// parameterChecksum member the twin deliberately ignores) resumes at
+    /// the named execution, and a paginator-style walk terminates instead
+    /// of repeating page 1 forever.
+    #[test]
+    fn iot_job_execution_token_walk_terminates() {
+        let job_id = format!("pj-{}", random_id().get(..8).unwrap_or_default());
+        let arns: Vec<String> = (0..105)
+            .map(|i| format!("arn:aws:iot:us-east-1:123456789012:thing/{job_id}{i:03}"))
+            .collect();
+        let r = dispatch_req(&req(
+            "PUT",
+            &format!("/jobs/{job_id}"),
+            json!({"targets": arns}),
+        ));
+        assert_eq!(r.status, 200);
+        let execs = |q: &str| {
+            let mut r = req("GET", &format!("/jobs/{job_id}/things"), json!({}));
+            r.query_string = q.to_string();
+            body(&dispatch_req(&r))
+        };
+
+        // page 1: 50 rows, every item carries the moto wire shape
+        // {"thingArn", "jobExecutionSummary"}
+        let first = execs("");
+        let page = first["executionSummaries"].as_array().unwrap();
+        assert_eq!(page.len(), 50, "the responses layer's default page is 50");
+        for (i, item) in page.iter().enumerate() {
+            assert_eq!(
+                item["thingArn"],
+                json!(format!(
+                    "arn:aws:iot:us-east-1:123456789012:thing/{job_id}{i:03}"
+                ))
+            );
+            assert_eq!(item["jobExecutionSummary"]["status"], json!("QUEUED"));
+            assert_eq!(item.as_object().unwrap().len(), 2);
+        }
+        let token = first["nextToken"].as_str().unwrap().to_string();
+
+        // the token joins both declared unique attributes: "<jobId>|<thingArn>"
+        let decoded_bytes = {
+            use base64::Engine as _;
+            let padded = format!("{token}{}", "=".repeat((4 - token.len() % 4) % 4));
+            base64::engine::general_purpose::STANDARD
+                .decode(padded.as_bytes())
+                .unwrap()
+        };
+        let decoded: Value = serde_json::from_slice(&decoded_bytes).unwrap();
+        assert_eq!(
+            decoded,
+            json!({"uniqueAttributes": format!("{job_id}|{}", arns[50])}),
+            "token encodes the first excluded execution's jobId|thingArn"
+        );
+
+        // cross-token decode: a moto-minted token embeds parameterChecksum
+        // too (a value the twin deliberately ignores) — it must still resume
+        let moto_token = {
+            use base64::Engine as _;
+            base64::engine::general_purpose::STANDARD
+                .encode(
+                    json!({
+                        "parameterChecksum": 1_234_567_890,
+                        "uniqueAttributes": format!("{job_id}|{}", arns[50]),
+                    })
+                    .to_string(),
+                )
+                .to_string()
+        };
+        let resumed = execs(&format!(
+            "maxResults=50&nextToken={}",
+            pct_encode(&moto_token)
+        ));
+        let resumed_rows = resumed["executionSummaries"].as_array().unwrap();
+        assert_eq!(resumed_rows.len(), 50, "page 2 resumes after row 50");
+        assert_eq!(resumed_rows[0]["thingArn"], json!(arns[50]));
+
+        // page 3: the remaining 5 rows, then the walk terminates
+        // (before the fix, page 2 repeated page 1 forever: the token's
+        // second attribute resolved "" for every item)
+        let token2 = resumed["nextToken"].as_str().unwrap();
+        let third = execs(&format!("maxResults=50&nextToken={}", pct_encode(token2)));
+        let third_rows = third["executionSummaries"].as_array().unwrap();
+        assert_eq!(third_rows.len(), 5);
+        assert_eq!(third_rows[0]["thingArn"], json!(arns[100]));
+        assert!(third["nextToken"].is_null(), "no token after the last page");
+
+        let mut seen: Vec<String> = Vec::new();
+        seen.extend(
+            page.iter()
+                .map(|it| it["thingArn"].as_str().unwrap().to_string()),
+        );
+        seen.extend(
+            resumed_rows
+                .iter()
+                .map(|it| it["thingArn"].as_str().unwrap().to_string()),
+        );
+        seen.extend(
+            third_rows
+                .iter()
+                .map(|it| it["thingArn"].as_str().unwrap().to_string()),
+        );
+        let unique = seen
+            .iter()
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(unique.len(), 105, "walk must reach every execution once");
+        assert_eq!(*unique.iter().next().unwrap(), arns[0]);
+        assert_eq!(*unique.iter().last().unwrap(), arns[104]);
     }
 
     /// list_thing_types pages the fork's hand-rolled responses-layer way:
