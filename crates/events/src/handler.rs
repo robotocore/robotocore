@@ -1666,7 +1666,9 @@ impl EventsHandler {
             .partner_sources
             .write()
             .insert(name.clone(), json!({ "Name": name, "Arn": arn }));
-        AwsResponse::json(200, json!({}))
+        // moto 5.2.2: the response carries the partner source ARN
+        // ({"EventSourceArn": arn}); the stored record already used it.
+        AwsResponse::json(200, json!({ "EventSourceArn": arn }))
     }
 
     fn describe_partner_event_source(&self, req: &AwsRequest) -> AwsResponse {
@@ -2720,5 +2722,48 @@ mod tests {
             "unknown token yields an empty page, no error"
         );
         assert!(resp["NextToken"].is_null());
+    }
+
+    // -- CreatePartnerEventSource returns EventSourceArn (moto 5.2.2) ----------
+
+    #[test]
+    fn create_partner_event_source_arn_is_returned() {
+        let handler = EventsHandler::new();
+        let name = "mypartner/actions/create";
+        let expected = format!("arn:aws:events:us-east-1::event-source/aws.partner/{name}");
+        let resp = body(&handler.handle(make_req(
+            "CreatePartnerEventSource",
+            json!({ "Name": name, "Account": "222222222222" }),
+        )));
+        assert_eq!(resp["EventSourceArn"], expected);
+
+        // The stored source carries the same ARN on both describe paths.
+        let desc = body(&handler.handle(make_req(
+            "DescribePartnerEventSource",
+            json!({ "Name": name }),
+        )));
+        assert_eq!(desc["Arn"], expected);
+        assert_eq!(desc["Name"], name);
+        let desc = body(&handler.handle(make_req("DescribeEventSource", json!({ "Name": name }))));
+        assert_eq!(desc["Arn"], expected);
+    }
+
+    #[test]
+    fn create_partner_event_source_arn_is_stable_when_recreated() {
+        let handler = EventsHandler::new();
+        let name = "mypartner/actions/recreate";
+        let first = body(&handler.handle(make_req(
+            "CreatePartnerEventSource",
+            json!({ "Name": name, "Account": "222222222222" }),
+        )));
+        let second = body(&handler.handle(make_req(
+            "CreatePartnerEventSource",
+            json!({ "Name": name, "Account": "333333333333" }),
+        )));
+        assert_eq!(first, second, "recreating an existing source keeps its ARN");
+        assert_eq!(
+            first["EventSourceArn"],
+            format!("arn:aws:events:us-east-1::event-source/aws.partner/{name}")
+        );
     }
 }
