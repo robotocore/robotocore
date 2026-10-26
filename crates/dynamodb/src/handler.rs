@@ -1690,10 +1690,10 @@ impl DynamoDbHandler {
         struct PendingUpdate {
             table: Arc<Table>,
             key: String,
-            key_attrs: Map<String, Value>,
-            update: Option<String>,
-            names: Names,
-            values: Values,
+            /// The fully evaluated post-update row, computed in phase 1
+            /// against a clone of the pre-transaction item, so phase 2 is a
+            /// plain overwrite that cannot fail mid-transaction.
+            new_attrs: AttrMap,
         }
         struct PendingDelete {
             table: Arc<Table>,
@@ -1806,14 +1806,45 @@ impl DynamoDbHandler {
                     );
                     match check {
                         Ok(()) => {
+                            // TransactWriteItems is atomic: moto deep-copies
+                            // every touched table and restores it on error,
+                            // and real AWS commits nothing on failure. Apply
+                            // the update to a CLONE of the pre-transaction
+                            // row here, before any write happens, so an
+                            // invalid expression or an oversized result
+                            // cancels the whole transaction (this row's own
+                            // payload included) instead of leaving earlier
+                            // rows committed. Phase 2 then only overwrites.
+                            let mut new_attrs: Map<String, Value> = match &pre {
+                                Some(m) => m.clone().into_iter().collect(),
+                                None => key_attrs.clone(),
+                            };
+                            if let Some(update) = expr_str(op.get("UpdateExpression")) {
+                                if !update.trim().is_empty() {
+                                    if let Err(e) = expr_engine::apply_update(
+                                        &mut new_attrs,
+                                        update,
+                                        &op_names(op),
+                                        &op_values(op),
+                                    ) {
+                                        return AwsResponse::error(
+                                            400,
+                                            "ValidationException",
+                                            e.as_str(),
+                                        );
+                                    }
+                                }
+                            }
+                            // moto's transactional Update runs the same size
+                            // check on the executed result (getmoto/moto#1874).
+                            if let Some(e) = check_item_size(&new_attrs) {
+                                return e;
+                            }
                             cancellation.push(None);
                             updates.push(PendingUpdate {
                                 table,
                                 key,
-                                key_attrs,
-                                update: expr_str(op.get("UpdateExpression")).map(String::from),
-                                names: op_names(op),
-                                values: op_values(op),
+                                new_attrs: attrs_to_map(&new_attrs),
                             });
                         }
                         Err(_) => {
@@ -1923,24 +1954,11 @@ impl DynamoDbHandler {
                 .read()
                 .get(&upd.key)
                 .map(|i| i.attributes.clone());
-            let mut new_attrs: Map<String, Value> = match &old {
-                Some(m) => m.clone().into_iter().collect(),
-                None => upd.key_attrs.clone(),
-            };
-            if let Some(update) = upd.update.as_deref() {
-                if !update.trim().is_empty() {
-                    if let Err(e) =
-                        expr_engine::apply_update(&mut new_attrs, update, &upd.names, &upd.values)
-                    {
-                        return AwsResponse::error(400, "ValidationException", e.as_str());
-                    }
-                }
-            }
-            // moto's transactional Update raises the same size check on the
-            // executed result above (getmoto/moto#1874).
-            if let Some(e) = check_item_size(&new_attrs) {
-                return e;
-            }
+            // Phase 1 evaluated the expression and the size against a
+            // pre-transaction clone, so applying is a pure overwrite that
+            // cannot fail — no mid-transaction error, no rollback state to
+            // restore (moto gets there with a per-table deepcopy instead).
+            let new_serde = attrmap_to_serde(&upd.new_attrs);
             // Stream capture mirrors moto's transact update hook
             // (INSERT when the item was absent, MODIFY otherwise).
             let old_serde = streaming::stream_enabled(&upd.table)
@@ -1949,12 +1967,12 @@ impl DynamoDbHandler {
             streaming::record_mutation(
                 &upd.table,
                 old_serde.as_ref().map(|m| m as &Map<String, Value>),
-                Some(&new_attrs),
+                Some(&new_serde),
             );
             upd.table
                 .items
                 .write()
-                .insert(upd.key, Arc::new(Item::new(map_to_attrmap(new_attrs))));
+                .insert(upd.key.clone(), Arc::new(Item::new(upd.new_attrs.clone())));
         }
         for del in deletes {
             let old = del.table.items.write().remove(&del.key);
@@ -4088,5 +4106,49 @@ mod tests {
         assert!(resp
             .body
             .contains("Item size has exceeded the maximum allowed size"));
+    }
+
+    // TransactWriteItems is atomic: moto deep-copies every touched table and
+    // restores it on failure (dynamodb/models/__init__.py transact_write_items),
+    // like real AWS. When an Update row turns out
+    // oversized, a Put row from earlier in the same transaction must not be
+    // visible afterwards. The twin reaches this by evaluating every Update
+    // against a pre-transaction clone in phase 1, before any write happens.
+    #[test]
+    fn transact_update_oversize_no_partial_commit() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "atomic1",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        let big_string = "x".repeat(500_000);
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "atomic1",
+                         "Item": {"pk": {"S": "early-row"}, "v": {"S": "small"}}}},
+                {"Update": {"TableName": "atomic1",
+                            "Key": {"pk": {"S": "later-row"}},
+                            "UpdateExpression": "SET v = :v",
+                            "ExpressionAttributeValues": {":v": {"S": big_string}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp.body.contains("ValidationException"));
+        // The failed transaction leaves nothing behind: the earlier Put row
+        // and the update target are both invisible.
+        for pk in ["early-row", "later-row"] {
+            let resp = handler.handle(make_req(
+                "GetItem",
+                json!({"TableName": "atomic1", "Key": {"pk": {"S": pk}}}),
+            ));
+            assert_eq!(resp.status, 200);
+            assert_eq!(resp.body, "{}", "rollback must remove {pk}");
+        }
     }
 }
