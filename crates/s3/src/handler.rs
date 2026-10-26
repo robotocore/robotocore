@@ -2166,6 +2166,31 @@ impl S3Handler {
         resp
     }
 
+    /// The `response-*` query-parameter overrides a successful GET/HEAD
+    /// object answer carries (AWS "Get Object: response header overrides";
+    /// moto `ALLOWED_HEADER_OVERRIDES`, s3/responses.py:180-187). Each of
+    /// the six usable response headers is overridden ONLY by its own query
+    /// parameter, when that parameter is present in the request — this is
+    /// how a browser pulls an object with a different Content-Disposition
+    /// etc. without a copy (moto applies the same map for HEAD requests
+    /// whose presigned URL carries the params).
+    fn apply_response_header_overrides(req: &AwsRequest, headers: &mut Vec<(String, String)>) {
+        const OVERRIDES: [(&str, &str); 6] = [
+            ("response-content-type", "Content-Type"),
+            ("response-content-language", "Content-Language"),
+            ("response-expires", "Expires"),
+            ("response-cache-control", "Cache-Control"),
+            ("response-content-disposition", "Content-Disposition"),
+            ("response-content-encoding", "Content-Encoding"),
+        ];
+        for (param, header) in OVERRIDES {
+            if let Some(value) = req.query_params.get(param) {
+                headers.retain(|(k, _)| !k.eq_ignore_ascii_case(header));
+                headers.push((header.to_string(), value.clone()));
+            }
+        }
+    }
+
     fn get_object(&self, req: &AwsRequest) -> AwsResponse {
         let (bucket_name, key) = Self::bucket_and_key(req);
         let state = self.get_state(req.account, &req.region);
@@ -2264,6 +2289,7 @@ impl S3Handler {
             for (k, v) in obj.metadata.iter() {
                 resp.headers.push((format!("x-amz-meta-{}", k), v.clone()));
             }
+            Self::apply_response_header_overrides(req, &mut resp.headers);
             return resp;
         }
 
@@ -2285,6 +2311,7 @@ impl S3Handler {
             resp.headers
                 .push(("x-amz-version-id".to_string(), obj.version_id.clone()));
         }
+        Self::apply_response_header_overrides(req, &mut resp.headers);
         resp
     }
 
@@ -2361,11 +2388,13 @@ impl S3Handler {
         if obj.version_id != NULL_VERSION_ID && bucket.is_versioned() {
             headers.push(("x-amz-version-id".to_string(), obj.version_id.clone()));
         }
-        AwsResponse {
+        let mut resp = AwsResponse {
             status: 200,
             headers,
             body: vec![],
-        }
+        };
+        Self::apply_response_header_overrides(req, &mut resp.headers);
+        resp
     }
 
     fn delete_object(&self, req: &AwsRequest) -> AwsResponse {
@@ -6089,6 +6118,111 @@ mod tests {
             b"",
         ));
         assert_eq!(get.body, b"checkpointed");
+    }
+
+    /// The stored object pair the response-override tests pull back.
+    fn put_response_override_object(handler: &S3Handler) {
+        handler.handle(make_req("CreateBucket", Some("ov-bkt"), None, b""));
+        let mut req = make_req("PutObject", Some("ov-bkt"), Some("obj.txt"), b"body");
+        req.headers
+            .insert("content-type".to_string(), "text/x-stored".to_string());
+        handler.handle(req);
+    }
+
+    #[test]
+    fn response_overrides_get() {
+        // Each of the six response-* query params overrides exactly its own
+        // response header (AWS "Get Object" response header overrides; moto
+        // ALLOWED_HEADER_OVERRIDES); headers without an override keep the
+        // stored values and the body is untouched.
+        let handler = S3Handler::new();
+        put_response_override_object(&handler);
+
+        let resp = handler.handle(make_req("GetObject", Some("ov-bkt"), Some("obj.txt"), b""));
+        assert_eq!(
+            header_map(&resp).get("Content-Type").map(String::as_str),
+            Some("text/x-stored")
+        );
+
+        let mut req = make_req("GetObject", Some("ov-bkt"), Some("obj.txt"), b"");
+        for (param, value) in [
+            ("response-content-type", "application/json"),
+            ("response-content-language", "pt-BR"),
+            ("response-expires", "Wed, 21 Oct 2115 07:28:00 GMT"),
+            ("response-cache-control", "no-cache"),
+            (
+                "response-content-disposition",
+                r#"attachment; filename="x.bin""#,
+            ),
+            ("response-content-encoding", "gzip"),
+        ] {
+            req.query_params
+                .insert(param.to_string(), value.to_string());
+        }
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+        assert_eq!(resp.body, b"body", "overrides are response headers only");
+        let headers = header_map(&resp);
+        assert_eq!(
+            headers.get("Content-Type").map(String::as_str),
+            Some("application/json")
+        );
+        assert_eq!(
+            headers.get("Content-Language").map(String::as_str),
+            Some("pt-BR")
+        );
+        assert_eq!(
+            headers.get("Expires").map(String::as_str),
+            Some("Wed, 21 Oct 2115 07:28:00 GMT")
+        );
+        assert_eq!(
+            headers.get("Cache-Control").map(String::as_str),
+            Some("no-cache")
+        );
+        assert_eq!(
+            headers.get("Content-Disposition").map(String::as_str),
+            Some(r#"attachment; filename="x.bin""#)
+        );
+        assert_eq!(
+            headers.get("Content-Encoding").map(String::as_str),
+            Some("gzip")
+        );
+        // Only the six mapped headers change.
+        assert!(headers.get("ETag").map(String::as_str).is_some());
+    }
+
+    #[test]
+    fn response_overrides_head() {
+        // HEAD honors the same six overrides as GET (moto applies
+        // ALLOWED_HEADER_OVERRIDES to HEAD when the URL carries the params);
+        // the answer stays body-less.
+        let handler = S3Handler::new();
+        put_response_override_object(&handler);
+
+        let mut req = make_req("HeadObject", Some("ov-bkt"), Some("obj.txt"), b"");
+        req.query_params.insert(
+            "response-content-type".to_string(),
+            "application/x-override".to_string(),
+        );
+        req.query_params.insert(
+            "response-content-disposition".to_string(),
+            r#"attachment; filename="h.bin""#.to_string(),
+        );
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+        assert!(resp.body.is_empty(), "HEAD has no body");
+        let headers = header_map(&resp);
+        assert_eq!(
+            headers.get("Content-Type").map(String::as_str),
+            Some("application/x-override")
+        );
+        assert_eq!(
+            headers.get("Content-Disposition").map(String::as_str),
+            Some(r#"attachment; filename="h.bin""#)
+        );
+        // Non-overridden headers keep their values.
+        assert!(headers.get("ETag").map(String::as_str).is_some());
+        assert!(headers.get("Last-Modified").map(String::as_str).is_some());
     }
 
     #[test]
