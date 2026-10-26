@@ -1803,6 +1803,23 @@ impl S3Handler {
     fn verify_post_signature(policy_b64: &str, form: &PostForm) -> Result<(), AwsResponse> {
         match post_signature_version(form) {
             PostSigVersion::V4 { signature } => {
+                // The V4 field set is only valid for its single documented
+                // algorithm: anything else (or an empty value) is rejected
+                // the way real AWS rejects a POST declaring an
+                // unsupported x-amz-algorithm — 400 InvalidArgument naming
+                // the field.
+                let algorithm = form.get("x-amz-algorithm").unwrap_or_default();
+                if algorithm != "AWS4-HMAC-SHA256" {
+                    return Err(Self::aws_error_with(
+                        400,
+                        "InvalidArgument",
+                        "Unsupported Signing Algorithm",
+                        &[
+                            ("ArgumentName", "x-amz-algorithm"),
+                            ("ArgumentValue", algorithm),
+                        ],
+                    ));
+                }
                 let credential = form.get("x-amz-credential").unwrap_or_default();
                 let amz_date = form.get("x-amz-date").unwrap_or_default();
                 let access_key = credential.split('/').next().unwrap_or_default();
@@ -5841,6 +5858,67 @@ mod tests {
             "body: {body}"
         );
         assert!(body.contains("X-Amz-Signature"), "body: {body}");
+    }
+
+    #[test]
+    fn post_object_bad_algorithm_400() {
+        // A complete V4 field set whose x-amz-algorithm is not
+        // AWS4-HMAC-SHA256 fails before any signature comparison: real AWS
+        // accepts exactly one algorithm in a signed POST, and rejects the
+        // request with 400 InvalidArgument naming x-amz-algorithm.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let policy_b64 = post_policy_body(
+            serde_json::json!([["starts-with", "$key", ""]]),
+            Some("2080-01-01T00:00:00Z"),
+        );
+        // Fields are signed correctly otherwise: the algorithm gate must
+        // still fire (it precedes the signature comparison).
+        let mut fields = vec![
+            ("key".to_string(), "wrong-alg.txt".to_string()),
+            ("policy".to_string(), policy_b64.clone()),
+        ];
+        fields.extend(post_v4_fields(
+            &policy_b64,
+            POST_UPLOAD_SIGNING_SECRET,
+            false,
+        ));
+        if let Some(alg) = fields.iter_mut().find(|(k, _)| k == "x-amz-algorithm") {
+            alg.1 = "AWS4-HMAC-SHA1".to_string();
+        }
+        let resp = handler.handle(form_post_request_owned(
+            "post-bkt",
+            &fields,
+            Some(("wrong-alg.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(
+            resp.status,
+            400,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(
+            body.contains("<Code>InvalidArgument</Code>"),
+            "body: {body}"
+        );
+        assert!(
+            body.contains("<ArgumentName>x-amz-algorithm</ArgumentName>"),
+            "body: {body}"
+        );
+        assert!(
+            body.contains("<ArgumentValue>AWS4-HMAC-SHA1</ArgumentValue>"),
+            "body: {body}"
+        );
+
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("wrong-alg.txt"),
+            b"",
+        ));
+        assert_eq!(get.status, 404, "rejected uploads store nothing");
     }
 
     #[test]
