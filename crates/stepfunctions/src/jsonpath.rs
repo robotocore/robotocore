@@ -12,7 +12,9 @@
 //!
 //! and the #7825 shape fix: a projection after any array traversal
 //! (wildcard, slice, filter or definite index) keeps the array shape, while
-//! a path ending in a literal `[n]` unpacks its single match.
+//! a path ending in a literal non-negative `[n]` unpacks its single match —
+//! negative `[-n]` stays array-wrapped, like moto's
+//! `_is_singleton_array_access` whose `\[\d+\]` pattern has no minus.
 //!
 //! Supported syntax: `$.a.b`, bracket-quoted fields `['a.b']`, `[0]`
 //! (negative counts from the end), `[start:end:step]` slices, `[*]` / `.*`
@@ -35,7 +37,7 @@ pub(crate) fn resolve(path: &str, base: &Value) -> Option<Value> {
     }
     let steps = parse_steps(path)?;
     let mut matches = Vec::new();
-    walk_seq(vec![base.clone()], &steps, base, &mut matches, false);
+    walk_seq(vec![base.clone()], &steps, base, &mut matches);
     if matches.is_empty() {
         // Empty filters (and slices / wildcards) yield []; a miss on a
         // definite path stays a missing path (era `_resolve_path`).
@@ -48,11 +50,15 @@ pub(crate) fn resolve(path: &str, base: &Value) -> Option<Value> {
     if matches.len() > 1 {
         return Some(Value::Array(matches));
     }
-    // Single match: a path ending in a literal index is a definite access
-    // (moto `_is_singleton_array_access`), so AWS unpacks it; otherwise any
-    // array traversal in the chain preserves the array shape (moto #7825)
-    // and a plain dot path yields the field value itself.
-    if steps.last().is_some_and(|s| matches!(s, Step::Index(_))) {
+    // Single match: a path ending in a literal non-negative index is a
+    // definite access (moto `_is_singleton_array_access` matches `\[\d+\]`,
+    // no minus), so AWS unpacks it; a negative index keeps the array shape.
+    // Otherwise any array traversal in the chain preserves the array shape
+    // (moto #7825) and a plain dot path yields the field value itself.
+    if steps
+        .last()
+        .is_some_and(|s| matches!(s, Step::Index(n) if *n >= 0))
+    {
         return Some(matches.pop().expect("at least one match"));
     }
     if steps.iter().any(Step::traverses_array) {
@@ -147,6 +153,11 @@ enum FilterSeg {
     Index(i64),
 }
 
+/// Upper bound on parsed path segments: longer paths read as unresolvable
+/// syntax (resolving to a missing value, like other off-dialect paths)
+/// instead of walking memory for a 20,000-segment crafted field.
+const MAX_PATH_STEPS: usize = 512;
+
 fn parse_steps(path: &str) -> Option<Vec<Step>> {
     let chars: Vec<char> = path.chars().collect();
     if chars.len() < 2 || chars[0] != '$' {
@@ -189,6 +200,9 @@ fn parse_steps(path: &str) -> Option<Vec<Step>> {
             }
             _ => return None,
         }
+    }
+    if steps.len() > MAX_PATH_STEPS {
+        return None;
     }
     Some(steps)
 }
@@ -715,89 +729,93 @@ fn ordered_cmp(a: &Value, b: &Value, op: FilterOp) -> bool {
 /// RESULT LIST itself — `$.items[?(@.picked)][0]` selects the first hit of
 /// the filter rather than indexing each element (the per-element reading is
 /// what produced the localstack singleton collapse noted in moto #7825).
-fn walk_seq(set: Vec<Value>, steps: &[Step], root: &Value, out: &mut Vec<Value>, prev_multi: bool) {
-    if steps.is_empty() {
-        out.extend(set);
-        return;
-    }
-    let (step, rest) = steps.split_first().expect("non-empty checked above");
-    let mut next: Vec<Value> = Vec::new();
-    match step {
-        Step::Field(name) => {
-            for v in &set {
-                if let Some(sub) = v.get(name) {
-                    next.push(sub.clone());
-                }
-            }
-        }
-        Step::Index(idx) => {
-            if prev_multi {
-                if let Some(sub) = seq_index(&set, *idx) {
-                    next.push(sub.clone());
-                }
-            } else {
+///
+/// Iterative over the step list: a path may carry up to `MAX_PATH_STEPS`
+/// segments, and one stack frame per segment would abort the process on a
+/// crafted field.
+fn walk_seq(mut set: Vec<Value>, steps: &[Step], root: &Value, out: &mut Vec<Value>) {
+    let mut prev_multi = false;
+    for step in steps {
+        let mut next: Vec<Value> = Vec::new();
+        match step {
+            Step::Field(name) => {
                 for v in &set {
-                    if let Some(sub) = index_of(v, *idx) {
+                    if let Some(sub) = v.get(name) {
                         next.push(sub.clone());
                     }
                 }
             }
-        }
-        Step::Slice { start, end, step } => {
-            if prev_multi {
-                for i in slice_indices(set.len(), *start, *end, *step) {
-                    next.push(set[i].clone());
+            Step::Index(idx) => {
+                if prev_multi {
+                    if let Some(sub) = seq_index(&set, *idx) {
+                        next.push(sub.clone());
+                    }
+                } else {
+                    for v in &set {
+                        if let Some(sub) = index_of(v, *idx) {
+                            next.push(sub.clone());
+                        }
+                    }
                 }
-            } else {
+            }
+            Step::Slice { start, end, step } => {
+                if prev_multi {
+                    for i in slice_indices(set.len(), *start, *end, *step) {
+                        next.push(set[i].clone());
+                    }
+                } else {
+                    for v in &set {
+                        if let Value::Array(items) = v {
+                            for i in slice_indices(items.len(), *start, *end, *step) {
+                                next.push(items[i].clone());
+                            }
+                        }
+                    }
+                }
+            }
+            Step::Wildcard => {
                 for v in &set {
-                    if let Value::Array(items) = v {
-                        for i in slice_indices(items.len(), *start, *end, *step) {
-                            next.push(items[i].clone());
-                        }
-                    }
-                }
-            }
-        }
-        Step::Wildcard => {
-            for v in &set {
-                match v {
-                    Value::Object(map) => {
-                        for sub in map.values() {
-                            next.push(sub.clone());
-                        }
-                    }
-                    Value::Array(items) => {
-                        for sub in items {
-                            next.push(sub.clone());
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-        Step::Filter(rule) => {
-            for v in &set {
-                match v {
-                    Value::Object(map) => {
-                        for sub in map.values() {
-                            if filter_matches(rule, sub, root) {
+                    match v {
+                        Value::Object(map) => {
+                            for sub in map.values() {
                                 next.push(sub.clone());
                             }
                         }
-                    }
-                    Value::Array(items) => {
-                        for sub in items {
-                            if filter_matches(rule, sub, root) {
+                        Value::Array(items) => {
+                            for sub in items {
                                 next.push(sub.clone());
                             }
                         }
+                        _ => {}
                     }
-                    _ => {}
+                }
+            }
+            Step::Filter(rule) => {
+                for v in &set {
+                    match v {
+                        Value::Object(map) => {
+                            for sub in map.values() {
+                                if filter_matches(rule, sub, root) {
+                                    next.push(sub.clone());
+                                }
+                            }
+                        }
+                        Value::Array(items) => {
+                            for sub in items {
+                                if filter_matches(rule, sub, root) {
+                                    next.push(sub.clone());
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
                 }
             }
         }
+        prev_multi = step.is_multi_valued();
+        set = next;
     }
-    walk_seq(next, rest, root, out, step.is_multi_valued());
+    out.extend(set);
 }
 
 /// Index into a collected result list (same negative-index rule as arrays).
@@ -821,17 +839,21 @@ fn index_of(v: &Value, idx: i64) -> Option<&Value> {
 }
 
 /// Python slice semantics: negative indices wrap, boundaries clamp, a
-/// negative step descends.
+/// negative step descends, and a zero step matches nothing (jsonpath_ng) —
+/// a zero step yields no indices rather than degenerating into a
+/// full forward slice.
 fn slice_indices(
     len: usize,
     start: Option<f64>,
     end: Option<f64>,
     step: Option<f64>,
 ) -> Vec<usize> {
-    let step: i64 = step
-        .filter(|s| *s != 0.0)
-        .map(|s| s.floor() as i64)
-        .unwrap_or(1);
+    let step: i64 = step.map(|s| s.floor() as i64).unwrap_or(1);
+    if step == 0 {
+        // $a[::0] matches nothing; falling through to the negative-step
+        // loop would never advance.
+        return Vec::new();
+    }
     let adjust = |v: f64| -> i64 {
         let i = v.floor() as i64;
         if i < 0 {
@@ -1382,5 +1404,53 @@ mod scratch {
                 &users
             )
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn deep_path_within_the_step_cap_resolves_iteratively() {
+        let mut value = json!(42);
+        for _ in 0..512 {
+            value = json!({ "a": value });
+        }
+        // Exactly at the cap — walks without recursion over the step list.
+        let path = format!("${}", ".a".repeat(512));
+        assert_eq!(resolve(&path, &value), Some(json!(42)));
+    }
+
+    #[test]
+    fn paths_beyond_the_step_cap_resolve_as_unresolvable() {
+        // Past the cap the path counts as off-dialect syntax: a missing
+        // value, never a stack-overflow abort (the 20k-segment case).
+        for segs in [513usize, 5_000, 6_000, 20_000] {
+            let path = format!("${}", ".a".repeat(segs));
+            assert_eq!(resolve(&path, &json!({})), None, "depth {segs}");
+        }
+    }
+
+    #[test]
+    fn zero_step_slice_matches_nothing() {
+        // jsonpath_ng semantics: a ::0 step yields no elements instead of
+        // degenerating into a full forward slice.
+        let input = json!({"items": [1, 2, 3]});
+        assert_eq!(resolve("$.items[::0]", &input), Some(json!([])));
+        assert_eq!(resolve("$.items[:2:0]", &input), Some(json!([])));
+        // Sanity: positive steps still stride.
+        assert_eq!(resolve("$.items[::2]", &input), Some(json!([1, 3])));
+    }
+
+    #[test]
+    fn negative_singleton_index_stays_array_wrapped() {
+        // moto `_is_singleton_array_access` matches `\[\d+\]` — a minus is
+        // not a definite access, so the shape stays an array.
+        let input = json!({"items": [1, 2, 3]});
+        assert_eq!(resolve("$.items[-1]", &input), Some(json!([3])));
+        assert_eq!(resolve("$.items[1]", &input), Some(json!(2)));
+        assert_eq!(resolve("$.items[*][-1]", &input), Some(json!([3])));
     }
 }

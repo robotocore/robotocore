@@ -18,7 +18,16 @@
 //!   positional/boolean predicates (zero offset, like jsonata's
 //!   `evaluateFilter`), the `[]` force-sequence step and `a..b` ranges;
 //!   JSONata 2.0.6 has no slicing operator (a `[a:b]` predicate parses as a
-//!   syntax error there too)
+//!   syntax error there too).
+//!
+//! Deliberate deviation from the reference binding table (`parser.js`):
+//! `a..b` binds tighter than `and`/`or` here, while the reference binds
+//! `..` at 20, looser than `or` at 25 (`a or b .. c` groups as
+//! `(a or b) .. c` upstream, `a or (b .. c)` here); expressions mixing
+//! ranges with boolean operators surface as a numeric-operand error.
+//! `&` deliberately binds equal to `+`/`-`, left-to-right, as in the
+//! reference — so `2 & 3 + 4` errors on an arithmetic-on-string operand
+//! there and here.
 //! - `$states` variable: `.input` (every evaluating field), `.result` and
 //!   `.errorOutput` (Task/Parallel/Map outputs, Catch payloads), `.context`
 //! - functions (the SFN-eligible subset): `$format`, `$fromMillis`,
@@ -32,7 +41,7 @@
 //! unknown-variable evaluation error): `$match`, `$replace`, `$split`,
 //! `$eval`, `$sift` on non-object inputs, `~>` chaining, function sequencing,
 //! reducers (`$reduce`), `$sort`-family, `$now` / `$millis` / `$random` /
-//! `$uuid` / `$hash`, computed object keys, lambda invocation of held values
+//! `$hash`, computed object keys, lambda invocation of held values
 //! beyond the HOF passage, and Variables (`Assign`) — `$name` reads as an
 //! unknown variable error, mirroring a machine that never declared it.
 
@@ -472,9 +481,10 @@ enum Node {
     Field(Box<Node>, String),
     /// `a.*`.
     Wildcard(Box<Node>),
-    /// `a[i]` — a numeric predicate is a positional index (zero offset,
-    /// negative counts from the end, exactly jsonata's `evaluateFilter`);
-    /// anything else filters by imported truthiness.
+    /// `a[pred]` — the predicate evaluates per item with the item as
+    /// context (jsonata's `evaluateFilter`): a numeric result
+    /// position-selects that item (zero offset, negative counts from the
+    /// end), anything else filters by imported truthiness.
     Bracket {
         base: Box<Node>,
         pred: Box<Node>,
@@ -496,11 +506,21 @@ enum Node {
     Lambda(Vec<String>, Box<Node>),
 }
 
-const PARSE_DEPTH_CAP: u32 = 64;
+/// Upper bound on parser nesting: every descent into a nested expression
+/// (paren group, argument, literal member, predicate bracket, lambda body,
+/// ternary branch, unary `not` / `-`) counts against this, so the parser's
+/// own recursion can never exhaust the thread stack. 128 levels keeps the
+/// worst-case parser stack near 1MB, comfortably inside the 2MiB stacks
+/// test and runtime worker threads run on.
+const PARSE_DEPTH_CAP: u32 = 128;
 
 struct P {
     toks: Vec<Tok>,
     i: usize,
+    /// Current nesting depth: incremented at every descent into a nested
+    /// expression, decremented when that sub-parse completes. All recursive
+    /// descents go through `enter()`, which refuses past the cap.
+    depth: u32,
 }
 
 impl P {
@@ -538,100 +558,115 @@ impl P {
         }
     }
 
-    fn whole_expr_paren(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        let inner = self.ternary(self_depth)?;
+    fn whole_expr_paren(&mut self) -> Result<Node, EvalError> {
+        let inner = self.nested_expr()?;
         self.expect(Op::RParen)?;
         Ok(inner)
     }
 
-    fn expr_arg(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        self.ternary(self_depth)
+    /// One nested expression argument (call arguments, postfix predicate
+    /// brackets, object/array members); each is its own descent.
+    fn nested_expr(&mut self) -> Result<Node, EvalError> {
+        self.enter()?;
+        let node = self.ternary();
+        self.depth -= 1;
+        node
     }
 
-    /// `cond ? then : else` — the loosest operator; a missing `:` reads as
-    /// the JSONata no-output else branch.
-    fn ternary(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        check_depth(self_depth)?;
-        let cond = self.default(self_depth)?;
+    /// Descend one nesting level, refusing past the cap. The matching pop
+    /// happens after the sub-parse; on error the whole parse aborts anyway.
+    fn enter(&mut self) -> Result<(), EvalError> {
+        self.depth += 1;
+        check_depth(self.depth)
+    }
+
+    /// `cond ? then : else` — the loosest operator. `a ?: b` is the elvis
+    /// default (parser.js parses it as the ternary whose then-branch is the
+    /// condition itself), and a missing `:` degrades to an undefined else
+    /// branch.
+    fn ternary(&mut self) -> Result<Node, EvalError> {
+        let cond = self.default()?;
         if self.eat_op(Op::Question) {
             if self.eat_op(Op::Colon) {
+                let other = self.nested_expr()?;
                 return Ok(Node::Ternary(
+                    Box::new(cond.clone()),
                     Box::new(cond),
-                    Box::new(Node::Lit(Value::Null)),
-                    None,
+                    Some(Box::new(other)),
                 ));
             }
-            let then = self.ternary(self_depth + 1)?;
+            let then = self.nested_expr()?;
             if self.eat_op(Op::Colon) {
-                let other = self.ternary(self_depth + 1)?;
+                let other = self.nested_expr()?;
                 return Ok(Node::Ternary(
                     Box::new(cond),
                     Box::new(then),
                     Some(Box::new(other)),
                 ));
             }
-            return Err(EvalError::new(
-                "expected ':' in a ternary expression".to_string(),
-            ));
+            return Ok(Node::Ternary(Box::new(cond), Box::new(then), None));
         }
         Ok(cond)
     }
 
     /// `a ?? b`.
-    fn default(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        let mut left = self.or_expr(self_depth)?;
+    fn default(&mut self) -> Result<Node, EvalError> {
+        let mut left = self.or_expr()?;
         while self.eat_op(Op::QuestionDefault) {
-            let right = self.or_expr(self_depth)?;
+            let right = self.or_expr()?;
             left = Node::Default(Box::new(left), Box::new(right));
         }
         Ok(left)
     }
 
-    fn or_expr(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        let mut left = self.and_expr(self_depth)?;
+    fn or_expr(&mut self) -> Result<Node, EvalError> {
+        let mut left = self.and_expr()?;
         loop {
             let is_or = self.eat_word("or") || self.eat_op(Op::OrOr);
             if !is_or {
                 return Ok(left);
             }
-            let right = self.and_expr(self_depth)?;
+            let right = self.and_expr()?;
             left = Node::Bin(BinOp::Or, Box::new(left), Box::new(right));
         }
     }
 
-    fn and_expr(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        let mut left = self.range_expr(self_depth)?;
+    fn and_expr(&mut self) -> Result<Node, EvalError> {
+        let mut left = self.range_expr()?;
         loop {
             let is_and = self.eat_word("and") || self.eat_op(Op::AndAnd);
             if !is_and {
                 return Ok(left);
             }
-            let right = self.range_expr(self_depth)?;
+            let right = self.range_expr()?;
             left = Node::Bin(BinOp::And, Box::new(left), Box::new(right));
         }
     }
 
     /// `a..b` (integer range, inclusive).
-    fn range_expr(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        let mut left = self.not_expr(self_depth)?;
+    fn range_expr(&mut self) -> Result<Node, EvalError> {
+        let mut left = self.not_expr()?;
         while self.peek() == Tok::Op(Op::DotDot) {
             self.i += 1;
-            let right = self.not_expr(self_depth)?;
+            let right = self.not_expr()?;
             left = Node::Range(Box::new(left), Box::new(right));
         }
         Ok(left)
     }
 
-    fn not_expr(&mut self, self_depth: u32) -> Result<Node, EvalError> {
+    fn not_expr(&mut self) -> Result<Node, EvalError> {
         if self.eat_word("not") {
-            let inner = self.not_expr(self_depth)?;
-            return Ok(Node::Not(Box::new(inner)));
+            self.enter()?;
+            let inner = self.not_expr();
+            self.depth -= 1;
+            return Ok(Node::Not(Box::new(inner?)));
         }
-        self.cmp_expr(self_depth)
+        self.cmp_expr()
     }
 
-    fn cmp_expr(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        let mut left = self.concat_expr(self_depth)?;
+    /// Comparisons bind over the additive level, which includes `&`.
+    fn cmp_expr(&mut self) -> Result<Node, EvalError> {
+        let mut left = self.add_expr()?;
         loop {
             let op = match self.peek() {
                 Tok::Op(Op::Eq) => BinOp::Eq,
@@ -644,39 +679,33 @@ impl P {
                 _ => break,
             };
             self.i += 1;
-            let right = self.concat_expr(self_depth)?;
+            let right = self.add_expr()?;
             left = Node::Bin(op, Box::new(left), Box::new(right));
         }
         Ok(left)
     }
 
-    fn concat_expr(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        let mut left = self.add_expr(self_depth)?;
-        while self.peek() == Tok::Op(Op::Amp) {
-            self.i += 1;
-            let right = self.add_expr(self_depth)?;
-            left = Node::Bin(BinOp::Concat, Box::new(left), Box::new(right));
-        }
-        Ok(left)
-    }
-
-    fn add_expr(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        let mut left = self.mul_expr(self_depth)?;
+    fn add_expr(&mut self) -> Result<Node, EvalError> {
+        let mut left = self.mul_expr()?;
         loop {
             let op = match self.peek() {
                 Tok::Op(Op::Plus) => BinOp::Add,
                 Tok::Op(Op::Minus) => BinOp::Sub,
+                // `&` binds equal to + and -, evaluated left-to-right (the
+                // reference binding table): `2 & 3 + 4` is a reference
+                // numeric-operand error, not a `"27"` concat.
+                Tok::Op(Op::Amp) => BinOp::Concat,
                 _ => break,
             };
             self.i += 1;
-            let right = self.mul_expr(self_depth)?;
+            let right = self.mul_expr()?;
             left = Node::Bin(op, Box::new(left), Box::new(right));
         }
         Ok(left)
     }
 
-    fn mul_expr(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        let mut left = self.unary(self_depth)?;
+    fn mul_expr(&mut self) -> Result<Node, EvalError> {
+        let mut left = self.unary()?;
         loop {
             let op = match self.peek() {
                 Tok::Op(Op::Star) => BinOp::Mul,
@@ -685,22 +714,24 @@ impl P {
                 _ => break,
             };
             self.i += 1;
-            let right = self.unary(self_depth)?;
+            let right = self.unary()?;
             left = Node::Bin(op, Box::new(left), Box::new(right));
         }
         Ok(left)
     }
 
-    fn unary(&mut self, self_depth: u32) -> Result<Node, EvalError> {
+    fn unary(&mut self) -> Result<Node, EvalError> {
         if self.eat_op(Op::Minus) {
-            let inner = self.unary(self_depth)?;
-            return Ok(Node::Neg(Box::new(inner)));
+            self.enter()?;
+            let inner = self.unary();
+            self.depth -= 1;
+            return Ok(Node::Neg(Box::new(inner?)));
         }
-        let node = self.primary(self_depth)?;
-        self.postfix(node, self_depth)
+        let node = self.primary()?;
+        self.postfix(node)
     }
 
-    fn postfix(&mut self, mut node: Node, self_depth: u32) -> Result<Node, EvalError> {
+    fn postfix(&mut self, mut node: Node) -> Result<Node, EvalError> {
         loop {
             match self.peek() {
                 Tok::Op(Op::Dot) => {
@@ -721,7 +752,7 @@ impl P {
                         node = Node::ForceSeq(Box::new(node));
                         continue;
                     }
-                    let first = self.expr_arg(self_depth)?;
+                    let first = self.nested_expr()?;
                     if self.peek() == Tok::Op(Op::Colon) {
                         // JSONata 2.0.6 has no slicing operator; a `:` inside
                         // a predicate is a syntax error there too.
@@ -741,7 +772,7 @@ impl P {
                     let mut args = Vec::new();
                     if self.peek() != Tok::Op(Op::RParen) {
                         loop {
-                            args.push(self.expr_arg(self_depth)?);
+                            args.push(self.nested_expr()?);
                             if !self.eat_op(Op::Comma) {
                                 break;
                             }
@@ -778,18 +809,17 @@ impl P {
         }
     }
 
-    fn primary(&mut self, self_depth: u32) -> Result<Node, EvalError> {
-        check_depth(self_depth)?;
+    fn primary(&mut self) -> Result<Node, EvalError> {
         match self.peek() {
             Tok::Op(Op::LParen) => {
                 self.i += 1;
-                self.whole_expr_paren(self_depth)
+                self.whole_expr_paren()
             }
             Tok::Op(Op::LBracket) => {
                 self.i += 1;
                 let mut items = Vec::new();
                 while self.peek() != Tok::Op(Op::RBracket) {
-                    items.push(self.expr_arg(self_depth)?);
+                    items.push(self.nested_expr()?);
                     if !self.eat_op(Op::Comma) {
                         break;
                     }
@@ -820,7 +850,7 @@ impl P {
                     self.expect(Op::Colon)?;
                     // Function-style shorthands like `{a: $x}` take a full
                     // expression after the colon.
-                    let value = self.expr_arg(self_depth)?;
+                    let value = self.nested_expr()?;
                     pairs.push((key, value));
                     if !self.eat_op(Op::Comma) {
                         break;
@@ -847,7 +877,7 @@ impl P {
                     "true" => Ok(Node::Lit(Value::Bool(true))),
                     "false" => Ok(Node::Lit(Value::Bool(false))),
                     "null" => Ok(Node::Lit(Value::Null)),
-                    "function" => self.lambda(self_depth),
+                    "function" => self.lambda(),
                     "and" | "or" | "not" | "in" => Err(EvalError::new(format!(
                         "the keyword '{}' cannot start an expression",
                         word
@@ -864,7 +894,7 @@ impl P {
     }
 
     /// `function($a, $b) { expr }`.
-    fn lambda(&mut self, self_depth: u32) -> Result<Node, EvalError> {
+    fn lambda(&mut self) -> Result<Node, EvalError> {
         // The `function` keyword was consumed by the caller.
         self.expect(Op::LParen)?;
         let mut params = Vec::new();
@@ -889,7 +919,7 @@ impl P {
         }
         self.expect(Op::RParen)?;
         self.expect(Op::LBrace)?;
-        let body = self.ternary(self_depth)?;
+        let body = self.nested_expr()?;
         self.expect(Op::RBrace)?;
         Ok(Node::Lambda(params, Box::new(body)))
     }
@@ -936,8 +966,12 @@ fn parse(src: &str) -> Result<Node, EvalError> {
     if matches!(toks.first(), Some(Tok::End)) {
         return Err(EvalError::new("The expression is empty".to_string()));
     }
-    let mut p = P { toks, i: 0 };
-    let node = p.ternary(0)?;
+    let mut p = P {
+        toks,
+        i: 0,
+        depth: 0,
+    };
+    let node = p.ternary()?;
     if !matches!(p.peek(), Tok::End) {
         return Err(EvalError::new(format!(
             "Unexpected token at position {}: the expression is not valid JSONata syntax",
@@ -1272,9 +1306,14 @@ fn wildcard_of(base: &Jv, depth: u32) -> Result<Jv, EvalError> {
     }
 }
 
-/// jsonata's `evaluateFilter`: a numeric predicate is a positional index
-/// (zero offset, floor-rounded, negative counts from the end), an array of
-/// numbers selects those positions, anything else is a truthiness filter.
+/// jsonata's `evaluateFilter`: the predicate evaluates per item with the
+/// item as context. A numeric result selects THIS item when its
+/// floor-rounded value equals the item's position in the sequence (zero
+/// offset, negative counts from the end), an all-numeric array selects any
+/// listed position, and any other result includes the item by truthiness —
+/// mixed numeric and boolean predicates mix both effects. Afterwards a
+/// one-element result reads as that element (jsonata's singleton
+/// equivalence; `[]` on the step forces the array shape back).
 fn eval_bracket(
     base: Jv,
     pred: &Node,
@@ -1291,37 +1330,19 @@ fn eval_bracket(
         }
         Jv::Val(_) => return Ok(Jv::Missing),
     };
-    let mut was_number = false;
-    let mut first = None;
     let mut out = Vec::new();
     for (idx, item) in items.iter().enumerate() {
         let frame = child_scope(scope, ("root".to_string(), Jv::Val(item.clone())));
         let res = eval_node(pred, &frame, states, depth + 1)?;
         match res {
             Jv::Val(Value::Number(n)) => {
-                // A numeric predicate selects exactly the item at that
-                // position (round down; negative counts from the end).
-                was_number = true;
-                let target = floor_number(n.as_f64().unwrap_or(0.0)) as i64;
-                let pos = if target < 0 {
-                    items.len() as i64 + target
-                } else {
-                    target
-                };
-                if pos == idx as i64 {
-                    first = Some(item.clone());
+                if index_hits(n.as_f64().unwrap_or(0.0), idx, items.len()) {
                     out.push(item.clone());
                 }
             }
             Jv::Val(Value::Array(nums)) if nums.iter().all(|n| n.is_number()) => {
                 for n in nums {
-                    let target = floor_number(n.as_f64().unwrap_or(0.0)) as i64;
-                    let pos = if target < 0 {
-                        items.len() as i64 + target
-                    } else {
-                        target
-                    };
-                    if pos == idx as i64 {
+                    if index_hits(n.as_f64().unwrap_or(0.0), idx, items.len()) {
                         out.push(item.clone());
                         break;
                     }
@@ -1338,21 +1359,23 @@ fn eval_bracket(
     if out.is_empty() {
         return Ok(Jv::Missing);
     }
-    if was_number {
-        // A number predicate references a definite item (jsonata's
-        // `input[index]`), so the result is the item itself.
-        return Ok(Jv::Val(first.expect("matched")));
-    }
-    // Sequences of one read as that value (jsonata's "singleton array and
-    // value equivalence"); `[]` on the step forces the array shape back.
     if out.len() == 1 {
         return Ok(Jv::Val(out.remove(0)));
     }
     Ok(Jv::Val(Value::Array(out)))
 }
 
-fn floor_number(n: f64) -> f64 {
-    n.floor()
+/// The `evaluateFilter` position test for one candidate item: a numeric
+/// predicate rounds down (negative counts from the end) and selects the
+/// item at that offset in the sequence.
+fn index_hits(n: f64, idx: usize, len: usize) -> bool {
+    let target = n.floor() as i64;
+    let pos = if target < 0 {
+        len as i64 + target
+    } else {
+        target
+    };
+    pos == idx as i64
 }
 
 fn jv_truthy(v: &Jv) -> bool {
@@ -1723,12 +1746,12 @@ fn call_builtin(
                 None => Some(len),
                 Some(v) => {
                     let length = number_of(jv_value(v)?, "$substring")? as i64;
-                    if length < 0 {
-                        // A negative length counts back from the end.
-                        Some(len + length - start)
-                    } else {
-                        Some(start + length)
+                    if length <= 0 {
+                        // A length of zero or less produces the empty string
+                        // (jsonata functions.js substring).
+                        return Ok(Jv::Val(Value::String(String::new())));
                     }
+                    Some(start + length)
                 }
             };
             let end = end.unwrap_or(len).clamp(0, len);
@@ -2252,4 +2275,157 @@ fn parse_iso_millis(iso: &str) -> Result<Jv, EvalError> {
     Err(EvalError::new(
         "The $toMillis argument is not a valid ISO 8601 timestamp".to_string(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn eval_input(src: &str, input: &Value) -> Result<Value, EvalError> {
+        eval(src, &StatesCtx::input_only(input, &json!({})))
+    }
+
+    #[test]
+    fn parser_depth_cap_stops_runaway_paren_nesting() {
+        // ~800 paren pairs used to escape the cap and abort the process;
+        // every descent now counts, so this returns a clean EvalError.
+        let src = format!("{}1{}", "(".repeat(10_000), ")".repeat(10_000));
+        let err = eval_input(&src, &json!({})).unwrap_err();
+        assert!(err.message.contains("too deeply nested"), "{}", err.message);
+    }
+
+    #[test]
+    fn paren_nesting_within_the_cap_still_parses() {
+        let src = format!("{}1{}", "(".repeat(100), ")".repeat(100));
+        assert_eq!(eval_input(&src, &json!({})).unwrap(), json!(1));
+    }
+
+    #[test]
+    fn sibling_arguments_do_not_accumulate_parse_depth() {
+        // Depth is per nesting level, not per descent: a flat literal with
+        // 200 members and 200 call arguments parse like their 2-member
+        // versions.
+        let items: String = (0..200).map(|_| "1").collect::<Vec<_>>().join(",");
+        let expected = Value::Array((0..200).map(|_| json!(1)).collect());
+        assert_eq!(
+            eval_input(&format!("[{items}]"), &json!({})).unwrap(),
+            expected
+        );
+        let args: String = (0..200).map(|_| "1").collect::<Vec<_>>().join(",");
+        assert_eq!(
+            eval_input(&format!("$sum([{args}])"), &json!({})).unwrap(),
+            json!(200)
+        );
+    }
+
+    #[test]
+    fn mixed_numeric_and_truthy_predicates_unwrap_singletons() {
+        // The review case: a numerically-failing item plus a truthy item used
+        // to panic on `first.expect(...)`; truthy inclusion wins its place
+        // and the one-element result reads as that element.
+        let input = json!({"items": [{"v": 5}, {"v": "y"}]});
+        assert_eq!(eval_input("items[v]", &input).unwrap(), json!({"v": "y"}));
+    }
+
+    #[test]
+    fn multi_numeric_predicates_select_every_matching_position() {
+        // Both items carry the index matching their own position; the old
+        // was_number/first pair silently dropped every match but the last.
+        let input = json!({"vals": [10, 20], "items": [{"v": 0}, {"v": 1}]});
+        assert_eq!(
+            eval_input("items[v]", &input).unwrap(),
+            json!([{"v": 0}, {"v": 1}])
+        );
+        // A literal position still reads as the definite item's value.
+        assert_eq!(
+            eval_input("vals[1]", &json!({"vals": [10, 20]})).unwrap(),
+            json!(20)
+        );
+    }
+
+    #[test]
+    fn bracket_never_panics_on_mixed_multi_numeric() {
+        // Numeric items, truthy items and multi-element numeric arrays in
+        // one filter: numbers position-select their own item, strings
+        // include, empty multi-numeric excludes — no panic in any mixture.
+        let input = json!({"items": [
+            {"v": 0},
+            {"v": "y"},
+            {"v": [0, 2]},
+            {"v": []},
+            {"v": 4}
+        ]});
+        assert_eq!(
+            eval_input("items[v]", &input).unwrap(),
+            json!([{"v": 0}, {"v": "y"}, {"v": [0, 2]}, {"v": 4}])
+        );
+    }
+
+    #[test]
+    fn substring_non_positive_length_yields_empty() {
+        // jsonata functions.js: a length of zero or less produces "" —
+        // it used to read as "counts back from the end".
+        assert_eq!(
+            eval_input("$substring('hello', 3, -4)", &json!({})).unwrap(),
+            json!("")
+        );
+        assert_eq!(
+            eval_input("$substring('hello', 0, -1)", &json!({})).unwrap(),
+            json!("")
+        );
+        assert_eq!(
+            eval_input("$substring('hello', 0, 0)", &json!({})).unwrap(),
+            json!("")
+        );
+        assert_eq!(
+            eval_input("$substring('hello', 3, 1)", &json!({})).unwrap(),
+            json!("l")
+        );
+    }
+
+    #[test]
+    fn elvis_default_evaluates_to_condition_then_else() {
+        // parser.js parses `a ?: b` as the ternary with the condition as
+        // its own then-branch (`1 ?: 'x'` reads `1`, not null).
+        assert_eq!(eval_input("1 ?: 'x'", &json!({})).unwrap(), json!(1));
+        assert_eq!(eval_input("'y' ?: 'x'", &json!({})).unwrap(), json!("y"));
+        assert_eq!(
+            eval_input("$.gone ?: 'default'", &json!({"gone": false})).unwrap(),
+            json!("default")
+        );
+        assert_eq!(
+            eval_input("false ?: false ?: 'tail'", &json!({})).unwrap(),
+            json!("tail")
+        );
+    }
+
+    #[test]
+    fn else_less_ternary_degrades_to_undefined_else() {
+        // A missing `:` parses fine (parser.js); a truthy condition takes
+        // the then-branch, a falsy one evaluates to no value.
+        assert_eq!(eval_input("true ? 1", &json!({})).unwrap(), json!(1));
+        assert_eq!(
+            eval_input("true ? 'a' ? 'b' : 'c'", &json!({})).unwrap(),
+            json!("b")
+        );
+        let err = eval_input("false ? 1", &json!({})).unwrap_err();
+        assert!(err.message.contains("no value"), "{}", err.message);
+    }
+
+    #[test]
+    fn concat_binds_at_the_addition_level_like_reference() {
+        // `&` shares the +/- level, left-to-right (reference binding 50):
+        // `2 & 3` concatenates to "23" and adding to it is a
+        // arithmetic-on-string error, not "27".
+        let err = eval_input("2 & 3 + 4", &json!({})).unwrap_err();
+        assert!(
+            err.message.contains("'+' requires numeric operands"),
+            "{}",
+            err.message
+        );
+        assert_eq!(eval_input("2 & 3", &json!({})).unwrap(), json!("23"));
+        assert_eq!(eval_input("1 - 2 & 3", &json!({})).unwrap(), json!("-13"));
+        assert_eq!(eval_input("'a' & 'b'", &json!({})).unwrap(), json!("ab"));
+    }
 }
