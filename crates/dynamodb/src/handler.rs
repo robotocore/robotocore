@@ -1809,6 +1809,19 @@ impl DynamoDbHandler {
         }
 
         for entry in &transact_items {
+            // moto crashes on a row that parses to no operation (a zero-op
+            // `{}` row, or — via moto's response-layer parse dropping
+            // unmodeled members — any row whose only key is not one of the
+            // four modeled ops): `item_values = list(item.values())[0]`
+            // raises IndexError (dynamodb/responses.py:1478) before the
+            // model's row loop (models/__init__.py:635) could ever raise
+            // StopIteration, so moto_server answers the plain werkzeug 500
+            // page instead of a cancellation envelope. Whole-request, and
+            // atomically writes nothing (mirror: live transcript
+            // 2026-10-26, moto 5.2.4).
+            if !entry.is_object() || entry.as_object().is_some_and(Map::is_empty) {
+                return AwsResponse::werkzeug_500();
+            }
             // moto's row-loop head (dynamodb/models/__init__.py:630-632,
             // TransactWriteSingleOpException): exactly one of Put, Update,
             // Delete or ConditionCheck per row — a row carrying two ops is
@@ -3822,6 +3835,7 @@ fn compare_seq(candidate: &str, after: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::MOTO_SERVER_WERKZEUG_500;
     use bytes::Bytes;
 
     fn make_req(operation: &str, params: Value) -> AwsRequest {
@@ -4699,6 +4713,62 @@ mod tests {
             .collect();
         let resp = handler.handle(make_req("TransactGetItems", json!({"TransactItems": rows})));
         assert_eq!(resp.status, 200);
+    }
+
+    // A TransactWriteItems row that parses to no operation — the zero-op
+    // `{}` row — crashes moto's response-layer validation:
+    // `item_values = list(item.values())[0]` raises IndexError
+    // (dynamodb/responses.py:1478) before the model's row loop
+    // (models/__init__.py:635 next(iter(item.items())) → StopIteration)
+    // could ever build a cancellation envelope, so moto_server answers the
+    // werkzeug plain 500 page. Verified live against moto 5.2.4
+    // (moto_server, 2026-10-26): HTTP 500, text/html, the exact bytes
+    // below, and — because the crash happens before any row runs — the
+    // transaction writes nothing.
+    #[test]
+    fn transact_zero_op_row_renders_moto_server_werkzeug_500() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "zeroop",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [{}]}),
+        ));
+        assert_eq!(resp.status, 500);
+        assert_eq!(resp.body, MOTO_SERVER_WERKZEUG_500);
+        assert_eq!(resp.body.len(), 265);
+        let content_type = resp
+            .headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+            .map(|(_, v)| v.clone())
+            .unwrap_or_default();
+        assert_eq!(content_type, "text/html; charset=utf-8");
+
+        // The moto 500 sits ahead of the single-op validation in moto's
+        // response layer, so a valid Put row sharing the request with the
+        // zero-op row is NOT committed either.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "zeroop", "Item": {"pk": {"S": "p"}, "v": {"S": "x"}}}},
+                {}
+            ]}),
+        ));
+        assert_eq!(resp.status, 500);
+        assert_eq!(resp.body, MOTO_SERVER_WERKZEUG_500);
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "zeroop", "Key": {"pk": {"S": "p"}}}),
+        ));
+        assert_eq!(resp.body, "{}");
     }
 
     // moto's row-loop head raises TransactWriteSingleOpException when one
