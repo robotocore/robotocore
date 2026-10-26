@@ -988,8 +988,11 @@ impl DefaultSqsHandler {
             .filter(|name| prefix.is_none_or(|p| name.starts_with(p)))
             .map(|name| {
                 format!(
-                    "http://sqs.{}.localhost.robotocore.cloud:4566/{}/{}",
-                    region, account, name
+                    "http://sqs.{}.localhost.robotocore.cloud:{}/{}/{}",
+                    region,
+                    Self::queue_host_port(),
+                    account,
+                    name
                 )
             })
             .collect();
@@ -1029,8 +1032,11 @@ impl DefaultSqsHandler {
         })?;
 
         let url = format!(
-            "http://sqs.{}.localhost.robotocore.cloud:4566/{}/{}",
-            region, account, queue_name
+            "http://sqs.{}.localhost.robotocore.cloud:{}/{}/{}",
+            region,
+            Self::queue_host_port(),
+            account,
+            queue_name
         );
 
         let body = json!({
