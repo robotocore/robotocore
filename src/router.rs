@@ -493,17 +493,18 @@ pub fn route_to_service(request: &AwsRequest) -> Option<String> {
     // 7. Body-based Action detection for unsigned requests
     // Some STS operations (AssumeRoleWithWebIdentity, AssumeRoleWithSAML)
     // don't include an Authorization header.
+    // Unsigned urlencoded bodies classify as STS; S3's multipart POST forms reach arm 8.
     let content_type = request.header("content-type").unwrap_or("");
     if content_type.contains("x-www-form-urlencoded") && auth.is_empty() {
         return Some("sts".to_string());
     }
 
-    // 8. Path-style S3 fallback for unsigned/anonymous GET/HEAD requests.
+    // 8. Path-style S3 fallback for unsigned/anonymous bucket paths.
     // Handles: GET http://localhost:4566/bucket/key.json (public bucket access)
-    // Restricted to GET/HEAD (the actual public-access shape) and no auth header
-    // so that genuine typos and non-S3 services still get a clean 400.
-    // Also catches unsigned browser-form POST uploads (POST /{Bucket}[/key]):
-    // the S3 POST-object wire path carries credentials inside the multipart
+    // Restricted to GET/HEAD plus the unsigned browser-form POST handled
+    // below, always with no auth header, so that genuine typos and non-S3
+    // services still get a clean 400.
+    // The S3 POST-object wire path carries credentials inside the multipart
     // form (x-amz-signature field), never in an Authorization header, so an
     // unsigned POST on a bucket-shaped path is S3 by definition. Real AWS
     // then decides the content-type question itself (412 PreconditionFailed

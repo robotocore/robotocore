@@ -3,12 +3,14 @@
 //! moto's Kinesis backend pushes its stream metrics straight into the
 //! CloudWatch backend of the same account/region (`moto/kinesis/models.py
 //! ::KinesisBackend._send_stream_metrics` calls `cloudwatch_backends[..]
-//! .put_metric_data(...)`). The twin's crates stay acyclic — the kinesis
-//! crate cannot depend on this one — so the live handler registers here
-//! when it is constructed (first registration wins, mirroring the
-//! events-hook rule in `src/core/cross_service.rs`) and other crates push
-//! datapoints through [`ingest_kinesis_put_metrics`]. Without a handler in
-//! the process the ingest is a no-op (unit tests without CloudWatch).
+//! .put_metric_data(...)`). The kinesis crate DOES depend on this one, but
+//! it owns no CloudWatch handler: the live handler registers here when it
+//! is constructed (first registration wins, mirroring the events-hook
+//! rule in `src/core/cross_service.rs`) and kinesis pushes datapoints
+//! through [`ingest_kinesis_put_metrics`] into the same per-account/
+//! -region store that would answer the real PutMetricData call. Without a
+//! handler in the process the ingest is a no-op (unit tests without
+//! CloudWatch).
 
 use parking_lot::RwLock;
 use serde_json::json;

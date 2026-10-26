@@ -34,7 +34,9 @@ fn matches(pattern: &Map<String, Value>, event: &Map<String, Value>) -> bool {
         let event_value = match event.get(key) {
             Some(v) => v,
             None => {
-                // Absent key: only a list whose sole match is "exists": false passes.
+                // Absent key: only {"exists": false} leaves can match a
+                // missing event value (every other leaf is a miss), so the
+                // pattern list must contain at least one of them.
                 let absent_ok = pattern_value.as_array().is_some_and(|list| {
                     list.iter().any(|pv| {
                         pv.as_object()
@@ -97,8 +99,12 @@ fn array_objects_match(pattern: &Map<String, Value>, arr: &[Value]) -> bool {
 ///
 /// Dict leaves are moto's `_does_item_match_named_filter`: the `exists`
 /// filter applies to the value itself, every other named filter is
-/// evaluated per element of an array value, and unnamed dict leaves never
-/// match (era: no branch fires).
+/// evaluated per element of an array value. An unnamed dict leaf (no
+/// recognized filter name) never matches here — a deliberate divergence
+/// from the moto fork's `_does_item_match_named_filter`, whose
+/// unrecognized filter name falls through to `return True` and matches
+/// any non-empty value; the era engine had no branch for one either, and
+/// the twin keeps that never-match outcome.
 pub fn list_match(pattern_values: &[Value], event_value: &Value) -> bool {
     for pv in pattern_values {
         if let Some(filter) = pv.as_object() {

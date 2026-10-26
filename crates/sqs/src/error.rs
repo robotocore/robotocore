@@ -35,11 +35,13 @@ pub enum SqsError {
     /// moto's `TooManyEntriesInBatchRequest`: carries the formatted
     /// "Maximum number of entries per request are 10. You have sent {n}."
     TooManyEntriesInBatchRequest(String),
-    /// moto's `PurgeQueueInProgress` (moto/sqs/exceptions.py): a queue
-    /// purged within the last 60 seconds blocks every further purge —
-    /// regardless of which client issued the first one. AWS documents
-    /// this error with HTTP 403 and botocore's SQS model declares it,
-    /// so the status mirrors the model, unlike the other 400s.
+    /// AWS's documented `PurgeQueueInProgress` error: a queue purged
+    /// within the last 60 seconds blocks every further purge — regardless
+    /// of which client issued the first one. The name and its HTTP 403 are
+    /// declared by moto's sqs service-2 moto-extras model overlay (applied
+    /// via moto/core/loaders.py; the error is not raised by the pinned
+    /// fork's runtime paths), so the status mirrors that declared model,
+    /// unlike the other 400s.
     PurgeQueueInProgress(String),
     /// Crash-faithful row: moto escapes an unhandled Python error on these
     /// inputs (werkzeug plain HTML 500, no AWS error envelope).

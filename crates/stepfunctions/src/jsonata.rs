@@ -32,7 +32,7 @@
 //! unknown-variable evaluation error): `$match`, `$replace`, `$split`,
 //! `$eval`, `$sift` on non-object inputs, `~>` chaining, function sequencing,
 //! reducers (`$reduce`), `$sort`-family, `$now` / `$millis` / `$random` /
-//! `$uuid` / `$hash`, computed object keys, lambda invocation of held values
+//! `$hash`, computed object keys, lambda invocation of held values
 //! beyond the HOF passage, and Variables (`Assign`) — `$name` reads as an
 //! unknown variable error, mirroring a machine that never declared it.
 
