@@ -72,8 +72,12 @@ impl DefaultSqsHandler {
 
     fn validate_queue_name(name: &str) -> Result<(), SqsError> {
         if name.is_empty() || name.len() > 80 {
-            return Err(SqsError::InvalidQueueName(
-                "Queue name must be between 1 and 80 characters".to_string(),
+            // moto's Queue.name setter answers every malformed name with the
+            // same single message (moto/sqs/models.py, InvalidParameterValue);
+            // live-verified against the pinned fork.
+            return Err(SqsError::InvalidParameterValue(
+                "Can only include alphanumeric characters, hyphens, or underscores. 1 to 80 in length"
+                    .to_string(),
             ));
         }
 
@@ -82,8 +86,8 @@ impl DefaultSqsHandler {
             .chars()
             .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '.')
         {
-            return Err(SqsError::InvalidQueueName(
-                "Queue name can only contain alphanumeric characters, underscores, hyphens, and periods"
+            return Err(SqsError::InvalidParameterValue(
+                "Can only include alphanumeric characters, hyphens, or underscores. 1 to 80 in length"
                     .to_string(),
             ));
         }
@@ -225,10 +229,13 @@ impl DefaultSqsHandler {
         account: u64,
         region: &str,
     ) -> Result<AwsResponse, SqsError> {
+        // moto feeds a missing QueueName straight into the Queue.name setter
+        // where the regex match on None escapes as a werkzeug 500 crash
+        // (live-verified against the pinned fork).
         let queue_name = params
             .get("QueueName")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| SqsError::MissingParameter("QueueName is required".to_string()))?;
+            .ok_or(SqsError::MotoCrash)?;
 
         Self::validate_queue_name(queue_name)?;
 
@@ -491,17 +498,21 @@ impl DefaultSqsHandler {
         let queue_url = params
             .get("QueueUrl")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| SqsError::MissingParameter("QueueUrl is required".to_string()))?;
+            .ok_or_else(|| {
+                SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
+            })?;
 
+        // moto passes the missing MessageBody into Message() where the md5
+        // computation escapes as a werkzeug 500 crash (live-verified).
         let message_body = params
             .get("MessageBody")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| SqsError::MissingParameter("MessageBody is required".to_string()))?;
+            .ok_or(SqsError::MotoCrash)?;
 
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
         let store = self.get_store(account, region);
         let queue_arc = store.get_queue(&queue_name).ok_or_else(|| {
-            SqsError::NonExistentQueue(format!("Queue {} does not exist", queue_url))
+            SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
         })?;
 
         let mut body = serde_json::Map::new();
@@ -560,7 +571,7 @@ impl DefaultSqsHandler {
         let store = self.get_store(account, region);
         let queue_opt = store.get_queue(&queue_name);
         let queue_arc = queue_opt.ok_or_else(|| {
-            SqsError::NonExistentQueue(format!("Queue {} does not exist", queue_url))
+            SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
         })?;
 
         let entries = params
@@ -630,14 +641,22 @@ impl DefaultSqsHandler {
         let store = self.get_store(account, region);
         let queue_opt = store.get_queue(&queue_name);
         let queue_arc = queue_opt.ok_or_else(|| {
-            SqsError::NonExistentQueue(format!("Queue {} does not exist", queue_url))
+            SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
         })?;
 
+        // moto answers an empty Entries list with EmptyBatchRequest before
+        // touching the queue (live-verified wording).
         let entries = params
             .get("Entries")
             .and_then(|v| v.as_array())
             .cloned()
-            .unwrap_or_default();
+            .filter(|v| !v.is_empty())
+            .ok_or_else(|| {
+                SqsError::EmptyBatchRequest(
+                    "There should be at least one DeleteMessageBatchRequestEntry in the request."
+                        .to_string(),
+                )
+            })?;
 
         let mut successful: Vec<Value> = Vec::new();
         let mut failed: Vec<Value> = Vec::new();
@@ -690,7 +709,9 @@ impl DefaultSqsHandler {
         let queue_url = params
             .get("QueueUrl")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| SqsError::MissingParameter("QueueUrl is required".to_string()))?;
+            .ok_or_else(|| {
+                SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
+            })?;
 
         let max_messages = params
             .get("MaxNumberOfMessages")
@@ -703,7 +724,7 @@ impl DefaultSqsHandler {
 
         let store = self.get_store(account, region);
         let queue_arc = store.get_queue(&queue_name).ok_or_else(|| {
-            SqsError::NonExistentQueue(format!("Queue {} does not exist", queue_url))
+            SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
         })?;
 
         // Long poll: WaitTimeSeconds wins, else the queue-level attribute.
@@ -874,12 +895,16 @@ impl DefaultSqsHandler {
         let queue_url = params
             .get("QueueUrl")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| SqsError::MissingParameter("QueueUrl is required".to_string()))?;
+            .ok_or_else(|| {
+                SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
+            })?;
 
+        // moto: parsing a None ReceiptHandle inside the werkzeug handler
+        // escapes as an unhandled error (werkzeug plain 500 crash).
         let receipt_handle = params
             .get("ReceiptHandle")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| SqsError::MissingParameter("ReceiptHandle is required".to_string()))?;
+            .ok_or(SqsError::MotoCrash)?;
 
         // Extract queue name from URL
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
@@ -887,7 +912,7 @@ impl DefaultSqsHandler {
         let store = self.get_store(account, region);
         let queue_opt = store.get_queue(&queue_name);
         let queue_arc = queue_opt.ok_or_else(|| {
-            SqsError::NonExistentQueue(format!("Queue {} does not exist", queue_url))
+            SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
         })?;
 
         {
@@ -917,7 +942,9 @@ impl DefaultSqsHandler {
         let queue_url = params
             .get("QueueUrl")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| SqsError::MissingParameter("QueueUrl is required".to_string()))?;
+            .ok_or_else(|| {
+                SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
+            })?;
 
         // Extract queue name from URL
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
@@ -991,11 +1018,14 @@ impl DefaultSqsHandler {
         let queue_name = params
             .get("QueueName")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| SqsError::MissingParameter("QueueName is required".to_string()))?;
+            // moto's get_queue_url(None) resolves to a missing queue.
+            .ok_or_else(|| {
+                SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
+            })?;
 
         let store = self.get_store(account, region);
         store.get_queue(queue_name).ok_or_else(|| {
-            SqsError::NonExistentQueue(format!("Queue {} does not exist", queue_name))
+            SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
         })?;
 
         let url = format!(
@@ -1027,7 +1057,9 @@ impl DefaultSqsHandler {
         let queue_url = params
             .get("QueueUrl")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| SqsError::MissingParameter("QueueUrl is required".to_string()))?;
+            .ok_or_else(|| {
+                SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
+            })?;
 
         // Extract queue name from URL
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
@@ -1035,7 +1067,7 @@ impl DefaultSqsHandler {
         let store = self.get_store(account, region);
         let queue_opt = store.get_queue(&queue_name);
         let queue_arc = queue_opt.ok_or_else(|| {
-            SqsError::NonExistentQueue(format!("Queue {} does not exist", queue_url))
+            SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
         })?;
 
         let mut attrs = serde_json::Map::new();
@@ -1130,10 +1162,11 @@ impl DefaultSqsHandler {
             }
         }
 
-        Err(SqsError::InvalidQueueName(format!(
-            "Could not extract queue name from URL: {}",
-            url
-        )))
+        // moto never fails during QueueUrl parsing: it always resolves the
+        // queue_name (however malformed) and answers a missing queue.
+        Err(SqsError::NonExistentQueue(
+            "The specified queue does not exist.".to_string(),
+        ))
     }
 
     fn handle_set_queue_attributes(
@@ -1145,7 +1178,9 @@ impl DefaultSqsHandler {
         let queue_url = params
             .get("QueueUrl")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| SqsError::MissingParameter("QueueUrl is required".to_string()))?;
+            .ok_or_else(|| {
+                SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
+            })?;
 
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
         let store = self.get_store(account, region);
@@ -1176,12 +1211,16 @@ impl DefaultSqsHandler {
         let queue_url = params
             .get("QueueUrl")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| SqsError::MissingParameter("QueueUrl is required".to_string()))?;
+            .ok_or_else(|| {
+                SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
+            })?;
 
+        // moto passes the None ReceiptHandle into method dispatch which
+        // escapes as a werkzeug 500 crash (live-verified).
         let receipt_handle = params
             .get("ReceiptHandle")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| SqsError::MissingParameter("ReceiptHandle is required".to_string()))?;
+            .ok_or(SqsError::MotoCrash)?;
 
         let timeout = params
             .get("VisibilityTimeout")
@@ -1225,7 +1264,9 @@ impl DefaultSqsHandler {
         let queue_url = params
             .get("QueueUrl")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| SqsError::MissingParameter("QueueUrl is required".to_string()))?;
+            .ok_or_else(|| {
+                SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
+            })?;
 
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
         let store = self.get_store(account, region);
@@ -1263,17 +1304,25 @@ impl DefaultSqsHandler {
         let queue_url = params
             .get("QueueUrl")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| SqsError::MissingParameter("QueueUrl is required".to_string()))?;
+            .ok_or_else(|| {
+                SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
+            })?;
+        // moto's EmptyBatchRequest wording (live-verified on the pinned fork).
         let entries = params
             .get("Entries")
             .and_then(|v| v.as_array())
             .cloned()
-            .ok_or_else(|| SqsError::MissingParameter("Entries is required".to_string()))?;
+            .ok_or_else(|| {
+                SqsError::EmptyBatchRequest(
+                    "There should be at least one SendMessageBatchRequestEntry in the request."
+                        .to_string(),
+                )
+            })?;
 
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
         let store = self.get_store(account, region);
         let queue_arc = store.get_queue(&queue_name).ok_or_else(|| {
-            SqsError::NonExistentQueue(format!("Queue {} does not exist", queue_url))
+            SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
         })?;
 
         let mut successful: Vec<Value> = Vec::new();
@@ -1537,8 +1586,10 @@ impl DefaultSqsHandler {
                 })
             });
         if actions.is_empty() {
+            // moto/sqs/models.py delivers MissingParameter("Actions") which
+            // serializes with this exact wording (live-verified).
             return Err(SqsError::MissingParameter(
-                "Actions must contain at least one entry.".to_string(),
+                "The request must contain the parameter Actions.".to_string(),
             ));
         }
         let action_list: Vec<Value> = actions
@@ -1679,7 +1730,10 @@ impl DefaultSqsHandler {
 
         let store = self.get_store(account, region);
         let source = store.get_queue_by_arn(&source_arn).ok_or_else(|| {
-            SqsError::ValidationError(format!(
+            // botocore's sqs model documents ResourceNotFoundException as the
+            // move-task op error (moto does not implement these ops); the
+            // invalid-SourceArn wording is preserved verbatim.
+            SqsError::ResourceNotFound(format!(
                 "Value {} for parameter SourceArn is invalid. Reason: Queue not found.",
                 source_arn
             ))
@@ -1787,7 +1841,7 @@ impl DefaultSqsHandler {
                 })
                 .to_string(),
             }),
-            None => Err(SqsError::ValidationError(
+            None => Err(SqsError::ResourceNotFound(
                 "The task handle provided is not valid.".to_string(),
             )),
         }
@@ -1915,10 +1969,10 @@ impl DefaultSqsHandler {
             "ListMessageMoveTasks" => {
                 self.handle_list_message_move_tasks(&req.params, req.account, &req.region)
             }
-            _ => Err(SqsError::ValidationError(format!(
-                "Unknown operation: {}",
-                req.operation
-            ))),
+            // moto's call_action raises NotImplementedError for unknown
+            // actions — a plain werkzeug 500 crash (live-verified), never an
+            // AWS error envelope.
+            _ => Err(SqsError::MotoCrash),
         }
     }
 }

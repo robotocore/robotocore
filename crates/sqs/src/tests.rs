@@ -491,7 +491,11 @@ fn test_create_queue_invalid_name_too_long() {
     let resp = handler.handle(req);
 
     assert_eq!(resp.status, 400);
-    assert!(resp.body.contains("InvalidQueueName") || resp.body.contains("Queue name must be"));
+    // moto's InvalidParameterValue answer at 400 (code + fixed wording).
+    assert!(resp.body.contains("InvalidParameterValue"));
+    assert!(resp
+        .body
+        .contains("Can only include alphanumeric characters, hyphens, or underscores"));
 }
 
 #[test]
