@@ -572,6 +572,29 @@ impl DefaultSqsHandler {
             .unwrap_or_default()
             .to_string();
 
+        // moto's automated parameter parse int()s EVERY batch row's
+        // VisibilityTimeout (moto/core/responses.py parse_parameters, the
+        // entries carry an integer shape) BEFORE the response method runs:
+        // one present-but-unparseable value anywhere in Entries crashes the
+        // whole request as a werkzeug 500 — the backend's broad `except:`
+        // around its own parse never gets to see that value (live-verified:
+        // a lone "abc" row answers 500 HTML, and a [valid, junk] mix
+        // crashes too, discarding the valid row). A MISSING key no longer
+        // crashes here: the response-layer bare except catches its lookup
+        // failure and answers the per-row Failed arm (live-verified shape).
+        // The scan sits before the batch-Id validation because the parse
+        // precedes the whole response layer.
+        if let Some(entries) = params.get("Entries").and_then(|v| v.as_array()) {
+            for entry in entries {
+                if entry
+                    .get("VisibilityTimeout")
+                    .is_some_and(|v| Self::visibility_timeout_of(Some(v)).is_none())
+                {
+                    return Err(SqsError::MotoCrash);
+                }
+            }
+        }
+
         // moto validates the batch Entries in the response layer before the
         // backend resolves the queue: EmptyBatchRequest is moto 5.2.4
         // response-layer behavior, and the batch-Id errors ride the same
@@ -593,11 +616,20 @@ impl DefaultSqsHandler {
                 .and_then(|v| v.as_str())
                 .unwrap_or_default()
                 .to_string();
-            let receipt_handle = entry
-                .get("ReceiptHandle")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_string();
+            // moto's backend reads entry["ReceiptHandle"] STRICTLY: a row
+            // without the key raises KeyError inside the batch loop —
+            // OUTSIDE the broad `except:` guarding only the visibility
+            // parse — and crashes the whole request as a werkzeug 500
+            // (live-verified, and it precedes the per-row queue lookup so
+            // a ghost queue keeps the crash). A null-valued member travels
+            // as None and takes moto's None-mode match (first extant
+            // message); other non-string values never match.
+            let receipt_handle: Option<&str> = match entry.get("ReceiptHandle") {
+                None => return Err(SqsError::MotoCrash),
+                Some(Value::Null) => None,
+                Some(Value::String(s)) => Some(s.as_str()),
+                Some(_) => Some(""),
+            };
             // moto's change_message_visibility_batch backend wraps the
             // per-entry `int(entry["VisibilityTimeout"])` parse and the
             // MAXIMUM_VISIBILITY_TIMEOUT assert in one bare except:
@@ -621,7 +653,6 @@ impl DefaultSqsHandler {
                     continue;
                 }
             };
-
             // moto resolves the queue only inside the per-row backend call
             // (`change_message_visibility` -> `get_queue`,
             // moto/sqs/models.py:1082): QueueDoesNotExist propagates out of
@@ -640,23 +671,36 @@ impl DefaultSqsHandler {
             })?;
 
             let mut q = queue_arc.write();
-            // moto's Message.change_visibility stores visible_at in the
-            // past for negative timeouts and the message becomes visible
-            // immediately (live-verified); the store cannot represent a
-            // past point, so negatives clamp to 0 — the same outcome.
-            if q.change_message_visibility(&receipt_handle, visibility.max(0) as u32) {
-                successful.push(json!({ "Id": id }));
-            } else {
+            // moto's inner change_message_visibility stores visible_at in
+            // the past for negative timeouts (live-verified: a "-5" row
+            // succeeds and the message is re-receivable immediately); the
+            // store cannot represent a past point, so the checked apply
+            // clamps negatives to 0 — the same outcome.
+            //
+            // The TOTAL-VisibilityTimeout rule inside the inner call is
+            // NOT caught by moto's batch loop (it catches only
+            // ReceiptHandleIsInvalid): a rule breach raises out of
+            // change_message_visibility_batch and fails the WHOLE request
+            // with the global 400 InvalidParameterValue envelope
+            // (live-verified; already-collected Failed rows are
+            // discarded).
+            match q.change_message_visibility_checked(receipt_handle, visibility) {
+                Ok(()) => successful.push(json!({ "Id": id })),
                 // moto rows per-entry ReceiptHandleIsInvalid with
                 // SenderFault true and the ServiceException message
                 // `getattr(e, "message", "")` yields
                 // (moto/sqs/models.py:1128-1136; live-verified).
-                failed.push(json!({
-                    "Id": id,
-                    "SenderFault": true,
-                    "Code": "ReceiptHandleIsInvalid",
-                    "Message": "The input receipt handle is invalid."
-                }));
+                Err(SqsError::ReceiptHandleIsInvalid(_)) => {
+                    failed.push(json!({
+                        "Id": id,
+                        "SenderFault": true,
+                        "Code": "ReceiptHandleIsInvalid",
+                        "Message": "The input receipt handle is invalid."
+                    }));
+                }
+                // Total-rule InvalidParameterValue: propagate as the
+                // whole-request 400, like moto's un-caught raise.
+                Err(err) => return Err(err),
             }
         }
 
@@ -771,18 +815,29 @@ impl DefaultSqsHandler {
         account: u64,
         region: &str,
     ) -> Result<AwsResponse, SqsError> {
+        // A PRESENT-but-unparseable VisibilityTimeout crashes the receive:
+        // moto's automated parse layer int()s the model-declared integer at
+        // setup — before the response method touches the queue at all — so
+        // the ValueError escapes as a plain werkzeug 500 (live-verified:
+        // "abc" on an EXISTING queue and on a nonexistent one both answer
+        // the 500 HTML page instead of NonExistentQueue). A MISSING value
+        // does not crash: the response layer catches the fallback TypeError
+        // and applies the queue's attribute (live-verified: absent on a
+        // nonexistent queue answers NonExistentQueue like every resolve).
+        // Numeric strings keep the int() coercion of both protocols.
+        if params
+            .get("VisibilityTimeout")
+            .is_some_and(|v| Self::visibility_timeout_of(Some(v)).is_none())
+        {
+            return Err(SqsError::MotoCrash);
+        }
+
         let queue_url = params
             .get("QueueUrl")
             .and_then(|v| v.as_str())
             .ok_or_else(|| {
                 SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
             })?;
-
-        let max_messages = params
-            .get("MaxNumberOfMessages")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(1)
-            .min(10) as usize;
 
         // Extract queue name from URL
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
@@ -792,17 +847,55 @@ impl DefaultSqsHandler {
             SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
         })?;
 
+        // moto validates the bounds in its RESPONSE layer, after the queue
+        // resolution (responses.py receive_message calls get_queue before
+        // touching the parameters): an out-of-range MaxNumberOfMessages on
+        // a nonexistent queue answers NonExistentQueue first (live-
+        // verified), as does WaitTimeSeconds=25. The 1..=10 bounds fire
+        // before the wait bounds, both before the VisibilityTimeout cap
+        // (live-verified: Max=0 with Wait=25 answers the Max error; Wait=25
+        // with an over-cap VisibilityTimeout answers the Wait error). The
+        // message wordings are moto's exact strings (live-verified), the
+        // wait one including its html-escaped oddity, and the parsed
+        // numeric shapes are the model-parser ones (numbers, numeric
+        // strings; a non-numeric value keeps being treated as absent on
+        // this path — moto would die in its parse layer, outside this
+        // lane's scope).
+        let max_requested = Self::visibility_timeout_of(params.get("MaxNumberOfMessages"));
+        if let Some(v) = max_requested {
+            if !(1..=10).contains(&v) {
+                return Err(SqsError::InvalidParameterValue(format!(
+                    "An error occurred (InvalidParameterValue) when calling the \
+                     ReceiveMessage operation: Value {v} for parameter \
+                     MaxNumberOfMessages is invalid. Reason: must be between 1 and \
+                     10, if provided."
+                )));
+            }
+        }
+        let max_messages = max_requested.unwrap_or(1).min(10) as usize;
+
         // Long poll: WaitTimeSeconds wins, else the queue-level attribute.
-        let queue_wait = queue_arc.read().attributes.receive_message_wait_time;
-        let wait_seconds = params
-            .get("WaitTimeSeconds")
-            .and_then(|v| v.as_u64())
-            .map(|v| v.min(20))
-            .unwrap_or(queue_wait.min(20) as u64);
+        // The bounds apply to whichever wins — moto validates the queue
+        // attribute too (live-verified: ReceiveMessageWaitTimeSeconds=25 on
+        // the queue makes a plain receive answer the WaitTimeSeconds error
+        // with Value 25).
+        let queue_wait = queue_arc.read().attributes.receive_message_wait_time as i64;
+        let wait_seconds =
+            Self::visibility_timeout_of(params.get("WaitTimeSeconds")).unwrap_or(queue_wait);
+        if !(0..=20).contains(&wait_seconds) {
+            return Err(SqsError::InvalidParameterValue(format!(
+                "An error occurred (InvalidParameterValue) when calling the \
+                 ReceiveMessage operation: Value {wait_seconds} for parameter \
+                 WaitTimeSeconds is invalid. Reason: must be &lt;= 0 and &gt;= 20 \
+                 if provided."
+            )));
+        }
+        let wait_seconds = wait_seconds as u64;
 
         // moto validates the requested VisibilityTimeout in its response
         // layer (`_get_validated_visibility_timeout` → MaxVisibilityTimeout,
-        // moto/sqs/responses.py receive_message) AFTER the queue lookup but
+        // moto/sqs/responses.py receive_message) AFTER the queue lookup AND
+        // after the MaxNumberOfMessages/WaitTimeSeconds bounds, but
         // BEFORE the backend receive/long-poll: an over-cap value answers
         // 400 InvalidParameterValue "Invalid request, maximum visibility
         // timeout is 43200" (live-verified: receive_message with
@@ -826,9 +919,14 @@ impl DefaultSqsHandler {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(wait_seconds);
         // Visibility override from the request, if any; otherwise the
         // queue attribute, read under the queue lock during the receive.
+        // The same numeric shapes moto's parser coerces count here
+        // (numbers, numeric strings, booleans as int(True/False)); with
+        // the parse-layer crash above, only numeric values reach this
+        // point.
         let params_visibility = params
             .get("VisibilityTimeout")
-            .and_then(|v| v.as_u64())
+            .and_then(|v| Self::visibility_timeout_of(Some(v)))
+            .filter(|v| *v >= 0)
             .map(|v| v as u32);
         loop {
             messages = {
@@ -1301,6 +1399,35 @@ impl DefaultSqsHandler {
         account: u64,
         region: &str,
     ) -> Result<AwsResponse, SqsError> {
+        // moto crashes on BOTH a missing and a present-but-unparseable
+        // VisibilityTimeout in this op (live-verified against the pinned
+        // fork: `int("abc")` ValueError inside the automated parse layer
+        // and the `None > 43200` TypeError inside
+        // `_get_validated_visibility_timeout` both escape as a plain
+        // werkzeug 500 HTML page). The crash precedes the entire response
+        // layer — no queue resolution has happened yet: a junk value on a
+        // nonexistent queue answers 500 instead of NonExistentQueue, and a
+        // missing QueueUrl with a missing VisibilityTimeout answers 500
+        // too — so the parse sits before any queue/URL handling here.
+        // Numeric strings are honored (moto's model parser coerces the
+        // query-protocol form values the same way int() does).
+        let timeout = match Self::visibility_timeout_of(params.get("VisibilityTimeout")) {
+            Some(v) => v,
+            None => return Err(SqsError::MotoCrash),
+        };
+        // moto validates the visibility timeout in the RESPONSE layer
+        // (`_get_validated_visibility_timeout` → MaxVisibilityTimeout)
+        // before the backend resolves the queue or matches the receipt
+        // handle, so an over-cap value beats even a nonexistent queue
+        // (live-verified). Negative values pass the response-layer cap in
+        // moto too; the Total-VisibilityTimeout rule below takes them
+        // signed.
+        if timeout > Self::MAX_VISIBILITY_TIMEOUT as i64 {
+            return Err(SqsError::InvalidParameterValue(
+                Self::MAX_VISIBILITY_TIMEOUT_MESSAGE.to_string(),
+            ));
+        }
+
         let queue_url = params
             .get("QueueUrl")
             .and_then(|v| v.as_str())
@@ -1308,33 +1435,20 @@ impl DefaultSqsHandler {
                 SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
             })?;
 
-        // moto validates the visibility timeout in the RESPONSE layer
-        // (`_get_validated_visibility_timeout` → MaxVisibilityTimeout)
-        // before the backend resolves either the queue or the receipt
-        // handle, so an over-cap value beats even a nonexistent queue
-        // (live-verified) and answers before the missing-ReceiptHandle
-        // crash below. Negative values pass the response-layer cap in moto
-        // too; they are clamped below, at the apply step.
-        let timeout = Self::visibility_timeout_of(params.get("VisibilityTimeout")).unwrap_or(30);
-        if timeout > Self::MAX_VISIBILITY_TIMEOUT as i64 {
-            return Err(SqsError::InvalidParameterValue(
-                Self::MAX_VISIBILITY_TIMEOUT_MESSAGE.to_string(),
-            ));
-        }
-        // moto accepts negative timeouts (int("-5"); live-verified
-        // top-level: a ChangeMessageVisibility with VisibilityTimeout=-5
-        // answers 200 and the message is re-receivable immediately, moto's
-        // Message.change_visibility stores visible_at in the past). The
-        // store cannot represent a past visibility point, so negatives
-        // clamp to 0 — the same immediately-visible outcome.
-        let timeout = timeout.max(0) as u32; // <= 43200 fits
-
-        // moto passes the None ReceiptHandle into method dispatch which
-        // escapes as a werkzeug 500 crash (live-verified).
-        let receipt_handle = params
-            .get("ReceiptHandle")
-            .and_then(|v| v.as_str())
-            .ok_or(SqsError::MotoCrash)?;
+        // The ReceiptHandle resolution mirrors moto's split (re-adjudicated
+        // live against the pinned fork, replacing the round-1 MotoCrash
+        // pin): a MISSING handle travels to the backend as None, and
+        // `None in all_receipt_handles` matches EVERY extant moto Message
+        // (the pre-receive handle slot is None), so the FIRST message in
+        // queue order wins and the bump applies to it — 200 OK
+        // (live-verified, including the total rule on that message and the
+        // empty queue answering ReceiptHandleIsInvalid). A non-string
+        // handle value (a raw-JSON corner) can never match either.
+        let receipt_handle: Option<&str> = match params.get("ReceiptHandle") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(s)) => Some(s.as_str()),
+            Some(_) => Some(""),
+        };
 
         let queue_name = self.extract_queue_name_from_url(queue_url)?;
         let store = self.get_store(account, region);
@@ -1342,15 +1456,17 @@ impl DefaultSqsHandler {
             SqsError::NonExistentQueue("The specified queue does not exist.".to_string())
         })?;
 
-        let ok = {
+        // moto's backend change_message_visibility runs the
+        // Total-VisibilityTimeout rule on the matched message before
+        // applying (live-verified: a fresh message at the 43200 boundary
+        // answers the Total rule, not the static cap, because the
+        // message age alone puts the total beyond the limit; the
+        // "handle resolved but rule breached" answer carries the raw
+        // timeout value in moto's exact framing). ReceiptHandleIsInvalid
+        // (no message matches) serializes through the normal error table.
+        {
             let mut q = queue_arc.write();
-            q.change_message_visibility(receipt_handle, timeout)
-        };
-
-        if !ok {
-            return Err(SqsError::ReceiptHandleIsInvalid(
-                "The input receipt handle is invalid.".to_string(),
-            ));
+            q.change_message_visibility_checked(receipt_handle, timeout)?;
         }
 
         let body = json!({}).to_string();
@@ -1438,11 +1554,21 @@ impl DefaultSqsHandler {
     /// saturates through the cast or the digit-string rule — a positive
     /// overflow stays cap-breaching, a negative overflow behaves like
     /// every negative (moto's `int(value)` has no limit). Unparseable junk
-    /// counts as the parameter being absent, like every non-numeric
-    /// `Value` shape.
+    /// and other non-numeric `Value` shapes return None; how that value
+    /// surfaces per call site mirrors moto, where it differs per path:
+    /// top-level ChangeMessageVisibility and ReceiveMessage crash the way
+    /// moto's parse layer does (a present-but-unparseable value kills the
+    /// request), while the batch row arm treats such a key as missing and
+    /// answers the per-row Failed entry under moto's broad `except:`.
     fn visibility_timeout_of(param: Option<&Value>) -> Option<i64> {
         match param? {
             Value::Number(n) => n.as_i64().or_else(|| n.as_f64().map(|f| f as i64)),
+            // Python's int(True) == 1 / int(False) == 0: moto's model
+            // parser runs the same coercion on a boolean JSON member
+            // (live-verified: ReceiveMessage with VisibilityTimeout=true
+            // answers 200, ChangeMessageVisibility with true passes the
+            // cap as vis=1 and reaches the backend).
+            Value::Bool(b) => Some(if *b { 1 } else { 0 }),
             Value::String(s) => {
                 if let Ok(v) = s.parse::<i64>() {
                     Some(v)

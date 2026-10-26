@@ -1171,14 +1171,24 @@ fn test_receive_message_max_count_validation() {
         .expect("Missing QueueUrl")
         .to_string();
 
-    // MaxNumberOfMessages > 10 should be clamped (or error)
+    // moto 400s an out-of-range MaxNumberOfMessages in its response layer
+    // (live-verified: "Value 11 for parameter MaxNumberOfMessages is
+    // invalid. Reason: must be between 1 and 10, if provided." — the
+    // old twin clamp is the divergence this closes).
     let recv_req = make_request(
         "ReceiveMessage",
         json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 11}),
     );
     let recv_resp = handler.handle(recv_req);
-    // The handler clamps to 10, so this should succeed with empty result
-    assert_eq!(recv_resp.status, 200);
+    assert_eq!(recv_resp.status, 400);
+    assert!(
+        recv_resp.body.contains(
+            "Value 11 for parameter MaxNumberOfMessages is invalid. Reason: must be \
+             between 1 and 10, if provided."
+        ),
+        "got {}",
+        recv_resp.body
+    );
 }
 
 #[test]
@@ -2966,4 +2976,1062 @@ fn receive_visibility_cap_requires_existing_queue_first() {
             resp.body
         );
     }
+}
+
+/// Pull the first message's original sent_timestamp into the past so the
+/// Total-VisibilityTimeout rule can be exercised at deterministic ages —
+/// the live fork accumulates age with wall-clock time, which unit tests
+/// cannot wait out.
+fn age_first_message(handler: &DefaultSqsHandler, queue_url_for_store: &str, age_seconds: u64) {
+    let queue_name = queue_url_for_store
+        .rsplit('/')
+        .next()
+        .expect("queue name from url");
+    let store = handler.get_store(123456789012, "us-east-1");
+    let queue = store.get_queue(queue_name).expect("queue exists");
+    let mut q = queue.write();
+    let msg = q.messages.front_mut().expect("message exists");
+    msg.sent_timestamp = (Utc::now().timestamp_millis() as u64).saturating_sub(age_seconds * 1000);
+}
+
+/// moto's Total-VisibilityTimeout rule (moto/sqs/models.py:1082-1096):
+/// `ChangeMessageVisibility(43200)` on a message whose accumulated
+/// lifetime (age + new timeout) exceeds 43200s answers 400
+/// InvalidParameterValue with the exact total-rule wording (live-verified:
+/// a fresh message already breaches at vis=43200 because the HTTP round
+/// trip puts it 1ms past send).
+#[test]
+fn total_visibility_timeout_rule_fresh_top_level() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "total-rule-fresh");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "t"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let handle: String = serde_json::from_str::<Value>(&recv.body).expect("json")["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .expect("handle")
+        .to_string();
+
+    // The twin services requests in-process; outcome = age + 43200 > 43200
+    // needs a non-zero age, mirrored here with a small sleep.
+    thread::sleep(Duration::from_millis(5));
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": handle,
+            "VisibilityTimeout": 43200
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(
+        resp.body.contains("InvalidParameterValue"),
+        "got {}",
+        resp.body
+    );
+    assert!(
+        resp.body.contains(
+            "Value 43200 for parameter VisibilityTimeout is invalid. Reason: Total \
+             VisibilityTimeout for the message is beyond the limit [43200 seconds]"
+        ),
+        "got {}",
+        resp.body
+    );
+}
+
+/// The static 43200 cap wins BEFORE the total rule: 50000 is refused by
+/// the response-layer MaxVisibilityTimeout wording, never the total-rule
+/// message (live-verified 1a2).
+#[test]
+fn total_visibility_timeout_rule_static_cap_wins_first() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "total-rule-cap");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "t"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let handle: String = serde_json::from_str::<Value>(&recv.body).expect("json")["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .expect("handle")
+        .to_string();
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": handle,
+            "VisibilityTimeout": 50000
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(
+        resp.body
+            .contains("Invalid request, maximum visibility timeout is 43200"),
+        "got {}",
+        resp.body
+    );
+    assert!(
+        !resp.body.contains("Total VisibilityTimeout"),
+        "the total rule must not fire before the static cap, got {}",
+        resp.body
+    );
+}
+
+/// Aged message: the rule counts from the ORIGINAL send, so an aged
+/// message breaches the total rule even for visibilities under the static
+/// cap; a mid-range visibility with enough headroom still applies (200).
+/// Live-verified 1d: aged(5s) 43200 and 43195 -> 400 total-rule, 42000 ->
+/// 200 OK; the comparison stays exclusive (`> 43200*1000`).
+#[test]
+fn total_visibility_timeout_rule_aged_message_top_level() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "total-rule-aged");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "t"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let handle: String = serde_json::from_str::<Value>(&recv.body).expect("json")["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .expect("handle")
+        .to_string();
+
+    age_first_message(&handler, &queue_url, 120);
+
+    for (label, vis, expect_ok) in [
+        ("43200 on aged (43320 total) breaches", 43200, false),
+        ("43195 on aged (43315 total) breaches", 43195, false),
+        ("42000 on aged (42120 total) applies", 42000, true),
+    ] {
+        let resp = handler.handle(make_request(
+            "ChangeMessageVisibility",
+            json!({
+                "QueueUrl": &queue_url,
+                "ReceiptHandle": handle,
+                "VisibilityTimeout": vis
+            }),
+        ));
+        assert_eq!(
+            resp.status,
+            if expect_ok { 200 } else { 400 },
+            "{label}: got {}",
+            resp.body
+        );
+        if !expect_ok {
+            assert!(
+                resp.body.contains(
+                    "Reason: Total VisibilityTimeout for the message is beyond the limit [43200 seconds]"
+                ),
+                "{label}: got {}",
+                resp.body
+            );
+        }
+    }
+}
+
+/// The batch form does NOT turn a Total-rule breach into a per-row Failed
+/// entry: moto's change_message_visibility_batch catches only
+/// ReceiptHandleIsInvalid, so the raised InvalidParameterValue fails the
+/// WHOLE request (live-verified 1b) and collected rows are discarded.
+#[test]
+fn total_visibility_timeout_rule_batch_whole_request() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "total-rule-batch");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "t"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let handle: String = serde_json::from_str::<Value>(&recv.body).expect("json")["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .expect("handle")
+        .to_string();
+    age_first_message(&handler, &queue_url, 100);
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "a", "ReceiptHandle": handle, "VisibilityTimeout": 43200}
+            ]
+        }),
+    ));
+    assert_eq!(resp.status, 400, "whole request 400, got {}", resp.body);
+    assert!(
+        resp.body.contains("InvalidParameterValue"),
+        "got {}",
+        resp.body
+    );
+    assert!(
+        resp.body.contains(
+            "Reason: Total VisibilityTimeout for the message is beyond the limit [43200 seconds]"
+        ),
+        "got {}",
+        resp.body
+    );
+    // A 400 error envelope carries no batch rows at all.
+    assert!(!resp.body.contains("Failed"), "got {}", resp.body);
+}
+
+/// Per-row over-cap values keep the Failed-row shape — the parse/assert
+/// arm fires before any total-rule consideration — while the aged
+/// under-cap row in the same batch still applies (live-verified 1c2).
+#[test]
+fn total_visibility_timeout_rule_batch_over_cap_keeps_failed_row() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "total-rule-batch-cap");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "t"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let handle: String = serde_json::from_str::<Value>(&recv.body).expect("json")["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .expect("handle")
+        .to_string();
+    age_first_message(&handler, &queue_url, 100);
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "over", "ReceiptHandle": handle, "VisibilityTimeout": 50000},
+                {"Id": "ok", "ReceiptHandle": handle, "VisibilityTimeout": 42000}
+            ]
+        }),
+    ));
+    assert_eq!(
+        resp.status, 200,
+        "over-cap rows stay per-row, got {}",
+        resp.body
+    );
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    let failed = data["Failed"].as_array().expect("Failed array");
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0]["Id"], "over");
+    assert_eq!(failed[0]["Code"], "InvalidParameterValue");
+    assert_eq!(failed[0]["Message"], "Visibility timeout invalid");
+    let successful = data["Successful"].as_array().expect("Successful array");
+    assert_eq!(successful.len(), 1);
+    assert_eq!(successful[0]["Id"], "ok");
+}
+
+/// The total rule takes the timeout signed: a negative timeout on a hugely
+/// aged message still breaches (now + (-5s) - sent_timestamp > 43200s,
+/// live-verified via the C1 signed path; the fresh arm is live-verified
+/// G2: 200 and the message becomes visible immediately).
+#[test]
+fn total_visibility_timeout_rule_signed_with_negatives() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "total-rule-signed");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "t"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let handle: String = serde_json::from_str::<Value>(&recv.body).expect("json")["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .expect("handle")
+        .to_string();
+
+    // Aged far beyond the limit: a negative value still breaches.
+    age_first_message(&handler, &queue_url, 50_000);
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": handle,
+            "VisibilityTimeout": -5
+        }),
+    ));
+    assert_eq!(
+        resp.status, 400,
+        "aged-negative breaches, got {}",
+        resp.body
+    );
+    assert!(
+        resp.body
+            .contains("Value -5 for parameter VisibilityTimeout is invalid"),
+        "got {}",
+        resp.body
+    );
+
+    // Fresh message with a negative timeout: passes the rule, message
+    // becomes visible immediately (pre-existing clamp behavior).
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "fresh"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let handle: String = serde_json::from_str::<Value>(&recv.body).expect("json")["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .expect("handle")
+        .to_string();
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": handle,
+            "VisibilityTimeout": -5
+        }),
+    ));
+    assert_eq!(
+        resp.status, 200,
+        "fresh-negative applies, got {}",
+        resp.body
+    );
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.0, 1, "the message is visible again");
+}
+
+/// moto crashes (plain werkzeug-500 HTML, no AWS envelope) on a top-level
+/// ChangeMessageVisibility whose VisibilityTimeout is missing or
+/// unparseable: `int("abc")` raises ValueError inside the automated parse
+/// layer and a missing value reaches `_get_validated_visibility_timeout`'s
+/// `None > 43200` TypeError (live-verified both shapes). Numeric strings
+/// stay honored — the query protocol delivers them and moto's model parser
+/// coerces with int() (live-verified: "30" applies). The crash precedes
+/// the queue resolution entirely (live-verified: junk vis on a nonexistent
+/// queue answers the 500, not NonExistentQueue; a missing QueueUrl with a
+/// missing VisibilityTimeout answers 500 as well).
+#[test]
+fn cmv_junk_visibility_crash_mirrors_moto() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "cmv-junk-mirror");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "t"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let handle: String = serde_json::from_str::<Value>(&recv.body).expect("json")["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .expect("handle")
+        .to_string();
+
+    let base = |extra: Value| {
+        let mut params = serde_json::Map::new();
+        params.insert("QueueUrl".into(), json!(queue_url));
+        params.insert("ReceiptHandle".into(), json!(handle));
+        if let Some(obj) = extra.as_object() {
+            for (k, v) in obj {
+                params.insert(k.clone(), v.clone());
+            }
+        }
+        handler.handle(make_request(
+            "ChangeMessageVisibility",
+            Value::Object(params),
+        ))
+    };
+
+    for (label, extra) in [
+        ("junk string vis", json!({"VisibilityTimeout": "abc"})),
+        ("missing vis", json!({})),
+        ("object vis shape", json!({"VisibilityTimeout": {"x": 1}})),
+        (
+            "junk vis on ghost queue",
+            json!({"QueueUrl": format!("{}x", queue_url), "VisibilityTimeout": "abc"}),
+        ),
+        (
+            "QueueUrl null and missing vis",
+            json!({"QueueUrl": Value::Null}),
+        ),
+    ] {
+        let resp = base(extra);
+        assert_eq!(resp.status, 500, "{label}: got {}", resp.body);
+        assert!(
+            resp.body.contains("<!doctype html>")
+                && resp.body.contains("500 Internal Server Error"),
+            "{label}: not the moto crash envelope, got {}",
+            resp.body
+        );
+    }
+
+    // The numeric-string shape still parses and applies (query-protocol
+    // form values are coerced by moto's model parser, live-verified).
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": handle,
+            "VisibilityTimeout": "30"
+        }),
+    ));
+    assert_eq!(
+        resp.status, 200,
+        "numeric strings are honored, got {}",
+        resp.body
+    );
+}
+
+/// Batch counterpart: moto's automated parse int()s every row's
+/// VisibilityTimeout before the response layer runs, so ONE junk row
+/// anywhere in Entries kills the whole request with the werkzeug 500 —
+/// the backend's broad `except:` never gets to see that value
+/// (live-verified: a lone "abc" row and a [valid, junk] mix both crash).
+/// A MISSING key does not crash: the response-layer bare except catches
+/// the lookup failure and answers the per-row Failed arm, which the twin
+/// already models.
+#[test]
+fn cmv_junk_visibility_batch_row_kills_whole_request() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "cmv-junk-batch");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+
+    for (label, entries) in [
+        (
+            "lone junk row",
+            json!([{"Id": "j", "ReceiptHandle": handles[0]["ReceiptHandle"], "VisibilityTimeout": "abc"}]),
+        ),
+        (
+            "valid row then junk row",
+            json!([
+                {"Id": "ok", "ReceiptHandle": handles[0]["ReceiptHandle"], "VisibilityTimeout": 30},
+                {"Id": "j", "ReceiptHandle": handles[1]["ReceiptHandle"], "VisibilityTimeout": "abc"},
+            ]),
+        ),
+    ] {
+        let resp = handler.handle(make_request(
+            "ChangeMessageVisibilityBatch",
+            json!({"QueueUrl": &queue_url, "Entries": entries}),
+        ));
+        assert_eq!(resp.status, 500, "{label}: got {}", resp.body);
+        assert!(
+            resp.body.contains("<!doctype html>")
+                && resp.body.contains("500 Internal Server Error"),
+            "{label}: not the moto crash envelope, got {}",
+            resp.body
+        );
+        // The crash discards any other rows: no batch result at all.
+        assert!(!resp.body.contains("Failed"), "{label}: got {}", resp.body);
+    }
+
+    // Missing-key rows keep the Failed-row arm (no crash), on a live
+    // queue: moto's per-row bare except catches the absent key.
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "novis", "ReceiptHandle": handles[0]["ReceiptHandle"]},
+                {"Id": "ok", "ReceiptHandle": handles[1]["ReceiptHandle"], "VisibilityTimeout": 30},
+            ]
+        }),
+    ));
+    assert_eq!(
+        resp.status, 200,
+        "absent-key rows stay per-row, got {}",
+        resp.body
+    );
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    let failed = data["Failed"].as_array().expect("Failed array");
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0]["Code"], "InvalidParameterValue");
+    assert_eq!(failed[0]["Message"], "Visibility timeout invalid");
+    let successful = data["Successful"].as_array().expect("Successful array");
+    assert_eq!(successful.len(), 1);
+    assert_eq!(successful[0]["Id"], "ok");
+}
+
+/// A present-but-unparseable ReceiveMessage VisibilityTimeout mirrors
+/// moto's parse-layer crash: the automated parameter parse int()s the
+/// model-declared integer before the response method runs, so `"abc"`,
+/// an object shape or any non-numeric member kills the request as a
+/// plain werkzeug 500 — on an EXISTING queue and on a nonexistent one
+/// alike (live-verified: the crash precedes the queue resolution and
+/// even the QueueUrl handling). A MISSING value does not crash: the
+/// response layer catches the fallback TypeError and applies the queue
+/// attribute (live-verified). Numeric strings and booleans keep moto's
+/// int() coercion (live-verified: "30" is honored, `true` receives at
+/// vis=1).
+#[test]
+fn receive_junk_visibility_crash() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "receive-junk-vis");
+
+    for (label, vis) in [
+        ("junk string", json!("abc")),
+        ("object shape", json!({ "x": 1 })),
+        ("array shape", json!([1])),
+    ] {
+        let resp = handler.handle(make_request(
+            "ReceiveMessage",
+            json!({"QueueUrl": &queue_url, "VisibilityTimeout": vis}),
+        ));
+        assert_eq!(resp.status, 500, "{label}: got {}", resp.body);
+        assert!(
+            resp.body.contains("<!doctype html>")
+                && resp.body.contains("500 Internal Server Error"),
+            "{label}: not the moto crash envelope, got {}",
+            resp.body
+        );
+    }
+
+    // The crash precedes the queue resolution: a nonexistent queue keeps
+    // the same 500 instead of NonExistentQueue.
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": format!("{}x", queue_url), "VisibilityTimeout": "abc"}),
+    ));
+    assert_eq!(
+        resp.status, 500,
+        "crash beats the queue lookup, got {}",
+        resp.body
+    );
+
+    // A missing value takes the queue-attribute fallback (no crash), and a
+    // nonexistent queue still answers NonExistentQueue for it.
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url}),
+    ));
+    assert_eq!(
+        resp.status, 200,
+        "absent vis receives normally, got {}",
+        resp.body
+    );
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": format!("{}x", queue_url)}),
+    ));
+    assert_eq!(
+        resp.status, 400,
+        "absent vis on ghost queue, got {}",
+        resp.body
+    );
+    assert!(
+        resp.body
+            .contains("AWS.SimpleQueueService.NonExistentQueue"),
+        "got {}",
+        resp.body
+    );
+
+    // Numeric strings keep the int() coercion: "0" releases instantly
+    // where the un-parsed 30s queue default would stay in flight.
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "a"}),
+    ));
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "VisibilityTimeout": "0"}),
+    ));
+    assert_eq!(
+        resp.status, 200,
+        "numeric string vis=0 parses, got {}",
+        resp.body
+    );
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.0, 1, "the numeric-string vis=0 was applied");
+    assert_eq!(counts.1, 0);
+
+    // Booleans are Python ints for moto's parser (live-verified:
+    // VisibilityTimeout=true answers 200): int(false) == 0 releases
+    // instantly.
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "b"}),
+    ));
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "VisibilityTimeout": false}),
+    ));
+    assert_eq!(
+        resp.status, 200,
+        "bool is int(False) == 0, got {}",
+        resp.body
+    );
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.0, 2, "the boolean vis=0 was applied instantly");
+    assert_eq!(counts.1, 0);
+
+    // int(true) == 1 puts the message in flight for one second — distinct
+    // from both a crash and the 30s queue default.
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "c"}),
+    ));
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "VisibilityTimeout": true}),
+    ));
+    assert_eq!(
+        resp.status, 200,
+        "bool is int(True) == 1, got {}",
+        resp.body
+    );
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.1, 1, "vis=1 keeps the message in flight");
+    thread::sleep(Duration::from_millis(1100));
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.0, 3, "vis=1 expired; queue-default 30s would not");
+    assert_eq!(counts.1, 0);
+}
+
+/// moto 400s an out-of-range MaxNumberOfMessages in the ReceiveMessage
+/// response layer, after the queue resolution (live-verified wording:
+/// "An error occurred (InvalidParameterValue) when calling the
+/// ReceiveMessage operation: Value 0 for parameter MaxNumberOfMessages is
+/// invalid. Reason: must be between 1 and 10, if provided."). Boundaries:
+/// 0 and 11 fail, 1 and 10 pass. The message stays deliverable for
+/// remaining requests (validation happens before any receive).
+#[test]
+fn receive_bounds_max_number_of_messages() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "recv-bounds-max");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "b"}),
+    ));
+
+    for (label, max, expect_ok) in [
+        ("0 below range", 0, false),
+        ("11 above range", 11, false),
+        ("100 above range", 100, false),
+        ("1 at floor", 1, true),
+        ("10 at ceiling", 10, true),
+    ] {
+        let resp = handler.handle(make_request(
+            "ReceiveMessage",
+            json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": max, "VisibilityTimeout": 0}),
+        ));
+        assert_eq!(
+            resp.status,
+            if expect_ok { 200 } else { 400 },
+            "{label}: got {}",
+            resp.body
+        );
+        if !expect_ok {
+            assert!(
+                resp.body.contains(&format!(
+                    "Value {max} for parameter MaxNumberOfMessages is invalid. Reason: \
+                     must be between 1 and 10, if provided."
+                )),
+                "{label}: got {}",
+                resp.body
+            );
+            assert!(
+                resp.body.contains(
+                    "An error occurred (InvalidParameterValue) when calling the ReceiveMessage operation:"
+                ),
+                "{label}: moto frames the message with the operation prefix, got {}",
+                resp.body
+            );
+        }
+    }
+
+    // The numeric-string shape the query protocol delivers parses the same
+    // way (moto's model parser int()s it, live-verified behavior).
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": "0"}),
+    ));
+    assert_eq!(resp.status, 400, "numeric string parses, got {}", resp.body);
+    assert!(
+        resp.body
+            .contains("Value 0 for parameter MaxNumberOfMessages"),
+        "got {}",
+        resp.body
+    );
+}
+
+/// The bounds ride AFTER the queue resolution: both an out-of-range
+/// MaxNumberOfMessages and a WaitTimeSeconds=25 on a nonexistent queue
+/// answer NonExistentQueue (live-verified ordering).
+#[test]
+fn receive_bounds_ghost_queue_answers_nonexistent_first() {
+    let handler = DefaultSqsHandler::new();
+    let ghost = format!("{}x", create_queue(&handler, "recv-bounds-ghost"));
+
+    for (label, req) in [
+        (
+            "Max=0",
+            json!({"QueueUrl": &ghost, "MaxNumberOfMessages": 0}),
+        ),
+        (
+            "Max=11",
+            json!({"QueueUrl": &ghost, "MaxNumberOfMessages": 11}),
+        ),
+        (
+            "Wait=25",
+            json!({"QueueUrl": &ghost, "WaitTimeSeconds": 25}),
+        ),
+        (
+            "Max=0 Wait=25",
+            json!({"QueueUrl": &ghost, "MaxNumberOfMessages": 0, "WaitTimeSeconds": 25}),
+        ),
+    ] {
+        let resp = handler.handle(make_request("ReceiveMessage", req));
+        assert_eq!(resp.status, 400, "{label}: got {}", resp.body);
+        assert!(
+            resp.body
+                .contains("AWS.SimpleQueueService.NonExistentQueue"),
+            "{label}: the queue lookup precedes the bounds, got {}",
+            resp.body
+        );
+    }
+}
+
+/// moto validates the wait bounds on the EFFECTIVE wait — the request
+/// value or the queue attribute (live-verified: a queue configured with
+/// ReceiveMessageWaitTimeSeconds=25 makes a plain receive answer the
+/// WaitTimeSeconds error). The wait bounds lose to the Max bounds and win
+/// over the VisibilityTimeout cap. The wordings are moto's exact strings,
+/// including the wait message's html-escaped oddity.
+#[test]
+fn receive_bounds_wait_time_seconds() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "recv-bounds-wait");
+    // A queued message keeps the in-range receives fast (no long poll).
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "b"}),
+    ));
+
+    for (label, wait, expect_ok) in [
+        ("25 above range", 25, false),
+        ("100 above range", 100, false),
+        ("-1 below range", -1, false),
+        ("0 low boundary", 0, true),
+        ("20 high boundary", 20, true),
+    ] {
+        let resp = handler.handle(make_request(
+            "ReceiveMessage",
+            json!({
+                "QueueUrl": &queue_url,
+                "WaitTimeSeconds": wait,
+                // keep the message re-available for the next sub-case
+                "VisibilityTimeout": 0
+            }),
+        ));
+        assert_eq!(
+            resp.status,
+            if expect_ok { 200 } else { 400 },
+            "{label}: got {}",
+            resp.body
+        );
+        if !expect_ok {
+            assert!(
+                resp.body.contains(&format!(
+                    "Value {wait} for parameter WaitTimeSeconds is invalid. Reason: \
+                     must be &lt;= 0 and &gt;= 20 if provided."
+                )),
+                "{label}: got {}",
+                resp.body
+            );
+        }
+    }
+
+    // Numeric strings parse the same way (int("-25") = -25 errors with
+    // the same wording).
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "WaitTimeSeconds": "-25"}),
+    ));
+    assert_eq!(resp.status, 400, "got {}", resp.body);
+    assert!(
+        resp.body
+            .contains("Value -25 for parameter WaitTimeSeconds is invalid"),
+        "got {}",
+        resp.body
+    );
+
+    // Order: Max bounds beat Wait bounds; both bounds beat the
+    // VisibilityTimeout cap (live-verified pairings).
+    for (label, req, expected) in [
+        (
+            "Max error beats Wait",
+            json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 0, "WaitTimeSeconds": 25}),
+            "Value 0 for parameter MaxNumberOfMessages is invalid",
+        ),
+        (
+            "Wait error beats the vis cap",
+            json!({"QueueUrl": &queue_url, "WaitTimeSeconds": 25, "VisibilityTimeout": 50000}),
+            "Value 25 for parameter WaitTimeSeconds is invalid",
+        ),
+        (
+            "Max error beats the vis cap",
+            json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 0, "VisibilityTimeout": 50000}),
+            "Value 0 for parameter MaxNumberOfMessages is invalid",
+        ),
+        (
+            "vis cap alone still errors",
+            json!({"QueueUrl": &queue_url, "VisibilityTimeout": 50000}),
+            "Invalid request, maximum visibility timeout is 43200",
+        ),
+    ] {
+        let resp = handler.handle(make_request("ReceiveMessage", req));
+        assert_eq!(resp.status, 400, "{label}: got {}", resp.body);
+        assert!(
+            resp.body.contains(expected),
+            "{label}: expected {expected}, got {}",
+            resp.body
+        );
+    }
+
+    // Queue attribute participates: ReceiveMessageWaitTimeSeconds=25 makes
+    // a plain receive answer the WaitTimeSeconds error (live-verified:
+    // Value 25 wording identical to the request-parameter one).
+    let q25 = create_queue(&handler, "recv-wait-attr");
+    let resp = handler.handle(make_request(
+        "SetQueueAttributes",
+        json!({
+            "QueueUrl": &q25,
+            "Attributes": {"ReceiveMessageWaitTimeSeconds": "25"}
+        }),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+    let resp = handler.handle(make_request("ReceiveMessage", json!({"QueueUrl": &q25})));
+    assert_eq!(
+        resp.status, 400,
+        "queue wait=25 must error, got {}",
+        resp.body
+    );
+    assert!(
+        resp.body
+            .contains("Value 25 for parameter WaitTimeSeconds is invalid"),
+        "got {}",
+        resp.body
+    );
+}
+
+/// Re-adjudication of the round-1 MotoCrash pin for a MISSING top-level
+/// ChangeMessageVisibility ReceiptHandle (round-2 could not reproduce the
+/// 500). Live-verified verdict against the pinned fork: moto does NOT
+/// crash — the backend matches `None in all_receipt_handles`, and every
+/// extant moto Message keeps its pre-receive None in that list, so the
+/// FIRST message in queue order wins and the visibility bump applies
+/// (200 OK, MessageNotVisible counter reflects the bump; a ghost queue
+/// still answers NonExistentQueue first). The MotoCrash answer is removed.
+#[test]
+fn cmv_missing_receipt_handle_matches_first_message() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "cmv-none-handle");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "t"}),
+    ));
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({"QueueUrl": &queue_url, "VisibilityTimeout": 300}),
+    ));
+    assert_eq!(
+        resp.status, 200,
+        "a missing handle matches the first message like moto, got {}",
+        resp.body
+    );
+    // The 300s bump silenced the first message: the short poll finds
+    // nothing. (message_counts() keeps never-received messages in the
+    // visible bucket — its is_inflight gate predates this lane — so the
+    // receive wire shape is the discriminating check here.)
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    assert!(
+        serde_json::from_str::<Value>(&recv.body)
+            .expect("json")
+            .get("Messages")
+            .is_none(),
+        "the bumped message must be invisible, got {}",
+        recv.body
+    );
+
+    // Release the bump through the same None-mode (vis 0), then run the
+    // with-handle arm: the same 200 flows for the real handle
+    // (live-verified 54).
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({"QueueUrl": &queue_url, "VisibilityTimeout": 0}),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1, "VisibilityTimeout": 0}),
+    ));
+    let handle: String = serde_json::from_str::<Value>(&recv.body).expect("json")["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .expect("handle")
+        .to_string();
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({"QueueUrl": &queue_url, "ReceiptHandle": handle, "VisibilityTimeout": 10}),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(
+        counts.1, 1,
+        "the with-handle bump kept the received message in flight"
+    );
+}
+
+/// The None-mode match only exists while a message is present: on an
+/// empty (or all-unmatched) queue moto's loop falls out to the bare
+/// `raise ReceiptHandleIsInvalid` (live-verified B1: 400 with ". The
+/// input receipt handle is invalid." wording).
+#[test]
+fn cmv_missing_receipt_handle_empty_queue_is_invalid() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "cmv-none-empty");
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({"QueueUrl": &queue_url, "VisibilityTimeout": 30}),
+    ));
+    assert_eq!(resp.status, 400, "got {}", resp.body);
+    assert!(
+        resp.body.contains("ReceiptHandleIsInvalid"),
+        "got {}",
+        resp.body
+    );
+    assert!(
+        resp.body.contains("The input receipt handle is invalid."),
+        "got {}",
+        resp.body
+    );
+}
+
+/// The total rule runs on the message the None-mode match found
+/// (live-verified C1: a missing handle with vis=43200 on an aged message
+/// answers the Total-rule 400, not 200).
+#[test]
+fn cmv_missing_receipt_handle_runs_total_rule() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "cmv-none-total");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "t"}),
+    ));
+    age_first_message(&handler, &queue_url, 100);
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({"QueueUrl": &queue_url, "VisibilityTimeout": 43200}),
+    ));
+    assert_eq!(resp.status, 400, "got {}", resp.body);
+    assert!(
+        resp.body.contains(
+            "Reason: Total VisibilityTimeout for the message is beyond the limit [43200 seconds]"
+        ),
+        "got {}",
+        resp.body
+    );
+}
+
+/// Ordering stands: the queue resolution precedes the handle match, so a
+/// missing handle on a ghost queue answers NonExistentQueue, not the moto
+/// None-mode 200 nor an invalid-handle error (live-verified 53).
+#[test]
+fn cmv_missing_receipt_handle_ghost_queue_answers_nonexistent() {
+    let handler = DefaultSqsHandler::new();
+    let ghost = format!("{}x", create_queue(&handler, "cmv-none-ghost"));
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({"QueueUrl": &ghost, "VisibilityTimeout": 30}),
+    ));
+    assert_eq!(resp.status, 400, "got {}", resp.body);
+    assert!(
+        resp.body
+            .contains("AWS.SimpleQueueService.NonExistentQueue"),
+        "got {}",
+        resp.body
+    );
+}
+
+/// The SPLIT for batch rows: moto reads entry["ReceiptHandle"] strictly —
+/// a row without the key raises KeyError outside the visibility bare-
+/// except and crashes the WHOLE request as a werkzeug 500 (live-verified;
+/// it also precedes the per-row queue lookup), while a present bogus or
+/// empty handle keeps the per-row Failed arm.
+#[test]
+fn cmv_batch_row_without_receipt_handle_key_crashes_like_moto() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "cmv-none-batch");
+
+    for (label, queue) in [
+        ("existing queue", json!(&queue_url)),
+        (
+            "ghost queue keeps the crash",
+            json!(format!("{}x", queue_url)),
+        ),
+    ] {
+        let resp = handler.handle(make_request(
+            "ChangeMessageVisibilityBatch",
+            json!({
+                "QueueUrl": queue,
+                "Entries": [{"Id": "a", "VisibilityTimeout": 30}]
+            }),
+        ));
+        assert_eq!(resp.status, 500, "{label}: got {}", resp.body);
+        assert!(
+            resp.body.contains("<!doctype html>")
+                && resp.body.contains("500 Internal Server Error"),
+            "{label}: not the moto crash envelope, got {}",
+            resp.body
+        );
+    }
+
+    // The with-handle arm keeps the Failed row for unmatched values
+    // (live-verified 56/57: empty-string and bogus handles answer 200
+    // with a ReceiptHandleIsInvalid Failed entry).
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "e", "ReceiptHandle": "", "VisibilityTimeout": 30},
+                {"Id": "b", "ReceiptHandle": handles[0]["ReceiptHandle"], "VisibilityTimeout": 30},
+            ]
+        }),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    let failed = data["Failed"].as_array().expect("Failed array");
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0]["Code"], "ReceiptHandleIsInvalid");
+    assert_eq!(failed[0]["Message"], "The input receipt handle is invalid.");
+    let successful = data["Successful"].as_array().expect("Successful array");
+    assert_eq!(successful.len(), 1);
+    assert_eq!(successful[0]["Id"], "b");
 }
