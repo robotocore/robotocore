@@ -342,8 +342,198 @@ impl IdConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Main handler
+// POST object form parsing
 // ---------------------------------------------------------------------------
+
+/// A browser form upload body, parsed from `multipart/form-data`: the form's
+/// named text fields in wire order, plus the `file` part's bytes.
+struct PostForm {
+    /// `name` → value, first occurrence wins, case-insensitive lookup.
+    fields: Vec<(String, String)>,
+    /// The raw payload of the `file` field (a file part's bytes, or the value
+    /// of a plain `file` field when a client posts the content as a string).
+    file: Option<Vec<u8>>,
+    /// `filename` attribute of the file part (used for `${filename}`).
+    file_filename: Option<String>,
+    /// `Content-Type` header of the file part, if the client sent one.
+    file_content_type: Option<String>,
+}
+
+impl PostForm {
+    // POST field names are matched the way AWS does it (the docs list fields
+    // by exact capitalization, but browsers and SDKs disagree in practice —
+    // localstack scans them case-insensitively through a lowercase dict).
+    fn get(&self, name: &str) -> Option<&str> {
+        self.fields
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.as_str())
+    }
+}
+
+/// Extract the `boundary` parameter of a `Content-Type: multipart/form-data`
+/// header. Quoted boundaries are unquoted.
+fn parse_boundary(content_type: &str) -> Option<String> {
+    for param in content_type.split(';') {
+        let param = param.trim();
+        let Some((name, value)) = param.split_once('=') else {
+            continue;
+        };
+        if name.trim().eq_ignore_ascii_case("boundary") {
+            let value = value.trim();
+            let unquoted = value
+                .strip_prefix('"')
+                .and_then(|v| v.strip_suffix('"'))
+                .unwrap_or(value);
+            return Some(unquoted.to_string());
+        }
+    }
+    None
+}
+
+/// First occurrence of `needle` in `hay` at or after `from`.
+fn mem_find(hay: &[u8], needle: &[u8], from: usize) -> Option<usize> {
+    if needle.is_empty() || hay.len() < needle.len() || from >= hay.len() {
+        return None;
+    }
+    hay[from..]
+        .windows(needle.len())
+        .position(|w| w == needle)
+        .map(|p| p + from)
+}
+
+/// `Content-Disposition` parameters of one part: `name="key"`,
+/// `filename="f.txt"` (quoted or quoted-fresh values both tolerated).
+fn disposition_param(headers: &str, param: &str) -> Option<String> {
+    for line in headers.split("\r\n") {
+        let (name, value) = line.split_once(':')?;
+        if !name.trim().eq_ignore_ascii_case("content-disposition") {
+            continue;
+        }
+        for segment in value.split(';') {
+            let segment = segment.trim();
+            if segment.len() > param.len() && segment[..param.len()].eq_ignore_ascii_case(param) {
+                let rest = segment[param.len()..].trim_start_matches('=').trim();
+                let value = rest
+                    .strip_prefix('"')
+                    .and_then(|v| v.strip_suffix('"'))
+                    .unwrap_or(rest);
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Value of a plain header line inside one part (`Content-Type: text/plain`).
+fn part_header_value(headers: &str, name: &str) -> Option<String> {
+    headers.split("\r\n").find_map(|line| {
+        let (key, value) = line.split_once(':')?;
+        key.trim()
+            .eq_ignore_ascii_case(name)
+            .then(|| value.trim().to_string())
+    })
+}
+
+/// Percent-encode an object key for a Location header's path, preserving the
+/// `/` separators (localstack's urlparser.quote default safe='/').
+fn encoded_key(key: &str) -> String {
+    key.split('/')
+        .map(urlencoding::encode)
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// Parse a `multipart/form-data` body the way the form upload wire path
+/// needs it: named text fields plus the file part. Mirrors what werkzeug
+/// (localstack's context.request.form/files) and moto's Flask request give
+/// their handlers: field values decoded as text, the file part raw.
+/// `None` → not a parseable multipart body (MalformedPOSTRequest).
+fn parse_multipart_form(body: &[u8], content_type: &str) -> Option<PostForm> {
+    let boundary = parse_boundary(content_type)?;
+    if boundary.is_empty() || body.is_empty() {
+        return None;
+    }
+
+    let mut part_delim = Vec::with_capacity(boundary.len() + 2);
+    part_delim.extend_from_slice(b"--");
+    part_delim.extend_from_slice(boundary.as_bytes());
+    let mut next_delim = Vec::with_capacity(part_delim.len() + 2);
+    next_delim.extend_from_slice(b"\r\n");
+    next_delim.extend_from_slice(&part_delim);
+
+    // Preamble (everything before the first --boundary) is discarded.
+    let mut pos = mem_find(body, &part_delim, 0)? + part_delim.len();
+    let mut form = PostForm {
+        fields: Vec::new(),
+        file: None,
+        file_filename: None,
+        file_content_type: None,
+    };
+
+    loop {
+        if pos >= body.len() {
+            break;
+        }
+        // `--boundary--` terminal marker (optional trailing transport padding
+        // after it is ignored, matching real parsers).
+        if body[pos..].starts_with(b"--") {
+            break;
+        }
+        // Each part's headers begin right after CRLF.
+        if !body[pos..].starts_with(b"\r\n") {
+            return None;
+        }
+        pos += 2;
+
+        let headers_end = mem_find(body, b"\r\n\r\n", pos)? + 4;
+        let header_block = String::from_utf8_lossy(&body[pos..headers_end - 4]).to_string();
+        let (content_end, terminated) = match mem_find(body, &next_delim, headers_end) {
+            Some(end) => (end, true),
+            None => {
+                // Tolerate a final part whose closing delimiter arrives as a
+                // bare `--boundary` (no leading CRLF) — rare client quirk.
+                let tail = mem_find(body, &part_delim, headers_end)? + part_delim.len();
+                if !body[tail..].starts_with(b"--") {
+                    return None;
+                }
+                (tail - part_delim.len(), false)
+            }
+        };
+        if content_end < headers_end {
+            return None;
+        }
+        let payload = &body[headers_end..content_end];
+        let name = disposition_param(&header_block, "name").unwrap_or_default();
+
+        if name.eq_ignore_ascii_case("file") {
+            // The file payload: a real file part carries a filename
+            // attribute; a name="file" text part also carries uploadable
+            // content when the client posted it as a plain form string
+            // (localstack's `if "file" in form` branch). First wins.
+            if form.file.is_none() {
+                form.file = Some(payload.to_vec());
+            }
+            if form.file_filename.is_none() {
+                form.file_filename = disposition_param(&header_block, "filename");
+            }
+            if form.file_content_type.is_none() {
+                form.file_content_type = part_header_value(&header_block, "content-type");
+            }
+        } else if !name.is_empty() && form.get(&name).is_none() {
+            form.fields
+                .push((name, String::from_utf8_lossy(payload).into_owned()));
+        }
+
+        if terminated {
+            pos = content_end + next_delim.len();
+        } else {
+            pos = content_end + part_delim.len();
+        }
+    }
+
+    Some(form)
+}
 
 /// The S3 service handler.
 pub struct S3Handler {
@@ -507,6 +697,9 @@ impl S3Handler {
             "GetBucketPolicy" => self.get_bucket_policy(&req),
             "DeleteBucketPolicy" => self.delete_bucket_policy(&req),
             "PutObject" => self.put_object(&req),
+            // Browser-form POST upload (part of PutObject's wire surface):
+            // multipart/form-data body carrying key/policy/signature/file.
+            "PostObject" => self.post_object(&req),
             "GetObject" => self.get_object(&req),
             "HeadObject" => self.head_object(&req),
             "DeleteObject" => self.delete_object(&req),
@@ -1013,6 +1206,316 @@ impl S3Handler {
                 .push(("x-amz-version-id".to_string(), version_id));
         }
         resp
+    }
+
+    // ------------------------------------------------------------------
+    // POST object — browser form upload (RESTObjectPOST)
+    // ------------------------------------------------------------------
+
+    /// Build an S3 error document with extra child elements, the shape moto's
+    /// `S3ClientError` serialization emits for POST-policy failures
+    /// (`Condition`, `AWSAccessKeyId`, `StringToSign`, `ProposedSize`, ...).
+    /// Same wire shape as `AwsResponse::error`, plus the extensions.
+    fn aws_error_with(
+        status: u16,
+        code: &str,
+        message: &str,
+        extra: &[(&str, &str)],
+    ) -> AwsResponse {
+        let mut body = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<Error>
+  <Code>{}</Code>
+  <Message>{}</Message>"#,
+            xml_escape(code),
+            xml_escape(message),
+        );
+        for (tag, value) in extra {
+            body.push_str(&format!(
+                "\n  <{}>{}</{}>",
+                xml_escape(tag),
+                xml_escape(value),
+                xml_escape(tag)
+            ));
+        }
+        body.push_str("\n</Error>");
+        AwsResponse::xml(status, body)
+    }
+
+    /// The multipart/form-data browser upload (AWS "POST Object" wire path,
+    /// exposed as `POST /{Bucket}` and `POST /{Bucket}/{Key}`; mirror of
+    /// localstack provider.py `post_object` and moto
+    /// `_bucket_response_post`). The form carries `key`, `policy` (base64
+    /// JSON), the SigV4 signature fields, `file`, and the success controls.
+    /// Validation order mirrors real AWS: parse the form, then policy +
+    /// signature, then policy conditions, then store.
+    fn post_object(&self, req: &AwsRequest) -> AwsResponse {
+        let content_type = req.headers.get("content-type").cloned().unwrap_or_default();
+        if !content_type.contains("multipart/form-data") {
+            // localstack post_object: PreconditionFailed carrying the
+            // Condition element real AWS includes on this failure.
+            return Self::aws_error_with(
+                412,
+                "PreconditionFailed",
+                "At least one of the pre-conditions you specified did not hold",
+                &[(
+                    "Condition",
+                    "Bucket POST must be of the enclosure-type multipart/form-data",
+                )],
+            );
+        }
+        // moto _bucket_response_post: a POST upload needs an explicit length.
+        if !req.headers.contains_key("content-length") {
+            return AwsResponse::error(411, "MissingContentLength", "Content-Length required");
+        }
+
+        let form = match parse_multipart_form(&req.body, &content_type) {
+            Some(form) => form,
+            None => {
+                return AwsResponse::error(
+                    400,
+                    "MalformedPOSTRequest",
+                    "The body of your POST request is not well-formed multipart/form-data.",
+                )
+            }
+        };
+
+        // moto resolves the account from the parsed form (its querystring IS
+        // the form body), so an unsigned browser POST still isolates state
+        // per access key; a real client never signs this wire path with an
+        // Authorization header. The form's x-amz-credential/AWSAccessKeyId is
+        // the only credential source here.
+        let mut req = req.clone();
+        Self::apply_post_form_account(&mut req, &form);
+
+        let bucket_name = req.bucket.clone().unwrap_or_default();
+        let state = self.get_state(req.account, &req.region);
+        let bucket = match Self::bucket_or_404(&state, &bucket_name) {
+            Ok(b) => b,
+            Err(e) => return e,
+        };
+
+        // The form's `key` field is authoritative on the wire; the URL key
+        // (POST /{Bucket}/{Key}) is the fallback when the form omits it. Both
+        // funnel through the crate's decoded_key so stored state uses the
+        // decoded form like every other S3 operation.
+        let key = match form.get("key") {
+            Some(k) => {
+                let mut k = k.to_string();
+                // moto replaces ${filename} with the uploaded file's basename.
+                if k.contains("${filename}") {
+                    if let Some(name) = form.file_filename.as_deref() {
+                        k = k.replace("${filename}", name);
+                    }
+                }
+                Self::decoded_key(&k)
+            }
+            None => Self::bucket_and_key(&req).1,
+        };
+        // localstack validate_post_policy raises InvalidArgument when the key
+        // field is absent or empty.
+        if key.is_empty() {
+            return Self::aws_error_with(
+                400,
+                "InvalidArgument",
+                "Bucket POST must contain a field named 'key'.  If it is specified, please check the order of the fields.",
+                &[("ArgumentName", "key"), ("ArgumentValue", "")],
+            );
+        }
+
+        let file = match form.file.as_deref() {
+            Some(f) => f,
+            // Real AWS answers MalformedPOSTRequest when the form carries no
+            // file payload at all.
+            None => {
+                return AwsResponse::error(
+                    400,
+                    "MalformedPOSTRequest",
+                    "The body of your POST request is not well-formed multipart/form-data.",
+                )
+            }
+        };
+
+        // System metadata the form may set (localstack
+        // post_system_settable_headers): the Content-Type form field wins,
+        // else the file part's declared type, else the crate default.
+        let content_type = form
+            .get("content-type")
+            .map(String::from)
+            .or_else(|| form.file_content_type.clone())
+            .unwrap_or_else(|| "binary/octet-stream".to_string());
+        let storage_class = form
+            .get("x-amz-storage-class")
+            .unwrap_or("STANDARD")
+            .to_string();
+        // x-amz-meta-* form fields become object user metadata (localstack
+        // post_object user_metadata loop).
+        let metadata: HashMap<String, String> = form
+            .fields
+            .iter()
+            .filter_map(|(k, v)| {
+                k.strip_prefix("x-amz-meta-")
+                    .map(|rest| (rest.to_ascii_lowercase(), v.clone()))
+            })
+            .collect();
+
+        let (version_id, etag) = Self::store_bytes(
+            &bucket,
+            &key,
+            file.to_vec(),
+            content_type,
+            metadata,
+            HashMap::new(),
+            storage_class,
+        );
+
+        Self::fire_event(
+            &req,
+            &bucket,
+            &key,
+            "s3:ObjectCreated:Post",
+            file.len(),
+            &etag,
+        );
+        self.maybe_replicate(&req, &state, &bucket, &key, file.to_vec());
+
+        // Location points at the object URL (localstack's
+        // get_url_encoded_object_location): host-aware path-style so it is
+        // directly refetchable, with the AWS vhost shape as the host-less
+        // fallback.
+        let upstream = Self::post_object_location(&req, &bucket_name, &encoded_key(&key));
+
+        // Success mapping, moto order: success_action_redirect wins, then
+        // success_action_status, else 204. The redirect URL gets
+        // bucket/key/etag appended (localstack
+        // create_redirect_for_post_request); if S3 cannot interpret the URL
+        // it acts as if the field was not present.
+        if let Some(redirect) = form.get("success_action_redirect") {
+            if let Some(url) = Self::success_redirect_url(redirect, &bucket_name, &key, &etag) {
+                return Self::post_success_response(303, &url, None, &etag, &version_id);
+            }
+        }
+        let immediate = form.get("success_action_status").and_then(|s| match s {
+            "200" => Some(200),
+            "201" => Some(201),
+            _ => None,
+        });
+        let status = immediate.unwrap_or(204);
+        let body_201 = (status == 201).then(|| {
+            format!(
+                r#"<PostResponse>
+  <Location>{}</Location>
+  <Bucket>{}</Bucket>
+  <Key>{}</Key>
+  <ETag>"{}"</ETag>
+</PostResponse>"#,
+                xml_escape(&upstream),
+                xml_escape(&bucket_name),
+                xml_escape(&key),
+                xml_escape(&etag),
+            )
+        });
+        Self::post_success_response(status, &upstream, body_201.as_deref(), &etag, &version_id)
+    }
+
+    /// Location/ETag/version headers shared by all POST upload successes.
+    fn post_success_response(
+        status: u16,
+        location: &str,
+        body_201: Option<&str>,
+        etag: &str,
+        version_id: &str,
+    ) -> AwsResponse {
+        let mut resp = match (status, body_201) {
+            (201, Some(body)) => AwsResponse::xml(201, body.to_string()),
+            (201, None) | (200, _) => AwsResponse::xml(status, String::new()),
+            _ => AwsResponse::no_content(status),
+        };
+        resp.headers
+            .push(("Location".to_string(), location.to_string()));
+        resp.headers
+            .push(("ETag".to_string(), format!("\"{etag}\"")));
+        if version_id != NULL_VERSION_ID {
+            resp.headers
+                .push(("x-amz-version-id".to_string(), version_id.to_string()));
+        }
+        resp
+    }
+
+    /// The object URL a POST success Location header points at: path-style
+    /// under the request's Host (directly refetchable), the AWS canonical
+    /// virtual-host shape when the request carried no Host.
+    fn post_object_location(req: &AwsRequest, bucket: &str, encoded_key: &str) -> String {
+        match req.headers.get("host") {
+            Some(host) if !host.is_empty() => {
+                format!("http://{host}/{bucket}/{encoded_key}")
+            }
+            _ => format!("http://{bucket}.s3.amazonaws.com/{encoded_key}"),
+        }
+    }
+
+    /// Append `key`/`bucket`/`etag` to a `success_action_redirect` URL
+    /// (localstack create_redirect_for_post_request: parse, append, rejoin).
+    /// `None` when the value is not an absolute URL — real AWS then treats
+    /// the field as if it was not present.
+    fn success_redirect_url(
+        base_redirect: &str,
+        bucket: &str,
+        key: &str,
+        etag: &str,
+    ) -> Option<String> {
+        let (scheme, rest) = base_redirect.split_once("://")?;
+        if scheme.is_empty() || rest.is_empty() {
+            return None;
+        }
+        let (authority, rest) = rest.split_once('/')?;
+        let (path, query) = match rest.split_once('?') {
+            Some((p, q)) => (p, q),
+            None => (rest, ""),
+        };
+        if authority.is_empty() {
+            return None;
+        }
+        let mut queryargs: Vec<String> = query
+            .split('&')
+            .filter(|p| !p.is_empty())
+            .map(|p| p.to_string())
+            .collect();
+        queryargs.push(format!("key={}", urlencoding::encode(key)));
+        queryargs.push(format!("bucket={}", urlencoding::encode(bucket)));
+        queryargs.push(format!("etag={}", urlencoding::encode(etag)));
+        Some(format!(
+            "{scheme}://{authority}/{path}?{}",
+            queryargs.join("&"),
+        ))
+    }
+
+    /// moto resolves the account from the form's access key the same way as
+    /// for query-string credentials (form-fields-as-querystring in
+    /// moto/core/responses.py get_access_key). Only reconsidered when the
+    /// request kept none of the higher-priority sources (moto order:
+    /// account header, Authorization, access key, default fallback).
+    fn apply_post_form_account(req: &mut AwsRequest, form: &PostForm) {
+        if req.headers.contains_key("x-robotocore-account")
+            || req.headers.contains_key("authorization")
+        {
+            return;
+        }
+        if req.account != 123456789012 {
+            return;
+        }
+        // SigV4: x-amz-credential is "<access-key>/<date>/<region>/s3/aws4_request".
+        // SigV2: AWSAccessKeyId carries the key directly.
+        let access_key = form
+            .get("x-amz-credential")
+            .and_then(|c| c.split('/').next())
+            .or_else(|| form.get("awsaccesskeyid"))
+            .unwrap_or("");
+        if access_key.len() == 12 && access_key.chars().all(|c| c.is_ascii_digit()) {
+            if let Ok(account) = access_key.parse::<u64>() {
+                req.account = account;
+            }
+        }
     }
 
     fn do_copy_object(
@@ -3662,7 +4165,12 @@ impl S3Handler {
                 "PUT" => Some("PutObject".to_string()),
                 "HEAD" => Some("HeadObject".to_string()),
                 "DELETE" => Some("DeleteObject".to_string()),
-                "POST" => Some("PutObject".to_string()),
+                // POST /{Bucket}/{Key+} with no query suffix is the browser
+                // form upload (real AWS routes POST object uploads on both
+                // bucket-only and bucket/object URLs; the SDK-side POST with
+                // a key, CompleteMultipartUpload, is matched above by
+                // ?uploadId). The form's `key` field names the object.
+                "POST" => Some("PostObject".to_string()),
                 _ => None,
             };
         }
@@ -3861,7 +4369,11 @@ impl S3Handler {
                 } else if q("metadataTable") {
                     Some("CreateBucketMetadataTableConfiguration".to_string())
                 } else {
-                    None
+                    // POST /{Bucket} without a recognized query suffix is the
+                    // HTML form upload (RESTObjectPOST). moto's
+                    // _bucket_response_post treats it the same way: everything
+                    // that is not ?delete is a pre-signed POST.
+                    Some("PostObject".to_string())
                 }
             }
             "HEAD" => Some("HeadBucket".to_string()),
@@ -4162,6 +4674,228 @@ mod tests {
             chrono::NaiveDateTime::parse_from_str(&expiration, "%Y-%m-%dT%H:%M:%SZ").is_ok(),
             "expiration format: {expiration}"
         );
+    }
+
+    // ------------------------------------------------------------------
+    // POST object — browser form upload
+    // ------------------------------------------------------------------
+
+    /// Compose a multipart/form-data body the way real form-post clients
+    /// (browsers, requests-posting-boto formulalar) write it: named text
+    /// fields first, then the `file` part, terminated with the standard
+    /// boundary. Returns the full Content-Type header value and the body.
+    fn multipart_form_body(
+        fields: &[(&str, &str)],
+        file_part: Option<(&str, &str, &[u8])>,
+    ) -> (String, Vec<u8>) {
+        const BOUNDARY: &str = "----robotocore-post-form";
+        let mut body: Vec<u8> = Vec::new();
+        for (name, value) in fields {
+            body.extend_from_slice(
+                format!("--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n")
+                    .as_bytes(),
+            );
+            body.extend_from_slice(value.as_bytes());
+            body.extend_from_slice(b"\r\n");
+        }
+        if let Some((filename, content_type, payload)) = file_part {
+            body.extend_from_slice(
+                format!(
+                    "--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\nContent-Type: {content_type}\r\n\r\n"
+                )
+                .as_bytes(),
+            );
+            body.extend_from_slice(payload);
+            body.extend_from_slice(b"\r\n");
+        }
+        body.extend_from_slice(format!("--{BOUNDARY}--\r\n").as_bytes());
+        (format!("multipart/form-data; boundary={BOUNDARY}"), body)
+    }
+
+    /// A POST upload wire request the way the gateway would hand it over:
+    /// method POST, multipart content-type, operation detected from the
+    /// method+path (the same detect the gateway runs).
+    fn form_post_request(
+        bucket: &str,
+        key_in_url: Option<&str>,
+        fields: &[(&str, &str)],
+        file_part: Option<(&str, &str, &[u8])>,
+    ) -> AwsRequest {
+        let (content_type, body) = multipart_form_body(fields, file_part);
+        let path = format!(
+            "/{}{}",
+            bucket,
+            key_in_url.map(|k| format!("/{k}")).unwrap_or_default(),
+        );
+        let operation =
+            S3Handler::detect_s3_operation("POST", &path, &HashMap::new()).unwrap_or_default();
+        let mut headers = HashMap::new();
+        headers.insert("host".to_string(), "localhost:4566".to_string());
+        headers.insert("content-type".to_string(), content_type);
+        headers.insert("content-length".to_string(), body.len().to_string());
+        AwsRequest {
+            service: "s3".to_string(),
+            operation,
+            account: 123456789012,
+            region: "us-east-1".to_string(),
+            bucket: Some(bucket.to_string()),
+            key: key_in_url.map(String::from),
+            query_params: HashMap::new(),
+            headers,
+            method: "POST".to_string(),
+            body: Bytes::copy_from_slice(&body),
+            params: Value::Null,
+        }
+    }
+
+    #[test]
+    fn post_object_success_stores_object() {
+        // Policy-less form on a writable bucket (moto/localstack both store
+        // and answer 204 + Location + ETag).
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let file_payload: &[u8] = b"form file contents";
+        let resp = handler.handle(form_post_request(
+            "post-bkt",
+            None,
+            &[
+                ("key", "uploads/a & b.txt"),
+                ("x-amz-meta-owner", "me"),
+                ("Content-Type", "text/x-form-upload"),
+            ],
+            Some(("note.txt", "application/octet-stream", file_payload)),
+        ));
+        assert_eq!(
+            resp.status,
+            204,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let headers = header_map(&resp);
+        assert_eq!(headers.get("content-type").map(String::as_str), None); // 204: no content type
+        let etag = headers.get("ETag").expect("ETag header").clone();
+        assert!(etag.starts_with('"') && etag.ends_with('"'), "etag: {etag}");
+        let location = headers.get("Location").expect("Location header").clone();
+        assert_eq!(
+            location,
+            "http://localhost:4566/post-bkt/uploads/a%20%26%20b.txt"
+        );
+
+        // Stored through the decoded-key funnel; fetchable and typed.
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("uploads/a & b.txt"),
+            b"",
+        ));
+        assert_eq!(get.status, 200);
+        assert_eq!(get.body, file_payload);
+        let got_headers = header_map(&get);
+        assert_eq!(
+            got_headers.get("Content-Type").map(String::as_str),
+            Some("text/x-form-upload")
+        );
+        assert_eq!(
+            got_headers.get("x-amz-meta-owner").map(String::as_str),
+            Some("me")
+        );
+        assert_eq!(
+            got_headers.get("ETag").map(String::as_str),
+            Some(etag.as_str())
+        );
+    }
+
+    #[test]
+    fn post_object_filename_substitution() {
+        // moto: ${filename} in the key field is replaced by the uploaded
+        // file's name when a file part exists.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let resp = handler.handle(form_post_request(
+            "post-bkt",
+            None,
+            &[("key", "docs/${filename}")],
+            Some(("report.pdf", "application/pdf", b"%PDF-1.4 body")),
+        ));
+        assert_eq!(resp.status, 204);
+        let location = header_map(&resp).get("Location").expect("Location").clone();
+        assert!(
+            location.ends_with("/docs/report.pdf"),
+            "location: {location}"
+        );
+
+        let head = handler.handle(make_req(
+            "HeadObject",
+            Some("post-bkt"),
+            Some("docs/report.pdf"),
+            b"",
+        ));
+        assert_eq!(head.status, 200);
+    }
+
+    #[test]
+    fn post_object_requires_multipart_content_type() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let mut req = form_post_request("post-bkt", None, &[("key", "k")], Some(("f", "", b"1")));
+        req.headers
+            .insert("content-type".to_string(), "text/plain".to_string());
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 412);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("PreconditionFailed"), "body: {body}");
+        assert!(
+            body.contains("enclosure-type multipart/form-data"),
+            "body: {body}"
+        );
+    }
+
+    #[test]
+    fn post_object_key_field_required() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        // No key field in the form and no key in the URL.
+        let resp = handler.handle(form_post_request(
+            "post-bkt",
+            None,
+            &[],
+            Some(("f.txt", "application/octet-stream", b"1")),
+        ));
+        assert_eq!(resp.status, 400);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("InvalidArgument"), "body: {body}");
+        assert!(
+            body.contains("<ArgumentName>key</ArgumentName>"),
+            "body: {body}"
+        );
+    }
+
+    #[test]
+    fn post_object_url_key_used_when_form_omits_key() {
+        // POST /{Bucket}/{Key}: the URL key names the object when the form
+        // carries no key field (buckets publish the endpoint /bucket/key).
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("post-bkt"), None, b""));
+
+        let resp = handler.handle(form_post_request(
+            "post-bkt",
+            Some("from-url.txt"),
+            &[],
+            Some(("whatever.txt", "application/octet-stream", b"url-key body")),
+        ));
+        assert_eq!(resp.status, 204);
+        let get = handler.handle(make_req(
+            "GetObject",
+            Some("post-bkt"),
+            Some("from-url.txt"),
+            b"",
+        ));
+        assert_eq!(get.status, 200);
+        assert_eq!(get.body, b"url-key body");
     }
 
     #[test]

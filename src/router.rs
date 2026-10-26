@@ -10,7 +10,8 @@
 //! 5. Host header (e.g., sqs.us-east-1.amazonaws.com)
 //! 6. Query string Action parameter
 //! 7. Body-based Action detection for unsigned requests
-//! 8. Path-style S3 fallback for unsigned GET/HEAD requests
+//! 8. Path-style S3 fallback for unsigned GET/HEAD requests and unsigned
+//!    multipart/form-data POST uploads (S3 browser form POST)
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -501,9 +502,16 @@ pub fn route_to_service(request: &AwsRequest) -> Option<String> {
     // Handles: GET http://localhost:4566/bucket/key.json (public bucket access)
     // Restricted to GET/HEAD (the actual public-access shape) and no auth header
     // so that genuine typos and non-S3 services still get a clean 400.
+    // Also catches unsigned browser-form POST uploads (POST /{Bucket}[/key]):
+    // the S3 POST-object wire path carries credentials inside the multipart
+    // form (x-amz-signature field), never in an Authorization header, so an
+    // unsigned multipart POST on a bucket-shaped path is S3 by definition
+    // (RESTObjectPOST; localstack services/s3 provider.py post_object).
     // Must come last — all other service patterns are more specific.
     if auth.is_empty()
-        && (request.method == "GET" || request.method == "HEAD")
+        && (request.method == "GET"
+            || request.method == "HEAD"
+            || (request.method == "POST" && content_type.contains("multipart/form-data")))
         && path != "/"
         && !path.starts_with("/_")
     {
