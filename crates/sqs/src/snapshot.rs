@@ -56,6 +56,12 @@ impl SqsStore {
     }
 
     /// Replace queues and move tasks with the state in `v`.
+    ///
+    /// Queues present in both the live map and the snapshot are restored in
+    /// place (`*existing.write() = queue`), so `Arc` handles handed out
+    /// before the restore — held by in-flight requests such as a long-poll
+    /// receive — stay attached to the queue object the store maps
+    /// afterwards. Queues the snapshot does not mention are dropped.
     pub fn restore_json(&self, v: &Value) {
         let empty = serde_json::Map::new();
         let obj = v.as_object().unwrap_or(&empty);
@@ -79,10 +85,15 @@ impl SqsStore {
         }
 
         let mut queues = self.queues.write();
-        *queues = restored
-            .into_iter()
-            .map(|(name, queue)| (name, Arc::new(RwLock::new(queue))))
-            .collect();
+        queues.retain(|name, _| restored.contains_key(name));
+        for (name, queue) in restored {
+            match queues.get(&name) {
+                Some(existing) => *existing.write() = queue,
+                None => {
+                    queues.insert(name, Arc::new(RwLock::new(queue)));
+                }
+            }
+        }
         *self.move_tasks.write() = tasks;
     }
 }
@@ -102,16 +113,22 @@ impl DefaultSqsHandler {
 
     /// Replace handler state from a JSON value produced by `snapshot_json`.
     ///
-    /// Replace semantics: existing stores are emptied first, then the
-    /// snapshot's per-(account, region) entries are applied.
+    /// Replace semantics: stores the snapshot does not mention are emptied;
+    /// stores it does mention are restored in place by
+    /// [`SqsStore::restore_json`], which drops their absent queues and keeps
+    /// live queue handles attached.
     pub fn restore_json(&self, v: &Value) {
         let empty = Value::Object(serde_json::Map::new());
+        let snapshot = v.as_object();
         let existing: Vec<(u64, String)> = self.stores.read().keys().cloned().collect();
         for (account, region) in existing {
+            if snapshot.is_some_and(|obj| obj.contains_key(&format!("{account}|{region}"))) {
+                continue;
+            }
             self.get_store(account, &region).restore_json(&empty);
         }
 
-        let Some(obj) = v.as_object() else {
+        let Some(obj) = snapshot else {
             return;
         };
         for (key, store_state) in obj {
@@ -135,6 +152,34 @@ impl DefaultSqsHandler {
 mod tests {
     use super::*;
     use crate::models::SqsMessage;
+
+    /// Queue fixture on a dedicated (account, region) partition.
+    fn queue(name: &str, account: u64, region: &str) -> Queue {
+        Queue::new(
+            name.to_string(),
+            region.to_string(),
+            account.to_string(),
+            format!("https://sqs.{region}.localhost:4566/{account}/{name}"),
+            format!("arn:aws:sqs:{region}:{account}:{name}"),
+        )
+    }
+
+    fn msg(id: &str, body: &str) -> SqsMessage {
+        SqsMessage {
+            message_id: id.to_string(),
+            body: body.to_string(),
+            md5_of_body: "abc".to_string(),
+            receipt_handle: id.to_string(),
+            sent_timestamp: 1,
+            visibility_until: None,
+            receive_count: 0,
+            first_receive_timestamp: None,
+            attributes: HashMap::new(),
+            message_attributes: HashMap::new(),
+            available_at: None,
+            deduplication_id: None,
+        }
+    }
 
     #[test]
     fn test_snapshot_round_trip_preserves_queues_and_messages() {
@@ -202,5 +247,90 @@ mod tests {
 
         // Cleanup: do not leak state into other tests in this process.
         store.delete_queue("rt-test");
+    }
+
+    /// A queue handle taken before a restore (as an in-flight request holds
+    /// one, e.g. a long-poll receive) must stay attached to the queue object
+    /// the store maps afterwards, and must observe the restored content.
+    #[test]
+    fn test_restore_preserves_live_queue_handles() {
+        let handler = DefaultSqsHandler::new();
+        // Dedicated (account, region): the store map is process-global and
+        // other tests run in parallel against their own partitions.
+        let store = handler.get_store(424242424243, "eu-livehandle-1");
+        store.create_queue(queue("live-handle", 424242424243, "us-east-1"));
+
+        // The pre-restore handle, as a mid-request caller would hold it.
+        let live = store.get_queue("live-handle").expect("queue exists");
+
+        let snap = store.snapshot_json();
+
+        // Mutate after the snapshot: the restore must revert this even
+        // though the queue is restored in place (replace semantics).
+        live.write().send_message(msg("m-post", "post-snapshot"));
+
+        store.restore_json(&snap);
+
+        // Same allocation, not a detached leftover: sends through `live`
+        // land on what the store maps now.
+        let observed = store.get_queue("live-handle").expect("queue restored");
+        assert!(
+            Arc::ptr_eq(&live, &observed),
+            "restore must not detach live queue handles"
+        );
+        assert!(
+            observed.read().messages.is_empty(),
+            "restore must replace, not merge"
+        );
+
+        // A send through the pre-restore handle lands on the mapped queue.
+        live.write().send_message(msg("m-live", "via-old-handle"));
+        let seen = store.get_queue("live-handle").expect("queue still mapped");
+        let seen = seen.read();
+        assert_eq!(seen.messages.len(), 1);
+        assert_eq!(seen.messages[0].body, "via-old-handle");
+
+        // Cleanup: do not leak state into other tests in this process.
+        store.delete_queue("live-handle");
+    }
+
+    /// Queues the snapshot does not mention are dropped, and deletions are
+    /// reverted (replace semantics); in-place restore only covers overlap.
+    #[test]
+    fn test_restore_drops_absent_queues_and_reverts_deletions() {
+        let handler = DefaultSqsHandler::new();
+        let store = handler.get_store(424242424246, "eu-livehandle-3");
+        store.create_queue(queue("kept", 424242424246, "us-east-1"));
+        store.create_queue(queue("second", 424242424246, "us-east-1"));
+        let kept = store.get_queue("kept").expect("queue exists");
+
+        let snap = store.snapshot_json();
+
+        // Live-only divergence after the snapshot: "ephemeral" was created
+        // after it (absent from the snapshot), "second" was deleted after it
+        // (that deletion must be reverted).
+        store.create_queue(queue("ephemeral", 424242424246, "us-east-1"));
+        store.delete_queue("second");
+
+        store.restore_json(&snap);
+
+        assert!(
+            store.get_queue("ephemeral").is_none(),
+            "post-snapshot queue dropped (replace semantics)"
+        );
+        assert!(store.get_queue("second").is_some(), "deletion reverted");
+        assert!(
+            Arc::ptr_eq(&kept, &store.get_queue("kept").unwrap()),
+            "overlapping queue restored in place"
+        );
+
+        // The held handle for the overlapping queue still observes sends.
+        kept.write().send_message(msg("m-kept", "still-here"));
+        let seen = store.get_queue("kept").expect("queue still mapped");
+        assert_eq!(seen.read().messages[0].body, "still-here");
+
+        // Cleanup: do not leak state into other tests in this process.
+        store.delete_queue("kept");
+        store.delete_queue("second");
     }
 }
