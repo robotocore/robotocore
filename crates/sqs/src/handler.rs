@@ -716,56 +716,107 @@ impl DefaultSqsHandler {
 
         let mut messages;
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(wait_seconds);
+        // Visibility override from the request, if any; otherwise the
+        // queue attribute, read under the queue lock during the receive.
+        let params_visibility = params
+            .get("VisibilityTimeout")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as u32);
         loop {
             messages = {
-                let mut q = queue_arc.write();
-                // Deliver events queued by cross-service callers (SNS/EventBridge)
-                // before each receive attempt so messages arrive during long polls.
-                super::bridge::drain_pending(account, region, &queue_name, &mut q);
-                let visibility_timeout = params
-                    .get("VisibilityTimeout")
-                    .and_then(|v| v.as_u64())
-                    .map(|v| v as u32)
-                    .unwrap_or(q.attributes.visibility_timeout);
-                q.receive_messages(max_messages, visibility_timeout)
-            };
-            // DLQ redrive: messages received more times than maxReceiveCount move.
-            let (max_receive, dlq_arn) = {
-                let q = queue_arc.read();
-                (q.redrive_max_receive_count(), q.redrive_target_arn())
-            };
-            if let (Some(max_receive), Some(dlq_arn)) = (max_receive, dlq_arn) {
-                let mut stayed = Vec::new();
-                for msg in messages {
-                    if msg.receive_count > max_receive {
-                        if let Some(dlq) = store.get_queue_by_arn(&dlq_arn) {
-                            let mut moved = msg.clone();
+                // Redrive policy and DLQ handle are re-resolved on every
+                // poll so attribute changes apply without restarting.
+                let (max_receive, dlq_arn) = {
+                    let q = queue_arc.read();
+                    (q.redrive_max_receive_count(), q.redrive_target_arn())
+                };
+                // Resolve the DLQ handle before taking any queue lock: the
+                // store lookup reads every queue's lock while held, so it
+                // must complete before the source queue is locked and the
+                // pair taken in canonical name order.
+                let dlq_arc = dlq_arn
+                    .as_deref()
+                    .and_then(|arn| store.get_queue_by_arn(arn));
+                // A self-target RedrivePolicy has same queue on both ends;
+                // skipping the nested same-queue lock keeps it a no-op
+                // instead of a dequeue wedge.
+                let redrive = dlq_arc.and_then(|dl| {
+                    if Arc::ptr_eq(&dl, &queue_arc) {
+                        return None;
+                    }
+                    max_receive.map(|max| (max, dl))
+                });
+                if let Some((max_receive, dlq)) = redrive {
+                    // Receive and the DLQ redrive move happen under ONE
+                    // critical section on both queues: with
+                    // VisibilityTimeout=0 the message is visible again
+                    // inside this same lock, so redriving it out of scope
+                    // lets a concurrent poll receive the bumped count too
+                    // and double-move it (the second removal would
+                    // silently no-op). Both write locks are taken in
+                    // canonical queue-name order so a mirrored receive on
+                    // the same pair cannot deadlock on nested acquisition.
+                    let src_first = queue_arc.read().name.clone() <= dlq.read().name.clone();
+                    let (mut src, mut dl) = if src_first {
+                        let src = queue_arc.write();
+                        let dl = dlq.write();
+                        (src, dl)
+                    } else {
+                        let dl = dlq.write();
+                        let src = queue_arc.write();
+                        (src, dl)
+                    };
+                    super::bridge::drain_pending(account, region, &queue_name, &mut src);
+                    let visibility_timeout =
+                        params_visibility.unwrap_or(src.attributes.visibility_timeout);
+                    let received = src.receive_messages(max_messages, visibility_timeout);
+                    let mut stayed = Vec::with_capacity(received.len());
+                    for msg in received {
+                        if msg.receive_count > max_receive {
                             // Real SQS preserves the original MessageId
                             // across the dead-letter move; only the receipt
                             // handle is re-minted for the DLQ scope.
-                            let dlq_url = {
-                                let dl = dlq.read();
-                                dl.url.clone()
-                            };
+                            let mut moved = msg.clone();
                             moved.receipt_handle =
-                                Self::generate_receipt_handle(&moved.message_id, &dlq_url);
+                                Self::generate_receipt_handle(&moved.message_id, &dl.url);
                             moved.receive_count = 0;
                             moved.first_receive_timestamp = None;
                             moved.visibility_until = None;
                             moved.available_at = None;
-                            {
-                                let mut dl = dlq.write();
-                                dl.send_message(moved);
+                            dl.send_message(moved);
+                            src.remove_by_receipt_handle(&msg.receipt_handle);
+                        } else {
+                            stayed.push(msg);
+                        }
+                    }
+                    stayed
+                } else {
+                    // No usable redrive target, or policy absent: plain
+                    // receive. Exhausted messages still leave the source
+                    // when a dead-letter move is configured, matching the
+                    // no-DLQ-queue case (they are dropped, not delivered).
+                    let mut q = queue_arc.write();
+                    // Deliver events queued by cross-service callers (SNS/EventBridge)
+                    // before each receive attempt so messages arrive during long polls.
+                    super::bridge::drain_pending(account, region, &queue_name, &mut q);
+                    let visibility_timeout =
+                        params_visibility.unwrap_or(q.attributes.visibility_timeout);
+                    let received = q.receive_messages(max_messages, visibility_timeout);
+                    if let Some(max_receive) = max_receive {
+                        let mut stayed = Vec::with_capacity(received.len());
+                        for msg in received {
+                            if msg.receive_count > max_receive {
+                                q.remove_by_receipt_handle(&msg.receipt_handle);
+                            } else {
+                                stayed.push(msg);
                             }
                         }
-                        let mut q = queue_arc.write();
-                        q.remove_by_receipt_handle(&msg.receipt_handle);
+                        stayed
                     } else {
-                        stayed.push(msg);
+                        received
                     }
                 }
-                messages = stayed;
-            }
+            };
             if !messages.is_empty() || std::time::Instant::now() >= deadline {
                 break;
             }
