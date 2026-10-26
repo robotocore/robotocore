@@ -46,17 +46,15 @@ pub fn value_to_string(v: &Value) -> String {
     serde_json::to_string(v).unwrap_or_else(|_| "null".to_string())
 }
 
-/// Resolve a JSONPath of the form `$.a.b` against a value.
+/// Resolve an AWS StepFunctions-dialect JSONPath against a value: `$.a.b`
+/// dot fields, bracket indices / slices / wildcards and `[?( ... )]` filters
+/// with the AWS `&&` / `||` conjunctions (moto issue #10078). Returns `None`
+/// for a definite path that does not exist (the era `_resolve_path`
+/// semantics), `Some([])` for a filter / slice / wildcard that matches
+/// nothing (the AWS dialect), and carries moto extract_json's singleton
+/// unpack + shape heuristics from moto issue #7825.
 pub fn resolve_json_path(path: &str, base: &Value) -> Option<Value> {
-    let rest = path.strip_prefix("$.")?;
-    if rest.is_empty() {
-        return Some(base.clone());
-    }
-    let mut cur = base.clone();
-    for part in rest.split('.') {
-        cur = cur.get(part)?.clone();
-    }
-    Some(cur)
+    crate::jsonpath::resolve(path, base)
 }
 
 /// Interpreter context: emits history events into the execution record.
@@ -1610,6 +1608,316 @@ pub fn run_on_thread(exec: Arc<Execution>, definition: String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ---- AWS JSONPath dialect (moto issues #10078 / #7825) ----
+
+    fn dialect_input() -> Value {
+        json!({
+            "items": [
+                {"keep": true, "ready": true, "name": "a"},
+                {"keep": true, "ready": false, "name": "b"},
+                {"keep": false, "ready": true, "name": "c"},
+            ],
+            "total": 3,
+        })
+    }
+
+    #[test]
+    fn sfn_dialect_and_or_in_filter() {
+        let input = dialect_input();
+        // The CDK-emitted conjunction shape from moto #10078.
+        let got = resolve_json_path("$.items[?(@.keep == true && @.ready == true)]", &input)
+            .expect("parses and matches");
+        assert_eq!(got, json!([{"keep": true, "ready": true, "name": "a"}]));
+        // || disjunction and adjacency without spaces.
+        let got = resolve_json_path("$.items[?(@.name=='b'||@.name=='c')].name", &input).unwrap();
+        assert_eq!(got, json!(["b", "c"]));
+        // Negation, bare truthiness and $-rooted refs inside the filter.
+        assert_eq!(
+            resolve_json_path("$.items[?(!@.keep)].name", &input),
+            Some(json!(["c"]))
+        );
+        assert_eq!(
+            resolve_json_path("$.items[?(@.ready)].name", &input),
+            Some(json!(["a", "c"]))
+        );
+        // A $-rooted ref inside the filter resolves against the path input.
+        let got = resolve_json_path(
+            "$.items[?($.total > 1 && @.ready == true)].name",
+            &json!({"items": [{"ready": true, "name": "r1"}], "total": 2}),
+        );
+        assert_eq!(got, Some(json!(["r1"])));
+        // Two-space separated operators still parse.
+        assert_eq!(
+            resolve_json_path("$.items[?(@.keep==true && @.ready==false)].name", &input),
+            Some(json!(["b"]))
+        );
+        // Parenthesised groups combine with the conjunction: numeric and
+        // string ordering comparators of the AWS filter set.
+        let users = json!({"users": [
+            {"name": "a", "n": 5, "role": "x"},
+            {"name": "b", "n": 15, "role": "y"},
+            {"name": "c", "n": 0, "role": "y"},
+        ]});
+        assert_eq!(
+            resolve_json_path("$.users[?(@.n >= 5 && @.n < 10)].name", &users),
+            Some(json!(["a"]))
+        );
+        // 'a' < 'b' and its role group passes via the negated-missing arm.
+        assert_eq!(
+            resolve_json_path(
+                "$.users[?(@.name < 'b' && (@.role == 'y' || !@.gone))].name",
+                &users
+            ),
+            Some(json!(["a"]))
+        );
+        assert_eq!(
+            resolve_json_path("$.users[?(@.name != 'a' && @.n != 0)].name", &users),
+            Some(json!(["b"]))
+        );
+        // A missing path comparison misses both == and !=, like jsonpath_ng.
+        assert_eq!(
+            resolve_json_path("$.users[?(@.miss == null)]", &users),
+            Some(json!([]))
+        );
+        // A present null compares equal to the null literal.
+        assert_eq!(
+            resolve_json_path(
+                "$.users[?(@.nul == null)].name",
+                &json!({"users": [{"name": "z", "nul": null}]})
+            ),
+            Some(json!(["z"]))
+        );
+    }
+
+    #[test]
+    fn sfn_dialect_empty_filter_yields_empty_array() {
+        // moto #10078: a zero-matching filter must yield [], making a Pass
+        // Parameters template produce an empty list instead of null (AWS).
+        let input = json!({"items": [{"k": "a"}], "none": []});
+        assert_eq!(
+            resolve_json_path("$.items[?(@.k == 'NONE')]", &input),
+            Some(json!([]))
+        );
+        assert_eq!(
+            resolve_json_path("$.none[?(@.k == 'NONE')]", &input),
+            Some(json!([]))
+        );
+        // A Parameters resolution carries the [] through end-to-end.
+        let pass = json!({
+            "StartAt": "Filter",
+            "States": {"Filter": {
+                "Type": "Pass",
+                "Parameters": {"selected.$": "$.items[?(@.keep == true && @.ready == true)]"},
+                "End": true,
+            }},
+        });
+        let out = run(&pass, json!({"items": [{"keep": true, "ready": true}]}))
+            .expect("the #10078 repro state completes");
+        assert_eq!(
+            out["selected"],
+            json!([{"keep": true, "ready": true}]),
+            "filter Parameters resolve, not States.Runtime: {out}"
+        );
+        // And a zero match in the same shape resolves to [].
+        let out = run(&pass, json!({"items": []})).expect("empty list");
+        assert_eq!(out["selected"], json!([]));
+    }
+
+    #[test]
+    fn sfn_dialect_filter_keeps_array_shape_for_projections() {
+        // moto #7825: a filter with ONE match and a trailing projection stays
+        // an array (localstack collapsed singletons to a bare object).
+        let input = json!({"items": [{"keep": true, "name": "a"}, {"keep": false}]});
+        assert_eq!(
+            resolve_json_path("$.items[?(@.keep == true)].name", &input),
+            Some(json!(["a"]))
+        );
+        // Two matches project each hit.
+        let input = json!({
+            "items": [
+                {"keep": true, "name": "a"},
+                {"keep": true, "name": "b"},
+            ],
+        });
+        assert_eq!(
+            resolve_json_path("$.items[?(@.keep == true)].name", &input),
+            Some(json!(["a", "b"]))
+        );
+        // Single match of the filter alone keeps the array shape...
+        let single = json!({"items": [{"keep": true, "name": "a"}, {"keep": false}]});
+        assert_eq!(
+            resolve_json_path("$.items[?(@.keep)]", &single),
+            Some(json!([{"keep": true, "name": "a"}]))
+        );
+        // ...while a literal trailing index unpacks it (and selects the
+        // first element of a multi-match filter before it).
+        assert_eq!(
+            resolve_json_path("$.items[?(@.keep)][0]", &single),
+            Some(json!({"keep": true, "name": "a"}))
+        );
+        let multi = json!({"items": [
+            {"keep": true, "name": "a"}, {"keep": false}, {"keep": true, "name": "b"},
+        ]});
+        assert_eq!(
+            resolve_json_path("$.items[?(@.keep)][0].name", &multi),
+            Some(json!(["a"])),
+            "moto #7825: projection after a definite index keeps array shape"
+        );
+        // A plain field path is still scalar, and a definite index unpacks.
+        let input = json!({"items": [{"name": "a"}, {"name": "b"}]});
+        assert_eq!(
+            resolve_json_path("$.items[0].name", &input),
+            Some(json!(["a"]))
+        );
+        assert_eq!(
+            resolve_json_path("$.items[0]", &input),
+            Some(json!({"name": "a"}))
+        );
+        assert_eq!(
+            resolve_json_path("$.total", &json!({"total": 3})),
+            Some(json!(3))
+        );
+    }
+
+    #[test]
+    fn sfn_dialect_indices_slices_and_wildcards() {
+        let input = json!({
+            "items": [1, 2, 3, 4],
+            "map": {"a": 1, "b": 2},
+            "label": "x",
+        });
+        assert_eq!(
+            resolve_json_path("$.items[*]", &input),
+            Some(json!([1, 2, 3, 4]))
+        );
+        assert_eq!(
+            resolve_json_path("$.items[0:2]", &input),
+            Some(json!([1, 2]))
+        );
+        assert_eq!(
+            resolve_json_path("$.items[-2:]", &input),
+            Some(json!([3, 4]))
+        );
+        assert_eq!(
+            resolve_json_path("$.items[::2]", &input),
+            Some(json!([1, 3]))
+        );
+        assert_eq!(resolve_json_path("$.items[-1]", &input), Some(json!(4)));
+        // Out-of-range literal index: a definite miss, not [] (era missing).
+        assert_eq!(resolve_json_path("$.items[9]", &input), None);
+        assert_eq!(resolve_json_path("$.map.*", &input), Some(json!([1, 2])));
+        assert_eq!(resolve_json_path("$.label", &input), Some(json!("x")));
+        assert_eq!(resolve_json_path("$", &input), Some(input.clone()));
+        // Quoted bracket keys, dot-free (quoted fields are object-field
+        // accesses, not array indices, matching jsonpath_ng).
+        assert_eq!(
+            resolve_json_path("$.map['0 A0']", &json!({"map": {"0 A0": 7}})),
+            Some(json!(7))
+        );
+        assert_eq!(
+            resolve_json_path("$['a b']", &json!({"a b": 5})),
+            Some(json!(5))
+        );
+        // Unsupported syntax resolves to None, never crashes the engine.
+        assert_eq!(resolve_json_path("$.items..name", &input), None);
+        assert!(resolve_json_path("$.items[?(@.a =~ /x*/)]", &input).is_some());
+        assert_eq!(resolve_json_path("", &input), None);
+        assert_eq!(resolve_json_path("$.items[]", &input), None);
+    }
+
+    #[test]
+    fn sfn_dialect_regex_literals_in_filter() {
+        // moto #7825's filter equality (a regex literal); note even moto's
+        // own jsonpath_ng backend cannot parse a bare multi-slash regex
+        // literal, so the shape is exercised via the quoted-string form the
+        // real definition carries, and regex literals here are single-slash
+        // patterns (multi-slash patterns read as unsupported syntax).
+        let input = json!({
+            "Parameters": [{"Name": "/eggs/cooked/like", "Value": "poached"}],
+        });
+        let got = resolve_json_path(
+            "$.Parameters[?(@.Name == '/eggs/cooked/like')].Value",
+            &input,
+        );
+        assert_eq!(got, Some(json!(["poached"])));
+        // =~ with anchors and classes, and case-insensitive flag.
+        let input = json!({"users": [{"email": "Bob@Example.COM"}, {"email": "ann@x.io"}]});
+        assert_eq!(
+            resolve_json_path("$.users[?(@.email =~ /^bob.*/i)].email", &input),
+            Some(json!(["Bob@Example.COM"]))
+        );
+        assert_eq!(
+            resolve_json_path("$.users[?(@.email =~ /\\.io$/)].email", &input),
+            Some(json!(["ann@x.io"]))
+        );
+        // A non-matching regex stays a no-match, not a crash.
+        assert_eq!(
+            resolve_json_path("$.users[?(@.email =~ /zorg*/)].email", &input),
+            Some(json!([]))
+        );
+        assert_eq!(
+            resolve_json_path("$.users[?(@.email != /\\.io$/)].email", &input),
+            Some(json!(["Bob@Example.COM"]))
+        );
+    }
+
+    #[test]
+    fn sfn_dialect_filter_is_usable_across_callers() {
+        // ResultSelector vs the state result, OutputPath over a filter, and
+        // a Map ItemsPath filter — all ride the same resolver.
+        let def = json!({
+            "StartAt": "P",
+            "States": {
+                "P": {
+                    "Type": "Pass",
+                    "ResultSelector": {"picked.$": "$.vals[?(@.go == true)].v"},
+                    "End": true,
+                }
+            }
+        });
+        let out = run(
+            &def,
+            json!({
+                "vals": [{"go": true, "v": "keep"}, {"go": false, "v": "drop"}],
+            }),
+        )
+        .expect("ResultSelector resolves a filter");
+        assert_eq!(out, json!({"picked": ["keep"]}), "got {out}");
+
+        // A zero-match filter through OutputPath keeps the state flowing.
+        let def = json!({
+            "StartAt": "P",
+            "States": {
+                "P": {"Type": "Pass", "OutputPath": "$.vals[?(@.go == false)].v", "End": true}
+            }
+        });
+        let out = run(&def, json!({"vals": [{"go": true, "v": 1}]}))
+            .expect("filter OutputPath keeps the flow running");
+        assert_eq!(out, json!([]), "the state output is an empty array");
+
+        // Map ItemsPath accepts a filtered list.
+        let def = json!({
+            "StartAt": "M",
+            "States": {
+                "M": {
+                    "Type": "Map",
+                    "ItemsPath": "$.rows[?(@.go == true)]",
+                    "ItemProcessor": {
+                        "StartAt": "Echo",
+                        "States": {"Echo": {"Type": "Pass", "Result": "done", "End": true}},
+                    },
+                    "End": true,
+                }
+            }
+        });
+        let out = run(
+            &def,
+            json!({"rows": [{"go": true}, {"go": false}, {"go": true}]}),
+        )
+        .expect("map iterates the filtered rows");
+        assert_eq!(out, json!(["done", "done"]));
+    }
 
     #[test]
     fn test_nested_choice_rules() {

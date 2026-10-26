@@ -3,6 +3,7 @@
 
 pub mod asl;
 pub mod handler;
+pub mod jsonpath;
 pub mod models;
 pub mod protocol;
 pub mod snapshot;
