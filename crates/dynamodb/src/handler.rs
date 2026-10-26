@@ -16,6 +16,12 @@ use crate::{bridge, streaming};
 
 type AttrMap = HashMap<String, Value>;
 
+// moto/dynamodb/models/table.py DEFAULT_WARM_THROUGHPUT_RCU/_WCU: AWS gives
+// on-demand tables a default warm throughput of 12000/4000 units; PROVISIONED
+// tables advertise their provisioned units instead.
+const DEFAULT_WARM_THROUGHPUT_RCU: i64 = 12000;
+const DEFAULT_WARM_THROUGHPUT_WCU: i64 = 4000;
+
 /// The DynamoDB service handler.
 pub struct DynamoDbHandler {
     pub(crate) state: RwLock<HashMap<(u64, String), DynamoDbState>>,
@@ -472,6 +478,25 @@ impl DynamoDbHandler {
             "WriteCapacityUnits": *table.provisioned_wcu.read(),
         });
 
+        // Real AWS reports WarmThroughput on every table — Terraform AWS
+        // provider v6.13+ polls DescribeTable for it (localstack #13140).
+        // moto mirrors it unconditionally in Table.describe(); the member
+        // shape follows botocore's TableWarmThroughputDescription, whose
+        // Status member is the TableStatus enum.
+        let warm_throughput = if table.billing_mode == "PAY_PER_REQUEST" {
+            json!({
+                "ReadUnitsPerSecond": DEFAULT_WARM_THROUGHPUT_RCU,
+                "WriteUnitsPerSecond": DEFAULT_WARM_THROUGHPUT_WCU,
+                "Status": "ACTIVE",
+            })
+        } else {
+            json!({
+                "ReadUnitsPerSecond": *table.provisioned_rcu.read(),
+                "WriteUnitsPerSecond": *table.provisioned_wcu.read(),
+                "Status": "ACTIVE",
+            })
+        };
+
         let index_arn_base = table.table_arn.read().clone();
         let index_json = |indexes: &[crate::models::IndexDefinition], is_gsi: bool| -> Vec<Value> {
             indexes
@@ -513,6 +538,7 @@ impl DynamoDbHandler {
             "DeletionProtectionEnabled": false,
             "BillingModeSummary": { "BillingMode": table.billing_mode },
             "TableClassSummary": { "TableClass": "STANDARD" },
+            "WarmThroughput": warm_throughput,
         });
         // moto emits the stream fields on stream-enabled tables
         // (moto/dynamodb/models/table.py: LatestStreamLabel + LatestStreamArn).
@@ -3591,5 +3617,61 @@ mod tests {
         let body: Value = serde_json::from_str(&resp.body).unwrap();
         assert_eq!(resp.status, 200);
         assert_eq!(body["Attributes"]["v"], json!({"S": "zzz"}));
+    }
+
+    #[test]
+    fn test_describe_table_warmthroughput_active() {
+        let handler = DynamoDbHandler::new();
+
+        // PAY_PER_REQUEST: on-demand tables report moto's default warm
+        // throughput of 12000/4000 (models/table.py).
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "warm-ondemand",
+                "KeySchema": [{"AttributeName": "id", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "id", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "DescribeTable",
+            json!({"TableName": "warm-ondemand"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["Table"]["WarmThroughput"],
+            json!({
+                "ReadUnitsPerSecond": 12000,
+                "WriteUnitsPerSecond": 4000,
+                "Status": "ACTIVE"
+            })
+        );
+
+        // PROVISIONED: warm throughput mirrors the provisioned capacity.
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "warm-provisioned",
+                "KeySchema": [{"AttributeName": "id", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "id", "AttributeType": "S"}],
+                "ProvisionedThroughput": {"ReadCapacityUnits": 3, "WriteCapacityUnits": 5}
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "DescribeTable",
+            json!({"TableName": "warm-provisioned"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["Table"]["WarmThroughput"],
+            json!({
+                "ReadUnitsPerSecond": 3,
+                "WriteUnitsPerSecond": 5,
+                "Status": "ACTIVE"
+            })
+        );
     }
 }
