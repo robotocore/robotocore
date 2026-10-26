@@ -6,10 +6,12 @@
 //! associations, plus moto's TaggingService. Python quirks the probe
 //! recorded stay intact: `CreateFileSystem` with a bogus FileSystemType
 //! crashes into a 500 `InternalError` ("Invalid FileSystemType: ..."),
-//! `DeleteFileSystem` on an unknown id is the unguarded KeyError 500, ID
-//! formats are moto's (`fs-`/`backup-` 8 hex, `svm-`/`fsvol-`/`fsvolsnap-`
-//! 17 hex, `dra-` 9 hex) and file-system types validate against moto's
-//! enum (`OPENZFS`, not `OPEN_ZFS`). Wave-12 additions (data-repository
+//! ID formats are moto's (`fs-`/`backup-` 8 hex, `svm-`/`fsvol-`/
+//! `fsvolsnap-` 17 hex, `dra-` 9 hex) and file-system types validate
+//! against moto's enum (`OPENZFS`, not `OPEN_ZFS`). `DeleteFileSystem` on
+//! an unknown id answers the modeled `FileSystemNotFound`, as moto 5.2.4
+//! does (the fork it was ported from crashed into the unguarded KeyError
+//! 500). Wave-12 additions (data-repository
 //! tasks, file caches, S3 access-point attachments, backup copies and the
 //! shared-VPC/SVM/file-system lifecycle helpers) are modeled straight from
 //! botocore's shapes, keeping moto's ID formats. Only `UpdateVolume`,
@@ -511,10 +513,10 @@ fn merge_config(given: Option<&Value>, stored: &mut Option<Value>) {
 
 fn delete_file_system(st: &mut FsxStore, body: &Value) -> Response {
     let id = as_str(body, "FileSystemId").to_string();
-    // moto indexes `self.file_systems[file_system_id]` unguarded: the
-    // KeyError escapes to werkzeug and serves the canonical crash page.
+    // moto 5.2.4 raises the modeled exception for an unknown id (the fork
+    // this was ported from indexed the map unguarded: KeyError → crash page).
     let Some(fs) = st.file_systems.get(&id) else {
-        return crate::proto::moto_crash_response();
+        return fs_not_found(&id);
     };
     let fs_type = fs.file_system_type.clone();
     st.file_systems.remove(&id);
@@ -2245,9 +2247,10 @@ mod tests {
     }
 
     #[test]
-    fn delete_file_system_unknown_id_is_moto_crash_page() {
-        // moto indexes the map unguarded: the KeyError escapes to werkzeug
-        // and serves the canonical crash HTML, not an AWS error envelope.
+    fn fsx_delete_filesystem_not_found() {
+        // moto 5.2.4 answers the modeled JsonRESTError for an unknown
+        // FileSystemId; the fork this was ported from crashed into the
+        // werkzeug 500 page instead.
         let account = next_account();
         let request = Request {
             service: "fsx".to_string(),
@@ -2263,10 +2266,12 @@ mod tests {
             region: "us-east-1".to_string(),
         };
         let resp = dispatch(&request).unwrap();
-        assert_eq!(resp.status, 500);
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_slice(&resp.body).unwrap();
+        assert_eq!(body["__type"], "FileSystemNotFound");
         assert_eq!(
-            resp.body.to_vec(),
-            crate::proto::moto_crash_response().body.to_vec()
+            body["message"],
+            "File system 'probe-test-value' does not exist."
         );
     }
 
