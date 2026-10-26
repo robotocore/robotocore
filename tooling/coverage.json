@@ -368,7 +368,7 @@
   "total": 16
  },
  "acmpca": {
-  "covered": 18,
+  "covered": 19,
   "ops": {
    "CreateCertificateAuthority": {
     "absence": null,
@@ -459,10 +459,10 @@
    },
    "DescribeCertificateAuthorityAuditReport": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -647,7 +647,7 @@
   "total": 23
  },
  "amp": {
-  "covered": 41,
+  "covered": 44,
   "ops": {
    "CreateAlertManagerDefinition": {
     "absence": null,
@@ -662,10 +662,10 @@
    },
    "CreateAnomalyDetector": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -706,10 +706,10 @@
    },
    "CreateScraper": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -1014,10 +1014,10 @@
    },
    "PutAnomalyDetector": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -4783,7 +4783,7 @@
   "total": 38
  },
  "appsync": {
-  "covered": 69,
+  "covered": 72,
   "ops": {
    "AssociateApi": {
     "absence": null,
@@ -5359,10 +5359,10 @@
    },
    "ListTagsForResource": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -5436,10 +5436,10 @@
    },
    "TagResource": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -5447,10 +5447,10 @@
    },
    "UntagResource": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -8864,7 +8864,7 @@
   "total": 45
  },
  "bedrock": {
-  "covered": 95,
+  "covered": 98,
   "ops": {
    "BatchDeleteEvaluationJob": {
     "absence": null,
@@ -8912,10 +8912,10 @@
    },
    "CreateAutomatedReasoningPolicyVersion": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -8945,10 +8945,10 @@
    },
    "CreateEvaluationJob": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -9880,10 +9880,10 @@
    },
    "UpdateAutomatedReasoningPolicyAnnotations": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -9951,11 +9951,16 @@
   "covered": 1,
   "ops": {
    "ApplyGuardrail": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): bedrockruntime/responses.py has no `apply_guardrail` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -9994,11 +9999,16 @@
     }
    },
    "CountTokens": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): bedrockruntime/responses.py has no `count_tokens` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -10892,7 +10902,7 @@
   "total": 72
  },
  "budgets": {
-  "covered": 21,
+  "covered": 26,
   "ops": {
    "CreateBudget": {
     "absence": null,
@@ -10951,10 +10961,10 @@
    },
    "DeleteBudgetAction": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (NotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -10995,10 +11005,10 @@
    },
    "DescribeBudgetAction": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (NotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -11006,10 +11016,10 @@
    },
    "DescribeBudgetActionHistories": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -11094,10 +11104,10 @@
    },
    "ExecuteBudgetAction": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (NotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -11149,10 +11159,10 @@
    },
    "UpdateBudgetAction": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (NotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -11184,7 +11194,7 @@
   "total": 26
  },
  "ce": {
-  "covered": 44,
+  "covered": 47,
   "ops": {
    "CreateAnomalyMonitor": {
     "absence": null,
@@ -11309,10 +11319,10 @@
    },
    "GetCommitmentPurchaseAnalysis": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -11441,10 +11451,10 @@
    },
    "GetSavingsPlanPurchaseRecommendationDetails": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -11617,10 +11627,10 @@
    },
    "StartCostAllocationTagBackfill": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -26443,11 +26453,16 @@
     }
    },
    "UpdateParticipantRoleConfig": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): connect/responses.py has no `update_participant_role_config` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": true
@@ -26875,14 +26890,14 @@
   "total": 366
  },
  "connectcampaigns": {
-  "covered": 13,
+  "covered": 14,
   "ops": {
    "CreateCampaign": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -27112,11 +27127,16 @@
     }
    },
    "UpdateCampaignDialerConfig": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): connectcampaigns/responses.py has no `update_campaign_dialer_config` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": true
@@ -29507,7 +29527,7 @@
   "total": 63
  },
  "dms": {
-  "covered": 114,
+  "covered": 119,
   "ops": {
    "AddTagsToResource": {
     "absence": null,
@@ -29588,10 +29608,10 @@
    },
    "CreateDataProvider": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -29896,10 +29916,10 @@
    },
    "DescribeConnections": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
-    "probe_status": "500_error",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -29962,10 +29982,10 @@
    },
    "DescribeEndpoints": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
-    "probe_status": "500_error",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -30281,10 +30301,10 @@
    },
    "DescribeReplicationSubnetGroups": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
-    "probe_status": "500_error",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -30413,10 +30433,10 @@
    },
    "ListTagsForResource": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)",
-    "probe_status": "500_error",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -32477,7 +32497,7 @@
   "total": 56
  },
  "dynamodbstreams": {
-  "covered": 3,
+  "covered": 4,
   "ops": {
    "DescribeStream": {
     "absence": null,
@@ -32503,10 +32523,10 @@
    },
    "GetShardIterator": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ValidationException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -40877,14 +40897,14 @@
   "total": 752
  },
  "ec2instanceconnect": {
-  "covered": 0,
+  "covered": 2,
   "ops": {
    "SendSSHPublicKey": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -40892,10 +40912,10 @@
    },
    "SendSerialConsoleSSHPublicKey": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -40905,7 +40925,7 @@
   "total": 2
  },
  "ecr": {
-  "covered": 57,
+  "covered": 58,
   "ops": {
    "BatchCheckLayerAvailability": {
     "absence": null,
@@ -41371,10 +41391,10 @@
    },
    "PutLifecyclePolicy": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (RepositoryNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -44119,7 +44139,7 @@
   "total": 74
  },
  "elasticbeanstalk": {
-  "covered": 45,
+  "covered": 46,
   "ops": {
    "AbortEnvironmentUpdate": {
     "absence": null,
@@ -44541,10 +44561,10 @@
    },
    "SwapEnvironmentCNAMEs": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side probe gap (AttributeError: 'ElasticBeanstalk' object has no attribute 'swap_environment)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (InvalidParameterValue)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -46167,7 +46187,7 @@
     "absence": {
      "class": "modeled_deny",
      "decided_in": "wave-11 ledger row (surface-absence manifest build)",
-     "evidence": "twin unit test pins the deny at rotocore/src/services/emr.rs:3539; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): emr/responses.py has no `update_studio` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "evidence": "twin unit test pins the deny at rotocore/src/services/emr.rs:3541; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): emr/responses.py has no `update_studio` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
      "status": "not_implemented"
     },
     "bucket": "absent_modeled_deny",
@@ -47287,7 +47307,7 @@
   "total": 51
  },
  "events": {
-  "covered": 55,
+  "covered": 57,
   "ops": {
    "ActivateEventSource": {
     "absence": null,
@@ -47346,10 +47366,10 @@
    },
    "CreateEndpoint": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -47742,10 +47762,10 @@
    },
    "PutEvents": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "exception: MissingDependencyException: Missing Dependency: This operation requires an additional de",
-    "probe_status": "500_error",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -56508,7 +56528,7 @@
   "total": 176
  },
  "identitystore": {
-  "covered": 17,
+  "covered": 19,
   "ops": {
    "CreateGroup": {
     "absence": null,
@@ -56611,10 +56631,10 @@
    },
    "GetGroupId": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -56633,10 +56653,10 @@
    },
    "GetUserId": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -56723,7 +56743,7 @@
   "total": 19
  },
  "inspector2": {
-  "covered": 73,
+  "covered": 75,
   "ops": {
    "AssociateMember": {
     "absence": null,
@@ -56848,10 +56868,10 @@
    },
    "CreateCisScanConfiguration": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -57464,10 +57484,10 @@
    },
    "UpdateCodeSecurityIntegration": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -57554,14 +57574,14 @@
   "total": 75
  },
  "iot": {
-  "covered": 261,
+  "covered": 272,
   "ops": {
    "AcceptCertificateTransfer": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -57679,10 +57699,10 @@
    },
    "CancelCertificateTransfer": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -58141,10 +58161,10 @@
    },
    "DeleteCACertificate": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -58152,10 +58172,10 @@
    },
    "DeleteCertificate": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -58581,10 +58601,10 @@
    },
    "DescribeCACertificate": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -58592,10 +58612,10 @@
    },
    "DescribeCertificate": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -59340,10 +59360,10 @@
    },
    "ListCertificatesByCA": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -59978,10 +59998,10 @@
    },
    "RejectCertificateTransfer": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -60176,10 +60196,10 @@
    },
    "TransferCertificate": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -60242,10 +60262,10 @@
    },
    "UpdateCACertificate": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -60253,10 +60273,10 @@
    },
    "UpdateCertificate": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -63553,7 +63573,7 @@
   "total": 53
  },
  "lakeformation": {
-  "covered": 55,
+  "covered": 60,
   "ops": {
    "AddLFTagsToResource": {
     "absence": null,
@@ -63870,10 +63890,10 @@
    },
    "GetQueryState": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -63881,10 +63901,10 @@
    },
    "GetQueryStatistics": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -63947,10 +63967,10 @@
    },
    "GetWorkUnitResults": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -63958,10 +63978,10 @@
    },
    "GetWorkUnits": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -64134,10 +64154,10 @@
    },
    "StartQueryPlanning": {
     "absence": null,
-    "bucket": "unreachable",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://query-localho)",
-    "probe_status": "timeout",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -65165,7 +65185,7 @@
   "total": 84
  },
  "lexv2models": {
-  "covered": 103,
+  "covered": 107,
   "ops": {
    "BatchCreateCustomVocabularyItem": {
     "absence": null,
@@ -65378,10 +65398,10 @@
    },
    "DeleteBotAnalyzerRecommendation": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -65554,10 +65574,10 @@
    },
    "DescribeBotAnalyzerRecommendation": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -66148,10 +66168,10 @@
    },
    "StartBotResourceGeneration": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -66192,10 +66212,10 @@
    },
    "StopBotAnalyzer": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -68742,7 +68762,7 @@
   "total": 27
  },
  "mediaconnect": {
-  "covered": 79,
+  "covered": 82,
   "ops": {
    "AddBridgeOutputs": {
     "absence": null,
@@ -68878,10 +68898,10 @@
    },
    "CreateRouterInput": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -68889,10 +68909,10 @@
    },
    "CreateRouterNetworkInterface": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -68900,10 +68920,10 @@
    },
    "CreateRouterOutput": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -71847,7 +71867,7 @@
   "total": 5
  },
  "memorydb": {
-  "covered": 28,
+  "covered": 29,
   "ops": {
    "BatchUpdateCluster": {
     "absence": {
@@ -72036,10 +72056,10 @@
    },
    "DescribeACLs": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side probe gap (AttributeError: 'MemoryDB' object has no attribute 'describe_ac_ls')",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -73436,7 +73456,7 @@
   "total": 68
  },
  "networkfirewall": {
-  "covered": 77,
+  "covered": 79,
   "ops": {
    "AcceptNetworkFirewallTransitGatewayAttachment": {
     "absence": null,
@@ -73748,10 +73768,10 @@
    },
    "DescribeFlowOperation": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -73957,10 +73977,10 @@
    },
    "ListFlowOperationResults": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -75362,7 +75382,7 @@
   "total": 95
  },
  "opensearch": {
-  "covered": 80,
+  "covered": 82,
   "ops": {
    "AcceptInboundConnection": {
     "absence": null,
@@ -75388,10 +75408,10 @@
    },
    "AddDirectQueryDataSource": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -76180,10 +76200,10 @@
    },
    "UpdateDirectQueryDataSource": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -76270,7 +76290,7 @@
   "total": 82
  },
  "opensearchserverless": {
-  "covered": 42,
+  "covered": 46,
   "ops": {
    "BatchGetCollection": {
     "absence": null,
@@ -76681,10 +76701,10 @@
    },
    "UpdateAccessPolicy": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -76736,10 +76756,10 @@
    },
    "UpdateLifecyclePolicy": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -76747,10 +76767,10 @@
    },
    "UpdateSecurityConfig": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -76758,10 +76778,10 @@
    },
    "UpdateSecurityPolicy": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -85913,11 +85933,16 @@
     }
    },
    "DeregisterNamespace": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "modeled_deny",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "twin unit test pins the deny at rotocore/src/services/redshift.rs:5324; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): redshift/responses.py has no `deregister_namespace` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_modeled_deny",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": true
@@ -86807,11 +86832,16 @@
     }
    },
    "RegisterNamespace": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "modeled_deny",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "twin unit test pins the deny at rotocore/src/services/redshift.rs:5323; moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): redshift/responses.py has no `register_namespace` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_modeled_deny",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": true
@@ -87114,7 +87144,7 @@
   "total": 11
  },
  "rekognition": {
-  "covered": 65,
+  "covered": 66,
   "ops": {
    "AssociateFaces": {
     "absence": null,
@@ -87457,11 +87487,16 @@
     }
    },
    "DistributeDatasetEntries": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): rekognition/responses.py has no `distribute_dataset_entries` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -87513,10 +87548,10 @@
    },
    "GetFaceLivenessSessionResults": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (SessionNotFoundException: The session was not found.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -90235,7 +90270,7 @@
   "total": 34
  },
  "route53resolver": {
-  "covered": 67,
+  "covered": 68,
   "ops": {
    "AssociateFirewallRuleGroup": {
     "absence": null,
@@ -90327,10 +90362,10 @@
    },
    "CreateResolverEndpoint": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -104134,7 +104169,7 @@
   "total": 110
  },
  "shield": {
-  "covered": 32,
+  "covered": 36,
   "ops": {
    "AssociateDRTLogBucket": {
     "absence": null,
@@ -104160,10 +104195,10 @@
    },
    "AssociateHealthCheck": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -104215,10 +104250,10 @@
    },
    "DeleteProtection": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -104292,10 +104327,10 @@
    },
    "DescribeProtection": {
     "absence": null,
-    "bucket": "absent_crash_faithful",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "server crash via required-only (InternalError)",
-    "probe_status": "500_error",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -104369,10 +104404,10 @@
    },
    "DisassociateHealthCheck": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -105445,7 +105480,7 @@
   "total": 21
  },
  "ssm": {
-  "covered": 119,
+  "covered": 146,
   "ops": {
    "AddTagsToResource": {
     "absence": null,
@@ -105471,10 +105506,10 @@
    },
    "CancelCommand": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (InvalidCommandId: Invalid command id.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -105482,10 +105517,10 @@
    },
    "CancelMaintenanceWindowExecution": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (InvalidParameterException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -105636,10 +105671,10 @@
    },
    "DeleteMaintenanceWindow": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (DoesNotExistException: Maintenance window probe-window-id00000 does not exist)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -105746,10 +105781,10 @@
    },
    "DeregisterTargetFromMaintenanceWindow": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (DoesNotExistException: Maintenance window probe-window-id00000 does not exist)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -105757,10 +105792,10 @@
    },
    "DeregisterTaskFromMaintenanceWindow": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (DoesNotExistException: Maintenance window probe-window-id00000 does not exist)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -105823,10 +105858,10 @@
    },
    "DescribeAutomationStepExecutions": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (InvalidParameterException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -105966,10 +106001,10 @@
    },
    "DescribeMaintenanceWindowExecutionTaskInvocations": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (InvalidParameterException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -105977,10 +106012,10 @@
    },
    "DescribeMaintenanceWindowExecutionTasks": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (InvalidParameterException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -105988,10 +106023,10 @@
    },
    "DescribeMaintenanceWindowExecutions": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -106010,10 +106045,10 @@
    },
    "DescribeMaintenanceWindowTargets": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (DoesNotExistException: Maintenance window probe-window-id00000 does not exist)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -106021,10 +106056,10 @@
    },
    "DescribeMaintenanceWindowTasks": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (DoesNotExistException: Maintenance window probe-window-id00000 does not exist)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -106153,10 +106188,10 @@
    },
    "GetAutomationExecution": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (DoesNotExistException: probe-automation-execution-id0000000 does not exist)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -106175,10 +106210,10 @@
    },
    "GetCommandInvocation": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (InvalidCommandId: Invalid command id.)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -106208,10 +106243,10 @@
    },
    "GetDeployablePatchSnapshotForInstance": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (InvalidParameterException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -106230,10 +106265,10 @@
    },
    "GetExecutionPreview": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (InvalidParameterException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -106263,10 +106298,10 @@
    },
    "GetMaintenanceWindow": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (DoesNotExistException: Maintenance window probe-window-id00000 does not exist)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -106274,10 +106309,10 @@
    },
    "GetMaintenanceWindowExecution": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (InvalidParameterException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -106285,10 +106320,10 @@
    },
    "GetMaintenanceWindowExecutionTask": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (InvalidParameterException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -106296,10 +106331,10 @@
    },
    "GetMaintenanceWindowExecutionTaskInvocation": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (InvalidParameterException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -106307,10 +106342,10 @@
    },
    "GetMaintenanceWindowTask": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (InvalidParameterException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -106725,10 +106760,10 @@
    },
    "RegisterTargetWithMaintenanceWindow": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (DoesNotExistException: Maintenance window probe-window-id00000 does not exist)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -106736,10 +106771,10 @@
    },
    "RegisterTaskWithMaintenanceWindow": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (DoesNotExistException: Maintenance window probe-window-id00000 does not exist)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -106780,10 +106815,10 @@
    },
    "SendAutomationSignal": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (InvalidParameterException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -106868,10 +106903,10 @@
    },
    "StopAutomationExecution": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (DoesNotExistException: probe-automation-execution-id0000000 does not exist)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -106956,10 +106991,10 @@
    },
    "UpdateMaintenanceWindow": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (InvalidParameterException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -106967,10 +107002,10 @@
    },
    "UpdateMaintenanceWindowTarget": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (DoesNotExistException: Maintenance window probe-window-id00000 does not exist)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -106978,10 +107013,10 @@
    },
    "UpdateMaintenanceWindowTask": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "likely implemented (DoesNotExistException: Maintenance window probe-window-id00000 does not exist)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -107807,11 +107842,16 @@
     }
    },
    "PutApplicationGrant": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): ssoadmin/responses.py has no `put_application_grant` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -109628,14 +109668,14 @@
   "total": 25
  },
  "timestreaminfluxdb": {
-  "covered": 10,
+  "covered": 12,
   "ops": {
    "CreateDbCluster": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -109643,10 +109683,10 @@
    },
    "CreateDbInstance": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -109654,10 +109694,10 @@
    },
    "CreateDbParameterGroup": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "absent_crash_faithful",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "unparsable response (Invalid service response: Parameters must have one and only )",
+    "probe_status": "500_error",
     "screens": {
      "probe": true,
      "unit": false
@@ -109838,22 +109878,32 @@
     }
    },
    "UpdateDbCluster": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): timestreaminfluxdb/responses.py has no `update_db_cluster` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
     }
    },
    "UpdateDbInstance": {
-    "absence": null,
-    "bucket": "pending_fill",
+    "absence": {
+     "class": "absent_no_handler",
+     "decided_in": "wave-11 ledger row (surface-absence manifest build)",
+     "evidence": "moto 5.2.4 fork (JackDanger/moto@robotocore/all-fixes 2016563fd): timestreaminfluxdb/responses.py has no `update_db_instance` handler \u2014 moto dispatch raises NotImplementedError(\"The <action> action has not been implemented\") \u2192 HTTP 501 ; the twin mirrors moto's absence with the gateway NotImplemented 501",
+     "status": "not_implemented"
+    },
+    "bucket": "absent_no_handler",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "not implemented (501)",
+    "probe_status": "not_implemented",
     "screens": {
      "probe": true,
      "unit": false
@@ -110308,14 +110358,14 @@
   "total": 18
  },
  "transcribe": {
-  "covered": 40,
+  "covered": 42,
   "ops": {
    "CreateCallAnalyticsCategory": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -110741,10 +110791,10 @@
    },
    "UpdateCallAnalyticsCategory": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -112463,7 +112513,7 @@
   "total": 73
  },
  "wafv2": {
-  "covered": 53,
+  "covered": 54,
   "ops": {
    "AssociateWebACL": {
     "absence": null,
@@ -112956,10 +113006,10 @@
    },
    "ListWebACLs": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side probe gap (AttributeError: 'WAFV2' object has no attribute 'list_web_ac_ls')",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": false
@@ -113079,7 +113129,7 @@
   "total": 55
  },
  "workspaces": {
-  "covered": 83,
+  "covered": 87,
   "ops": {
    "AcceptAccountLinkInvitation": {
     "absence": null,
@@ -113292,10 +113342,10 @@
    },
    "DeleteConnectClientAddIn": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -113699,10 +113749,10 @@
    },
    "ImportCustomWorkspaceImage": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -114007,10 +114057,10 @@
    },
    "TerminateWorkspacesPoolSession": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -114018,10 +114068,10 @@
    },
    "UpdateConnectClientAddIn": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "implemented (ResourceNotFoundException)",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
@@ -115132,7 +115182,7 @@
   "total": 75
  },
  "xray": {
-  "covered": 37,
+  "covered": 38,
   "ops": {
    "BatchGetTraces": {
     "absence": null,
@@ -115193,7 +115243,7 @@
     "absence": null,
     "bucket": "working",
     "conformance": null,
-    "probe_message": "likely implemented (InvalidPolicyRevisionIdException: The provided policy revision id does not match.)",
+    "probe_message": "OK",
     "probe_status": "working",
     "screens": {
      "probe": true,
@@ -115334,10 +115384,10 @@
    },
    "GetSamplingTargets": {
     "absence": null,
-    "bucket": "pending_fill",
+    "bucket": "working",
     "conformance": null,
-    "probe_message": "client-side validation (never contacted server)",
-    "probe_status": "needs_params",
+    "probe_message": "OK",
+    "probe_status": "working",
     "screens": {
      "probe": true,
      "unit": true
