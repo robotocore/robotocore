@@ -49,6 +49,73 @@ enum PreparedMessage {
     },
 }
 
+/// A VisibilityTimeout-family member (`VisibilityTimeout`,
+/// `MaxNumberOfMessages`, `WaitTimeSeconds`) as moto's automated parse
+/// layer sees it (`moto/core/parse.py`). The doctrine it encodes:
+///
+/// - **absent-or-null → absent.** The key missing and the member carrying
+///   a JSON null are the same thing: moto's request parser drops null
+///   members outright (`BaseJSONParser._parse_structure` skips a member
+///   whose wire value parses to None — live-verified), so the response
+///   layer falls back to the queue's attribute or its defaults (receive),
+///   or crashes on the MISSING value where moto's own code does
+///   (`None > 43200` TypeError in top-level ChangeMessageVisibility —
+///   the dropped null reproduces exactly, live-verified).
+/// - **""/junk → the moto-crash mirror.** `_parse_integer` int()s every
+///   surviving member (`int("")` → ValueError; live-verified on receive,
+///   ChangeMessageVisibility, batch rows and the receive bounds), and a
+///   non-string non-numeric shape (`{"x": 1}`, `[1]`) raises TypeError
+///   there too: the request dies as a plain werkzeug 500 before any
+///   response method runs — the batch row arm's broad `except:` only
+///   produces a Failed entry when the KEY is absent, never for junk (the
+///   parse layer has already discarded it).
+/// - **python int() coercions are honored** (see `python_int_str`):
+///   surrounding whitespace and unicode Nd digits strip/map
+///   (`int(" 30 ")` = 30, `int("٣٠")` = 30 — live-verified), PEP 515
+///   underscores parse only between digits (`int("1_0")` = 10,
+///   `int("٣_٠")` = 30, `int("_30")` = ValueError → the moto crash),
+///   booleans coerce (`int(True)` = 1 — live-verified), a leading sign
+///   is honored and negatives apply (moto's `Message.change_visibility`
+///   stores `visible_at` in the past; the call sites clamp negatives to
+///   0 because the u64-typed store cannot represent a past point), and
+///   float members truncate (`int(3.5)` = 3).
+/// - **saturation only for beyond-i64 magnitudes.** Python's int() is
+///   unbounded, but the API only ever compares the value against small
+///   bounds or the 43200 cap, so the comparison value saturates at the
+///   i64 range: a positive overflow stays cap/bounds-breaching and a
+///   negative overflow behaves like every negative. The *echo* is a
+///   different story — moto interpolates the real digits into its error
+///   messages (live-verified: `Value 999999999999999999999999999999 for
+///   parameter MaxNumberOfMessages is invalid`), so `Parsed` carries
+///   `echo: str(int(value))` for the message text, saturated
+///   comparisons aside.
+enum MotoInt {
+    /// The key is missing or carries a JSON null (moto's parse drops
+    /// both — the response layer takes its fallback).
+    Absent,
+    /// int() accepted. `value` is the i64-saturated comparison value;
+    /// `echo` is python's str(int(member)) — the canonical digits moto
+    /// interpolates into its error messages instead of the saturated
+    /// value. The consumers (the receive bounds' wording) land with the
+    /// raw-wire-echo lane; until then the field is construction-only.
+    #[allow(dead_code)]
+    Parsed { value: i64, echo: String },
+    /// Present but int()-raising: moto's parse layer kills the request
+    /// as a plain werkzeug 500 before the response method runs.
+    Junk,
+}
+
+/// The parse-layer view of a `param` (see `MotoInt` for the doctrine):
+/// any numeral text runs through python's int() (`python_int_str`), so
+/// the value surface is identical across the native JSON numbers and the
+/// gateway's query-protocol strings. A JSON number beyond the u64 range
+/// arrives in serde as a float that already lost the literal's digit
+/// fidelity — python's json keeps the exact integer — so those echoes
+/// are a recorded divergence (the digits come back rounded); every
+/// integer ≤ u64::MAX and every string carries moto's exact bytes.
+/// (Documented on the enum: its implementation is the associated
+/// `moto_int` below.)
+///
 /// The actual SQS handler implementation
 pub struct DefaultSqsHandler {
     // Store per (account, region), shared process-wide
@@ -591,10 +658,10 @@ impl DefaultSqsHandler {
         // precedes the whole response layer.
         if let Some(entries) = params.get("Entries").and_then(|v| v.as_array()) {
             for entry in entries {
-                if entry
-                    .get("VisibilityTimeout")
-                    .is_some_and(|v| !v.is_null() && Self::visibility_timeout_of(Some(v)).is_none())
-                {
+                if matches!(
+                    Self::moto_int(entry.get("VisibilityTimeout")),
+                    MotoInt::Junk
+                ) {
                     return Err(SqsError::MotoCrash);
                 }
             }
@@ -635,9 +702,16 @@ impl DefaultSqsHandler {
             // verified: a "-5" row succeeds on a valid handle and the
             // message becomes visible immediately). This arm runs BEFORE
             // the ReceiptHandle lookup below is ever touched.
-            let visibility = Self::visibility_timeout_of(entry.get("VisibilityTimeout"));
-            let visibility = match visibility {
-                Some(v) if v <= Self::MAX_VISIBILITY_TIMEOUT as i64 => v,
+            // The batch's parse-layer pre-scan above guarantees the row's
+            // VisibilityTimeout is either absent or int()-parseable by
+            // the time this loop runs, so the Junk variant cannot appear
+            // here: a row whose key is missing (or a dropped null) fails
+            // moto's broad `except:` arm like an over-cap value, and a
+            // u64-overflowing value takes the same row.
+            let visibility = match Self::moto_int(entry.get("VisibilityTimeout")) {
+                MotoInt::Parsed { value, .. } if value <= Self::MAX_VISIBILITY_TIMEOUT as i64 => {
+                    value
+                }
                 _ => {
                     failed.push(json!({
                         "Id": id,
@@ -844,10 +918,19 @@ impl DefaultSqsHandler {
         // receive with VisibilityTimeout:null answers 200 with the queue
         // default). Numeric strings keep the int() coercion of both
         // protocols.
-        if params
-            .get("VisibilityTimeout")
-            .is_some_and(|v| !v.is_null() && Self::visibility_timeout_of(Some(v)).is_none())
+        if matches!(
+            Self::moto_int(params.get("VisibilityTimeout")),
+            MotoInt::Junk
+        ) || matches!(
+            Self::moto_int(params.get("MaxNumberOfMessages")),
+            MotoInt::Junk
+        ) || matches!(Self::moto_int(params.get("WaitTimeSeconds")), MotoInt::Junk)
         {
+            // moto's automated parse layer int()s EVERY model-declared
+            // Integer member in one pass before the response method runs,
+            // so junk in any of the three crashes ahead of the queue
+            // resolution (live-verified: junk Max/Wait on a ghost queue
+            // answers the 500, not NonExistentQueue).
             return Err(SqsError::MotoCrash);
         }
 
@@ -877,10 +960,15 @@ impl DefaultSqsHandler {
         // message wordings are moto's exact strings (live-verified), the
         // wait one including its html-escaped oddity, and the parsed
         // numeric shapes are the model-parser ones (numbers, numeric
-        // strings; a non-numeric value keeps being treated as absent on
-        // this path — moto would die in its parse layer, outside this
-        // lane's scope).
-        let max_requested = Self::visibility_timeout_of(params.get("MaxNumberOfMessages"));
+        // strings; a JUNK value crashes ahead of the queue resolution in
+        // the parse layer — pinned separately — which is why `_parse_
+        // integer`'s TypeError/ValueError surfaces before NonExistentQueue
+        // here, live-verified).
+        let max_requested = match Self::moto_int(params.get("MaxNumberOfMessages")) {
+            MotoInt::Junk => return Err(SqsError::MotoCrash),
+            MotoInt::Parsed { value, .. } => Some(value),
+            MotoInt::Absent => None,
+        };
         if let Some(v) = max_requested {
             if !(1..=10).contains(&v) {
                 return Err(SqsError::InvalidParameterValue(format!(
@@ -897,10 +985,14 @@ impl DefaultSqsHandler {
         // The bounds apply to whichever wins — moto validates the queue
         // attribute too (live-verified: ReceiveMessageWaitTimeSeconds=25 on
         // the queue makes a plain receive answer the WaitTimeSeconds error
-        // with Value 25).
+        // with Value 25). Junk crashes at the top with its sibling.
+        let wait_requested = match Self::moto_int(params.get("WaitTimeSeconds")) {
+            MotoInt::Junk => return Err(SqsError::MotoCrash),
+            MotoInt::Parsed { value, .. } => Some(value),
+            MotoInt::Absent => None,
+        };
         let queue_wait = queue_arc.read().attributes.receive_message_wait_time as i64;
-        let wait_seconds =
-            Self::visibility_timeout_of(params.get("WaitTimeSeconds")).unwrap_or(queue_wait);
+        let wait_seconds = wait_requested.unwrap_or(queue_wait);
         if !(0..=20).contains(&wait_seconds) {
             return Err(SqsError::InvalidParameterValue(format!(
                 "An error occurred (InvalidParameterValue) when calling the \
@@ -926,12 +1018,14 @@ impl DefaultSqsHandler {
         // comparison and Message.change_visibility applies them); the
         // twin's application below keeps treating a negative as the
         // parameter being absent (queue default), a recorded divergence.
-        if let Some(v) = Self::visibility_timeout_of(params.get("VisibilityTimeout")) {
-            if v > Self::MAX_VISIBILITY_TIMEOUT as i64 {
+        match Self::moto_int(params.get("VisibilityTimeout")) {
+            MotoInt::Junk => return Err(SqsError::MotoCrash), // unreachable: crashed above
+            MotoInt::Parsed { value, .. } if value > Self::MAX_VISIBILITY_TIMEOUT as i64 => {
                 return Err(SqsError::InvalidParameterValue(
                     Self::MAX_VISIBILITY_TIMEOUT_MESSAGE.to_string(),
                 ));
             }
+            _ => {}
         }
 
         let mut messages;
@@ -941,12 +1035,12 @@ impl DefaultSqsHandler {
         // The same numeric shapes moto's parser coerces count here
         // (numbers, numeric strings, booleans as int(True/False)); with
         // the parse-layer crash above, only numeric values reach this
-        // point.
-        let params_visibility = params
-            .get("VisibilityTimeout")
-            .and_then(|v| Self::visibility_timeout_of(Some(v)))
-            .filter(|v| *v >= 0)
-            .map(|v| v as u32);
+        // point. Negatives take the recorded divergence (the parameter
+        // counts as absent) once again.
+        let params_visibility = match Self::moto_int(params.get("VisibilityTimeout")) {
+            MotoInt::Parsed { value, .. } if value >= 0 => Some(value as u32),
+            _ => None,
+        };
         loop {
             messages = {
                 // Redrive policy and DLQ handle are re-resolved on every
@@ -1430,9 +1524,13 @@ impl DefaultSqsHandler {
         // too — so the parse sits before any queue/URL handling here.
         // Numeric strings are honored (moto's model parser coerces the
         // query-protocol form values the same way int() does).
-        let timeout = match Self::visibility_timeout_of(params.get("VisibilityTimeout")) {
-            Some(v) => v,
-            None => return Err(SqsError::MotoCrash),
+        // Numeric strings are honored (moto's model parser coerces the
+        // query-protocol form values the same way int() does); a dropped
+        // null reaches the op as a missing value and takes the same moto
+        // 500 (live-verified).
+        let timeout = match Self::moto_int(params.get("VisibilityTimeout")) {
+            MotoInt::Parsed { value, .. } => value,
+            _ => return Err(SqsError::MotoCrash),
         };
         // moto validates the visibility timeout in the RESPONSE layer
         // (`_get_validated_visibility_timeout` → MaxVisibilityTimeout)
@@ -1559,51 +1657,114 @@ impl DefaultSqsHandler {
     const MAX_VISIBILITY_TIMEOUT_MESSAGE: &str =
         "Invalid request, maximum visibility timeout is 43200";
 
-    /// VisibilityTimeout as it reaches the API: the JSON protocol passes
-    /// numbers natively, while the gateway's query-protocol parser hands
-    /// scalars over as strings — moto's smithy-lite parser coerces the
-    /// form value with `int()` (`moto/core/parse.py` `_parse_integer`), so
-    /// the full python int() string semantics apply (see
-    /// `python_int_str`): surrounding whitespace and unicode Nd digits
-    /// strip/map (`int(" 30 ")` = 30, `int("٣٠")` = 30 — live-verified),
-    /// PEP 515 underscores parse only between digits (`int("1_0")` = 10,
-    /// `int("٣_٠")` = 30, `int("_30")` = ValueError → the moto crash) and
-    /// a leading sign is honored, negatives included
-    /// (`int("-5")` = -5; live-verified: a negative ChangeMessageVisibility
-    /// — top-level and per-batch-row — applies and the message becomes
-    /// visible immediately, moto's `Message.change_visibility` stores
-    /// `visible_at` in the past). The u64-typed store cannot represent a
-    /// past visibility point, so call sites clamp negatives to 0, which
-    /// yields the same immediately-visible outcome. A magnitude beyond i64
-    /// saturates in the helper (python's int() is unbounded) — a positive
-    /// overflow stays cap-breaching, a negative overflow behaves like
-    /// every negative. Unparseable junk
-    /// and other non-numeric `Value` shapes return None; how that value
-    /// surfaces per call site mirrors moto, where it differs per path:
-    /// top-level ChangeMessageVisibility and ReceiveMessage crash the way
-    /// moto's parse layer does (a present-but-unparseable value kills the
-    /// request), while the batch row arm treats such a key as missing and
-    /// answers the per-row Failed entry under moto's broad `except:`.
+    /// A VisibilityTimeout-family member (`VisibilityTimeout`,
+    /// `MaxNumberOfMessages`, `WaitTimeSeconds`) as moto's automated parse
+    /// layer sees it. The doctrine it encodes:
     ///
-    /// A JSON null member never raises here either: moto's parse layer
-    /// drops null members outright (`BaseJSONParser._parse_structure`
-    /// skips a member whose wire value parses to None — live-verified),
-    /// so this helper answers None and the call sites take their absent
-    /// paths (receive falls back to the queue's attribute, a batch row
-    /// lands in the same bare-except Failed arm — both live-verified —
-    /// and top-level ChangeMessageVisibility still crashes on the missing
-    /// value via `None > 43200`, which a dropped null reproduces exactly).
-    fn visibility_timeout_of(param: Option<&Value>) -> Option<i64> {
-        match param? {
-            Value::Number(n) => n.as_i64().or_else(|| n.as_f64().map(|f| f as i64)),
+    /// - **absent-or-null → absent.** The key missing and the member
+    ///   carrying a JSON null are the same thing: moto's request parser
+    ///   drops null members outright (`BaseJSONParser._parse_structure`
+    ///   skips a member whose wire value parses to None — live-verified),
+    ///   so the response layer falls back to the queue's attribute or its
+    ///   defaults (receive), or crashes on the MISSING value where moto's
+    ///   own code does (`None > 43200` TypeError in top-level
+    ///   ChangeMessageVisibility — the dropped null reproduces exactly).
+    /// - **""/junk → the moto-crash mirror.** `_parse_integer` int()s every
+    ///   surviving member (`int("")` → ValueError; live-verified on
+    ///   receive, CMV, batch rows and the receive bounds) and a non-string
+    ///   non-numeric shape (`{"x": 1}`, `[1]`) raises TypeError/ValueError
+    ///   there too: the request dies as a plain werkzeug 500 before any
+    ///   response method runs — the batch row arm's broad `except:` only
+    ///   produces a Failed entry when the KEY is absent, never for junk
+    ///   (the parse layer has already discarded it).
+    /// - **python int() coercions are honored** (see `python_int_str`):
+    ///   surrounding whitespace and unicode Nd digits strip/map
+    ///   (`int(" 30 ")` = 30, `int("٣٠")` = 30 — live-verified), PEP 515
+    ///   underscores parse only between digits (`int("1_0")` = 10,
+    ///   `int("٣_٠")` = 30, `int("_30")` = ValueError → the moto crash),
+    ///   booleans coerce (`int(True)` = 1 — live-verified), a leading sign
+    ///   is honored and negatives apply (moto's `Message.change_visibility`
+    ///   stores `visible_at` in the past; the call sites clamp negatives
+    ///   to 0 because the u64-typed store cannot represent a past point),
+    ///   and float members truncate (`int(3.5)` = 3).
+    /// - **saturation only for beyond-i64 magnitudes.** Python's int() is
+    ///   unbounded, but the API only ever compares the value against small
+    ///   bounds or the 43200 cap, so the comparison value saturates at the
+    ///   i64 range: a positive overflow stays cap/bounds-breaching and a
+    ///   negative overflow behaves like every negative. The *echo* — the
+    ///   digits moto interpolates into its error messages (live-verified:
+    ///   `Value 999999999999999999999999999999 for parameter
+    ///   MaxNumberOfMessages is invalid`) — is not the saturated value:
+    ///   `Parsed` captures `echo: str(int(value))`,
+    ///   saturated comparisons aside.
+    ///
+    /// Any numeral text runs through python's int() (`python_int_str`),
+    /// so the value surface is identical across the native JSON numbers
+    /// and the gateway's query-protocol strings. A JSON number beyond the
+    /// u64 range arrives in serde as a float that already lost the
+    /// literal's digit fidelity — python's json keeps the exact integer —
+    /// so those echoes are a recorded divergence (the digits come back
+    /// rounded); every integer ≤ u64::MAX and every string carries moto's
+    /// exact bytes.
+    fn moto_int(param: Option<&Value>) -> MotoInt {
+        match param {
+            None | Some(Value::Null) => MotoInt::Absent,
+            Some(Value::Number(n)) => {
+                if n.is_f64() {
+                    // python int() truncates floats (int(3.5) == 3); the
+                    // echo backs off to the decimal expansion of the
+                    // truncated integer while it fits in 128 bits.
+                    let t = n.as_f64().unwrap_or(0.0).trunc();
+                    if t.abs() < 1.0e38 {
+                        let expanded = t as i128;
+                        MotoInt::Parsed {
+                            value: expanded.clamp(i64::MIN as i128, i64::MAX as i128) as i64,
+                            echo: expanded.to_string(),
+                        }
+                    } else {
+                        // beyond the 128-bit expansion neither serde nor
+                        // this mirror can reproduce python's digits.
+                        MotoInt::Parsed {
+                            value: if t < 0.0 { i64::MIN } else { i64::MAX },
+                            echo: n.to_string(),
+                        }
+                    }
+                } else if let Some(i) = n.as_i64() {
+                    MotoInt::Parsed {
+                        value: i,
+                        echo: i.to_string(),
+                    }
+                } else {
+                    // Positive beyond i64::MAX (serde kept the u64): an
+                    // unbounded python int() — saturate the comparison,
+                    // echo the real digits (live-verified through the u64
+                    // range: Value 18446744073709551615).
+                    MotoInt::Parsed {
+                        value: i64::MAX,
+                        echo: n.to_string(),
+                    }
+                }
+            }
             // Python's int(True) == 1 / int(False) == 0: moto's model
             // parser runs the same coercion on a boolean JSON member
             // (live-verified: ReceiveMessage with VisibilityTimeout=true
             // answers 200, ChangeMessageVisibility with true passes the
             // cap as vis=1 and reaches the backend).
-            Value::Bool(b) => Some(if *b { 1 } else { 0 }),
-            Value::String(s) => Self::python_int_str(s).map(|(value, _echo)| value),
-            _ => None,
+            Some(Value::Bool(b)) => {
+                let value = i64::from(*b);
+                MotoInt::Parsed {
+                    value,
+                    echo: value.to_string(),
+                }
+            }
+            Some(Value::String(s)) => match Self::python_int_str(s) {
+                Some((value, echo)) => MotoInt::Parsed { value, echo },
+                None => MotoInt::Junk,
+            },
+            // Objects and arrays raise TypeError inside python int(): the
+            // same parse-layer 500 (live-verified on receive and
+            // ChangeMessageVisibility).
+            Some(_) => MotoInt::Junk,
         }
     }
 

@@ -3238,6 +3238,84 @@ fn python_int_coercions_string_shapes() {
     );
 }
 
+/// Junk MaxNumberOfMessages / WaitTimeSeconds members die in moto's
+/// parse layer: `_parse_integer` runs int() on every model-declared
+/// Integer member before the response method can resolve anything
+/// (parse.py:334-337), so "abc" — and the empty string, whose
+/// `int("")` raises the same ValueError — crash the whole receive as a
+/// plain werkzeug 500 (live-verified per cell: Max and Wait on an
+/// existing queue, both on a GHOST queue where the crash beats the
+/// NonExistentQueue resolution, and Max=""/Wait=""). In-range and
+/// out-of-range numeric members keep the modeled bounds 400s (pinned
+/// separately) — mins the junk/crack split: parseable but out-of-bounds
+/// ("99") rides 400; unparseable ("abc") rides the 500.
+#[test]
+fn receive_junk_bounds_members_crash_like_moto() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "recv-junk-bounds");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "junk-bounds"}),
+    ));
+
+    let crash_envelope =
+        |body: &str| body.contains("<!doctype html>") && body.contains("500 Internal Server Error");
+
+    for (label, params) in [
+        (
+            "Max 'abc'",
+            json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": "abc"}),
+        ),
+        (
+            "Wait 'abc'",
+            json!({"QueueUrl": &queue_url, "WaitTimeSeconds": "abc"}),
+        ),
+        (
+            "Max ''",
+            json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": ""}),
+        ),
+        (
+            "Wait ''",
+            json!({"QueueUrl": &queue_url, "WaitTimeSeconds": ""}),
+        ),
+        (
+            "Max 'abc' on a ghost queue keeps the parse crash",
+            json!({"QueueUrl": format!("{}x", queue_url), "MaxNumberOfMessages": "abc"}),
+        ),
+        (
+            "Wait 'abc' on a ghost queue keeps the parse crash",
+            json!({"QueueUrl": format!("{}x", queue_url), "WaitTimeSeconds": "abc"}),
+        ),
+    ] {
+        let resp = handler.handle(make_request("ReceiveMessage", params));
+        assert_eq!(resp.status, 500, "{label}: got {}", resp.body);
+        assert!(
+            crash_envelope(&resp.body),
+            "{label}: not the moto crash envelope, got {}",
+            resp.body
+        );
+    }
+
+    // The crash discards everything: no message state changed.
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.0, 1, "the junk crashes never consumed the message");
+    assert_eq!(counts.1, 0);
+
+    // Out-of-bounds but PARSEABLE members keep the modeled 400 bounds
+    // (the parse crash is only for unparseable shapes).
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": "11"}),
+    ));
+    assert_eq!(resp.status, 400, "got {}", resp.body);
+    assert!(
+        resp.body
+            .contains("Value 11 for parameter MaxNumberOfMessages"),
+        "got {}",
+        resp.body
+    );
+}
+
 /// The rewired happy path: valid entries still delete, through the same
 /// helper that rejects the invalid ones.
 #[test]
