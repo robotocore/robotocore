@@ -763,7 +763,10 @@ impl EcsHandler {
             .get("taskDefinition")
             .and_then(|v| v.as_str())
             .unwrap_or_default();
-        let desired_count = req.params.get("desiredCount").cloned().unwrap_or(json!(1));
+        // moto 5.2.0: desiredCount is optional and defaults to 0 (fork
+        // ecs/models.py create_service), so a service created without one
+        // reports its rollout COMPLETED rather than IN_PROGRESS.
+        let desired_count = req.params.get("desiredCount").cloned().unwrap_or(json!(0));
         // moto 5.2.0 computes the rollout state at service creation: the
         // primary deployment reports COMPLETED once its runningCount reaches
         // desiredCount, IN_PROGRESS while tasks are still coming up. The
@@ -2730,6 +2733,33 @@ mod tests {
             json!(format!(
                 "ECS deployment {} completed.",
                 dep0["id"].as_str().unwrap()
+            ))
+        );
+    }
+
+    #[test]
+    fn create_service_defaults_desired_count_to_zero() {
+        // moto 5.2.0 create_service: desiredCount is optional and defaults
+        // to 0, so the primary deployment is already COMPLETED.
+        let h = EcsHandler::new();
+        setup_cluster_and_task_family(&h, "cls", "fam");
+        let create = h.handle(make_req(
+            "CreateService",
+            json!({"cluster": "cls", "serviceName": "s0", "taskDefinition": "fam:1"}),
+        ));
+        let created: Value = serde_json::from_str(&create.body).unwrap();
+        let svc = &created["service"];
+        assert_eq!(svc["desiredCount"], json!(0));
+        assert_eq!(svc["runningCount"], json!(0));
+        assert_eq!(svc["pendingCount"], json!(0));
+        let dep = &svc["deployments"][0];
+        assert_eq!(dep["desiredCount"], json!(0));
+        assert_eq!(dep["rolloutState"], json!("COMPLETED"));
+        assert_eq!(
+            dep["rolloutStateReason"],
+            json!(format!(
+                "ECS deployment {} completed.",
+                dep["id"].as_str().unwrap()
             ))
         );
     }
