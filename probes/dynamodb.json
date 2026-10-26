@@ -1,12 +1,12 @@
 {
   "service": "dynamodb",
-  "generated_at": "2026-10-26T12:40:26.681925+00:00",
+  "generated_at": "2026-10-26T21:24:49.582463+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 56,
+    "working": 54,
     "needs_params": 0,
     "not_implemented": 0,
-    "500_error": 0,
+    "500_error": 2,
     "timeout": 0
   },
   "operations": [
@@ -237,8 +237,8 @@
     },
     {
       "operation": "TransactWriteItems",
-      "status": "working",
-      "message": "implemented (ValidationException)"
+      "status": "500_error",
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "UntagResource",
@@ -277,8 +277,8 @@
     },
     {
       "operation": "UpdateTable",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "UpdateTableReplicaAutoScaling",
