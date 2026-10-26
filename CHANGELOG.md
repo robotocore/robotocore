@@ -13,8 +13,8 @@ The Python 2.x line is retired: robotocore 2.0 is a **pure-Rust twin**
 (axum gateway + the `rotocore` crate) — the server ships no Python, no
 moto sidecar, and no second process. Nothing is bridged: 158 of 158
 registered services answer natively with moto-fidelity recorded per op
-(9,676 working of 10,268 botocore ops; every deny is a recorded decision
-in `tooling/surface-absence.json`).
+(9,893 working of 10,268 botocore ops; 340 denies — every deny is a
+recorded decision in `tooling/surface-absence.json`).
 
 ### Upstream-parity wave (2026-10-26)
 
@@ -80,7 +80,8 @@ in `tooling/surface-absence.json`).
   with `#7825` singleton shapes and localstack's singleton-collapse fix).
 - **fix wave (port/fx-\* and port/fx2-\*)** — after each adversarial
   review round, verification lanes re-derived lane claims against the
-  pinned moto fork (5.2.4, `/home/termag/.moto-venv`) and live probe
+  moto 5.2.4 oracle (`/home/termag/.moto-venv`, stock PyPI 5.2.4 — the
+  same upstream line the deployed fork pinned) and live probe
   corpora: `port/fx-sqs`, `fx-ddb`, `fx-ecr`, `fx-ecscog`, `fx-events`,
   `fx-iotvp`, `fx-kinlim`, `fx-s3`, `fx-sfn`, `fx-tinies2`, the ECR
   layer-upload lane `fx-ecrlayer` (InitiateLayerUpload /
@@ -103,14 +104,18 @@ in `tooling/surface-absence.json`).
   (AGENTS.md "Endpoint & credentials" exception row).
 - The 38-significant-digit cap is not enforced in DynamoDB Numbers
   (shared with moto).
-- Paginators mint no `parameterChecksum` and do not validate one
-  (`list_event_buses`, kinesis, s3control, iot, vpclattice tokens) —
-  moto's paginator validates a checksum over the non-pagination kwargs
-  and answers `Invalid Token: Input inconsistent with page token` even
-  with `fail_on_invalid_token: False` (moto/utilities/paginator.py:115);
-  moto's s3control paginators fail_closed
-  (`fail_on_invalid_token: InvalidNextTokenException`, which the twin
-  mirrors for undecodable tokens only).
+- The fx-lane paginator token families (list_event_buses, kinesis
+  ListStreams, s3control access points, the iot PAGINATION_MODEL lists,
+  vpclattice list_listeners) mint no `parameterChecksum` and do not
+  validate one — moto's paginator validates a checksum over the
+  non-pagination kwargs and answers `Invalid Token: Input inconsistent
+  with page token` even with `fail_on_invalid_token: False`
+  (moto/utilities/paginator.py:115); moto's s3control paginators
+  fail_closed (`fail_on_invalid_token: InvalidNextTokenException`, which
+  the twin mirrors for undecodable tokens only). Unrelated to that
+  family: the twin's `ds` paginator REQUIRES and validates moto's
+  checksum, `mediapackagev2` mints one, and `cloudhsmv2` mints
+  `parameterChecksum: 0` — mirroring each service's moto shape.
 
 ### Added
 
@@ -149,10 +154,10 @@ semantic fixes from the adversarial review waves).
 
 ### Fixed: crashed probe rows now match moto's exact wire behavior
 
-Triaged the committed probe artifacts' HTTP-500 rows against the moto fork
-(the parity source; at the time of that lane the moto-5.1.23.dev build —
-today's pinned oracle is the same-fork-line 5.2.4 in `~/.moto-venv`)
-op-by-op. Two moto-crash classes and one
+Triaged the committed probe artifacts' HTTP-500 rows against the moto
+line that is robotocore's parity source (the JackDanger fork at
+moto-5.1.23.dev then; today's oracle in `~/.moto-venv` is stock moto
+5.2.4 from the same upstream line) op-by-op. Two moto-crash classes and one
 twin-only divergence:
 
 - **Ses un-routed operations were unreadable to XML SDKs.** The 16 SES

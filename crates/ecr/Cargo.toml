@@ -6,7 +6,11 @@ license = "MIT"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive", "rc"] }
-serde_json = "1.0"
+# preserve_order: moto's python dicts serialize in document order; the
+# layer-upload/envelope shapes are asserted in that order at the crate
+# level (and dependency unification already applies the feature
+# workspace-wide via crates/events).
+serde_json = { version = "1.0", features = ["preserve_order"] }
 bytes = "1.5"
 uuid = { version = "1.0", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }

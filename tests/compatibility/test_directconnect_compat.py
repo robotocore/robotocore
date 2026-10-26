@@ -9,8 +9,9 @@ covers 9 of the 11 fork handlers (CreateLag/DescribeLags are unit-covered in rot
 moto-fork-absent operations, see the TestDirectConnectGapOps docstring).
 
 The suite originally ran against an older vendored moto fork revision that
-implemented more of the model; the deployed fork (moto 5.1.23.dev,
-JackDanger/moto@robotocore/all-fixes) is the current surface.
+implemented more of the model; the current oracle is stock moto 5.2.4
+(PyPI wheel, `~/.moto-venv`) — the same moto line the fork pinned, and
+the round-2/3 parity waves re-verified pins against it.
 """
 
 import pytest
