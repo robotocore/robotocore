@@ -1396,42 +1396,6 @@ fn esc_literal(esc: char) -> Option<char> {
 }
 
 #[cfg(test)]
-mod scratch {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn zdbg() {
-        let users = json!({"users": [
-            {"name": "a", "n": 5, "role": "x"},
-            {"name": "b", "n": 15, "role": "y"},
-            {"name": "c", "n": 0, "role": "y"},
-        ]});
-        println!("lt:     {:?}", resolve("$.users[?(@.name < 'b')]", &users));
-        println!("gone:   {:?}", resolve("$.users[?(!@.gone).name]", &users));
-        println!(
-            "role:   {:?}",
-            resolve("$.users[?(@.role == 'y')].name", &users)
-        );
-        println!(
-            "group:  {:?}",
-            resolve("$.users[?(@.role == 'y' || !@.gone)]", &users)
-        );
-        println!(
-            "paren:  {:?}",
-            resolve("$.users[?(@.role == 'y' || (!@.gone))]", &users)
-        );
-        println!(
-            "combo: {:?}",
-            resolve(
-                "$.users[?(@.name < 'b' && (@.role == 'y' || !@.gone))].name",
-                &users
-            )
-        );
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
