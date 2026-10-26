@@ -2,7 +2,7 @@
 
 use parking_lot::RwLock;
 use serde_json::{json, Map, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::expr::{self as expr_engine, Names, Values};
@@ -1718,6 +1718,14 @@ impl DynamoDbHandler {
         let mut deletes: Vec<PendingDelete> = Vec::new();
         let mut cancellation: Vec<Option<String>> = Vec::new();
         let mut failed = false;
+        // moto transact_write_items check_unicity
+        // (dynamodb/models/__init__.py:617-623): every row across the request
+        // names a (table, key) pair; a second row on the same pair cancels the
+        // request up front with MultipleTransactionsException ("Transaction
+        // request cannot include multiple operations on one item"). Put rows
+        // hash the key carried in their Item, Update/Delete/ConditionCheck
+        // rows their own Key — both resolve to the same storage key here.
+        let mut target_items: HashSet<(String, String)> = HashSet::new();
 
         let transact_items = req
             .params
@@ -1775,6 +1783,13 @@ impl DynamoDbHandler {
                             "The provided key element does not match the schema",
                         );
                     };
+                    if !target_items.insert((table.name.clone(), key.clone())) {
+                        return AwsResponse::error(
+                            400,
+                            "ValidationException",
+                            "Transaction request cannot include multiple operations on one item",
+                        );
+                    }
                     // moto's transactional Put runs the same LimitedSizeDict
                     // check when it builds the Item (getmoto/moto#1874).
                     if let Some(e) = check_item_size(&attrs, false) {
@@ -1810,6 +1825,13 @@ impl DynamoDbHandler {
                             "The provided key element does not match the schema",
                         );
                     };
+                    if !target_items.insert((table.name.clone(), key.clone())) {
+                        return AwsResponse::error(
+                            400,
+                            "ValidationException",
+                            "Transaction request cannot include multiple operations on one item",
+                        );
+                    }
                     let pre = existing(&table, &key);
                     let check = Self::eval_condition_on(
                         expr_str(op.get("ConditionExpression")),
@@ -1876,6 +1898,13 @@ impl DynamoDbHandler {
                             "The provided key element does not match the schema",
                         );
                     };
+                    if !target_items.insert((table.name.clone(), key.clone())) {
+                        return AwsResponse::error(
+                            400,
+                            "ValidationException",
+                            "Transaction request cannot include multiple operations on one item",
+                        );
+                    }
                     let pre = existing(&table, &key);
                     let check = Self::eval_condition_on(
                         expr_str(op.get("ConditionExpression")),
@@ -1903,6 +1932,13 @@ impl DynamoDbHandler {
                             "The provided key element does not match the schema",
                         );
                     };
+                    if !target_items.insert((table.name.clone(), key.clone())) {
+                        return AwsResponse::error(
+                            400,
+                            "ValidationException",
+                            "Transaction request cannot include multiple operations on one item",
+                        );
+                    }
                     let pre = existing(&table, &key);
                     let cond = expr_str(op.get("ConditionExpression"));
                     if cond.is_none() {
@@ -4204,6 +4240,105 @@ mod tests {
             assert_eq!(resp.status, 200);
             assert_eq!(resp.body, "{}", "rollback must remove {pk}");
         }
+    }
+
+    // moto's transact_write_items check_unicity
+    // (dynamodb/models/__init__.py:617-623): two rows addressed at the same
+    // (table, key) raise MultipleTransactionsException — "Transaction request
+    // cannot include multiple operations on one item" — before anything runs,
+    // so NOTHING is written, not even the first row. Put rows target the key
+    // hidden in their Item; Update/Delete/ConditionCheck rows their own Key.
+    #[test]
+    fn transact_same_key_rows_rejected_400_nothing_written() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "unicity",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+
+        // Two Update rows on one key.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Update": {"TableName": "unicity", "Key": {"pk": {"S": "u1"}},
+                            "UpdateExpression": "SET a = :a",
+                            "ExpressionAttributeValues": {":a": {"S": "1"}}}},
+                {"Update": {"TableName": "unicity", "Key": {"pk": {"S": "u1"}},
+                            "UpdateExpression": "SET b = :b",
+                            "ExpressionAttributeValues": {":b": {"S": "2"}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp
+            .body
+            .contains("Transaction request cannot include multiple operations on one item"));
+        // Nothing written: the earlier row must be absent too.
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "unicity", "Key": {"pk": {"S": "u1"}}}),
+        ));
+        assert_eq!(resp.body, "{}", "unicity must cancel the whole request");
+
+        // Mixed-op row kinds on one key: Put row (key from Item) + Update row
+        // (key from Key), and ConditionCheck + Delete.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "unicity", "Item": {"pk": {"S": "p1"}, "v": {"S": "x"}}}},
+                {"Update": {"TableName": "unicity", "Key": {"pk": {"S": "p1"}},
+                            "UpdateExpression": "SET w = :w",
+                            "ExpressionAttributeValues": {":w": {"S": "2"}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp
+            .body
+            .contains("Transaction request cannot include multiple operations on one item"));
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"ConditionCheck": {"TableName": "unicity", "Key": {"pk": {"S": "p1"}},
+                                    "ConditionExpression": "attribute_exists(pk)"}},
+                {"Delete": {"TableName": "unicity", "Key": {"pk": {"S": "p1"}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp
+            .body
+            .contains("Transaction request cannot include multiple operations on one item"));
+
+        // Distinct keys — even across tables (moto hashes (table, key)) — stay
+        // valid.
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "unicity2",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "unicity", "Item": {"pk": {"S": "multi"}, "v": {"S": "x"}}}},
+                {"Put": {"TableName": "unicity2", "Item": {"pk": {"S": "multi"}, "v": {"S": "y"}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 200);
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "unicity", "Item": {"pk": {"S": "a"}, "v": {"S": "x"}}}},
+                {"Put": {"TableName": "unicity", "Item": {"pk": {"S": "b"}, "v": {"S": "y"}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 200);
     }
 
     // moto routes PartiQL INSERT and UPDATE writes through table.put_item
