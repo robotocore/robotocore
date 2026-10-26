@@ -896,6 +896,11 @@ fn slice_indices(
             i = i.saturating_add(step);
         }
     } else {
+        // An empty collection has no descending range; clamp would assert
+        // (min > max), so short-circuit per the reference `list_slice`.
+        if len == 0 {
+            return out;
+        }
         let s = start
             .map(adjust)
             .unwrap_or(len as i64 - 1)
@@ -1466,6 +1471,23 @@ mod tests {
         assert_eq!(resolve("$.a[::-1e300]", &input), Some(json!([40])));
         // Sanity: one-integer steps still stride every element.
         assert_eq!(resolve("$.a[0:4:1]", &input), Some(json!([10, 20, 30, 40])));
+    }
+
+    #[test]
+    fn empty_collection_slice_short_circuits_without_clamp_assert() {
+        // A reversed slice over an EMPTY collection used to panic —
+        // `clamp(0, len-1)` on len==0 asserts min>max in both build
+        // profiles. The reference list_slice yields an empty list.
+        let input = json!({"a": [], "b": {}});
+        for expr in [
+            "$.a[::-1]",
+            "$.a[2::-1]",
+            "$.a[::2]",
+            "$.a[0:4]",
+            "$.b[2::-1]",
+        ] {
+            assert_eq!(resolve(expr, &input), Some(json!([])), "{expr}");
+        }
     }
 
     #[test]
