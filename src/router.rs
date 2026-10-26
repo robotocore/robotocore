@@ -11,7 +11,7 @@
 //! 6. Query string Action parameter
 //! 7. Body-based Action detection for unsigned requests
 //! 8. Path-style S3 fallback for unsigned GET/HEAD requests and unsigned
-//!    multipart/form-data POST uploads (S3 browser form POST)
+//!    POST uploads (S3 browser form POST object path)
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -505,13 +505,16 @@ pub fn route_to_service(request: &AwsRequest) -> Option<String> {
     // Also catches unsigned browser-form POST uploads (POST /{Bucket}[/key]):
     // the S3 POST-object wire path carries credentials inside the multipart
     // form (x-amz-signature field), never in an Authorization header, so an
-    // unsigned multipart POST on a bucket-shaped path is S3 by definition
-    // (RESTObjectPOST; localstack services/s3 provider.py post_object).
-    // Must come last — all other service patterns are more specific.
+    // unsigned POST on a bucket-shaped path is S3 by definition. Real AWS
+    // then decides the content-type question itself (412 PreconditionFailed
+    // "Bucket POST must be of the enclosure-type multipart/form-data" for
+    // text/json bodies, matching localstack's provider.py post_object) — the
+    // router must not preempt that answer. Query-protocol or signed requests
+    // never reach this arm (they matched X-Amz-Target / Authorization
+    // further up). Must come last — all other service patterns are more
+    // specific.
     if auth.is_empty()
-        && (request.method == "GET"
-            || request.method == "HEAD"
-            || (request.method == "POST" && content_type.contains("multipart/form-data")))
+        && (request.method == "GET" || request.method == "HEAD" || request.method == "POST")
         && path != "/"
         && !path.starts_with("/_")
     {
@@ -1022,9 +1025,16 @@ mod tests {
     }
 
     #[test]
-    fn path_style_s3_post_not_matched() {
-        // POST is not GET/HEAD -> not the public bucket shape
+    fn path_style_s3_post_form() {
+        // Unsigned POST on a bucket-shaped path is the S3 browser form
+        // upload: credentials live in the multipart form, not an
+        // Authorization header (POST Object wire path).
+        let r = req("POST", "/my-bucket", "", &[]);
+        assert_eq!(route_to_service(&r).as_deref(), Some("s3"));
         let r = req("POST", "/my-bucket/key.json", "", &[]);
+        assert_eq!(route_to_service(&r).as_deref(), Some("s3"));
+        // Root path is not an upload.
+        let r = req("POST", "/", "", &[]);
         assert_eq!(route_to_service(&r).as_deref(), None);
     }
 
