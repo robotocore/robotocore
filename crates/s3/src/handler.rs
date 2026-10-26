@@ -1635,15 +1635,34 @@ impl S3Handler {
         resp
     }
 
-    /// The object URL a POST success Location header points at: path-style
-    /// under the request's Host (directly refetchable), the AWS canonical
-    /// virtual-host shape when the request carried no Host.
+    /// The object URL a POST success Location header points at. The request
+    /// arrives with normalize_virtual_host's path-style rewrite ALREADY
+    /// applied, so vhost-ness is re-detected from the Host header this code
+    /// never rewrote: a virtual-hosted caller (Host names the bucket) gets
+    /// `http://{host}/{key}` — real S3's Location for a virtual-hosted
+    /// POST — instead of the path-style shape that would double-book the
+    /// bucket and not refetch. Path-style stays `http://{host}/{bucket}/{key}`;
+    /// a request without any Host keeps the AWS canonical vhost shape.
+    /// X-Forwarded-Proto (first hop, when the caller forwarded TLS) decides
+    /// the scheme; plain HTTP otherwise.
     fn post_object_location(req: &AwsRequest, bucket: &str, encoded_key: &str) -> String {
-        match req.headers.get("host") {
-            Some(host) if !host.is_empty() => {
-                format!("http://{host}/{bucket}/{encoded_key}")
+        let scheme = req
+            .headers
+            .get("x-forwarded-proto")
+            .and_then(|v| v.split(',').next())
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| "http".to_string());
+        match req.headers.get("host").map(String::as_str) {
+            Some(host)
+                if !host.is_empty() && Self::vhost_bucket_from_host(Some(host)).is_some() =>
+            {
+                format!("{scheme}://{host}/{encoded_key}")
             }
-            _ => format!("http://{bucket}.s3.amazonaws.com/{encoded_key}"),
+            Some(host) if !host.is_empty() => {
+                format!("{scheme}://{host}/{bucket}/{encoded_key}")
+            }
+            _ => format!("{scheme}://{bucket}.s3.amazonaws.com/{encoded_key}"),
         }
     }
 
@@ -5596,6 +5615,111 @@ mod tests {
             b"",
         ));
         assert_eq!(get.status, 404, "truncated uploads store nothing");
+    }
+
+    /// A POST wire request with a caller-supplied Host header, delivered
+    /// pre-normalization the way `normalize_virtual_host` expects a
+    /// virtual-hosted caller to arrive (bucket = the first path segment).
+    fn form_post_request_with_host(
+        host: &str,
+        proto: Option<&str>,
+        path: &str,
+        fields: &[(&str, &str)],
+        file_part: Option<(&str, &str, &[u8])>,
+    ) -> AwsRequest {
+        let (content_type, body) = multipart_form_body(fields, file_part);
+        let operation =
+            S3Handler::detect_s3_operation("POST", path, &HashMap::new()).unwrap_or_default();
+        // The gateway parses /{bucket}/{key}: the first path segment is the
+        // arriving bucket.
+        let mut bucket_key = path.trim_start_matches('/').splitn(2, '/');
+        let parsed_bucket = bucket_key.next().unwrap_or_default();
+        let parsed_key = bucket_key.next().unwrap_or_default();
+        let mut headers = form_post_headers(&content_type, body.len());
+        headers.insert("host".to_string(), host.to_string());
+        if let Some(scheme) = proto {
+            headers.insert("x-forwarded-proto".to_string(), scheme.to_string());
+        }
+        AwsRequest {
+            service: "s3".to_string(),
+            operation,
+            account: 123456789012,
+            region: "us-east-1".to_string(),
+            bucket: Some(parsed_bucket.to_string()).filter(|s| !s.is_empty()),
+            key: Some(parsed_key.to_string()).filter(|s| !s.is_empty()),
+            query_params: HashMap::new(),
+            headers,
+            method: "POST".to_string(),
+            body: Bytes::copy_from_slice(&body),
+            params: Value::Null,
+        }
+    }
+
+    #[test]
+    fn post_object_vhost_location_omits_bucket_path() {
+        // A virtual-hosted POST (Host carries the bucket) keeps the vhost
+        // shape in the success Location: `http://host/key`. The request is
+        // path-normalized before the builder runs, so the vhost shape is
+        // re-detected from the original Host — the old builder answered
+        // `http://host/bucket/key`, which names the bucket twice and
+        // 404s on refetch.
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("vhost-bkt"), None, b""));
+
+        // On the wire: POST http://vhost-bkt.localhost:4566/v.txt — the
+        // gateway parses /v.txt into bucket=v.txt before normalization.
+        let resp = handler.handle(form_post_request_with_host(
+            "vhost-bkt.localhost:4566",
+            None,
+            "/v.txt",
+            &[("key", "v.txt")],
+            Some(("v.txt", "application/octet-stream", b"payload")),
+        ));
+        assert_eq!(
+            resp.status,
+            204,
+            "body: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
+        let headers = header_map(&resp);
+        assert_eq!(
+            headers.get("Location").map(String::as_str),
+            Some("http://vhost-bkt.localhost:4566/v.txt")
+        );
+        let get = handler.handle(make_req("GetObject", Some("vhost-bkt"), Some("v.txt"), b""));
+        assert_eq!(get.status, 200);
+        assert_eq!(get.body, b"payload");
+
+        // X-Forwarded-Proto wins over http (first hop before a comma).
+        let resp = handler.handle(form_post_request_with_host(
+            "vhost-bkt.localhost:4566",
+            Some("https"),
+            "/v2.txt",
+            &[("key", "v2.txt")],
+            Some(("v.txt", "application/octet-stream", b"payload")),
+        ));
+        assert_eq!(resp.status, 204);
+        let headers = header_map(&resp);
+        assert_eq!(
+            headers.get("Location").map(String::as_str),
+            Some("https://vhost-bkt.localhost:4566/v2.txt")
+        );
+
+        // Path-style callers stay under the bucket path, scheme honored.
+        let resp = handler.handle(form_post_request_with_host(
+            "localhost:4566",
+            Some("https"),
+            "/vhost-bkt/p.txt",
+            &[("key", "p.txt")],
+            Some(("p.txt", "application/octet-stream", b"payload")),
+        ));
+        assert_eq!(resp.status, 204);
+        let headers = header_map(&resp);
+        assert_eq!(
+            headers.get("Location").map(String::as_str),
+            Some("https://localhost:4566/vhost-bkt/p.txt")
+        );
+        // No X-Forwarded-Proto → plain http (covered by the sibling tests).
     }
 
     // ------------------------------------------------------------------
