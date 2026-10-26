@@ -455,9 +455,20 @@ impl SqsStore {
         tasks
     }
 
-    pub fn create_queue(&self, queue: Queue) {
+    /// Create (or resolve) a queue. CreateQueue is idempotent by name: when a
+    /// queue with this name already exists the existing handle wins and
+    /// `queue` is discarded, mirroring moto's `_create_queue` (`moto/sqs/
+    /// models.py` re-creates on the same name instead of overwriting).
+    ///
+    /// Returns the live handle either way, so two racing CreateQueue calls
+    /// converge on one shared queue instead of the loser's insert silently
+    /// replacing the winner's already-registered entry (with any sends
+    /// racing through the replaced Arc lost).
+    pub fn create_queue(&self, queue: Queue) -> Arc<RwLock<Queue>> {
         let mut q = self.queues.write();
-        q.insert(queue.name.clone(), Arc::new(RwLock::new(queue)));
+        q.entry(queue.name.clone())
+            .or_insert_with(|| Arc::new(RwLock::new(queue)))
+            .clone()
     }
 
     pub fn get_queue(&self, name: &str) -> Option<Arc<RwLock<Queue>>> {

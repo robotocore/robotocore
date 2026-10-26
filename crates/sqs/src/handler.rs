@@ -234,65 +234,49 @@ impl DefaultSqsHandler {
 
         let store = self.get_store(account, region);
 
-        // Check if queue already exists
-        if let Some(existing) = store.get_queue(queue_name) {
-            existing
-                .write()
-                .attributes
-                .apply(params.get("Attributes").unwrap_or(&Value::Null));
-            // moto re-applies tags on idempotent create; boto3's SQS json
-            // protocol serializes create-queue tags lower-case, the query
-            // protocol uses `Tags`.
-            let create_tags = Self::create_tags_of(params);
-            let queue_lock = existing.write();
-            let mut stored = queue_lock.tags.write();
-            for (k, v) in create_tags {
-                stored.insert(k, v);
-            }
-            // Return the existing queue URL (idempotent, like Python _create_queue)
-            let url = Self::queue_url_for(queue_name, account, region);
-            let body = json!({
-                "QueueUrl": url
-            })
-            .to_string();
-            return Ok(AwsResponse {
-                status: 200,
-                headers: Self::json_headers(),
-                body,
-            });
-        }
+        // Resolve-or-create: the store is insert-if-absent by name, so two
+        // racing CreateQueue calls for the same name converge on one shared
+        // queue instead of the second insert discarding the first (with any
+        // sends racing through the replaced Arc lost). moto returns the
+        // existing queue idempotently on either path (`moto/sqs/models.py`
+        // `create_queue`).
+        let queue_arc = match store.get_queue(queue_name) {
+            Some(existing) => existing,
+            None => {
+                // Create new queue
+                let url = Self::queue_url_for(queue_name, account, region);
+                let arn = format!("arn:aws:sqs:{}:{}:{}", region, account, queue_name);
 
-        // Create new queue
+                let mut queue = Queue::new(
+                    queue_name.to_string(),
+                    region.to_string(),
+                    account.to_string(),
+                    url,
+                    arn,
+                );
+                if queue_name.ends_with(".fifo") {
+                    queue.attributes.fifo_queue = true;
+                }
+                queue.last_modified = queue.created;
+                store.create_queue(queue)
+            }
+        };
         let url = Self::queue_url_for(queue_name, account, region);
-        let arn = format!("arn:aws:sqs:{}:{}:{}", region, account, queue_name);
 
-        let mut queue = Queue::new(
-            queue_name.to_string(),
-            region.to_string(),
-            account.to_string(),
-            url.clone(),
-            arn,
-        );
-        if queue_name.ends_with(".fifo") {
-            queue.attributes.fifo_queue = true;
-        }
-        queue.last_modified = queue.created;
-        queue
-            .attributes
-            .apply(params.get("Attributes").unwrap_or(&Value::Null));
-
-        // boto3's SQS json protocol serializes create-queue tags lower-case;
-        // the query protocol uses `Tags`.
-        let create_tags = Self::create_tags_of(params);
+        // moto re-applies attributes and tags on idempotent create; boto3's
+        // SQS json protocol serializes create-queue tags lower-case, the
+        // query protocol uses `Tags`.
         {
-            let mut stored = queue.tags.write();
-            for (k, v) in create_tags {
+            let mut q = queue_arc.write();
+            q.attributes
+                .apply(params.get("Attributes").unwrap_or(&Value::Null));
+            let mut stored = q.tags.write();
+            for (k, v) in Self::create_tags_of(params) {
                 stored.insert(k, v);
             }
         }
 
-        store.create_queue(queue);
-
+        // Return the queue URL (idempotent, like Python _create_queue)
         let body = json!({
             "QueueUrl": url
         })
