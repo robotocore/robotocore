@@ -420,11 +420,15 @@ impl SupportState {
 
     fn op_add_attachments_to_set(&mut self, p: &Value) -> Response {
         let Some(attachments) = p.get("attachments").and_then(Value::as_array) else {
-            return crate::proto::json_error(
-                400,
-                "ValidationError",
-                "1 validation error detected: Value at 'attachments' failed to satisfy constraint: Member must not be null",
-            );
+            // ERROR-CANON: neither moto nor the wire models a support
+            // ValidationError — `moto/support/exceptions.py` defines no
+            // classes at all and botocore's support model carries only
+            // Case*/Attachment*/InternalServerError/Throttling shapes,
+            // so there is no modeled name this arm could canon to. moto's
+            // own server (pinned fork, live moto_server re-run) answers
+            // its unmodeled unwind for the JSON-target route with the
+            // werkzeug crash page, rendered here byte-exact.
+            return crate::proto::moto_crash_response();
         };
         let set_id = p
             .get("attachmentSetId")
@@ -507,5 +511,84 @@ fn sanitize(v: &Value) -> Value {
             Value::Object(out)
         }
         other => other.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bytes::Bytes;
+
+    // Unique account per test: the state slot is process-global, so tests
+    // running concurrently must not share a scope.
+    fn req(op: &str, body: Value, account: u64) -> Request {
+        Request {
+            service: "support".into(),
+            operation: op.into(),
+            method: "POST".into(),
+            path: "/".into(),
+            query_string: String::new(),
+            headers: HashMap::new(),
+            body: Bytes::from(serde_json::to_vec(&body).unwrap()),
+            account,
+            region: "us-east-1".into(),
+        }
+    }
+
+    /// The ERROR-CANON mirror: a missing `attachments` member has no name in
+    /// moto's class canon or botocore's support model, so the twin renders
+    /// moto's werkzeug crash page — an HTML 500, never an AWS envelope.
+    #[test]
+    fn add_attachments_missing_is_moto_crash() {
+        for body in [
+            json!({}),
+            json!({"attachments": null}),
+            json!({"attachments": "x"}),
+        ] {
+            let err = dispatch(&req("AddAttachmentsToSet", body, 123456789003));
+            assert_eq!(err.status, 500);
+            assert_eq!(
+                err.headers
+                    .iter()
+                    .find(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+                    .map(|(_, v)| v.as_str()),
+                Some("text/html; charset=utf-8"),
+            );
+            let text = String::from_utf8_lossy(&err.body);
+            assert!(text.starts_with("<!doctype html>"), "crash page: {text}");
+            assert!(text.contains("500 Internal Server Error"));
+            assert!(
+                serde_json::from_slice::<Value>(&err.body).is_err(),
+                "no JSON envelope"
+            );
+        }
+    }
+
+    /// The success path the moto server's `attachments or []` default covers
+    /// keeps a set id + expiry, with attachments stored per attachment id.
+    #[test]
+    fn add_attachments_success_shape() {
+        let resp = dispatch(&req(
+            "AddAttachmentsToSet",
+            json!({"attachments": [{"fileName": "a.txt", "data": "QQ=="}]}),
+            123456789003,
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_slice(&resp.body).unwrap();
+        assert_eq!(body["attachmentSetId"].as_str().unwrap().len(), 32);
+        assert!(body["expiryTime"].as_str().unwrap().contains("T"));
+
+        let set_id = body["attachmentSetId"].as_str().unwrap().to_string();
+        let grown = dispatch(&req(
+            "AddAttachmentsToSet",
+            json!({
+                "attachmentSetId": set_id,
+                "attachments": [{"fileName": "b.txt", "data": "Yg=="}],
+            }),
+            123456789003,
+        ));
+        assert_eq!(grown.status, 200);
+        let again: Value = serde_json::from_slice(&grown.body).unwrap();
+        assert_eq!(again["attachmentSetId"], json!(set_id));
     }
 }
