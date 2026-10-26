@@ -1737,7 +1737,7 @@ impl SsmHandler {
             .get("TimeoutSeconds")
             .and_then(|v| v.as_i64())
             .unwrap_or(3600);
-        let command = Command {
+        let mut command = Command {
             command_id: uuid_str(),
             comment: req
                 .params
@@ -1802,7 +1802,18 @@ impl SsmHandler {
             instance_ids: instance_ids.clone(),
             requested_date_time: chrono::Utc::now(),
             timeout_seconds: if timeout <= 0 { 3600 } else { timeout },
+            invocations: Vec::new(),
         };
+        // One code path for both send forms: `InstanceIds` and
+        // `Targets[instanceids]` have already merged into `instance_ids`,
+        // and "execution" on the twin (no guest OS) is recording one
+        // per-instance invocation claim per id — moto's `Command.invocations`
+        // (models.py `Command.__init__`, plugin `aws:runShellScript`).
+        command.invocations = command
+            .instance_ids
+            .iter()
+            .map(|iid| command.invocation_response(iid))
+            .collect();
         let command = Arc::new(command);
         self.get_state(req.account, &req.region)
             .commands
@@ -1859,15 +1870,43 @@ impl SsmHandler {
         let Some(command) = self.command_by_id(&state, command_id) else {
             return AwsResponse::error(400, "InvalidCommandId", "Invalid command id.");
         };
-        if !command.instance_ids.iter().any(|i| i == instance_id) {
+        let Some(invocation) = command
+            .invocations
+            .iter()
+            .find(|i| i["InstanceId"].as_str() == Some(instance_id))
+        else {
             return AwsResponse::error(400, "InvocationDoesNotExist",
                 "An error occurred (InvocationDoesNotExist) when calling the GetCommandInvocation operation");
+        };
+        // moto's `Command.get_invocation` also rejects a non-matching
+        // PluginName with InvocationDoesNotExist.
+        if let Some(plugin) = req.params.get("PluginName").and_then(|v| v.as_str()) {
+            if invocation["PluginName"].as_str() != Some(plugin) {
+                return AwsResponse::error(400, "InvocationDoesNotExist",
+                    "An error occurred (InvocationDoesNotExist) when calling the GetCommandInvocation operation");
+            }
         }
-        AwsResponse::json(200, command.invocation_response(instance_id))
+        AwsResponse::json(200, invocation.clone())
     }
 
-    fn list_command_invocations(&self, _req: &AwsRequest) -> AwsResponse {
-        AwsResponse::json(200, json!({ "CommandInvocations": [] }))
+    fn list_command_invocations(&self, req: &AwsRequest) -> AwsResponse {
+        let state = self.get_state(req.account, &req.region);
+        let command_id = req.params.get("CommandId").and_then(|v| v.as_str());
+        let instance_id = req.params.get("InstanceId").and_then(|v| v.as_str());
+        // moto does not implement ListCommandInvocations (live moto 5.2.4
+        // answers a 500 crash page), so the shape follows the twin's own
+        // per-instance record — the entry `get_command_invocation` serves,
+        // stored at SendCommand time across both send forms.
+        let list: Vec<Value> = state
+            .commands
+            .read()
+            .iter()
+            .filter(|c| command_id.is_none_or(|cid| c.command_id == cid))
+            .flat_map(|c| c.invocations.iter())
+            .filter(|i| instance_id.is_none_or(|iid| i["InstanceId"].as_str() == Some(iid)))
+            .cloned()
+            .collect();
+        AwsResponse::json(200, json!({ "CommandInvocations": list }))
     }
 
     // -----------------------------------------------------------------------
@@ -4705,6 +4744,183 @@ mod tests {
         assert_eq!(body(&sent)["Command"]["InstanceIds"], json!(["i-1"]));
         let listed = handler.handle(make_req("ListCommands", json!({ "CommandId": &cid })));
         assert_eq!(body(&listed)["Commands"].as_array().unwrap().len(), 1);
+    }
+
+    /// Interned per-instance invocation record served by GetCommandInvocation
+    /// (moto `Command.invocation_response` shape).
+    fn invocation_record(command_id: &str, instance_id: &str) -> Value {
+        json!({
+            "CommandId": command_id,
+            "InstanceId": instance_id,
+            "Comment": "",
+            "DocumentName": "AWS-RunShellScript",
+            "PluginName": "aws:runShellScript",
+            "ResponseCode": 0,
+            "Status": "Success",
+            "StatusDetails": "Success",
+            "StandardOutputContent": "",
+            "StandardOutputUrl": "",
+            "StandardErrorContent": "",
+        })
+    }
+
+    // -----------------------------------------------------------------------
+    // SendCommand — the InstanceIds form rides the same native path as
+    // Targets[instanceids] (issue #347: a drain Lambda's SendCommand with
+    // InstanceIds must leave observable per-instance invocation claims)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_send_command_instance_ids_list_commands_matches_targets_form() {
+        let handler = SsmHandler::default();
+        let by_ids = handler.handle(make_req(
+            "SendCommand",
+            json!({
+                "DocumentName": "AWS-RunShellScript",
+                "Parameters": {"commands": ["echo drain"]},
+                "InstanceIds": ["i-11111111111111111"]
+            }),
+        ));
+        assert_eq!(by_ids.status, 200);
+        assert_eq!(
+            body(&by_ids)["Command"]["InstanceIds"],
+            json!(["i-11111111111111111"])
+        );
+        assert_eq!(body(&by_ids)["Command"]["Targets"], json!([]));
+        assert_eq!(body(&by_ids)["Command"]["TargetCount"], 1);
+        assert_eq!(body(&by_ids)["Command"]["CompletedCount"], 1);
+
+        // ListCommands must show the recorded command identically to the
+        // Targets form: instance ids present, one record per send.
+        let cid = body(&by_ids)["Command"]["CommandId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let listed = handler.handle(make_req("ListCommands", json!({ "CommandId": &cid })));
+        assert_eq!(body(&listed)["Commands"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            body(&listed)["Commands"][0]["InstanceIds"],
+            json!(["i-11111111111111111"])
+        );
+        let listed_by_instance = handler.handle(make_req(
+            "ListCommands",
+            json!({ "InstanceId": "i-11111111111111111" }),
+        ));
+        assert_eq!(
+            body(&listed_by_instance)["Commands"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+
+        // The Targets form shares the same record for comparison.
+        let by_targets = handler.handle(make_req(
+            "SendCommand",
+            json!({
+                "DocumentName": "AWS-RunShellScript",
+                "Parameters": {"commands": ["echo drain"]},
+                "Targets": [{"Key": "instanceids", "Values": ["i-22222222222222222"]}]
+            }),
+        ));
+        assert_eq!(by_targets.status, 200);
+        assert_eq!(
+            body(&by_targets)["Command"]["InstanceIds"],
+            json!(["i-22222222222222222"])
+        );
+        let got = handler.handle(make_req(
+            "GetCommandInvocation",
+            json!({
+                "CommandId": body(&by_targets)["Command"]["CommandId"],
+                "InstanceId": "i-22222222222222222"
+            }),
+        ));
+        assert_eq!(got.status, 200);
+        assert_eq!(body(&got)["InstanceId"], "i-22222222222222222");
+    }
+
+    #[test]
+    fn test_send_command_instance_ids_records_per_instance_invocations() {
+        let handler = SsmHandler::default();
+        let sent = handler.handle(make_req(
+            "SendCommand",
+            json!({
+                "DocumentName": "AWS-RunShellScript",
+                "Parameters": {"commands": ["echo drain"]},
+                "InstanceIds": ["i-1", "i-2"]
+            }),
+        ));
+        let cid = body(&sent)["Command"]["CommandId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // Each instance gets its own stored invocation claim; both forms of
+        // lookup agree with the moto-shaped record contents.
+        for iid in ["i-1", "i-2"] {
+            let got = handler.handle(make_req(
+                "GetCommandInvocation",
+                json!({ "CommandId": &cid, "InstanceId": iid }),
+            ));
+            assert_eq!(got.status, 200, "invocation {iid}");
+            let expected = invocation_record(&cid, iid);
+            for (k, v) in expected.as_object().unwrap() {
+                assert_eq!(body(&got)[k], *v, "field {k} for {iid}");
+            }
+            assert_eq!(body(&got)["PluginName"], json!("aws:runShellScript"));
+            assert_eq!(body(&got)["Status"], json!("Success"));
+        }
+
+        // An unknown instance answer stays InvocationDoesNotExist.
+        let missing = handler.handle(make_req(
+            "GetCommandInvocation",
+            json!({ "CommandId": &cid, "InstanceId": "i-3" }),
+        ));
+        assert_eq!(missing.status, 400);
+        assert_eq!(body(&missing)["__type"], json!("InvocationDoesNotExist"));
+
+        // ListCommandInvocations exposes the stored records (moto itself
+        // 500s on the op; shape mirrors the GetCommandInvocation record).
+        let mut all = invocation_records(&handler, json!({}));
+        assert_eq!(all.len(), 2);
+        for iid in ["i-1", "i-2"] {
+            assert!(
+                all.iter()
+                    .any(|i| i["InstanceId"] == json!(iid) && i["CommandId"] == json!(cid)),
+                "record for {iid} listed"
+            );
+        }
+        // CommandId and InstanceId filters.
+        all = invocation_records(
+            &handler,
+            json!({ "CommandId": cid.clone(), "InstanceId": "i-2" }),
+        );
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0]["InstanceId"], json!("i-2"));
+        // A PluginName mismatch is InvocationDoesNotExist like moto.
+        let wrong_plugin = handler.handle(make_req(
+            "GetCommandInvocation",
+            json!({ "CommandId": cid, "InstanceId": "i-1", "PluginName": "aws:runPowerShellScript" }),
+        ));
+        assert_eq!(wrong_plugin.status, 400);
+        assert_eq!(
+            body(&wrong_plugin)["__type"],
+            json!("InvocationDoesNotExist")
+        );
+        let right_plugin = handler.handle(make_req(
+            "GetCommandInvocation",
+            json!({ "CommandId": cid, "InstanceId": "i-1", "PluginName": "aws:runShellScript" }),
+        ));
+        assert_eq!(right_plugin.status, 200);
+    }
+
+    fn invocation_records(handler: &SsmHandler, params: Value) -> Vec<Value> {
+        let resp = handler.handle(make_req("ListCommandInvocations", params));
+        assert_eq!(resp.status, 200);
+        body(&resp)["CommandInvocations"]
+            .as_array()
+            .unwrap()
+            .clone()
     }
 
     // -----------------------------------------------------------------------

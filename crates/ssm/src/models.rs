@@ -391,6 +391,13 @@ pub struct Command {
     pub instance_ids: Vec<String>,
     pub requested_date_time: DateTime<Utc>,
     pub timeout_seconds: i64,
+    /// Per-instance invocation records built at SendCommand time — moto's
+    /// `Command.invocations` (one `invocation_response` per instance id,
+    /// models.py `Command.__init__`). The twin runs no guest OS, so
+    /// "execution" is the recorded per-instance invocation claim; the
+    /// InstanceIds and Targets send forms both land here.
+    #[serde(default)]
+    pub invocations: Vec<Value>,
 }
 
 impl Command {
