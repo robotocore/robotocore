@@ -1,6 +1,8 @@
 //! EventBridge event pattern matching semantics, ported from the Python
 //! provider's `_match_pattern` (models.py): prefix, suffix, numeric, exists,
-//! anything-but, exact list matches, and nested objects.
+//! anything-but, exact list matches, and nested objects — including moto
+//! PR #10360's array-of-objects matching (event-ruler "JSON Array
+//! Matching").
 
 use serde_json::{Map, Value};
 
@@ -50,10 +52,12 @@ fn matches(pattern: &Map<String, Value>, event: &Map<String, Value>) -> bool {
 
         match pattern_value {
             Value::Object(sub_pattern) => {
-                if !event_value.is_object() {
-                    return false;
-                }
-                if !matches(sub_pattern, event_value.as_object().unwrap()) {
+                let ok = match event_value {
+                    Value::Object(obj) => matches(sub_pattern, obj),
+                    Value::Array(arr) => array_objects_match(sub_pattern, arr),
+                    _ => false,
+                };
+                if !ok {
                     return false;
                 }
             }
@@ -70,6 +74,19 @@ fn matches(pattern: &Map<String, Value>, event: &Map<String, Value>) -> bool {
         }
     }
     true
+}
+
+/// A nested pattern against an array (moto PR #10360, event-ruler "JSON
+/// Array Matching"): it must be satisfied by a SINGLE element, so fields
+/// never mix across different elements of the same array. Elements that
+/// are arrays are looked through too (moto `_objects_in_array`); scalar
+/// elements never match.
+fn array_objects_match(pattern: &Map<String, Value>, arr: &[Value]) -> bool {
+    arr.iter().any(|item| match item {
+        Value::Object(obj) => matches(pattern, obj),
+        Value::Array(nested) => array_objects_match(pattern, nested),
+        _ => false,
+    })
 }
 
 /// A list of acceptable values/matchers for one event field.
@@ -587,6 +604,104 @@ mod tests {
         assert!(!matches_pattern(
             &pattern,
             &json!({"detail": {"path": ["/var/tmp", "/var/x"]}})
+        ));
+    }
+
+    // -- array-of-objects matching (moto PR #10360) ---------------------------
+
+    #[test]
+    fn array_object_nested_pattern_matches_array_of_objects() {
+        let pattern = json!({"detail": {"responseElements": {"instancesSet": {"items": {"instanceId": ["i-2"]}}}}});
+        // Any single element satisfying the nested pattern matches.
+        assert!(matches_pattern(
+            &pattern,
+            &json!({"detail": {"responseElements": {"instancesSet": {"items": [{"instanceId": "i-1"}, {"instanceId": "i-2"}]}}}})
+        ));
+        assert!(!matches_pattern(
+            &pattern,
+            &json!({"detail": {"responseElements": {"instancesSet": {"items": [{"instanceId": "i-1"}, {"instanceId": "i-3"}]}}}})
+        ));
+        // A single object (non-array) keeps the old semantics.
+        assert!(matches_pattern(
+            &pattern,
+            &json!({"detail": {"responseElements": {"instancesSet": {"items": {"instanceId": "i-2"}}}}})
+        ));
+        assert!(!matches_pattern(
+            &pattern,
+            &json!({"detail": {"responseElements": {"instancesSet": {"items": {"instanceId": "i-3"}}}}})
+        ));
+        // An array of objects nested one level inside an element.
+        assert!(matches_pattern(
+            &json!({"detail": {"pairs": {"instances": {"items": {"id": ["i-2"]}}}}}),
+            &json!({"detail": {"pairs": [{"instances": {"items": [{"id": "i-1"}, {"id": "i-2"}]}}]}})
+        ));
+    }
+
+    #[test]
+    fn array_object_fields_must_match_within_one_element() {
+        let pattern =
+            json!({"detail": {"employees": {"firstName": ["Anna"], "lastName": ["Smith"]}}});
+        // No single element has both fields matching (John lacks firstName,
+        // Anna lacks lastName): no cross-element mixing.
+        assert!(!matches_pattern(
+            &pattern,
+            &json!({"detail": {"employees": [
+                {"firstName": "John", "lastName": "Smith"},
+                {"firstName": "Anna", "lastName": "Doe"}
+            ]}})
+        ));
+        assert!(matches_pattern(
+            &pattern,
+            &json!({"detail": {"employees": [
+                {"firstName": "John", "lastName": "Smith"},
+                {"firstName": "Anna", "lastName": "Smith"}
+            ]}})
+        ));
+        // The attribute must sit inside the same element.
+        let pattern = json!({"detail": {"items": {"id": ["x"]}}});
+        assert!(matches_pattern(
+            &pattern,
+            &json!({"detail": {"items": [{"id": "x"}, {"other": 1}]}})
+        ));
+        assert!(!matches_pattern(
+            &pattern,
+            &json!({"detail": {"items": [{"id": "y"}]}})
+        ));
+        assert!(!matches_pattern(
+            &pattern,
+            &json!({"detail": {"items": [{"id": "y"}, {"id2": "x"}]}})
+        ));
+    }
+
+    #[test]
+    fn array_object_named_filters_and_multilevel_arrays() {
+        let pattern =
+            json!({"detail": {"containers": {"state": {"exitCode": [{"numeric": [">", 0]}]}}}});
+        assert!(matches_pattern(
+            &pattern,
+            &json!({"detail": {"containers": [{"state": {"exitCode": 0}}, {"state": {"exitCode": 137}}]}})
+        ));
+        assert!(!matches_pattern(
+            &pattern,
+            &json!({"detail": {"containers": [{"state": {"exitCode": 0}}]}})
+        ));
+        // Arrays of arrays are looked through the same way.
+        assert!(matches_pattern(
+            &pattern,
+            &json!({"detail": {"containers": [[{"state": {"exitCode": 0}}], [{"state": {"exitCode": 1}}]]}})
+        ));
+        assert!(!matches_pattern(
+            &pattern,
+            &json!({"detail": {"containers": [[{"state": {"exitCode": 0}}]]}})
+        ));
+        // Empty arrays and scalar-only arrays match nothing.
+        assert!(!matches_pattern(
+            &pattern,
+            &json!({"detail": {"containers": []}})
+        ));
+        assert!(!matches_pattern(
+            &pattern,
+            &json!({"detail": {"containers": ["a", "b"]}})
         ));
     }
 }
