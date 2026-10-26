@@ -3608,7 +3608,14 @@ impl S3Handler {
                 );
             }
         }
-        AwsResponse::xml(200, body)
+        let mut resp = AwsResponse::xml(200, body);
+        // moto master 086af7ac (#10415): LastModified is rendered in the
+        // Last-Modified response header (the shape binds it to that header)
+        // in RFC 822 format — moto 5.2.4 put an ISO-8601 string into the
+        // header, which other SDKs reject.
+        resp.headers
+            .push(("Last-Modified".to_string(), httpdate(obj.last_modified)));
+        resp
     }
 
     // ------------------------------------------------------------------
@@ -7741,5 +7748,70 @@ mod tests {
         let token = xml_text(&body, "NextContinuationToken").expect("token");
         let decoded = decode_token(&token).expect("base64 key token");
         assert_eq!(decoded, "k>=");
+    }
+}
+
+/// moto master 086af7ac (#10415): LastModified is a header-bound member of
+/// GetObjectAttributesOutput, so it renders in the `Last-Modified` response
+/// header in RFC 822 format. Moto 5.2.4 wrote an ISO-8601 string into that
+/// header, which non-python SDKs (that parse HTTP dates) reject.
+#[cfg(test)]
+mod catchup_fx5_object_attributes_tests {
+    use super::*;
+    use bytes::Bytes;
+    use serde_json::Value;
+
+    fn make_req(operation: &str, bucket: Option<&str>, key: Option<&str>, body: &[u8]) -> AwsRequest {
+        AwsRequest {
+            service: "s3".to_string(),
+            operation: operation.to_string(),
+            account: 424242222222,
+            region: "us-fx5-catchup".to_string(),
+            bucket: bucket.map(String::from),
+            key: key.map(String::from),
+            query_params: HashMap::new(),
+            headers: HashMap::new(),
+            method: "GET".to_string(),
+            body: Bytes::copy_from_slice(body),
+            params: Value::Null,
+        }
+    }
+
+    #[test]
+    fn get_object_attributes_last_modified_is_an_http_date_header() {
+        let handler = S3Handler::new();
+        let resp = handler.handle(make_req("CreateBucket", Some("fx5-attrs"), None, b""));
+        assert_eq!(resp.status, 200);
+        let resp = handler.handle(make_req("PutObject", Some("fx5-attrs"), Some("k1"), b"x"));
+        assert_eq!(resp.status, 200);
+
+        let resp = handler.handle(make_req(
+            "GetObjectAttributes",
+            Some("fx5-attrs"),
+            Some("k1"),
+            b"",
+        ));
+        assert_eq!(resp.status, 200, "got {:?}", resp.status);
+
+        // The header must be parseable as an RFC 2822 / HTTP-date — moto's
+        // test asserts the same through werkzeug.http.parse_date.
+        let last_modified = resp
+            .headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("Last-Modified"))
+            .map(|(_, v)| v.clone())
+            .expect("Last-Modified header present");
+        let parsed = chrono::DateTime::parse_from_rfc2822(&last_modified);
+        assert!(
+            parsed.is_ok(),
+            "Last-Modified must be an HTTP date, got {last_modified:?}"
+        );
+
+        // The member is header-bound in the S3 model — moto master emits the
+        // XML body without a LastModified element (ObjectSize only, alongside
+        // the pre-existing ETag row).
+        let body = String::from_utf8_lossy(&resp.body);
+        assert!(body.contains("<ObjectSize>"), "got {body}");
+        assert!(!body.contains("<LastModified>"), "got {body}");
     }
 }
