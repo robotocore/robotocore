@@ -168,11 +168,12 @@ fn route(req: &Request, st: &mut MediaStoreDataStore) -> Response {
         ("HEAD", p) => describe_object(st, p),
         ("PUT", p) => put_object(req, st, p),
         ("DELETE", p) => delete_object(st, p),
-        (method, p) => json_error(
-            400,
-            "ValidationException",
-            &format!("Unsupported method {method} for path /{p}"),
-        ),
+        // moto's mediastoredata routes crash the werkzeug server on verbs it
+        // does not implement (live-verified: plain HTML 500) — mirror that.
+        (method, p) => {
+            let _ = (method, p);
+            crate::proto::moto_crash_response()
+        }
     }
 }
 
@@ -230,8 +231,10 @@ fn describe_object(st: &mut MediaStoreDataStore, path: &str) -> Response {
 
 /// `PUT /{Path+}` — store and answer moto's `to_dict` JSON.
 fn put_object(req: &Request, st: &mut MediaStoreDataStore, path: &str) -> Response {
+    // moto reads the Path header unconditionally: a missing member escapes
+    // as a werkzeug 500 crash (live-verified) — mirror it.
     if path.is_empty() {
-        return json_error(400, "ValidationException", "A Path is required");
+        return crate::proto::moto_crash_response();
     }
     // moto ignores the StorageClass header and runs with default TEMPORAL.
     let body = req.body.to_vec();
@@ -495,9 +498,9 @@ mod tests {
     fn unsupported_methods_error_without_touching_state() {
         let account = next_account();
         let resp = send(account, "POST", "/obj", &[], b"");
-        assert_eq!(resp.status, 400);
-        let body: Value = serde_json::from_slice(&resp.body).unwrap();
-        assert_eq!(body["__type"], "ValidationException");
+        // moto crashes the werkzeug server for unsupported verbs.
+        assert_eq!(resp.status, 500);
+        assert!(String::from_utf8_lossy(&resp.body).contains("Internal Server Error"));
         let resp = send(account, "GET", "/", &[], b"");
         assert_eq!(resp.status, 200);
         let body: Value = serde_json::from_slice(&resp.body).unwrap();
