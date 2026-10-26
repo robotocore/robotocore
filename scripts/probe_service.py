@@ -31,6 +31,7 @@ import argparse
 import json
 import sys
 import time
+import urllib.parse as _urllib
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
@@ -39,12 +40,13 @@ import boto3
 import socket
 import botocore.exceptions
 import botocore.loaders
+from botocore import xform_name
 from botocore.config import Config
+from botocore.parsers import ResponseParserError
 
 from scripts.lib.param_filler import (
     KNOWN_PARAMS,
     auto_fill_params,
-    to_snake_case,
 )
 
 # Operations that are destructive or have side effects we don't want.
@@ -105,8 +107,10 @@ IMPLEMENTED_ERROR_CODES = {
 }
 
 
-# Keep private aliases for backward compatibility with any callers
-_to_snake_case = to_snake_case
+# The client method names are exactly what botocore's client generator
+# produces from the operation name (to_snake_case mishandles acronym
+# sequences: DescribeACLs -> describe_ac_ls, but boto3 exposes describe_acls).
+_to_snake_case = xform_name
 _auto_fill_params = auto_fill_params
 from scripts.lib.param_filler import get_required_params  # noqa: E402
 
@@ -190,6 +194,11 @@ def probe_operation(
                 return "500_error", f"server crash via required-only ({code})"
             except botocore.exceptions.ParamValidationError:
                 return "needs_params", "client-side validation (never contacted server)"
+            except ResponseParserError as e:
+                # 200 answered with a payload botocore cannot parse — the
+                # server did answer, so this is a server-side error, exact
+                # same class as the unparsable-response 500_error below.
+                return "500_error", f"unparsable response (required-only retry: {str(e)[:60]})"
             except (botocore.exceptions.ReadTimeoutError,
                     botocore.exceptions.ConnectTimeoutError,
                     socket.timeout):
@@ -206,6 +215,11 @@ def probe_operation(
         return "timeout", f"read timeout ({type(e).__name__})"
     except botocore.exceptions.EndpointConnectionError as e:
         return "timeout", f"endpoint unreachable ({str(e)[:60]})"
+    except ResponseParserError as e:
+        # The server answered with a payload botocore cannot parse
+        # (e.g. a tagged-union response with no member set) — a genuine
+        # server-side error, same contract class as a crash.
+        return "500_error", f"unparsable response ({str(e)[:60]})"
     except Exception as e:
         # Anything left is a non-ClientError, non-timeout raise. Split by
         # what the exception actually was:
@@ -256,8 +270,15 @@ def make_client(service_name: str, endpoint: str, read_timeout: float = 60.0):
     more by botocore before classification — one request, one verdict.
     read_timeout caps how long a hanging handler can block the probe run
     (a read timeout classifies as timeout: the server never answered).
+
+    hostPrefix collapse: some models decorate the endpoint host with a
+    positional prefix (lakeformation's "query-"/"data-") even when a
+    user endpoint override is set, producing unresolvable hosts like
+    "query-localhost". The twin serves every prefix over the same port,
+    so the request is recomposed onto the configured endpoint host
+    before signing; the collapse is logged when it engages.
     """
-    return boto3.client(
+    client = boto3.client(
         service_name,
         endpoint_url=endpoint,
         region_name="us-east-1",
@@ -269,6 +290,22 @@ def make_client(service_name: str, endpoint: str, read_timeout: float = 60.0):
             connect_timeout=min(read_timeout, 10.0),
         ),
     )
+    base_netloc = _urllib.urlparse(endpoint).netloc
+    base_path = _urllib.urlparse(endpoint).path.rstrip("/")
+
+    def _collapse_hostprefix(request, **kwargs):
+        p = _urllib.urlparse(request.url)
+        if p.netloc != base_netloc and p.netloc.endswith(base_netloc):
+            print(
+                f"[probe] hostPrefix collapse: {p.netloc} -> {base_netloc}",
+                flush=True,
+            )
+            request.url = _urllib.urlunparse(
+                (p.scheme, base_netloc, base_path + p.path, p.params, p.query, p.fragment)
+            )
+
+    client.meta.events.register("request-created", _collapse_hostprefix)
+    return client
 
 
 def _botocore_service_name(service_name: str) -> str:
