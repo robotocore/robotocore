@@ -71,28 +71,32 @@ impl DefaultSqsHandler {
     }
 
     fn validate_queue_name(name: &str) -> Result<(), SqsError> {
-        if name.is_empty() || name.len() > 80 {
-            // moto's Queue.name setter answers every malformed name with the
-            // same single message (moto/sqs/models.py, InvalidParameterValue);
-            // live-verified against the pinned fork.
-            return Err(SqsError::InvalidParameterValue(
-                "Can only include alphanumeric characters, hyphens, or underscores. 1 to 80 in length"
-                    .to_string(),
-            ));
-        }
-
-        // Allow alphanumeric, _, -, .
-        if !name
+        // moto's Queue.name setter (moto/sqs/models.py) answers every
+        // malformed name with the same single InvalidParameterValue message:
+        // plain names `^[a-zA-Z0-9_-]{1,80}$` or FIFO names
+        // `^[a-zA-Z0-9_-]{1,75}\.fifo$`. A `.` is legal ONLY as the
+        // `.fifo` suffix — one anywhere else is moto-invalid, as is a
+        // non-ASCII (unicode) alphanumeric. Length counts python str
+        // chars, not bytes. Live-verified against the pinned fork.
+        let plain = name
             .chars()
-            .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '.')
-        {
-            return Err(SqsError::InvalidParameterValue(
-                "Can only include alphanumeric characters, hyphens, or underscores. 1 to 80 in length"
-                    .to_string(),
-            ));
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+        if !name.is_empty() && name.chars().count() <= 80 && plain {
+            return Ok(());
         }
-
-        Ok(())
+        if let Some(body) = name.strip_suffix(".fifo") {
+            if (1..=75).contains(&body.chars().count())
+                && body
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+            {
+                return Ok(());
+            }
+        }
+        Err(SqsError::InvalidParameterValue(
+            "Can only include alphanumeric characters, hyphens, or underscores. 1 to 80 in length"
+                .to_string(),
+        ))
     }
 
     fn md5_hash(data: &str) -> String {

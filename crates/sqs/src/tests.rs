@@ -515,6 +515,37 @@ fn test_create_queue_invalid_name_special_chars() {
 }
 
 #[test]
+fn test_create_queue_name_matches_moto_setter_regex() {
+    // moto's Queue.name setter: `^[a-zA-Z0-9_-]{1,80}$` or
+    // `^[a-zA-Z0-9_-]{1,75}\.fifo$`. A `.` is legal only as the `.fifo`
+    // suffix; non-ASCII alphanumerics are invalid everywhere.
+    let handler = DefaultSqsHandler::new();
+    let expect_ok = |name: &str| -> bool {
+        handler
+            .handle(make_request("CreateQueue", json!({ "QueueName": name })))
+            .status
+            == 200
+    };
+
+    assert!(expect_ok("plain-queue"));
+    assert!(expect_ok("a"));
+    assert!(expect_ok("a".repeat(80).as_str()));
+    assert!(expect_ok("fifo-suffix.fifo"));
+    let fifo_max = "a".repeat(75) + ".fifo";
+    let fifo_over = "a".repeat(76) + ".fifo";
+    assert!(expect_ok(&fifo_max));
+    assert!(!expect_ok(&fifo_over));
+
+    assert!(!expect_ok("my.queue"));
+    assert!(!expect_ok("deadletter.queue"));
+    assert!(!expect_ok("my-queue.fifo.fifo"));
+    assert!(!expect_ok("café"));
+    assert!(!expect_ok(".fifo"));
+    assert!(!expect_ok(&fifo_over));
+    assert!(!expect_ok("a".repeat(81).as_str()));
+}
+
+#[test]
 fn test_send_message() {
     let handler = DefaultSqsHandler::new();
 
