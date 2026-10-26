@@ -21,6 +21,20 @@ use std::fmt::Write as _;
 
 type P = Params;
 
+/// CloudTrail management-event emit for the succeeded compute mutators
+/// (issue #347 allowlist: RunInstances / TerminateInstances). Lower-camel
+/// member names like real CloudTrail records; fire-and-forget through the
+/// process-global registry — never fails the API call.
+fn emit_compute_cloudtrail(req: &Request, event_name: &str, params: serde_json::Value) {
+    crate::cloudtrail_emit::emit_cloudtrail_api_call(
+        req.account,
+        &req.region,
+        "ec2.amazonaws.com",
+        event_name,
+        &params.to_string(),
+    );
+}
+
 pub fn route(req: &Request, params: &P) -> Response {
     match req.operation.as_str() {
         "RunInstances" => run_instances(req, params),
@@ -353,6 +367,29 @@ fn run_instances(req: &Request, params: &P) -> Response {
                 .unwrap_or_default();
             items.push_str(&instance_item(&req.region, req.account, &inst, &sg_items));
         }
+        // Successful launch → CloudTrail management event on the default bus
+        // (issue #347 allowlist). Lower-camel members like real records: the
+        // details the call carried sit in instancesSet.items[0] and the
+        // counts at the top, matching real RunInstances CloudTrail shapes.
+        let mut ct_item = serde_json::json!({
+            "imageId": image_id,
+            "instanceType": instance_type,
+        });
+        if !subnet_id.is_empty() {
+            ct_item["subnetId"] = serde_json::json!(subnet_id);
+        }
+        if let Some(key) = key_name.as_ref() {
+            ct_item["keyName"] = serde_json::json!(key);
+        }
+        emit_compute_cloudtrail(
+            req,
+            "RunInstances",
+            serde_json::json!({
+                "instancesSet": { "items": [ct_item] },
+                "minCount": min_count,
+                "maxCount": max_count,
+            }),
+        );
         ec2_xml(
             "RunInstancesResponse",
             &format!(
@@ -505,6 +542,18 @@ fn terminate_instances(req: &Request, params: &P) -> Response {
             let _ = &state.instances[pos];
             changes.push_str(&instance_state_change(id, 48, &was, "terminated"));
         }
+        // Successful mutate → CloudTrail management event on the default bus
+        // (issue #347 allowlist): the instancesSet.items[] shape real
+        // TerminateInstances records carry, one entry per requested id.
+        emit_compute_cloudtrail(
+            req,
+            "TerminateInstances",
+            serde_json::json!({
+                "instancesSet": {
+                    "items": ids.iter().map(|id| serde_json::json!({"instanceId": id})).collect::<Vec<_>>()
+                },
+            }),
+        );
         ec2_xml(
             "TerminateInstancesResponse",
             &format!("<instancesSet>{}</instancesSet>", changes),
@@ -3293,4 +3342,114 @@ fn describe_reserved_instances_offerings(req: &Request, params: &P) -> Response 
             items
         ),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request(op: &str, body: &str, account: u64) -> Request {
+        Request {
+            service: "ec2".into(),
+            operation: op.into(),
+            method: "POST".into(),
+            path: "/".into(),
+            query_string: String::new(),
+            headers: Default::default(),
+            body: body.as_bytes().to_vec().into(),
+            account,
+            region: "us-east-1".into(),
+        }
+    }
+
+    #[test]
+    fn cloudtrail_emit_fires_on_run_and_terminate_instances() {
+        // Registry claim contract (crate::cloudtrail_emit::test_claim +
+        // reset_registry): hold the process-global claim guard for the whole
+        // reset/spy/restore window, restore the unbound default at the end.
+        let _claim = crate::cloudtrail_emit::test_claim();
+        crate::cloudtrail_emit::reset_registry();
+        let seen: std::sync::Arc<parking_lot::Mutex<Vec<serde_json::Value>>> = Default::default();
+        {
+            let sink = seen.clone();
+            crate::cloudtrail_emit::register_emitter(std::sync::Arc::new(
+                move |account, region, source, event, request| {
+                    // Only this test's scope (51): sibling tests drive the
+                    // same ops concurrently against their own accounts.
+                    if account != 51 {
+                        return;
+                    }
+                    sink.lock().push(serde_json::json!({
+                        "account": account,
+                        "region": region,
+                        "source": source,
+                        "event": event,
+                        "request": serde_json::from_str::<serde_json::Value>(request)
+                            .unwrap_or_default(),
+                    }));
+                },
+            ));
+        }
+        let account = 51u64;
+        let seed = request("DescribeInstances", "Action=DescribeInstances", account);
+        with_state(&seed, |state| {
+            state.instances.push(Instance {
+                id: "i-ebtrail".into(),
+                ..Default::default()
+            });
+        });
+
+        let run_req = request(
+            "RunInstances",
+            "Action=RunInstances&ImageId=ami-ebtrail&InstanceType=t2.micro&MinCount=1&MaxCount=1",
+            account,
+        );
+        let p = Params::parse(&run_req);
+        assert_eq!(run_instances(&run_req, &p).status, 200);
+        let term_req = request(
+            "TerminateInstances",
+            "Action=TerminateInstances&InstanceId.1=i-ebtrail",
+            account,
+        );
+        let p = Params::parse(&term_req);
+        assert_eq!(terminate_instances(&term_req, &p).status, 200);
+        // A failed terminate emits nothing (unknown instance); the next emit
+        // for account 51 repeats TerminateInstances so both requests must be
+        // accounted below.
+        let ghost = request(
+            "TerminateInstances",
+            "Action=TerminateInstances&InstanceId.1=i-ghost",
+            account,
+        );
+        let p = Params::parse(&ghost);
+        assert_eq!(terminate_instances(&ghost, &p).status, 400);
+
+        crate::cloudtrail_emit::reset_registry();
+        let rows = seen.lock().clone();
+        assert_eq!(rows.len(), 2, "only the successful carries emit");
+        assert_eq!(rows[0]["source"], "ec2.amazonaws.com");
+        assert_eq!(rows[0]["event"], "RunInstances");
+        assert_eq!(rows[0]["account"], serde_json::json!(51));
+        assert_eq!(rows[0]["region"], "us-east-1");
+        assert_eq!(
+            rows[0]["request"]["instancesSet"]["items"][0]["imageId"], "ami-ebtrail",
+            "lower-camel instance details sit inside instancesSet.items[0]"
+        );
+        assert_eq!(
+            rows[0]["request"]["instancesSet"]["items"][0]["instanceType"],
+            "t2.micro"
+        );
+        assert_eq!(rows[0]["request"]["minCount"], serde_json::json!(1));
+        assert_eq!(rows[0]["request"]["maxCount"], serde_json::json!(1));
+        assert!(!rows[0]["request"]
+            .as_object()
+            .unwrap()
+            .contains_key("dryRun"));
+        assert_eq!(rows[1]["event"], "TerminateInstances");
+        assert_eq!(
+            rows[1]["request"]["instancesSet"]["items"],
+            serde_json::json!([{"instanceId": "i-ebtrail"}]),
+            "one item per requested id"
+        );
+    }
 }
