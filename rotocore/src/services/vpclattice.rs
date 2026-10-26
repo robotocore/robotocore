@@ -7,11 +7,23 @@
 //! `als-`) mirror moto's generators, including moto's rule id which renders
 //! the literal string `rule-[0-9a-z]{17}`.
 //!
-//! The listener trio (Create/Get/ListListeners) is outside moto's surface
-//! and is modeled straight from botocore's shapes (`CreateListenerResponse`,
-//! `GetListenerResponse`, `ListenerSummary`), keeping moto's id generators
-//! (`listener-` + 17 uuid chars); DeleteListener/UpdateListener and the
-//! remaining rule operations still answer moto's 501 canon.
+//! The listener trio (Create/Get/ListListeners) mirrors moto 5.2.4
+//! (models.py `VPCLatticeListener`, responses.py create/get/list_listener
+//! handlers) — it is inside moto's surface. Its wire members are checked
+//! against botocore's `CreateListenerResponse`/`GetListenerResponse`/
+//! `ListenerSummary` shapes: create/get carry moto's createdAt/lastUpdated
+//! values, ListListeners items are the narrower botocore `ListenerSummary`
+//! rather than moto's full `to_dict`, and moto's id generator (`listener-`
+//! + 17 uuid chars) is kept. Divergences from moto 5.2.4, deliberate:
+//! - a CreateListener that omits `port` takes real AWS's default (80 for
+//!   HTTP, 443 otherwise) instead of moto's `port or 443`;
+//! - the trio resolves the parent service through ONE source — the same
+//!   call GetService makes, so a missing service answers
+//!   ResourceNotFoundException(bare `{id}`), exactly moto's `get_service`
+//!   error. The missing-listener error keeps moto's message.
+//!
+//! DeleteListener/UpdateListener and the remaining rule operations still
+//! answer moto's 501 canon.
 //!
 //! Routing is moto's two-layer model: a request only reaches the backend
 //! when the path matches one of moto's `urls.py` gate patterns
@@ -124,9 +136,9 @@ struct RuleEntry {
     tags: Value,
 }
 
-/// botocore-modeled listener (`service-2.json`: `CreateListenerResponse`,
-/// `GetListenerResponse` and `ListenerSummary` — no moto-era handler to
-/// mirror, so the shapes follow the model exactly).
+/// moto-modeled listener (`models.py` `VPCLatticeListener`) whose wire
+/// members follow botocore (`service-2.json`: `CreateListenerResponse`,
+/// `GetListenerResponse`, `ListenerSummary`).
 struct ListenerEntry {
     id: String,
     arn: String,
@@ -141,12 +153,17 @@ struct ListenerEntry {
 }
 
 impl ListenerEntry {
-    /// `CreateListenerResponse` (no timestamps).
+    /// `CreateListenerResponse` + moto's timestamps: moto serializes the
+    /// single `to_dict` for both create and get (responses.py
+    /// create_listener returns `json.dumps(service.to_dict())`), so the
+    /// create response carries createdAt/lastUpdatedAt too.
     fn to_create(&self) -> Value {
         json!({
             "arn": self.arn,
+            "createdAt": self.created_at,
             "defaultAction": self.default_action,
             "id": self.id,
+            "lastUpdatedAt": self.last_updated_at,
             "name": self.name,
             "port": self.port,
             "protocol": self.protocol,
@@ -277,6 +294,14 @@ fn invalid_token(reason: &str) -> Response {
     error(400, "InvalidToken", &format!("Invalid Token: {reason}"))
 }
 
+/// moto's `get_service` lookup failure: `ResourceNotFoundException`
+/// carrying the BARE identifier — the single error wording shared by
+/// GetService and the listener trio (create/get/list listeners all fail
+/// through that backend call).
+fn service_not_found(identifier: &str) -> Response {
+    not_found(identifier)
+}
+
 fn validation(message: impl AsRef<str>) -> Response {
     error(400, "ValidationException", message.as_ref())
 }
@@ -363,7 +388,9 @@ fn segment_after<'a>(path: &'a str, anchor: &str) -> Option<&'a str> {
 }
 
 /// Real-AWS default port when `CreateListener` omits one: 80 for HTTP,
-/// 443 otherwise (HTTPS, TLS_PASSTHROUGH).
+/// 443 otherwise (HTTPS, TLS_PASSTHROUGH). Diverges from moto's `port or
+/// 443` on purpose — plausible for the real API, which distinguishes the
+/// protocol.
 fn default_listener_port(protocol: &str) -> i64 {
     if protocol == "HTTP" {
         80
@@ -922,7 +949,7 @@ fn get_service(st: &mut State, path: &str) -> Response {
     let identifier = last_path_segment(path);
     match find_service(st, &identifier) {
         Some(s) => ok(&s.to_wire()),
-        None => not_found(&identifier),
+        None => service_not_found(&identifier),
     }
 }
 
@@ -942,7 +969,7 @@ fn create_listener(
 ) -> Response {
     let svc = trim_resource_identifier(svc_input);
     let Some(service) = find_service(st, &svc) else {
-        return not_found(format!("Resource {svc_input} not found"));
+        return service_not_found(svc_input);
     };
     let id = prefixed_id("listener-");
     let arn = format!("arn:aws:vpc-lattice:{region}:{account}:service/{svc}/listener/{id}");
@@ -979,7 +1006,7 @@ fn find_listener<'a>(st: &'a State, svc_id: &str, id: &str) -> Option<&'a Listen
 fn get_listener(st: &State, svc_input: &str, lid_input: &str) -> Response {
     let svc = trim_resource_identifier(svc_input);
     let Some(_service) = find_service(st, &svc) else {
-        return not_found(format!("Resource {svc_input} not found"));
+        return service_not_found(svc_input);
     };
     let Some(listener) = find_listener(st, &svc, &trim_resource_identifier(lid_input)) else {
         return not_found(format!("Listener {lid_input} not found"));
@@ -1003,7 +1030,7 @@ fn get_listener(st: &State, svc_input: &str, lid_input: &str) -> Response {
 fn list_listeners(st: &State, svc_input: &str, req: &Request) -> Response {
     let svc = trim_resource_identifier(svc_input);
     let Some(_service) = find_service(st, &svc) else {
-        return not_found(format!("Resource {svc_input} not found"));
+        return service_not_found(svc_input);
     };
     let qmap = crate::proto::query_map(&req.query_string);
     let max = crate::proto::query_first(&qmap, "maxResults")
@@ -1033,7 +1060,10 @@ fn list_listeners(st: &State, svc_input: &str, req: &Request) -> Response {
         .filter(|l| l.service_id == svc)
         .collect();
     let end = (start + max).min(matching.len());
-    let page: Vec<Value> = matching[start..end].iter().map(|l| l.to_summary()).collect();
+    let page: Vec<Value> = matching[start..end]
+        .iter()
+        .map(|l| l.to_summary())
+        .collect();
     // moto mints the token from `results[index_end]` — the first EXCLUDED
     // listener — only when the page is non-empty and paging continues.
     let next_token = if !page.is_empty() && end < matching.len() {
@@ -1828,9 +1858,10 @@ mod tests {
         assert_eq!(created["protocol"], "HTTP");
         assert_eq!(created["serviceArn"], json!(svc_arn));
         assert_eq!(created["serviceId"], json!(svc_id));
-        // The create summary drops the GetListener timestamps.
-        assert!(created["createdAt"].is_null());
-        assert!(created["lastUpdatedAt"].is_null());
+        // moto serializes the single to_dict for create too: the fresh
+        // timestamps ride along.
+        assert!(created["createdAt"].as_str().is_some());
+        assert!(created["lastUpdatedAt"].as_str().is_some());
         assert!(created["defaultAction"]["forward"]["targetGroups"].is_array());
     }
 
@@ -1860,15 +1891,26 @@ mod tests {
             assert_eq!(r.unwrap().status, 200);
         }
 
-        let list =
-            |q: &str| json_of(&dispatch(&req("GET", &format!("/services/{svc_arn_path}/listeners"), q, json!({}))).unwrap());
+        let list = |q: &str| {
+            json_of(
+                &dispatch(&req(
+                    "GET",
+                    &format!("/services/{svc_arn_path}/listeners"),
+                    q,
+                    json!({}),
+                ))
+                .unwrap(),
+            )
+        };
 
         // default page: 50 rows + a token naming the first excluded one
         let first = list("");
         assert_eq!(first["items"].as_array().unwrap().len(), 50);
         let token = first["nextToken"].as_str().unwrap().to_string();
         assert!(
-            decode_s3control_token(&token).unwrap().starts_with("listener-"),
+            decode_s3control_token(&token)
+                .unwrap()
+                .starts_with("listener-"),
             "token={token}"
         );
 
@@ -1990,10 +2032,13 @@ mod tests {
         assert_eq!(got["serviceArn"], json!(svc_arn));
         assert_eq!(got["serviceId"], json!(svc_id));
         assert_eq!(got["port"], 8443);
+        // GetListener answers the same to_dict members.
         assert!(got["createdAt"].as_str().is_some());
         assert!(got["lastUpdatedAt"].as_str().is_some());
-        // CreateListenerResponse carries no timestamps; GetListener does.
-        assert!(created["createdAt"].is_null());
+        // CreateListener now carries the timestamps moto's create response
+        // includes (its single to_dict).
+        assert!(created["createdAt"].as_str().is_some());
+        assert!(created["lastUpdatedAt"].as_str().is_some());
 
         let listener_path = url_encode_path(created["arn"].as_str().unwrap());
         let got = json_of(
@@ -2044,10 +2089,9 @@ mod tests {
         .unwrap();
         assert_eq!(created.status, 400);
         assert_eq!(json_of(&created)["__type"], "ResourceNotFoundException");
-        assert_eq!(
-            json_of(&created)["message"],
-            "Resource svc-doesnotexist123 not found"
-        );
+        // moto's get_service error is the bare identifier — the same wording
+        // every trio handler answers for a missing parent service.
+        assert_eq!(json_of(&created)["message"], "svc-doesnotexist123");
 
         let got = dispatch(&req(
             "GET",
