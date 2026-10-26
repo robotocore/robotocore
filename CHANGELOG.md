@@ -11,9 +11,9 @@ under *Changelog discipline*.
 
 The Python 2.x line is retired: robotocore 2.0 is a **pure-Rust twin**
 (axum gateway + the `rotocore` crate) — the server ships no Python, no
-moto sidecar, and no second process. Nothing is bridged: 158 of 158
+moto sidecar, and no second process. Nothing is bridged: 160 of 160
 registered services answer natively with moto-fidelity recorded per op
-(9,893 working of 10,268 botocore ops; 340 denies — every deny is a
+(9,929 implemented of 10,391 botocore ops; 406 denies — every deny is a
 recorded decision in `tooling/surface-absence.json`).
 
 ### Bedrock AgentCore (issue #371, 2026-10-26)
