@@ -858,12 +858,16 @@ fn invalid_token_not_found() -> Response {
 
 /// botocore's TokenEncoder shape for moto's nextToken: base64 of
 /// `{"uniqueAttributes": "<value>"}`, padding stripped. moto additionally
-/// embeds a parameterChecksum derived from Python's salted `hash()`, which
-/// is not wire-portable, so this twin mints only the attribute — and
-/// likewise ignores the checksum member of an incoming token. Shared with
-/// the other paginated lists (vpclattice `list_listeners`, the iot
-/// PAGINATION_MODEL lists); multi-attribute tokens join their values with
-/// `|` per moto's `Paginator._build_next_token`.
+/// validates a parameterChecksum derived from Python's salted `hash()`
+/// (not wire-portable; this twin mints only the attribute and
+/// deliberately does not validate an incoming checksum — moto answers
+/// `Invalid Token: Input inconsistent with page token` on a mismatch,
+/// moto/utilities/paginator.py:115; here only undecodable tokens fail
+/// closed with `InvalidNextTokenException`, moto's s3control
+/// `fail_on_invalid_token` value). Shared with the other paginated lists
+/// (vpclattice `list_listeners`, the iot PAGINATION_MODEL lists);
+/// multi-attribute tokens join their values with `|` per moto's
+/// `Paginator._build_next_token`.
 pub(crate) fn encode_s3control_token(value: &str) -> String {
     let encoded = base64::engine::general_purpose::STANDARD
         .encode(json!({ "uniqueAttributes": value }).to_string());

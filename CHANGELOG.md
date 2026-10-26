@@ -78,17 +78,21 @@ in `tooling/surface-absence.json`).
   (AWS Step Functions JSONata docs, JSONata 2.0.6 subset) and the
   AWS-dialect JSONPath filter operators (moto issue `getmoto/moto#10078`
   with `#7825` singleton shapes and localstack's singleton-collapse fix).
-- **fix wave (port/fx-\*)** — the wave's adversarial review folded before
-  tag: per-service verification lanes (`port/fx-sqs`, `fx-ddb`, `fx-ecr`,
-  `fx-ecscog`, `fx-events`, `fx-iotvp`, `fx-kinlim`, `fx-s3`, `fx-sfn`,
-  `fx-tinies2`) re-deriving lane claims against the pinned moto fork
-  (5.1.23.dev) and live probe corpora, plus this documentation/comment
-  truth lane.
+- **fix wave (port/fx-\* and port/fx2-\*)** — after each adversarial
+  review round, verification lanes re-derived lane claims against the
+  pinned moto fork (5.2.4, `/home/termag/.moto-venv`) and live probe
+  corpora: `port/fx-sqs`, `fx-ddb`, `fx-ecr`, `fx-ecscog`, `fx-events`,
+  `fx-iotvp`, `fx-kinlim`, `fx-s3`, `fx-sfn`, `fx-tinies2`, the ECR
+  layer-upload lane `fx-ecrlayer` (InitiateLayerUpload /
+  UploadLayerPart / CompleteLayerUpload + stored layers behind
+  BatchCheckLayerAvailability; `GetDownloadUrlForLayer` mirrors moto's
+  `NotImplementedError` absence with the 501 genuine-gap envelope), and
+  the round-2 lanes `fx2-*`; plus this documentation/comment truth lane.
 
 ### Documented divergences in 2.0.0
 
-- moto's paginator `parameterChecksum` handling is not embedded:
-  NextTokens are plain tokens, like moto's `@paginate`.
+- Paginators mint no `parameterChecksum` and validate none (see the
+  last row below for what moto does).
 - ACM: the first-SAN DomainName fallback for CN-less imports is not
   implemented (stays DomainName `""` / Subject `CN=`).
 - S3 SigV2 POST signatures are accepted unverified (any secret passes).
@@ -99,8 +103,14 @@ in `tooling/surface-absence.json`).
   (AGENTS.md "Endpoint & credentials" exception row).
 - The 38-significant-digit cap is not enforced in DynamoDB Numbers
   (shared with moto).
-- `list_event_buses` / kinesis / s3control token checksums are ignored,
-  fail-open like moto (`fail_on_invalid_token: False`).
+- Paginators mint no `parameterChecksum` and do not validate one
+  (`list_event_buses`, kinesis, s3control, iot, vpclattice tokens) —
+  moto's paginator validates a checksum over the non-pagination kwargs
+  and answers `Invalid Token: Input inconsistent with page token` even
+  with `fail_on_invalid_token: False` (moto/utilities/paginator.py:115);
+  moto's s3control paginators fail_closed
+  (`fail_on_invalid_token: InvalidNextTokenException`, which the twin
+  mirrors for undecodable tokens only).
 
 ### Added
 
@@ -140,7 +150,9 @@ semantic fixes from the adversarial review waves).
 ### Fixed: crashed probe rows now match moto's exact wire behavior
 
 Triaged the committed probe artifacts' HTTP-500 rows against the moto fork
-(5.1.23.dev, the parity source) op-by-op. Two moto-crash classes and one
+(the parity source; at the time of that lane the moto-5.1.23.dev build —
+today's pinned oracle is the same-fork-line 5.2.4 in `~/.moto-venv`)
+op-by-op. Two moto-crash classes and one
 twin-only divergence:
 
 - **Ses un-routed operations were unreadable to XML SDKs.** The 16 SES

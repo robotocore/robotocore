@@ -1851,10 +1851,12 @@ fn decode_iterator(token: &str) -> Result<Value, AwsResponse> {
 }
 
 /// The ListStreams page token: botocore's TokenEncoder shape (base64 of
-/// `{"uniqueAttributes": "<stream name>"}`). moto additionally embeds a
-/// parameterChecksum derived from Python's salted `hash`, which is not
-/// wire-portable, so this twin mints only the unique attribute — and
-/// likewise ignores the checksum member of an incoming token.
+/// `{"uniqueAttributes": "<stream name>"}`). moto additionally validates a
+/// parameterChecksum derived from Python's salted `hash` (not
+/// wire-portable, so this twin mints only the unique attribute; an
+/// incoming checksum member is deliberately not validated here, diverging
+/// from moto, which answers `Invalid Token: Input inconsistent with page
+/// token` on a mismatch — moto/utilities/paginator.py:115).
 fn encode_list_streams_token(stream_name: &str) -> String {
     base64::engine::general_purpose::STANDARD
         .encode(json!({ "uniqueAttributes": stream_name }).to_string())
