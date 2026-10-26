@@ -1746,16 +1746,30 @@ impl DynamoDbHandler {
         }
 
         for entry in &transact_items {
+            // moto's row-loop head (dynamodb/models/__init__.py:630-632,
+            // TransactWriteSingleOpException): exactly one of Put, Update,
+            // Delete or ConditionCheck per row — a row carrying two ops is
+            // rejected up front ("TransactItems can only contain one of
+            // Check, Put, Update or Delete").
+            if entry.as_object().is_some_and(|m| m.len() > 1) {
+                return AwsResponse::error(
+                    400,
+                    "ValidationException",
+                    "TransactItems can only contain one of Check, Put, Update or Delete",
+                );
+            }
             let (op_name, op) = match ["Put", "Update", "Delete", "ConditionCheck"]
                 .iter()
                 .find_map(|k| entry.get(k).map(|o| (*k, Some(o))))
             {
                 Some((k, Some(o))) => (k, o),
-                _ => return AwsResponse::error(
-                    400,
-                    "ValidationException",
-                    "TransactItems can only contain one of Put, Update, Delete or ConditionCheck",
-                ),
+                _ => {
+                    return AwsResponse::error(
+                        400,
+                        "ValidationException",
+                        "TransactItems can only contain one of Check, Put, Update or Delete",
+                    )
+                }
             };
             let table_name = param_str(op, "TableName").unwrap_or("").to_string();
             let table = match self
@@ -4485,6 +4499,46 @@ mod tests {
             .collect();
         let resp = handler.handle(make_req("TransactGetItems", json!({"TransactItems": rows})));
         assert_eq!(resp.status, 200);
+    }
+
+    // moto's row-loop head raises TransactWriteSingleOpException when one
+    // TransactItems row carries two ops (models/__init__.py:630-632):
+    // "TransactItems can only contain one of Check, Put, Update or Delete"
+    // — byte-for-byte, and before any op of the row runs.
+    #[test]
+    fn transact_two_ops_single_row_single_op_wording() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "singleop",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "singleop", "Item": {"pk": {"S": "p"}, "v": {"S": "x"}}},
+                 "Delete": {"TableName": "singleop", "Key": {"pk": {"S": "p"}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            resp.body,
+            json!({
+                "__type": "ValidationException",
+                "message": "TransactItems can only contain one of Check, Put, Update or Delete"
+            })
+            .to_string()
+        );
+        // moto raised before running either op: nothing written.
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "singleop", "Key": {"pk": {"S": "p"}}}),
+        ));
+        assert_eq!(resp.body, "{}");
     }
 
     // moto evaluates the ConditionExpression BEFORE the item-size check on a
