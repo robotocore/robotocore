@@ -2684,6 +2684,301 @@ fn negative_visibility_overflow_string_immediately_visible() {
     );
 }
 
+/// moto's per-row arm ORDER in change_message_visibility_batch
+/// (moto/sqs/models.py:1106-1126): the VisibilityTimeout parse + cap
+/// assert run inside one broad bare except BEFORE
+/// `entry["ReceiptHandle"]` is read. A row carrying NEITHER key fails
+/// the visibility arm first and answers the per-row Failed entry
+/// (live-verified: Entries=[{"Id":"m1"}] answers 200 with Failed
+/// SenderFault/InvalidParameterValue/"Visibility timeout invalid"),
+/// while a row whose visibility PARSED fine still crashes the whole
+/// request on the absent handle key (pinned separately).
+#[test]
+fn cmv_batch_row_missing_both_keys_answers_failed_row() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "cmv-batch-both-missing");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "ok", "ReceiptHandle": handles[0]["ReceiptHandle"], "VisibilityTimeout": 0},
+                {"Id": "m1"},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    let successful = data["Successful"].as_array().expect("Successful array");
+    assert_eq!(successful.len(), 1, "the first row applied before row 2");
+    assert_eq!(successful[0]["Id"], "ok");
+
+    let failed = data["Failed"].as_array().expect("Failed array");
+    assert_eq!(failed.len(), 1, "the keyless row fails the visibility arm");
+    assert_eq!(failed[0]["Id"], "m1");
+    assert_eq!(failed[0]["SenderFault"], true);
+    assert_eq!(failed[0]["Code"], "InvalidParameterValue");
+    assert_eq!(failed[0]["Message"], "Visibility timeout invalid");
+}
+
+/// JSON null VisibilityTimeout members are dropped by moto's parse layer
+/// (`BaseJSONParser._parse_structure` skips a member whose wire value
+/// parses to None — parse.py:314-315): a receive with VisibilityTimeout:
+/// null answers 200 applying the QUEUE attribute (live-verified: the twin
+/// previously crashed on the Some(Null) shape), and a null on a ghost
+/// queue answers NonExistentQueue like every absent resolve. The queue
+/// default really applies: a queue pinned to 1s puts the message in
+/// flight for that window (not a no-op, not a crash).
+#[test]
+fn receive_null_visibility_takes_queue_default() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "recv-null-vis");
+    handler.handle(make_request(
+        "SetQueueAttributes",
+        json!({
+            "QueueUrl": &queue_url,
+            "Attributes": {"VisibilityTimeout": "1"}
+        }),
+    ));
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "null-vis"}),
+    ));
+
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "VisibilityTimeout": Value::Null}),
+    ));
+    assert_eq!(
+        resp.status, 200,
+        "null vis must take the fallback, got {}",
+        resp.body
+    );
+
+    // The 1s queue default was applied: an immediate re-receive (short
+    // poll) finds the message still in flight, then it returns normally.
+    let again = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    assert!(
+        serde_json::from_str::<Value>(&again.body)
+            .expect("json")
+            .get("Messages")
+            .is_none(),
+        "the null-vis receive must apply the queue default, got {}",
+        again.body
+    );
+    thread::sleep(Duration::from_millis(1100));
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.0, 1, "the 1s default expired");
+
+    // On a nonexistent queue the null behaves like an absent resolve.
+    let ghost = format!("{}x", queue_url);
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &ghost, "VisibilityTimeout": Value::Null}),
+    ));
+    assert_eq!(resp.status, 400, "got {}", resp.body);
+    assert!(
+        resp.body
+            .contains("AWS.SimpleQueueService.NonExistentQueue"),
+        "a null vis must not crash ahead of the queue resolution, got {}",
+        resp.body
+    );
+}
+
+/// A null VisibilityTimeout in a batch ROW takes the missing-key route:
+/// moto's parse drops the member, the backend's bare except catches the
+/// lookup failure and answers the per-row Failed arm (live-verified:
+/// row {"Id":"x","ReceiptHandle":h,"VisibilityTimeout":null} answers 200
+/// with Failed InvalidParameterValue "Visibility timeout invalid") —
+/// not the parse-layer crash a present junk value would produce.
+#[test]
+fn batch_row_null_visibility_answers_failed_row() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "cmv-batch-null-vis");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "n", "ReceiptHandle": handles[0]["ReceiptHandle"], "VisibilityTimeout": Value::Null},
+                {"Id": "ok", "ReceiptHandle": handles[1]["ReceiptHandle"], "VisibilityTimeout": 30},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    let failed = data["Failed"].as_array().expect("Failed array");
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0]["Id"], "n");
+    assert_eq!(failed[0]["SenderFault"], true);
+    assert_eq!(failed[0]["Code"], "InvalidParameterValue");
+    assert_eq!(failed[0]["Message"], "Visibility timeout invalid");
+    let successful = data["Successful"].as_array().expect("Successful array");
+    assert_eq!(successful.len(), 1);
+    assert_eq!(successful[0]["Id"], "ok");
+}
+
+/// The dropped-null route covers the receive bounds too: a null
+/// MaxNumberOfMessages / WaitTimeSeconds member is absent for moto's
+/// parse layer — the defaults (1 message, the queue wait) apply and the
+/// request answers 200 (live-verified), not a parse-layer 500.
+#[test]
+fn receive_null_max_and_wait_take_defaults() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "recv-null-bounds");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "null-bounds"}),
+    ));
+
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({
+            "QueueUrl": &queue_url,
+            "MaxNumberOfMessages": Value::Null,
+            "WaitTimeSeconds": Value::Null,
+            "VisibilityTimeout": Value::Null,
+        }),
+    ));
+    assert_eq!(
+        resp.status, 200,
+        "null members take the defaults, got {}",
+        resp.body
+    );
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    assert_eq!(
+        data["Messages"].as_array().map(|m| m.len()),
+        Some(1),
+        "the Max default of 1 applied, got {}",
+        resp.body
+    );
+}
+
+/// A null ReceiptHandle in a batch ROW crashes the whole request: moto's
+/// parse layer drops null members, so the row reaches the backend without
+/// the key and the `entry["ReceiptHandle"]` KeyError — raised OUTSIDE the
+/// per-row bare except — fails everything as a werkzeug 500 (live-verified,
+/// same shape as the missing-key crash). The twin previously steered the
+/// null into moto's None-mode match and bumped the FIRST message's
+/// visibility — a state mutation this test also guards against: after the
+/// crash the untouched first message must still be immediately receivable.
+#[test]
+fn cmv_batch_null_receipt_handle_crashes_like_missing() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "cmv-batch-null-handle");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+    // Return both messages to the visible pool so a None-mode bump would
+    // be observable as a silent state change.
+    handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "a", "ReceiptHandle": handles[0]["ReceiptHandle"], "VisibilityTimeout": 0},
+                {"Id": "b", "ReceiptHandle": handles[1]["ReceiptHandle"], "VisibilityTimeout": 0},
+            ],
+        }),
+    ));
+
+    for (label, queue) in [
+        ("existing queue", json!(&queue_url)),
+        (
+            "ghost queue keeps the crash",
+            json!(format!("{}x", queue_url)),
+        ),
+    ] {
+        let resp = handler.handle(make_request(
+            "ChangeMessageVisibilityBatch",
+            json!({
+                "QueueUrl": queue,
+                "Entries": [{"Id": "x", "ReceiptHandle": Value::Null, "VisibilityTimeout": 30}],
+            }),
+        ));
+        assert_eq!(resp.status, 500, "{label}: got {}", resp.body);
+        assert!(
+            resp.body.contains("<!doctype html>")
+                && resp.body.contains("500 Internal Server Error"),
+            "{label}: not the moto crash envelope, got {}",
+            resp.body
+        );
+    }
+
+    // No row touched the queue: the first visible message is still
+    // immediately receivable (the dropped-null route must not fall into
+    // the None-mode bump the top-level op takes).
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let data: Value = serde_json::from_str(&recv.body).expect("json");
+    assert_eq!(
+        data["Messages"].as_array().map(|m| m.len()),
+        Some(1),
+        "the 500 must leave the first message untouched, got {}",
+        recv.body
+    );
+}
+
+/// The top-level ChangeMessageVisibility null handle is the OPPOSITE
+/// shape: the dropped member reaches the backend as None, and
+/// `None in all_receipt_handles` matches every extant message's
+/// pre-receive slot — the FIRST message in queue order gets bumped, 200
+/// (live-verified: the bump silences the message, and a null on an empty
+/// queue falls out to ReceiptHandleIsInvalid like the missing-key pin).
+/// Batch rows never take this route (pinned separately).
+#[test]
+fn cmv_null_receipt_handle_matches_first_message() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "cmv-null-handle");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "t"}),
+    ));
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": Value::Null,
+            "VisibilityTimeout": 300,
+        }),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    assert!(
+        serde_json::from_str::<Value>(&recv.body)
+            .expect("json")
+            .get("Messages")
+            .is_none(),
+        "the null handle bump applies like a missing handle, got {}",
+        recv.body
+    );
+
+    // On an empty queue the None-mode match falls out to
+    // ReceiptHandleIsInvalid, like the missing-key pin.
+    let empty = create_queue(&handler, "cmv-null-empty");
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({"QueueUrl": &empty, "ReceiptHandle": Value::Null, "VisibilityTimeout": 30}),
+    ));
+    assert_eq!(resp.status, 400, "got {}", resp.body);
+    assert!(
+        resp.body.contains("ReceiptHandleIsInvalid"),
+        "got {}",
+        resp.body
+    );
+}
+
 /// The rewired happy path: valid entries still delete, through the same
 /// helper that rejects the invalid ones.
 #[test]
@@ -3487,6 +3782,7 @@ fn receive_junk_visibility_crash() {
 
     for (label, vis) in [
         ("junk string", json!("abc")),
+        ("empty string", json!("")),
         ("object shape", json!({ "x": 1 })),
         ("array shape", json!([1])),
     ] {
@@ -3602,6 +3898,102 @@ fn receive_junk_visibility_crash() {
     let counts = queued_message_counts(&handler, &queue_url);
     assert_eq!(counts.0, 3, "vis=1 expired; queue-default 30s would not");
     assert_eq!(counts.1, 0);
+}
+
+/// Empty-string junk is a parse-layer ValueError for moto (`int("")`),
+/// and it crashes like any other junk string everywhere the automated
+/// parse int()s a member: top-level ChangeMessageVisibility
+/// VisibilityTimeout, the receive VisibilityTimeout, the receive
+/// MaxNumberOfMessages and WaitTimeSeconds bounds, and batch rows
+/// (live-verified, each cell answering the 500 HTML page; the batch-row
+/// cell notably kills the WHOLE request — the parse layer runs before
+/// the backend's per-row bare except can turn anything into a Failed
+/// row). An empty RECEIPT HANDLE keeps the per-row Failed arm — a string
+/// shape, never int()-ed (pinned with the missing-key crash).
+#[test]
+fn empty_string_visibility_junk_crashes_like_moto() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "empty-vis-junk");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "t"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let handle: String = serde_json::from_str::<Value>(&recv.body).expect("json")["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .expect("handle")
+        .to_string();
+
+    let crash_envelope =
+        |body: &str| body.contains("<!doctype html>") && body.contains("500 Internal Server Error");
+
+    // Top-level ChangeMessageVisibility with "".
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": &handle,
+            "VisibilityTimeout": "",
+        }),
+    ));
+    assert_eq!(resp.status, 500, "got {}", resp.body);
+    assert!(crash_envelope(&resp.body), "got {}", resp.body);
+
+    // The receive visibility (also covered by receive_junk_visibility_crash).
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "VisibilityTimeout": ""}),
+    ));
+    assert_eq!(resp.status, 500, "got {}", resp.body);
+    assert!(crash_envelope(&resp.body), "got {}", resp.body);
+
+    // The receive bounds junk route (Max=''/Wait='') is pinned
+    // separately with the junk MaxNumberOfMessages/WaitTimeSeconds
+    // finding — the vis-family mask above cannot reach those call sites
+    // on its own.
+
+    // A batch row's "" visibility kills the whole request at the parse
+    // layer (live-verified 500, no Failed rows) — the backend's per-row
+    // bare except never sees the value.
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "x", "ReceiptHandle": &handle, "VisibilityTimeout": ""},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 500, "got {}", resp.body);
+    assert!(crash_envelope(&resp.body), "got {}", resp.body);
+    assert!(
+        !resp.body.contains("Failed"),
+        "the parse-layer crash discards all rows, got {}",
+        resp.body
+    );
+
+    // The empty-string RECEIPT HANDLE keeps the per-row Failed arm
+    // (moto matches nothing and raises ReceiptHandleIsInvalid inside the
+    // per-row try, live-verified) — string shapes never reach int().
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "e", "ReceiptHandle": "", "VisibilityTimeout": 30},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    let failed = data["Failed"].as_array().expect("Failed array");
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0]["Code"], "ReceiptHandleIsInvalid");
+    assert_eq!(failed[0]["Message"], "The input receipt handle is invalid.");
 }
 
 /// moto 400s an out-of-range MaxNumberOfMessages in the ReceiveMessage

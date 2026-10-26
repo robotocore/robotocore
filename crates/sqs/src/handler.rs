@@ -582,13 +582,18 @@ impl DefaultSqsHandler {
         // crashes too, discarding the valid row). A MISSING key no longer
         // crashes here: the response-layer bare except catches its lookup
         // failure and answers the per-row Failed arm (live-verified shape).
+        // A JSON null takes the same missing route — moto's parse drops
+        // null members entirely (`BaseJSONParser._parse_structure` skips a
+        // member whose value came off the wire as None; live-verified: a
+        // batch row with VisibilityTimeout:null answers 200 with the same
+        // Failed row, not the parse crash).
         // The scan sits before the batch-Id validation because the parse
         // precedes the whole response layer.
         if let Some(entries) = params.get("Entries").and_then(|v| v.as_array()) {
             for entry in entries {
                 if entry
                     .get("VisibilityTimeout")
-                    .is_some_and(|v| Self::visibility_timeout_of(Some(v)).is_none())
+                    .is_some_and(|v| !v.is_null() && Self::visibility_timeout_of(Some(v)).is_none())
                 {
                     return Err(SqsError::MotoCrash);
                 }
@@ -616,30 +621,20 @@ impl DefaultSqsHandler {
                 .and_then(|v| v.as_str())
                 .unwrap_or_default()
                 .to_string();
-            // moto's backend reads entry["ReceiptHandle"] STRICTLY: a row
-            // without the key raises KeyError inside the batch loop —
-            // OUTSIDE the broad `except:` guarding only the visibility
-            // parse — and crashes the whole request as a werkzeug 500
-            // (live-verified, and it precedes the per-row queue lookup so
-            // a ghost queue keeps the crash). A null-valued member travels
-            // as None and takes moto's None-mode match (first extant
-            // message); other non-string values never match.
-            let receipt_handle: Option<&str> = match entry.get("ReceiptHandle") {
-                None => return Err(SqsError::MotoCrash),
-                Some(Value::Null) => None,
-                Some(Value::String(s)) => Some(s.as_str()),
-                Some(_) => Some(""),
-            };
             // moto's change_message_visibility_batch backend wraps the
             // per-entry `int(entry["VisibilityTimeout"])` parse and the
-            // MAXIMUM_VISIBILITY_TIMEOUT assert in one bare except:
-            // anything above the cap answers a per-entry Failed row
+            // MAXIMUM_VISIBILITY_TIMEOUT assert in one bare except: a row
+            // whose VisibilityTimeout is MISSING (KeyError inside the
+            // arm) or above the cap answers a per-entry Failed row
             // (live-verified shape: SenderFault true / Code
             // InvalidParameterValue / Message "Visibility timeout
-            // invalid"), and a u64-overflowing value takes the same row.
-            // Negatives parse and PASS the assert (moto 5.2.4, live
+            // invalid"; a row carrying NEITHER key fails this arm first,
+            // live-verified: Entries=[{"Id":"m1"}] answers 200 with the
+            // Failed row), and a u64-overflowing value takes the same
+            // row. Negatives parse and PASS the assert (moto 5.2.4, live
             // verified: a "-5" row succeeds on a valid handle and the
-            // message becomes visible immediately).
+            // message becomes visible immediately). This arm runs BEFORE
+            // the ReceiptHandle lookup below is ever touched.
             let visibility = Self::visibility_timeout_of(entry.get("VisibilityTimeout"));
             let visibility = match visibility {
                 Some(v) if v <= Self::MAX_VISIBILITY_TIMEOUT as i64 => v,
@@ -652,6 +647,25 @@ impl DefaultSqsHandler {
                     }));
                     continue;
                 }
+            };
+            // moto's backend reads entry["ReceiptHandle"] STRICTLY, after
+            // the per-row visibility arm: a row without the key raises
+            // KeyError inside the batch loop — OUTSIDE the broad `except:`
+            // guarding only the visibility parse — and crashes the whole
+            // request as a werkzeug 500 (live-verified, and it precedes
+            // the per-row queue lookup so a ghost queue keeps the crash).
+            // A null member never reaches that lookup as a value either:
+            // moto's parse layer drops null members outright, so a row
+            // carrying ReceiptHandle:null answers the SAME KeyError crash
+            // (live-verified; the twin previously steered the null into
+            // moto's None-mode match, mutating the first message's
+            // visibility — a state change moto never performs here).
+            // Other non-string values can never match moto's membership
+            // test and take the per-row ReceiptHandleIsInvalid arm.
+            let receipt_handle: Option<&str> = match entry.get("ReceiptHandle") {
+                Some(Value::String(s)) => Some(s.as_str()),
+                None | Some(Value::Null) => return Err(SqsError::MotoCrash),
+                Some(_) => Some(""),
             };
             // moto resolves the queue only inside the per-row backend call
             // (`change_message_visibility` -> `get_queue`,
@@ -824,10 +838,15 @@ impl DefaultSqsHandler {
         // does not crash: the response layer catches the fallback TypeError
         // and applies the queue's attribute (live-verified: absent on a
         // nonexistent queue answers NonExistentQueue like every resolve).
-        // Numeric strings keep the int() coercion of both protocols.
+        // A JSON null takes the same absent path — moto's parse layer drops
+        // null members entirely (`BaseJSONParser._parse_structure` skips a
+        // member whose value came off the wire as None, live-verified:
+        // receive with VisibilityTimeout:null answers 200 with the queue
+        // default). Numeric strings keep the int() coercion of both
+        // protocols.
         if params
             .get("VisibilityTimeout")
-            .is_some_and(|v| Self::visibility_timeout_of(Some(v)).is_none())
+            .is_some_and(|v| !v.is_null() && Self::visibility_timeout_of(Some(v)).is_none())
         {
             return Err(SqsError::MotoCrash);
         }
@@ -1560,6 +1579,15 @@ impl DefaultSqsHandler {
     /// moto's parse layer does (a present-but-unparseable value kills the
     /// request), while the batch row arm treats such a key as missing and
     /// answers the per-row Failed entry under moto's broad `except:`.
+    ///
+    /// A JSON null member never raises here either: moto's parse layer
+    /// drops null members outright (`BaseJSONParser._parse_structure`
+    /// skips a member whose wire value parses to None — live-verified),
+    /// so this helper answers None and the call sites take their absent
+    /// paths (receive falls back to the queue's attribute, a batch row
+    /// lands in the same bare-except Failed arm — both live-verified —
+    /// and top-level ChangeMessageVisibility still crashes on the missing
+    /// value via `None > 43200`, which a dropped null reproduces exactly).
     fn visibility_timeout_of(param: Option<&Value>) -> Option<i64> {
         match param? {
             Value::Number(n) => n.as_i64().or_else(|| n.as_f64().map(|f| f as i64)),
@@ -1580,8 +1608,16 @@ impl DefaultSqsHandler {
                     // saturating i64::MIN lands in the clamp-to-immediate
                     // arm like every negative.
                     Some(i64::MIN)
-                } else if s.chars().all(|c| c.is_ascii_digit()) {
+                } else if !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()) {
                     // "<huge>": positive overflow, still cap-breaching.
+                    // The emptiness mask keeps the all-digits arm from
+                    // matching the vacuously-true `""`: python
+                    // `int("")` raises ValueError, so moto dies in its
+                    // parse layer on the empty string exactly like any
+                    // other junk (live-verified on receive and top-level
+                    // ChangeMessageVisibility VisibilityTimeout, the
+                    // receive MaxNumberOfMessages/WaitTimeSeconds bounds
+                    // and batch rows) — the None route, not i64::MAX.
                     Some(i64::MAX)
                 } else {
                     None
