@@ -39,7 +39,8 @@ pub struct Table {
     pub key_schema: Vec<KeySchema>,
     #[serde(with = "crate::snapshot::rw")]
     pub attribute_definitions: RwLock<Vec<AttributeDefinition>>,
-    pub billing_mode: String,
+    #[serde(with = "crate::snapshot::rw")]
+    pub billing_mode: RwLock<String>,
     #[serde(with = "crate::snapshot::rw")]
     pub provisioned_rcu: RwLock<i64>,
     #[serde(with = "crate::snapshot::rw")]
@@ -77,6 +78,11 @@ pub struct Table {
     pub contributor_insights: RwLock<Option<String>>,
     #[serde(with = "crate::snapshot::rw")]
     pub table_arn: RwLock<String>,
+    /// moto `Table.deletion_protection_enabled` — set by CreateTable
+    /// (default False) and mutable through UpdateTable; describe always
+    /// renders it (moto/dynamodb/models/table.py describe).
+    #[serde(with = "crate::snapshot::rw", default)]
+    pub deletion_protection_enabled: RwLock<bool>,
 }
 
 impl Table {
@@ -99,7 +105,7 @@ impl Table {
             created_at: Utc::now().timestamp() as u64,
             key_schema,
             attribute_definitions: RwLock::new(attribute_definitions),
-            billing_mode: billing_mode.clone(),
+            billing_mode: RwLock::new(billing_mode),
             provisioned_rcu: RwLock::new(0),
             provisioned_wcu: RwLock::new(0),
             items: RwLock::new(HashMap::new()),
@@ -117,6 +123,7 @@ impl Table {
             kinesis_destinations: RwLock::new(Vec::new()),
             contributor_insights: RwLock::new(None),
             table_arn: RwLock::new(arn),
+            deletion_protection_enabled: RwLock::new(false),
         }
     }
 

@@ -363,6 +363,14 @@ impl DynamoDbHandler {
         *table.provisioned_rcu.write() = rcu;
         *table.provisioned_wcu.write() = wcu;
 
+        // moto create_table forwards DeletionProtectionEnabled
+        // (dynamodb/responses.py:356, default False).
+        *table.deletion_protection_enabled.write() = req
+            .params
+            .get("DeletionProtectionEnabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+
         *table.global_secondary_indexes.write() =
             Self::parse_indexes(req.params.get("GlobalSecondaryIndexes"));
         *table.local_secondary_indexes.write() =
@@ -471,7 +479,7 @@ impl DynamoDbHandler {
     /// botocore's TableWarmThroughputDescription, whose Status member is the
     /// TableStatus enum.
     fn table_warm_throughput(table: &Table) -> Value {
-        if table.billing_mode == "PAY_PER_REQUEST" {
+        if *table.billing_mode.read() == "PAY_PER_REQUEST" {
             json!({
                 "ReadUnitsPerSecond": DEFAULT_WARM_THROUGHPUT_RCU,
                 "WriteUnitsPerSecond": DEFAULT_WARM_THROUGHPUT_WCU,
@@ -580,8 +588,8 @@ impl DynamoDbHandler {
             "ProvisionedThroughput": provisioned,
             "LocalSecondaryIndexes": index_json(&lsis, false),
             "GlobalSecondaryIndexes": index_json(&gsis, true),
-            "DeletionProtectionEnabled": false,
-            "BillingModeSummary": { "BillingMode": table.billing_mode },
+            "DeletionProtectionEnabled": *table.deletion_protection_enabled.read(),
+            "BillingModeSummary": { "BillingMode": *table.billing_mode.read() },
             "TableClassSummary": { "TableClass": "STANDARD" },
             "WarmThroughput": warm_throughput,
         });
@@ -621,6 +629,52 @@ impl DynamoDbHandler {
                 .unwrap_or(0);
             *table.provisioned_rcu.write() = rcu;
             *table.provisioned_wcu.write() = wcu;
+        }
+
+        // moto update_table (dynamodb/models/__init__.py:186-187): a BillingMode
+        // member mutates the stored mode, so this and the next DescribeTable
+        // echo the new mode — and the derived WarmThroughput follows it (the
+        // twin treats a PAY_PER_REQUEST table as moto's 12000/4000 on-demand
+        // defaults).
+        if let Some(mode) = param_str(&req.params, "BillingMode") {
+            if !mode.is_empty() {
+                *table.billing_mode.write() = mode.to_string();
+            }
+        }
+
+        // moto update_table: stream_spec is applied through
+        // update_table_streams (dynamodb/models/__init__.py:197-205) —
+        // re-enabling a table that already carries a stream label raises
+        // ResourceInUseException ("Cannot enable stream"); otherwise an
+        // enabled-or-view-typed spec attaches the shard and stream label the
+        // way set_stream_specification does, and any other spec disables the
+        // stream (the label/shard linger there, as in moto).
+        if let Some(spec) = req.params.get("StreamSpecification") {
+            let enabled = spec
+                .get("StreamEnabled")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let view_type = spec.get("StreamViewType").and_then(Value::as_str);
+            if (enabled || view_type.is_some()) && table.stream_label.read().is_some() {
+                return AwsResponse::error(400, "ResourceInUseException", "Cannot enable stream");
+            }
+            if enabled || view_type.is_some() {
+                *table.stream_view_type.write() = view_type.map(String::from);
+                *table.stream_enabled.write() = true;
+                streaming::enable_stream(&table);
+            } else {
+                *table.stream_enabled.write() = false;
+            }
+        }
+
+        // moto update_table (dynamodb/models/__init__.py:190-191): a present
+        // boolean DeletionProtectionEnabled member mutates the stored value.
+        if let Some(enabled) = req
+            .params
+            .get("DeletionProtectionEnabled")
+            .and_then(Value::as_bool)
+        {
+            *table.deletion_protection_enabled.write() = enabled;
         }
 
         // Merge attribute definitions supplied alongside index updates.
@@ -3112,7 +3166,7 @@ impl DynamoDbHandler {
             req.region.clone(),
             source.key_schema.clone(),
             source.attribute_definitions.read().clone(),
-            source.billing_mode.clone(),
+            source.billing_mode.read().clone(),
         ));
         {
             let source_items = source.items.read();
@@ -4012,6 +4066,143 @@ mod tests {
             json!({
                 "ReadUnitsPerSecond": 9,
                 "WriteUnitsPerSecond": 21,
+                "Status": "ACTIVE"
+            })
+        );
+    }
+
+    // moto update_table mutates the BillingMode, DeletionProtectionEnabled and
+    // StreamSpecification members it is given (dynamodb/models/__init__.py:
+    // 186-191, update_table_streams), and the re-routed describe payload
+    // (Table.describe) echoes the new values: a PROVISIONED table switched to
+    // PAY_PER_REQUEST describes BillingModeSummary {"BillingMode":
+    // "PAY_PER_REQUEST"} and the on-demand 12000/4000 warm throughput.
+    #[test]
+    fn update_table_applies_billing_mode_protection_stream() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "utm",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 7}
+            }),
+        ));
+
+        // Switch the billing mode: the UpdateTable response echoes the new
+        // mode, and the derived WarmThroughput follows it.
+        let resp = handler.handle(make_req(
+            "UpdateTable",
+            json!({"TableName": "utm", "BillingMode": "PAY_PER_REQUEST"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["TableDescription"]["BillingModeSummary"],
+            json!({"BillingMode": "PAY_PER_REQUEST"})
+        );
+        assert_eq!(
+            body["TableDescription"]["WarmThroughput"],
+            json!({
+                "ReadUnitsPerSecond": 12000,
+                "WriteUnitsPerSecond": 4000,
+                "Status": "ACTIVE"
+            })
+        );
+
+        // The next DescribeTable echoes it too.
+        let resp = handler.handle(make_req("DescribeTable", json!({"TableName": "utm"})));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["Table"]["BillingModeSummary"],
+            json!({"BillingMode": "PAY_PER_REQUEST"})
+        );
+        assert_eq!(
+            body["Table"]["WarmThroughput"],
+            json!({
+                "ReadUnitsPerSecond": 12000,
+                "WriteUnitsPerSecond": 4000,
+                "Status": "ACTIVE"
+            })
+        );
+
+        // DeletionProtectionEnabled mutates on both describe surfaces.
+        let resp = handler.handle(make_req(
+            "UpdateTable",
+            json!({"TableName": "utm", "DeletionProtectionEnabled": true}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert!(body["TableDescription"]["DeletionProtectionEnabled"]
+            .as_bool()
+            .unwrap());
+        let resp = handler.handle(make_req("DescribeTable", json!({"TableName": "utm"})));
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert!(body["Table"]["DeletionProtectionEnabled"]
+            .as_bool()
+            .unwrap());
+        let resp = handler.handle(make_req(
+            "UpdateTable",
+            json!({"TableName": "utm", "DeletionProtectionEnabled": false}),
+        ));
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert!(!body["TableDescription"]["DeletionProtectionEnabled"]
+            .as_bool()
+            .unwrap());
+
+        // A StreamSpecification-on update attaches the stream (label + shard),
+        // echoed on this response and the next describe; re-enabling a live
+        // stream answers moto's StreamAlreadyEnabledException ("Cannot enable
+        // stream", ResourceInUseException); an off-spec disables it.
+        let resp = handler.handle(make_req(
+            "UpdateTable",
+            json!({"TableName": "utm",
+                   "StreamSpecification": {"StreamEnabled": true, "StreamViewType": "NEW_AND_OLD_IMAGES"}}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert!(body["TableDescription"]["LatestStreamLabel"].is_string());
+        assert!(body["TableDescription"]["LatestStreamArn"]
+            .as_str()
+            .unwrap()
+            .starts_with("arn:aws:dynamodb:us-east-1:123456789012:table/utm/stream/"));
+        let resp = handler.handle(make_req(
+            "UpdateTable",
+            json!({"TableName": "utm",
+                   "StreamSpecification": {"StreamEnabled": true, "StreamViewType": "NEW_IMAGE"}}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert_eq!(
+            resp.body,
+            json!({"__type": "ResourceInUseException", "message": "Cannot enable stream"})
+                .to_string()
+        );
+        let resp = handler.handle(make_req(
+            "UpdateTable",
+            json!({"TableName": "utm", "StreamSpecification": {"StreamEnabled": false}}),
+        ));
+        assert_eq!(resp.status, 200);
+
+        // … and switching BACK to PROVISIONED describes the stored mode again,
+        // warm throughput off the provisioned units (moto keeps its stored
+        // throughput across mode switches).
+        let resp = handler.handle(make_req(
+            "UpdateTable",
+            json!({"TableName": "utm", "BillingMode": "PROVISIONED"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["TableDescription"]["BillingModeSummary"],
+            json!({"BillingMode": "PROVISIONED"})
+        );
+        assert_eq!(
+            body["TableDescription"]["WarmThroughput"],
+            json!({
+                "ReadUnitsPerSecond": 5,
+                "WriteUnitsPerSecond": 7,
                 "Status": "ACTIVE"
             })
         );
