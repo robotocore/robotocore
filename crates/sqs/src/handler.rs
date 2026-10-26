@@ -1608,8 +1608,16 @@ impl DefaultSqsHandler {
                     // saturating i64::MIN lands in the clamp-to-immediate
                     // arm like every negative.
                     Some(i64::MIN)
-                } else if s.chars().all(|c| c.is_ascii_digit()) {
+                } else if !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()) {
                     // "<huge>": positive overflow, still cap-breaching.
+                    // The emptiness mask keeps the all-digits arm from
+                    // matching the vacuously-true `""`: python
+                    // `int("")` raises ValueError, so moto dies in its
+                    // parse layer on the empty string exactly like any
+                    // other junk (live-verified on receive and top-level
+                    // ChangeMessageVisibility VisibilityTimeout, the
+                    // receive MaxNumberOfMessages/WaitTimeSeconds bounds
+                    // and batch rows) — the None route, not i64::MAX.
                     Some(i64::MAX)
                 } else {
                     None

@@ -3782,6 +3782,7 @@ fn receive_junk_visibility_crash() {
 
     for (label, vis) in [
         ("junk string", json!("abc")),
+        ("empty string", json!("")),
         ("object shape", json!({ "x": 1 })),
         ("array shape", json!([1])),
     ] {
@@ -3897,6 +3898,102 @@ fn receive_junk_visibility_crash() {
     let counts = queued_message_counts(&handler, &queue_url);
     assert_eq!(counts.0, 3, "vis=1 expired; queue-default 30s would not");
     assert_eq!(counts.1, 0);
+}
+
+/// Empty-string junk is a parse-layer ValueError for moto (`int("")`),
+/// and it crashes like any other junk string everywhere the automated
+/// parse int()s a member: top-level ChangeMessageVisibility
+/// VisibilityTimeout, the receive VisibilityTimeout, the receive
+/// MaxNumberOfMessages and WaitTimeSeconds bounds, and batch rows
+/// (live-verified, each cell answering the 500 HTML page; the batch-row
+/// cell notably kills the WHOLE request — the parse layer runs before
+/// the backend's per-row bare except can turn anything into a Failed
+/// row). An empty RECEIPT HANDLE keeps the per-row Failed arm — a string
+/// shape, never int()-ed (pinned with the missing-key crash).
+#[test]
+fn empty_string_visibility_junk_crashes_like_moto() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "empty-vis-junk");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "t"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1}),
+    ));
+    let handle: String = serde_json::from_str::<Value>(&recv.body).expect("json")["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .expect("handle")
+        .to_string();
+
+    let crash_envelope =
+        |body: &str| body.contains("<!doctype html>") && body.contains("500 Internal Server Error");
+
+    // Top-level ChangeMessageVisibility with "".
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": &handle,
+            "VisibilityTimeout": "",
+        }),
+    ));
+    assert_eq!(resp.status, 500, "got {}", resp.body);
+    assert!(crash_envelope(&resp.body), "got {}", resp.body);
+
+    // The receive visibility (also covered by receive_junk_visibility_crash).
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "VisibilityTimeout": ""}),
+    ));
+    assert_eq!(resp.status, 500, "got {}", resp.body);
+    assert!(crash_envelope(&resp.body), "got {}", resp.body);
+
+    // The receive bounds junk route (Max=''/Wait='') is pinned
+    // separately with the junk MaxNumberOfMessages/WaitTimeSeconds
+    // finding — the vis-family mask above cannot reach those call sites
+    // on its own.
+
+    // A batch row's "" visibility kills the whole request at the parse
+    // layer (live-verified 500, no Failed rows) — the backend's per-row
+    // bare except never sees the value.
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "x", "ReceiptHandle": &handle, "VisibilityTimeout": ""},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 500, "got {}", resp.body);
+    assert!(crash_envelope(&resp.body), "got {}", resp.body);
+    assert!(
+        !resp.body.contains("Failed"),
+        "the parse-layer crash discards all rows, got {}",
+        resp.body
+    );
+
+    // The empty-string RECEIPT HANDLE keeps the per-row Failed arm
+    // (moto matches nothing and raises ReceiptHandleIsInvalid inside the
+    // per-row try, live-verified) — string shapes never reach int().
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "e", "ReceiptHandle": "", "VisibilityTimeout": 30},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 200, "got {}", resp.body);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    let failed = data["Failed"].as_array().expect("Failed array");
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0]["Code"], "ReceiptHandleIsInvalid");
+    assert_eq!(failed[0]["Message"], "The input receipt handle is invalid.");
 }
 
 /// moto 400s an out-of-range MaxNumberOfMessages in the ReceiveMessage
