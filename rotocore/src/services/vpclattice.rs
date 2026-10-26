@@ -7,6 +7,12 @@
 //! `als-`) mirror moto's generators, including moto's rule id which renders
 //! the literal string `rule-[0-9a-z]{17}`.
 //!
+//! The listener trio (Create/Get/ListListeners) is outside moto's surface
+//! and is modeled straight from botocore's shapes (`CreateListenerResponse`,
+//! `GetListenerResponse`, `ListenerSummary`), keeping moto's id generators
+//! (`listener-` + 17 uuid chars); DeleteListener/UpdateListener and the
+//! remaining rule operations still answer moto's 501 canon.
+//!
 //! Routing is moto's two-layer model: a request only reaches the backend
 //! when the path matches one of moto's `urls.py` gate patterns
 //! (`/services/**`, `/servicenetworks/**`, `/servicenetworkvpcassociations`,
@@ -117,6 +123,67 @@ struct RuleEntry {
     tags: Value,
 }
 
+/// botocore-modeled listener (`service-2.json`: `CreateListenerResponse`,
+/// `GetListenerResponse` and `ListenerSummary` — no moto-era handler to
+/// mirror, so the shapes follow the model exactly).
+struct ListenerEntry {
+    id: String,
+    arn: String,
+    name: Value,
+    protocol: Value,
+    port: Value,
+    default_action: Value,
+    service_id: String,
+    service_arn: String,
+    created_at: String,
+    last_updated_at: String,
+}
+
+impl ListenerEntry {
+    /// `CreateListenerResponse` (no timestamps).
+    fn to_create(&self) -> Value {
+        json!({
+            "arn": self.arn,
+            "defaultAction": self.default_action,
+            "id": self.id,
+            "name": self.name,
+            "port": self.port,
+            "protocol": self.protocol,
+            "serviceArn": self.service_arn,
+            "serviceId": self.service_id,
+        })
+    }
+
+    /// `GetListenerResponse`.
+    fn to_wire(&self) -> Value {
+        json!({
+            "arn": self.arn,
+            "createdAt": self.created_at,
+            "defaultAction": self.default_action,
+            "id": self.id,
+            "lastUpdatedAt": self.last_updated_at,
+            "name": self.name,
+            "port": self.port,
+            "protocol": self.protocol,
+            "serviceArn": self.service_arn,
+            "serviceId": self.service_id,
+        })
+    }
+
+    /// `ListenerSummary` (ListListeners items).
+    fn to_summary(&self) -> Value {
+        json!({
+            "arn": self.arn,
+            "createdAt": self.created_at,
+            "id": self.id,
+            "lastUpdatedAt": self.last_updated_at,
+            "name": self.name,
+            "port": self.port,
+            "protocol": self.protocol,
+        })
+    }
+}
+
 struct AlsEntry {
     id: String,
     arn: String,
@@ -160,6 +227,9 @@ struct State {
     /// moto keys every rule by the same literal id (`rule-[0-9a-z]{17}`),
     /// so a new rule replaces the previous one.
     rules: Vec<RuleEntry>,
+    /// botocore-modeled listeners (Create/Get/ListListeners): tuned to the
+    /// parent service by id, stored per (account, region) like the rest.
+    listeners: Vec<ListenerEntry>,
     access_log_subscriptions: Vec<AlsEntry>,
     /// resource ids trimmed of their ARN prefix (`svc-…`/`sn-…`) -> policy.
     auth_policies: BTreeMap<String, AuthPolicy>,
@@ -274,6 +344,24 @@ fn path_segment_after<'a>(path: &'a str, prefix: &str) -> Option<&'a str> {
     path.strip_prefix(prefix)
         .map(|rest| rest.split('/').next().unwrap_or(""))
         .filter(|seg| !seg.is_empty())
+}
+
+/// The raw `{param}` segment immediately following an in-path literal anchor,
+/// e.g. `/services/{svc}/listeners/{lid}` with anchor `listeners/` -> `{lid}`.
+fn segment_after<'a>(path: &'a str, anchor: &str) -> Option<&'a str> {
+    let rest = path.split_once(anchor)?.1;
+    let seg = rest.split('/').next().unwrap_or("");
+    (!seg.is_empty()).then_some(seg)
+}
+
+/// Real-AWS default port when `CreateListener` omits one: 80 for HTTP,
+/// 443 otherwise (HTTPS, TLS_PASSTHROUGH).
+fn default_listener_port(protocol: &str) -> i64 {
+    if protocol == "HTTP" {
+        80
+    } else {
+        443
+    }
 }
 
 /// moto reads path params via `_get_param` (one unquote) and its vpclattice
@@ -705,6 +793,29 @@ pub fn dispatch(req: &Request) -> Option<Response> {
         "CreateService" => Some(create_service(b, &req.region, req.account, &body)),
         "GetService" => Some(get_service(b, path)),
         "ListServices" => Some(list_services(b)),
+        "CreateListener" => match path_segment_after(path, "/services/") {
+            Some(seg) => Some(create_listener(
+                b,
+                &req.region,
+                req.account,
+                &double_decode(seg),
+                &body,
+            )),
+            None => Some(unrouted()),
+        },
+        "GetListener" => match (
+            path_segment_after(path, "/services/"),
+            segment_after(path, "listeners/"),
+        ) {
+            (Some(svc), Some(lid)) => {
+                Some(get_listener(b, &double_decode(svc), &double_decode(lid)))
+            }
+            _ => Some(unrouted()),
+        },
+        "ListListeners" => match path_segment_after(path, "/services/") {
+            Some(seg) => Some(list_listeners(b, &double_decode(seg))),
+            None => Some(unrouted()),
+        },
         "CreateServiceNetwork" => Some(create_service_network(b, &req.region, req.account, &body)),
         "GetServiceNetwork" => Some(get_service_network(b, path)),
         "ListServiceNetworks" => Some(list_service_networks(b)),
@@ -809,6 +920,76 @@ fn get_service(st: &mut State, path: &str) -> Response {
 
 fn list_services(st: &State) -> Response {
     let items: Vec<Value> = st.services.iter().map(|s| s.to_wire()).collect();
+    ok(&paginated_list(items))
+}
+
+/// botocore's `CreateListener`: the parent service must exist; the wire
+/// members come straight from `CreateListenerResponse`.
+fn create_listener(
+    st: &mut State,
+    region: &str,
+    account: u64,
+    svc_input: &str,
+    p: &Value,
+) -> Response {
+    let svc = trim_resource_identifier(svc_input);
+    let Some(service) = find_service(st, &svc) else {
+        return not_found(format!("Resource {svc_input} not found"));
+    };
+    let id = prefixed_id("listener-");
+    let arn = format!("arn:aws:vpc-lattice:{region}:{account}:service/{svc}/listener/{id}");
+    let protocol = p.get("protocol").cloned().unwrap_or(Value::Null);
+    let port = match p.get("port").filter(|v| !v.is_null()) {
+        Some(port) => port.clone(),
+        None => json!(default_listener_port(protocol.as_str().unwrap_or(""))),
+    };
+    let now = now_iso();
+    let entry = ListenerEntry {
+        id: id.clone(),
+        arn: arn.clone(),
+        name: p.get("name").cloned().unwrap_or(Value::Null),
+        protocol,
+        port,
+        default_action: p.get("defaultAction").cloned().unwrap_or(Value::Null),
+        service_id: service.id.clone(),
+        service_arn: service.arn.clone(),
+        created_at: now.clone(),
+        last_updated_at: now,
+    };
+    let wire = entry.to_create();
+    st.listeners.push(entry);
+    tag_resource(st, &arn, p.get("tags").unwrap_or(&json!({})));
+    ok(&wire)
+}
+
+fn find_listener<'a>(st: &'a State, svc_id: &str, id: &str) -> Option<&'a ListenerEntry> {
+    st.listeners
+        .iter()
+        .find(|l| l.service_id == svc_id && l.id == id)
+}
+
+fn get_listener(st: &State, svc_input: &str, lid_input: &str) -> Response {
+    let svc = trim_resource_identifier(svc_input);
+    let Some(_service) = find_service(st, &svc) else {
+        return not_found(format!("Resource {svc_input} not found"));
+    };
+    let Some(listener) = find_listener(st, &svc, &trim_resource_identifier(lid_input)) else {
+        return not_found(format!("Listener {lid_input} not found"));
+    };
+    ok(&listener.to_wire())
+}
+
+fn list_listeners(st: &State, svc_input: &str) -> Response {
+    let svc = trim_resource_identifier(svc_input);
+    let Some(_service) = find_service(st, &svc) else {
+        return not_found(format!("Resource {svc_input} not found"));
+    };
+    let items: Vec<Value> = st
+        .listeners
+        .iter()
+        .filter(|l| l.service_id == svc)
+        .map(ListenerEntry::to_summary)
+        .collect();
     ok(&paginated_list(items))
 }
 
@@ -1531,20 +1712,214 @@ mod tests {
 
         // Operations routed by moto's urls.py but without a moto handler
         // answer moto's 501 with the snake-case action name.
-        let listener_ops = dispatch(&req(
+        let rule_ops = dispatch(&req(
             "GET",
-            "/services/svc-abcdef12345678901/listeners",
+            "/services/svc-abcdef12345678901/listeners/listener-1234567890123456/rules",
             "",
             json!({}),
         ))
         .unwrap();
-        assert_eq!(listener_ops.status, 501);
-        let body = json_of(&listener_ops);
+        assert_eq!(rule_ops.status, 501);
+        let body = json_of(&rule_ops);
         assert_eq!(body["__type"], "NotImplemented");
         assert_eq!(
             body["message"],
-            "The list_listeners action has not been implemented"
+            "The list_rules action has not been implemented"
         );
+
+        // The listener trio is implemented; the rest of the listener surface
+        // keeps the 501 canon for its untouched methods.
+        let deleted = dispatch(&req(
+            "DELETE",
+            "/services/svc-abcdef12345678901/listeners/listener-1234567890123456",
+            "",
+            json!({}),
+        ))
+        .unwrap();
+        assert_eq!(deleted.status, 501);
+        assert_eq!(
+            json_of(&deleted)["message"],
+            "The delete_listener action has not been implemented"
+        );
+    }
+
+    #[test]
+    fn vpclattice_listener_lifecycle() {
+        let acct = next_account();
+        let req = |m: &str, p: &str, q: &str, b: Value| raw_req(acct, m, p, q, b);
+
+        let service = dispatch(&req("POST", "/services", "", json!({"name": "svc"}))).unwrap();
+        let svc = json_of(&service);
+        let svc_id = svc["id"].as_str().unwrap().to_string();
+        let svc_arn = svc["arn"].as_str().unwrap().to_string();
+
+        let created = dispatch(&req(
+            "POST",
+            &format!("/services/{svc_id}/listeners"),
+            "",
+            json!({
+                "name": "http-listener",
+                "protocol": "HTTP",
+                "defaultAction": {"forward": {"targetGroups": [{"targetGroupIdentifier": "tg-1"}]}},
+            }),
+        ))
+        .unwrap();
+        let created = json_of(&created);
+        let listener_id = created["id"].as_str().unwrap().to_string();
+        assert!(listener_id.starts_with("listener-"));
+        assert_eq!(
+            created["arn"],
+            json!(format!(
+                "arn:aws:vpc-lattice:us-east-1:{acct}:service/{svc_id}/listener/{listener_id}"
+            ))
+        );
+        assert_eq!(created["port"], 80); // HTTP default
+        assert_eq!(created["protocol"], "HTTP");
+        assert_eq!(created["serviceArn"], json!(svc_arn));
+        assert_eq!(created["serviceId"], json!(svc_id));
+        // The create summary drops the GetListener timestamps.
+        assert!(created["createdAt"].is_null());
+        assert!(created["lastUpdatedAt"].is_null());
+        assert!(created["defaultAction"]["forward"]["targetGroups"].is_array());
+    }
+
+    /// HTTPS omits the port and looks up the service by full ARN.
+    #[test]
+    fn vpclattice_listener_default_port_and_arn_lookup() {
+        let acct = next_account();
+        let req = |m: &str, p: &str, q: &str, b: Value| raw_req(acct, m, p, q, b);
+
+        let service = dispatch(&req("POST", "/services", "", json!({"name": "svc"}))).unwrap();
+        let svc = json_of(&service);
+        let svc_id = svc["id"].as_str().unwrap().to_string();
+        let svc_arn = svc["arn"].as_str().unwrap().to_string();
+        let arn_path = url_encode_path(&svc_arn);
+
+        let created = dispatch(&req(
+            "POST",
+            &format!("/services/{arn_path}/listeners"),
+            "",
+            json!({
+                "name": "https-listener",
+                "protocol": "HTTPS",
+                "port": 8443,
+            }),
+        ))
+        .unwrap();
+        let created = json_of(&created);
+        let listener_id = created["id"].as_str().unwrap().to_string();
+        assert_eq!(created["port"], 8443);
+
+        // GET by service ARN + listener id and by listener ARN
+        let got = json_of(
+            &dispatch(&req(
+                "GET",
+                &format!("/services/{arn_path}/listeners/{listener_id}"),
+                "",
+                json!({}),
+            ))
+            .unwrap(),
+        );
+        assert_eq!(got["id"], json!(listener_id));
+        assert_eq!(got["serviceArn"], json!(svc_arn));
+        assert_eq!(got["serviceId"], json!(svc_id));
+        assert_eq!(got["port"], 8443);
+        assert!(got["createdAt"].as_str().is_some());
+        assert!(got["lastUpdatedAt"].as_str().is_some());
+        // CreateListenerResponse carries no timestamps; GetListener does.
+        assert!(created["createdAt"].is_null());
+
+        let listener_path = url_encode_path(created["arn"].as_str().unwrap());
+        let got = json_of(
+            &dispatch(&req(
+                "GET",
+                &format!("/services/{arn_path}/listeners/{listener_path}"),
+                "",
+                json!({}),
+            ))
+            .unwrap(),
+        );
+        assert_eq!(got["id"], json!(listener_id));
+
+        let listed = dispatch(&req(
+            "GET",
+            &format!("/services/{arn_path}/listeners"),
+            "",
+            json!({}),
+        ))
+        .unwrap();
+        let listed = json_of(&listed);
+        assert_eq!(listed["items"].as_array().unwrap().len(), 1);
+        assert_eq!(listed["items"][0]["id"], json!(listener_id));
+        assert_eq!(listed["items"][0]["port"], 8443);
+        assert!(listed["items"][0]["createdAt"].as_str().is_some());
+
+        // Listener ARNs reduce to the lis id inside the service lookup too.
+        let by_listener_arn = dispatch(&req(
+            "GET",
+            &format!("/services/{arn_path}/listeners/{listener_path}"),
+            "",
+            json!({}),
+        ));
+        assert_eq!(json_of(&by_listener_arn.unwrap())["id"], json!(listener_id));
+    }
+
+    #[test]
+    fn vpclattice_listener_unknown_service_and_501_boundaries() {
+        let acct = next_account();
+        let req = |m: &str, p: &str, q: &str, b: Value| raw_req(acct, m, p, q, b);
+
+        let created = dispatch(&req(
+            "POST",
+            "/services/svc-doesnotexist123/listeners",
+            "",
+            json!({"name": "listener", "protocol": "HTTP", "defaultAction": {}}),
+        ))
+        .unwrap();
+        assert_eq!(created.status, 400);
+        assert_eq!(json_of(&created)["__type"], "ResourceNotFoundException");
+        assert_eq!(
+            json_of(&created)["message"],
+            "Resource svc-doesnotexist123 not found"
+        );
+
+        let got = dispatch(&req(
+            "GET",
+            "/services/svc-doesnotexist123/listeners/listener-1234567890123456",
+            "",
+            json!({}),
+        ))
+        .unwrap();
+        assert_eq!(got.status, 400);
+        assert_eq!(json_of(&got)["__type"], "ResourceNotFoundException");
+
+        // Unknown service id on ListListeners
+        let listed = dispatch(&req(
+            "GET",
+            "/services/svc-doesnotexist123/listeners",
+            "",
+            json!({}),
+        ))
+        .unwrap();
+        assert_eq!(listed.status, 400);
+        assert_eq!(json_of(&listed)["__type"], "ResourceNotFoundException");
+
+        // Empty listener name and missing default → rendered as Null Value
+        let service = dispatch(&req("POST", "/services", "", json!({"name": "svc"}))).unwrap();
+        let svc_id = json_of(&service)["id"].as_str().unwrap().to_string();
+
+        let created = json_of(
+            &dispatch(&req(
+                "POST",
+                &format!("/services/{svc_id}/listeners"),
+                "",
+                json!({"name": "minimal", "protocol": "TLS_PASSTHROUGH"}),
+            ))
+            .unwrap(),
+        );
+        assert_eq!(created["port"], 443);
+        assert_eq!(created["protocol"], "TLS_PASSTHROUGH");
+        assert!(created["defaultAction"].is_null());
     }
 
     #[test]
