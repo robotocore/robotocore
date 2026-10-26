@@ -1441,15 +1441,16 @@ fn password_verifier_finish(
             "Session": session,
         }));
     }
-    let issuer = format!(
-        "https://cognito-idp.{}.amazonaws.com/{pool_id}",
-        pool_region(pool_id)
-    );
+    let issuer = issue_tokens_issuer(pool_id);
     session_delete(s, session);
     let tokens = issue_tokens(&issuer, &sub, client_id, &username);
     track_refresh_token(s, pool_id, &username, &tokens);
-    // moto's `_log_user_in` answers with the bare AuthenticationResult.
-    ok_json(&json!({ "AuthenticationResult": tokens }))
+    // moto's `_log_user_in` returns both keys — ChallengeParameters {}
+    // alongside the token bundle (fork models.py:1468-1497).
+    ok_json(&json!({
+        "ChallengeParameters": {},
+        "AuthenticationResult": tokens,
+    }))
 }
 
 fn respond_to_auth_challenge(s: &mut State, p: &Value, _region: &str) -> Response {
@@ -4959,6 +4960,9 @@ mod tests {
         );
         r.account = acct;
         let b = body(&dispatch(&r).unwrap());
+        // moto's `_log_user_in` returns both keys — ChallengeParameters {}
+        // alongside the token bundle (fork models.py:1468-1497).
+        assert_eq!(b["ChallengeParameters"], json!({}), "{b}");
         assert!(b["ChallengeName"].is_null(), "{b}");
         assert!(b["AuthenticationResult"]["AccessToken"].is_string(), "{b}");
         assert!(b["AuthenticationResult"]["RefreshToken"].is_string(), "{b}");
