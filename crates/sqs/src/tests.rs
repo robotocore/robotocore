@@ -2346,6 +2346,314 @@ fn visibility_cap_change_message_visibility_batch_over_limit_rows() {
     assert_eq!(counts.1, 1, "the rejected entries stay in flight");
 }
 
+/// moto resolves the queue only inside the per-row backend change
+/// (`change_message_visibility` -> `get_queue`, moto/sqs/models.py:1082):
+/// rows that fail the per-entry parse or the cap check answer 200 Failed
+/// rows and never touch the queue. Live-verified against the pinned fork:
+/// both an over-cap-only and a missing-VisibilityTimeout ghost-queue batch
+/// answer 200 with the Failed rows (the reviewer's ITEM-1 option (a)),
+/// replacing the twin's previous eager NonExistentQueue resolution.
+#[test]
+fn visibility_batch_ghost_queue_failed_rows_never_resolve_queue() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "vis-batch-ghost-rows");
+    let ghost = format!("{}x", queue_url);
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &ghost,
+            "Entries": [
+                {"Id": "cap", "ReceiptHandle": "bogus", "VisibilityTimeout": 50000},
+                {"Id": "novis", "ReceiptHandle": "bogus"},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 200, "per-row parse failures must beat the queue lookup");
+    assert!(
+        !resp.body.contains("NonExistentQueue"),
+        "a batch whose every row fails parsing must never resolve the queue, got {}",
+        resp.body
+    );
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    assert_eq!(data["Successful"].as_array().map(|a| a.len()), Some(0));
+    let failed = data["Failed"].as_array().expect("Failed array");
+    assert_eq!(failed.len(), 2, "both rows fail parsing, in entry order");
+    for row in failed {
+        assert_eq!(row["SenderFault"], true);
+        assert_eq!(row["Code"], "InvalidParameterValue");
+        assert_eq!(row["Message"], "Visibility timeout invalid");
+    }
+}
+
+/// A parse-OK row resolves the queue; on a nonexistent queue moto raises the
+/// global QueueDoesNotExist and the Failed rows collected for earlier
+/// parse-failing entries are discarded (live-verified: both
+/// [over-cap, valid] and [missing-VisibilityTimeout, valid] ghost-queue
+/// mixes answer 400 NonExistentQueue).
+#[test]
+fn visibility_batch_ghost_queue_valid_row_answers_nonexistent_discarding_rows() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "vis-batch-ghost-valid");
+    let ghost = format!("{}x", queue_url);
+
+    for (label, entries) in [
+        ("over-cap then valid", json!([
+            {"Id": "cap", "ReceiptHandle": "bogus", "VisibilityTimeout": 50000},
+            {"Id": "ok", "ReceiptHandle": "bogus", "VisibilityTimeout": 30},
+        ])),
+        ("missing-visibility then valid", json!([
+            {"Id": "novis", "ReceiptHandle": "bogus"},
+            {"Id": "ok", "ReceiptHandle": "bogus", "VisibilityTimeout": 30},
+        ])),
+    ] {
+        let resp = handler.handle(make_request(
+            "ChangeMessageVisibilityBatch",
+            json!({"QueueUrl": &ghost, "Entries": entries}),
+        ));
+        assert_eq!(resp.status, 400, "{label} must answer 400");
+        assert!(
+            resp.body.contains("AWS.SimpleQueueService.NonExistentQueue"),
+            "{label}: the valid row resolves the queue and wins over prior rows, got {}",
+            resp.body
+        );
+    }
+}
+
+/// Per-entry ReceiptHandleIsInvalid rows carry moto's live-verified shape —
+/// SenderFault true and the ServiceException message text
+/// ("The input receipt handle is invalid.",
+/// moto/sqs/models.py:1128-1136).
+#[test]
+fn visibility_batch_invalid_handle_row_shape() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "vis-batch-bogus-handle");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [
+                {"Id": "bad", "ReceiptHandle": "no-such-handle", "VisibilityTimeout": 30},
+                {"Id": "good", "ReceiptHandle": handles[0]["ReceiptHandle"], "VisibilityTimeout": 30},
+            ],
+        }),
+    ));
+    assert_eq!(resp.status, 200);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    let successful = data["Successful"].as_array().expect("Successful array");
+    assert_eq!(successful.len(), 1);
+    assert_eq!(successful[0]["Id"], "good");
+
+    let failed = data["Failed"].as_array().expect("Failed array");
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0]["Id"], "bad");
+    assert_eq!(failed[0]["SenderFault"], true);
+    assert_eq!(failed[0]["Code"], "ReceiptHandleIsInvalid");
+    assert_eq!(failed[0]["Message"], "The input receipt handle is invalid.");
+}
+
+/// moto accepts negative VisibilityTimeouts (moto 5.2.4 live-verified:
+/// top-level ChangeMessageVisibility with VisibilityTimeout=-5 answers 200
+/// and the message is re-receivable immediately — Message.change_visibility
+/// stores visible_at in the past). The string and number shapes take the
+/// same path through the query/JSON protocols.
+#[test]
+fn negative_visibility_top_level_immediately_visible() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "neg-vis-top");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "0"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1, "VisibilityTimeout": 30}),
+    ));
+    let data: Value = serde_json::from_str(&recv.body).expect("Invalid JSON");
+    // Each re-receive mints a fresh handle; refresh before every CMV call.
+    let mut receipt_handle: String = data["Messages"][0]["ReceiptHandle"]
+        .as_str()
+        .unwrap()
+        .into();
+
+    for (shape, value) in [("number", json!(-5)), ("string", json!("-5"))] {
+        let resp = handler.handle(make_request(
+            "ChangeMessageVisibility",
+            json!({
+                "QueueUrl": &queue_url,
+                "ReceiptHandle": &receipt_handle,
+                "VisibilityTimeout": value,
+            }),
+        ));
+        assert_eq!(resp.status, 200, "{shape} negative must answer 200");
+
+        // moto answers a negative like VisibilityTimeout=0 on
+        // observability: no invisible window at all, the same message is
+        // re-receivable on the next poll (live-verified I2-C/RAW-2 flow).
+        let again = handler.handle(make_request(
+            "ReceiveMessage",
+            json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1, "VisibilityTimeout": 30}),
+        ));
+        let data: Value = serde_json::from_str(&again.body).expect("Invalid JSON");
+        let bodies: Vec<&str> = data["Messages"]
+            .as_array()
+            .map(|m| m.iter().filter_map(|x| x["Body"].as_str()).collect())
+            .unwrap_or_default();
+        assert_eq!(bodies, vec!["0"], "{shape} negative must make the message visible immediately");
+        receipt_handle = data["Messages"][0]["ReceiptHandle"].as_str().unwrap().into();
+    }
+
+    // A large negative behaves the same.
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": &receipt_handle,
+            "VisibilityTimeout": -100,
+        }),
+    ));
+    assert_eq!(resp.status, 200);
+    let again = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1, "VisibilityTimeout": 30}),
+    ));
+    let data: Value = serde_json::from_str(&again.body).expect("Invalid JSON");
+    assert_eq!(
+        data["Messages"].as_array().map(|m| m.len()),
+        Some(1),
+        "every negative timeout means immediate visibility"
+    );
+}
+
+/// Negative visibility through a batch row: moto answers a Successful row
+/// (int("-5") passes the <= MAXIMUM_VISIBILITY_TIMEOUT assert,
+/// models.py:1108-1109) and the message becomes visible immediately
+/// (live-verified).
+#[test]
+fn negative_visibility_batch_row_applies_and_unhides() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "neg-vis-batch");
+    let handles = send_and_receive_two_messages(&handler, &queue_url);
+    // Each re-receive mints a fresh handle; refresh before every batch row.
+    let mut handle: String = handles[0]["ReceiptHandle"].as_str().unwrap().into();
+
+    for (shape, timeout) in [("number", json!(-5)), ("string", json!("-5"))] {
+        let resp = handler.handle(make_request(
+            "ChangeMessageVisibilityBatch",
+            json!({
+                "QueueUrl": &queue_url,
+                "Entries": [{"Id": "neg", "ReceiptHandle": &handle, "VisibilityTimeout": timeout}],
+            }),
+        ));
+        assert_eq!(resp.status, 200);
+        let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+        let successful = data["Successful"].as_array().expect("Successful array");
+        assert_eq!(successful.len(), 1, "{shape} negative row must succeed");
+        assert_eq!(successful[0]["Id"], "neg");
+        let failed = data["Failed"].as_array().expect("Failed array");
+        assert_eq!(failed.len(), 0, "{shape} negative row must succeed");
+
+        // The message is visible again immediately; the second queued
+        // message (hidden for the default 30s) is not.
+        let again = handler.handle(make_request(
+            "ReceiveMessage",
+            json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 2}),
+        ));
+        let data: Value = serde_json::from_str(&again.body).expect("Invalid JSON");
+        let bodies: Vec<&str> = data["Messages"]
+            .as_array()
+            .map(|m| m.iter().filter_map(|x| x["Body"].as_str()).collect())
+            .unwrap_or_default();
+        assert_eq!(
+            bodies,
+            vec!["0"],
+            "{shape} negative row must unhide message 0 only"
+        );
+        handle = data["Messages"][0]["ReceiptHandle"].as_str().unwrap().into();
+    }
+}
+
+/// A negative timeout still runs moto's handle validation: top-level
+/// answers 400 ReceiptHandleIsInvalid on an unknown handle, a batch row
+/// fails with SenderFault and moto's row message (the twin always resolves
+/// the queue before the handle check, per the ITEM-1 restructure).
+#[test]
+fn negative_visibility_invalid_handle_still_errors() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "neg-vis-bogus");
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": "no-such-handle",
+            "VisibilityTimeout": -5,
+        }),
+    ));
+    assert_eq!(resp.status, 400);
+    assert!(resp.body.contains("ReceiptHandleIsInvalid"));
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibilityBatch",
+        json!({
+            "QueueUrl": &queue_url,
+            "Entries": [{"Id": "neg", "ReceiptHandle": "no-such-handle", "VisibilityTimeout": -5}],
+        }),
+    ));
+    assert_eq!(resp.status, 200);
+    let data: Value = serde_json::from_str(&resp.body).expect("Invalid JSON");
+    let failed = data["Failed"].as_array().expect("Failed array");
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0]["SenderFault"], true);
+    assert_eq!(failed[0]["Code"], "ReceiptHandleIsInvalid");
+    assert_eq!(failed[0]["Message"], "The input receipt handle is invalid.");
+}
+
+/// moto's int(value) has no magnitude limit: a negative value beyond every
+/// integer's range behaves like every other negative — accepted, immediate
+/// visibility (live-verified via the bare-except flow; the i64::MIN
+/// saturation lands in the clamp-to-0 arm).
+#[test]
+fn negative_visibility_overflow_string_immediately_visible() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "neg-vis-overflow");
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "overflow-huge"}),
+    ));
+    let recv = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1, "VisibilityTimeout": 30}),
+    ));
+    let receipt_handle: String = serde_json::from_str::<Value>(&recv.body).unwrap()["Messages"][0]
+        ["ReceiptHandle"]
+        .as_str()
+        .unwrap()
+        .into();
+
+    let resp = handler.handle(make_request(
+        "ChangeMessageVisibility",
+        json!({
+            "QueueUrl": &queue_url,
+            "ReceiptHandle": &receipt_handle,
+            "VisibilityTimeout": "-99999999999999999999",
+        }),
+    ));
+    assert_eq!(resp.status, 200);
+    let again = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1, "VisibilityTimeout": 30}),
+    ));
+    let data: Value = serde_json::from_str(&again.body).expect("Invalid JSON");
+    assert_eq!(
+        data["Messages"].as_array().map(|m| m.len()),
+        Some(1),
+        "negative overflow must mean immediate visibility"
+    );
+}
+
 /// The rewired happy path: valid entries still delete, through the same
 /// helper that rejects the invalid ones.
 #[test]
@@ -2546,4 +2854,86 @@ fn batch_validate_before_queue_lookup_change_message_visibility_batch() {
             .contains("AWS.SimpleQueueService.NonExistentQueue"),
         "queue existence must not be resolved before batch validation"
     );
+}
+
+/// moto's receive path validates the requested VisibilityTimeout in the
+/// response layer AFTER the queue lookup but before the backend
+/// receive/long-poll (`_get_validated_visibility_timeout` →
+/// MaxVisibilityTimeout, responses.py receive_message): values above 43200
+/// answer 400 InvalidParameterValue with moto's exact wording on both the
+/// JSON-number and the query-protocol string shapes, and 43200 passes at
+/// the boundary (live-verified: 50000 → 400, 43200 → 200, 43201 → 400).
+#[test]
+fn receive_visibility_over_cap_answers_max_visibility_wording() {
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "recv-cap-boundary");
+
+    // The boundary receive (empty queue, no wait) answers 200 and no error.
+    let resp = handler.handle(make_request(
+        "ReceiveMessage",
+        json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1, "VisibilityTimeout": 43200}),
+    ));
+    assert_eq!(resp.status, 200, "43200 passes the cap at the boundary");
+
+    // A visible message is NOT consumed by the rejected calls, and moto's
+    // exact wording carries on both value shapes.
+    handler.handle(make_request(
+        "SendMessage",
+        json!({"QueueUrl": &queue_url, "MessageBody": "cap-guard"}),
+    ));
+    for (shape, value) in [
+        ("number 50000", json!(50000)),
+        ("string 50000", json!("50000")),
+        ("number 43201", json!(43201)),
+        ("string 43201", json!("43201")),
+    ] {
+        let resp = handler.handle(make_request(
+            "ReceiveMessage",
+            json!({"QueueUrl": &queue_url, "MaxNumberOfMessages": 1, "VisibilityTimeout": value}),
+        ));
+        assert_eq!(resp.status, 400, "over-cap receive ({shape}) must answer 400");
+        assert!(
+            resp.body.contains("InvalidParameterValue"),
+            "over-cap receive ({shape}) must be InvalidParameterValue, got {}",
+            resp.body
+        );
+        assert!(
+            resp.body
+                .contains("Invalid request, maximum visibility timeout is 43200"),
+            "over-cap receive ({shape}) must carry moto's wording, got {}",
+            resp.body
+        );
+    }
+    let counts = queued_message_counts(&handler, &queue_url);
+    assert_eq!(counts.0, 1, "the rejected receive must not consume the message");
+    assert_eq!(counts.1, 0, "the rejected receive must not touch flight state");
+}
+
+/// moto validates the receive VisibilityTimeout AFTER the queue lookup
+/// (responses.py receive_message resolves the queue first): the same
+/// over-cap request on a nonexistent queue answers NonExistentQueue, not
+/// the cap error (live-verified) — so the guard sits after resolution.
+#[test]
+fn receive_visibility_cap_requires_existing_queue_first() {
+    let handler = DefaultSqsHandler::new();
+    let ghost = format!("{}x", create_queue(&handler, "recv-cap-ghost"));
+
+    for (label, entry) in [
+        (
+            "over-cap on ghost queue",
+            json!({"QueueUrl": &ghost, "MaxNumberOfMessages": 1, "VisibilityTimeout": 50000}),
+        ),
+        (
+            "valid on ghost queue",
+            json!({"QueueUrl": &ghost, "MaxNumberOfMessages": 1, "VisibilityTimeout": 30}),
+        ),
+    ] {
+        let resp = handler.handle(make_request("ReceiveMessage", entry));
+        assert_eq!(resp.status, 400, "{label} must answer 400");
+        assert!(
+            resp.body.contains("AWS.SimpleQueueService.NonExistentQueue"),
+            "{label}: the queue lookup precedes the receive cap (live-verified order), got {}",
+            resp.body
+        );
+    }
 }
