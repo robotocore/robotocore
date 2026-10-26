@@ -71,6 +71,15 @@ impl EcrHandler {
             "InitiateLayerUpload" => self.initiate_layer_upload(&req),
             "UploadLayerPart" => self.upload_layer_part(&req),
             "CompleteLayerUpload" => self.complete_layer_upload(&req),
+            // moto "implements" this op by raising NotImplementedError
+            // (moto/ecr/responses.py::get_download_url_for_layer), so moto's
+            // wire answer is an unhandled 500 crash. The twin reports it as
+            // a genuine absence, 501 NotImplemented, instead of a fake URL.
+            "GetDownloadUrlForLayer" => AwsResponse::error(
+                501,
+                "NotImplemented",
+                "The GetDownloadUrlForLayer action has not been implemented",
+            ),
             "DescribeRegistry" => self.describe_registry(&req),
             "PutLifecyclePolicy" => self.put_lifecycle_policy(&req),
             "GetLifecyclePolicy" => self.get_lifecycle_policy(&req),
@@ -2488,5 +2497,29 @@ mod tests {
         ));
         assert_eq!(no_upload_complete.status, 400);
         assert!(no_upload_complete.body.contains("UploadNotFoundException"));
+    }
+
+    #[test]
+    fn ecr_get_download_url_for_layer_reports_absence() {
+        // moto raises NotImplementedError for this op
+        // (moto/ecr/responses.py::get_download_url_for_layer); the twin's
+        // mirror is the twin-wide genuine-absence envelope, 501
+        // NotImplemented, not a fabricated blob URL.
+        let h = EcrHandler::new();
+        h.handle(make_req("CreateRepository", json!({"repositoryName": "u"})));
+        let resp = h.handle(make_req(
+            "GetDownloadUrlForLayer",
+            json!({
+                "repositoryName": "u",
+                "layerDigest": format!("sha256:{}", "a".repeat(64)),
+            }),
+        ));
+        assert_eq!(resp.status, 501);
+        let body = serde_json::from_str::<Value>(&resp.body).unwrap();
+        assert_eq!(body["__type"], json!("NotImplemented"));
+        assert_eq!(
+            body["message"],
+            json!("The GetDownloadUrlForLayer action has not been implemented")
+        );
     }
 }
