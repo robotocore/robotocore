@@ -1801,11 +1801,12 @@ impl DynamoDbHandler {
                             "Transaction request cannot include multiple operations on one item",
                         );
                     }
-                    // moto's transactional Put runs the same LimitedSizeDict
-                    // check when it builds the Item (getmoto/moto#1874).
-                    if let Some(e) = check_item_size(&attrs, false) {
-                        return e;
-                    }
+                    // moto evaluates the condition BEFORE the item-size check
+                    // (dynamodb/models/__init__.py:647-671: the condition runs
+                    // in the row loop, the size check inside self.put_item), so
+                    // an oversized Put under a failing condition cancels the
+                    // transaction (ConditionalCheckFailed row) instead of
+                    // answering the size ValidationException.
                     let pre = existing(&table, &key);
                     let check = Self::eval_condition_on(
                         expr_str(op.get("ConditionExpression")),
@@ -1815,6 +1816,12 @@ impl DynamoDbHandler {
                     );
                     match check {
                         Ok(()) => {
+                            // moto's transactional Put runs the same
+                            // LimitedSizeDict check when it builds the Item
+                            // (getmoto/moto#1874).
+                            if let Some(e) = check_item_size(&attrs, false) {
+                                return e;
+                            }
                             cancellation.push(None);
                             puts.push(PendingPut {
                                 table,
@@ -1971,17 +1978,37 @@ impl DynamoDbHandler {
         }
 
         if failed {
-            let reasons = cancellation
+            let reasons_text = cancellation
                 .iter()
                 .map(|r| r.clone().unwrap_or_else(|| "None".to_string()))
                 .collect::<Vec<_>>()
                 .join(", ");
-            return AwsResponse::error(
+            // moto's TransactionCanceledException describes both the summary
+            // message and one CancellationReasons entry per row
+            // (dynamodb/exceptions.py TransactionCanceledException):
+            // {"Code": <code>, "Message": <...>} for a failed row, {"Code":
+            // "None"} for a passing one. Phase 1 only cancels on failed
+            // conditions, so the only code here is ConditionalCheckFailed
+            // with moto's "The conditional request failed" message.
+            let reasons = cancellation
+                .iter()
+                .map(|r| match r {
+                    Some(code) => {
+                        json!({"Code": code, "Message": "The conditional request failed"})
+                    }
+                    None => json!({"Code": "None"}),
+                })
+                .collect::<Vec<_>>();
+            return AwsResponse::error_with_body(
                 400,
-                "TransactionCanceledException",
-                &format!(
-                    "Transaction cancelled, please refer cancellation reasons for specific reasons [{reasons}]"
-                ),
+                json!({
+                    "__type": "TransactionCanceledException",
+                    "CancellationReasons": reasons,
+                    "message": format!(
+                        "Transaction cancelled, please refer cancellation reasons \
+                         for specific reasons [{reasons_text}]"
+                    ),
+                }),
             );
         }
 
@@ -4458,6 +4485,123 @@ mod tests {
             .collect();
         let resp = handler.handle(make_req("TransactGetItems", json!({"TransactItems": rows})));
         assert_eq!(resp.status, 200);
+    }
+
+    // moto evaluates the ConditionExpression BEFORE the item-size check on a
+    // transactional Put row (dynamodb/models/__init__.py:647-671 — the
+    // condition runs in the row loop, the LimitedSizeDict check inside
+    // self.put_item), so an oversized Put under a FAILING condition answers
+    // TransactionCanceledException with per-row CancellationReasons; with a
+    // passing condition (or none) it answers the plain size ValidationException.
+    #[test]
+    fn transact_put_condition_evaluated_before_size_check() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "ordcond",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        let big_string = "z".repeat(500_000);
+
+        // Oversized Put + failing condition -> TransactionCanceledException
+        // naming the row, with moto's CancellationReasons envelope.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "ordcond",
+                         "Item": {"pk": {"S": "big"}, "v": {"S": big_string}},
+                         "ConditionExpression": "attribute_exists(v)"}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(body["__type"], "TransactionCanceledException");
+        assert_eq!(
+            body["message"],
+            "Transaction cancelled, please refer cancellation reasons for specific reasons \
+             [ConditionalCheckFailed]"
+        );
+        assert_eq!(
+            body["CancellationReasons"],
+            json!([{"Code": "ConditionalCheckFailed",
+                    "Message": "The conditional request failed"}])
+        );
+        // Nothing written either way.
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "ordcond", "Key": {"pk": {"S": "big"}}}),
+        ));
+        assert_eq!(resp.body, "{}");
+
+        // A passing row ahead of the failing one: the reasons array carries
+        // {"Code": "None"} for the passing row, in request order.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "ordcond",
+                         "Item": {"pk": {"S": "small"}, "v": {"S": "fine"}}}},
+                {"Put": {"TableName": "ordcond",
+                         "Item": {"pk": {"S": "big2"}, "v": {"S": big_string}},
+                         "ConditionExpression": "attribute_exists(v)"}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["message"],
+            "Transaction cancelled, please refer cancellation reasons for specific reasons \
+             [None, ConditionalCheckFailed]"
+        );
+        assert_eq!(
+            body["CancellationReasons"],
+            json!([{"Code": "None"},
+                   {"Code": "ConditionalCheckFailed",
+                    "Message": "The conditional request failed"}])
+        );
+        // The passing row is NOT visible after the cancellation (atomic).
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "ordcond", "Key": {"pk": {"S": "small"}}}),
+        ));
+        assert_eq!(resp.body, "{}");
+
+        // Oversized Put WITHOUT a condition (moto: condition passes, size check
+        // raises in put_item) still answers the plain size ValidationException.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Put": {"TableName": "ordcond",
+                         "Item": {"pk": {"S": "big3"}, "v": {"S": big_string.clone()}}}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp
+            .body
+            .contains("Item size has exceeded the maximum allowed size"));
+
+        // The Update row evaluates its condition before the (update-flavored)
+        // size check the same way (moto update_item: condition first).
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [
+                {"Update": {"TableName": "ordcond", "Key": {"pk": {"S": "big4"}},
+                            "UpdateExpression": "SET v = :v",
+                            "ExpressionAttributeValues": {":v": {"S": big_string}},
+                            "ConditionExpression": "attribute_exists(v)"}}
+            ]}),
+        ));
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(body["__type"], "TransactionCanceledException");
+        assert_eq!(
+            body["CancellationReasons"],
+            json!([{"Code": "ConditionalCheckFailed",
+                    "Message": "The conditional request failed"}])
+        );
     }
 
     // moto routes PartiQL INSERT and UPDATE writes through table.put_item
