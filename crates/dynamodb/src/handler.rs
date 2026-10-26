@@ -2149,7 +2149,20 @@ impl DynamoDbHandler {
                     responses.push(Value::Object(obj));
                 }
                 Ok(None) => responses.push(json!({})),
-                Err(e) => return e,
+                // moto reports a failed statement on its own batch row instead
+                // of aborting the whole batch (dynamodb/models/__init__.py
+                // batch_execute_statement: responses[idx] = {"Error": ...}).
+                Err(e) => {
+                    let body: Value = serde_json::from_str(&e.body).unwrap_or(Value::Null);
+                    let code = body
+                        .get("__type")
+                        .and_then(Value::as_str)
+                        .unwrap_or("ValidationException");
+                    let message = body.get("message").and_then(Value::as_str).unwrap_or("");
+                    responses.push(json!({
+                        "Error": {"Code": code, "Message": message}
+                    }));
+                }
             }
         }
         AwsResponse::json(200, json!({ "Responses": responses }))
@@ -2398,6 +2411,11 @@ fn partiql_run(
                 })
                 .ok_or_else(invalid)?;
             let key = item_key(&table, &attrs).ok_or_else(invalid)?;
+            // moto routes a PartiQL INSERT through table.put_item, whose Item
+            // constructor enforces the 400 KB limit (getmoto/moto#1874).
+            if let Some(e) = check_item_size(&attrs) {
+                return Err(e);
+            }
             let old = table
                 .items
                 .read()
@@ -2460,6 +2478,14 @@ fn partiql_run(
                 }
             }
             for (key, attrs) in replacements {
+                // moto routes each PartiQL UPDATE replacement through
+                // table.put_item, whose Item constructor enforces the 400 KB
+                // limit (getmoto/moto#1874); like moto, a failure here leaves
+                // replacements already applied in this statement in place.
+                let attrs_json = attrmap_to_serde(&attrs);
+                if let Some(e) = check_item_size(&attrs_json) {
+                    return Err(e);
+                }
                 let old = streaming::stream_enabled(&table)
                     .then(|| items.get(&key).map(|i| attrmap_to_serde(&i.attributes)))
                     .flatten();
@@ -2468,7 +2494,7 @@ fn partiql_run(
                 streaming::record_mutation(
                     &table,
                     old.as_ref().map(|m| m as &Map<String, Value>),
-                    Some(&attrmap_to_serde(&attrs)),
+                    Some(&attrs_json),
                 );
             }
             Ok(None)
@@ -4150,5 +4176,87 @@ mod tests {
             assert_eq!(resp.status, 200);
             assert_eq!(resp.body, "{}", "rollback must remove {pk}");
         }
+    }
+
+    // moto routes PartiQL INSERT and UPDATE writes through table.put_item
+    // (dynamo_backend.execute_statement calls table.put_item for both the
+    // CREATE and UPDATE cases), so the 400 KB item limit applies there too —
+    // a 400 ValidationException with the put-flavored message.
+    #[test]
+    fn partiql_insert_and_update_oversize_400() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "pq",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        let big = "z".repeat(500_000);
+
+        let resp = handler.handle(make_req(
+            "ExecuteStatement",
+            json!({"Statement": format!("INSERT INTO \"pq\" VALUE {{'pk': 'ins-row', 'v': '{big}'}}")}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp
+            .body
+            .contains("Item size has exceeded the maximum allowed size"));
+        // The oversized INSERT must not have written the row.
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "pq", "Key": {"pk": {"S": "ins-row"}}}),
+        ));
+        assert!(!resp.body.contains("Item"));
+
+        let resp = handler.handle(make_req(
+            "PutItem",
+            json!({"TableName": "pq", "Item": {"pk": {"S": "u"}, "v": {"S": "small"}}}),
+        ));
+        assert_eq!(resp.status, 200);
+        let resp = handler.handle(make_req(
+            "ExecuteStatement",
+            json!({"Statement": format!("UPDATE \"pq\" SET v = '{big}' WHERE pk = 'u'")}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp
+            .body
+            .contains("Item size has exceeded the maximum allowed size"));
+        // The old row survives the rejected UPDATE unchanged.
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "pq", "Key": {"pk": {"S": "u"}}}),
+        ));
+        assert!(resp.body.contains("\"small\""));
+
+        // BatchExecuteStatement reports the oversized statement on its own
+        // batch row (moto: responses[idx] = {"Error": ...}) instead of
+        // aborting the whole batch, and nothing from it is written.
+        let resp = handler.handle(make_req(
+            "BatchExecuteStatement",
+            json!({"Statements": [
+                {"Statement": "SELECT * FROM \"pq\" WHERE pk = 'u'"},
+                {"Statement": format!("INSERT INTO \"pq\" VALUE {{'pk': 'bad-row', 'v': '{big}'}}")}
+            ]}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["Responses"][1]["Error"]["Code"],
+            json!("ValidationException")
+        );
+        assert!(body["Responses"][1]["Error"]["Message"]
+            .to_string()
+            .contains("Item size has exceeded the maximum allowed size"));
+        // The successful statement still returned its item...
+        assert_eq!(body["Responses"][0]["Item"]["v"]["S"], "small");
+        // ... and the failed statement left nothing behind.
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "pq", "Key": {"pk": {"S": "bad-row"}}}),
+        ));
+        assert!(!resp.body.contains("Item"));
     }
 }
