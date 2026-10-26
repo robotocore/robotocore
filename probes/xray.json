@@ -1,7 +1,7 @@
 {
   "service": "xray",
-  "generated_at": "2026-10-25T19:45:19.971481+00:00",
-  "endpoint": "http://localhost:4566",
+  "generated_at": "2026-10-26T00:48:03.128481+00:00",
+  "endpoint": "http://localhost:4835",
   "counts": {
     "working": 37,
     "needs_params": 1,
@@ -38,7 +38,7 @@
     {
       "operation": "DeleteResourcePolicy",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidPolicyRevisionIdException: The provided policy revision id does not match.)"
     },
     {
       "operation": "DeleteSamplingRule",
