@@ -21,7 +21,6 @@ import os
 import shutil
 import subprocess
 import sys
-import time
 import urllib.request
 from pathlib import Path
 
@@ -80,16 +79,19 @@ def main() -> int:
         # workflow's SERVER_PID then points at a live guardian that dies with
         # its docker container on teardown.
         subprocess.run([sys.executable, "-c",
-                        f"import time;time.sleep(10**9)"])
+                        "import time;time.sleep(10**9)"])
         return 0
 
-    # CI fast-path: the runner boots docker; the registry image is identical
-    # to the rust tip's release build (tagged v2.0.0).
+    # CI fast-path: the runner boots docker; the registry image is
+    # identical to the rust tip's release build (tagged v2.0.0).
     if os.environ.get("GITHUB_ACTIONS") == "true" and shutil.which("docker"):
         try:
             _exec_docker([IMAGE, FALLBACK_IMAGE], port)
         except RuntimeError as e:
-            print(f"shim: docker fast-path unavailable ({e}) — falling back to cargo build", file=sys.stderr)
+            print(
+                f"shim: docker fast-path unavailable ({e}) — "
+                "falling back to cargo build", file=sys.stderr,
+            )
 
     # Local path: reuse (or build) the release binary, then exec it in-place
     # so workflows' `SERVER_PID=$!` + `kill -0` stays truthful.
@@ -104,7 +106,6 @@ def main() -> int:
     if binary is None:
         print("shim: no release robotocore-rust binary on disk", file=sys.stderr)
         return 1
-    deadline = time.time() + HEALTH_TIMEOUT_S
     print(f"shim: exec-ing {binary} --host {host} --port {port}")
     try:
         os.execv(str(binary), [str(binary), "--host", host, "--port", port])
