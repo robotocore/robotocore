@@ -18,15 +18,12 @@ with that exact invocation, so this shim keeps them at zero-yml-changes
 """
 
 import os
-import shutil
 import subprocess
 import sys
 import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-IMAGE = "jackdanger/robotocore:latest"
-FALLBACK_IMAGE = "ghcr.io/robotocore/robotocore:latest"
 HEALTH_TIMEOUT_S = 300  # a cold local cargo build may take a few minutes
 
 
