@@ -49,34 +49,6 @@ def _health_ok(port: str) -> bool:
         return False
 
 
-def _exec_docker(pull_targets: list[str], port: str) -> None:
-    docker = shutil.which("docker")
-    assert docker is not None
-    for image in pull_targets:
-        print(f"shim (ci fast path): docker pull {image}", flush=True)
-        if (
-            subprocess.run(
-                ["docker", "pull", image], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-            ).returncode
-            == 0
-        ):
-            print(f"shim: serving the twin from {image} (containerized)")
-            os.execv(
-                docker,
-                [
-                    docker,
-                    "run",
-                    "--rm",
-                    "-i",
-                    "-p",
-                    f"{port}:4566",
-                    IMAGE if image == IMAGE else image,
-                ],
-            )
-            return  # unreachable: execv replaces this process
-    raise RuntimeError("no docker image pullable from the release registries")
-
-
 def main() -> int:
     port = os.environ.get("ROBOTOCORE_PORT") or os.environ.get("RUST_PORT") or "4566"
     host = os.environ.get("RUST_HOST", "127.0.0.1")
