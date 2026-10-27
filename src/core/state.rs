@@ -217,6 +217,81 @@ mod tests {
     fn json_snapshot() -> Value {
         serde_json::json!({"version": "1.0", "state": {}})
     }
+
+    #[test]
+    fn save_wrapper_unwraps_to_services_map() {
+        // The file save writes `{version, saved_at, name, services, state}`;
+        // the restore registry consumes the `state` services map.
+        let services_map = serde_json::json!({"sqs": {"123456789012|us-east-1": {"queues": {}}}});
+        let wrapper = serde_json::json!({
+            "version": STATE_FILE_VERSION,
+            "saved_at": 1735689600.0_f64,
+            "name": null,
+            "services": ["sqs"],
+            "state": services_map,
+        });
+        assert_eq!(
+            unwrap_state_file(&wrapper).unwrap(),
+            &serde_json::json!({"sqs": {"123456789012|us-east-1": {"queues": {}}}}),
+            "file load must see the per-service keys, not the wrapper"
+        );
+
+        // A bare services map (no `version`, no `state` member) passes
+        // through unchanged — the shape hand-authored files carried.
+        let bare = serde_json::json!({"ssm": {}});
+        assert_eq!(unwrap_state_file(&bare).unwrap(), &bare);
+    }
+
+    #[test]
+    fn state_file_unknown_or_wrong_typed_version_rejected() {
+        let err = unwrap_state_file(&serde_json::json!({"version": "2.0", "state": {}}))
+            .expect_err("unknown version rejected");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(
+            err.to_string().contains("Unsupported state file version"),
+            "error names the version problem: {err}"
+        );
+        assert!(
+            err.to_string().contains(STATE_FILE_VERSION),
+            "error states the twin's supported version: {}",
+            err
+        );
+
+        // A wrapper missing its `state` member, a non-object member, a
+        // non-string version, and a non-object root are all malformed.
+        for bad in [
+            serde_json::json!({"version": "1.0", "services": ["sqs"]}),
+            serde_json::json!({"version": "1.0", "state": "bare string"}),
+            serde_json::json!({"version": 2, "state": {}}),
+            serde_json::json!([1, 2, 3]),
+            serde_json::json!("snapshot bytestring"),
+        ] {
+            let err = unwrap_state_file(&bad).expect_err("malformed state file rejected");
+            assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput, "{bad}");
+        }
+    }
+
+    #[test]
+    fn load_rejects_unparseable_file_instead_of_no_state() {
+        let tmp = std::env::temp_dir().join("robotocore-state-garbage-test");
+        std::fs::remove_dir_all(&tmp).ok();
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join("robotocore_state.json"), b"{truncated").unwrap();
+
+        let err = load_from_path(tmp.to_str().unwrap(), None).expect_err("garbage file rejected");
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert!(
+            err.to_string().contains("not valid JSON"),
+            "error names the parse failure: {err}"
+        );
+
+        // Still distinguishable from a genuinely missing file: "no state".
+        std::fs::remove_file(tmp.join("robotocore_state.json")).unwrap();
+        assert!(load_from_path(tmp.to_str().unwrap(), None)
+            .unwrap()
+            .is_none());
+        std::fs::remove_dir_all(&tmp).ok();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -673,16 +748,23 @@ impl SnapshotRegistry {
     }
 
     /// Replace state for the selected services from a previous snapshot.
-    pub fn restore(&self, v: &Value, services: Option<&[String]>) {
+    ///
+    /// Returns the names of services actually restored (present in `v`), so
+    /// endpoint responses report what was replaced instead of an
+    /// unconditional success.
+    pub fn restore(&self, v: &Value, services: Option<&[String]>) -> Vec<String> {
         let Some(map) = v.as_object() else {
-            return;
+            return Vec::new();
         };
         let (_, selected) = self.selected(services);
+        let mut restored: Vec<String> = Vec::new();
         for e in selected {
             if let Some(value) = map.get(e.name) {
                 (e.restore)(value);
+                restored.push(e.name.to_string());
             }
         }
+        restored
     }
 
     /// Clear state for the selected services (all when unfiltered).
@@ -781,5 +863,63 @@ pub fn load_from_path(dir: &str, name: Option<&str>) -> Result<Option<Value>, st
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(e),
     };
-    Ok(serde_json::from_slice(&bytes).ok())
+    // A file that exists but does not parse is a client error (400 at the
+    // load endpoint), not "no state": "no state" would silently paper over
+    // a corrupted or hand-truncated snapshot.
+    serde_json::from_slice(&bytes).map(Some).map_err(|e| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("State file {} is not valid JSON: {e}", file.display()),
+        )
+    })
+}
+
+/// File-format version the twin's `/_robotocore/state/save` writes.
+/// [`unwrap_state_file`] validates loaded files against it.
+pub const STATE_FILE_VERSION: &str = "1.0";
+
+/// Malformed state file: `/_robotocore/state/load` answers 400 for these.
+fn malformed_state_file(msg: String) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::InvalidInput, msg)
+}
+
+/// Unwrap a loaded state file into the services map
+/// [`SnapshotRegistry::restore`] consumes.
+///
+/// File saves ([`save_to_path`]) wrap the per-service map in
+/// `{version, saved_at, name, services, state}` — restoring the wrapper
+/// as-is was a silent no-op, because the registry looks per-service keys up
+/// at the top level. This returns the inner `state` member and validates
+/// `version` against [`STATE_FILE_VERSION`], so files saved by a different
+/// format version fail loudly instead of restoring nothing. A file with
+/// neither `version` nor `state` is accepted unchanged: it is already a
+/// bare services map, the shape `SnapshotRegistry::restore` reads.
+pub fn unwrap_state_file(value: &Value) -> Result<&Value, std::io::Error> {
+    let Some(map) = value.as_object() else {
+        return Err(malformed_state_file(
+            "State file must be a JSON object".to_string(),
+        ));
+    };
+    if !map.contains_key("version") && !map.contains_key("state") {
+        return Ok(value);
+    }
+    match map.get("version").map(Value::as_str) {
+        Some(Some(version)) if version != STATE_FILE_VERSION => {
+            return Err(malformed_state_file(format!(
+                "Unsupported state file version {version:?}: this twin saves and restores version {STATE_FILE_VERSION:?}"
+            )));
+        }
+        Some(None) => {
+            return Err(malformed_state_file(format!(
+                "State file `version` must be a string: this twin saves and restores version {STATE_FILE_VERSION:?}"
+            )));
+        }
+        _ => {}
+    }
+    match map.get("state") {
+        Some(state @ Value::Object(_)) => Ok(state),
+        _ => Err(malformed_state_file(format!(
+            "State file must carry a `state` object of per-service snapshots (this twin saves and restores version {STATE_FILE_VERSION:?})"
+        ))),
+    }
 }

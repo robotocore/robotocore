@@ -2279,9 +2279,26 @@ pub async fn state_load_handler(
     // Source resolution order: path-based file, then in-memory name, then default.
     let loaded = match (&path, name.as_deref()) {
         (Some(dir), file_name) => match crate::core::state::load_from_path(dir, file_name) {
-            Ok(Some(v)) => Some(("file", v)),
+            Ok(Some(v)) => match crate::core::state::unwrap_state_file(&v) {
+                // File saves wrap the services map under `state`; the
+                // registry consumes the inner map.
+                Ok(inner) => Some(("file", inner.clone())),
+                // Unknown format version, missing `state` member, or a
+                // non-object file: clear client error, never a silent
+                // empty restore.
+                Err(e) => {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        axum::Json(json!({ "error": e.to_string() })),
+                    )
+                        .into_response()
+                }
+            },
             Ok(None) => None,
-            Err(e) if e.kind() == std::io::ErrorKind::InvalidInput => {
+            Err(e)
+                if e.kind() == std::io::ErrorKind::InvalidInput
+                    || e.kind() == std::io::ErrorKind::InvalidData =>
+            {
                 return (
                     StatusCode::BAD_REQUEST,
                     axum::Json(json!({ "error": e.to_string() })),
@@ -2310,14 +2327,16 @@ pub async fn state_load_handler(
             .into_response();
     };
 
-    state.snapshots.restore(&value, services.as_deref());
+    // Report what was actually restored: services present in the snapshot
+    // get replaced, the rest of the live state is untouched.
+    let restored = state.snapshots.restore(&value, services.as_deref());
     let shown = match source {
         "file" => path.unwrap_or_default(),
         _ => format!("memory://{}", name.unwrap_or_default()),
     };
     (
         StatusCode::OK,
-        axum::Json(json!({"status": "loaded", "path": shown})),
+        axum::Json(json!({"status": "loaded", "path": shown, "services": restored})),
     )
         .into_response()
 }
@@ -2414,13 +2433,14 @@ pub async fn state_snapshot_load_handler(
         )
             .into_response();
     };
-    state.snapshots.restore(&Value::Object(snap.state), None);
+    let restored = state.snapshots.restore(&Value::Object(snap.state), None);
     (
         StatusCode::OK,
         axum::Json(json!({
             "status": "loaded",
             "name": name,
             "version": snap.version,
+            "services": restored,
         })),
     )
         .into_response()
@@ -2457,8 +2477,12 @@ pub async fn state_import_handler(
         Err((status, body)) => return (status, body).into_response(),
     };
     let native_state = data.get("native_state").cloned().unwrap_or(data);
-    state.snapshots.restore(&native_state, None);
-    (StatusCode::OK, axum::Json(json!({"status": "imported"}))).into_response()
+    let restored = state.snapshots.restore(&native_state, None);
+    (
+        StatusCode::OK,
+        axum::Json(json!({"status": "imported", "services": restored})),
+    )
+        .into_response()
 }
 
 /// Extract service name from URI, headers, or body.
@@ -3121,5 +3145,541 @@ mod tests {
         assert_eq!(hint, Some(915), "docker invoke blanket = Timeout + 15");
         // Non-lambda handlers never raise the blanket.
         assert_eq!(StsFunctionHandler.request_timeout_secs(&invoke), None);
+    }
+
+    // ------------------------------------------------------------------
+    // /_robotocore/state file save→load round-trip
+    //
+    // The compatibility suites only ever save (they must not restore on a
+    // shared twin), so restore was never exercised end-to-end until the
+    // file-load silent-no-op regression (loaded wrapper instead of the
+    // inner services map). These tests own their native handlers, so they
+    // restore freely without touching anything else in the process.
+    // ------------------------------------------------------------------
+
+    const STATE_TEST_ACCOUNT: u64 = 654_321_098_765;
+    const STATE_TEST_REGION: &str = "us-east-1";
+
+    /// App wiring identical to `build_router`: one shared set of native
+    /// handler instances behind both the service adapters and the snapshot
+    /// registry, so service calls and state endpoints mutate the same
+    /// state.
+    fn state_test_app() -> Arc<AppState> {
+        let (registry, handlers) = ServiceRegistry::new_with_handlers();
+        Arc::new(AppState {
+            registry,
+            snapshots: Arc::new(crate::core::state::SnapshotRegistry::new(&handlers)),
+            named_snapshots: Arc::new(crate::core::state::NamedSnapshots::default()),
+            versioned_snapshots: Arc::new(crate::core::state::VersionedSnapshots::default()),
+        })
+    }
+
+    async fn state_save_via_endpoint(state: &Arc<AppState>, body: Value) -> Response {
+        state_save_handler(
+            State(state.clone()),
+            "/_robotocore/state/save".parse().unwrap(),
+            axum::body::Bytes::from(body.to_string()),
+        )
+        .await
+        .into_response()
+    }
+
+    async fn state_load_via_endpoint(state: &Arc<AppState>, body: Value) -> Response {
+        state_load_handler(
+            State(state.clone()),
+            axum::body::Bytes::from(body.to_string()),
+        )
+        .await
+        .into_response()
+    }
+
+    /// Drive one cross-crate service call through the same native handler
+    /// instance the snapshot registry wraps.
+    fn service_call(state: &AppState, req: ParsedRequest) -> ParsedResponse {
+        let handler = state
+            .registry
+            .get(&req.service)
+            .unwrap_or_else(|| panic!("service {} is registered", req.service));
+        handler
+            .handle_sync(&req)
+            .expect("driver request must be handled")
+    }
+
+    fn aws_request(
+        service: &str,
+        operation: &str,
+        params: Value,
+        method: &str,
+        path: &str,
+        body: Vec<u8>,
+    ) -> ParsedRequest {
+        ParsedRequest {
+            service: service.to_string(),
+            operation: operation.to_string(),
+            params: params
+                .as_object()
+                .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+                .unwrap_or_default(),
+            body: axum::body::Bytes::from(body),
+            region: STATE_TEST_REGION.to_string(),
+            account: STATE_TEST_ACCOUNT,
+            method: method.to_string(),
+            path: path.to_string(),
+            query_string: String::new(),
+            headers: HashMap::new(),
+        }
+    }
+
+    fn aws_json(resp: &ParsedResponse) -> Value {
+        let bytes = if let Some(raw) = resp.raw.as_deref() {
+            Vec::from(raw.as_bytes())
+        } else {
+            resp.raw_bytes.clone().expect("response body bytes")
+        };
+        serde_json::from_slice(&bytes).expect("json response body")
+    }
+
+    fn assert_member(json: &Value, list_key: &str, item: &str) {
+        assert!(
+            json[list_key]
+                .as_array()
+                .is_some_and(|items| items.iter().any(|i| i.as_str() == Some(item))),
+            "expected {list_key} to contain {item:?}: {json}"
+        );
+    }
+
+    #[tokio::test]
+    async fn state_file_save_then_load_restores_deleted_cross_crate_state() {
+        let state = state_test_app();
+
+        // -- seed one unit per service, through three different crates ----
+        let queue_name = "fx6-e2e-queue";
+        let message_body = "fx6-e2e-message";
+        let resp = service_call(
+            &state,
+            aws_request(
+                "sqs",
+                "CreateQueue",
+                json!({"QueueName": queue_name}),
+                "POST",
+                "/",
+                vec![],
+            ),
+        );
+        assert_eq!(resp.status.as_u16(), 200, "CreateQueue: {:?}", resp.raw);
+        let queue_url = aws_json(&resp)["QueueUrl"]
+            .as_str()
+            .expect("QueueUrl in CreateQueue body")
+            .to_string();
+        let sent = service_call(
+            &state,
+            aws_request(
+                "sqs",
+                "SendMessage",
+                json!({"QueueUrl": queue_url, "MessageBody": message_body}),
+                "POST",
+                "/",
+                vec![],
+            ),
+        );
+        assert_eq!(sent.status.as_u16(), 200, "SendMessage: {:?}", sent.raw);
+
+        let bucket = "fx6-e2e-bucket";
+        let key = "fx6-e2e/key.txt";
+        let object_body = b"fx6-e2e-object-payload".to_vec();
+        let created = service_call(
+            &state,
+            aws_request(
+                "s3",
+                "CreateBucket",
+                Value::Null,
+                "PUT",
+                &format!("/{bucket}"),
+                vec![],
+            ),
+        );
+        assert_eq!(
+            created.status.as_u16(),
+            200,
+            "CreateBucket: {:?}",
+            created.raw_bytes
+        );
+        let stored = service_call(
+            &state,
+            aws_request(
+                "s3",
+                "PutObject",
+                Value::Null,
+                "PUT",
+                &format!("/{bucket}/{key}"),
+                object_body.clone(),
+            ),
+        );
+        assert_eq!(
+            stored.status.as_u16(),
+            200,
+            "PutObject: {:?}",
+            stored.raw_bytes
+        );
+
+        let param_name = "/fx6/e2e/param";
+        let param_value = "fx6-e2e-param-value";
+        let resp = service_call(
+            &state,
+            aws_request(
+                "ssm",
+                "PutParameter",
+                json!({"Name": param_name, "Type": "String", "Value": param_value}),
+                "POST",
+                "/",
+                vec![],
+            ),
+        );
+        assert_eq!(resp.status.as_u16(), 200, "PutParameter: {:?}", resp.raw);
+
+        // -- save via the file-based endpoint -----------------------------
+        let dir = std::env::temp_dir().join(format!("robotocore-fx6-e2e-{}", std::process::id()));
+        let save = state_save_via_endpoint(
+            &state,
+            json!({
+                "path": dir.to_str().unwrap(),
+                "name": "e2e",
+                "services": ["sqs", "s3", "ssm"],
+            }),
+        )
+        .await;
+        assert_eq!(save.status(), StatusCode::OK, "file save must succeed");
+        let save_json = config_body_value(save).await;
+        assert_eq!(save_json["status"], "saved");
+        for svc in ["sqs", "s3", "ssm"] {
+            assert_member(&save_json, "services", svc);
+        }
+
+        // The save wrapper contract the file load path unwraps:
+        // services only under `state`, never at the top level.
+        let file_json: Value = serde_json::from_slice(
+            &std::fs::read(dir.join("e2e.json")).expect("saved file exists"),
+        )
+        .unwrap();
+        assert_eq!(file_json["version"], crate::core::state::STATE_FILE_VERSION);
+        let state_block = &file_json["state"];
+        assert!(
+            state_block["sqs"][format!("{STATE_TEST_ACCOUNT}|{STATE_TEST_REGION}")]["queues"]
+                [queue_name]
+                .is_object(),
+            "queue saved under sqs/{STATE_TEST_ACCOUNT}|{STATE_TEST_REGION}/queues/{queue_name}: {file_json}"
+        );
+        assert!(
+            state_block["sqs"].to_string().contains(message_body),
+            "message saved with the queue: {}",
+            state_block["sqs"]
+        );
+        assert!(
+            state_block["s3"][format!("{STATE_TEST_ACCOUNT}|{STATE_TEST_REGION}")][bucket]
+                .is_object(),
+            "bucket saved under s3/{STATE_TEST_ACCOUNT}|{STATE_TEST_REGION}/{bucket}: {file_json}"
+        );
+        assert!(
+            state_block["ssm"][format!("{STATE_TEST_ACCOUNT}|{STATE_TEST_REGION}")]["parameters"]
+                [param_name]
+                .is_object(),
+            "parameter saved under ssm/{STATE_TEST_ACCOUNT}|{STATE_TEST_REGION}/parameters/{param_name}: {file_json}"
+        );
+
+        // -- mutate: delete every saved unit -------------------------------
+        let deleted = service_call(
+            &state,
+            aws_request(
+                "sqs",
+                "DeleteQueue",
+                json!({"QueueUrl": queue_url}),
+                "POST",
+                "/",
+                vec![],
+            ),
+        );
+        assert_eq!(
+            deleted.status.as_u16(),
+            200,
+            "DeleteQueue: {:?}",
+            deleted.raw
+        );
+        let deleted = service_call(
+            &state,
+            aws_request(
+                "s3",
+                "DeleteObject",
+                Value::Null,
+                "DELETE",
+                &format!("/{bucket}/{key}"),
+                vec![],
+            ),
+        );
+        assert!(
+            deleted.status.is_success(),
+            "DeleteObject: {:?}",
+            deleted.raw_bytes
+        );
+        let deleted = service_call(
+            &state,
+            aws_request(
+                "s3",
+                "DeleteBucket",
+                Value::Null,
+                "DELETE",
+                &format!("/{bucket}"),
+                vec![],
+            ),
+        );
+        assert!(
+            deleted.status.is_success(),
+            "DeleteBucket: {:?}",
+            deleted.raw_bytes
+        );
+        let deleted = service_call(
+            &state,
+            aws_request(
+                "ssm",
+                "DeleteParameter",
+                json!({"Name": param_name}),
+                "POST",
+                "/",
+                vec![],
+            ),
+        );
+        assert_eq!(
+            deleted.status.as_u16(),
+            200,
+            "DeleteParameter: {:?}",
+            deleted.raw
+        );
+
+        // The mutation actually landed: every read must fail now.
+        let gone = service_call(
+            &state,
+            aws_request(
+                "sqs",
+                "GetQueueUrl",
+                json!({"QueueName": queue_name}),
+                "POST",
+                "/",
+                vec![],
+            ),
+        );
+        assert!(
+            !gone.status.is_success(),
+            "queue must be gone before load: {:?}",
+            gone.raw
+        );
+        let gone = service_call(
+            &state,
+            aws_request(
+                "s3",
+                "GetObject",
+                Value::Null,
+                "GET",
+                &format!("/{bucket}/{key}"),
+                vec![],
+            ),
+        );
+        assert_eq!(gone.status.as_u16(), 404, "object must be gone");
+        let gone = service_call(
+            &state,
+            aws_request(
+                "ssm",
+                "GetParameter",
+                json!({"Name": param_name}),
+                "POST",
+                "/",
+                vec![],
+            ),
+        );
+        assert!(
+            !gone.status.is_success(),
+            "parameter must be gone before load"
+        );
+
+        // -- load the file back --------------------------------------------
+        let load = state_load_via_endpoint(
+            &state,
+            json!({
+                "path": dir.to_str().unwrap(),
+                "name": "e2e",
+            }),
+        )
+        .await;
+        assert_eq!(load.status(), StatusCode::OK);
+        let load_json = config_body_value(load).await;
+        assert_eq!(
+            load_json["status"], "loaded",
+            "the endpoint must restore, not just claim to"
+        );
+        assert_member(&load_json, "services", "sqs");
+        assert_member(&load_json, "services", "s3");
+        assert_member(&load_json, "services", "ssm");
+
+        // -- assert all three units are back, byte-for-byte -----------------
+        let restored = service_call(
+            &state,
+            aws_request(
+                "sqs",
+                "GetQueueUrl",
+                json!({"QueueName": queue_name}),
+                "POST",
+                "/",
+                vec![],
+            ),
+        );
+        assert_eq!(
+            restored.status.as_u16(),
+            200,
+            "queue restored: {:?}",
+            restored.raw
+        );
+        assert_eq!(
+            aws_json(&restored)["QueueUrl"].as_str(),
+            Some(queue_url.as_str()),
+            "restored queue keeps its identity"
+        );
+        let received = service_call(
+            &state,
+            aws_request(
+                "sqs",
+                "ReceiveMessage",
+                json!({"QueueUrl": queue_url, "MaxNumberOfMessages": 10}),
+                "POST",
+                "/",
+                vec![],
+            ),
+        );
+        assert_eq!(received.status.as_u16(), 200);
+        assert!(
+            aws_json(&received)["Messages"]
+                .as_array()
+                .is_some_and(|msgs| msgs
+                    .iter()
+                    .any(|m| m["Body"].as_str() == Some(message_body))),
+            "message restored: {:?}",
+            received.raw
+        );
+
+        let restored = service_call(
+            &state,
+            aws_request(
+                "s3",
+                "GetObject",
+                Value::Null,
+                "GET",
+                &format!("/{bucket}/{key}"),
+                vec![],
+            ),
+        );
+        assert_eq!(restored.status.as_u16(), 200, "object restored");
+        assert_eq!(
+            restored.raw_bytes.as_deref().unwrap(),
+            object_body.as_slice(),
+            "restored object must be byte-identical"
+        );
+
+        let restored = service_call(
+            &state,
+            aws_request(
+                "ssm",
+                "GetParameter",
+                json!({"Name": param_name}),
+                "POST",
+                "/",
+                vec![],
+            ),
+        );
+        assert_eq!(
+            restored.status.as_u16(),
+            200,
+            "parameter restored: {:?}",
+            restored.raw
+        );
+        assert_eq!(
+            aws_json(&restored)["Parameter"]["Value"].as_str(),
+            Some(param_value),
+            "restored parameter keeps its value"
+        );
+
+        // Cleanup: no filesystem leakage across test runs.
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn state_file_load_rejects_malformed_and_unknown_versions() {
+        let state = state_test_app();
+        let dir =
+            std::env::temp_dir().join(format!("robotocore-fx6-malform-{}", std::process::id()));
+        let saved = state_save_via_endpoint(
+            &state,
+            json!({"path": dir.to_str().unwrap(), "name": "probe"}),
+        )
+        .await;
+        assert_eq!(saved.status(), StatusCode::OK);
+        let file = dir.join("probe.json");
+
+        // An unparseable file is a 400, never a lying "loaded".
+        std::fs::write(&file, b"{truncated").unwrap();
+        let resp = state_load_via_endpoint(
+            &state,
+            json!({"path": dir.to_str().unwrap(), "name": "probe"}),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "garbage file");
+        let body = config_body_value(resp).await;
+        assert!(
+            body["error"]
+                .as_str()
+                .is_some_and(|e| e.contains("not valid JSON")),
+            "garbage file names the parse failure: {body}"
+        );
+
+        // An unknown format version is refused with the twin's support.
+        std::fs::write(&file, br#"{"version": "2.0", "state": {}}"#).unwrap();
+        let resp = state_load_via_endpoint(
+            &state,
+            json!({"path": dir.to_str().unwrap(), "name": "probe"}),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "unknown version");
+        let body = config_body_value(resp).await;
+        assert!(
+            body["error"]
+                .as_str()
+                .is_some_and(|e| e.contains("Unsupported state file version")),
+            "unknown version names the version problem: {body}"
+        );
+
+        // A wrapper without its `state` member is malformed, not empty.
+        std::fs::write(&file, br#"{"version": "1.0", "services": ["sqs"]}"#).unwrap();
+        let resp = state_load_via_endpoint(
+            &state,
+            json!({"path": dir.to_str().unwrap(), "name": "probe"}),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "missing `state`");
+        let body = config_body_value(resp).await;
+        assert!(
+            body["error"]
+                .as_str()
+                .is_some_and(|e| e.contains("`state`")),
+            "missing-state wrapper says what is wrong: {body}"
+        );
+
+        // A genuinely absent file is still "no state found" (unchanged).
+        std::fs::remove_file(&file).unwrap();
+        let resp = state_load_via_endpoint(
+            &state,
+            json!({"path": dir.to_str().unwrap(), "name": "probe"}),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = config_body_value(resp).await;
+        assert_eq!(body["status"], "no_state_found");
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
