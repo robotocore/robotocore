@@ -27,6 +27,8 @@ dev = [
     "pytest>=8.0",
     "pytest-xdist>=3.5",
     "ruff>=0.5",
+    # The ECR OCI-registry compat suite drives the raw registry data plane.
+    "httpx>=0.27",
 ]
 
 [tool.uv]

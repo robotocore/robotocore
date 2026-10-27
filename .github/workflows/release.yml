@@ -10,28 +10,48 @@ permissions:
   packages: write
 
 jobs:
-  # Gate: rust quality checks must pass before publishing.
-  rust-checks:
+  # Gate: lint + unit tests must pass before publishing.
+  # Compat/IaC tests run in CI but don't block releases (they have known flaky tests).
+  lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-      - run: cargo fmt --check
-      - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test --workspace
-
-  build-and-publish:
-    runs-on: ubuntu-latest
-    needs: [rust-checks]
     steps:
       - uses: actions/checkout@v7
         with:
+          submodules: recursive
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - run: uv run ruff check src/ tests/ scripts/
+      - run: uv run ruff format --check src/ tests/ scripts/
+      - run: uv run mypy src/robotocore/ --ignore-missing-imports
+      - run: uv run bandit -r src/robotocore/ -ll -c pyproject.toml -q
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - run: uv run pytest tests/unit/ -n4 -q --tb=short --junitxml=results-release-unit.xml
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: results-release-unit
+          path: results-release-unit.xml
+
+  build-and-publish:
+    runs-on: ubuntu-latest
+    needs: [lint, unit-tests]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
           fetch-depth: 0  # need full history for CalVer tags
 
       # Multi-arch Docker build
@@ -40,14 +60,24 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      # Docker Hub — short, conventional image name (robotocore/robotocore:latest)
+      # Docker Hub — published under jackdanger's personal namespace
+      # (jackdanger/robotocore:latest). The `robotocore` Docker Hub org
+      # costs $15/month for a new org, so this repo publishes through
+      # jackdanger's free personal namespace. GHCR (below) uses the GitHub
+      # org and remains the canonical multi-arch source.
+      #
+      # Required repo secrets:
+      #   DOCKERHUB_USERNAME = "jackdanger"
+      #   DOCKERHUB_TOKEN    = Docker Hub PAT with read/write on jackdanger/*
+      # If these are wrong/stale, the push step fails with
+      # "insufficient_scope: authorization failed".
       - name: Login to Docker Hub
         uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # GitHub Container Registry
+      # GitHub Container Registry — canonical fully-qualified name
       - name: Login to GHCR
         uses: docker/login-action@v4
         with:
@@ -73,48 +103,31 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "Releasing version: $VERSION"
 
-      # Tag the commit before building so the version arg lands in the image
+      # Tag the commit before building so hatch-vcs picks up the version
       - name: Create git tag
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: |
           git tag "v${{ steps.version.outputs.VERSION }}"
 
-      # Single image: cargo-built binary on a distroless runtime.
-      - name: Build and push Docker image
+      # Standard image: Python + Node.js + Ruby
+      - name: Build and push standard Docker image
         uses: docker/build-push-action@v7
         with:
           context: .
+          target: standard
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: |
-            ROBOTOCORE_VERSION=${{ steps.version.outputs.VERSION }}
+            SETUPTOOLS_SCM_PRETEND_VERSION=${{ steps.version.outputs.VERSION }}
           tags: |
-            robotocore/robotocore:${{ steps.version.outputs.VERSION }}
-            robotocore/robotocore:latest
+            jackdanger/robotocore:${{ steps.version.outputs.VERSION }}
+            jackdanger/robotocore:latest
             ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
             ghcr.io/${{ github.repository }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Runtimes variant: Debian-slim runner + Node.js 20 + Ruby 3.3
-      - name: Build and push runtimes Docker image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          target: runtimes
-          platforms: linux/amd64,linux/arm64
-          push: true
-          build-args: |
-            ROBOTOCORE_VERSION=${{ steps.version.outputs.VERSION }}
-          tags: |
-            robotocore/robotocore:${{ steps.version.outputs.VERSION }}-runtimes
-            robotocore/robotocore:runtimes
-            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}-runtimes
-            ghcr.io/${{ github.repository }}:runtimes
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      # java-and-dotnet variant: runtimes + OpenJDK 21 + .NET SDK 8
+      # java-and-dotnet image: standard + OpenJDK 21 + .NET SDK 8
       - name: Build and push java-and-dotnet Docker image
         uses: docker/build-push-action@v7
         with:
@@ -123,10 +136,10 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: |
-            ROBOTOCORE_VERSION=${{ steps.version.outputs.VERSION }}
+            SETUPTOOLS_SCM_PRETEND_VERSION=${{ steps.version.outputs.VERSION }}
           tags: |
-            robotocore/robotocore:${{ steps.version.outputs.VERSION }}-java-and-dotnet
-            robotocore/robotocore:java-and-dotnet
+            jackdanger/robotocore:${{ steps.version.outputs.VERSION }}-java-and-dotnet
+            jackdanger/robotocore:java-and-dotnet
             ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}-java-and-dotnet
             ghcr.io/${{ github.repository }}:java-and-dotnet
           cache-from: type=gha
@@ -138,20 +151,10 @@ jobs:
         run: |
           git push origin "v${{ steps.version.outputs.VERSION }}"
 
-      # GitHub Release with notes from the latest CHANGELOG.md section
-      - name: Extract latest changelog section
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        run: |
-          awk '/^## /{if (n++) exit} n' CHANGELOG.md > release_notes.md
-          if [ ! -s release_notes.md ]; then
-            echo "See [CHANGELOG.md](./CHANGELOG.md) for details." > release_notes.md
-          fi
-          cat release_notes.md
-
+      # GitHub Release
       - name: Create GitHub Release
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.version.outputs.VERSION }}
           name: v${{ steps.version.outputs.VERSION }}
-          body_path: release_notes.md
+          generate_release_notes: true
