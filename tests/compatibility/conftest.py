@@ -92,9 +92,6 @@ def _clear_chaos_rules_at_session_end():
     test on the same shared twin is still using (their rules live in their
     own account and cannot affect other accounts anyway).
     """
-    if os.environ.get("ROBOTOCORE_COMPAT_ALLOW_WARM_SERVER", "0") == "1":
-        return False
-    max_uptime = float(os.environ.get("ROBOTOCORE_COMPAT_MAX_UPTIME", "600"))
     try:
         url = f"{ENDPOINT_URL}/_robotocore/chaos/rules/clear?account=123456789012"
         resp = requests.post(url, timeout=5)
@@ -104,6 +101,22 @@ def _clear_chaos_rules_at_session_end():
                 "chaos tests may have leaked into this shard",
                 resp.json()["count"],
             )
+    except Exception:
+        logger.warning("chaos-rule teardown could not reach the server; carrying on")
+
+
+def _target_server_is_warm() -> bool:
+    """True when ENDPOINT_URL points at a server older than the freshness limit.
+
+    Unreachable servers are never "warm" — the suites themselves will fail loudly.
+    ``ROBOTOCORE_COMPAT_ALLOW_WARM_SERVER=1`` opts out entirely.
+    """
+    if os.environ.get("ROBOTOCORE_COMPAT_ALLOW_WARM_SERVER", "0") == "1":
+        return False
+    max_uptime = float(os.environ.get("ROBOTOCORE_COMPAT_MAX_UPTIME", "600"))
+    try:
+        resp = requests.get(f"{ENDPOINT_URL}/_robotocore/health", timeout=5)
+        uptime = float(resp.json().get("uptime_seconds", 0))
     except Exception:
         return False  # unreachable: let the tests fail themselves, loudly
     return uptime > max_uptime
