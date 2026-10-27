@@ -35,32 +35,15 @@ jobs:
           - serverless_api
           - user_auth
     steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: recursive
+      - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-      - run: uv sync --extra dev
-      - name: Start robotocore
-        run: |
-          ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
-            uv run python -m robotocore.main > .robotocore.log 2>&1 &
-          SERVER_PID=$!
-          for i in $(seq 1 60); do
-            if ! kill -0 $SERVER_PID 2>/dev/null; then
-              echo "Server process exited early"
-              cat .robotocore.log 2>/dev/null || true
-              exit 1
-            fi
-            curl -sf http://localhost:4566/_robotocore/health && break
-            sleep 1
-          done
-          curl -f http://localhost:4566/_robotocore/health || {
-            echo "=== Server logs ==="
-            cat .robotocore.log 2>/dev/null || true
-            exit 1
-          }
+      - run: uv sync
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Start rust server (rotocore native)
+        run: RUST_PORT=4566 LOG_PREFIX=app bash scripts/start_parity_servers.sh
       - name: Run app integration tests
         env:
           AWS_ENDPOINT_URL: http://localhost:4566
@@ -74,9 +57,9 @@ jobs:
         with:
           name: results-app-${{ matrix.app }}
           path: results-${{ matrix.app }}.xml
-      - name: Upload server log
+      - name: Upload server logs
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: server-log-${{ matrix.app }}
-          path: .robotocore.log
+          path: /tmp/app_rust.log

@@ -1,10 +1,13 @@
 {
   "service": "cloudformation",
+  "generated_at": "2026-10-26T23:09:21.323596+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 82,
-    "needs_params": 1,
-    "not_implemented": 5,
-    "500_error": 1
+    "working": 86,
+    "needs_params": 0,
+    "not_implemented": 3,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -19,13 +22,13 @@
     },
     {
       "operation": "BatchDescribeTypeConfigurations",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CancelUpdateStack",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "ContinueUpdateRollback",
@@ -134,8 +137,8 @@
     },
     {
       "operation": "DescribeResourceScan",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "DescribeStackDriftDetectionStatus",
@@ -145,12 +148,12 @@
     {
       "operation": "DescribeStackEvents",
       "status": "working",
-      "message": "implemented (ValidationError)"
+      "message": "OK"
     },
     {
       "operation": "DescribeStackInstance",
       "status": "working",
-      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
+      "message": "likely implemented (StackInstanceNotFoundException: StackInstance probe-test-value/probe-test-value not found)"
     },
     {
       "operation": "DescribeStackRefactor",
@@ -165,12 +168,12 @@
     {
       "operation": "DescribeStackResourceDrifts",
       "status": "working",
-      "message": "implemented (ValidationError)"
+      "message": "OK"
     },
     {
       "operation": "DescribeStackResources",
       "status": "working",
-      "message": "implemented (ValidationError)"
+      "message": "OK"
     },
     {
       "operation": "DescribeStackSet",
@@ -200,12 +203,12 @@
     {
       "operation": "DetectStackDrift",
       "status": "working",
-      "message": "implemented (ValidationError)"
+      "message": "OK"
     },
     {
       "operation": "DetectStackResourceDrift",
       "status": "working",
-      "message": "implemented (ValidationError)"
+      "message": "OK"
     },
     {
       "operation": "DetectStackSetDrift",
@@ -235,22 +238,22 @@
     {
       "operation": "GetHookResult",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "GetStackPolicy",
       "status": "working",
-      "message": "implemented (ValidationError)"
+      "message": "OK"
     },
     {
       "operation": "GetTemplate",
       "status": "working",
-      "message": "implemented (ValidationError)"
+      "message": "OK"
     },
     {
       "operation": "GetTemplateSummary",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'read')"
+      "status": "working",
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "ImportStacksToStackSet",
@@ -305,7 +308,7 @@
     {
       "operation": "ListStackInstances",
       "status": "working",
-      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
+      "message": "OK"
     },
     {
       "operation": "ListStackRefactorActions",
@@ -320,7 +323,7 @@
     {
       "operation": "ListStackResources",
       "status": "working",
-      "message": "implemented (ValidationError)"
+      "message": "OK"
     },
     {
       "operation": "ListStackSetAutoDeploymentTargets",
@@ -330,12 +333,12 @@
     {
       "operation": "ListStackSetOperationResults",
       "status": "working",
-      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
+      "message": "OK"
     },
     {
       "operation": "ListStackSetOperations",
       "status": "working",
-      "message": "likely implemented (StackSetNotFoundException: StackSet probe-test-value not found)"
+      "message": "OK"
     },
     {
       "operation": "ListStackSets",
@@ -385,12 +388,12 @@
     {
       "operation": "RollbackStack",
       "status": "working",
-      "message": "implemented (ValidationError)"
+      "message": "OK"
     },
     {
       "operation": "SetStackPolicy",
       "status": "working",
-      "message": "implemented (ValidationError)"
+      "message": "OK"
     },
     {
       "operation": "SetTypeConfiguration",
@@ -405,7 +408,7 @@
     {
       "operation": "SignalResource",
       "status": "working",
-      "message": "implemented (ValidationError)"
+      "message": "OK"
     },
     {
       "operation": "StartResourceScan",
@@ -430,7 +433,7 @@
     {
       "operation": "UpdateStack",
       "status": "working",
-      "message": "implemented (ValidationError)"
+      "message": "OK"
     },
     {
       "operation": "UpdateStackInstances",
@@ -445,7 +448,7 @@
     {
       "operation": "UpdateTerminationProtection",
       "status": "working",
-      "message": "implemented (ValidationError)"
+      "message": "OK"
     },
     {
       "operation": "ValidateTemplate",

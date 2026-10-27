@@ -1,16 +1,19 @@
 {
   "service": "rekognition",
+  "generated_at": "2026-10-26T03:43:23.763206+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 55,
-    "needs_params": 6,
-    "not_implemented": 14,
-    "500_error": 0
+    "working": 66,
+    "needs_params": 0,
+    "not_implemented": 9,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "AssociateFaces",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CompareFaces",
@@ -54,8 +57,8 @@
     },
     {
       "operation": "CreateUser",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteCollection",
@@ -69,8 +72,8 @@
     },
     {
       "operation": "DeleteFaces",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteProject",
@@ -94,8 +97,8 @@
     },
     {
       "operation": "DeleteUser",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeCollection",
@@ -140,7 +143,7 @@
     {
       "operation": "DetectModerationLabels",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "DetectProtectiveEquipment",
@@ -154,13 +157,13 @@
     },
     {
       "operation": "DisassociateFaces",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DistributeDatasetEntries",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "GetCelebrityInfo",
@@ -184,8 +187,8 @@
     },
     {
       "operation": "GetFaceLivenessSessionResults",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (SessionNotFoundException: The session was not found.)"
     },
     {
       "operation": "GetFaceSearch",
@@ -264,8 +267,8 @@
     },
     {
       "operation": "ListUsers",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutProjectPolicy",
@@ -289,13 +292,13 @@
     },
     {
       "operation": "SearchUsers",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "SearchUsersByImage",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "StartCelebrityRecognition",
@@ -339,8 +342,8 @@
     },
     {
       "operation": "StartSegmentDetection",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "StartStreamProcessor",
@@ -379,8 +382,8 @@
     },
     {
       "operation": "UpdateStreamProcessor",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     }
   ]
 }

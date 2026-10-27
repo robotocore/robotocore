@@ -1,10 +1,13 @@
 {
   "service": "ram",
+  "generated_at": "2026-10-25T19:44:22.875357+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
     "working": 35,
     "needs_params": 0,
     "not_implemented": 0,
-    "500_error": 0
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -35,7 +38,7 @@
     {
       "operation": "CreateResourceShare",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (InvalidParameterException)"
     },
     {
       "operation": "DeletePermission",
@@ -90,7 +93,7 @@
     {
       "operation": "GetResourceShares",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "OK"
     },
     {
       "operation": "ListPendingInvitationResources",
@@ -115,7 +118,7 @@
     {
       "operation": "ListPrincipals",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "OK"
     },
     {
       "operation": "ListReplacePermissionAssociationsWork",
@@ -135,7 +138,7 @@
     {
       "operation": "ListResources",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "OK"
     },
     {
       "operation": "ListSourceAssociations",
@@ -170,12 +173,12 @@
     {
       "operation": "TagResource",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "likely implemented (UnknownResourceException: Resource arn:aws:ram:us-east-1:123456789012:thing/probe-test)"
     },
     {
       "operation": "UntagResource",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "likely implemented (UnknownResourceException: Resource arn:aws:ram:us-east-1:123456789012:thing/probe-test)"
     },
     {
       "operation": "UpdateResourceShare",

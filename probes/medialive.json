@@ -1,0 +1,624 @@
+{
+  "service": "medialive",
+  "generated_at": "2026-10-25T19:44:01.294899+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 122,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "AcceptInputDeviceTransfer",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "BatchDelete",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchStart",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchStop",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchUpdateSchedule",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CancelInputDeviceTransfer",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ClaimDevice",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateChannel",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateChannelPlacementGroup",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateCloudWatchAlarmTemplate",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateCloudWatchAlarmTemplateGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateCluster",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateEventBridgeRuleTemplate",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateEventBridgeRuleTemplateGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateInput",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateInputSecurityGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateMultiplex",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateMultiplexProgram",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateNetwork",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateNode",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateNodeRegistrationScript",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreatePartnerInput",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "CreateSdiSource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateSignalMap",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteChannel",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteChannelPlacementGroup",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteCloudWatchAlarmTemplate",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteCloudWatchAlarmTemplateGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteEventBridgeRuleTemplate",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteEventBridgeRuleTemplateGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteInput",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteInputSecurityGroup",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteMultiplex",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteMultiplexProgram",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteNetwork",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteNode",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteReservation",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteSchedule",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteSdiSource",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DeleteSignalMap",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeAccountConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeChannel",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DescribeChannelPlacementGroup",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DescribeCluster",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DescribeInput",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DescribeInputDevice",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DescribeInputDeviceThumbnail",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DescribeInputSecurityGroup",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DescribeMultiplex",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DescribeMultiplexProgram",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DescribeNetwork",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DescribeNode",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DescribeOffering",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DescribeReservation",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DescribeSchedule",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DescribeSdiSource",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "DescribeThumbnails",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetCloudWatchAlarmTemplate",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetCloudWatchAlarmTemplateGroup",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetEventBridgeRuleTemplate",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetEventBridgeRuleTemplateGroup",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetSignalMap",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListAlerts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListChannelPlacementGroups",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListChannels",
+      "status": "working",
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
+    },
+    {
+      "operation": "ListCloudWatchAlarmTemplateGroups",
+      "status": "working",
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
+    },
+    {
+      "operation": "ListCloudWatchAlarmTemplates",
+      "status": "working",
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
+    },
+    {
+      "operation": "ListClusterAlerts",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListClusters",
+      "status": "working",
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
+    },
+    {
+      "operation": "ListEventBridgeRuleTemplateGroups",
+      "status": "working",
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
+    },
+    {
+      "operation": "ListEventBridgeRuleTemplates",
+      "status": "working",
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
+    },
+    {
+      "operation": "ListInputDeviceTransfers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListInputDevices",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListInputSecurityGroups",
+      "status": "working",
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
+    },
+    {
+      "operation": "ListInputs",
+      "status": "working",
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
+    },
+    {
+      "operation": "ListMultiplexAlerts",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListMultiplexPrograms",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListMultiplexes",
+      "status": "working",
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
+    },
+    {
+      "operation": "ListNetworks",
+      "status": "working",
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
+    },
+    {
+      "operation": "ListNodes",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "ListOfferings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListReservations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSdiSources",
+      "status": "working",
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
+    },
+    {
+      "operation": "ListSignalMaps",
+      "status": "working",
+      "message": "likely implemented (InvalidToken: Invalid Token: Resource not found!)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListVersions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PurchaseOffering",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "RebootInputDevice",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "RejectInputDeviceTransfer",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "RestartChannelPipelines",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "StartChannel",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "StartDeleteMonitorDeployment",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "StartInputDevice",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "StartInputDeviceMaintenanceWindow",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "StartMonitorDeployment",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "StartMultiplex",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "StartUpdateSignalMap",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "StopChannel",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "StopInputDevice",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "StopMultiplex",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "TransferInputDevice",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateAccountConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateChannel",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateChannelClass",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateChannelPlacementGroup",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateCloudWatchAlarmTemplate",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateCloudWatchAlarmTemplateGroup",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateCluster",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateEventBridgeRuleTemplate",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateEventBridgeRuleTemplateGroup",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateInput",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateInputDevice",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateInputSecurityGroup",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateMultiplex",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateMultiplexProgram",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateNetwork",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateNode",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateNodeState",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateReservation",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateSdiSource",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    }
+  ]
+}

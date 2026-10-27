@@ -1,0 +1,546 @@
+{
+  "comment": "Golden baseline: per-suite compat-suite pass counts the Rust server must keep matching. Frozen from the Python ground-truth era; regenerate with: uv run python scripts/harness/parity.py --rust-only --update-expectations",
+  "generated": "2026-10-21T00:57:44",
+  "per_suite": {
+    "cloudformation": {
+      "pass": 150
+    },
+    "cloudwatch": {
+      "pass": 67
+    },
+    "dynamodb": {
+      "pass": 178
+    },
+    "ec2": {
+      "pass": 753
+    },
+    "ecr": {
+      "pass": 68
+    },
+    "ecs": {
+      "pass": 94
+    },
+    "events": {
+      "pass": 112
+    },
+    "firehose": {
+      "pass": 48
+    },
+    "iam": {
+      "pass": 305
+    },
+    "kinesis": {
+      "pass": 97
+    },
+    "kms": {
+      "pass": 81
+    },
+    "lambda": {
+      "pass": 140
+    },
+    "logs": {
+      "pass": 141
+    },
+    "rds": {
+      "pass": 326
+    },
+    "s3": {
+      "pass": 191
+    },
+    "secretsmanager": {
+      "pass": 46
+    },
+    "sns": {
+      "pass": 100
+    },
+    "sqs": {
+      "pass": 95
+    },
+    "ssm": {
+      "pass": 231
+    },
+    "stepfunctions": {
+      "pass": 73
+    },
+    "sts": {
+      "pass": 49
+    },
+    "acm": {
+      "pass": 45
+    },
+    "acmpca": {
+      "pass": 12
+    },
+    "amp": {
+      "pass": 60
+    },
+    "apigateway": {
+      "pass": 129
+    },
+    "apigatewayv2": {
+      "pass": 112
+    },
+    "appmesh": {
+      "pass": 50
+    },
+    "appsync": {
+      "pass": 92
+    },
+    "athena": {
+      "pass": 104
+    },
+    "backup": {
+      "pass": 140
+    },
+    "batch": {
+      "pass": 61
+    },
+    "cloudfront": {
+      "pass": 227
+    },
+    "cloudtrail": {
+      "pass": 90
+    },
+    "codepipeline": {
+      "pass": 46
+    },
+    "cognito_idp": {
+      "pass": 81
+    },
+    "comprehend": {
+      "pass": 88
+    },
+    "config": {
+      "pass": 129
+    },
+    "connect": {
+      "pass": 370
+    },
+    "databrew": {
+      "pass": 53
+    },
+    "datasync": {
+      "pass": 56
+    },
+    "dynamodbstreams": {
+      "pass": 20
+    },
+    "eks": {
+      "pass": 85
+    },
+    "elasticache": {
+      "pass": 95
+    },
+    "elb": {
+      "pass": 28
+    },
+    "elbv2": {
+      "pass": 67
+    },
+    "emr": {
+      "pass": 81
+    },
+    "es": {
+      "pass": 66
+    },
+    "glue": {
+      "pass": 339
+    },
+    "greengrass": {
+      "pass": 104
+    },
+    "guardduty": {
+      "pass": 178
+    },
+    "identitystore": {
+      "pass": 23
+    },
+    "inspector2": {
+      "pass": 89
+    },
+    "iot": {
+      "pass": 316
+    },
+    "iotdata": {
+      "pass": 2
+    },
+    "ivs": {
+      "pass": 41
+    },
+    "kafka": {
+      "pass": 74
+    },
+    "kinesisanalyticsv2": {
+      "pass": 52
+    },
+    "lakeformation": {
+      "pass": 104
+    },
+    "macie2": {
+      "pass": 93
+    },
+    "managedblockchain": {
+      "pass": 27
+    },
+    "mediapackage": {
+      "pass": 24
+    },
+    "opensearch": {
+      "pass": 121
+    },
+    "opensearchserverless": {
+      "pass": 59
+    },
+    "organizations": {
+      "pass": 60
+    },
+    "osis": {
+      "pass": 17
+    },
+    "personalize": {
+      "pass": 2
+    },
+    "pipes": {
+      "pass": 11
+    },
+    "polly": {
+      "pass": 14
+    },
+    "redshift": {
+      "pass": 218
+    },
+    "redshiftdata": {
+      "pass": 3
+    },
+    "resiliencehub": {
+      "pass": 97
+    },
+    "resource_groups": {
+      "pass": 20
+    },
+    "resourcegroupstaggingapi": {
+      "pass": 9
+    },
+    "route53resolver": {
+      "pass": 65
+    },
+    "sagemaker": {
+      "pass": 490
+    },
+    "securityhub": {
+      "pass": 135
+    },
+    "sesv2": {
+      "pass": 164
+    },
+    "support": {
+      "pass": 20
+    },
+    "timestreaminfluxdb": {
+      "pass": 3
+    },
+    "timestreamquery": {
+      "pass": 1
+    },
+    "timestreamwrite": {
+      "pass": 4
+    },
+    "transcribe": {
+      "pass": 84
+    },
+    "xray": {
+      "pass": 43
+    },
+    "budgets": {
+      "pass": 29
+    },
+    "dsql": {
+      "pass": 17
+    },
+    "ebs": {
+      "pass": 1
+    },
+    "ec2instanceconnect": {
+      "pass": 1
+    },
+    "networkfirewall": {
+      "pass": 11
+    },
+    "ssoadmin": {
+      "pass": 7
+    },
+    "apigateway_lambda": {
+      "pass": 6
+    },
+    "apigatewaymanagementapi": {
+      "pass": 3
+    },
+    "bedrock": {
+      "pass": 132
+    },
+    "ce": {
+      "pass": 61
+    },
+    "cfn_e2e": {
+      "pass": 12
+    },
+    "cognitoidentity": {
+      "pass": 3
+    },
+    "concurrent_requests": {
+      "pass": 10
+    },
+    "cross_service": {
+      "pass": 51
+    },
+    "datapipeline": {
+      "pass": 23
+    },
+    "efs": {
+      "pass": 46
+    },
+    "error_format": {
+      "pass": 34
+    },
+    "glacier": {
+      "pass": 38
+    },
+    "iam_enforcement": {
+      "pass": 0
+    },
+    "lambda_custom_runtime": {
+      "pass": 13
+    },
+    "lambda_dlq_destinations": {
+      "pass": 7
+    },
+    "lambda_dotnet": {
+      "pass": 0
+    },
+    "lambda_esm_trigger": {
+      "pass": 8
+    },
+    "lambda_event_source": {
+      "pass": 4
+    },
+    "lambda_function_urls": {
+      "pass": 9
+    },
+    "lambda_integrations": {
+      "pass": 12
+    },
+    "lambda_java": {
+      "pass": 0
+    },
+    "lambda_nodejs": {
+      "pass": 34
+    },
+    "lambda_python_edge_cases": {
+      "pass": 35
+    },
+    "lambda_ruby": {
+      "pass": 0
+    },
+    "mediastore": {
+      "pass": 29
+    },
+    "mq": {
+      "pass": 27
+    },
+    "ram": {
+      "pass": 41
+    },
+    "rekognition": {
+      "pass": 116
+    },
+    "resource_groups_tagging": {
+      "pass": 17
+    },
+    "s3_ext": {
+      "pass": 96
+    },
+    "s3_notifications": {
+      "pass": 11
+    },
+    "servicecatalog": {
+      "pass": 104
+    },
+    "shield": {
+      "pass": 35
+    },
+    "signer": {
+      "pass": 26
+    },
+    "state_persistence": {
+      "pass": 5
+    },
+    "state_save_load": {
+      "pass": 5
+    },
+    "stepfunctions_async": {
+      "pass": 3
+    },
+    "textract": {
+      "pass": 44
+    },
+    "wafv2": {
+      "pass": 76
+    },
+    "workspaces": {
+      "pass": 97
+    },
+    "s3control": {
+      "pass": 162
+    },
+    "connectcampaigns": {
+      "pass": 17
+    },
+    "dms": {
+      "pass": 178
+    },
+    "elasticbeanstalk": {
+      "pass": 61
+    },
+    "fsx": {
+      "pass": 48
+    },
+    "memorydb": {
+      "pass": 36
+    },
+    "networkmanager": {
+      "pass": 112
+    },
+    "panorama": {
+      "pass": 46
+    },
+    "pinpoint": {
+      "pass": 136
+    },
+    "quicksight": {
+      "pass": 242
+    },
+    "route53": {
+      "pass": 110
+    },
+    "ses": {
+      "pass": 92
+    },
+    "synthetics": {
+      "pass": 37
+    },
+    "account": {
+      "pass": 16
+    },
+    "appconfig": {
+      "pass": 48
+    },
+    "autoscaling": {
+      "pass": 70
+    },
+    "bedrock_runtime": {
+      "pass": 2
+    },
+    "bedrockagent": {
+      "pass": 2
+    },
+    "clouddirectory": {
+      "pass": 72
+    },
+    "cloudhsmv2": {
+      "pass": 23
+    },
+    "codebuild": {
+      "pass": 80
+    },
+    "codecommit": {
+      "pass": 121
+    },
+    "codedeploy": {
+      "pass": 41
+    },
+    "dax": {
+      "pass": 26
+    },
+    "directconnect": {
+      "pass": 10
+    },
+    "ds": {
+      "pass": 124
+    },
+    "kinesisvideo": {
+      "pass": 30
+    },
+    "mediaconnect": {
+      "pass": 94
+    },
+    "route53domains": {
+      "pass": 36
+    },
+    "s3tables": {
+      "pass": 50
+    },
+    "s3vectors": {
+      "pass": 22
+    },
+    "sdb": {
+      "pass": 3
+    },
+    "service_quotas": {
+      "pass": 4
+    },
+    "swf": {
+      "pass": 40
+    },
+    "transfer": {
+      "pass": 129
+    },
+    "vpclattice": {
+      "pass": 8
+    },
+    "workspacesweb": {
+      "pass": 13
+    },
+    "applicationautoscaling": {
+      "pass": 9
+    },
+    "emrcontainers": {
+      "pass": 5
+    },
+    "emrserverless": {
+      "pass": 11
+    },
+    "forecast": {
+      "pass": 23
+    },
+    "kinesis_video_archived_media": {
+      "pass": 10
+    },
+    "lexv2models": {
+      "pass": 23
+    },
+    "medialive": {
+      "pass": 131
+    },
+    "mediapackagev2": {
+      "pass": 30
+    },
+    "mediastore_data": {
+      "pass": 7
+    },
+    "rdsdata": {
+      "pass": 8
+    },
+    "sagemaker_runtime": {
+      "pass": 10
+    },
+    "scheduler": {
+      "pass": 34
+    },
+    "servicecatalogappregistry": {
+      "pass": 3
+    },
+    "servicediscovery": {
+      "pass": 34
+    }
+  }
+}

@@ -1,76 +1,79 @@
 {
   "service": "fsx",
+  "generated_at": "2026-10-26T09:23:48.775973+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 26,
-    "needs_params": 9,
-    "not_implemented": 11,
-    "500_error": 2
+    "working": 45,
+    "needs_params": 0,
+    "not_implemented": 3,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "AssociateFileSystemAliases",
       "status": "working",
-      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-file-system-id-id' does not exist.)"
     },
     {
       "operation": "CancelDataRepositoryTask",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DataRepositoryTaskNotFound: Data repository task 'probe-task-id-id' does not exist)"
     },
     {
       "operation": "CopyBackup",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (BackupNotFound: Backup 'probe-source-backup-id-id' does not exist.)"
     },
     {
       "operation": "CopySnapshotAndUpdateVolume",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "CreateAndAttachS3AccessPoint",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented via required-only (BadRequest)"
     },
     {
       "operation": "CreateBackup",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "CreateDataRepositoryAssociation",
       "status": "working",
-      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-file-system-id-id' does not exist.)"
     },
     {
       "operation": "CreateDataRepositoryTask",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-file-system-id-id' does not exist.)"
     },
     {
       "operation": "CreateFileCache",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateFileSystem",
-      "status": "500_error",
-      "message": "server crash (InternalError: Invalid FileSystemType: probe-test-value)"
+      "status": "working",
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreateFileSystemFromBackup",
       "status": "working",
-      "message": "likely implemented (BackupNotFound: Backup 'probe-test-value' does not exist.)"
+      "message": "implemented via required-only (BackupNotFound)"
     },
     {
       "operation": "CreateSnapshot",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (VolumeNotFound: Volume 'fsvol-0123456789abcdef0' does not exist.)"
     },
     {
       "operation": "CreateStorageVirtualMachine",
       "status": "working",
-      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+      "message": "implemented via required-only (FileSystemNotFound)"
     },
     {
       "operation": "CreateVolume",
@@ -80,7 +83,7 @@
     {
       "operation": "CreateVolumeFromBackup",
       "status": "working",
-      "message": "likely implemented (BackupNotFound: Backup 'probe-test-value' does not exist.)"
+      "message": "likely implemented (BackupNotFound: Backup 'probe-backup-id-id' does not exist.)"
     },
     {
       "operation": "DeleteBackup",
@@ -94,33 +97,33 @@
     },
     {
       "operation": "DeleteFileCache",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (FileCacheNotFound: File cache 'probe-file-cache-id-id' does not exist)"
     },
     {
       "operation": "DeleteFileSystem",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-file-system-id-id' does not exist.)"
     },
     {
       "operation": "DeleteSnapshot",
       "status": "working",
-      "message": "likely implemented (SnapshotNotFound: Snapshot 'probe-test-value' does not exist.)"
+      "message": "likely implemented (SnapshotNotFound: Snapshot 'probe-snapshot-id-id' does not exist.)"
     },
     {
       "operation": "DeleteStorageVirtualMachine",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (StorageVirtualMachineNotFound: Storage virtual machine 'probe-storage-virtual-machine-id-id)"
     },
     {
       "operation": "DeleteVolume",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (VolumeNotFound: Volume 'fsvol-0123456789abcdef0' does not exist.)"
     },
     {
       "operation": "DescribeBackups",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
     },
     {
       "operation": "DescribeDataRepositoryAssociations",
@@ -130,7 +133,7 @@
     {
       "operation": "DescribeDataRepositoryTasks",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
     },
     {
       "operation": "DescribeFileCaches",
@@ -140,17 +143,17 @@
     {
       "operation": "DescribeFileSystemAliases",
       "status": "working",
-      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-file-system-id-id' does not exist.)"
     },
     {
       "operation": "DescribeFileSystems",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
     },
     {
       "operation": "DescribeS3AccessPointAttachments",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
     },
     {
       "operation": "DescribeSharedVpcConfiguration",
@@ -160,27 +163,27 @@
     {
       "operation": "DescribeSnapshots",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (SnapshotNotFound: Snapshot 'probe-test-value' does not exist.)"
     },
     {
       "operation": "DescribeStorageVirtualMachines",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "DescribeVolumes",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "DetachAndDeleteS3AccessPoint",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (S3AccessPointAttachmentNotFound: No S3 access point attachment probe-test-value found)"
     },
     {
       "operation": "DisassociateFileSystemAliases",
       "status": "working",
-      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-file-system-id-id' does not exist.)"
     },
     {
       "operation": "ListTagsForResource",
@@ -189,28 +192,28 @@
     },
     {
       "operation": "ReleaseFileSystemNfsV3Locks",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-file-system-id-id' does not exist.)"
     },
     {
       "operation": "RestoreVolumeFromSnapshot",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
-    },
-    {
-      "operation": "StartMisconfiguredStateRecovery",
       "status": "not_implemented",
       "message": "not implemented (501)"
     },
     {
+      "operation": "StartMisconfiguredStateRecovery",
+      "status": "working",
+      "message": "likely implemented (FileSystemNotFound: File system 'probe-file-system-id-id' does not exist.)"
+    },
+    {
       "operation": "TagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateDataRepositoryAssociation",
@@ -219,33 +222,33 @@
     },
     {
       "operation": "UpdateFileCache",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (FileCacheNotFound: File cache 'probe-file-cache-id-id' does not exist)"
     },
     {
       "operation": "UpdateFileSystem",
       "status": "working",
-      "message": "likely implemented (FileSystemNotFound: File system 'probe-test-value' does not exist.)"
+      "message": "implemented via required-only (FileSystemNotFound)"
     },
     {
       "operation": "UpdateSharedVpcConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (BadRequest: Invalid value 'probe-test-value' for EnableFsxRouteTableUpda)"
     },
     {
       "operation": "UpdateSnapshot",
       "status": "working",
-      "message": "likely implemented (SnapshotNotFound: Snapshot 'probe-test-value' does not exist.)"
+      "message": "likely implemented (SnapshotNotFound: Snapshot 'probe-snapshot-id-id' does not exist.)"
     },
     {
       "operation": "UpdateStorageVirtualMachine",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented via required-only (StorageVirtualMachineNotFound)"
     },
     {
       "operation": "UpdateVolume",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     }
   ]
 }

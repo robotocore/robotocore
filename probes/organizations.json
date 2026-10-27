@@ -1,26 +1,29 @@
 {
   "service": "organizations",
+  "generated_at": "2026-10-25T19:44:09.737883+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 50,
+    "working": 53,
     "needs_params": 0,
-    "not_implemented": 13,
-    "500_error": 0
+    "not_implemented": 10,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "AcceptHandshake",
       "status": "working",
-      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+      "message": "likely implemented (HandshakeNotFoundException: You specified a handshake that doesn't exist.)"
     },
     {
       "operation": "AttachPolicy",
       "status": "working",
-      "message": "likely implemented (PolicyNotFoundException: We can't find a policy with the PolicyId that you specified.)"
+      "message": "likely implemented (InvalidInputException: You specified an invalid value.)"
     },
     {
       "operation": "CancelHandshake",
       "status": "working",
-      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+      "message": "likely implemented (HandshakeNotFoundException: You specified a handshake that doesn't exist.)"
     },
     {
       "operation": "CloseAccount",
@@ -50,12 +53,12 @@
     {
       "operation": "CreatePolicy",
       "status": "working",
-      "message": "likely implemented (InvalidInputException: You specified an invalid value.)"
+      "message": "OK"
     },
     {
       "operation": "DeclineHandshake",
       "status": "working",
-      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+      "message": "likely implemented (HandshakeNotFoundException: You specified a handshake that doesn't exist.)"
     },
     {
       "operation": "DeleteOrganization",
@@ -65,22 +68,22 @@
     {
       "operation": "DeleteOrganizationalUnit",
       "status": "working",
-      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+      "message": "likely implemented (OrganizationalUnitNotFoundException: You specified an organizational unit that doesn't exist.)"
     },
     {
       "operation": "DeletePolicy",
       "status": "working",
-      "message": "likely implemented (PolicyNotFoundException: We can't find a policy with the PolicyId that you specified.)"
+      "message": "likely implemented (InvalidInputException: You specified an invalid value.)"
     },
     {
       "operation": "DeleteResourcePolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (AWSOrganizationsNotInUseException: Your account is not a member of an organization.)"
     },
     {
       "operation": "DeregisterDelegatedAdministrator",
       "status": "working",
-      "message": "likely implemented (AccountNotFoundException: You specified an account that doesn't exist.)"
+      "message": "likely implemented (AccountNotRegisteredException: The provided account is not a registered delegated administr)"
     },
     {
       "operation": "DescribeAccount",
@@ -95,12 +98,12 @@
     {
       "operation": "DescribeEffectivePolicy",
       "status": "working",
-      "message": "likely implemented (InvalidInputException: You specified an invalid value.)"
+      "message": "OK"
     },
     {
       "operation": "DescribeHandshake",
       "status": "working",
-      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+      "message": "likely implemented (HandshakeNotFoundException: The requested handshake with handshake id {} doesn't exist.)"
     },
     {
       "operation": "DescribeOrganization",
@@ -110,7 +113,7 @@
     {
       "operation": "DescribeOrganizationalUnit",
       "status": "working",
-      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+      "message": "likely implemented (OrganizationalUnitNotFoundException: You specified an organizational unit that doesn't exist.)"
     },
     {
       "operation": "DescribePolicy",
@@ -119,8 +122,8 @@
     },
     {
       "operation": "DescribeResourcePolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (AWSOrganizationsNotInUseException: Your account is not a member of an organization.)"
     },
     {
       "operation": "DescribeResponsibilityTransfer",
@@ -130,7 +133,7 @@
     {
       "operation": "DetachPolicy",
       "status": "working",
-      "message": "likely implemented (PolicyNotFoundException: We can't find a policy with the PolicyId that you specified.)"
+      "message": "likely implemented (InvalidInputException: You specified an invalid value.)"
     },
     {
       "operation": "DisableAWSServiceAccess",
@@ -140,12 +143,12 @@
     {
       "operation": "DisablePolicyType",
       "status": "working",
-      "message": "likely implemented (RootNotFoundException: You specified a root that doesn't exist.)"
+      "message": "likely implemented (AWSOrganizationsNotInUseException: Your account is not a member of an organization.)"
     },
     {
       "operation": "EnableAWSServiceAccess",
       "status": "working",
-      "message": "likely implemented (InvalidInputException: You specified an unrecognized service principal.)"
+      "message": "OK"
     },
     {
       "operation": "EnableAllFeatures",
@@ -155,7 +158,7 @@
     {
       "operation": "EnablePolicyType",
       "status": "working",
-      "message": "likely implemented (RootNotFoundException: You specified a root that doesn't exist.)"
+      "message": "likely implemented (AWSOrganizationsNotInUseException: Your account is not a member of an organization.)"
     },
     {
       "operation": "InviteAccountToOrganization",
@@ -185,7 +188,7 @@
     {
       "operation": "ListAccountsForParent",
       "status": "working",
-      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+      "message": "likely implemented (ParentNotFoundException: You specified parent that doesn't exist.)"
     },
     {
       "operation": "ListAccountsWithInvalidEffectivePolicy",
@@ -195,7 +198,7 @@
     {
       "operation": "ListChildren",
       "status": "working",
-      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+      "message": "likely implemented (ParentNotFoundException: You specified parent that doesn't exist.)"
     },
     {
       "operation": "ListCreateAccountStatus",
@@ -235,7 +238,7 @@
     {
       "operation": "ListOrganizationalUnitsForParent",
       "status": "working",
-      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+      "message": "likely implemented (ParentNotFoundException: You specified parent that doesn't exist.)"
     },
     {
       "operation": "ListOutboundResponsibilityTransfers",
@@ -245,17 +248,17 @@
     {
       "operation": "ListParents",
       "status": "working",
-      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+      "message": "likely implemented (AccountNotFoundException: You specified an account that doesn't exist.)"
     },
     {
       "operation": "ListPolicies",
       "status": "working",
-      "message": "likely implemented (InvalidInputException: You specified an invalid value.)"
+      "message": "OK"
     },
     {
       "operation": "ListPoliciesForTarget",
       "status": "working",
-      "message": "likely implemented (InvalidInputException: You specified an invalid value.)"
+      "message": "likely implemented (TargetNotFoundException: You specified a target that doesn't exist.)"
     },
     {
       "operation": "ListRoots",
@@ -265,7 +268,7 @@
     {
       "operation": "ListTagsForResource",
       "status": "working",
-      "message": "likely implemented (InvalidInputException: You provided a value that does not match the required patter)"
+      "message": "likely implemented (TargetNotFoundException: You specified a target that doesn't exist.)"
     },
     {
       "operation": "ListTargetsForPolicy",
@@ -275,12 +278,12 @@
     {
       "operation": "MoveAccount",
       "status": "working",
-      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+      "message": "likely implemented (ParentNotFoundException: You specified parent that doesn't exist.)"
     },
     {
       "operation": "PutResourcePolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (AWSOrganizationsNotInUseException: Your account is not a member of an organization.)"
     },
     {
       "operation": "RegisterDelegatedAdministrator",
@@ -290,12 +293,12 @@
     {
       "operation": "RemoveAccountFromOrganization",
       "status": "working",
-      "message": "likely implemented (AWSOrganizationsNotInUseException: Your account is not a member of an organization.)"
+      "message": "likely implemented (AccountNotFoundException: You specified an account that doesn't exist.)"
     },
     {
       "operation": "TagResource",
       "status": "working",
-      "message": "likely implemented (InvalidInputException: You provided a value that does not match the required patter)"
+      "message": "likely implemented (TargetNotFoundException: You specified a target that doesn't exist.)"
     },
     {
       "operation": "TerminateResponsibilityTransfer",
@@ -305,17 +308,17 @@
     {
       "operation": "UntagResource",
       "status": "working",
-      "message": "likely implemented (InvalidInputException: You provided a value that does not match the required patter)"
+      "message": "likely implemented (TargetNotFoundException: You specified a target that doesn't exist.)"
     },
     {
       "operation": "UpdateOrganizationalUnit",
       "status": "working",
-      "message": "likely implemented (400: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+      "message": "likely implemented (OrganizationalUnitNotFoundException: You specified an organizational unit that doesn't exist.)"
     },
     {
       "operation": "UpdatePolicy",
       "status": "working",
-      "message": "likely implemented (PolicyNotFoundException: We can't find a policy with the PolicyId that you specified.)"
+      "message": "likely implemented (InvalidInputException: You specified an invalid value.)"
     },
     {
       "operation": "UpdateResponsibilityTransfer",

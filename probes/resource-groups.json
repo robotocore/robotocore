@@ -1,0 +1,129 @@
+{
+  "service": "resource-groups",
+  "generated_at": "2026-10-25T19:44:31.475328+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 17,
+    "needs_params": 0,
+    "not_implemented": 4,
+    "500_error": 2,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "CancelTagSyncTask",
+      "status": "500_error",
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
+    },
+    {
+      "operation": "CreateGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAccountSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetGroup",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetGroupConfiguration",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetGroupQuery",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GetTagSyncTask",
+      "status": "500_error",
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
+    },
+    {
+      "operation": "GetTags",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "GroupResources",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListGroupResources",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListGroupingStatuses",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagSyncTasks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutGroupConfiguration",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "SearchResources",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartTagSyncTask",
+      "status": "working",
+      "message": "likely implemented (BadRequestException: To define a task, you can use TagKey and TagValue with non-n)"
+    },
+    {
+      "operation": "Tag",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UngroupResources",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "Untag",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateAccountSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateGroup",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    },
+    {
+      "operation": "UpdateGroupQuery",
+      "status": "working",
+      "message": "implemented (NotFoundException)"
+    }
+  ]
+}

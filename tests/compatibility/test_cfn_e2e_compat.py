@@ -14,6 +14,8 @@ import pytest
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
+# Honor ENDPOINT_URL so a lane can run against any single twin (default: the
+# shipped port); matches conftest.py and test_cloudformation_compat.py.
 ENDPOINT_URL = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
 
 

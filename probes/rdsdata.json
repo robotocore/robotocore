@@ -1,0 +1,44 @@
+{
+  "service": "rdsdata",
+  "generated_at": "2026-10-25T19:44:26.506254+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 1,
+    "needs_params": 0,
+    "not_implemented": 5,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "BatchExecuteStatement",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "BeginTransaction",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CommitTransaction",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ExecuteSql",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ExecuteStatement",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RollbackTransaction",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

@@ -1,0 +1,784 @@
+{
+  "ssm": {
+    "CancelCommand": {
+      "CommandId": "probe-command-id00000000000000000000"
+    },
+    "CancelMaintenanceWindowExecution": {
+      "WindowExecutionId": "probe-window-execution-id00000000000"
+    },
+    "DeleteMaintenanceWindow": {
+      "WindowId": "probe-window-id00000"
+    },
+    "DeregisterTargetFromMaintenanceWindow": {
+      "WindowId": "probe-window-id00000",
+      "WindowTargetId": "probe-window-target-id00000000000000"
+    },
+    "DeregisterTaskFromMaintenanceWindow": {
+      "WindowId": "probe-window-id00000",
+      "WindowTaskId": "probe-window-task-id0000000000000000"
+    },
+    "DescribeAutomationStepExecutions": {
+      "AutomationExecutionId": "probe-automation-execution-id0000000"
+    },
+    "DescribeMaintenanceWindowExecutionTaskInvocations": {
+      "WindowExecutionId": "probe-window-execution-id00000000000",
+      "TaskId": "probe-task-id00000000000000000000000"
+    },
+    "DescribeMaintenanceWindowExecutionTasks": {
+      "WindowExecutionId": "probe-window-execution-id00000000000"
+    },
+    "DescribeMaintenanceWindowExecutions": {
+      "WindowId": "probe-window-id00000"
+    },
+    "DescribeMaintenanceWindowTargets": {
+      "WindowId": "probe-window-id00000"
+    },
+    "DescribeMaintenanceWindowTasks": {
+      "WindowId": "probe-window-id00000"
+    },
+    "GetAutomationExecution": {
+      "AutomationExecutionId": "probe-automation-execution-id0000000"
+    },
+    "GetCommandInvocation": {
+      "CommandId": "probe-command-id00000000000000000000",
+      "InstanceId": "probe-instance-id"
+    },
+    "GetDeployablePatchSnapshotForInstance": {
+      "InstanceId": "probe-instance-id",
+      "SnapshotId": "probe-snapshot-id0000000000000000000"
+    },
+    "GetExecutionPreview": {
+      "ExecutionPreviewId": "probe-execution-preview-id0000000000"
+    },
+    "GetMaintenanceWindow": {
+      "WindowId": "probe-window-id00000"
+    },
+    "GetMaintenanceWindowExecution": {
+      "WindowExecutionId": "probe-window-execution-id00000000000"
+    },
+    "GetMaintenanceWindowExecutionTask": {
+      "WindowExecutionId": "probe-window-execution-id00000000000",
+      "TaskId": "probe-task-id00000000000000000000000"
+    },
+    "GetMaintenanceWindowExecutionTaskInvocation": {
+      "WindowExecutionId": "probe-window-execution-id00000000000",
+      "TaskId": "probe-task-id00000000000000000000000",
+      "InvocationId": "probe-invocation-id00000000000000000"
+    },
+    "GetMaintenanceWindowTask": {
+      "WindowId": "probe-window-id00000",
+      "WindowTaskId": "probe-window-task-id0000000000000000"
+    },
+    "RegisterTargetWithMaintenanceWindow": {
+      "WindowId": "probe-window-id00000",
+      "ResourceType": "INSTANCE",
+      "Targets": [
+        {}
+      ]
+    },
+    "RegisterTaskWithMaintenanceWindow": {
+      "WindowId": "probe-window-id00000",
+      "TaskArn": "probe-task-arn",
+      "TaskType": "RUN_COMMAND"
+    },
+    "SendAutomationSignal": {
+      "AutomationExecutionId": "probe-automation-execution-id0000000",
+      "SignalType": "Approve"
+    },
+    "StopAutomationExecution": {
+      "AutomationExecutionId": "probe-automation-execution-id0000000"
+    },
+    "UpdateMaintenanceWindow": {
+      "WindowId": "probe-window-id00000"
+    },
+    "UpdateMaintenanceWindowTarget": {
+      "WindowId": "probe-window-id00000",
+      "WindowTargetId": "probe-window-target-id00000000000000"
+    },
+    "UpdateMaintenanceWindowTask": {
+      "WindowId": "probe-window-id00000",
+      "WindowTaskId": "probe-window-task-id0000000000000000"
+    }
+  },
+  "iot": {
+    "AcceptCertificateTransfer": {
+      "certificateId": "probe-certificate-id00000000000000000000000000000000000000000000"
+    },
+    "CancelCertificateTransfer": {
+      "certificateId": "probe-certificate-id00000000000000000000000000000000000000000000"
+    },
+    "DeleteCACertificate": {
+      "certificateId": "probe-certificate-id00000000000000000000000000000000000000000000"
+    },
+    "DeleteCertificate": {
+      "certificateId": "probe-certificate-id00000000000000000000000000000000000000000000"
+    },
+    "DescribeCACertificate": {
+      "certificateId": "probe-certificate-id00000000000000000000000000000000000000000000"
+    },
+    "DescribeCertificate": {
+      "certificateId": "probe-certificate-id00000000000000000000000000000000000000000000"
+    },
+    "ListCertificatesByCA": {
+      "caCertificateId": "probe-ca-certificate-id00000000000000000000000000000000000000000"
+    },
+    "RejectCertificateTransfer": {
+      "certificateId": "probe-certificate-id00000000000000000000000000000000000000000000"
+    },
+    "TransferCertificate": {
+      "certificateId": "probe-certificate-id00000000000000000000000000000000000000000000",
+      "targetAwsAccount": "probe-target"
+    },
+    "UpdateCACertificate": {
+      "certificateId": "probe-certificate-id00000000000000000000000000000000000000000000"
+    },
+    "UpdateCertificate": {
+      "certificateId": "probe-certificate-id00000000000000000000000000000000000000000000",
+      "newStatus": "ACTIVE"
+    }
+  },
+  "budgets": {
+    "DeleteBudgetAction": {
+      "AccountId": "probe-accoun",
+      "BudgetName": "probe-budget-name",
+      "ActionId": "probe-action-id000000000000000000000"
+    },
+    "DescribeBudgetAction": {
+      "AccountId": "probe-accoun",
+      "BudgetName": "probe-budget-name",
+      "ActionId": "probe-action-id000000000000000000000"
+    },
+    "DescribeBudgetActionHistories": {
+      "AccountId": "probe-accoun",
+      "BudgetName": "probe-budget-name",
+      "ActionId": "probe-action-id000000000000000000000"
+    },
+    "ExecuteBudgetAction": {
+      "AccountId": "probe-accoun",
+      "BudgetName": "probe-budget-name",
+      "ActionId": "probe-action-id000000000000000000000",
+      "ExecutionType": "APPROVE_BUDGET_ACTION"
+    },
+    "UpdateBudgetAction": {
+      "AccountId": "probe-accoun",
+      "BudgetName": "probe-budget-name",
+      "ActionId": "probe-action-id000000000000000000000"
+    }
+  },
+  "timestreaminfluxdb": {
+    "CreateDbParameterGroup": {
+      "name": "probe-name"
+    }
+  },
+  "lexv2models": {
+    "DeleteBotAnalyzerRecommendation": {
+      "botId": "probe-bot-",
+      "botAnalyzerRequestId": "probe-bot-analyzer-request-id0000000"
+    },
+    "DescribeBotAnalyzerRecommendation": {
+      "botId": "probe-bot-",
+      "botAnalyzerRequestId": "probe-bot-analyzer-request-id0000000"
+    },
+    "StartBotResourceGeneration": {
+      "generationInputPrompt": "probe-generation-input-prompt00000000000000000000000000000000000000000000000000000000000000000000000",
+      "botId": "probe-bot-",
+      "botVersion": "probe",
+      "localeId": "probe-locale-id"
+    },
+    "StopBotAnalyzer": {
+      "botId": "probe-bot-",
+      "botAnalyzerRequestId": "probe-bot-analyzer-request-id0000000"
+    }
+  },
+  "opensearchserverless": {
+    "UpdateAccessPolicy": {
+      "type": "data",
+      "name": "probe-name",
+      "policyVersion": "probe-policy-version"
+    },
+    "UpdateLifecyclePolicy": {
+      "type": "retention",
+      "name": "probe-name",
+      "policyVersion": "probe-policy-version"
+    },
+    "UpdateSecurityConfig": {
+      "id": "probe-id",
+      "configVersion": "probe-config-version"
+    },
+    "UpdateSecurityPolicy": {
+      "type": "encryption",
+      "name": "probe-name",
+      "policyVersion": "probe-policy-version"
+    }
+  },
+  "workspaces": {
+    "DeleteConnectClientAddIn": {
+      "AddInId": "probe-add-in-id000000000000000000000",
+      "ResourceId": "probe-resource-id"
+    },
+    "DeregisterWorkspaceDirectory": {
+      "DirectoryId": "probe-directory-id"
+    },
+    "ImportCustomWorkspaceImage": {
+      "ImageName": "probe-image-name",
+      "ImageDescription": "probe-image-description",
+      "ComputeType": "BASE",
+      "Protocol": "PCOIP",
+      "ImageSource": {
+        "Ec2ImportTaskId": "probe-ec2-import-task-id"
+      },
+      "InfrastructureConfigurationArn": "probe-infrastructure-configuration-arn",
+      "Platform": "WINDOWS",
+      "OsVersion": "Windows_10"
+    },
+    "ModifyClientProperties": {
+      "ResourceId": "probe-resource-id",
+      "ClientProperties": {}
+    },
+    "ModifySelfservicePermissions": {
+      "ResourceId": "probe-resource-id",
+      "SelfservicePermissions": {}
+    },
+    "TerminateWorkspacesPoolSession": {
+      "SessionId": "probe-session-id00000000000000000000"
+    },
+    "UpdateConnectClientAddIn": {
+      "AddInId": "probe-add-in-id000000000000000000000",
+      "ResourceId": "probe-resource-id"
+    },
+    "UpdateWorkspaceImagePermission": {
+      "ImageId": "probe-image-id",
+      "AllowCopyImage": false,
+      "SharedAccountId": "probe-shared-account-id"
+    }
+  },
+  "amp": {
+    "CreateAnomalyDetector": {
+      "workspaceId": "probe-workspace-id",
+      "alias": "probe-alias",
+      "configuration": {
+        "randomCutForest": {
+          "query": "probe-query"
+        }
+      }
+    },
+    "CreateScraper": {
+      "scrapeConfiguration": {
+        "configurationBlob": "cHJvYmUtZmlsbHMtYg=="
+      },
+      "source": {
+        "eksConfiguration": {
+          "clusterArn": "probe-cluster-arn",
+          "subnetIds": [
+            "probe-subnet-ids"
+          ]
+        }
+      },
+      "destination": {
+        "ampConfiguration": {
+          "workspaceArn": "probe-workspace-arn"
+        }
+      }
+    },
+    "PutAnomalyDetector": {
+      "workspaceId": "probe-workspace-id",
+      "anomalyDetectorId": "probe-anomaly-detector-id",
+      "configuration": {
+        "randomCutForest": {
+          "query": "probe-query"
+        }
+      }
+    }
+  },
+  "appsync": {
+    "ListTagsForResource": {
+      "resourceArn": "probe-resource-arn0000000000000000000000000000000000000000000000000000"
+    },
+    "TagResource": {
+      "resourceArn": "probe-resource-arn0000000000000000000000000000000000000000000000000000",
+      "tags": {
+        "probe-key": "probe-tags"
+      }
+    },
+    "UntagResource": {
+      "resourceArn": "probe-resource-arn0000000000000000000000000000000000000000000000000000",
+      "tagKeys": [
+        "probe-tag-keys"
+      ]
+    }
+  },
+  "bedrock-runtime": {
+    "ApplyGuardrail": {
+      "guardrailIdentifier": "probe-guardrail-identifier",
+      "guardrailVersion": "probe-guardrail-version",
+      "source": "INPUT",
+      "content": [
+        {
+          "text": {
+            "text": "probe-text"
+          }
+        }
+      ]
+    },
+    "CountTokens": {
+      "modelId": "probe-model-id",
+      "input": {
+        "invokeModel": {
+          "body": "cHJvYmUtZmlsbHMtYg=="
+        }
+      }
+    }
+  },
+  "bedrock": {
+    "CreateAutomatedReasoningPolicyVersion": {
+      "policyArn": "probe-policy-arn",
+      "lastUpdatedDefinitionHash": "probe-last-updated-definition-hash0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "CreateEvaluationJob": {
+      "jobName": "probe-job-name",
+      "roleArn": "probe-role-arn",
+      "evaluationConfig": {
+        "automated": {
+          "datasetMetricConfigs": [
+            {
+              "taskType": "Summarization",
+              "dataset": {
+                "name": "probe-name"
+              },
+              "metricNames": [
+                "probe-metric-names"
+              ]
+            }
+          ]
+        }
+      },
+      "inferenceConfig": {
+        "models": [
+          {
+            "bedrockModel": {
+              "modelIdentifier": "probe-model-identifier"
+            }
+          }
+        ]
+      },
+      "outputDataConfig": {
+        "s3Uri": "probe-s3-uri"
+      }
+    },
+    "UpdateAutomatedReasoningPolicyAnnotations": {
+      "policyArn": "probe-policy-arn",
+      "buildWorkflowId": "probe-build-workflow-id",
+      "annotations": [
+        {
+          "addType": {
+            "name": "probe-name",
+            "description": "probe-description",
+            "values": [
+              {
+                "value": "probe-value"
+              }
+            ]
+          }
+        }
+      ],
+      "lastUpdatedAnnotationSetHash": "probe-last-updated-annotation-set-hash000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  "ce": {
+    "GetCommitmentPurchaseAnalysis": {
+      "AnalysisId": "probe-analysis-id0000000000000000000"
+    },
+    "GetSavingsPlanPurchaseRecommendationDetails": {
+      "RecommendationDetailId": "probe-recommendation-detail-id000000"
+    },
+    "StartCostAllocationTagBackfill": {
+      "BackfillFrom": "probe-backfill-from0"
+    }
+  },
+  "mediaconnect": {
+    "CreateRouterInput": {
+      "Name": "probe-name",
+      "Configuration": {
+        "Standard": {
+          "NetworkInterfaceArn": "probe-network-interface-arn",
+          "ProtocolConfiguration": {
+            "Rtp": {
+              "Port": 3000
+            }
+          }
+        }
+      },
+      "MaximumBitrate": 1,
+      "RoutingScope": "REGIONAL",
+      "Tier": "INPUT_100"
+    },
+    "CreateRouterNetworkInterface": {
+      "Name": "probe-name",
+      "Configuration": {
+        "Public": {
+          "AllowRules": [
+            {
+              "Cidr": "probe-cidr"
+            }
+          ]
+        }
+      }
+    },
+    "CreateRouterOutput": {
+      "Name": "probe-name",
+      "Configuration": {
+        "Standard": {
+          "NetworkInterfaceArn": "probe-network-interface-arn",
+          "ProtocolConfiguration": {
+            "Rtp": {
+              "DestinationAddress": "probe-destination-address",
+              "DestinationPort": 1
+            }
+          }
+        }
+      },
+      "MaximumBitrate": 1,
+      "RoutingScope": "REGIONAL",
+      "Tier": "OUTPUT_100"
+    }
+  },
+  "shield": {
+    "AssociateHealthCheck": {
+      "ProtectionId": "probe-protection-id00000000000000000",
+      "HealthCheckArn": "probe-health-check-arn"
+    },
+    "DeleteProtection": {
+      "ProtectionId": "probe-protection-id00000000000000000"
+    },
+    "DescribeProtection": {
+      "ProtectionId": "probe-protection-id00000000000000000"
+    },
+    "DisassociateHealthCheck": {
+      "ProtectionId": "probe-protection-id00000000000000000",
+      "HealthCheckArn": "probe-health-check-arn"
+    }
+  },
+  "connectcampaigns": {
+    "CreateCampaign": {
+      "name": "probe-name",
+      "connectInstanceId": "probe-connect-instance-id",
+      "dialerConfig": {
+        "progressiveDialerConfig": {
+          "bandwidthAllocation": 1.0
+        }
+      },
+      "outboundCallConfig": {
+        "connectContactFlowId": "probe-connect-contact-flow-id"
+      }
+    },
+    "UpdateCampaignDialerConfig": {
+      "id": "probe-id",
+      "dialerConfig": {
+        "progressiveDialerConfig": {
+          "bandwidthAllocation": 1.0
+        }
+      }
+    }
+  },
+  "ec2instanceconnect": {
+    "SendSSHPublicKey": {
+      "InstanceId": "probe-instance-id",
+      "InstanceOSUser": "probe-instance-os-user",
+      "SSHPublicKey": "probe-ssh-public-key000000000000000000000000000000000000000000000000000000000000"
+    },
+    "SendSerialConsoleSSHPublicKey": {
+      "InstanceId": "probe-instance-id",
+      "SSHPublicKey": "probe-ssh-public-key000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  "identitystore": {
+    "GetGroupId": {
+      "IdentityStoreId": "probe-identity-store-id",
+      "AlternateIdentifier": {
+        "ExternalId": {
+          "Issuer": "probe-issuer",
+          "Id": "probe-id"
+        }
+      }
+    },
+    "GetUserId": {
+      "IdentityStoreId": "probe-identity-store-id",
+      "AlternateIdentifier": {
+        "ExternalId": {
+          "Issuer": "probe-issuer",
+          "Id": "probe-id"
+        }
+      }
+    }
+  },
+  "inspector2": {
+    "CreateCisScanConfiguration": {
+      "scanName": "probe-scan-name",
+      "securityLevel": "LEVEL_1",
+      "schedule": {
+        "oneTime": {}
+      },
+      "targets": {
+        "accountIds": [
+          "probe-account-ids"
+        ],
+        "targetResourceTags": {
+          "probe-key": [
+            "probe-target-resource-tags"
+          ]
+        }
+      }
+    },
+    "UpdateCodeSecurityIntegration": {
+      "integrationArn": "probe-integration-arn",
+      "details": {
+        "gitlabSelfManaged": {
+          "authCode": "probe-auth-code"
+        }
+      }
+    }
+  },
+  "networkfirewall": {
+    "DescribeFlowOperation": {
+      "FirewallArn": "probe-firewall-arn",
+      "FlowOperationId": "probe-flow-operation-id0000000000000"
+    },
+    "ListFlowOperationResults": {
+      "FirewallArn": "probe-firewall-arn",
+      "FlowOperationId": "probe-flow-operation-id0000000000000"
+    }
+  },
+  "opensearch": {
+    "AddDirectQueryDataSource": {
+      "DataSourceName": "probe-data-source-name",
+      "DataSourceType": {
+        "CloudWatchLog": {
+          "RoleArn": "probe-role-arn000000000000000000"
+        }
+      },
+      "OpenSearchArns": [
+        "probe-open-search-arns"
+      ]
+    },
+    "UpdateDirectQueryDataSource": {
+      "DataSourceName": "probe-data-source-name",
+      "DataSourceType": {
+        "CloudWatchLog": {
+          "RoleArn": "probe-role-arn000000000000000000"
+        }
+      },
+      "OpenSearchArns": [
+        "probe-open-search-arns"
+      ]
+    }
+  },
+  "redshift": {
+    "DeregisterNamespace": {
+      "NamespaceIdentifier": {
+        "ServerlessIdentifier": {
+          "NamespaceIdentifier": "probe-namespace-identifier",
+          "WorkgroupIdentifier": "probe-workgroup-identifier"
+        }
+      },
+      "ConsumerIdentifiers": [
+        "probe-consumer-identifiers"
+      ]
+    },
+    "RegisterNamespace": {
+      "NamespaceIdentifier": {
+        "ServerlessIdentifier": {
+          "NamespaceIdentifier": "probe-namespace-identifier",
+          "WorkgroupIdentifier": "probe-workgroup-identifier"
+        }
+      },
+      "ConsumerIdentifiers": [
+        "probe-consumer-identifiers"
+      ]
+    }
+  },
+  "rekognition": {
+    "DistributeDatasetEntries": {
+      "Datasets": [
+        {
+          "Arn": "probe-arn00000000000"
+        },
+        {
+          "Arn": "probe-arn00000000000"
+        }
+      ]
+    },
+    "GetFaceLivenessSessionResults": {
+      "SessionId": "probe-session-id00000000000000000000"
+    }
+  },
+  "transcribe": {
+    "CreateCallAnalyticsCategory": {
+      "CategoryName": "probe-category-name",
+      "Rules": [
+        {
+          "NonTalkTimeFilter": {}
+        }
+      ]
+    },
+    "UpdateCallAnalyticsCategory": {
+      "CategoryName": "probe-category-name",
+      "Rules": [
+        {
+          "NonTalkTimeFilter": {}
+        }
+      ]
+    }
+  },
+  "acmpca": {
+    "DescribeCertificateAuthorityAuditReport": {
+      "CertificateAuthorityArn": "probe-certificate-authority-arn",
+      "AuditReportId": "probe-audit-report-id000000000000000"
+    }
+  },
+  "connect": {
+    "UpdateParticipantRoleConfig": {
+      "InstanceId": "probe-instance-id",
+      "ContactId": "probe-contact-id",
+      "ChannelConfiguration": {
+        "Chat": {
+          "ParticipantTimerConfigList": [
+            {
+              "ParticipantRole": "CUSTOMER",
+              "TimerType": "IDLE",
+              "TimerValue": {
+                "ParticipantTimerAction": "Unset"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "dms": {
+    "CreateDataProvider": {
+      "Engine": "probe-engine",
+      "Settings": {
+        "RedshiftSettings": {}
+      }
+    },
+    "DescribeConnections": {
+      "MaxRecords": 20
+    },
+    "DescribeEndpoints": {
+      "MaxRecords": 20
+    },
+    "DescribeReplicationSubnetGroups": {
+      "MaxRecords": 20
+    },
+    "ListTagsForResource": {
+      "ResourceArn": "arn:aws:dms:us-east-1:123456789012:endpoint:probe-arn00000000000"
+    }
+  },
+  "dynamodbstreams": {
+    "GetShardIterator": {
+      "StreamArn": "probe-stream-arn000000000000000000000",
+      "ShardId": "probe-shard-id00000000000000",
+      "ShardIteratorType": "TRIM_HORIZON"
+    }
+  },
+  "ecr": {
+    "PutLifecyclePolicy": {
+      "repositoryName": "probe-repository-name",
+      "lifecyclePolicyText": "probe-lifecycle-policy-text0000000000000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  "elasticbeanstalk": {
+    "SwapEnvironmentCNAMEs": {}
+  },
+  "events": {
+    "CreateEndpoint": {
+      "Name": "probe-name",
+      "RoutingConfig": {
+        "FailoverConfig": {
+          "Primary": {
+            "HealthCheck": "probe-health-check"
+          },
+          "Secondary": {
+            "Route": "probe-route"
+          }
+        }
+      },
+      "EventBuses": [
+        {
+          "EventBusArn": "probe-event-bus-arn"
+        },
+        {
+          "EventBusArn": "probe-event-bus-arn"
+        }
+      ]
+    },
+    "PutEvents": {
+      "Entries": [
+        {}
+      ]
+    }
+  },
+  "memorydb": {
+    "DescribeACLs": {}
+  },
+  "route53resolver": {
+    "CreateResolverEndpoint": {
+      "CreatorRequestId": "probe-creator-request-id",
+      "SecurityGroupIds": [
+        "probe-security-group-ids"
+      ],
+      "Direction": "INBOUND",
+      "IpAddresses": [
+        {
+          "SubnetId": "probe-subnet-id"
+        },
+        {
+          "SubnetId": "probe-subnet-id"
+        }
+      ]
+    }
+  },
+  "ssoadmin": {
+    "PutApplicationGrant": {
+      "ApplicationArn": "probe-application-arn",
+      "GrantType": "authorization_code",
+      "Grant": {
+        "AuthorizationCode": {}
+      }
+    }
+  },
+  "wafv2": {
+    "ListWebACLs": {
+      "Scope": "CLOUDFRONT"
+    }
+  },
+  "xray": {
+    "GetSamplingTargets": {
+      "SamplingStatisticsDocuments": [
+        {
+          "RuleName": "probe-rule-name",
+          "ClientID": "probe-client-id000000000",
+          "Timestamp": "2024-01-01T00:00:00Z",
+          "RequestCount": 1,
+          "SampledCount": 1
+        }
+      ]
+    }
+  },
+  "lakeformation": {
+    "GetQueryState": {
+      "QueryId": "p00000000000000000000000000000000000"
+    },
+    "GetQueryStatistics": {
+      "QueryId": "p00000000000000000000000000000000000"
+    },
+    "GetWorkUnitResults": {
+      "QueryId": "p00000000000000000000000000000000000",
+      "WorkUnitId": 1,
+      "WorkUnitToken": "probe-work-unit-token"
+    },
+    "GetWorkUnits": {
+      "QueryId": "p00000000000000000000000000000000000"
+    }
+  }
+}

@@ -1,21 +1,24 @@
 {
   "service": "codepipeline",
+  "generated_at": "2026-10-25T19:42:11.392652+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 41,
+    "working": 44,
     "needs_params": 0,
-    "not_implemented": 3,
-    "500_error": 0
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "AcknowledgeJob",
       "status": "working",
-      "message": "likely implemented (JobNotFoundException: Job with id 'probe-test-value' not found)"
+      "message": "likely implemented (JobNotFoundException: Job with id 'probe-job-id-id' not found)"
     },
     {
       "operation": "AcknowledgeThirdPartyJob",
       "status": "working",
-      "message": "likely implemented (JobNotFoundException: Job with id 'probe-test-value' not found)"
+      "message": "likely implemented (JobNotFoundException: Job with id 'probe-job-id-id' not found)"
     },
     {
       "operation": "CreateCustomActionType",
@@ -45,7 +48,7 @@
     {
       "operation": "DeregisterWebhookWithThirdParty",
       "status": "working",
-      "message": "likely implemented (WebhookNotFoundException: Webhook with name 'None' does not exist)"
+      "message": "likely implemented (WebhookNotFoundException: Webhook with name 'probe-test-value' does not exist)"
     },
     {
       "operation": "DisableStageTransition",
@@ -65,7 +68,7 @@
     {
       "operation": "GetJobDetails",
       "status": "working",
-      "message": "likely implemented (JobNotFoundException: Job with id 'probe-test-value' not found)"
+      "message": "likely implemented (JobNotFoundException: Job with id 'probe-job-id-id' not found)"
     },
     {
       "operation": "GetPipeline",
@@ -85,7 +88,7 @@
     {
       "operation": "GetThirdPartyJobDetails",
       "status": "working",
-      "message": "likely implemented (JobNotFoundException: Job with id 'probe-test-value' not found)"
+      "message": "likely implemented (JobNotFoundException: Job with id 'probe-job-id-id' not found)"
     },
     {
       "operation": "ListActionExecutions",
@@ -99,8 +102,8 @@
     },
     {
       "operation": "ListDeployActionExecutionTargets",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Account '123456789012' does not have a pipeline with name 'p)"
     },
     {
       "operation": "ListPipelineExecutions",
@@ -149,8 +152,8 @@
     },
     {
       "operation": "PutActionRevision",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (PipelineNotFoundException: Account '123456789012' does not have a pipeline with name 'p)"
     },
     {
       "operation": "PutApprovalResult",
@@ -160,22 +163,22 @@
     {
       "operation": "PutJobFailureResult",
       "status": "working",
-      "message": "likely implemented (JobNotFoundException: Job with id 'probe-test-value' not found)"
+      "message": "likely implemented (JobNotFoundException: Job with id 'probe-job-id-id' not found)"
     },
     {
       "operation": "PutJobSuccessResult",
       "status": "working",
-      "message": "likely implemented (JobNotFoundException: Job with id 'probe-test-value' not found)"
+      "message": "likely implemented (JobNotFoundException: Job with id 'probe-job-id-id' not found)"
     },
     {
       "operation": "PutThirdPartyJobFailureResult",
       "status": "working",
-      "message": "likely implemented (JobNotFoundException: Job with id 'probe-test-value' not found)"
+      "message": "likely implemented (JobNotFoundException: Job with id 'probe-job-id-id' not found)"
     },
     {
       "operation": "PutThirdPartyJobSuccessResult",
       "status": "working",
-      "message": "likely implemented (JobNotFoundException: Job with id 'probe-test-value' not found)"
+      "message": "likely implemented (JobNotFoundException: Job with id 'probe-job-id-id' not found)"
     },
     {
       "operation": "PutWebhook",
@@ -185,7 +188,7 @@
     {
       "operation": "RegisterWebhookWithThirdParty",
       "status": "working",
-      "message": "likely implemented (WebhookNotFoundException: Webhook with name 'None' does not exist)"
+      "message": "likely implemented (WebhookNotFoundException: Webhook with name 'probe-test-value' does not exist)"
     },
     {
       "operation": "RetryStageExecution",
@@ -219,8 +222,8 @@
     },
     {
       "operation": "UpdateActionType",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "UpdatePipeline",

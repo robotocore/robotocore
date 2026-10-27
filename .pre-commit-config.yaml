@@ -1,3 +1,5 @@
+# Python (pytest driver, bindings, scripts) keeps ruff; the server-era python
+# hooks (mypy/bandit against src/robotocore) are gone with the python server.
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.5
@@ -8,21 +10,15 @@ repos:
 
   - repo: local
     hooks:
-      - id: mypy
-        name: mypy
-        entry: uv run mypy src/robotocore/ --ignore-missing-imports
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all --
         language: system
         pass_filenames: false
-        types_or: [python]
-      - id: bandit
-        name: bandit
-        entry: uv run bandit -r src/robotocore/ -ll -c pyproject.toml -q
+        types: [rust]
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --all-targets -- -D warnings
         language: system
         pass_filenames: false
-        types_or: [python]
-      - id: empty-except
-        name: empty except:pass
-        entry: uv run python scripts/fix_empty_except.py --check
-        language: system
-        pass_filenames: false
-        types_or: [python]
+        types: [rust]

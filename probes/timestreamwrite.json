@@ -1,0 +1,104 @@
+{
+  "service": "timestreamwrite",
+  "generated_at": "2026-10-26T09:23:54.993573+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 14,
+    "needs_params": 0,
+    "not_implemented": 4,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "CreateBatchLoadTask",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateDatabase",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTable",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDatabase",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeBatchLoadTask",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeDatabase",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeEndpoints",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTable",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListBatchLoadTasks",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListDatabases",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTables",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ResumeBatchLoadTask",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateDatabase",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateTable",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "WriteRecords",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    }
+  ]
+}

@@ -1,0 +1,114 @@
+{
+  "service": "dax",
+  "generated_at": "2026-10-26T09:23:46.814251+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 20,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "CreateCluster",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateParameterGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateSubnetGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DecreaseReplicationFactor",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteParameterGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteSubnetGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeClusters",
+      "status": "working",
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
+    },
+    {
+      "operation": "DescribeDefaultParameters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeEvents",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeParameterGroups",
+      "status": "working",
+      "message": "likely implemented (ParameterGroupNotFoundFault: ParameterGroup probe-test-value not found.)"
+    },
+    {
+      "operation": "DescribeParameters",
+      "status": "working",
+      "message": "likely implemented (ParameterGroupNotFoundFault: ParameterGroup probe-test-value not found.)"
+    },
+    {
+      "operation": "DescribeSubnetGroups",
+      "status": "working",
+      "message": "likely implemented (SubnetGroupNotFoundFault: SubnetGroup probe-test-value not found.)"
+    },
+    {
+      "operation": "IncreaseReplicationFactor",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RebootNode",
+      "status": "working",
+      "message": "likely implemented (NodeNotFoundFault: Node probe-node-id-id not found.)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateCluster",
+      "status": "working",
+      "message": "likely implemented (ParameterGroupNotFoundFault: ParameterGroup probe-test-value not found.)"
+    },
+    {
+      "operation": "UpdateParameterGroup",
+      "status": "working",
+      "message": "likely implemented (ParameterGroupNotFoundFault: ParameterGroup probe-test-value not found.)"
+    },
+    {
+      "operation": "UpdateSubnetGroup",
+      "status": "working",
+      "message": "likely implemented (SubnetGroupNotFoundFault: SubnetGroup probe-test-value not found.)"
+    }
+  ]
+}

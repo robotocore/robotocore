@@ -1,0 +1,69 @@
+{
+  "service": "redshiftdata",
+  "generated_at": "2026-10-25T19:44:29.010836+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 4,
+    "needs_params": 0,
+    "not_implemented": 7,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "BatchExecuteStatement",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CancelStatement",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeStatement",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DescribeTable",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ExecuteStatement",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetStatementResult",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "GetStatementResultV2",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListDatabases",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListSchemas",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListStatements",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListTables",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

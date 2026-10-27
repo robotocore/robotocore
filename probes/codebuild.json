@@ -1,0 +1,309 @@
+{
+  "service": "codebuild",
+  "generated_at": "2026-10-25T19:42:09.174898+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 59,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "BatchDeleteBuilds",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchGetBuildBatches",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchGetBuilds",
+      "status": "working",
+      "message": "likely implemented (InvalidInputException: Invalid build ID provided)"
+    },
+    {
+      "operation": "BatchGetCommandExecutions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchGetFleets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchGetProjects",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchGetReportGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchGetReports",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchGetSandboxes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateFleet",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateProject",
+      "status": "working",
+      "message": "likely implemented (InvalidInputException: Invalid service role: Service role account ID does not match)"
+    },
+    {
+      "operation": "CreateReportGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateWebhook",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteBuildBatch",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteFleet",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteProject",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteReport",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteReportGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteResourcePolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteSourceCredentials",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteWebhook",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeCodeCoverages",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeTestCases",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetReportGroupTrend",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetResourcePolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ImportSourceCredentials",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "InvalidateProjectCache",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListBuildBatches",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListBuildBatchesForProject",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListBuilds",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListBuildsForProject",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListCommandExecutionsForSandbox",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListCuratedEnvironmentImages",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListFleets",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListProjects",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListReportGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListReports",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListReportsForReportGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSandboxes",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSandboxesForProject",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSharedProjects",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSharedReportGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSourceCredentials",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutResourcePolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RetryBuild",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "RetryBuildBatch",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartBuild",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartBuildBatch",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartCommandExecution",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartSandbox",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartSandboxConnection",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StopBuild",
+      "status": "working",
+      "message": "likely implemented (InvalidInputException: Invalid build ID provided)"
+    },
+    {
+      "operation": "StopBuildBatch",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StopSandbox",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateFleet",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateProject",
+      "status": "working",
+      "message": "likely implemented (InvalidInputException: Invalid service role: Service role account ID does not match)"
+    },
+    {
+      "operation": "UpdateProjectVisibility",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateReportGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateWebhook",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    }
+  ]
+}

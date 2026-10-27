@@ -1,0 +1,45 @@
+[package]
+name = "rotocore"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Moto-equivalent AWS service engine in pure Rust"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+bytes = "1.5"
+uuid = { version = "1.0", features = ["v4"] }
+chrono = "0.4"
+md5 = "0.7"
+sha1 = "0.10"
+sha2 = "0.10"
+hex = "0.4"
+base64 = "0.22"
+# AppRegistry's CFN_STACK recognizer (verbatim moto regex translation).
+regex = "1.10"
+parking_lot = "0.12"
+once_cell = "1.19"
+urlencoding = "2.1"
+# CloudFront rest-xml request parsing (shares the workspace's 0.31 pin).
+quick-xml = "0.31"
+# Sync HTTP loopback client for the resource mirror (CFN -> sibling services);
+# no TLS needed: the mirror only ever talks to the local host over http.
+ureq = { version = "2.10", default-features = false }
+# Cross-service reads (CreateTrail's S3-bucket existence check mirrors moto's
+# `s3_backends[...].get_bucket` probe via the s3 crate's state bridge).
+s3 = { path = "../crates/s3" }
+# Cross-service bridges (moto parity): dynamodbstreams reaches into
+# dynamodb_backends for tables; RegisterScalableTarget probes
+# ecs_backends describe_services via the ecs crate's state bridge.
+dynamodb = { path = "../crates/dynamodb" }
+ecs = { path = "../crates/ecs" }
+# The resourcegroupstaggingapi walker reads live SQS queue tags (moto parity).
+sqs = { path = "../crates/sqs" }
+# Cognito user-pool tokens are RS256-signed with a per-pool key that the
+# pool's own JWKS route advertises (issue #347): a verifier that fetches
+# /{pool}/.well-known/jwks.json validates the twin's tokens end to end.
+# Same `rsa` version the kms crate pins (rsa = "0.9", sha2 + getrandom).
+rand = "0.8"
+rsa = { version = "0.9", features = ["sha2", "getrandom"] }

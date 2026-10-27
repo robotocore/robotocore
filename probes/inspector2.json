@@ -1,10 +1,13 @@
 {
   "service": "inspector2",
+  "generated_at": "2026-10-26T03:43:05.989573+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 58,
-    "needs_params": 14,
+    "working": 75,
+    "needs_params": 0,
     "not_implemented": 0,
-    "500_error": 3
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -14,13 +17,13 @@
     },
     {
       "operation": "BatchAssociateCodeSecurityScanConfiguration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchDisassociateCodeSecurityScanConfiguration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchGetAccountStatus",
@@ -29,18 +32,18 @@
     },
     {
       "operation": "BatchGetCodeSnippet",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchGetFindingDetails",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchGetFreeTrialInfo",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchGetMemberEc2DeepInspectionStatus",
@@ -64,8 +67,8 @@
     },
     {
       "operation": "CreateCisScanConfiguration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateCodeSecurityIntegration",
@@ -74,8 +77,8 @@
     },
     {
       "operation": "CreateCodeSecurityScanConfiguration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateFilter",
@@ -119,8 +122,8 @@
     },
     {
       "operation": "Disable",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object is not iterable)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DisableDelegatedAdminAccount",
@@ -134,8 +137,8 @@
     },
     {
       "operation": "Enable",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "EnableDelegatedAdminAccount",
@@ -164,8 +167,8 @@
     },
     {
       "operation": "GetCodeSecurityScan",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetCodeSecurityScanConfiguration",
@@ -270,7 +273,7 @@
     {
       "operation": "ListFindingAggregations",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "ListFindings",
@@ -299,8 +302,8 @@
     },
     {
       "operation": "SearchVulnerabilities",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "SendCisSessionHealth",
@@ -309,8 +312,8 @@
     },
     {
       "operation": "SendCisSessionTelemetry",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartCisSession",
@@ -319,8 +322,8 @@
     },
     {
       "operation": "StartCodeSecurityScan",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StopCisSession",
@@ -334,23 +337,23 @@
     },
     {
       "operation": "UntagResource",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object is not iterable)"
-    },
-    {
-      "operation": "UpdateCisScanConfiguration",
       "status": "working",
       "message": "OK"
     },
     {
+      "operation": "UpdateCisScanConfiguration",
+      "status": "working",
+      "message": "OK (required-only fill)"
+    },
+    {
       "operation": "UpdateCodeSecurityIntegration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateCodeSecurityScanConfiguration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateConfiguration",
@@ -369,8 +372,8 @@
     },
     {
       "operation": "UpdateFilter",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'arn:aws:inspector2:us-east-1:123456789012:thing/probe-test')"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateOrgEc2DeepInspectionConfiguration",

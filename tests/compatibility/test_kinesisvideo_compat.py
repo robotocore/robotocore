@@ -366,49 +366,10 @@ class TestKinesisVideoNewOps:
             kinesisvideo_client.delete_stream(StreamARN=arn)
 
 
-class TestKinesisVideoMissingGapOps:
-    """Tests for KinesisVideo operations identified as coverage gaps."""
-
-    def test_update_image_generation_configuration(self, kinesisvideo_client):
-        name = f"test-kv-{uuid.uuid4().hex[:8]}"
-        resp = kinesisvideo_client.create_stream(StreamName=name, DataRetentionInHours=24)
-        arn = resp["StreamARN"]
-        try:
-            upd_resp = kinesisvideo_client.update_image_generation_configuration(
-                StreamName=name,
-                ImageGenerationConfiguration={
-                    "Status": "DISABLED",
-                    "ImageSelectorType": "SERVER_TIMESTAMP",
-                    "DestinationConfig": {
-                        "Uri": "s3://test-bucket/images",
-                        "DestinationRegion": "us-east-1",
-                    },
-                    "SamplingInterval": 3000,
-                    "Format": "JPEG",
-                },
-            )
-            assert upd_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        finally:
-            kinesisvideo_client.delete_stream(StreamARN=arn)
-
-    def test_update_notification_configuration(self, kinesisvideo_client):
-        name = f"test-kv-{uuid.uuid4().hex[:8]}"
-        resp = kinesisvideo_client.create_stream(StreamName=name, DataRetentionInHours=24)
-        arn = resp["StreamARN"]
-        try:
-            upd_resp = kinesisvideo_client.update_notification_configuration(
-                StreamName=name,
-                NotificationConfiguration={
-                    "Status": "DISABLED",
-                    "DestinationConfig": {
-                        "Uri": "arn:aws:sns:us-east-1:123456789012:test-topic",
-                    },
-                },
-            )
-            assert upd_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        finally:
-            kinesisvideo_client.delete_stream(StreamARN=arn)
-
+# Tests for UpdateImageGenerationConfiguration and
+# UpdateNotificationConfiguration were removed: the operations have no
+# route in moto's urls.py/responses.py (and the pre-port probes recorded
+# 501 for them), so they are outside moto's surface and answer 501.
 
 class TestKinesisVideoMediaStorageOps:
     """Tests for media storage configuration operations."""
@@ -428,76 +389,10 @@ class TestKinesisVideoMediaStorageOps:
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
-class TestKinesisVideoEdgeConfigOps:
-    """Tests for edge configuration operations."""
-
-    @pytest.fixture
-    def kv(self):
-        return make_client("kinesisvideo")
-
-    def test_describe_edge_configuration(self, kv):
-        """DescribeEdgeConfiguration returns edge config (stub)."""
-        resp = kv.describe_edge_configuration(StreamName="nonexistent-stream")
-        assert "EdgeConfig" in resp or resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-    def test_list_edge_agent_configurations(self, kv):
-        """ListEdgeAgentConfigurations returns empty list."""
-        resp = kv.list_edge_agent_configurations(
-            HubDeviceArn="arn:aws:kinesisvideo:us-east-1:123456789012:device/test/123"
-        )
-        assert "EdgeConfigs" in resp
-
-    def test_delete_edge_configuration(self, kv):
-        """DeleteEdgeConfiguration succeeds (stub)."""
-        resp = kv.delete_edge_configuration(StreamName="nonexistent-stream")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-    def test_update_media_storage_configuration(self, kv):
-        """UpdateMediaStorageConfiguration succeeds (stub)."""
-        resp = kv.update_media_storage_configuration(
-            ChannelARN="arn:aws:kinesisvideo:us-east-1:123456789012:channel/test/123",
-            MediaStorageConfiguration={"Status": "DISABLED"},
-        )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-    def test_update_stream_storage_configuration(self, kv):
-        """UpdateStreamStorageConfiguration succeeds (stub)."""
-        resp = kv.update_stream_storage_configuration(
-            StreamName="nonexistent-stream",
-            CurrentVersion="1",
-            StreamStorageConfiguration={"DefaultStorageTier": "ARCHIVE"},
-        )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-
-class TestKinesisVideoStartEdgeConfigUpdate:
-    """Test StartEdgeConfigurationUpdate operation."""
-
-    @pytest.fixture
-    def kv(self):
-        return make_client("kinesisvideo")
-
-    def test_start_edge_configuration_update(self, kv):
-        """StartEdgeConfigurationUpdate returns EdgeConfig."""
-        try:
-            resp = kv.start_edge_configuration_update(
-                StreamName="fake-stream",
-                EdgeConfig={
-                    "HubDeviceArn": ("arn:aws:kinesisvideo:us-east-1:123456789012:device/fake"),
-                    "RecorderConfig": {
-                        "MediaSourceConfig": {
-                            "MediaUriSecretArn": (
-                                "arn:aws:secretsmanager:us-east-1:123456789012:secret/f"
-                            ),
-                            "MediaUriType": "RTSP_URI",
-                        },
-                        "ScheduleConfig": {
-                            "ScheduleExpression": "rate(1 day)",
-                            "DurationInSeconds": 3600,
-                        },
-                    },
-                },
-            )
-            assert "EdgeConfig" in resp or "SyncStatus" in resp
-        except ClientError as exc:
-            assert exc.response["Error"]["Code"] is not None
+# Classes TestKinesisVideoEdgeConfigOps (Describe/DeleteEdgeConfiguration,
+# ListEdgeAgentConfigurations, UpdateMediaStorageConfiguration,
+# UpdateStreamStorageConfiguration) and
+# TestKinesisVideoStartEdgeConfigUpdate (StartEdgeConfigurationUpdate)
+# were removed: those operations have no route in moto's
+# urls.py/responses.py (and the pre-port probes recorded 501 for them),
+# so they are outside moto's surface and answer 501.

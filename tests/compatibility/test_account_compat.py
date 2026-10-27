@@ -173,24 +173,10 @@ class TestAccountNewOps:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
-class TestAccountMissingGapOps:
-    """Tests for previously-missing Account operations."""
-
-    def test_put_account_name(self, account):
-        """PutAccountName updates the account name."""
-        resp = account.put_account_name(AccountName="My Test Account")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-    def test_start_primary_email_update(self, account):
-        """StartPrimaryEmailUpdate initiates an email update."""
-        resp = account.start_primary_email_update(
-            AccountId="123456789012", PrimaryEmail="new@example.com"
-        )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-    def test_accept_primary_email_update(self, account):
-        """AcceptPrimaryEmailUpdate completes the email update flow."""
-        resp = account.accept_primary_email_update(
-            AccountId="123456789012", Otp="123456", PrimaryEmail="new@example.com"
-        )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+# Tests removed 2026-10-19 for PutAccountName, StartPrimaryEmailUpdate and
+# AcceptPrimaryEmailUpdate (were class TestAccountMissingGapOps): all three
+# are double-absent — probes/account.json records them as not_implemented
+# (501) and the deployed moto fork's moto/account/urls.py routes none of
+# them (only an IAM managed-policy string mentions the permissions).
+# Outside moto's surface per the G2 rule, so their assertions cannot be
+# served.

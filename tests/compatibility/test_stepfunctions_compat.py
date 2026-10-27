@@ -1,6 +1,7 @@
 """Step Functions compatibility tests — including ASL execution."""
 
 import json
+import os
 import uuid
 
 import pytest
@@ -1558,7 +1559,7 @@ class TestStepFunctionsTestStateGapOp:
 
         no_prefix_client = boto3.client(
             "stepfunctions",
-            endpoint_url="http://localhost:4566",
+            endpoint_url=os.environ.get("ENDPOINT_URL", "http://localhost:4566"),
             region_name="us-east-1",
             aws_access_key_id="test",
             aws_secret_access_key="test",

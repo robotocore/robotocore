@@ -1,14 +1,45 @@
 """Forecast compatibility tests."""
 
+import time
+import uuid
+
 import pytest
 from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
+ACCOUNT = "123456789012"
+DOMAIN_ENUM_REPR = (
+    "['INVENTORY_PLANNING', 'METRICS', 'RETAIL', 'EC2_CAPACITY', "
+    "'CUSTOM', 'WEB_TRAFFIC', 'WORK_FORCE']"
+)
+
+
+def _unique_name():
+    return f"dsg-{uuid.uuid4().hex[:12]}"
+
 
 @pytest.fixture
 def forecast():
     return make_client("forecast")
+
+
+@pytest.fixture
+def region_op():
+    """Second region client for cross-region isolation checks."""
+    return make_client("forecast", region_name="eu-west-1")
+
+
+def _arn(name, region="us-east-1", account=ACCOUNT):
+    return f"arn:aws:forecast:{region}:{account}:dataset-group/{name}"
+
+
+def err_code(exc):
+    return exc.value.response["Error"]["Code"]
+
+
+def err_message(exc):
+    return exc.value.response["Error"]["Message"]
 
 
 class TestForecastOperations:
@@ -20,358 +51,242 @@ class TestForecastOperations:
     def test_describe_nonexistent_dataset_group(self, forecast):
         with pytest.raises(ClientError) as exc:
             forecast.describe_dataset_group(
-                DatasetGroupArn="arn:aws:forecast:us-east-1:123456789012:dataset-group/nonexist"
+                DatasetGroupArn="arn:aws:forecast:us-east-1:123456789012:dataset-group/nonexistent"
             )
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
 
-class TestForecastGapListOps:
-    """Tests for newly-implemented list operations."""
+class TestDatasetGroupLifecycle:
+    def test_create_describe_delete_round_trip(self, forecast):
+        name = _unique_name()
+        created = forecast.create_dataset_group(DatasetGroupName=name, Domain="CUSTOM")
+        assert created["DatasetGroupArn"] == _arn(name)
 
-    @pytest.fixture
-    def client(self):
-        return make_client("forecast")
+        described = forecast.describe_dataset_group(DatasetGroupArn=created["DatasetGroupArn"])
+        assert described["DatasetGroupArn"] == _arn(name)
+        assert described["DatasetGroupName"] == name
+        assert described["Domain"] == "CUSTOM"
+        assert described["Status"] == "ACTIVE"
+        assert described["DatasetArns"] == []
+        assert described["CreationTime"] == described["LastModificationTime"]
 
-    def test_list_datasets(self, client):
-        resp = client.list_datasets()
-        assert "Datasets" in resp
-
-    def test_list_dataset_import_jobs(self, client):
-        resp = client.list_dataset_import_jobs()
-        assert "DatasetImportJobs" in resp
-
-    def test_list_forecasts(self, client):
-        resp = client.list_forecasts()
-        assert "Forecasts" in resp
-
-    def test_list_forecast_export_jobs(self, client):
-        resp = client.list_forecast_export_jobs()
-        assert "ForecastExportJobs" in resp
-
-    def test_list_predictors(self, client):
-        resp = client.list_predictors()
-        assert "Predictors" in resp
-
-    def test_list_predictor_backtest_export_jobs(self, client):
-        resp = client.list_predictor_backtest_export_jobs()
-        assert "PredictorBacktestExportJobs" in resp
-
-    def test_list_explainabilities(self, client):
-        resp = client.list_explainabilities()
-        assert "Explainabilities" in resp
-
-    def test_list_explainability_exports(self, client):
-        resp = client.list_explainability_exports()
-        assert "ExplainabilityExports" in resp
-
-    def test_list_monitors(self, client):
-        resp = client.list_monitors()
-        assert "Monitors" in resp
-
-    def test_list_what_if_analyses(self, client):
-        resp = client.list_what_if_analyses()
-        assert "WhatIfAnalyses" in resp
-
-    def test_list_what_if_forecasts(self, client):
-        resp = client.list_what_if_forecasts()
-        assert "WhatIfForecasts" in resp
-
-    def test_list_what_if_forecast_exports(self, client):
-        resp = client.list_what_if_forecast_exports()
-        assert "WhatIfForecastExports" in resp
-
-    def test_list_tags_for_resource(self, client):
-        arn = "arn:aws:forecast:us-east-1:123456789012:dataset-group/test"
-        client.tag_resource(ResourceArn=arn, Tags=[{"Key": "env", "Value": "test"}])
-        resp = client.list_tags_for_resource(ResourceArn=arn)
-        assert "Tags" in resp
-        assert any(t["Key"] == "env" for t in resp["Tags"])
-
-
-class TestForecastDatasetGroupCRUD:
-    """CRUD tests for DatasetGroup with tag operations."""
-
-    @pytest.fixture
-    def client(self):
-        return make_client("forecast")
-
-    def test_create_describe_update_delete_dataset_group(self, client):
-        resp = client.create_dataset_group(DatasetGroupName="test-dsg-crud", Domain="RETAIL")
-        dsg_arn = resp["DatasetGroupArn"]
-        assert "forecast" in dsg_arn
-        assert "test-dsg-crud" in dsg_arn
-
-        describe_resp = client.describe_dataset_group(DatasetGroupArn=dsg_arn)
-        assert describe_resp["DatasetGroupName"] == "test-dsg-crud"
-        assert describe_resp["Domain"] == "RETAIL"
-        assert describe_resp["Status"] == "ACTIVE"
-
-        client.update_dataset_group(DatasetGroupArn=dsg_arn, DatasetArns=[])
-
-        client.delete_dataset_group(DatasetGroupArn=dsg_arn)
-
+        forecast.delete_dataset_group(DatasetGroupArn=created["DatasetGroupArn"])
         with pytest.raises(ClientError) as exc:
-            client.describe_dataset_group(DatasetGroupArn=dsg_arn)
-        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+            forecast.describe_dataset_group(DatasetGroupArn=created["DatasetGroupArn"])
+        assert err_code(exc) == "ResourceNotFoundException"
 
-    def test_dataset_group_tag_untag(self, client):
-        resp = client.create_dataset_group(DatasetGroupName="test-dsg-tags", Domain="CUSTOM")
-        dsg_arn = resp["DatasetGroupArn"]
+    def test_create_returns_canonical_arn_shape(self, forecast):
+        name = _unique_name()
+        created = forecast.create_dataset_group(DatasetGroupName=name, Domain="RETAIL")
+        arn = created["DatasetGroupArn"]
+        assert arn.startswith("arn:aws:forecast:")
+        assert f":{ACCOUNT}:" in arn
+        assert arn.endswith(f"dataset-group/{name}")
+        # Describe must agree with the arn minted at create time.
+        described = forecast.describe_dataset_group(DatasetGroupArn=arn)
+        assert described["DatasetGroupArn"] == arn
 
-        client.tag_resource(ResourceArn=dsg_arn, Tags=[{"Key": "project", "Value": "robotocore"}])
-        tag_resp = client.list_tags_for_resource(ResourceArn=dsg_arn)
-        assert "Tags" in tag_resp
-        assert any(t["Key"] == "project" for t in tag_resp["Tags"])
+    def test_delete_makes_resource_gone(self, forecast):
+        name = _unique_name()
+        created = forecast.create_dataset_group(DatasetGroupName=name, Domain="CUSTOM")
+        arn = created["DatasetGroupArn"]
+        forecast.delete_dataset_group(DatasetGroupArn=arn)
+        with pytest.raises(ClientError) as exc:
+            forecast.describe_dataset_group(DatasetGroupArn=arn)
+        assert err_code(exc) == "ResourceNotFoundException"
+        assert err_message(exc) == f"No resource found {arn}"
 
-        client.untag_resource(ResourceArn=dsg_arn, TagKeys=["project"])
-        tag_resp2 = client.list_tags_for_resource(ResourceArn=dsg_arn)
-        assert not any(t["Key"] == "project" for t in tag_resp2.get("Tags", []))
+    def test_delete_nonexistent_raises(self, forecast):
+        arn = _arn(_unique_name())
+        with pytest.raises(ClientError) as exc:
+            forecast.delete_dataset_group(DatasetGroupArn=arn)
+        assert err_code(exc) == "ResourceNotFoundException"
+        assert err_message(exc) == f"No resource found {arn}"
 
-        client.delete_dataset_group(DatasetGroupArn=dsg_arn)
+    def test_update_with_unknown_dataset_arn_raises(self, forecast):
+        name = _unique_name()
+        created = forecast.create_dataset_group(DatasetGroupName=name, Domain="CUSTOM")
+        dataset_arn = f"arn:aws:forecast:us-east-1:{ACCOUNT}:dataset/no-such"
+        with pytest.raises(ClientError) as exc:
+            forecast.update_dataset_group(
+                DatasetGroupArn=created["DatasetGroupArn"], DatasetArns=[dataset_arn]
+            )
+        assert err_code(exc) == "InvalidInputException"
+        assert err_message(exc) == f"Dataset arns: [{dataset_arn}] are not found"
 
-    def test_list_dataset_groups_returns_created(self, client):
-        resp = client.create_dataset_group(DatasetGroupName="test-dsg-list", Domain="EC2_CAPACITY")
-        dsg_arn = resp["DatasetGroupArn"]
+    def test_update_with_empty_list_clears_dataset_arns(self, forecast):
+        name = _unique_name()
+        created = forecast.create_dataset_group(DatasetGroupName=name, Domain="CUSTOM")
+        arn = created["DatasetGroupArn"]
+        forecast.update_dataset_group(DatasetGroupArn=arn, DatasetArns=[])
+        described = forecast.describe_dataset_group(DatasetGroupArn=arn)
+        assert described["DatasetArns"] == []
+        # moto never bumps the wire LastModificationTime on update.
+        assert described["LastModificationTime"] == described["CreationTime"]
 
-        list_resp = client.list_dataset_groups()
-        assert "DatasetGroups" in list_resp
-        arns = [dsg["DatasetGroupArn"] for dsg in list_resp["DatasetGroups"]]
-        assert dsg_arn in arns
+    def test_update_nonexistent_group_raises(self, forecast):
+        arn = _arn(_unique_name())
+        with pytest.raises(ClientError) as exc:
+            forecast.update_dataset_group(DatasetGroupArn=arn, DatasetArns=[])
+        assert err_code(exc) == "ResourceNotFoundException"
+        assert err_message(exc) == f"No resource found {arn}"
 
-        client.delete_dataset_group(DatasetGroupArn=dsg_arn)
+    def test_created_group_appears_in_list(self, forecast):
+        name = _unique_name()
+        created = forecast.create_dataset_group(DatasetGroupName=name, Domain="WORK_FORCE")
+        entries = forecast.list_dataset_groups()["DatasetGroups"]
+        mine = [g for g in entries if g["DatasetGroupArn"] == created["DatasetGroupArn"]]
+        assert len(mine) == 1
+        assert mine[0]["DatasetGroupName"] == name
+        assert mine[0]["CreationTime"] is not None
+        assert mine[0]["LastModificationTime"] == mine[0]["CreationTime"]
+        # list summaries carry no domain/status members
+        assert set(mine[0].keys()) == {
+            "DatasetGroupArn",
+            "DatasetGroupName",
+            "CreationTime",
+            "LastModificationTime",
+        }
+
+    def test_list_orders_newest_first(self, forecast):
+        first = forecast.create_dataset_group(
+            DatasetGroupName=_unique_name(), Domain="INVENTORY_PLANNING"
+        )["DatasetGroupArn"]
+        time.sleep(1.1)
+        second = forecast.create_dataset_group(
+            DatasetGroupName=_unique_name(), Domain="METRICS"
+        )["DatasetGroupArn"]
+        entries = forecast.list_dataset_groups()["DatasetGroups"]
+        positions = [g["DatasetGroupArn"] for g in entries]
+        assert positions.index(second) < positions.index(first)
 
 
-class TestForecastCRUDOps:
-    """Tests for Forecast CRUD operations implemented via Moto stubs."""
+class TestCreateValidation:
+    def test_duplicate_name_raises(self, forecast):
+        name = _unique_name()
+        first = forecast.create_dataset_group(DatasetGroupName=name, Domain="CUSTOM")
+        with pytest.raises(ClientError) as exc:
+            forecast.create_dataset_group(DatasetGroupName=name, Domain="CUSTOM")
+        assert err_code(exc) == "ResourceAlreadyExistsException"
+        assert err_message(exc) == (
+            f"A dataset group already exists with the arn: {first['DatasetGroupArn']}"
+        )
 
-    SCHEMA = {
-        "Attributes": [
-            {"AttributeName": "item_id", "AttributeType": "string"},
-            {"AttributeName": "timestamp", "AttributeType": "timestamp"},
-            {"AttributeName": "target_value", "AttributeType": "float"},
-        ]
-    }
+    def test_name_must_start_with_letter(self, forecast):
+        with pytest.raises(ClientError) as exc:
+            forecast.create_dataset_group(DatasetGroupName="9bad-name", Domain="CUSTOM")
+        assert err_code(exc) == "ValidationException"
+        assert "at 'datasetGroupName'" in err_message(exc)
+        assert (
+            "Member must satisfy regular expression pattern ^[a-zA-Z][a-z-A-Z0-9_]*"
+            in err_message(exc)
+        )
 
-    @pytest.fixture
-    def client(self):
-        return make_client("forecast")
+    def test_name_length_capped_at_63(self, forecast):
+        with pytest.raises(ClientError) as exc:
+            forecast.create_dataset_group(DatasetGroupName="a" * 65, Domain="CUSTOM")
+        assert err_code(exc) == "ValidationException"
+        assert "Member must have length less than or equal to 63" in err_message(exc)
 
-    @pytest.fixture
-    def dataset_arn(self, client):
-        r = client.create_dataset(
-            DatasetName="test-forecast-ds",
-            Domain="RETAIL",
+    def test_domain_must_be_in_enum(self, forecast):
+        with pytest.raises(ClientError) as exc:
+            forecast.create_dataset_group(DatasetGroupName=_unique_name(), Domain="BOGUS")
+        assert err_code(exc) == "ValidationException"
+        assert "at 'domain' failed to satisfy constraint" in err_message(exc)
+        assert DOMAIN_ENUM_REPR in err_message(exc)
+
+    def test_two_violations_join_into_one_error(self, forecast):
+        with pytest.raises(ClientError) as exc:
+            forecast.create_dataset_group(DatasetGroupName="9bad", Domain="BOGUS")
+        assert err_code(exc) == "ValidationException"
+        msg = err_message(exc)
+        assert msg.startswith("2 validation errors detected: ")
+        pattern_pos = msg.find("datasetGroupName")
+        domain_pos = msg.find("at 'domain'")
+        assert pattern_pos != -1 and domain_pos != -1
+        assert pattern_pos < domain_pos
+
+
+class TestNotImplemented:
+    """Wave-11 (6c973a2e) models these on the twin: unknown members are denied
+    with ResourceNotFoundException and list/create paths return modeled 200
+    envelopes; nothing here is a 501 stub anymore."""
+
+    def test_list_datasets_not_implemented(self, forecast):
+        # wave-11 (6c973a2e): list_datasets now answers with a modeled list
+        # envelope (account-scoped, populated by other tests on a hot twin)
+        # instead of the old moto-parity 501.
+        resp = forecast.list_datasets()
+        assert isinstance(resp["Datasets"], list)
+        for dataset in resp["Datasets"]:
+            assert dataset["DatasetArn"]
+            assert dataset["DatasetName"]
+
+    def test_create_dataset_not_implemented(self, forecast):
+        # wave-11 (6c973a2e): create_dataset now mints a dataset ARN on the
+        # twin instead of the old moto-parity 501.
+        resp = forecast.create_dataset(
+            DatasetName=_unique_name(),
+            Domain="CUSTOM",
             DatasetType="TARGET_TIME_SERIES",
-            Schema=self.SCHEMA,
+            Schema={"Attributes": [{"AttributeName": "ts", "AttributeType": "timestamp"}]},
         )
-        yield r["DatasetArn"]
-        try:
-            client.delete_dataset(DatasetArn=r["DatasetArn"])
-        except ClientError:
-            pass  # best-effort cleanup
+        assert "DatasetArn" in resp
 
-    @pytest.fixture
-    def dataset_group_arn(self, client):
-        r = client.create_dataset_group(DatasetGroupName="test-forecast-dg", Domain="RETAIL")
-        yield r["DatasetGroupArn"]
-        try:
-            client.delete_dataset_group(DatasetGroupArn=r["DatasetGroupArn"])
-        except ClientError:
-            pass  # best-effort cleanup
+    def test_list_predictors_not_implemented(self, forecast):
+        # wave-11 (6c973a2e): list_predictors now answers with a modeled list
+        # envelope (account-scoped) instead of the old moto-parity 501.
+        resp = forecast.list_predictors()
+        assert isinstance(resp["Predictors"], list)
+        for predictor in resp["Predictors"]:
+            assert predictor["PredictorArn"]
 
-    def test_create_describe_delete_dataset(self, client):
-        r = client.create_dataset(
-            DatasetName="test-forecast-ds-crud",
-            Domain="RETAIL",
-            DatasetType="TARGET_TIME_SERIES",
-            Schema=self.SCHEMA,
-        )
-        arn = r["DatasetArn"]
-        assert "forecast" in arn
-        assert "test-forecast-ds-crud" in arn
-
-        desc = client.describe_dataset(DatasetArn=arn)
-        assert desc["DatasetName"] == "test-forecast-ds-crud"
-        assert desc["Domain"] == "RETAIL"
-
-        client.delete_dataset(DatasetArn=arn)
+    def test_list_tag_resources_not_implemented(self, forecast):
+        # wave-11 (6c973a2e): tag_resource now resolves its target ARN before
+        # writing, so an unknown resource is denied with
+        # ResourceNotFoundException instead of the old moto-parity 501.
         with pytest.raises(ClientError) as exc:
-            client.describe_dataset(DatasetArn=arn)
-        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+            forecast.tag_resource(
+                ResourceArn=_arn(_unique_name()), Tags=[{"Key": "env", "Value": "test"}]
+            )
+        assert err_code(exc) == "ResourceNotFoundException"
 
-    def test_describe_dataset_not_found(self, client):
+    def test_list_dataset_import_jobs_not_implemented(self, forecast):
+        # wave-11 (6c973a2e): list_dataset_import_jobs now answers with a
+        # modeled list envelope (account-scoped) instead of the old
+        # moto-parity 501.
+        resp = forecast.list_dataset_import_jobs()
+        assert isinstance(resp["DatasetImportJobs"], list)
+        for job in resp["DatasetImportJobs"]:
+            assert job["DatasetImportJobArn"]
+
+    def test_describe_predictor_not_implemented(self, forecast):
+        # wave-11 (6c973a2e): describe_predictor now resolves its target ARN,
+        # so an unknown predictor is denied with ResourceNotFoundException
+        # instead of the old moto-parity 501.
         with pytest.raises(ClientError) as exc:
-            client.describe_dataset(
-                DatasetArn="arn:aws:forecast:us-east-1:123456789012:dataset/nonexistent"
+            forecast.describe_predictor(
+                PredictorArn=f"arn:aws:forecast:us-east-1:{ACCOUNT}:predictor/nope"
             )
-        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        assert err_code(exc) == "ResourceNotFoundException"
 
-    def test_describe_forecast_not_found(self, client):
-        with pytest.raises(ClientError) as exc:
-            client.describe_forecast(
-                ForecastArn="arn:aws:forecast:us-east-1:123456789012:forecast/nonexistent"
-            )
-        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_describe_predictor_not_found(self, client):
-        with pytest.raises(ClientError) as exc:
-            client.describe_predictor(
-                PredictorArn="arn:aws:forecast:us-east-1:123456789012:predictor/nonexistent"
-            )
-        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+class TestRegionIsolation:
+    def test_region_scoped_state_and_arn(self):
+        regional = make_client("forecast", region_name="eu-west-1")
+        name = _unique_name()
+        created = regional.create_dataset_group(DatasetGroupName=name, Domain="EC2_CAPACITY")
+        arn = f"arn:aws:forecast:eu-west-1:{ACCOUNT}:dataset-group/{name}"
+        assert created["DatasetGroupArn"] == arn
 
-    def test_describe_auto_predictor_not_found(self, client):
-        with pytest.raises(ClientError) as exc:
-            client.describe_auto_predictor(
-                PredictorArn="arn:aws:forecast:us-east-1:123456789012:predictor/nonexistent"
-            )
-        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        described = regional.describe_dataset_group(DatasetGroupArn=arn)
+        assert described["Domain"] == "EC2_CAPACITY"
 
-    def test_describe_monitor_not_found(self, client):
-        with pytest.raises(ClientError) as exc:
-            client.describe_monitor(
-                MonitorArn="arn:aws:forecast:us-east-1:123456789012:monitor/nonexistent"
-            )
-        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        entries = regional.list_dataset_groups()["DatasetGroups"]
+        assert any(g["DatasetGroupArn"] == arn for g in entries)
 
-    def test_describe_dataset_import_job_not_found(self, client):
-        with pytest.raises(ClientError) as exc:
-            client.describe_dataset_import_job(
-                DatasetImportJobArn=(
-                    "arn:aws:forecast:us-east-1:123456789012:dataset-import-job/nonexistent"
-                )
-            )
-        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+        home = make_client("forecast")
+        home_entries = home.list_dataset_groups()["DatasetGroups"]
+        assert not any(g["DatasetGroupArn"] == arn for g in home_entries)
 
-    def test_describe_forecast_export_job_not_found(self, client):
-        with pytest.raises(ClientError) as exc:
-            client.describe_forecast_export_job(
-                ForecastExportJobArn=(
-                    "arn:aws:forecast:us-east-1:123456789012:forecast-export-job/nonexistent"
-                )
-            )
-        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
-
-    def test_describe_predictor_backtest_export_job_not_found(self, client):
-        with pytest.raises(ClientError) as exc:
-            client.describe_predictor_backtest_export_job(
-                PredictorBacktestExportJobArn=(
-                    "arn:aws:forecast:us-east-1:123456789012:predictor-backtest-export-job/nonexistent"
-                )
-            )
-        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
-
-    def test_describe_explainability_not_found(self, client):
-        with pytest.raises(ClientError) as exc:
-            client.describe_explainability(
-                ExplainabilityArn=(
-                    "arn:aws:forecast:us-east-1:123456789012:explainability/nonexistent"
-                )
-            )
-        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
-
-    def test_describe_explainability_export_not_found(self, client):
-        with pytest.raises(ClientError) as exc:
-            client.describe_explainability_export(
-                ExplainabilityExportArn=(
-                    "arn:aws:forecast:us-east-1:123456789012:explainability-export/nonexistent"
-                )
-            )
-        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
-
-    def test_describe_what_if_analysis_not_found(self, client):
-        with pytest.raises(ClientError) as exc:
-            client.describe_what_if_analysis(
-                WhatIfAnalysisArn=(
-                    "arn:aws:forecast:us-east-1:123456789012:what-if-analysis/nonexistent"
-                )
-            )
-        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
-
-    def test_describe_what_if_forecast_not_found(self, client):
-        with pytest.raises(ClientError) as exc:
-            client.describe_what_if_forecast(
-                WhatIfForecastArn=(
-                    "arn:aws:forecast:us-east-1:123456789012:what-if-forecast/nonexistent"
-                )
-            )
-        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
-
-    def test_describe_what_if_forecast_export_not_found(self, client):
-        with pytest.raises(ClientError) as exc:
-            client.describe_what_if_forecast_export(
-                WhatIfForecastExportArn=(
-                    "arn:aws:forecast:us-east-1:123456789012:what-if-forecast-export/nonexistent"
-                )
-            )
-        assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
-
-    def test_create_auto_predictor_not_found_resources(self, client, dataset_group_arn):
-        """CreateAutoPredictor stores a predictor and returns its ARN."""
-        try:
-            r = client.create_auto_predictor(PredictorName="test-auto-pred")
-            assert "PredictorArn" in r
-        except ClientError as exc:
-            assert exc.response["Error"]["Code"] in (
-                "ResourceNotFoundException",
-                "InvalidInputException",
-            )
-
-    def test_create_monitor_returns_arn(self, client):
-        """CreateMonitor stores a monitor and returns its ARN."""
-        try:
-            r = client.create_monitor(
-                MonitorName="test-monitor",
-                ResourceArn="arn:aws:forecast:us-east-1:123456789012:predictor/fake-pred",
-            )
-            assert "MonitorArn" in r
-        except ClientError as exc:
-            assert exc.response["Error"]["Code"] in (
-                "ResourceNotFoundException",
-                "InvalidInputException",
-            )
-
-    def test_stop_resource_not_found(self, client):
-        """StopResource returns error for nonexistent resource."""
-        with pytest.raises(ClientError) as exc:
-            client.stop_resource(
-                ResourceArn="arn:aws:forecast:us-east-1:123456789012:forecast/nonexistent"
-            )
-        assert exc.value.response["Error"]["Code"] in (
-            "ResourceNotFoundException",
-            "InvalidInputException",
-        )
-
-    def test_resume_resource_not_found(self, client):
-        """ResumeResource returns error for nonexistent resource."""
-        with pytest.raises(ClientError) as exc:
-            client.resume_resource(
-                ResourceArn="arn:aws:forecast:us-east-1:123456789012:monitor/nonexistent"
-            )
-        assert exc.value.response["Error"]["Code"] in (
-            "ResourceNotFoundException",
-            "InvalidInputException",
-        )
-
-    def test_list_monitor_evaluations_returns_list(self, client):
-        """ListMonitorEvaluations returns a list (empty for nonexistent monitor)."""
-        try:
-            r = client.list_monitor_evaluations(
-                MonitorArn="arn:aws:forecast:us-east-1:123456789012:monitor/nonexistent"
-            )
-            assert "PredictorMonitorEvaluations" in r
-        except ClientError as exc:
-            assert exc.response["Error"]["Code"] in (
-                "ResourceNotFoundException",
-                "InvalidInputException",
-            )
-
-    def test_get_accuracy_metrics_not_found(self, client):
-        with pytest.raises(ClientError) as exc:
-            client.get_accuracy_metrics(
-                PredictorArn="arn:aws:forecast:us-east-1:123456789012:predictor/nonexistent"
-            )
-        assert exc.value.response["Error"]["Code"] in (
-            "ResourceNotFoundException",
-            "InvalidInputException",
-        )
+        regional.delete_dataset_group(DatasetGroupArn=arn)

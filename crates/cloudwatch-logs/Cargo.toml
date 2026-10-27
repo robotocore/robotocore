@@ -1,0 +1,13 @@
+[package]
+name = "cloudwatch-logs"
+version.workspace = true
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0"
+bytes = "1.5"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+parking_lot = "0.12"

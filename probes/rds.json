@@ -1,10 +1,13 @@
 {
   "service": "rds",
+  "generated_at": "2026-10-26T11:13:38.932901+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 129,
-    "needs_params": 1,
-    "not_implemented": 25,
-    "500_error": 6
+    "working": 160,
+    "needs_params": 0,
+    "not_implemented": 1,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -25,7 +28,7 @@
     {
       "operation": "AddTagsToResource",
       "status": "working",
-      "message": "implemented (InvalidParameterValue)"
+      "message": "OK"
     },
     {
       "operation": "ApplyPendingMaintenanceAction",
@@ -39,8 +42,8 @@
     },
     {
       "operation": "BacktrackDBCluster",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
     },
     {
       "operation": "CancelExportTask",
@@ -50,7 +53,7 @@
     {
       "operation": "CopyDBClusterParameterGroup",
       "status": "working",
-      "message": "likely implemented (DBParameterGroupNotFound: DB Parameter Group probe-test-value not found.)"
+      "message": "likely implemented (DBParameterGroupNotFound: DBClusterParameterGroup not found: probe-test-value)"
     },
     {
       "operation": "CopyDBClusterSnapshot",
@@ -109,8 +112,8 @@
     },
     {
       "operation": "CreateDBInstanceReadReplica",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'source_db_instance_identifier')"
+      "status": "working",
+      "message": "likely implemented (DBInstanceNotFound: DBInstance probe-test-value not found.)"
     },
     {
       "operation": "CreateDBParameterGroup",
@@ -119,13 +122,13 @@
     },
     {
       "operation": "CreateDBProxy",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'auth')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateDBProxyEndpoint",
       "status": "working",
-      "message": "likely implemented (DBProxyNotFoundFault: The specified proxy name probe-test-value doesn't correspond)"
+      "message": "OK"
     },
     {
       "operation": "CreateDBSecurityGroup",
@@ -134,8 +137,8 @@
     },
     {
       "operation": "CreateDBShardGroup",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
     },
     {
       "operation": "CreateDBSnapshot",
@@ -145,7 +148,7 @@
     {
       "operation": "CreateDBSubnetGroup",
       "status": "working",
-      "message": "implemented (InvalidParameterValue)"
+      "message": "OK"
     },
     {
       "operation": "CreateEventSubscription",
@@ -155,7 +158,7 @@
     {
       "operation": "CreateGlobalCluster",
       "status": "working",
-      "message": "implemented (InvalidParameterValue)"
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
     },
     {
       "operation": "CreateIntegration",
@@ -184,8 +187,8 @@
     },
     {
       "operation": "DeleteDBClusterAutomatedBackup",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteDBClusterEndpoint",
@@ -215,12 +218,12 @@
     {
       "operation": "DeleteDBProxy",
       "status": "working",
-      "message": "likely implemented (DBProxyNotFoundFault: The specified proxy name probe-test-value doesn't correspond)"
+      "message": "OK"
     },
     {
       "operation": "DeleteDBProxyEndpoint",
       "status": "working",
-      "message": "likely implemented (DBProxyEndpointNotFoundFault: The specified DB proxy endpoint probe-test-value was not fou)"
+      "message": "OK"
     },
     {
       "operation": "DeleteDBSecurityGroup",
@@ -240,7 +243,7 @@
     {
       "operation": "DeleteDBSubnetGroup",
       "status": "working",
-      "message": "likely implemented (DBSubnetGroupNotFoundFault: Subnet Group probe-test-value not found.)"
+      "message": "OK"
     },
     {
       "operation": "DeleteEventSubscription",
@@ -269,8 +272,8 @@
     },
     {
       "operation": "DeregisterDBProxyTargets",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "likely implemented (DBProxyNotFoundFault: The specified proxy name probe-test-value doesn't correspond)"
     },
     {
       "operation": "DescribeAccountAttributes",
@@ -280,7 +283,7 @@
     {
       "operation": "DescribeBlueGreenDeployments",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (BlueGreenDeploymentNotFoundFault: BlueGreenDeploymentIdentifier probe-test-value doesn't refer)"
     },
     {
       "operation": "DescribeCertificates",
@@ -294,8 +297,8 @@
     },
     {
       "operation": "DescribeDBClusterBacktracks",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
     },
     {
       "operation": "DescribeDBClusterEndpoints",
@@ -305,7 +308,7 @@
     {
       "operation": "DescribeDBClusterParameterGroups",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (DBParameterGroupNotFound: DBClusterParameterGroup not found: probe-test-value)"
     },
     {
       "operation": "DescribeDBClusterParameters",
@@ -325,7 +328,7 @@
     {
       "operation": "DescribeDBClusters",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
     },
     {
       "operation": "DescribeDBEngineVersions",
@@ -340,7 +343,7 @@
     {
       "operation": "DescribeDBInstances",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (DBInstanceNotFound: DBInstance probe-test-value not found.)"
     },
     {
       "operation": "DescribeDBLogFiles",
@@ -349,8 +352,8 @@
     },
     {
       "operation": "DescribeDBMajorEngineVersions",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeDBParameterGroups",
@@ -365,12 +368,12 @@
     {
       "operation": "DescribeDBProxies",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (DBProxyNotFoundFault: The specified proxy name probe-test-value doesn't correspond)"
     },
     {
       "operation": "DescribeDBProxyEndpoints",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (DBProxyNotFoundFault: The specified proxy name probe-test-value doesn't correspond)"
     },
     {
       "operation": "DescribeDBProxyTargetGroups",
@@ -390,12 +393,12 @@
     {
       "operation": "DescribeDBSecurityGroups",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (DBSecurityGroupNotFound: Security Group probe-test-value not found.)"
     },
     {
       "operation": "DescribeDBShardGroups",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (DBShardGroupNotFound: DBShardGroup probe-test-value not found.)"
     },
     {
       "operation": "DescribeDBSnapshotAttributes",
@@ -415,7 +418,7 @@
     {
       "operation": "DescribeDBSubnetGroups",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (DBSubnetGroupNotFoundFault: Subnet Group probe-test-value not found.)"
     },
     {
       "operation": "DescribeEngineDefaultClusterParameters",
@@ -435,7 +438,7 @@
     {
       "operation": "DescribeEventSubscriptions",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (SubscriptionNotFound: Subscription probe-test-value not found.)"
     },
     {
       "operation": "DescribeEvents",
@@ -455,7 +458,7 @@
     {
       "operation": "DescribeIntegrations",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (IntegrationNotFoundFault: Integration probe-test-value not found.)"
     },
     {
       "operation": "DescribeOptionGroupOptions",
@@ -465,7 +468,7 @@
     {
       "operation": "DescribeOptionGroups",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (OptionGroupNotFoundFault: Specified OptionGroupName: probe-test-value not found.)"
     },
     {
       "operation": "DescribeOrderableDBInstanceOptions",
@@ -480,17 +483,17 @@
     {
       "operation": "DescribeReservedDBInstances",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ReservedDBInstanceNotFound: Reservation with Id probe-reserved-db-instance-id-id not fou)"
     },
     {
       "operation": "DescribeReservedDBInstancesOfferings",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ReservedDBInstancesOfferingNotFound: Offering probe-reserved-db-instances-offering-id-id not foun)"
     },
     {
       "operation": "DescribeSourceRegions",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeTenantDatabases",
@@ -504,18 +507,18 @@
     },
     {
       "operation": "DisableHttpEndpoint",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DownloadDBLogFilePortion",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "EnableHttpEndpoint",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "FailoverDBCluster",
@@ -530,7 +533,7 @@
     {
       "operation": "ListTagsForResource",
       "status": "working",
-      "message": "implemented (InvalidParameterValue)"
+      "message": "OK"
     },
     {
       "operation": "ModifyActivityStream",
@@ -539,13 +542,13 @@
     },
     {
       "operation": "ModifyCertificates",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ModifyCurrentDBClusterCapacity",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ModifyCustomDBEngineVersion",
@@ -584,23 +587,23 @@
     },
     {
       "operation": "ModifyDBProxy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DBProxyNotFoundFault: The specified proxy name probe-test-value doesn't correspond)"
     },
     {
       "operation": "ModifyDBProxyEndpoint",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DBProxyEndpointNotFoundFault: The specified DB proxy endpoint probe-test-value was not fou)"
     },
     {
       "operation": "ModifyDBProxyTargetGroup",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "likely implemented (DBProxyNotFoundFault: The specified proxy name probe-test-value doesn't correspond)"
     },
     {
       "operation": "ModifyDBRecommendation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ModifyDBShardGroup",
@@ -660,12 +663,12 @@
     {
       "operation": "PurchaseReservedDBInstancesOffering",
       "status": "working",
-      "message": "likely implemented (ReservedDBInstancesOfferingNotFound: Offering probe-test-value not found.)"
+      "message": "likely implemented (ReservedDBInstancesOfferingNotFound: Offering probe-reserved-db-instances-offering-id-id not foun)"
     },
     {
       "operation": "RebootDBCluster",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
     },
     {
       "operation": "RebootDBInstance",
@@ -679,8 +682,8 @@
     },
     {
       "operation": "RegisterDBProxyTargets",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "likely implemented (DBProxyNotFoundFault: The specified proxy name probe-test-value doesn't correspond)"
     },
     {
       "operation": "RemoveFromGlobalCluster",
@@ -689,13 +692,13 @@
     },
     {
       "operation": "RemoveRoleFromDBCluster",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
     },
     {
       "operation": "RemoveRoleFromDBInstance",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DBInstanceNotFound: DBInstance probe-test-value not found.)"
     },
     {
       "operation": "RemoveSourceIdentifierFromSubscription",
@@ -705,22 +708,22 @@
     {
       "operation": "RemoveTagsFromResource",
       "status": "working",
-      "message": "implemented (InvalidParameterValue)"
+      "message": "OK"
     },
     {
       "operation": "ResetDBClusterParameterGroup",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DBParameterGroupNotFound: DBClusterParameterGroup not found: probe-test-value)"
     },
     {
       "operation": "ResetDBParameterGroup",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DBParameterGroupNotFound: DB Parameter Group probe-test-value not found.)"
     },
     {
       "operation": "RestoreDBClusterFromS3",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
     },
     {
       "operation": "RestoreDBClusterFromSnapshot",
@@ -729,28 +732,28 @@
     },
     {
       "operation": "RestoreDBClusterToPointInTime",
-      "status": "500_error",
-      "message": "server crash (InternalError: RDSBackend.restore_db_cluster_to_point_in_time() missing 1 r)"
+      "status": "working",
+      "message": "likely implemented (DBClusterNotFoundFault: DBCluster probe-test-value not found.)"
     },
     {
       "operation": "RestoreDBInstanceFromDBSnapshot",
       "status": "working",
-      "message": "likely implemented (DBSnapshotNotFound: DBSnapshot  not found.)"
+      "message": "likely implemented (DBSnapshotNotFound: DBSnapshot probe-test-value not found.)"
     },
     {
       "operation": "RestoreDBInstanceFromS3",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
     },
     {
       "operation": "RestoreDBInstanceToPointInTime",
       "status": "working",
-      "message": "likely implemented (DBInstanceNotFound: DBInstance  not found.)"
+      "message": "likely implemented (DBInstanceNotFound: DBInstance probe-test-value not found.)"
     },
     {
       "operation": "RevokeDBSecurityGroupIngress",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DBSecurityGroupNotFound: Security Group probe-test-value not found.)"
     },
     {
       "operation": "StartActivityStream",
@@ -769,8 +772,8 @@
     },
     {
       "operation": "StartDBInstanceAutomatedBackupsReplication",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartExportTask",
@@ -794,8 +797,8 @@
     },
     {
       "operation": "StopDBInstanceAutomatedBackupsReplication",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "SwitchoverBlueGreenDeployment",
@@ -809,8 +812,8 @@
     },
     {
       "operation": "SwitchoverReadReplica",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DBInstanceNotFound: DBInstance probe-test-value not found.)"
     }
   ]
 }

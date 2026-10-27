@@ -1,0 +1,82 @@
+[workspace]
+members = ["rotocore", "crates/sqs", "crates/s3", "crates/dynamodb", "crates/sns", "crates/secretsmanager", "crates/kms", "crates/ssm", "crates/iam", "crates/lambda", "crates/cloudwatch-logs", "crates/events", "crates/kinesis", "crates/firehose", "crates/cloudwatch", "crates/ecr", "crates/ecs", "crates/stepfunctions"]
+resolver = "2"
+
+[workspace.package]
+version = "2.0.0"
+edition = "2021"
+license = "MIT"
+
+[package]
+name = "robotocore-rust"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Rust reimplementation of robotocore AWS API mock server"
+
+[lib]
+name = "robotocore_rust"
+crate-type = ["rlib"]
+
+[features]
+default = []
+
+[dependencies]
+regex = "1.10"
+once_cell = "1.19"
+parking_lot = "0.12"
+serde = { version = "1.0", features = ["derive"] }
+
+# Web server and async runtime
+axum = "0.7"
+tower = "0.4"
+hyper = "1.0"
+tokio = { version = "1", features = ["full"] }
+http = "1.0"
+bytes = "1.5"
+http-body-util = "0.1"
+
+# Serialization
+serde_json = "1.0"
+quick-xml = { version = "0.31", features = ["serialize"] }
+
+# Utilities
+tracing = "0.1"
+tracing-subscriber = "0.3"
+thiserror = "1.0"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+base64 = "0.22"
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
+flate2 = "1.0"
+urlencoding = "2.1"
+clap = { version = "4.0", features = ["derive"] }
+
+# Moto-equivalent engine (Rust)
+rotocore = { path = "rotocore" }
+
+# Native service providers
+sqs = { path = "crates/sqs" }
+s3 = { path = "crates/s3" }
+dynamodb = { path = "crates/dynamodb" }
+sns = { path = "crates/sns" }
+secretsmanager = { path = "crates/secretsmanager" }
+kms = { path = "crates/kms" }
+ssm = { path = "crates/ssm" }
+iam = { path = "crates/iam" }
+lambda = { path = "crates/lambda" }
+cloudwatch-logs = { path = "crates/cloudwatch-logs" }
+events = { path = "crates/events" }
+kinesis = { path = "crates/kinesis" }
+firehose = { path = "crates/firehose" }
+cloudwatch = { path = "crates/cloudwatch" }
+ecr = { path = "crates/ecr" }
+ecs = { path = "crates/ecs" }
+stepfunctions = { path = "crates/stepfunctions" }
+
+[dev-dependencies]
+
+[profile.release]
+strip = "symbols"

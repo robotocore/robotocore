@@ -1,0 +1,64 @@
+{
+  "service": "sdb",
+  "generated_at": "2026-10-25T19:44:53.671558+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 5,
+    "needs_params": 0,
+    "not_implemented": 5,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "BatchDeleteAttributes",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "BatchPutAttributes",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateDomain",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAttributes",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteDomain",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DomainMetadata",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetAttributes",
+      "status": "working",
+      "message": "likely implemented (NoSuchDomain: The specified domain does not exist.)"
+    },
+    {
+      "operation": "ListDomains",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutAttributes",
+      "status": "working",
+      "message": "likely implemented (NoSuchDomain: The specified domain does not exist.)"
+    },
+    {
+      "operation": "Select",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

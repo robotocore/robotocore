@@ -1,29 +1,37 @@
-# Exclude moto git history from build context (saves ~123MB)
-.git/modules/vendor/
-vendor/moto/.git
-vendor/localstack/
+# Git metadata (not needed by the cargo build)
+.git/
+.github/
 
-# Dev/test artifacts
+# Rust build artifacts
+target/
+
+# Python/test artifacts kept in the repo, but not needed in the image context
+.venv/
 __pycache__/
 *.pyc
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
-htmlcov/
-*.egg-info/
-dist/
-build/
-.venv/
+uv.lock
 
-# Worktrees and IDE
-.claude/worktrees/
-.idea/
-.vscode/
-
-# Test/dev files not needed in image
+# Repo content the image does not need
 tests/
 probes/
 chunks/
+.worktrees/
 prompts/
 docs/
 scripts/
+site/
+tooling/
+triage/
+bindings/
+docker/
+docker-extension/
+.github/
+
+# Worktrees and IDE
+.worktrees/
+.claude/
+.idea/
+.vscode/

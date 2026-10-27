@@ -1,10 +1,13 @@
 {
   "service": "dms",
+  "generated_at": "2026-10-26T03:43:02.287509+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 114,
-    "needs_params": 2,
+    "working": 119,
+    "needs_params": 0,
     "not_implemented": 0,
-    "500_error": 3
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -44,13 +47,13 @@
     },
     {
       "operation": "CreateDataProvider",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateEndpoint",
       "status": "working",
-      "message": "implemented (ValidationError)"
+      "message": "OK"
     },
     {
       "operation": "CreateEventSubscription",
@@ -105,7 +108,7 @@
     {
       "operation": "DeleteDataMigration",
       "status": "working",
-      "message": "implemented (ResourceNotFoundFault)"
+      "message": "OK"
     },
     {
       "operation": "DeleteDataProvider",
@@ -135,12 +138,12 @@
     {
       "operation": "DeleteInstanceProfile",
       "status": "working",
-      "message": "implemented (ResourceNotFoundFault)"
+      "message": "OK"
     },
     {
       "operation": "DeleteMigrationProject",
       "status": "working",
-      "message": "implemented (ResourceNotFoundFault)"
+      "message": "OK"
     },
     {
       "operation": "DeleteReplicationConfig",
@@ -219,8 +222,8 @@
     },
     {
       "operation": "DescribeEngineVersions",
-      "status": "500_error",
-      "message": "exception: Invalid timestamp \"\": String does not contain a date: "
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeEventCategories",
@@ -230,7 +233,7 @@
     {
       "operation": "DescribeEventSubscriptions",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundFault)"
     },
     {
       "operation": "DescribeEvents",
@@ -384,8 +387,8 @@
     },
     {
       "operation": "DescribeReplicationTasks",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object is not iterable)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeReplications",
@@ -419,8 +422,8 @@
     },
     {
       "operation": "ListTagsForResource",
-      "status": "500_error",
-      "message": "server crash (InternalError: Either ResourceArn or ResourceArnList should be specified.)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ModifyConversionConfiguration",
@@ -435,7 +438,7 @@
     {
       "operation": "ModifyDataProvider",
       "status": "working",
-      "message": "implemented (ResourceNotFoundFault)"
+      "message": "implemented via required-only (ResourceNotFoundFault)"
     },
     {
       "operation": "ModifyEndpoint",
@@ -534,8 +537,8 @@
     },
     {
       "operation": "StartMetadataModelCreation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartMetadataModelExportAsScript",

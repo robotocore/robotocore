@@ -1,0 +1,249 @@
+{
+  "service": "codedeploy",
+  "generated_at": "2026-10-25T19:42:10.805336+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 47,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "AddTagsToOnPremisesInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchGetApplicationRevisions",
+      "status": "working",
+      "message": "likely implemented (ApplicationDoesNotExistException: The application probe-test-value does not exist with the use)"
+    },
+    {
+      "operation": "BatchGetApplications",
+      "status": "working",
+      "message": "likely implemented (ApplicationDoesNotExistException: The application probe-test-value does not exist with the use)"
+    },
+    {
+      "operation": "BatchGetDeploymentGroups",
+      "status": "working",
+      "message": "likely implemented (ApplicationDoesNotExistException: The application probe-test-value does not exist with the use)"
+    },
+    {
+      "operation": "BatchGetDeploymentInstances",
+      "status": "working",
+      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-deployment-id-id does not exist with th)"
+    },
+    {
+      "operation": "BatchGetDeploymentTargets",
+      "status": "working",
+      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-deployment-id-id does not exist with th)"
+    },
+    {
+      "operation": "BatchGetDeployments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchGetOnPremisesInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ContinueDeployment",
+      "status": "working",
+      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-deployment-id-id does not exist with th)"
+    },
+    {
+      "operation": "CreateApplication",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDeployment",
+      "status": "working",
+      "message": "likely implemented (DeploymentGroupDoesNotExistException: The deployment group Deployment group name does not exist. d)"
+    },
+    {
+      "operation": "CreateDeploymentConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateDeploymentGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteApplication",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDeploymentConfig",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDeploymentGroup",
+      "status": "working",
+      "message": "likely implemented (ApplicationDoesNotExistException: The application probe-test-value does not exist with the use)"
+    },
+    {
+      "operation": "DeleteGitHubAccountToken",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteResourcesByExternalId",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeregisterOnPremisesInstance",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetApplication",
+      "status": "working",
+      "message": "likely implemented (ApplicationDoesNotExistException: The application probe-test-value does not exist with the use)"
+    },
+    {
+      "operation": "GetApplicationRevision",
+      "status": "working",
+      "message": "likely implemented (ApplicationDoesNotExistException: The application probe-test-value does not exist with the use)"
+    },
+    {
+      "operation": "GetDeployment",
+      "status": "working",
+      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-deployment-id-id does not exist with th)"
+    },
+    {
+      "operation": "GetDeploymentConfig",
+      "status": "working",
+      "message": "likely implemented (DeploymentConfigDoesNotExistException: The deployment config probe-test-value does not exist.)"
+    },
+    {
+      "operation": "GetDeploymentGroup",
+      "status": "working",
+      "message": "likely implemented (ApplicationDoesNotExistException: The application probe-test-value does not exist with the use)"
+    },
+    {
+      "operation": "GetDeploymentInstance",
+      "status": "working",
+      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-deployment-id-id does not exist with th)"
+    },
+    {
+      "operation": "GetDeploymentTarget",
+      "status": "working",
+      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-deployment-id-id does not exist with th)"
+    },
+    {
+      "operation": "GetOnPremisesInstance",
+      "status": "working",
+      "message": "likely implemented (InstanceNotRegisteredException: The on-premises instance probe-test-value is not registered.)"
+    },
+    {
+      "operation": "ListApplicationRevisions",
+      "status": "working",
+      "message": "likely implemented (ApplicationDoesNotExistException: The application probe-test-value does not exist with the use)"
+    },
+    {
+      "operation": "ListApplications",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDeploymentConfigs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDeploymentGroups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDeploymentInstances",
+      "status": "working",
+      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-deployment-id-id does not exist with th)"
+    },
+    {
+      "operation": "ListDeploymentTargets",
+      "status": "working",
+      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-deployment-id-id does not exist with th)"
+    },
+    {
+      "operation": "ListDeployments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListGitHubAccountTokenNames",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListOnPremisesInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutLifecycleEventHookExecutionStatus",
+      "status": "working",
+      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-deployment-id-id does not exist with th)"
+    },
+    {
+      "operation": "RegisterApplicationRevision",
+      "status": "working",
+      "message": "likely implemented (ApplicationDoesNotExistException: The application probe-test-value does not exist with the use)"
+    },
+    {
+      "operation": "RegisterOnPremisesInstance",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RemoveTagsFromOnPremisesInstances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SkipWaitTimeForInstanceTermination",
+      "status": "working",
+      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-deployment-id-id does not exist with th)"
+    },
+    {
+      "operation": "StopDeployment",
+      "status": "working",
+      "message": "likely implemented (DeploymentDoesNotExistException: The deployment probe-deployment-id-id does not exist with th)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateApplication",
+      "status": "working",
+      "message": "likely implemented (ApplicationDoesNotExistException: The application probe-test-value does not exist with the use)"
+    },
+    {
+      "operation": "UpdateDeploymentGroup",
+      "status": "working",
+      "message": "likely implemented (ApplicationDoesNotExistException: The application probe-test-value does not exist with the use)"
+    }
+  ]
+}

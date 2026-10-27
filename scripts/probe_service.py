@@ -6,29 +6,47 @@ Usage:
     uv run python -m scripts.probe_service --service ec2 --all
     uv run python -m scripts.probe_service --service s3 --json
     uv run python -m scripts.probe_service --service sns --all --json
+    uv run python -m scripts.probe_service --all-services
 
+Probes the RUST twin of this repo (default endpoint http://localhost:4566).
 Calls each operation with auto-filled parameters from botocore shapes.
 Classifies operations as:
   - working: returned 200 or a "resource not found" error (proves implementation)
   - needs_params: couldn't auto-fill params, client-side validation blocked
   - not_implemented: server returned 501 or "not implemented"
-  - 500_error: server crashed
+  - 500_error: server crashed — genuine server-side error payloads only
+    (HTTP 500, or a server answer botocore could not parse)
+  - timeout: the server never answered within the read timeout (hang), or
+    the call failed at connection level (endpoint unreachable)
+
+Per AGENTS.md only HTTP 501 means "genuinely absent" — a ClientError with a
+4xx code means the handler ran and the probe params were just wrong.
 
 Use this BEFORE writing compat tests. Only write tests for "working" ops.
+``--all-services`` walks /_robotocore/services on the live twin and writes
+one probes/<service>.json artifact per service.
 """
 
 import argparse
 import json
 import sys
+import time
+import urllib.parse as _urllib
+import urllib.request
+from datetime import UTC, datetime
+from pathlib import Path
 
 import boto3
+import socket
 import botocore.exceptions
 import botocore.loaders
+from botocore import xform_name
+from botocore.config import Config
+from botocore.parsers import ResponseParserError
 
 from scripts.lib.param_filler import (
     KNOWN_PARAMS,
     auto_fill_params,
-    to_snake_case,
 )
 
 # Operations that are destructive or have side effects we don't want.
@@ -89,9 +107,12 @@ IMPLEMENTED_ERROR_CODES = {
 }
 
 
-# Keep private aliases for backward compatibility with any callers
-_to_snake_case = to_snake_case
+# The client method names are exactly what botocore's client generator
+# produces from the operation name (to_snake_case mishandles acronym
+# sequences: DescribeACLs -> describe_ac_ls, but boto3 exposes describe_acls).
+_to_snake_case = xform_name
 _auto_fill_params = auto_fill_params
+from scripts.lib.param_filler import get_required_params  # noqa: E402
 
 
 def probe_operation(
@@ -100,8 +121,12 @@ def probe_operation(
     """Try to call an operation.
 
     Returns (status, message) where status is one of:
-      working, needs_params, not_implemented, 500_error
+      working, needs_params, not_implemented, 500_error, timeout
     """
+    if not params:
+        # No full-shape fill produced a valuable input; required-only is
+        # the stage-2 fallback (smaller surface, simpler values).
+        params = get_required_params(service_name, operation_name) or params
     try:
         method = getattr(client, _to_snake_case(operation_name))
         method(**params)
@@ -129,16 +154,99 @@ def probe_operation(
         if status_code == 501:
             return "not_implemented", "not implemented (501)"
 
-        if msg and ("not implemented" in msg.lower() or "unknown" in msg.lower()):
+        # Only a literal "not implemented" (from a moto-modeled 501-style
+        # message at a non-501 status) means absence. Modeled
+        # ResourceNotFound/Unknown* faults say "unknown" and prove the
+        # server answer came from a real handler — bucket them as working.
+        if msg and "not implemented" in msg.lower():
             return "not_implemented", f"not implemented ({code})"
 
-        # Other 4xx errors generally mean it IS implemented
+        # Other 4xx errors generally mean it IS implemented.
         return "working", f"likely implemented ({code}: {(msg or '')[:60]})"
 
     except botocore.exceptions.ParamValidationError:
+        # The full-shape fill produced values botocore's own validator
+        # rejected (pattern/policy constraints). Retry once with the
+        # required-only synthesis (smaller surface, fewer patterns to
+        # violate) before conceding. botocore validates client-side, so
+        # the twin was never contacted by either attempt.
+        try:
+            req_params = get_required_params(service_name, operation_name)
+        except Exception:
+            req_params = None
+        if req_params is not None:
+            try:
+                method = getattr(client, _to_snake_case(operation_name))
+                method(**req_params)
+                return "working", "OK (required-only fill)"
+            except client.exceptions.ClientError as e:
+                # de-facto: the required-only call contacted the server;
+                # fall through to the modeled ClientError analysis above.
+                code = e.response["Error"]["Code"]
+                msg2 = e.response["Error"]["Message"]
+                sc = e.response["ResponseMetadata"]["HTTPStatusCode"]
+                if sc in (400, 403, 404, 405, 409, 410):
+                    return "working", f"implemented via required-only ({code})"
+                if sc == 501:
+                    return "not_implemented", "not implemented (501)"
+                if msg2 and "not implemented" in msg2.lower():
+                    return "not_implemented", f"not implemented ({code})"
+                return "500_error", f"server crash via required-only ({code})"
+            except botocore.exceptions.ParamValidationError:
+                return "needs_params", "client-side validation (never contacted server)"
+            except ResponseParserError as e:
+                # 200 answered with a payload botocore cannot parse — the
+                # server did answer, so this is a server-side error, exact
+                # same class as the unparsable-response 500_error below.
+                return "500_error", f"unparsable response (required-only retry: {str(e)[:60]})"
+            except (botocore.exceptions.ReadTimeoutError,
+                    botocore.exceptions.ConnectTimeoutError,
+                    socket.timeout):
+                return "timeout", "read timeout (required-only retry)"
+            except botocore.exceptions.EndpointConnectionError:
+                return "timeout", "endpoint unreachable (required-only retry)"
         return "needs_params", "client-side validation (never contacted server)"
+    except (botocore.exceptions.ReadTimeoutError,
+            botocore.exceptions.ConnectTimeoutError,
+            socket.timeout) as e:
+        # A hanging/timing-out handler is a distinct artifact: the twin
+        # never answered. Contract labels 500_error as "server crashed",
+        # which a timeout is not — bucket it separately.
+        return "timeout", f"read timeout ({type(e).__name__})"
+    except botocore.exceptions.EndpointConnectionError as e:
+        return "timeout", f"endpoint unreachable ({str(e)[:60]})"
+    except ResponseParserError as e:
+        # The server answered with a payload botocore cannot parse
+        # (e.g. a tagged-union response with no member set) — a genuine
+        # server-side error, same contract class as a crash.
+        return "500_error", f"unparsable response ({str(e)[:60]})"
     except Exception as e:
-        return "500_error", f"exception: {str(e)[:60]}"
+        # Anything left is a non-ClientError, non-timeout raise. Split by
+        # what the exception actually was:
+        #  - AttributeError / "object has no attribute": the probe never
+        #    made a wire call (typically an unfilled client method) — a
+        #    client-side probe gap, not a crash.
+        #  - "Could not connect" / socket errors: connection-level failure,
+        #    timeout-class (the surface plan's timeout bucket), not a crash.
+        #  - "Unable to parse response": the server DID answer with a
+        #    payload botocore could not parse (e.g. an HTML 500 page) —
+        #    a genuine server-side error; keep 500_error and carry the
+        #    parse summary in the reason.
+        text = str(e)
+        summary = f"{type(e).__name__}: {text[:60]}"
+        if (
+            isinstance(e, AttributeError)
+            or "AttributeError" in text
+            or "object has no attribute" in text
+        ):
+            return "needs_params", f"client-side probe gap ({summary})"
+        if (
+            "Could not connect" in text
+            or "Connection" in type(e).__name__
+            or isinstance(e, (ConnectionError, socket.timeout, TimeoutError, OSError))
+        ):
+            return "timeout", f"exception: {summary}"
+        return "500_error", f"exception: {summary}"
 
 
 def get_operations(service_name: str, all_ops: bool) -> list[str]:
@@ -155,9 +263,179 @@ def get_operations(service_name: str, all_ops: bool) -> list[str]:
     return sorted(n for n in operations if n.startswith(safe_prefixes) and n not in SKIP_OPERATIONS)
 
 
+def make_client(service_name: str, endpoint: str, read_timeout: float = 60.0):
+    """Build a boto3 client pointed at the twin.
+
+    total_max_attempts=1 keeps a genuine 500_error from being retried twice
+    more by botocore before classification — one request, one verdict.
+    read_timeout caps how long a hanging handler can block the probe run
+    (a read timeout classifies as timeout: the server never answered).
+
+    hostPrefix collapse: some models decorate the endpoint host with a
+    positional prefix (lakeformation's "query-"/"data-") even when a
+    user endpoint override is set, producing unresolvable hosts like
+    "query-localhost". The twin serves every prefix over the same port,
+    so the request is recomposed onto the configured endpoint host
+    before signing; the collapse is logged when it engages.
+    """
+    client = boto3.client(
+        service_name,
+        endpoint_url=endpoint,
+        region_name="us-east-1",
+        aws_access_key_id="testing",
+        aws_secret_access_key="testing",
+        config=Config(
+            retries={"total_max_attempts": 1},
+            read_timeout=read_timeout,
+            connect_timeout=min(read_timeout, 10.0),
+        ),
+    )
+    base_netloc = _urllib.urlparse(endpoint).netloc
+    base_path = _urllib.urlparse(endpoint).path.rstrip("/")
+
+    def _collapse_hostprefix(request, **kwargs):
+        p = _urllib.urlparse(request.url)
+        if p.netloc != base_netloc and p.netloc.endswith(base_netloc):
+            print(
+                f"[probe] hostPrefix collapse: {p.netloc} -> {base_netloc}",
+                flush=True,
+            )
+            request.url = _urllib.urlunparse(
+                (p.scheme, base_netloc, base_path + p.path, p.params, p.query, p.fragment)
+            )
+
+    client.meta.events.register("request-created", _collapse_hostprefix)
+    return client
+
+
+def _botocore_service_name(service_name: str) -> str:
+    """Map the twin's registered name to botocore's model name when they differ.
+
+    The twin registers compact names ("vpclattice", "rdsdata"); botocore
+    hyphenates them ("vpc-lattice", "rds-data"). Falls back to the twin's name
+    itself when no model matches.
+    """
+    loader = botocore.loaders.Loader()
+    try:
+        available = loader.list_available_services("service-2")
+    except Exception:
+        available = []
+    compact = service_name.replace("-", "").replace("_", "").lower()
+    for name in available:
+        if name.replace("-", "").replace("_", "").lower() == compact:
+            return name
+    return service_name
+
+
+def list_services(endpoint: str) -> list[dict]:
+    """Read the live twin's service table. Returns [{name, protocol, ...}]."""
+    with urllib.request.urlopen(f"{endpoint.rstrip('/')}/_robotocore/services", timeout=30) as r:
+        return json.load(r)["services"]
+
+
+def probe_service(
+    service_name: str, all_ops: bool, endpoint: str, read_timeout: float = 60.0,
+    budget: float = 0.0,
+) -> dict:
+    """Probe every operation of one service. Returns the artifact dict.
+
+    budget: wall-clock seconds before the probe stops mid-service and records
+    note "partial: time-boxed" (0 = no budget).
+    """
+    botocore_name = _botocore_service_name(service_name)
+    client = make_client(botocore_name, endpoint, read_timeout)
+    known = KNOWN_PARAMS.get(service_name, {})
+    counts = {
+        "working": 0,
+        "needs_params": 0,
+        "not_implemented": 0,
+        "500_error": 0,
+        "timeout": 0,
+    }
+    results = []
+    deadline = time.monotonic() + budget if budget > 0 else None
+    note = None
+
+    for op in get_operations(botocore_name, all_ops):
+        if deadline is not None and time.monotonic() > deadline:
+            note = "partial: time-boxed"
+            break
+        # Priority: known params > auto-filled > empty
+        if op in known:
+            params = known[op]
+        else:
+            auto = _auto_fill_params(botocore_name, op)
+            params = auto if auto is not None else {}
+
+        status, msg = probe_operation(client, service_name, op, params)
+        counts[status] += 1
+        results.append({"operation": op, "status": status, "message": msg})
+
+    artifact = {
+        "service": service_name,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "endpoint": endpoint,
+        "counts": counts,
+        "operations": results,
+    }
+    if note:
+        artifact["note"] = note
+    return artifact
+
+
+def _run_all_services(args) -> int:
+    """Probe every service the live twin registers and write probes/<svc>.json."""
+    endpoints = list_services(args.endpoint)
+    only = [s.strip() for s in args.only.split(",") if s.strip()]
+    if only:
+        wanted = set(only)
+        endpoints = [e for e in endpoints if e["name"] in wanted]
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    total_500 = 0
+    written = 0
+    print(f"Probing {len(endpoints)} services from {args.endpoint} …", flush=True)
+    for i, entry in enumerate(endpoints, 1):
+        svc = entry["name"]
+        try:
+            result = probe_service(
+                svc, all_ops=True, endpoint=args.endpoint, read_timeout=args.timeout,
+                budget=args.budget,
+            )
+        except Exception as exc:  # noqa: BLE001 — one bad service must not stop the fleet
+            print(f"[{i}/{len(endpoints)}] {svc}: SKIPPED ({str(exc)[:80]})", flush=True)
+            continue
+
+        path = out_dir / f"{svc}.json"
+        path.write_text(json.dumps(result, indent=2) + "\n")
+        written += 1
+        n_ops = sum(result["counts"].values())
+        cases = ", ".join(f"{k}={v}" for k, v in result["counts"].items() if v)
+        print(f"[{i}/{len(endpoints)}] {svc}: {n_ops} ops — {cases}", flush=True)
+        total_500 += result["counts"]["500_error"] + result["counts"]["timeout"]
+
+    print(
+        f"\nWrote {written} probe files to {out_dir}; fleet-wide 500_errors+timeouts: {total_500}",
+        flush=True,
+    )
+    return 0 if total_500 == 0 else 1
+
+
 def main():
     parser = argparse.ArgumentParser(description="Probe AWS service operations")
-    parser.add_argument("--service", required=True, help="AWS service name")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--service", help="AWS service name")
+    group.add_argument(
+        "--all-services",
+        action="store_true",
+        help="Probe every service the live twin registers and write probes/*.json",
+    )
+    parser.add_argument(
+        "--only",
+        default="",
+        help="Comma-separated service names to restrict --all-services to",
+    )
     parser.add_argument(
         "--endpoint",
         default="http://localhost:4566",
@@ -169,50 +447,44 @@ def main():
         action="store_true",
         help="Probe all ops, not just List/Describe/Get",
     )
+    parser.add_argument(
+        "--out-dir",
+        default=str(Path(__file__).resolve().parent.parent / "probes"),
+        help="Directory for --all-services artifacts (default: probes/)",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=60.0,
+        help="Per-operation read timeout in seconds (default: 60)",
+    )
+    parser.add_argument(
+        "--budget",
+        type=float,
+        default=0.0,
+        help="Per-service wall-clock budget in seconds; on expiry the artifact "
+        "is written partial with note 'partial: time-boxed' (default: none)",
+    )
     args = parser.parse_args()
 
-    client = boto3.client(
-        args.service,
-        endpoint_url=args.endpoint,
-        region_name="us-east-1",
-        aws_access_key_id="testing",
-        aws_secret_access_key="testing",
-    )
+    if args.all_services:
+        return _run_all_services(args)
 
-    operations = get_operations(args.service, args.all)
-    known = KNOWN_PARAMS.get(args.service, {})
+    result = probe_service(args.service, all_ops=args.all, endpoint=args.endpoint,
+                           read_timeout=args.timeout, budget=args.budget)
+    counts = result["counts"]
+    results = result["operations"]
 
-    counts = {
-        "working": 0,
-        "needs_params": 0,
-        "not_implemented": 0,
-        "500_error": 0,
-    }
-    results = []
-
-    for op in operations:
-        # Priority: known params > auto-filled > empty
-        if op in known:
-            params = known[op]
-        else:
-            auto = _auto_fill_params(args.service, op)
-            params = auto if auto is not None else {}
-
-        status, msg = probe_operation(client, args.service, op, params)
-        counts[status] += 1
-        results.append({"operation": op, "status": status, "message": msg})
+    # Single-service mode writes the corpus artifact like --all-services
+    # does: agents and gates converge on probes/<svc>.json as the only
+    # source of truth, so a fresh probe without a write is a lie.
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"{args.service}.json"
+    path.write_text(json.dumps(result, indent=2) + "\n")
 
     if args.json:
-        print(
-            json.dumps(
-                {
-                    "service": args.service,
-                    "counts": counts,
-                    "operations": results,
-                },
-                indent=2,
-            )
-        )
+        print(json.dumps(result, indent=2))
     else:
         total = sum(counts.values())
         print(f"\n{args.service}: {total} operations probed")
@@ -245,7 +517,18 @@ def main():
                 if r["status"] == "500_error":
                     print(f"  ! {r['operation']}: {r['message']}")
 
-    return 0 if counts["500_error"] == 0 else 1
+        # Wave-4 finding 6: a hanging handler is the most distinct artifact
+        # the contract cares about; --all-services already treats timeouts
+        # as failures — make the single-service writer agree, and print the
+        # rows like every other bucket.
+        if counts.get("timeout"):
+            print(f"\nTimeouts ({counts['timeout']}):")
+            for r in results:
+                if r["status"] == "timeout":
+                    print(f"  ~ {r['operation']}: {r['message']}")
+
+    fail = counts["500_error"] + counts.get("timeout", 0)
+    return 0 if fail == 0 else 1
 
 
 if __name__ == "__main__":

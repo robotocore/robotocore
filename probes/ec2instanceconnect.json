@@ -1,0 +1,24 @@
+{
+  "service": "ec2instanceconnect",
+  "generated_at": "2026-10-26T03:43:02.381997+00:00",
+  "endpoint": "http://localhost:4795",
+  "counts": {
+    "working": 2,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "SendSSHPublicKey",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SendSerialConsoleSSHPublicKey",
+      "status": "working",
+      "message": "OK"
+    }
+  ]
+}

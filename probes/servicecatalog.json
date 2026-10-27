@@ -1,10 +1,13 @@
 {
   "service": "servicecatalog",
+  "generated_at": "2026-10-25T19:44:59.185312+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 84,
-    "needs_params": 2,
-    "not_implemented": 3,
-    "500_error": 1
+    "working": 90,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -39,13 +42,13 @@
     },
     {
       "operation": "BatchAssociateServiceActionWithProvisioningArtifact",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchDisassociateServiceActionFromProvisioningArtifact",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CopyProduct",
@@ -160,12 +163,12 @@
     {
       "operation": "DescribeProduct",
       "status": "working",
-      "message": "likely implemented (InvalidParametersException: Either Id or Name must be specified.)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeProductAsAdmin",
       "status": "working",
-      "message": "likely implemented (InvalidParametersException: Either Id or Name must be specified.)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeProductView",
@@ -214,8 +217,8 @@
     },
     {
       "operation": "DisableAWSOrganizationsAccess",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DisassociateBudgetFromResource",
@@ -244,8 +247,8 @@
     },
     {
       "operation": "EnableAWSOrganizationsAccess",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ExecuteProvisionedProductPlan",
@@ -259,8 +262,8 @@
     },
     {
       "operation": "GetAWSOrganizationsAccessStatus",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetProvisionedProductOutputs",
@@ -394,8 +397,8 @@
     },
     {
       "operation": "SearchProducts",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'list' object has no attribute 'items')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "SearchProductsAsAdmin",

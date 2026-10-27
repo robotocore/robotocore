@@ -1,16 +1,19 @@
 {
   "service": "route53resolver",
+  "generated_at": "2026-10-26T03:43:24.611167+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 49,
-    "needs_params": 1,
-    "not_implemented": 17,
-    "500_error": 1
+    "working": 68,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "AssociateFirewallRuleGroup",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "AssociateResolverEndpointIpAddress",
@@ -35,7 +38,7 @@
     {
       "operation": "CreateFirewallRule",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "CreateFirewallRuleGroup",
@@ -44,13 +47,13 @@
     },
     {
       "operation": "CreateOutpostResolver",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateResolverEndpoint",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateResolverQueryLogConfig",
@@ -59,8 +62,8 @@
     },
     {
       "operation": "CreateResolverRule",
-      "status": "500_error",
-      "message": "server crash (InternalError: object of type 'NoneType' has no len())"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteFirewallDomainList",
@@ -70,7 +73,7 @@
     {
       "operation": "DeleteFirewallRule",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteFirewallRuleGroup",
@@ -79,8 +82,8 @@
     },
     {
       "operation": "DeleteOutpostResolver",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteResolverEndpoint",
@@ -119,8 +122,8 @@
     },
     {
       "operation": "GetFirewallConfig",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetFirewallDomainList",
@@ -139,18 +142,18 @@
     },
     {
       "operation": "GetFirewallRuleGroupPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetOutpostResolver",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetResolverConfig",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetResolverDnssecConfig",
@@ -174,8 +177,8 @@
     },
     {
       "operation": "GetResolverQueryLogConfigPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetResolverRule",
@@ -189,13 +192,13 @@
     },
     {
       "operation": "GetResolverRulePolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ImportFirewallDomains",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListFirewallConfigs",
@@ -225,7 +228,7 @@
     {
       "operation": "ListFirewallRules",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "ListOutpostResolvers",
@@ -275,37 +278,37 @@
     {
       "operation": "ListTagsForResource",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "PutFirewallRuleGroupPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutResolverQueryLogConfigPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutResolverRulePolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "TagResource",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "UntagResource",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "UpdateFirewallConfig",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateFirewallDomains",
@@ -319,18 +322,18 @@
     },
     {
       "operation": "UpdateFirewallRuleGroupAssociation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateOutpostResolver",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateResolverConfig",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateResolverDnssecConfig",
@@ -344,8 +347,8 @@
     },
     {
       "operation": "UpdateResolverRule",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     }
   ]
 }

@@ -12,201 +12,96 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  lint:
+  # Kept as an advisory check (keys on src/tests/scripts, which still exist in
+  # this phase); no longer a hard gate since the python server is being ported.
+  prompt-log:
+    name: Prompt log check
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    continue-on-error: true
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v6
         with:
-          submodules: recursive
-      - uses: astral-sh/setup-uv@v7
-        with:
-          python-version: "3.12"
-      - run: uv sync --extra dev
-      - name: ruff
+          fetch-depth: 0
+      - name: Check for prompt log entry
         run: |
-          uv run ruff check src/ tests/ scripts/
-          uv run ruff format --check src/ tests/ scripts/
-      - name: mypy
-        run: uv run mypy src/robotocore/ --ignore-missing-imports
-      - name: bandit
-        run: uv run bandit -r src/robotocore/ -ll -c pyproject.toml -q
-      - name: dependency audit
-        # CVE-2026-4539 affects pygments 2.19.2 (transitive via rich/pytest).
-        # No fix version exists yet; ignore until pygments releases a patch.
-        run: uvx pip-audit --ignore-vuln CVE-2026-4539
+          CODE=$(git diff --name-only --diff-filter=ACM origin/${{ github.base_ref }}...HEAD \
+            | grep -E '^(src/|tests/|scripts/)' || true)
+          PROMPTS=$(git diff --name-only --diff-filter=A origin/${{ github.base_ref }}...HEAD \
+            | grep '^prompts/' || true)
+          if [ -z "$CODE" ]; then
+            echo "✓ No source/test changes — prompt log not required."
+            exit 0
+          fi
+          if [ -z "$PROMPTS" ]; then
+            echo "✗ This PR changes source/tests but adds no prompt log."
+            echo ""
+            echo "  Add a file to prompts/YYYYMMDD-HHMMSS-<slug>.md documenting"
+            echo "  the human prompts and key assistant decisions in this PR."
+            echo "  See .claude/skills/promptlog.md for format."
+            exit 1
+          fi
+          echo "✓ Prompt log present: $PROMPTS"
 
-  test-quality:
+  rust-ci:
+    name: Rust CI (fmt + clippy + test + build)
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v6
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
-          submodules: recursive
+          components: rustfmt, clippy
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Check formatting
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Test
+        run: cargo test --workspace
+      - name: Build release
+        run: cargo build --release
+
+  # Rust-only parity: starts the rust server (rotocore native) and runs the
+  # parity harness against the checked-in expectations baseline.
+  # Exit code 2 = expectations drift = red; no baseline promotion here
+  # (do that manually from a clean local run with --update-expectations).
+  compat-rust:
+    name: "compat: rust-only parity gate"
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      # parity.py re-derives the server from these (it kills/restarts the rust
+      # server itself; RUST_PORT must match what the start script bound).
+      RUST_PORT: "4566"
+      LOG_PREFIX: ci
+    steps:
+      - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-      - run: uv sync --extra dev
-      - name: Check test quality (static analysis)
-        run: >
-          uv run python scripts/validate_test_quality.py
-          --max-no-contact-pct 5
-          --max-no-assertion-pct 6
-          --max-weak-assertion-pct 25
-      - name: Check empty except:pass blocks
-        run: uv run python scripts/fix_empty_except.py --check
-      - name: Check wire name correctness
-        run: uv run python scripts/fix_moto_param_names.py --all
-      - name: Check compat test sharding coverage
-        run: uv run python scripts/check_compat_sharding.py
-      - name: Audit fallthrough coverage (informational)
-        run: uv run python scripts/audit_fallthrough.py --all --max-uncovered 400
-      - name: Project structural lint
-        run: uv run python scripts/lint_project.py --fail
-      - name: Upload quality report
-        if: always()
-        run: uv run python scripts/validate_test_quality.py --json > test-quality.json
-      - name: Upload structural lint report
-        if: always()
-        run: uv run python scripts/lint_project.py --json > lint-project.json
-      - uses: actions/upload-artifact@v7
-        if: always()
+      - run: uv sync
+      - name: Start rust server (rotocore native)
+        run: RUST_PORT=4566 LOG_PREFIX=ci bash scripts/start_parity_servers.sh
+      - name: Run parity harness (rust-only)
+        run: uv run python scripts/harness/parity.py --rust-only
+      - name: Upload server logs
+        if: failure()
+        uses: actions/upload-artifact@v7
         with:
-          name: test-quality-report
-          path: |
-            test-quality.json
-            lint-project.json
+          name: server-logs-compat-rust
+          path: /tmp/ci_rust.log
 
-  # ── Unit test shards (run in parallel, on Python 3.12 + 3.13) ─────────────
-
-  unit-gateway:
-    name: "unit: gateway (${{ matrix.python-version }})"
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.12", "3.13"]
-      fail-fast: false
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: recursive
-      - uses: astral-sh/setup-uv@v7
-        with:
-          python-version: ${{ matrix.python-version }}
-      - run: uv sync --extra dev
-      - run: >
-          uv run pytest
-          tests/unit/gateway/
-          tests/unit/protocols/
-          tests/unit/providers/
-          tests/unit/test_handler_chain_unit.py
-          tests/unit/test_iam_middleware.py
-          -n4 -q --tb=short
-          --junitxml=results-unit-gateway-${{ matrix.python-version }}.xml
-          --cov=src/robotocore --cov-report=xml:coverage-unit-gateway-${{ matrix.python-version }}.xml
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: test-results-unit-gateway-${{ matrix.python-version }}
-          path: |
-            results-unit-gateway-${{ matrix.python-version }}.xml
-            coverage-unit-gateway-${{ matrix.python-version }}.xml
-
-  unit-services:
-    name: "unit: services (${{ matrix.python-version }})"
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.12", "3.13"]
-      fail-fast: false
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: recursive
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 20
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: 3.3
-      - uses: astral-sh/setup-uv@v7
-        with:
-          python-version: ${{ matrix.python-version }}
-      - run: uv sync --extra dev
-      - run: >
-          uv run pytest tests/unit/services/
-          -n4 -q --tb=short
-          --junitxml=results-unit-services-${{ matrix.python-version }}.xml
-          --cov=src/robotocore --cov-report=xml:coverage-unit-services-${{ matrix.python-version }}.xml
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: test-results-unit-services-${{ matrix.python-version }}
-          path: |
-            results-unit-services-${{ matrix.python-version }}.xml
-            coverage-unit-services-${{ matrix.python-version }}.xml
-
-  unit-infra:
-    name: "unit: infra (${{ matrix.python-version }})"
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.12", "3.13"]
-      fail-fast: false
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: recursive
-      - uses: astral-sh/setup-uv@v7
-        with:
-          python-version: ${{ matrix.python-version }}
-      - run: uv sync --extra dev
-      - name: Run infra unit tests
-        run: >
-          uv run pytest
-          tests/unit/
-          --ignore=tests/unit/gateway/
-          --ignore=tests/unit/protocols/
-          --ignore=tests/unit/providers/
-          --ignore=tests/unit/services/
-          --ignore=tests/unit/test_handler_chain_unit.py
-          --ignore=tests/unit/test_iam_middleware.py
-          -n4 -q --tb=short
-          --junitxml=results-unit-infra-${{ matrix.python-version }}.xml
-          --cov=src/robotocore --cov-report=xml:coverage-unit-infra-${{ matrix.python-version }}.xml
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: test-results-unit-infra-${{ matrix.python-version }}
-          path: |
-            results-unit-infra-${{ matrix.python-version }}.xml
-            coverage-unit-infra-${{ matrix.python-version }}.xml
-
-  # ── Integration + compatibility ────────────────────────────────────────────
-
-  integration-tests:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: recursive
-      - uses: astral-sh/setup-uv@v7
-        with:
-          python-version: "3.12"
-      - run: uv sync --extra dev
-      - run: >
-          uv run pytest tests/integration/
-          -v --tb=short
-          --junitxml=results-integration.xml
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: test-results-integration
-          path: results-integration.xml
+  # ── pytest rigs against the rust server ───────────────────────────────────
+  # The python driver stays as THE test rig; the server under test is the
+  # rust binary (rotocore serves every service natively — no sidecar).
 
   compatibility-tests:
     name: "compat: ${{ matrix.shard }}"
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -221,32 +116,15 @@ jobs:
           - shard: "s-z"
             pattern: "tests/compatibility/test_[s-z]*.py"
     steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: recursive
+      - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-      - run: uv sync --extra dev
-      - name: Start robotocore
-        run: |
-          ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
-            uv run python -m robotocore.main > .robotocore.log 2>&1 &
-          SERVER_PID=$!
-          for i in $(seq 1 60); do
-            if ! kill -0 $SERVER_PID 2>/dev/null; then
-              echo "Server process exited early"
-              cat .robotocore.log 2>/dev/null || true
-              exit 1
-            fi
-            curl -sf http://localhost:4566/_robotocore/health && break
-            sleep 1
-          done
-          curl -f http://localhost:4566/_robotocore/health || {
-            echo "=== Server logs ==="
-            cat .robotocore.log 2>/dev/null || true
-            exit 1
-          }
+      - run: uv sync
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Start rust server (rotocore native)
+        run: RUST_PORT=4566 LOG_PREFIX=ci bash scripts/start_parity_servers.sh
       - name: Run per-service compatibility tests (${{ matrix.shard }})
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -264,7 +142,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-logs-compat-${{ matrix.shard }}
-          path: .robotocore.log
+          path: /tmp/ci_rust.log
 
   # Roll-up so the "compatibility-tests" branch protection rule resolves.
   # The matrix shards report as "compat: a-g" etc., not "compatibility-tests".
@@ -285,32 +163,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: recursive
+      - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-      - run: uv sync --extra dev
-      - name: Start robotocore
-        run: |
-          ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
-            uv run python -m robotocore.main > .robotocore.log 2>&1 &
-          SERVER_PID=$!
-          for i in $(seq 1 60); do
-            if ! kill -0 $SERVER_PID 2>/dev/null; then
-              echo "Server process exited early"
-              cat .robotocore.log 2>/dev/null || true
-              exit 1
-            fi
-            curl -sf http://localhost:4566/_robotocore/health && break
-            sleep 1
-          done
-          curl -f http://localhost:4566/_robotocore/health || {
-            echo "=== Server logs ==="
-            cat .robotocore.log 2>/dev/null || true
-            exit 1
-          }
+      - run: uv sync
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Start rust server (rotocore native)
+        run: RUST_PORT=4566 LOG_PREFIX=ci bash scripts/start_parity_servers.sh
       - name: Run cross-service integration tests
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -319,12 +180,6 @@ jobs:
           tests/compatibility/chaos/test_chaos_engineering_compat.py
           -v --tb=short
           --junitxml=results-cross-service.xml
-      - name: Validate test quality
-        if: always()
-        run: >
-          uv run python scripts/validate_test_quality.py
-          --file tests/compatibility/test_cross_service_compat.py
-          --file tests/compatibility/chaos/test_chaos_engineering_compat.py
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -335,87 +190,22 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-logs-cross-service
-          path: .robotocore.log
-
-  shape-regression:
-    name: "shape: response shape + error contract validation"
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: recursive
-      - uses: astral-sh/setup-uv@v7
-        with:
-          python-version: "3.12"
-      - run: uv sync --extra dev
-      - name: Start robotocore
-        run: |
-          ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
-            uv run python -m robotocore.main > .robotocore.log 2>&1 &
-          SERVER_PID=$!
-          for i in $(seq 1 60); do
-            if ! kill -0 $SERVER_PID 2>/dev/null; then
-              echo "Server process exited early"
-              cat .robotocore.log 2>/dev/null || true
-              exit 1
-            fi
-            curl -sf http://localhost:4566/_robotocore/health && break
-            sleep 1
-          done
-          curl -f http://localhost:4566/_robotocore/health || {
-            echo "=== Server logs ==="
-            cat .robotocore.log 2>/dev/null || true
-            exit 1
-          }
-      - name: Validate response shapes (top 20 services)
-        run: >
-          PYTHONPATH=.
-          uv run python scripts/validate_response_shapes.py
-          --top 20 --no-optional
-      - name: Validate error contracts (top 20 services)
-        run: >
-          PYTHONPATH=.
-          uv run python scripts/validate_error_contracts.py
-          --top 20
-      - name: Upload server logs
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: server-logs-shape-regression
-          path: .robotocore.log
+          path: /tmp/ci_rust.log
 
   iac-tests:
     name: "iac: CloudFormation + SAM + Serverless"
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: recursive
+      - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-      - run: uv sync --all-extras
-      - name: Start robotocore
-        run: |
-          ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
-            uv run python -m robotocore.main > .robotocore.log 2>&1 &
-          SERVER_PID=$!
-          for i in $(seq 1 60); do
-            if ! kill -0 $SERVER_PID 2>/dev/null; then
-              echo "Server process exited early"
-              cat .robotocore.log 2>/dev/null || true
-              exit 1
-            fi
-            curl -sf http://localhost:4566/_robotocore/health && break
-            sleep 1
-          done
-          curl -f http://localhost:4566/_robotocore/health || {
-            echo "=== Server logs ==="
-            cat .robotocore.log 2>/dev/null || true
-            exit 1
-          }
+      - run: uv sync
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Start rust server (rotocore native)
+        run: RUST_PORT=4566 LOG_PREFIX=ci bash scripts/start_parity_servers.sh
       - name: Run IaC tests (CFN, SAM, Serverless)
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -436,342 +226,72 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: server-logs-iac
-          path: .robotocore.log
+          path: /tmp/ci_rust.log
 
   # ── Docker + final gates ───────────────────────────────────────────────────
 
   docker-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     needs:
-      - lint
-      - test-quality
-      - unit-gateway
-      - unit-services
-      - unit-infra
-      - integration-tests
+      - rust-ci
+      - compat-rust
       - compatibility-tests
       - cross-service-tests
       - iac-tests
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v6
+
+      - name: Build Docker image (rust, distroless runtime)
+        run: docker build -t robotocore:rust .
+
+      - name: Container security scan
+        uses: aquasecurity/trivy-action@master
         with:
-          submodules: recursive
+          image-ref: robotocore:rust
+          format: table
+          exit-code: 0
+          severity: CRITICAL,HIGH
 
-      - name: Install boto3
-        run: pip install --upgrade boto3 --quiet
-
-      # -----------------------------------------------------------------------
-      # Standard image: Python + Node.js + Ruby
-      # -----------------------------------------------------------------------
-      - name: Build standard Docker image
-        run: docker build --target standard -t robotocore:standard .
-
-      - name: Start standard container
+      # Smoke: run with --network host and probe the published service over
+      # the loopback interface. The server image has no extra tooling inside
+      # (distroless), so all verification happens from the host side.
+      - name: Start container and verify health
         run: |
-          docker run -d -p 4566:4566 --name robotocore-standard robotocore:standard
+          docker run -d --network host --name robotocore-smoke robotocore:rust
           for i in $(seq 1 30); do
-            curl -sf http://localhost:4566/_robotocore/health && break
+            curl -sf http://127.0.0.1:4566/_robotocore/health && break
             sleep 1
           done
-          curl -f http://localhost:4566/_robotocore/health
+          curl -sf http://127.0.0.1:4566/_robotocore/health
 
-      - name: Verify standard runtimes endpoint
+      - name: Runtime smoke tests (native services)
         run: |
-          RUNTIMES=$(curl -sf http://localhost:4566/_robotocore/runtimes)
-          echo "Reported runtimes: $RUNTIMES"
-          echo "$RUNTIMES" | python3 -c "
-          import sys, json
-          data = json.load(sys.stdin)
-          available = set(data['available'])
-          required = {'python', 'nodejs', 'ruby', 'custom'}
-          missing = required - available
-          assert not missing, f'Standard image missing runtimes: {missing}'
-          excluded = {'java', 'dotnet'}
-          present = excluded & available
-          assert not present, f'Standard image should not include heavy runtimes: {present}'
-          print('Runtimes endpoint OK:', sorted(available))
-          "
-
-      - name: Standard image S3 + SQS smoke tests
-        run: |
-          python -c "
+          pip install --upgrade boto3 --quiet
+          python3 -c "
           import boto3
-          s3 = boto3.client('s3', endpoint_url='http://localhost:4566',
-              aws_access_key_id='test', aws_secret_access_key='test',
-              region_name='us-east-1')
-          s3.create_bucket(Bucket='test-bucket')
-          s3.put_object(Bucket='test-bucket', Key='test.txt', Body=b'hello')
-          obj = s3.get_object(Bucket='test-bucket', Key='test.txt')
-          assert obj['Body'].read() == b'hello'
+
+          ep = 'http://127.0.0.1:4566'
+          creds = dict(aws_access_key_id='123456789012', aws_secret_access_key='test',
+                       region_name='us-east-1')
+
+          s3 = boto3.client('s3', endpoint_url=ep, **creds)
+          s3.create_bucket(Bucket='smoke-bucket')
+          s3.put_object(Bucket='smoke-bucket', Key='smoke.txt', Body=b'hello')
+          assert s3.get_object(Bucket='smoke-bucket', Key='smoke.txt')['Body'].read() == b'hello'
           print('S3 smoke test passed')
-          "
-          python -c "
-          import boto3, time
-          sqs = boto3.client('sqs', endpoint_url='http://localhost:4566',
-              aws_access_key_id='test', aws_secret_access_key='test',
-              region_name='us-east-1')
-          q = sqs.create_queue(QueueName='test-queue')
-          url = q['QueueUrl']
-          sqs.send_message(QueueUrl=url, MessageBody='hello')
-          msgs = []
-          for i in range(10):
-              resp = sqs.receive_message(QueueUrl=url, MaxNumberOfMessages=10, VisibilityTimeout=0)
-              msgs = resp.get('Messages', [])
-              if msgs: break
-              time.sleep(1)
+
+          sqs = boto3.client('sqs', endpoint_url=ep, **creds)
+          q = sqs.create_queue(QueueName='smoke-queue')['QueueUrl']
+          sqs.send_message(QueueUrl=q, MessageBody='hello')
+          msgs = sqs.receive_message(QueueUrl=q, MaxNumberOfMessages=10).get('Messages', [])
           assert msgs and msgs[0]['Body'] == 'hello', f'SQS: expected message, got {msgs}'
           print('SQS smoke test passed')
           "
 
-      - name: Standard image Lambda smoke tests (Python + Node.js + Ruby)
-        run: |
-          python -c "
-          import boto3, io, json, uuid, zipfile
-
-          ep = 'http://localhost:4566'
-          creds = dict(aws_access_key_id='test', aws_secret_access_key='test', region_name='us-east-1')
-          iam = boto3.client('iam', endpoint_url=ep, **creds)
-          lam = boto3.client('lambda', endpoint_url=ep, **creds)
-          trust = json.dumps({'Version':'2012-10-17','Statement':[{'Effect':'Allow','Principal':{'Service':'lambda.amazonaws.com'},'Action':'sts:AssumeRole'}]})
-
-          def make_zip(files):
-              buf = io.BytesIO()
-              with zipfile.ZipFile(buf, 'w') as zf:
-                  for name, content in files.items():
-                      zf.writestr(name, content)
-              return buf.getvalue()
-
-          def invoke(lam, fname, payload='{}'):
-              resp = lam.invoke(FunctionName=fname, Payload=payload)
-              assert resp.get('FunctionError') is None, f'{fname}: FunctionError={json.loads(resp[\"Payload\"].read())}'
-              return json.loads(resp['Payload'].read())
-
-          role = 'smoke-role-' + uuid.uuid4().hex[:8]
-          iam.create_role(RoleName=role, AssumeRolePolicyDocument=trust)
-          arn = f'arn:aws:iam::123456789012:role/{role}'
-
-          # Python
-          fn = 'smoke-py-' + uuid.uuid4().hex[:8]
-          lam.create_function(FunctionName=fn, Runtime='python3.12', Role=arn, Handler='lambda_function.handler',
-              Code={'ZipFile': make_zip({'lambda_function.py': 'def handler(e,c): return {\"ok\":True,\"echo\":e[\"msg\"]}'})})
-          p = invoke(lam, fn, json.dumps({'msg':'hello-python'}))
-          assert p['ok'] and p['echo'] == 'hello-python', f'Python: {p}'
-          lam.delete_function(FunctionName=fn)
-          print('Python Lambda smoke test passed')
-
-          # Node.js — verify all three versioned binaries (node18/node20/node22)
-          node_code = make_zip({'index.js': 'exports.handler = async (e) => ({ok:true, echo:e.msg, v:process.version});'})
-          for node_rt in ('nodejs18.x', 'nodejs20.x', 'nodejs22.x'):
-              fn = 'smoke-node-' + uuid.uuid4().hex[:8]
-              lam.create_function(FunctionName=fn, Runtime=node_rt, Role=arn, Handler='index.handler',
-                  Code={'ZipFile': node_code})
-              p = invoke(lam, fn, json.dumps({'msg':'hello-node'}))
-              assert p['ok'] and p['echo'] == 'hello-node', f'{node_rt}: {p}'
-              major = int(p['v'].lstrip('v').split('.')[0])
-              expected = int(node_rt.replace('nodejs','').replace('.x',''))
-              assert major == expected, f'{node_rt} got {p[\"v\"]}, want v{expected}'
-              lam.delete_function(FunctionName=fn)
-              print(f'{node_rt} smoke test passed (Node {p[\"v\"]})')
-
-          # Ruby
-          fn = 'smoke-ruby-' + uuid.uuid4().hex[:8]
-          lam.create_function(FunctionName=fn, Runtime='ruby3.3', Role=arn, Handler='lambda_function.handler',
-              Code={'ZipFile': make_zip({'lambda_function.rb': 'def handler(event:, context:)\n  { ok: true, echo: event[\"msg\"] }\nend'})})
-          p = invoke(lam, fn, json.dumps({'msg':'hello-ruby'}))
-          assert p['ok'] and p['echo'] == 'hello-ruby', f'Ruby: {p}'
-          lam.delete_function(FunctionName=fn)
-          print('Ruby Lambda smoke test passed')
-
-          iam.delete_role(RoleName=role)
-          print('All standard Lambda smoke tests passed')
-          "
-
-      - name: Standard image size check
-        run: |
-          SIZE=$(docker image inspect robotocore:standard --format='{{.Size}}')
-          SIZE_MB=$((SIZE / 1024 / 1024))
-          echo "Standard image size: ${SIZE_MB}MB"
-          if [ "$SIZE_MB" -gt 500 ]; then
-            echo "WARNING: Standard image exceeds 500MB target (${SIZE_MB}MB)"
-          fi
-
-      - name: Stop standard container
+      - name: Stop smoke container
         if: always()
-        run: docker rm -f robotocore-standard || true
-
-      - name: Container security scan — standard
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: robotocore:standard
-          format: table
-          exit-code: 0
-          severity: CRITICAL,HIGH
-
-      # -----------------------------------------------------------------------
-      # java-and-dotnet image: standard + OpenJDK 21 + .NET SDK 8
-      # -----------------------------------------------------------------------
-      - name: Build java-and-dotnet Docker image
-        run: docker build --target java-and-dotnet -t robotocore:java-and-dotnet .
-
-      - name: Verify dotnet CLI is functional in java-and-dotnet image
-        # Fails fast if the runtime toolchain is broken (missing ICU/globalization
-        # setup, wrong architecture, missing shared libs) before starting the
-        # long-running robotocore-full service container.
-        run: |
-          docker run --rm --entrypoint dotnet robotocore:java-and-dotnet --version
-          docker run --rm --entrypoint java robotocore:java-and-dotnet -version
-
-      - name: Start java-and-dotnet container
-        run: |
-          docker run -d -p 4566:4566 --name robotocore-full robotocore:java-and-dotnet
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:4566/_robotocore/health && break
-            sleep 1
-          done
-          curl -f http://localhost:4566/_robotocore/health
-
-      - name: Verify java-and-dotnet runtimes endpoint
-        run: |
-          RUNTIMES=$(curl -sf http://localhost:4566/_robotocore/runtimes)
-          echo "Reported runtimes: $RUNTIMES"
-          echo "$RUNTIMES" | python3 -c "
-          import sys, json
-          data = json.load(sys.stdin)
-          available = set(data['available'])
-          required = {'python', 'nodejs', 'ruby', 'java', 'dotnet', 'custom'}
-          missing = required - available
-          assert not missing, f'java-and-dotnet image missing runtimes: {missing}'
-          print('Runtimes endpoint OK:', sorted(available))
-          "
-
-      - name: java-and-dotnet image Lambda smoke tests
-        run: |
-          # Compile a minimal Java handler on the CI runner (Java is pre-installed on ubuntu-latest)
-          mkdir -p /tmp/java-smoke
-          cat > /tmp/java-smoke/Handler.java << 'JAVAEOF'
-          public class Handler {
-              public String handleRequest(String event, Object context) {
-                  return "{\"ok\":true,\"echo\":\"hello-java\"}";
-              }
-          }
-          JAVAEOF
-          javac /tmp/java-smoke/Handler.java -d /tmp/java-smoke
-
-          # Compile a minimal .NET handler on the CI runner (dotnet is pre-installed on ubuntu-latest)
-          # Passing a pre-compiled DLL (same pattern as Java) avoids server-side source compilation
-          # and is more representative of real-world .NET Lambda usage.
-          mkdir -p /tmp/dotnet-smoke
-          cat > /tmp/dotnet-smoke/Handler.cs << 'CSEOF'
-          public class Handler {
-              public string HandleRequest(string eventJson, object context) {
-                  return "{\"ok\":true,\"echo\":\"hello-dotnet\"}";
-              }
-          }
-          CSEOF
-          cat > /tmp/dotnet-smoke/SmokeTest.csproj << 'PROJEOF'
-          <Project Sdk="Microsoft.NET.Sdk">
-            <PropertyGroup>
-              <TargetFramework>net8.0</TargetFramework>
-              <AssemblyName>SmokeTest</AssemblyName>
-              <ImplicitUsings>enable</ImplicitUsings>
-            </PropertyGroup>
-          </Project>
-          PROJEOF
-          dotnet build /tmp/dotnet-smoke/SmokeTest.csproj -c Release -o /tmp/dotnet-smoke/out --nologo -v q
-
-          python -c "
-          import boto3, io, json, uuid, zipfile
-
-          ep = 'http://localhost:4566'
-          creds = dict(aws_access_key_id='test', aws_secret_access_key='test', region_name='us-east-1')
-          iam = boto3.client('iam', endpoint_url=ep, **creds)
-          lam = boto3.client('lambda', endpoint_url=ep, **creds)
-          trust = json.dumps({'Version':'2012-10-17','Statement':[{'Effect':'Allow','Principal':{'Service':'lambda.amazonaws.com'},'Action':'sts:AssumeRole'}]})
-
-          def make_zip(files):
-              buf = io.BytesIO()
-              with zipfile.ZipFile(buf, 'w') as zf:
-                  for name, content in files.items():
-                      if isinstance(content, bytes):
-                          zf.writestr(name, content)
-                      else:
-                          zf.writestr(name, content)
-              return buf.getvalue()
-
-          def invoke(lam, fname, payload='{}'):
-              resp = lam.invoke(FunctionName=fname, Payload=payload)
-              payload_bytes = resp['Payload'].read()
-              assert resp.get('FunctionError') is None, f'{fname}: FunctionError set, payload={payload_bytes.decode()}'
-              return json.loads(payload_bytes)
-
-          role = 'smoke-full-role-' + uuid.uuid4().hex[:8]
-          iam.create_role(RoleName=role, AssumeRolePolicyDocument=trust)
-          arn = f'arn:aws:iam::123456789012:role/{role}'
-
-          # Java — use pre-compiled Handler.class
-          with open('/tmp/java-smoke/Handler.class', 'rb') as f:
-              handler_class = f.read()
-          fn = 'smoke-java-' + uuid.uuid4().hex[:8]
-          lam.create_function(FunctionName=fn, Runtime='java21', Role=arn, Handler='Handler::handleRequest',
-              Code={'ZipFile': make_zip({'Handler.class': handler_class})}, Timeout=30)
-          p = invoke(lam, fn)
-          assert p.get('ok') is True and p.get('echo') == 'hello-java', f'Java: {p}'
-          lam.delete_function(FunctionName=fn)
-          print('Java Lambda smoke test passed')
-
-          # .NET — use pre-compiled DLL (compiled locally above, same pattern as Java)
-          with open('/tmp/dotnet-smoke/out/SmokeTest.dll', 'rb') as f:
-              dotnet_dll = f.read()
-          fn = 'smoke-dotnet-' + uuid.uuid4().hex[:8]
-          lam.create_function(FunctionName=fn, Runtime='dotnet8', Role=arn, Handler='SmokeTest::Handler::HandleRequest',
-              Code={'ZipFile': make_zip({'SmokeTest.dll': dotnet_dll})}, Timeout=60)
-          p = invoke(lam, fn)
-          assert p.get('ok') is True and p.get('echo') == 'hello-dotnet', f'.NET: {p}'
-          lam.delete_function(FunctionName=fn)
-          print('.NET Lambda smoke test passed')
-
-          iam.delete_role(RoleName=role)
-          print('All java-and-dotnet Lambda smoke tests passed')
-          "
-
-      - name: java-and-dotnet image size check
-        run: |
-          SIZE=$(docker image inspect robotocore:java-and-dotnet --format='{{.Size}}')
-          SIZE_MB=$((SIZE / 1024 / 1024))
-          echo "java-and-dotnet image size: ${SIZE_MB}MB"
-
-      - name: Stop java-and-dotnet container
-        if: always()
-        run: docker rm -f robotocore-full || true
-
-      - name: Container security scan — java-and-dotnet
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: robotocore:java-and-dotnet
-          format: table
-          exit-code: 0
-          severity: CRITICAL,HIGH
-
-  parity-report:
-    runs-on: ubuntu-latest
-    needs: [compatibility-tests, cross-service-tests]
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: recursive
-      - uses: astral-sh/setup-uv@v7
-        with:
-          python-version: "3.12"
-      - run: uv sync --extra dev
-      - name: Generate parity report
-        run: >
-          uv run python scripts/generate_parity_report.py
-          --output parity-report.json
-      - name: Upload parity report
-        uses: actions/upload-artifact@v7
-        with:
-          name: parity-report
-          path: parity-report.json
+        run: docker rm -f robotocore-smoke || true
 
   # ── Aggregate results ─────────────────────────────────────────────────────
 
@@ -780,10 +300,6 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     needs:
-      - unit-gateway
-      - unit-services
-      - unit-infra
-      - integration-tests
       - compatibility-tests
       - cross-service-tests
       - iac-tests
@@ -826,15 +342,3 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "⚠️ Some tests failed. Check individual job logs for details." >> $GITHUB_STEP_SUMMARY
           fi
-      - name: Coverage summary
-        run: |
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Coverage" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          for f in test-results/coverage-*.xml; do
-            [ -f "$f" ] || continue
-            name=$(basename "$f" .xml | sed 's/^coverage-//')
-            rate=$(grep -o 'line-rate="[0-9.]*"' "$f" | head -1 | grep -o '[0-9.]*' || echo 0)
-            pct=$(echo "$rate * 100" | bc -l 2>/dev/null | head -c5 || echo "?")
-            echo "- **${name}**: ${pct}%" >> $GITHUB_STEP_SUMMARY
-          done

@@ -1,0 +1,74 @@
+{
+  "service": "scheduler",
+  "generated_at": "2026-10-25T19:44:53.556906+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 12,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "CreateSchedule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateScheduleGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteSchedule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteScheduleGroup",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetSchedule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetScheduleGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListScheduleGroups",
+      "status": "working",
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
+    },
+    {
+      "operation": "ListSchedules",
+      "status": "working",
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateSchedule",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    }
+  ]
+}

@@ -1,10 +1,13 @@
 {
   "service": "kinesisvideo",
+  "generated_at": "2026-10-25T19:43:48.038223+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 13,
-    "needs_params": 3,
-    "not_implemented": 16,
-    "500_error": 0
+    "working": 24,
+    "needs_params": 0,
+    "not_implemented": 8,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -39,48 +42,48 @@
     },
     {
       "operation": "DescribeImageGenerationConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeMappedResourceConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeMediaStorageConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeNotificationConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeSignalingChannel",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeStream",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeStreamStorageConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetDataEndpoint",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "GetSignalingChannelEndpoint",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListEdgeAgentConfigurations",
@@ -104,8 +107,8 @@
     },
     {
       "operation": "ListTagsForStream",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartEdgeConfigurationUpdate",
@@ -114,28 +117,28 @@
     },
     {
       "operation": "TagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
-    },
-    {
-      "operation": "TagStream",
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
     },
     {
+      "operation": "TagStream",
+      "status": "working",
+      "message": "OK"
+    },
+    {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UntagStream",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateDataRetention",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ClientLimitExceededException: The stream version does not match the current version.)"
     },
     {
       "operation": "UpdateImageGenerationConfiguration",
@@ -160,7 +163,7 @@
     {
       "operation": "UpdateStream",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "likely implemented (ClientLimitExceededException: The stream version does not match the current version.)"
     },
     {
       "operation": "UpdateStreamStorageConfiguration",

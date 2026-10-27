@@ -1,16 +1,19 @@
 {
   "service": "osis",
+  "generated_at": "2026-10-25T19:44:10.001628+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 12,
+    "working": 16,
     "needs_params": 0,
-    "not_implemented": 9,
-    "500_error": 1
+    "not_implemented": 6,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "CreatePipeline",
-      "status": "500_error",
-      "message": "server crash (InternalError: string indices must be integers, not 'str')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreatePipelineEndpoint",
@@ -20,12 +23,12 @@
     {
       "operation": "DeletePipeline",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeletePipelineEndpoint",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteResourcePolicy",
@@ -39,13 +42,13 @@
     },
     {
       "operation": "GetPipelineBlueprint",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetPipelineChangeProgress",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetResourcePolicy",
@@ -80,7 +83,7 @@
     {
       "operation": "PutResourcePolicy",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "RevokePipelineEndpointConnections",

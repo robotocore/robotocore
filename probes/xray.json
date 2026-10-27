@@ -1,10 +1,13 @@
 {
   "service": "xray",
+  "generated_at": "2026-10-26T03:43:32.040641+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 32,
-    "needs_params": 2,
-    "not_implemented": 4,
-    "500_error": 0
+    "working": 38,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -24,8 +27,8 @@
     },
     {
       "operation": "CreateSamplingRule",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteGroup",
@@ -119,8 +122,8 @@
     },
     {
       "operation": "GetTraceSegmentDestination",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetTraceSummaries",
@@ -179,23 +182,23 @@
     },
     {
       "operation": "UpdateGroup",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
     },
     {
       "operation": "UpdateIndexingRule",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
     },
     {
       "operation": "UpdateSamplingRule",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
     },
     {
       "operation": "UpdateTraceSegmentDestination",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     }
   ]
 }

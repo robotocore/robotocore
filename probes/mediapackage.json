@@ -1,16 +1,19 @@
 {
   "service": "mediapackage",
+  "generated_at": "2026-10-25T19:44:01.515222+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 9,
+    "working": 19,
     "needs_params": 0,
-    "not_implemented": 10,
-    "500_error": 0
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "ConfigureLogs",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "CreateChannel",
@@ -19,8 +22,8 @@
     },
     {
       "operation": "CreateHarvestJob",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "CreateOriginEndpoint",
@@ -44,8 +47,8 @@
     },
     {
       "operation": "DescribeHarvestJob",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "DescribeOriginEndpoint",
@@ -59,8 +62,8 @@
     },
     {
       "operation": "ListHarvestJobs",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListOriginEndpoints",
@@ -69,33 +72,33 @@
     },
     {
       "operation": "ListTagsForResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "RotateChannelCredentials",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "RotateIngestEndpointCredentials",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "TagResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UntagResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateChannel",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdateOriginEndpoint",

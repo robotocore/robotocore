@@ -1,16 +1,19 @@
 {
   "service": "managedblockchain",
+  "generated_at": "2026-10-25T19:43:56.858853+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 17,
+    "working": 27,
     "needs_params": 0,
-    "not_implemented": 7,
-    "500_error": 3
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "CreateAccessor",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateMember",
@@ -24,8 +27,8 @@
     },
     {
       "operation": "CreateNode",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'MemberId')"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateProposal",
@@ -34,8 +37,8 @@
     },
     {
       "operation": "DeleteAccessor",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteMember",
@@ -49,8 +52,8 @@
     },
     {
       "operation": "GetAccessor",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetMember",
@@ -74,8 +77,8 @@
     },
     {
       "operation": "ListAccessors",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListInvitations",
@@ -109,8 +112,8 @@
     },
     {
       "operation": "ListTagsForResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "RejectInvitation",
@@ -119,23 +122,23 @@
     },
     {
       "operation": "TagResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UntagResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateMember",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'MemberId')"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateNode",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'MemberId')"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "VoteOnProposal",

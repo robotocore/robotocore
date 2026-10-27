@@ -1,0 +1,87 @@
+{
+  "service": "ssm",
+  "total_failing": 122,
+  "tests_analyzed": 10,
+  "test_ops": {
+    "tests/compatibility/test_ssm_compat.py::TestSSMParameterOperations::test_put_and_get_parameter": [
+      "PutParameter",
+      "GetParameter",
+      "DeleteParameter"
+    ],
+    "tests/compatibility/test_ssm_compat.py::TestSSMParameterExtended::test_label_and_unlabel_parameter_version": [
+      "PutParameter",
+      "LabelParameterVersion",
+      "GetParameterHistory",
+      "UnlabelParameterVersion",
+      "DeleteParameter"
+    ],
+    "tests/compatibility/test_ssm_compat.py::TestSSMDocumentOperations::test_create_describe_get_delete_document": [
+      "CreateDocument",
+      "DescribeDocument",
+      "GetDocument",
+      "DeleteDocument"
+    ],
+    "tests/compatibility/test_ssm_compat.py::TestSSMCommandOperations::test_send_list_commands": [
+      "SendCommand",
+      "ListCommands",
+      "ListCommandInvocations"
+    ],
+    "tests/compatibility/test_ssm_compat.py::TestSSMMaintenanceWindow::test_create_describe_delete_maintenance_window": [
+      "CreateMaintenanceWindow",
+      "DescribeMaintenanceWindows",
+      "DeleteMaintenanceWindow"
+    ],
+    "tests/compatibility/test_ssm_compat.py::TestSSMDocumentExtended::test_update_document": [
+      "CreateDocument",
+      "UpdateDocument",
+      "DeleteDocument"
+    ],
+    "tests/compatibility/test_ssm_compat.py::TestSSMDocumentExtended::test_update_document_default_version": [
+      "CreateDocument",
+      "UpdateDocument",
+      "UpdateDocumentDefaultVersion",
+      "DescribeDocument",
+      "DeleteDocument"
+    ],
+    "tests/compatibility/test_ssm_compat.py::TestSSMDocumentExtended::test_describe_document_permission": [
+      "CreateDocument",
+      "DescribeDocumentPermission",
+      "DeleteDocument"
+    ],
+    "tests/compatibility/test_ssm_compat.py::TestSSMMaintenanceWindowExtended::test_get_maintenance_window": [
+      "GetMaintenanceWindow",
+      "DeleteMaintenanceWindow"
+    ],
+    "tests/compatibility/test_ssm_compat.py::TestSSMMaintenanceWindowExtended::test_register_and_deregister_target": [
+      "RegisterTargetWithMaintenanceWindow",
+      "DescribeMaintenanceWindowTargets",
+      "DeregisterTargetFromMaintenanceWindow",
+      "DeleteMaintenanceWindow"
+    ]
+  },
+  "op_counts": {
+    "PutParameter": 2,
+    "GetParameter": 1,
+    "DeleteParameter": 2,
+    "LabelParameterVersion": 1,
+    "GetParameterHistory": 1,
+    "UnlabelParameterVersion": 1,
+    "CreateDocument": 4,
+    "DescribeDocument": 2,
+    "GetDocument": 1,
+    "DeleteDocument": 4,
+    "SendCommand": 1,
+    "ListCommands": 1,
+    "ListCommandInvocations": 1,
+    "CreateMaintenanceWindow": 1,
+    "DescribeMaintenanceWindows": 1,
+    "DeleteMaintenanceWindow": 3,
+    "UpdateDocument": 2,
+    "UpdateDocumentDefaultVersion": 1,
+    "DescribeDocumentPermission": 1,
+    "GetMaintenanceWindow": 1,
+    "RegisterTargetWithMaintenanceWindow": 1,
+    "DescribeMaintenanceWindowTargets": 1,
+    "DeregisterTargetFromMaintenanceWindow": 1
+  }
+}

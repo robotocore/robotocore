@@ -31,12 +31,6 @@ curl -sf http://localhost:4566/_robotocore/health > /dev/null && echo "already r
 
 ```bash
 docker rm -f robotocore 2>/dev/null || true
-docker run -d -p 4566:4566 --name robotocore jackdanger/robotocore:latest
-```
-
-Also available from GHCR:
-
-```bash
 docker run -d -p 4566:4566 --name robotocore ghcr.io/robotocore/robotocore:latest
 ```
 
@@ -55,7 +49,9 @@ robotocore start|stop|restart|logs|status   # container lifecycle wrapper
 curl -s http://localhost:4566/_robotocore/health | python3 -m json.tool
 ```
 
-Expected output: `{"status": "running", "version": ..., "uptime_seconds": ..., "services": {name: {"status": "running" | "disabled", "type": "native" | "moto", "requests": N}}}`. The flat map of service name -> `"available"` strings is the LocalStack-compatible `/_localstack/health` (drop-in for that tool's health checks). A service disabled by the `SERVICES` env var reports `"disabled"`.
+Expected output: top-level `"status": "running"` plus a per-service map
+where `type` is `native` (a Rust backend answers in-process) or `absent`
+(requests answer `501 NotImplemented`).
 
 ### Confirm which account you're in (GetCallerIdentity)
 
@@ -79,6 +75,7 @@ print(sts.get_caller_identity())
 | Endpoint | `http://localhost:4566` |
 | Access key ID | any 12-digit number — this IS your account ID |
 | Secret key | any non-empty string |
+| Secret key (one exception) | S3 POST-form (browser presigned-POST) uploads verify the SigV4 policy signature, and that check currently pins the secret to the literal `test` — see [Troubleshooting](#troubleshooting) |
 | Session token | not required |
 | Region | any valid AWS region name; `us-east-1` is a safe default |
 
@@ -157,24 +154,15 @@ The `aws_access_key_id` you provide (when 12 digits) is your account ID. Resourc
 
 ```python
 # Two completely isolated AWS accounts in the same robotocore instance
-prod = boto3.client("dynamodb", endpoint_url="http://localhost:4566",
+prod = boto3.client("s3", endpoint_url="http://localhost:4566",
                     aws_access_key_id="111111111111", aws_secret_access_key="test",
                     region_name="us-east-1")
-dev  = boto3.client("dynamodb", endpoint_url="http://localhost:4566",
+dev  = boto3.client("s3", endpoint_url="http://localhost:4566",
                     aws_access_key_id="222222222222", aws_secret_access_key="test",
                     region_name="us-east-1")
 
-prod.create_table(
-    TableName="orders",
-    KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
-    AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "S"}],
-    BillingMode="PAY_PER_REQUEST",
-)
-print(prod.list_tables()["TableNames"])  # ["orders"]
-print(dev.list_tables()["TableNames"])   # []  — completely separate
-
-# Note: S3 bucket names are globally unique in AWS — the same bucket name cannot
-# exist in two accounts simultaneously, just like real AWS.
+prod.create_bucket(Bucket="assets")  # account 111111111111
+dev.create_bucket(Bucket="assets")   # account 222222222222 — completely separate
 ```
 
 For per-test isolation, generate a unique account ID per test:
@@ -185,6 +173,43 @@ account_id = str(uuid.uuid4().int)[:12].zfill(12)
 ```
 
 Non-numeric access keys (e.g. `"test"`) route to the default account `123456789012`.
+
+**Per-request override:** a request can pin its account with an
+`X-Robotocore-Account: <12 digits>` header, which wins over any credentials on that
+request. It mirrors moto's `x-moto-account-id` header priority (`moto/core/responses.py`
+`get_current_account`: `MOTO_ACCOUNT_ID` env var → account header → access-key lookup →
+default account); requests carrying none of these resolve to the default account.
+
+---
+
+## Port-lane merge protocol (process)
+
+Lessons from the 2026-10-24 review waves, now mechanical:
+
+1. **The pinned fork is the oracle, not the porter.** Every service port must
+   cite the fork module it mirrors and diff sampled ops against its live
+   `moto_server` before merge (`tooling/crash-matrix-2026-10-24/crash_matrix.py`
+   is the reference runner). Self-authored unit tests are necessary, not
+   sufficient: they certify intent, not fidelity.
+2. **Probes may not lag arms.** `make probe-freshness` fails when
+   `probes/<svc>.json` is older than the newest commit touching that service's
+   implementation. It runs as the first step of `make parity`; a port lane is
+   not done until its own branch's scratch twin has been re-probed and the
+   manifest/coverage artifacts regenerated (`scripts/build_surface_absence.py`,
+   `coverage.py --gate`).
+3. **The deny contract is enforced, not documented.**
+   `make error-census` live-calls every manifest deny row from an isolated
+   account and fails on any row answering anything but the twin-wide 501
+   `NotImplemented` envelope (crash-mirrors are the recorded exception).
+   Run it in the nightly lane and after any envelope change.
+4. **Every port lane ships its own adversary.** A lane is review-sized only
+   if another agent re-derives the lane's claims against the oracle and the
+   running twin (the wave practice this AGENTS.md section exists for), before
+   the parent merges the lane.
+5. **No portability constants:** endpoints default to env-derived values
+   (`ENDPOINT_URL`, `GATEWAY_PORT`); a fallback constant must log when it is
+   used. The full compat lane must pass with `ENDPOINT_URL` pointed at a
+   non-default port; hardcoded `localhost:4566` inside suites is a defect.
 
 ---
 
@@ -201,9 +226,9 @@ for x in s: print(f\"{x['name']:32} {x['status']}\")
 "
 ```
 
-**Native providers** (full behavioral fidelity): ACM, API Gateway v1, API Gateway v2, AppSync, Batch, CloudFormation, CloudWatch, CloudWatch Logs, Cognito User Pools, Config, DynamoDB, DynamoDB Streams, EC2, ECR, ECS, EKS, ElastiCache, Elasticsearch, EventBridge, Firehose, IAM, IoT, IoT Data, Kinesis, Lambda, OpenSearch, Organizations, Pipes, RAM, RDS, RDS Data, Rekognition, Resource Groups, Resource Groups Tagging, Route 53, S3, Scheduler, Secrets Manager, SES, SES v2, SNS, SQS, SSM, Step Functions, STS, Support, Synthetics, X-Ray.
+**Native providers** (a Rust backend answers in-process): 160 of 160 registered services — athena, cloudfront, connect, ec2, elb, elbv2, emr, glue, iot, redshift, the bedrock-agentcore + bedrock-agentcore-control pair, and the whole list the endpoint above prints, including the gateway core's S3, SQS, SNS, DynamoDB, Lambda, IAM, KMS, SSM, Secrets Manager, Step Functions, STS, CloudWatch, CloudWatch Logs, EventBridge, Kinesis, Firehose, ECR, ECS, API Gateway v1/v2, AppSync, Batch, Cognito User Pools, Config, SES v2, Support, X-Ray.
 
-**Moto-backed services**: Account, ACM-PCA, AMP, AppConfig, Application Auto Scaling, App Mesh, Athena, Auto Scaling, Backup, Bedrock, Bedrock Agent, Budgets, CE, Cloud Directory, CloudFront, CloudHSM v2, CloudTrail, CodeBuild, CodeCommit, CodeDeploy, CodePipeline, Cognito Identity, Comprehend, Connect, DataBrew, Data Pipeline, DataSync, DAX, DMS, Directory Service, DSQL, EC2 Instance Connect, EFS, Elastic Beanstalk, ELB, ELBv2, EMR, EMR Containers, EMR Serverless, FSx, Glacier, Glue, Greengrass, GuardDuty, Identity Store, Inspector2, IVS, Kafka, Kinesis Analytics v2, Kinesis Video, KMS, Lake Formation, Lex v2, Macie2, Managed Blockchain, MediaConnect, MediaLive, MediaPackage, MediaPackage v2, MediaStore, MemoryDB, MQ, Network Firewall, Network Manager, OpenSearch Serverless, OSIS, Pinpoint, Polly, QuickSight, Redshift, Redshift Data, Resilience Hub, Route 53 Domains, Route 53 Resolver, S3 Control, S3 Tables, S3 Vectors, SageMaker, Security Hub, Service Catalog, Service Catalog App Registry, Service Discovery, Shield, Signer, SSO Admin, SWF, Textract, Timestream InfluxDB, Timestream Query, Timestream Write, Transfer, VPC Lattice, WAFv2, WorkSpaces, WorkSpaces Web — plus the rarer ones this list does not name (EBS Direct APIs, Bedrock Runtime, Connect Campaigns, Direct Connect, Forecast, Kinesis Video Archived Media, MediaStore Data, Personalize, SageMaker Runtime, Service Quotas, SimpleDB, Transcribe). Use `/_robotocore/services` for the full live list.
+At the operation level the twin covers 95.6% of the AWS surface (9,929 of 10,391 operations per the parity report); an operation that is not implemented answers `501 NotImplemented`, which the gateway reports as genuine absence rather than an error.
 
 ---
 
@@ -226,6 +251,29 @@ s3.create_bucket(
     CreateBucketConfiguration={"LocationConstraint": "eu-west-1"},
 )
 ```
+
+**Presigned-POST (browser form) uploads** work too. The twin verifies the
+form's SigV4 policy signature, and that verification currently pins the
+secret to `test`, so generate the form from a client carrying the
+documented `aws_secret_access_key`:
+
+```python
+from botocore.config import Config
+
+s3v4 = boto3.client("s3", **{**SESSION, "config": Config(signature_version="s3v4")})
+data = s3v4.generate_presigned_post(Bucket="my-bucket", Key="form-upload.txt", ExpiresIn=3600)
+
+import requests
+resp = requests.post(
+    data["url"],
+    data=data["fields"],
+    files={"file": ("form-upload.txt", b"uploaded by browser form")},
+)
+resp.status_code        # 204 — the policy was signed with secret `test`
+```
+
+A form signed with any other secret answers `403 SignatureDoesNotMatch`;
+a plain unsigned form (no policy/signature fields) uploads anonymously.
 
 ### SQS
 
@@ -286,6 +334,27 @@ lam.get_waiter("function_active").wait(FunctionName="hello")
 result = lam.invoke(FunctionName="hello", Payload=json.dumps({}))
 print(json.loads(result["Payload"].read()))  # {"ok": True}
 ```
+
+Lambda runtimes: the engine executes `python*`/`custom`/`provided.*` in-process
+and `nodejs` via node, on every host. `GET /_robotocore/runtimes` reports what
+the running server can actually execute:
+
+- Default (`LAMBDA_EXECUTOR=local`): host-toolchain families only.
+- `LAMBDA_EXECUTOR=docker`: every mapped AWS runtime executes inside its
+  official public-ECR image (python 3.8–3.13, nodejs 16–22, java 8–21,
+  dotnet 6/8, go 1.x, ruby 3.2/3.3, provided) — requires a docker daemon
+  reachable from the server; the compat suites for ruby/java/dotnet are
+  then served for real.
+
+The Docker image model mirrors this: the default image is a distroless
+python3 runner (`gcr.io/distroless/python3-debian12`, bookworm — carries
+`/usr/bin/python3`, Python 3.11) so the in-process python family really runs
+from the image itself (158MB, up from 119MB when the base was python-free
+and python-family invocations failed with `Runtime.InternalError`); a
+`runtimes` target bakes node+ruby into the server's runtime (node family
+executes for real, 402MB, node v20.19.2 in trixie); a `java-and-dotnet`
+variant target adds OpenJDK 21 + .NET SDK 8 (`docker build --target
+java-and-dotnet .`, `docker compose --profile java-dotnet up`).
 
 ### Secrets Manager
 
@@ -370,15 +439,15 @@ for svc, info in sorted(h.get('services', {}).items()):
 
 | Endpoint | Returns |
 |---|---|
-| `GET /_robotocore/health` | Per-service status, native or moto, request counts, uptime, version |
+| `GET /_robotocore/health` | Overall status, per-service request counts, `type` = `native` or `absent`, uptime, version |
 | `GET /_robotocore/services` | Per-service protocol (json, rest-json, query) and description |
 | `GET /_robotocore/audit?limit=N` | Recent calls with operation, status code, account, region |
 | `GET /_robotocore/usage/errors` | Error totals grouped by status code, plus recent errors |
-| `GET /_robotocore/resources[/<service>]` | What currently exists in the twin |
 | `GET /_robotocore/config` | Version and runtime config |
-| `GET /_robotocore/diagnose` | Full diagnostic bundle; returns 403 unless `DEBUG=1` or `ROBOTOCORE_DIAG=1` |
 
-`native` in the health output means a robotocore provider with added behavioral fidelity; `moto` means the operation is served by Moto's backend.
+`type: native` in the health output means a Rust backend answers in-process (gateway core handler or a rotocore backend); `type: absent` means requests get `501 NotImplemented`. Both labels are derived from the real handler tables at request time, not from a static table.
+
+Only HTTP `501` with the `NotImplemented` error code means "genuinely absent" — the gateway never reports an unimplemented operation as `InternalError`.
 
 ---
 
@@ -398,7 +467,7 @@ print(d['counts'])
 m = {o['operation']: o['status'] for o in d['operations']}
 print(m['RunInstances'], m['CreateImage'])
 "
-# {'working': 449, 'needs_params': 6, 'not_implemented': 278, '500_error': 19}
+# {'working': 752, 'needs_params': 0, 'not_implemented': 0, '500_error': 0, 'timeout': 0}
 # working working
 ```
 
@@ -408,16 +477,23 @@ print(m['RunInstances'], m['CreateImage'])
 | `needs_params` | Parameters could not be auto-filled; unknown, not absent |
 | `not_implemented` | Server returned 501 |
 | `500_error` | Server crashed — a bug worth filing |
+| `timeout` | The server never answered within the probe's read timeout (a hanging handler; distinct from a crash) |
 
 Destructive operations are excluded from probe runs, so absence from the file is not a gap. `TerminateInstances`, `DeleteBucket`, `DeleteVpc` and others are in the script's skip list and work fine. See `docs/coverage.html` for the browsable per-service view.
 
-### 2. Re-probe live
+### 2. Check the live twin's own posture
+
+The introspection endpoints are derived from the real handler tables, so
+they cannot drift:
 
 ```bash
-uv run python -m scripts.probe_service --service ec2 --all --json
+curl -s http://localhost:4566/_robotocore/services | python3 -c "
+import json, sys
+for s in json.load(sys.stdin)['services']:
+    if s['name'] == 'ec2':
+        print(s['status'])  # native
+"
 ```
-
-Calls every operation with auto-filled parameters and classifies the result. Use when the checked-in file is older than the server you are running.
 
 ### 3. Read the audit log after running an opaque tool
 
@@ -441,7 +517,6 @@ The most common misread: treating a `ClientError` as a gap.
 | Response | Meaning |
 |---|---|
 | HTTP 501, `NotImplemented` — "The accept_address_transfer action has not been implemented" | Genuinely absent |
-| HTTP 400, "Could not determine target AWS service from request" + `hints` list | No usable routing cue (unsigned, unnamed request). The `hints` list names every cue that was checked — add a SigV4 signature with the service's credential scope, a service URL path, or a target header |
 | `InvalidAMIID.NotFound`, `InvalidInstanceID.NotFound` | Implemented; the ID does not exist |
 | `InvalidAMIID.Malformed` | Implemented; the ID is the wrong shape |
 | `MissingParameter`, `ValidationException` | Implemented; the request is incomplete |
@@ -478,6 +553,7 @@ Reset a single account's state without restarting: use a new account ID (new 12-
 | Resources bleed between tests | Shared account ID | Use a unique 12-digit ID per test |
 | `InvalidClientTokenId` | Non-numeric access key | Use a 12-digit number: `"123456789012"` |
 | S3 `CreateBucket` fails in non-`us-east-1` region | Missing location constraint | Add `CreateBucketConfiguration={"LocationConstraint": region}` |
+| S3 POST upload answers `403 SignatureDoesNotMatch` | POST-form (presigned-POST) uploads verify the SigV4 policy signature with the pinned secret `test` | Generate the form with secret `test`, or send a plain unsigned form |
 | `ResourceNotFoundException` right after `create_table` | Table not ready | Call `table.wait_until_exists()` before use |
 | HTTP 501 `NotImplemented` | Operation genuinely absent | [Does robotocore implement operation X?](#does-robotocore-implement-operation-x) |
 
@@ -492,7 +568,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       robotocore:
-        image: jackdanger/robotocore:latest
+        image: ghcr.io/robotocore/robotocore:latest
         ports:
           - 4566:4566
         options: >-
@@ -514,7 +590,7 @@ jobs:
 # docker-compose
 services:
   aws:
-    image: jackdanger/robotocore:latest
+    image: ghcr.io/robotocore/robotocore:latest
     ports:
       - "4566:4566"
     healthcheck:
@@ -529,7 +605,7 @@ services:
 
 - **Repository**: https://github.com/robotocore/robotocore
 - **Issues**: https://github.com/robotocore/robotocore/issues
-- **Built on**: [Moto](https://github.com/getmoto/moto) (~195 AWS service implementations)
-- **Author**: Jack Danger, a Moto maintainer
+- **Implementation**: pure Rust — the gateway (`src/core/`), the moto-equivalent engine (`rotocore/`), and per-service crates (`crates/`). No Python in the server; language bindings live under `bindings/`.
+- **Author**: Jack Danger
 
 See [CLAUDE.md](CLAUDE.md) for contributor architecture notes.

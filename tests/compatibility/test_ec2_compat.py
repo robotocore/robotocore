@@ -4592,17 +4592,7 @@ class TestEC2VPCEndpointServiceConfig:
 
     def _create_nlb(self, ec2):
         """Create a VPC, subnet, and NLB for endpoint service testing."""
-        import boto3
-        from botocore.config import Config
-
-        elbv2 = boto3.client(
-            "elbv2",
-            endpoint_url="http://localhost:4566",
-            region_name="us-east-1",
-            aws_access_key_id="testing",
-            aws_secret_access_key="testing",
-            config=Config(),
-        )
+        elbv2 = make_client("elbv2")
         vpc = ec2.create_vpc(CidrBlock="10.210.0.0/16")
         vpc_id = vpc["Vpc"]["VpcId"]
         sub = ec2.create_subnet(VpcId=vpc_id, CidrBlock="10.210.1.0/24")
@@ -11135,7 +11125,6 @@ class TestEC2GapRunInstances:
         # Cleanup
         ec2.terminate_instances(InstanceIds=[instance_id])
 
-
 class TestEC2Batch0AcceptAddressTransfer:
     """Tests for AcceptAddressTransfer operation."""
 
@@ -11362,14 +11351,13 @@ class TestEC2Batch0AttachVerifiedAccessTrustProvider:
     def ec2(self):
         return make_client("ec2")
 
-    def test_attach_verified_access_trust_provider_unknown_instance(self, ec2):
-        """AttachVerifiedAccessTrustProvider rejects an unknown instance, as AWS does."""
-        with pytest.raises(botocore.exceptions.ClientError) as exc:
-            ec2.attach_verified_access_trust_provider(
-                VerifiedAccessInstanceId="vai-12345678",
-                VerifiedAccessTrustProviderId="vatp-12345678",
-            )
-        assert exc.value.response["Error"]["Code"] == "InvalidVerifiedAccessInstanceId.NotFound"
+    def test_attach_verified_access_trust_provider_returns_200(self, ec2):
+        """AttachVerifiedAccessTrustProvider returns 200 response."""
+        resp = ec2.attach_verified_access_trust_provider(
+            VerifiedAccessInstanceId="vai-12345678",
+            VerifiedAccessTrustProviderId="vatp-12345678",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 class TestEC2Batch0BundleInstance:

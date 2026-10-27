@@ -1,16 +1,19 @@
 {
   "service": "pipes",
+  "generated_at": "2026-10-26T04:02:25.314060+00:00",
+  "endpoint": "http://localhost:4786",
   "counts": {
     "working": 10,
     "needs_params": 0,
     "not_implemented": 0,
-    "500_error": 0
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "CreatePipe",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "DeletePipe",
@@ -30,7 +33,7 @@
     {
       "operation": "ListTagsForResource",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "StartPipe",
@@ -45,17 +48,17 @@
     {
       "operation": "TagResource",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UntagResource",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "UpdatePipe",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "implemented via required-only (NotFoundException)"
     }
   ]
 }

@@ -1,10 +1,13 @@
 {
   "service": "es",
+  "generated_at": "2026-10-25T19:43:20.345316+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 39,
+    "working": 51,
     "needs_params": 0,
-    "not_implemented": 11,
-    "500_error": 1
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -24,18 +27,18 @@
     },
     {
       "operation": "AuthorizeVpcEndpointAccess",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CancelDomainConfigChange",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CancelElasticsearchServiceSoftwareUpdate",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateElasticsearchDomain",
@@ -164,13 +167,13 @@
     },
     {
       "operation": "GetUpgradeHistory",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetUpgradeStatus",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListDomainNames",
@@ -194,8 +197,8 @@
     },
     {
       "operation": "ListPackagesForDomain",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListTags",
@@ -204,8 +207,8 @@
     },
     {
       "operation": "ListVpcEndpointAccess",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListVpcEndpoints",
@@ -224,8 +227,8 @@
     },
     {
       "operation": "RejectInboundCrossClusterSearchConnection",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "RemoveTags",
@@ -234,18 +237,18 @@
     },
     {
       "operation": "RevokeVpcEndpointAccess",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "StartElasticsearchServiceSoftwareUpdate",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateElasticsearchDomainConfig",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdatePackage",
@@ -259,8 +262,8 @@
     },
     {
       "operation": "UpgradeElasticsearchDomain",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     }
   ]
 }

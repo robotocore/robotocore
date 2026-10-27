@@ -1296,12 +1296,19 @@ class TestNetworkManagerRoutingPolicyAndMisc:
         resp = nm.start_organization_service_access_update(Action="ENABLE")
         assert "OrganizationStatus" in resp
 
-    def test_update_network_resource_metadata_not_found(self, nm, global_network):
-        """UpdateNetworkResourceMetadata with fake resource returns NotFoundException."""
-        gn_id = global_network["GlobalNetworkId"]
+    def test_update_network_resource_metadata_not_found(self, nm):
+        """UpdateNetworkResourceMetadata for an unknown global network returns
+        NotFoundException.
+
+        moto raises only when the global network itself is missing; a real
+        network answers 200 with the metadata echoed back. Modern botocore
+        percent-encodes the ResourceArn path member, so the request reaches
+        the real handler instead of falling into UpdateGlobalNetwork's
+        greedy URI capture (which older clients hit for the not-found case).
+        """
         with pytest.raises(ClientError) as exc:
             nm.update_network_resource_metadata(
-                GlobalNetworkId=gn_id,
+                GlobalNetworkId="global-network-fake123456",
                 ResourceArn="arn:aws:ec2:us-east-1:123456789012:vpc/vpc-nonexistent",
                 Metadata={"key": "val"},
             )

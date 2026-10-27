@@ -1,16 +1,19 @@
 {
   "service": "s3vectors",
+  "generated_at": "2026-10-25T19:44:38.779674+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 12,
-    "needs_params": 4,
-    "not_implemented": 3,
-    "500_error": 0
+    "working": 15,
+    "needs_params": 0,
+    "not_implemented": 4,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "CreateIndex",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "CreateVectorBucket",
@@ -30,17 +33,17 @@
     {
       "operation": "DeleteVectorBucketPolicy",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "DeleteVectors",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "GetIndex",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "GetVectorBucket",
@@ -50,17 +53,17 @@
     {
       "operation": "GetVectorBucketPolicy",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "GetVectors",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "ListIndexes",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "ListTagsForResource",
@@ -80,17 +83,17 @@
     {
       "operation": "PutVectorBucketPolicy",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "PutVectors",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "QueryVectors",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "TagResource",

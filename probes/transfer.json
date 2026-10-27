@@ -1,0 +1,369 @@
+{
+  "service": "transfer",
+  "generated_at": "2026-10-26T11:13:39.486442+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 71,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "CreateAccess",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "CreateAgreement",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "CreateConnector",
+      "status": "working",
+      "message": "OK (required-only fill)"
+    },
+    {
+      "operation": "CreateProfile",
+      "status": "working",
+      "message": "OK (required-only fill)"
+    },
+    {
+      "operation": "CreateServer",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateUser",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "CreateWebApp",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateWorkflow",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteAccess",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "DeleteAgreement",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "DeleteCertificate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteConnector",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteHostKey",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "DeleteProfile",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteServer",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "DeleteSshPublicKey",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "DeleteUser",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "DeleteWebApp",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteWebAppCustomization",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteWorkflow",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeAccess",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "DescribeAgreement",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "DescribeCertificate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeConnector",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeExecution",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeHostKey",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "DescribeProfile",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeSecurityPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeServer",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "DescribeUser",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "DescribeWebApp",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeWebAppCustomization",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeWorkflow",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ImportCertificate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ImportHostKey",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "ImportSshPublicKey",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "ListAccesses",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "ListAgreements",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "ListCertificates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListConnectors",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListExecutions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListFileTransferResults",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListHostKeys",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "ListProfiles",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSecurityPolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListServers",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListUsers",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "ListWebApps",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListWorkflows",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SendWorkflowStepState",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartDirectoryListing",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartFileTransfer",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartRemoteDelete",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartRemoteMove",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartServer",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "StopServer",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TestConnection",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "TestIdentityProvider",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateAccess",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "UpdateAgreement",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "UpdateCertificate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateConnector",
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateHostKey",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "UpdateProfile",
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateServer",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "UpdateUser",
+      "status": "working",
+      "message": "likely implemented (ServerNotFound: There are no transfer protocol-enabled servers with ID s-012)"
+    },
+    {
+      "operation": "UpdateWebApp",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateWebAppCustomization",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    }
+  ]
+}

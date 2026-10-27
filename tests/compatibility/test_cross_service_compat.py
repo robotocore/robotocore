@@ -7,6 +7,7 @@ differentiate us from basic Moto.
 
 import io
 import json
+import os
 import time
 import urllib.request
 import uuid
@@ -16,6 +17,13 @@ from datetime import UTC, datetime
 import pytest
 
 from tests.compatibility.conftest import make_client
+
+# The recorded ground truth ran against a twin on 4566; lambda code in this
+# suite sends its verification events to the twin under test via
+# SQS_ENDPOINT and the audit probes use its audit endpoint. Honor
+# ENDPOINT_URL so scratch-port twins stay testable (same contract as
+# test_lambda_integrations_compat.py).
+TWIN_URL = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
 
 
 def _make_lambda_zip(code: str) -> bytes:
@@ -143,8 +151,8 @@ class TestSNSToLambda:
             "def handler(event, ctx):\n"
             "    sqs = boto3.client(\n"
             '        "sqs",\n'
-            "        endpoint_url=os.environ.get(\n"
-            '            "SQS_ENDPOINT", "http://localhost:4566"),\n'
+            "        endpoint_url=os.environ[\n"
+            '            "SQS_ENDPOINT"],\n'
             '        region_name="us-east-1",\n'
             '        aws_access_key_id="testing",\n'
             '        aws_secret_access_key="testing")\n'
@@ -169,7 +177,7 @@ class TestSNSToLambda:
             Environment={
                 "Variables": {
                     "VERIFY_QUEUE_URL": queue_url,
-                    "SQS_ENDPOINT": "http://localhost:4566",
+                    "SQS_ENDPOINT": TWIN_URL,
                 }
             },
         )
@@ -293,8 +301,8 @@ class TestEventBridgeToLambda:
             "def handler(event, ctx):\n"
             "    sqs = boto3.client(\n"
             '        "sqs",\n'
-            "        endpoint_url=os.environ.get(\n"
-            '            "SQS_ENDPOINT", "http://localhost:4566"),\n'
+            "        endpoint_url=os.environ[\n"
+            '            "SQS_ENDPOINT"],\n'
             '        region_name="us-east-1",\n'
             '        aws_access_key_id="testing",\n'
             '        aws_secret_access_key="testing")\n'
@@ -312,7 +320,7 @@ class TestEventBridgeToLambda:
             Environment={
                 "Variables": {
                     "VERIFY_QUEUE_URL": queue_url,
-                    "SQS_ENDPOINT": "http://localhost:4566",
+                    "SQS_ENDPOINT": TWIN_URL,
                 }
             },
         )
@@ -380,8 +388,8 @@ class TestEventBridgeToLambda:
             '        "has_records": "Records" in event}\n'
             "    sqs = boto3.client(\n"
             '        "sqs",\n'
-            "        endpoint_url=os.environ.get(\n"
-            '            "SQS_ENDPOINT", "http://localhost:4566"),\n'
+            "        endpoint_url=os.environ[\n"
+            '            "SQS_ENDPOINT"],\n'
             '        region_name="us-east-1",\n'
             '        aws_access_key_id="testing",\n'
             '        aws_secret_access_key="testing")\n'
@@ -399,7 +407,7 @@ class TestEventBridgeToLambda:
             Environment={
                 "Variables": {
                     "VERIFY_QUEUE_URL": queue_url,
-                    "SQS_ENDPOINT": "http://localhost:4566",
+                    "SQS_ENDPOINT": TWIN_URL,
                 }
             },
         )
@@ -472,8 +480,8 @@ class TestEventBridgeToLambda:
             "def handler(event, ctx):\n"
             "    sqs = boto3.client(\n"
             '        "sqs",\n'
-            "        endpoint_url=os.environ.get(\n"
-            '            "SQS_ENDPOINT", "http://localhost:4566"),\n'
+            "        endpoint_url=os.environ[\n"
+            '            "SQS_ENDPOINT"],\n'
             '        region_name="us-east-1",\n'
             '        aws_access_key_id="testing",\n'
             '        aws_secret_access_key="testing")\n'
@@ -491,7 +499,7 @@ class TestEventBridgeToLambda:
             Environment={
                 "Variables": {
                     "VERIFY_QUEUE_URL": queue_url,
-                    "SQS_ENDPOINT": "http://localhost:4566",
+                    "SQS_ENDPOINT": TWIN_URL,
                 }
             },
         )
@@ -1327,8 +1335,8 @@ class TestS3ToLambdaNotification:
         "def handler(event, ctx):\n"
         "    sqs = boto3.client(\n"
         '        "sqs",\n'
-        "        endpoint_url=os.environ.get(\n"
-        '            "SQS_ENDPOINT", "http://localhost:4566"),\n'
+        "        endpoint_url=os.environ["
+        '            "SQS_ENDPOINT"],\n'
         '        region_name="us-east-1",\n'
         '        aws_access_key_id="testing",\n'
         '        aws_secret_access_key="testing")\n'
@@ -1361,7 +1369,7 @@ class TestS3ToLambdaNotification:
             Environment={
                 "Variables": {
                     "VERIFY_QUEUE_URL": queue_url,
-                    "SQS_ENDPOINT": "http://localhost:4566",
+                    "SQS_ENDPOINT": TWIN_URL,
                 }
             },
         )
@@ -1517,8 +1525,8 @@ class TestDynamoDBStreamsToLambdaESM:
         "def handler(event, ctx):\n"
         "    sqs = boto3.client(\n"
         '        "sqs",\n'
-        "        endpoint_url=os.environ.get(\n"
-        '            "SQS_ENDPOINT", "http://localhost:4566"),\n'
+        "        endpoint_url=os.environ["
+        '            "SQS_ENDPOINT"],\n'
         '        region_name="us-east-1",\n'
         '        aws_access_key_id="testing",\n'
         '        aws_secret_access_key="testing")\n'
@@ -1574,7 +1582,7 @@ class TestDynamoDBStreamsToLambdaESM:
             Environment={
                 "Variables": {
                     "VERIFY_QUEUE_URL": queue_url,
-                    "SQS_ENDPOINT": "http://localhost:4566",
+                    "SQS_ENDPOINT": TWIN_URL,
                 }
             },
         )
@@ -1745,8 +1753,8 @@ class TestSQSFifoLambdaESM:
             "import json, boto3, os\n"
             "def handler(event, ctx):\n"
             "    sqs = boto3.client('sqs',\n"
-            "        endpoint_url=os.environ.get("
-            "'SQS_ENDPOINT', 'http://localhost:4566'),\n"
+            "        endpoint_url=os.environ["
+            "'SQS_ENDPOINT'],\n"
             "        region_name='us-east-1',\n"
             "        aws_access_key_id='testing',\n"
             "        aws_secret_access_key='testing')\n"
@@ -1765,7 +1773,7 @@ class TestSQSFifoLambdaESM:
             Environment={
                 "Variables": {
                     "VERIFY_QUEUE_URL": verify_url,
-                    "SQS_ENDPOINT": "http://localhost:4566",
+                    "SQS_ENDPOINT": TWIN_URL,
                 }
             },
         )
@@ -1831,8 +1839,8 @@ class TestSQSFifoLambdaESM:
             "import json, boto3, os\n"
             "def handler(event, ctx):\n"
             "    sqs = boto3.client('sqs',\n"
-            "        endpoint_url=os.environ.get("
-            "'SQS_ENDPOINT', 'http://localhost:4566'),\n"
+            "        endpoint_url=os.environ["
+            "'SQS_ENDPOINT'],\n"
             "        region_name='us-east-1',\n"
             "        aws_access_key_id='testing',\n"
             "        aws_secret_access_key='testing')\n"
@@ -1851,7 +1859,7 @@ class TestSQSFifoLambdaESM:
             Environment={
                 "Variables": {
                     "VERIFY_QUEUE_URL": verify_url,
-                    "SQS_ENDPOINT": "http://localhost:4566",
+                    "SQS_ENDPOINT": TWIN_URL,
                 }
             },
         )
@@ -1920,8 +1928,8 @@ class TestESMBisectOnError:
             "import json, boto3, os\n"
             "def handler(event, ctx):\n"
             "    sqs = boto3.client('sqs',\n"
-            "        endpoint_url=os.environ.get("
-            "'SQS_ENDPOINT', 'http://localhost:4566'),\n"
+            "        endpoint_url=os.environ["
+            "'SQS_ENDPOINT'],\n"
             "        region_name='us-east-1',\n"
             "        aws_access_key_id='testing',\n"
             "        aws_secret_access_key='testing')\n"
@@ -1943,7 +1951,7 @@ class TestESMBisectOnError:
             Environment={
                 "Variables": {
                     "VERIFY_QUEUE_URL": verify_url,
-                    "SQS_ENDPOINT": "http://localhost:4566",
+                    "SQS_ENDPOINT": TWIN_URL,
                 }
             },
         )
@@ -2007,8 +2015,8 @@ class TestESMFilterCriteria:
             "import json, boto3, os\n"
             "def handler(event, ctx):\n"
             "    sqs = boto3.client('sqs',\n"
-            "        endpoint_url=os.environ.get("
-            "'SQS_ENDPOINT', 'http://localhost:4566'),\n"
+            "        endpoint_url=os.environ["
+            "'SQS_ENDPOINT'],\n"
             "        region_name='us-east-1',\n"
             "        aws_access_key_id='testing',\n"
             "        aws_secret_access_key='testing')\n"
@@ -2027,7 +2035,7 @@ class TestESMFilterCriteria:
             Environment={
                 "Variables": {
                     "VERIFY_QUEUE_URL": verify_url,
-                    "SQS_ENDPOINT": "http://localhost:4566",
+                    "SQS_ENDPOINT": TWIN_URL,
                 }
             },
         )
@@ -2094,8 +2102,8 @@ class TestESMFilterCriteria:
             "import json, boto3, os\n"
             "def handler(event, ctx):\n"
             "    sqs = boto3.client('sqs',\n"
-            "        endpoint_url=os.environ.get("
-            "'SQS_ENDPOINT', 'http://localhost:4566'),\n"
+            "        endpoint_url=os.environ["
+            "'SQS_ENDPOINT'],\n"
             "        region_name='us-east-1',\n"
             "        aws_access_key_id='testing',\n"
             "        aws_secret_access_key='testing')\n"
@@ -2114,7 +2122,7 @@ class TestESMFilterCriteria:
             Environment={
                 "Variables": {
                     "VERIFY_QUEUE_URL": verify_url,
-                    "SQS_ENDPOINT": "http://localhost:4566",
+                    "SQS_ENDPOINT": TWIN_URL,
                 }
             },
         )
@@ -2182,8 +2190,8 @@ class TestESMPartialBatchFailure:
             "import json, boto3, os\n"
             "def handler(event, ctx):\n"
             "    sqs = boto3.client('sqs',\n"
-            "        endpoint_url=os.environ.get("
-            "'SQS_ENDPOINT', 'http://localhost:4566'),\n"
+            "        endpoint_url=os.environ["
+            "'SQS_ENDPOINT'],\n"
             "        region_name='us-east-1',\n"
             "        aws_access_key_id='testing',\n"
             "        aws_secret_access_key='testing')\n"
@@ -2208,7 +2216,7 @@ class TestESMPartialBatchFailure:
             Environment={
                 "Variables": {
                     "VERIFY_QUEUE_URL": verify_url,
-                    "SQS_ENDPOINT": "http://localhost:4566",
+                    "SQS_ENDPOINT": TWIN_URL,
                 }
             },
         )
@@ -2496,7 +2504,7 @@ class TestEventBridgeToFirehose:
         time.sleep(2)
 
         # Verify via audit endpoint
-        resp = urllib.request.urlopen("http://localhost:4566/_robotocore/audit")
+        resp = urllib.request.urlopen(f"{TWIN_URL}/_robotocore/audit")
         audit = json.loads(resp.read())
         entries = audit.get("entries", audit.get("calls", []))
         # Check that EventBridge PutEvents was logged
@@ -2718,7 +2726,7 @@ class TestEventBridgeSimulatedTargets:
         time.sleep(1)
 
         # Verify via audit endpoint
-        resp = urllib.request.urlopen("http://localhost:4566/_robotocore/audit")
+        resp = urllib.request.urlopen(f"{TWIN_URL}/_robotocore/audit")
         audit = json.loads(resp.read())
         entries = audit.get("entries", audit.get("calls", []))
         found = any("PutEvents" in str(entry) for entry in entries)

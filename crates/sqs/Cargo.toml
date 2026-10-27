@@ -1,0 +1,19 @@
+[package]
+name = "sqs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Native SQS service implementation for robotocore-rust"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+parking_lot = "0.12"
+bytes = "1.0"
+md5 = "0.7"
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }

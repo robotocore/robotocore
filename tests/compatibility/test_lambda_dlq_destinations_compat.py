@@ -7,6 +7,7 @@ Tests async invocation flows:
 
 import io
 import json
+import os
 import time
 import uuid
 import zipfile
@@ -14,6 +15,11 @@ import zipfile
 import pytest
 
 from tests.compatibility.conftest import make_client
+
+# Lambda code reaches the twin under test over the wire; honor
+# ENDPOINT_URL so scratch-port twins stay testable (same contract as
+# test_lambda_esm_trigger_compat.py).
+TWIN_URL = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
 
 REGION = "us-east-1"
 ACCOUNT_ID = "123456789012"
@@ -352,22 +358,24 @@ class TestLambdaDestinations:
         q = sqs.create_queue(QueueName=proof_queue_name)
         queue_url = q["QueueUrl"]
 
-        # Target function B: writes a proof record to SQS (using internal store)
+        # Target function B: writes a proof record to SQS via boto3. The
+        # original recording reached into the python twin's in-process store
+        # (robotocore.services.sqs.provider); the rust twin executes lambdas
+        # out-of-process, so the wire API is the portable channel.
         code_b = (
-            "import json, hashlib, uuid\n"
+            "import json, os\n"
+            "import boto3\n"
             "def handler(event, ctx):\n"
-            "    from robotocore.services.sqs.provider import _get_store\n"
-            "    from robotocore.services.sqs.models import SqsMessage\n"
-            '    store = _get_store("us-east-1", "123456789012")\n'
-            f'    queue = store.get_queue("{proof_queue_name}")\n'
-            "    if queue:\n"
-            "        cond = event.get('requestContext', {}).get('condition')\n"
-            '        body = json.dumps({"from_b": True, "condition": cond})\n'
-            "        md5 = hashlib.md5(body.encode()).hexdigest()\n"
-            "        msg = SqsMessage(\n"
-            "            message_id=str(uuid.uuid4()),\n"
-            "            body=body, md5_of_body=md5)\n"
-            "        queue.put(msg)\n"
+            "    endpoint = os.environ.get(\n"
+            '        "ROBOTOCORE_ENDPOINT", "http://localhost:4566")\n'
+            "    sqs = boto3.client(\n"
+            '        "sqs", endpoint_url=endpoint, region_name="us-east-1",\n'
+            '        aws_access_key_id="123456789012", aws_secret_access_key="test")\n'
+            f"    queue_url = sqs.get_queue_url(QueueName=\"{proof_queue_name}\")[\"QueueUrl\"]\n"
+            "    cond = event.get('requestContext', {}).get('condition')\n"
+            '    sqs.send_message(\n'
+            "        QueueUrl=queue_url,\n"
+            '        MessageBody=json.dumps({"from_b": True, "condition": cond}))\n'
             '    return {"processed": True}\n'
         )
         fn_b_arn = f"arn:aws:lambda:{REGION}:{ACCOUNT_ID}:function:{fn_b_name}"
@@ -378,6 +386,9 @@ class TestLambdaDestinations:
             Role=role,
             Handler="lambda_function.handler",
             Code={"ZipFile": _make_zip(code_b)},
+            Environment={
+                "Variables": {"ROBOTOCORE_ENDPOINT": TWIN_URL}
+            },
         )
 
         # Source function A: succeeds

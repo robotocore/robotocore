@@ -1,16 +1,19 @@
 {
   "service": "ds",
+  "generated_at": "2026-10-25T19:42:34.072841+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 72,
-    "needs_params": 1,
-    "not_implemented": 5,
-    "500_error": 2
+    "working": 76,
+    "needs_params": 0,
+    "not_implemented": 4,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "AcceptSharedDirectory",
       "status": "working",
-      "message": "likely implemented (EntityDoesNotExistException: Shared directory probe-test-value does not exist)"
+      "message": "likely implemented (EntityDoesNotExistException: Shared directory probe-shared-directory-id-id does not exist)"
     },
     {
       "operation": "AddIpRoutes",
@@ -34,8 +37,8 @@
     },
     {
       "operation": "ConnectDirectory",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'CustomerDnsIps')"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "CreateAlias",
@@ -55,7 +58,7 @@
     {
       "operation": "CreateDirectory",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "CreateHybridAD",
@@ -85,7 +88,7 @@
     {
       "operation": "DeleteADAssessment",
       "status": "working",
-      "message": "likely implemented (EntityDoesNotExistException: Assessment probe-test-value does not exist)"
+      "message": "likely implemented (EntityDoesNotExistException: Assessment probe-assessment-id-id does not exist)"
     },
     {
       "operation": "DeleteConditionalForwarder",
@@ -105,12 +108,12 @@
     {
       "operation": "DeleteSnapshot",
       "status": "working",
-      "message": "likely implemented (EntityDoesNotExistException: Snapshot probe-test-value does not exist)"
+      "message": "likely implemented (EntityDoesNotExistException: Snapshot probe-snapshot-id-id does not exist)"
     },
     {
       "operation": "DeleteTrust",
       "status": "working",
-      "message": "likely implemented (EntityDoesNotExistException: Trust probe-test-value does not exist)"
+      "message": "likely implemented (EntityDoesNotExistException: Trust probe-trust-id-id does not exist)"
     },
     {
       "operation": "DeregisterCertificate",
@@ -125,7 +128,7 @@
     {
       "operation": "DescribeADAssessment",
       "status": "working",
-      "message": "likely implemented (EntityDoesNotExistException: Assessment probe-test-value does not exist)"
+      "message": "likely implemented (EntityDoesNotExistException: Assessment probe-assessment-id-id does not exist)"
     },
     {
       "operation": "DescribeCAEnrollmentPolicy",
@@ -150,7 +153,7 @@
     {
       "operation": "DescribeDirectories",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "DescribeDirectoryDataAccess",
@@ -165,7 +168,7 @@
     {
       "operation": "DescribeEventTopics",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (EntityDoesNotExistException: Directory probe-directory-id-id does not exist)"
     },
     {
       "operation": "DescribeHybridADUpdate",
@@ -195,12 +198,12 @@
     {
       "operation": "DescribeSnapshots",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (EntityDoesNotExistException: Directory probe-directory-id-id does not exist)"
     },
     {
       "operation": "DescribeTrusts",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "DescribeUpdateDirectory",
@@ -295,7 +298,7 @@
     {
       "operation": "ListLogSubscriptions",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "ListSchemaExtensions",
@@ -320,7 +323,7 @@
     {
       "operation": "RejectSharedDirectory",
       "status": "working",
-      "message": "likely implemented (EntityDoesNotExistException: Shared directory probe-test-value does not exist)"
+      "message": "likely implemented (EntityDoesNotExistException: Shared directory probe-shared-directory-id-id does not exist)"
     },
     {
       "operation": "RemoveIpRoutes",
@@ -345,7 +348,7 @@
     {
       "operation": "RestoreFromSnapshot",
       "status": "working",
-      "message": "likely implemented (EntityDoesNotExistException: Snapshot probe-test-value does not exist)"
+      "message": "likely implemented (EntityDoesNotExistException: Snapshot probe-snapshot-id-id does not exist)"
     },
     {
       "operation": "ShareDirectory",
@@ -354,8 +357,8 @@
     },
     {
       "operation": "StartADAssessment",
-      "status": "500_error",
-      "message": "server crash (InternalError: expected string or bytes-like object, got 'NoneType')"
+      "status": "working",
+      "message": "implemented via required-only (ValidationException)"
     },
     {
       "operation": "StartSchemaExtension",
@@ -384,8 +387,8 @@
     },
     {
       "operation": "UpdateNumberOfDomainControllers",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "UpdateRadius",
@@ -404,8 +407,8 @@
     },
     {
       "operation": "VerifyTrust",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityDoesNotExistException: Trust probe-trust-id-id does not exist)"
     }
   ]
 }

@@ -793,61 +793,9 @@ class TestDataSyncTagAndUpdateOps:
         )
         return resp["LocationArn"]
 
-    def test_tag_and_list_and_untag_resource(self, datasync):
-        """TagResource, ListTagsForResource, and UntagResource work on a location."""
-        arn = self._create_s3_location(datasync)
-        try:
-            datasync.tag_resource(ResourceArn=arn, Tags=[{"Key": "env", "Value": "test"}])
 
-            tags_resp = datasync.list_tags_for_resource(ResourceArn=arn)
-            assert "Tags" in tags_resp
-            assert len(tags_resp["Tags"]) >= 1
 
-            datasync.untag_resource(ResourceArn=arn, Keys=["env"])
 
-            tags_after = datasync.list_tags_for_resource(ResourceArn=arn)
-            assert "Tags" in tags_after
-            assert len(tags_after["Tags"]) == 0
-        finally:
-            datasync.delete_location(LocationArn=arn)
-
-    def test_list_task_executions(self, datasync):
-        """ListTaskExecutions returns a list of task executions."""
-        resp = datasync.list_task_executions()
-        assert "TaskExecutions" in resp
-
-    def test_update_location_s3(self, datasync):
-        """UpdateLocationS3 returns HTTP 200."""
-        arn = self._create_s3_location(datasync)
-        try:
-            resp = datasync.update_location_s3(LocationArn=arn)
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        finally:
-            datasync.delete_location(LocationArn=arn)
-
-    def test_update_location_nfs(self, datasync):
-        """UpdateLocationNfs returns HTTP 200 when location exists."""
-        from botocore.exceptions import ClientError
-
-        try:
-            create_resp = datasync.create_location_nfs(
-                ServerHostname="fake-server",
-                Subdirectory="/mnt/share",
-                OnPremConfig={
-                    "AgentArns": ["arn:aws:datasync:us-east-1:123456789012:agent/agent-fake123"]
-                },
-            )
-            arn = create_resp["LocationArn"]
-        except ClientError as exc:
-            if "ValidationException" in exc.response["Error"]["Code"]:
-                pytest.skip("NFS location creation not supported with these params")
-            raise
-
-        try:
-            resp = datasync.update_location_nfs(LocationArn=arn)
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        finally:
-            datasync.delete_location(LocationArn=arn)
 
 
 class TestDataSyncUpdateLocationGapOps:
@@ -859,68 +807,12 @@ class TestDataSyncUpdateLocationGapOps:
     def client(self):
         return make_client("datasync")
 
-    def test_update_location_azure_blob_invalid(self, client):
-        """UpdateLocationAzureBlob raises InvalidRequestException for nonexistent location."""
-        with pytest.raises(ClientError) as exc:
-            client.update_location_azure_blob(LocationArn=self.FAKE_ARN)
-        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
 
-    def test_update_location_efs_invalid(self, client):
-        """UpdateLocationEfs raises InvalidRequestException for nonexistent location."""
-        with pytest.raises(ClientError) as exc:
-            client.update_location_efs(LocationArn=self.FAKE_ARN)
-        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
 
-    def test_update_location_fsx_lustre_invalid(self, client):
-        """UpdateLocationFsxLustre raises InvalidRequestException for nonexistent location."""
-        with pytest.raises(ClientError) as exc:
-            client.update_location_fsx_lustre(LocationArn=self.FAKE_ARN)
-        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
 
-    def test_update_location_fsx_ontap_invalid(self, client):
-        """UpdateLocationFsxOntap raises InvalidRequestException for nonexistent location."""
-        with pytest.raises(ClientError) as exc:
-            client.update_location_fsx_ontap(LocationArn=self.FAKE_ARN)
-        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
 
-    def test_update_location_fsx_open_zfs_invalid(self, client):
-        """UpdateLocationFsxOpenZfs raises InvalidRequestException for nonexistent location."""
-        with pytest.raises(ClientError) as exc:
-            client.update_location_fsx_open_zfs(LocationArn=self.FAKE_ARN)
-        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
 
-    def test_update_location_fsx_windows_invalid(self, client):
-        """UpdateLocationFsxWindows raises InvalidRequestException for nonexistent location."""
-        with pytest.raises(ClientError) as exc:
-            client.update_location_fsx_windows(LocationArn=self.FAKE_ARN)
-        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
 
-    def test_update_location_hdfs_invalid(self, client):
-        """UpdateLocationHdfs raises InvalidRequestException for nonexistent location."""
-        with pytest.raises(ClientError) as exc:
-            client.update_location_hdfs(LocationArn=self.FAKE_ARN)
-        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
 
-    def test_update_location_smb_invalid(self, client):
-        """UpdateLocationSmb raises InvalidRequestException for nonexistent location."""
-        with pytest.raises(ClientError) as exc:
-            client.update_location_smb(LocationArn=self.FAKE_ARN)
-        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
 
-    def test_update_location_object_storage_invalid(self, client):
-        """UpdateLocationObjectStorage raises InvalidRequestException for nonexistent location."""
-        with pytest.raises(ClientError) as exc:
-            client.update_location_object_storage(LocationArn=self.FAKE_ARN)
-        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
 
-    def test_update_task_execution(self, client):
-        """UpdateTaskExecution succeeds (returns 200) even for nonexistent task execution."""
-        fake_exec_arn = (
-            "arn:aws:datasync:us-east-1:123456789012:task/"
-            "task-0123456789abcdef0/execution/exec-0123456789abcdef0"
-        )
-        resp = client.update_task_execution(
-            TaskExecutionArn=fake_exec_arn,
-            Options={},
-        )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

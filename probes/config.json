@@ -1,26 +1,29 @@
 {
   "service": "config",
+  "generated_at": "2026-10-25T19:42:16.481696+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 77,
-    "needs_params": 9,
-    "not_implemented": 10,
-    "500_error": 1
+    "working": 97,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "AssociateResourceTypes",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchGetAggregateResourceConfig",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchGetResourceConfig",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteAggregationAuthorization",
@@ -30,57 +33,57 @@
     {
       "operation": "DeleteConfigRule",
       "status": "working",
-      "message": "likely implemented (NoSuchConfigRuleException: The ConfigRule provided in the request is invalid. Please ch)"
+      "message": "likely implemented (NoSuchConfigRuleException: Config rule probe-test-value does not exist.)"
     },
     {
       "operation": "DeleteConfigurationAggregator",
       "status": "working",
-      "message": "likely implemented (NoSuchConfigurationAggregatorException: The configuration aggregator does not exist. Check the confi)"
+      "message": "OK"
     },
     {
       "operation": "DeleteConfigurationRecorder",
       "status": "working",
-      "message": "likely implemented (NoSuchConfigurationRecorderException: Cannot find configuration recorder with the specified name ')"
+      "message": "OK"
     },
     {
       "operation": "DeleteConformancePack",
       "status": "working",
-      "message": "likely implemented (NoSuchConformancePackException: One or more conformance packs with specified names are not p)"
+      "message": "likely implemented (NoSuchConformancePackException: Conformance pack probe-test-value does not exist)"
     },
     {
       "operation": "DeleteDeliveryChannel",
       "status": "working",
-      "message": "likely implemented (NoSuchDeliveryChannelException: Cannot find delivery channel with specified name 'probe-test)"
+      "message": "OK"
     },
     {
       "operation": "DeleteEvaluationResults",
       "status": "working",
-      "message": "likely implemented (NoSuchConfigRuleException: The ConfigRule 'probe-test-value' provided in the request is)"
+      "message": "likely implemented (NoSuchConfigRuleException: Config rule probe-test-value does not exist.)"
     },
     {
       "operation": "DeleteOrganizationConfigRule",
       "status": "working",
-      "message": "likely implemented (NoSuchOrganizationConfigRuleException: Could not find an OrganizationConfigRule for given request w)"
+      "message": "likely implemented (NoSuchOrganizationConfigRuleException: Organization config rule probe-test-value does not exist)"
     },
     {
       "operation": "DeleteOrganizationConformancePack",
       "status": "working",
-      "message": "likely implemented (NoSuchOrganizationConformancePackException: Could not find an OrganizationConformancePack for given requ)"
+      "message": "likely implemented (NoSuchOrganizationConformancePackException: Organization conformance pack probe-test-value does not exis)"
     },
     {
       "operation": "DeletePendingAggregationRequest",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteRemediationConfiguration",
       "status": "working",
-      "message": "likely implemented (NoSuchRemediationConfigurationException: No remediation configuration found for the config rule: 'pro)"
+      "message": "OK"
     },
     {
       "operation": "DeleteRemediationExceptions",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteResourceConfig",
@@ -90,32 +93,32 @@
     {
       "operation": "DeleteRetentionConfiguration",
       "status": "working",
-      "message": "likely implemented (NoSuchRetentionConfigurationException: Cannot find retention configuration with the specified name )"
+      "message": "OK"
     },
     {
       "operation": "DeleteServiceLinkedConfigurationRecorder",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteStoredQuery",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeliverConfigSnapshot",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeAggregateComplianceByConfigRules",
       "status": "working",
-      "message": "likely implemented (NoSuchConfigurationAggregatorException: The configuration aggregator does not exist. Check the confi)"
+      "message": "OK"
     },
     {
       "operation": "DescribeAggregateComplianceByConformancePacks",
       "status": "working",
-      "message": "likely implemented (NoSuchConfigurationAggregatorException: The configuration aggregator does not exist. Check the confi)"
+      "message": "OK"
     },
     {
       "operation": "DescribeAggregationAuthorizations",
@@ -140,17 +143,17 @@
     {
       "operation": "DescribeConfigRules",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (NoSuchConfigRuleException: Config rule probe-test-value does not exist)"
     },
     {
       "operation": "DescribeConfigurationAggregatorSourcesStatus",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchConfigurationAggregatorException: The configuration aggregator with name probe-test-value does)"
     },
     {
       "operation": "DescribeConfigurationAggregators",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (NoSuchConfigurationAggregatorException: The configuration aggregator with name probe-test-value does)"
     },
     {
       "operation": "DescribeConfigurationRecorderStatus",
@@ -165,7 +168,7 @@
     {
       "operation": "DescribeConformancePackCompliance",
       "status": "working",
-      "message": "likely implemented (NoSuchConformancePackException: One or more conformance packs with specified names are not p)"
+      "message": "likely implemented (NoSuchConformancePackException: Conformance pack probe-test-value does not exist)"
     },
     {
       "operation": "DescribeConformancePackStatus",
@@ -175,7 +178,7 @@
     {
       "operation": "DescribeConformancePacks",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (NoSuchConformancePackException: Conformance pack probe-test-value does not exist.)"
     },
     {
       "operation": "DescribeDeliveryChannelStatus",
@@ -195,7 +198,7 @@
     {
       "operation": "DescribeOrganizationConfigRules",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (NoSuchOrganizationConfigRuleException: One or more organization config rules does not exist)"
     },
     {
       "operation": "DescribeOrganizationConformancePackStatuses",
@@ -205,7 +208,7 @@
     {
       "operation": "DescribeOrganizationConformancePacks",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (NoSuchOrganizationConformancePackException: One or more organization conformance packs does not exist)"
     },
     {
       "operation": "DescribePendingAggregationRequests",
@@ -234,33 +237,33 @@
     },
     {
       "operation": "DisassociateResourceTypes",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetAggregateComplianceDetailsByConfigRule",
       "status": "working",
-      "message": "likely implemented (NoSuchConfigurationAggregatorException: The configuration aggregator does not exist. Check the confi)"
+      "message": "OK"
     },
     {
       "operation": "GetAggregateConfigRuleComplianceSummary",
       "status": "working",
-      "message": "likely implemented (NoSuchConfigurationAggregatorException: The configuration aggregator does not exist. Check the confi)"
+      "message": "OK"
     },
     {
       "operation": "GetAggregateConformancePackComplianceSummary",
       "status": "working",
-      "message": "likely implemented (NoSuchConfigurationAggregatorException: The configuration aggregator does not exist. Check the confi)"
+      "message": "OK"
     },
     {
       "operation": "GetAggregateDiscoveredResourceCounts",
       "status": "working",
-      "message": "likely implemented (NoSuchConfigurationAggregatorException: The configuration aggregator does not exist. Check the confi)"
+      "message": "OK"
     },
     {
       "operation": "GetAggregateResourceConfig",
       "status": "working",
-      "message": "likely implemented (NoSuchConfigurationAggregatorException: The configuration aggregator does not exist. Check the confi)"
+      "message": "OK"
     },
     {
       "operation": "GetComplianceDetailsByConfigRule",
@@ -285,12 +288,12 @@
     {
       "operation": "GetConformancePackComplianceDetails",
       "status": "working",
-      "message": "likely implemented (NoSuchConformancePackException: One or more conformance packs with specified names are not p)"
+      "message": "likely implemented (NoSuchConformancePackException: Conformance pack probe-test-value does not exist)"
     },
     {
       "operation": "GetConformancePackComplianceSummary",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (NoSuchConformancePackException: Conformance pack Some(\"probe-test-value\") does not exist)"
     },
     {
       "operation": "GetCustomRulePolicy",
@@ -305,22 +308,22 @@
     {
       "operation": "GetOrganizationConfigRuleDetailedStatus",
       "status": "working",
-      "message": "likely implemented (NoSuchOrganizationConfigRuleException: One or more organization config rules with specified names a)"
+      "message": "likely implemented (NoSuchOrganizationConfigRuleException: Organization config rule probe-test-value does not exist)"
     },
     {
       "operation": "GetOrganizationConformancePackDetailedStatus",
       "status": "working",
-      "message": "likely implemented (NoSuchOrganizationConformancePackException: One or more organization conformance packs with specified na)"
+      "message": "likely implemented (NoSuchOrganizationConformancePackException: Organization conformance pack probe-test-value does not exis)"
     },
     {
       "operation": "GetOrganizationCustomRulePolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetResourceConfigHistory",
-      "status": "not_implemented",
-      "message": "not implemented (ResourceNotDiscoveredException)"
+      "status": "working",
+      "message": "likely implemented (ResourceNotDiscoveredException: Resource probe-resource-id-id of resourceType:AWS::EC2::Cust)"
     },
     {
       "operation": "GetResourceEvaluationSummary",
@@ -335,7 +338,7 @@
     {
       "operation": "ListAggregateDiscoveredResources",
       "status": "working",
-      "message": "likely implemented (NoSuchConfigurationAggregatorException: The configuration aggregator does not exist. Check the confi)"
+      "message": "OK"
     },
     {
       "operation": "ListConfigurationRecorders",
@@ -365,7 +368,7 @@
     {
       "operation": "ListTagsForResource",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "PutAggregationAuthorization",
@@ -374,38 +377,38 @@
     },
     {
       "operation": "PutConfigRule",
-      "status": "500_error",
-      "message": "server crash (InternalError: 400 Bad Request: {\"__type\": \"InvalidParameterValueException\")"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutConfigurationAggregator",
       "status": "working",
-      "message": "implemented (InvalidParameterValueException)"
+      "message": "OK"
     },
     {
       "operation": "PutConfigurationRecorder",
       "status": "working",
-      "message": "likely implemented (InvalidConfigurationRecorderNameException: The configuration recorder name 'None' is not valid, blank s)"
+      "message": "OK"
     },
     {
       "operation": "PutConformancePack",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "PutDeliveryChannel",
       "status": "working",
-      "message": "likely implemented (NoAvailableConfigurationRecorderException: Configuration recorder is not available to put delivery chan)"
+      "message": "OK"
     },
     {
       "operation": "PutEvaluations",
       "status": "working",
-      "message": "implemented (InvalidParameterValueException)"
+      "message": "OK"
     },
     {
       "operation": "PutExternalEvaluation",
       "status": "working",
-      "message": "likely implemented (NoSuchConfigRuleException: The ConfigRule 'probe-test-value' provided in the request is)"
+      "message": "OK"
     },
     {
       "operation": "PutOrganizationConfigRule",
@@ -415,7 +418,7 @@
     {
       "operation": "PutOrganizationConformancePack",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "PutRemediationConfigurations",
@@ -424,8 +427,8 @@
     },
     {
       "operation": "PutRemediationExceptions",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutResourceConfig",
@@ -434,13 +437,13 @@
     },
     {
       "operation": "PutRetentionConfiguration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutServiceLinkedConfigurationRecorder",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutStoredQuery",
@@ -449,8 +452,8 @@
     },
     {
       "operation": "SelectAggregateResourceConfig",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "SelectResourceConfig",
@@ -465,32 +468,32 @@
     {
       "operation": "StartConfigurationRecorder",
       "status": "working",
-      "message": "likely implemented (NoSuchConfigurationRecorderException: Cannot find configuration recorder with the specified name ')"
+      "message": "OK"
     },
     {
       "operation": "StartRemediationExecution",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
-    },
-    {
-      "operation": "StartResourceEvaluation",
       "status": "working",
       "message": "OK"
     },
     {
+      "operation": "StartResourceEvaluation",
+      "status": "working",
+      "message": "OK (required-only fill)"
+    },
+    {
       "operation": "StopConfigurationRecorder",
       "status": "working",
-      "message": "likely implemented (NoSuchConfigurationRecorderException: Cannot find configuration recorder with the specified name ')"
+      "message": "OK"
     },
     {
       "operation": "TagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     }
   ]
 }

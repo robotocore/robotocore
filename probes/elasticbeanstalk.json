@@ -1,10 +1,13 @@
 {
   "service": "elasticbeanstalk",
+  "generated_at": "2026-10-26T03:43:03.874902+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 34,
+    "working": 46,
     "needs_params": 0,
-    "not_implemented": 11,
-    "500_error": 1
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -19,13 +22,13 @@
     },
     {
       "operation": "AssociateEnvironmentOperationsRole",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CheckDNSAvailability",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ComposeEnvironments",
@@ -59,8 +62,8 @@
     },
     {
       "operation": "CreateStorageLocation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteApplication",
@@ -69,8 +72,8 @@
     },
     {
       "operation": "DeleteApplicationVersion",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteConfigurationTemplate",
@@ -79,8 +82,8 @@
     },
     {
       "operation": "DeleteEnvironmentConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeletePlatformVersion",
@@ -154,8 +157,8 @@
     },
     {
       "operation": "DisassociateEnvironmentOperationsRole",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListAvailableSolutionStacks",
@@ -189,8 +192,8 @@
     },
     {
       "operation": "RestartAppServer",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "RetrieveEnvironmentInfo",
@@ -199,23 +202,23 @@
     },
     {
       "operation": "SwapEnvironmentCNAMEs",
-      "status": "500_error",
-      "message": "exception: 'ElasticBeanstalk' object has no attribute 'swap_environment"
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
     },
     {
       "operation": "UpdateApplication",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
     },
     {
       "operation": "UpdateApplicationResourceLifecycle",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
     },
     {
       "operation": "UpdateApplicationVersion",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
     },
     {
       "operation": "UpdateConfigurationTemplate",
@@ -234,8 +237,8 @@
     },
     {
       "operation": "ValidateConfigurationSettings",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
     }
   ]
 }

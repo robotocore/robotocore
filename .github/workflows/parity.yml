@@ -1,4 +1,4 @@
-name: AWS Parity
+name: AWS Parity (rust-only)
 
 on:
   push:
@@ -12,50 +12,24 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  parity-tests:
-    name: "AWS parity tests"
+  parity-rust:
+    name: "Parity harness (rust-only)"
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 40
+    env:
+      RUST_PORT: "4566"
+      LOG_PREFIX: parity
     steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: recursive
+      - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-      - run: uv sync --extra dev
-      - name: Start robotocore
-        run: |
-          ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
-            uv run python -m robotocore.main > .robotocore.log 2>&1 &
-          SERVER_PID=$!
-          for i in $(seq 1 60); do
-            if ! kill -0 $SERVER_PID 2>/dev/null; then
-              echo "Server process exited early"
-              cat .robotocore.log 2>/dev/null || true
-              exit 1
-            fi
-            curl -sf http://localhost:4566/_robotocore/health && break
-            sleep 1
-          done
-          curl -f http://localhost:4566/_robotocore/health || {
-            echo "=== Server logs ==="
-            cat .robotocore.log 2>/dev/null || true
-            exit 1
-          }
-      - name: Run parity tests
-        env:
-          AWS_ENDPOINT_URL: http://localhost:4566
-        run: uv run pytest tests/parity/ -v --tb=short --junitxml=results-parity.xml
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: results-parity
-          path: results-parity.xml
-      - name: Upload server log
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: server-log-parity
-          path: .robotocore.log
+      - name: Install test environment
+        run: uv sync
+      - name: Start rust server (rotocore native)
+        run: LOG_PREFIX=parity bash scripts/start_parity_servers.sh
+      # Exit code 2 = expectations drift vs .parity/expectations_current.json
+      # (any non-zero exit fails the job). Promote new baselines locally with
+      # `--update-expectations` from a clean run, never in CI.
+      - name: Run parity harness (rust-only)
+        run: uv run python scripts/harness/parity.py --rust-only
