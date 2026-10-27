@@ -79,9 +79,11 @@ struct State {
     /// (session id, username, pool id) — moto's `sessions` dict, filled when
     /// an auth flow yields a challenge and consumed by RespondToAuthChallenge.
     sessions: Vec<(String, String, String)>,
-    /// (refresh token, pool id, username) — refresh-grant tracking so
-    /// GetTokensFromRefreshToken can re-mint a live session.
-    refresh_tokens: Vec<(String, String, String)>,
+    /// (refresh token, pool id, username, origin_jti) — refresh-grant
+    /// tracking so GetTokensFromRefreshToken can re-mint a live session;
+    /// the grant's origin_jti reappears in the re-minted tokens (moto
+    /// stores `(client_id, username, origin_jti)`, fork models.py:613-618).
+    refresh_tokens: Vec<(String, String, String, String)>,
 }
 
 const COGNITO_TOTP_MFA_SECRET: &str = "asdfasdfasdf";
@@ -363,27 +365,45 @@ fn state_signer<'a>(s: &'a State, pool_id: &str) -> Option<(&'a str, &'a rsa::Rs
     pool_ref(s, pool_id).and_then(pool_signer)
 }
 
-/// The JWT a Cognito pool issues: same claim shape the twin has always
-/// minted (sub/iss/aud/token_use/exp/iat/auth_time + extras), now
-/// RS256-signed with `kid` in the header when the pool carries a key.
+/// The JWT a Cognito pool issues: moto's `create_jwt` claim set (fork
+/// models.py:536-565), RS256-signed with `kid` in the header when the pool
+/// carries a key. The audience claim is `client_id` on access tokens and
+/// `aud` on id tokens — aws-jwt-verify's AccessTokenVerifier requires
+/// `client_id` — and both carry `jti`; the flavour's extra claims
+/// (`username`/`scope`/`origin_jti`, `cognito:username`) ride via `extra`.
 fn jwt(
     issuer: &str,
     sub: &str,
-    audience: &str,
+    client_id: &str,
     token_use: &str,
     extra: Option<&Value>,
     signer: Option<(&str, &rsa::RsaPrivateKey)>,
 ) -> String {
     let now = chrono::Utc::now().timestamp();
-    let mut payload = json!({
-        "sub": sub,
-        "iss": issuer,
-        "aud": audience,
-        "token_use": token_use,
-        "exp": now + 3600,
-        "iat": now,
-        "auth_time": now,
-    });
+    let mut payload = match token_use {
+        // access tokens carry `client_id`, id tokens `aud` — each with an
+        // individually minted `jti` (fork models.py:542, 550).
+        "access" => json!({
+            "sub": sub,
+            "iss": issuer,
+            "client_id": client_id,
+            "token_use": token_use,
+            "exp": now + 3600,
+            "iat": now,
+            "auth_time": now,
+            "jti": uuid::Uuid::new_v4().to_string(),
+        }),
+        _ => json!({
+            "sub": sub,
+            "iss": issuer,
+            "aud": client_id,
+            "token_use": token_use,
+            "exp": now + 3600,
+            "iat": now,
+            "auth_time": now,
+            "jti": uuid::Uuid::new_v4().to_string(),
+        }),
+    };
     if let (Some(e), Some(m)) = (extra, payload.as_object_mut()) {
         if let Some(obj) = e.as_object() {
             for (k, v) in obj.iter() {
@@ -1212,29 +1232,103 @@ fn confirm_sign_up(s: &mut State, p: &Value, _op: &str) -> Response {
     ok_json(&json!({}))
 }
 
-fn issue_tokens(
+/// Whether UsernameAttributes keys users on email (fork models.py:547-558):
+/// email-keyed pools name token claims by the user's sub instead of the
+/// username, and carry the email address on the id token.
+fn username_attributes_email(s: &State, pool_id: &str) -> bool {
+    pool_ref(s, pool_id)
+        .and_then(|pl| pl.pool["UsernameAttributes"].as_array())
+        .is_some_and(|attrs| attrs.iter().any(|a| a.as_str() == Some("email")))
+}
+
+/// moto's create_access_token (fork models.py:620-641): the grant's
+/// origin_jti and moto's fixed user-admin scope ride the standard claims;
+/// email-keyed pools name the user by sub instead of the username.
+#[allow(clippy::too_many_arguments)]
+fn create_access_token(
     s: &State,
     pool_id: &str,
     issuer: &str,
     sub: &str,
     client_id: &str,
     username: &str,
+    origin_jti: &str,
+) -> String {
+    let username_claim = if username_attributes_email(s, pool_id) {
+        sub
+    } else {
+        username
+    };
+    jwt(
+        issuer,
+        sub,
+        client_id,
+        "access",
+        Some(&json!({
+            "origin_jti": origin_jti,
+            "scope": "aws.cognito.signin.user.admin",
+            "username": username_claim,
+        })),
+        state_signer(s, pool_id),
+    )
+}
+
+/// moto's create_id_token (fork models.py:591-610): cognito:username — the
+/// email address itself in email-keyed pools — plus the grant's origin_jti.
+#[allow(clippy::too_many_arguments)]
+fn create_id_token(
+    s: &State,
+    pool_id: &str,
+    issuer: &str,
+    sub: &str,
+    client_id: &str,
+    username: &str,
+    origin_jti: &str,
+) -> String {
+    let email_pool = username_attributes_email(s, pool_id);
+    let mut extra = if email_pool {
+        json!({ "cognito:username": sub, "email": username })
+    } else {
+        json!({ "cognito:username": username })
+    };
+    extra["origin_jti"] = json!(origin_jti);
+    jwt(
+        issuer,
+        sub,
+        client_id,
+        "id",
+        Some(&extra),
+        state_signer(s, pool_id),
+    )
+}
+
+/// moto's `_log_user_in` (fork models.py:2145-2153): mint the refresh grant
+/// first — `(token, origin_jti)` — then both tokens carry that origin_jti,
+/// and the grant is registered for the refresh flows.
+fn issue_tokens(
+    s: &mut State,
+    pool_id: &str,
+    issuer: &str,
+    sub: &str,
+    client_id: &str,
+    username: &str,
 ) -> Value {
-    let signer = state_signer(s, pool_id);
-    json!({
-        "AccessToken": jwt(issuer, sub, client_id, "access", None, signer),
-        "IdToken": jwt(
-            issuer,
-            sub,
-            client_id,
-            "id",
-            Some(&json!({ "cognito:username": username })),
-            signer,
-        ),
-        "RefreshToken": uuid::Uuid::new_v4().to_string(),
+    let refresh_token = uuid::Uuid::new_v4().to_string();
+    let origin_jti = uuid::Uuid::new_v4().to_string();
+    let tokens = json!({
+        "AccessToken": create_access_token(s, pool_id, issuer, sub, client_id, username, &origin_jti),
+        "IdToken": create_id_token(s, pool_id, issuer, sub, client_id, username, &origin_jti),
+        "RefreshToken": refresh_token.clone(),
         "TokenType": "Bearer",
         "ExpiresIn": 3600,
-    })
+    });
+    s.refresh_tokens.push((
+        refresh_token,
+        pool_id.to_string(),
+        username.to_string(),
+        origin_jti,
+    ));
+    tokens
 }
 
 fn pool_region(pool_id: &str) -> &str {
@@ -1290,7 +1384,6 @@ fn authenticate_user(
     let sub = user["UserSub"].as_str().unwrap_or_default().to_string();
     let tokens = issue_tokens(s, pool_id, &issuer, &sub, client_id, username);
     record_auth_event(s, pool_id, username, true);
-    track_refresh_token(s, pool_id, username, &tokens);
     // moto's public USER_PASSWORD arm returns AuthenticationResult only —
     // the `ChallengeParameters: {}` pair is `_log_user_in`'s, which the
     // admin arms use (fork models.py:2155-2162 vs 1468-1497).
@@ -1477,7 +1570,6 @@ fn admin_authenticate_user(
     let issuer = issue_tokens_issuer(pool_id);
     let sub = user["UserSub"].as_str().unwrap_or_default().to_string();
     let tokens = issue_tokens(s, pool_id, &issuer, &sub, client_id, username);
-    track_refresh_token(s, pool_id, username, &tokens);
     ok_json(&json!({
         "ChallengeParameters": {},
         "AuthenticationResult": tokens,
@@ -1546,9 +1638,9 @@ fn refresh_token_flow(
     let tracked = s
         .refresh_tokens
         .iter()
-        .find(|(t, pid, _)| t == refresh_token && pid == pool_id)
-        .map(|(_, _, u)| u.clone());
-    let Some(username) = tracked else {
+        .find(|(t, pid, _, _)| t == refresh_token && pid == pool_id)
+        .map(|(_, _, u, oj)| (u.clone(), oj.clone()));
+    let Some((username, origin_jti)) = tracked else {
         // public: moto's `.get` miss → NotAuthorizedError("Refresh Token has
         // been revoked"). admin: create_tokens_from_refresh_token raises
         // NotAuthorizedError(refresh_token), echoing the token; a completely
@@ -1574,16 +1666,15 @@ fn refresh_token_flow(
         // that no longer resolves.
         return err("NotAuthorizedException", "Invalid Refresh Token.");
     };
+    // moto re-mints both tokens off the grant's origin_jti
+    // (create_tokens_from_refresh_token, fork models.py:640-656).
     ok_json(&json!({
         "AuthenticationResult": {
-            "AccessToken": jwt(&issuer, &sub, client_id, "access", None, state_signer(s, pool_id)),
-            "IdToken": jwt(
-                &issuer,
-                &sub,
-                client_id,
-                "id",
-                Some(&json!({ "cognito:username": username })),
-                state_signer(s, pool_id),
+            "AccessToken": create_access_token(
+                s, pool_id, &issuer, &sub, client_id, &username, &origin_jti,
+            ),
+            "IdToken": create_id_token(
+                s, pool_id, &issuer, &sub, client_id, &username, &origin_jti,
             ),
             "TokenType": "Bearer",
             "ExpiresIn": 3600,
@@ -1708,7 +1799,6 @@ fn password_verifier_finish(
     let issuer = issue_tokens_issuer(pool_id);
     session_delete(s, session);
     let tokens = issue_tokens(s, pool_id, &issuer, &sub, client_id, &username);
-    track_refresh_token(s, pool_id, &username, &tokens);
     // moto's `_log_user_in` returns both keys — ChallengeParameters {}
     // alongside the token bundle (fork models.py:1468-1497).
     ok_json(&json!({
@@ -1801,7 +1891,6 @@ fn respond_to_auth_challenge(s: &mut State, p: &Value, _region: &str) -> Respons
     // replay of a spent session fails with ResourceNotFoundError(session).
     session_delete(s, &session);
     let tokens = issue_tokens(s, &pool_id, &issuer, &sub, &client_id, &username);
-    track_refresh_token(s, &pool_id, &username, &tokens);
     ok_json(&json!({
         "AuthenticationResult": tokens,
         "ChallengeParameters": {},
@@ -1870,7 +1959,6 @@ fn admin_respond_to_auth_challenge(s: &mut State, p: &Value) -> Response {
             };
             session_delete(s, &session);
             let tokens = issue_tokens(s, &pool_id, &issuer, &sub, &client_id, &username);
-            track_refresh_token(s, &pool_id, &username, &tokens);
             ok_json(&json!({
                 "AuthenticationResult": tokens,
                 "ChallengeParameters": {},
@@ -3182,14 +3270,6 @@ fn record_auth_event(s: &mut State, pool_id: &str, username: &str, passed: bool)
     }
 }
 
-/// Track a minted refresh grant for GetTokensFromRefreshToken.
-fn track_refresh_token(s: &mut State, pool_id: &str, username: &str, tokens: &Value) {
-    if let Some(token) = tokens["RefreshToken"].as_str() {
-        s.refresh_tokens
-            .push((token.to_string(), pool_id.to_string(), username.to_string()));
-    }
-}
-
 /// moto's `CognitoIdpUserPool.sign_out` (fork models.py:673-682) kills every
 /// grant the user holds: refresh tokens are tombstoned to `None` and the
 /// access-token entries are popped. The tombstone behaves like an absent
@@ -3197,7 +3277,7 @@ fn track_refresh_token(s: &mut State, pool_id: &str, username: &str, tokens: &Va
 /// the twin, which does not track access tokens, drops the user's grants.
 fn revoke_refresh_grants(s: &mut State, pool_id: &str, username: &str) {
     s.refresh_tokens
-        .retain(|(_, pid, uname)| !(pid == pool_id && uname == username));
+        .retain(|(_, pid, uname, _)| !(pid == pool_id && uname == username));
 }
 
 // ---------------------------------------------------------------------------
@@ -4303,9 +4383,9 @@ fn get_tokens_from_refresh_token(s: &mut State, p: &Value) -> Response {
     let tracked = s
         .refresh_tokens
         .iter()
-        .find(|(t, pid, _)| *t == refresh_token.as_str() && pid == pool_id.as_str())
-        .map(|(_, _, u)| u.clone());
-    let Some(username) = tracked else {
+        .find(|(t, pid, _, _)| *t == refresh_token.as_str() && pid == pool_id.as_str())
+        .map(|(_, _, u, oj)| (u.clone(), oj.clone()));
+    let Some((username, origin_jti)) = tracked else {
         return err("NotAuthorizedException", "Invalid Refresh Token.");
     };
     let Some(user) = pool_ref(s, &pool_id)
@@ -4321,14 +4401,11 @@ fn get_tokens_from_refresh_token(s: &mut State, p: &Value) -> Response {
     );
     ok_json(&json!({
         "AuthenticationResult": {
-            "AccessToken": jwt(&issuer, &sub, &client_id, "access", None, state_signer(s, &pool_id)),
-            "IdToken": jwt(
-                &issuer,
-                &sub,
-                &client_id,
-                "id",
-                Some(&json!({ "cognito:username": username })),
-                state_signer(s, &pool_id),
+            "AccessToken": create_access_token(
+                s, &pool_id, &issuer, &sub, &client_id, &username, &origin_jti,
+            ),
+            "IdToken": create_id_token(
+                s, &pool_id, &issuer, &sub, &client_id, &username, &origin_jti,
             ),
             "TokenType": "Bearer",
             "ExpiresIn": 3600,
@@ -4341,7 +4418,7 @@ fn revoke_token(s: &mut State, p: &Value) -> Response {
     if token.is_empty() {
         return err("InvalidParameterException", "Token is required.");
     }
-    s.refresh_tokens.retain(|(t, _, _)| *t != token);
+    s.refresh_tokens.retain(|(t, _, _, _)| *t != token);
     ok_json(&json!({}))
 }
 
@@ -6085,7 +6162,7 @@ mod tests {
         .unwrap();
         let verifying = rsa::pkcs1v15::VerifyingKey::<rsa::sha2::Sha256>::new(public);
 
-        let verify = |token: &str, expected_use: &str| {
+        let verify = |token: &str, expected_use: &str| -> Value {
             let segs: Vec<&str> = token.split('.').collect();
             assert_eq!(segs.len(), 3);
             let header: Value = serde_json::from_slice(&decode_segment(segs[0], true)).unwrap();
@@ -6096,8 +6173,25 @@ mod tests {
                 header["kid"], jwk["kid"],
                 "token kid resolves to served key"
             );
-            assert_eq!(payload["aud"], json!(client_id));
+            // moto's audience split (fork models.py:542): `client_id` only
+            // on access tokens, `aud` only on id tokens — the flavour's
+            // sibling claim is absent, exactly as the live oracle answers.
+            if expected_use == "access" {
+                assert_eq!(payload["client_id"], json!(client_id), "{payload}");
+                assert!(payload["aud"].is_null(), "no aud on access: {payload}");
+            } else {
+                assert_eq!(payload["aud"], json!(client_id), "{payload}");
+                assert!(
+                    payload["client_id"].is_null(),
+                    "no client_id on id: {payload}"
+                );
+            }
             assert_eq!(payload["token_use"], expected_use);
+            assert!(payload["jti"].is_string(), "jti minted: {payload}");
+            assert!(
+                payload["origin_jti"].is_string(),
+                "origin_jti rides the grant: {payload}"
+            );
             assert_eq!(
                 payload["iss"],
                 json!(format!(
@@ -6117,15 +6211,25 @@ mod tests {
             verifying
                 .verify(signing_input.as_bytes(), &signature)
                 .expect("RS256 signature must verify against the served JWKS");
+            payload
         };
-        verify(id_token, "id");
-        verify(access_token, "access");
+        let id_payload = verify(id_token, "id");
+        let access_payload = verify(access_token, "access");
 
         // The IdToken keeps the legacy claim ride-along.
-        let payload: Value =
-            serde_json::from_slice(&decode_segment(id_token.split('.').nth(1).unwrap(), false))
-                .unwrap();
-        assert_eq!(payload["cognito:username"], "rs-user");
+        assert_eq!(id_payload["cognito:username"], "rs-user");
+        assert!(id_payload["scope"].is_null(), "{id_payload}");
+        // Access tokens carry moto's username + user-admin scope.
+        assert_eq!(access_payload["username"], json!("rs-user"));
+        assert!(access_payload["cognito:username"].is_null());
+        assert_eq!(
+            access_payload["scope"],
+            json!("aws.cognito.signin.user.admin")
+        );
+        // Both tokens of the same grant ride the same origin_jti; each jti
+        // is minted per token.
+        assert_eq!(access_payload["origin_jti"], id_payload["origin_jti"]);
+        assert_ne!(access_payload["jti"], id_payload["jti"]);
 
         // Refresh re-mints (public arm) stay signed with the same pool key.
         // RS256 PKCS#1 v1.5 is deterministic and the claims ride 1s
@@ -6156,5 +6260,11 @@ mod tests {
                 &minted_sig,
             )
             .expect("refresh-minted token verifies too");
+        // The re-mint carries the grant's origin_jti, stamped long before
+        // the refresh flow ran.
+        let minted_payload: Value =
+            serde_json::from_slice(&decode_segment(minted_segs[1], true)).unwrap();
+        assert_eq!(minted_payload["origin_jti"], id_payload["origin_jti"]);
+        assert_ne!(minted_payload["jti"], id_payload["jti"], "fresh jti");
     }
 }
