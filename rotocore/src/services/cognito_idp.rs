@@ -492,29 +492,24 @@ fn plain_json_response(status: u16, body: &Value) -> Response {
     )
 }
 
-/// moto (`cognitoidp/urls.py`) answers an unrouted request with werkzeug's
-/// page — the twin's unknown-pool `.well-known` route keeps that shape
-/// since it has no pool key to advertise.
-fn werkzeug_404() -> Response {
-    Response::new(
-        404,
-        "text/html; charset=utf-8",
-        "<!doctype html>\n\
-         <html lang=en>\n\
-         <title>404 Not Found</title>\n\
-         <h1>Not Found</h1>\n\
-         <p>The requested URL was not found on the server. If you entered the URL manually please check your spelling and try again.</p>\n",
-    )
+/// moto's static dummy JWKS: every `/{pool_id}/.well-known/jwks.json` route
+/// answers 200 with exactly these bytes (fork responses.py:646-655 — the
+/// route never consults the pool store), existing pool or not. The twin
+/// advertises its real per-pool key for live pools; unknown pools fall back
+/// to moto's verbatim dummy here.
+fn dummy_jwks_response() -> Response {
+    const DUMMY_JWKS: &str = r#"{"keys": [{"alg": "RS256", "e": "AQAB", "kid": "dummy", "kty": "RSA", "n": "j1pT3xKbswmMySvCefmiD3mfDaRFpZ9Y3Jl4fF0hMaCRVAt_e0yR7BeueDfqmj_NhVSO0WB5ao5e8V-9RFQOtK8SrqKl3i01-CyWYPICwybaGKhbJJR0S_6cZ8n5kscF1MjpIlsJcCzm-yKgTc3Mxk6KtrLoNgRvMwGLeHUXPkhS9YHfDKRe864iMFOK4df69brIYEICG2VLduh0hXYa0i-J3drwm7vxNdX7pVpCDu34qJtYoWq6CXt3Tzfi3YfWp8cFjGNbaDa3WnCd2IXpp0TFsFS-cEsw5rJjSl5OllJGeZKBtLeyVTy9PYwnk7MW43WSYeYstbk9NluX4H8Iuw", "use": "sig"}]}"#;
+    Response::new(200, "application/json", DUMMY_JWKS.as_bytes().to_vec())
 }
 
 /// GET `/{pool}/.well-known/jwks.json` — the public key of the pair the
-/// pool's tokens are signed with. moto serves one static dummy key for any
-/// pool id (even nonexistent ones); the twin keys per pool, so a pool that
-/// does not exist has no key to advertise and gets moto's own route-miss
-/// 404 instead.
+/// pool's tokens are signed with, matching the tokens' `kid`. moto answers
+/// the static dummy key for every pool id (even nonexistent ones,
+/// `dummy_jwks_response`); the twin serves the real per-pool key for live
+/// pools and keeps moto's dummy where it has no live key.
 fn pool_jwks_response(pl: &Pool) -> Response {
     let Some((kid, key)) = pool_signer(pl) else {
-        return werkzeug_404();
+        return dummy_jwks_response();
     };
     plain_json_response(200, &json!({ "keys": [jwk_entry(kid, key)] }))
 }
@@ -593,15 +588,19 @@ fn handle_well_known_get(req: &Request) -> Option<Response> {
     }
     if openid {
         // moto master derives the document from the URL alone (it serves
-        // any pool id, existing or not).
+        // any pool id, existing or not). The pinned 5.2.4 oracle predates
+        // the route entirely and crashes every such GET with a werkzeug
+        // 500 (live probe, both pool ids); the twin follows master's
+        // canonic behaviour.
         return Some(pool_openid_configuration_response(req));
     }
     let pool_id = pool_scoped_jwks?;
     let slot = state();
     let map = slot.read();
     let Some(pl) = find_pool_any_scope(&map, &pool_id) else {
-        // No pool, no per-pool key to advertise: moto's route-miss answer.
-        return Some(werkzeug_404());
+        // moto never 404s this route: it serves the static dummy JWKS for
+        // any pool id, existing or not (fork responses.py:646-655).
+        return Some(dummy_jwks_response());
     };
     Some(pool_jwks_response(pl))
 }
@@ -6128,11 +6127,37 @@ mod tests {
         assert_eq!(bare["keys"][0]["kid"], json!("robotocore-test-key-1"));
         assert_eq!(bare["keys"][0]["alg"], json!("RS256"));
 
-        // Unknown pool: the twin has no per-pool key to advertise, so it
-        // answers moto's own route miss (werkzeug 404 page).
-        let (status, body_404) = fetch_jwks("/us-east-1_nosuchpool/.well-known/jwks.json");
-        assert_eq!(status, 404);
-        assert!(body_404["keys"].is_null(), "{body_404}");
+        // Unknown pool: moto answers its static dummy JWKS for any pool id,
+        // existing or not (fork responses.py:646-655) — verbatim bytes,
+        // kid "dummy".
+        let (status, dummy) = fetch_jwks("/us-east-1_nosuchpool/.well-known/jwks.json");
+        assert_eq!(status, 200);
+        assert_eq!(
+            dummy["keys"][0],
+            json!({
+                "alg": "RS256",
+                "e": "AQAB",
+                "kid": "dummy",
+                "kty": "RSA",
+                "n": "j1pT3xKbswmMySvCefmiD3mfDaRFpZ9Y3Jl4fF0hMaCRVAt_e0yR7BeueDfqmj_NhVSO0WB5ao5e8V-9RFQOtK8SrqKl3i01-CyWYPICwybaGKhbJJR0S_6cZ8n5kscF1MjpIlsJcCzm-yKgTc3Mxk6KtrLoNgRvMwGLeHUXPkhS9YHfDKRe864iMFOK4df69brIYEICG2VLduh0hXYa0i-J3drwm7vxNdX7pVpCDu34qJtYoWq6CXt3Tzfi3YfWp8cFjGNbaDa3WnCd2IXpp0TFsFS-cEsw5rJjSl5OllJGeZKBtLeyVTy9PYwnk7MW43WSYeYstbk9NluX4H8Iuw",
+                "use": "sig",
+            })
+        );
+
+        // OIDC discovery keeps serving the URL-derived document for an
+        // unknown pool too — moto master answers 200 for any pool id there
+        // (5.2.4 has no such route and 500-crashes instead).
+        let (status, oidc_unknown) =
+            fetch_jwks("/us-east-1_nosuchpool/.well-known/openid-configuration");
+        assert_eq!(status, 200);
+        assert_eq!(
+            oidc_unknown["issuer"],
+            json!("https://cognito-idp.us-east-1.amazonaws.com/us-east-1_nosuchpool")
+        );
+        assert_eq!(
+            oidc_unknown["jwks_uri"],
+            json!("http://localhost:4566/us-east-1_nosuchpool/.well-known/jwks.json")
+        );
     }
 
     #[test]
