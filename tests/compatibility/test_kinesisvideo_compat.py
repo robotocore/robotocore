@@ -371,6 +371,7 @@ class TestKinesisVideoNewOps:
 # route in moto's urls.py/responses.py (and the pre-port probes recorded
 # 501 for them), so they are outside moto's surface and answer 501.
 
+
 class TestKinesisVideoMediaStorageOps:
     """Tests for media storage configuration operations."""
 

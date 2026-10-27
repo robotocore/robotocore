@@ -71,7 +71,7 @@ class TestD2ArmScope:
                 '            format!("The {action} action has not been implemented"),',
                 "        )",
                 "        .status(501),",
-                '        _ => Err(not_implemented(action)),',
+                "        _ => Err(not_implemented(action)),",
                 "    }",
             ]
         )
@@ -120,6 +120,4 @@ class TestD2RealTree:
     def test_vpclattice_routes_literal_not_deny(self):
         # the literal lives in the ROUTES const table; the twin's
         # moto-style `_ =>` fall-through answers 501 → absent_no_handler
-        assert mod.deny_evidence(
-            "vpclattice", "ListServiceNetworkVpcAssociations"
-        ) is None
+        assert mod.deny_evidence("vpclattice", "ListServiceNetworkVpcAssociations") is None

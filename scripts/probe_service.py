@@ -29,6 +29,7 @@ one probes/<service>.json artifact per service.
 
 import argparse
 import json
+import socket
 import sys
 import time
 import urllib.parse as _urllib
@@ -37,7 +38,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import boto3
-import socket
 import botocore.exceptions
 import botocore.loaders
 from botocore import xform_name
@@ -199,16 +199,20 @@ def probe_operation(
                 # server did answer, so this is a server-side error, exact
                 # same class as the unparsable-response 500_error below.
                 return "500_error", f"unparsable response (required-only retry: {str(e)[:60]})"
-            except (botocore.exceptions.ReadTimeoutError,
-                    botocore.exceptions.ConnectTimeoutError,
-                    socket.timeout):
+            except (
+                TimeoutError,
+                botocore.exceptions.ReadTimeoutError,
+                botocore.exceptions.ConnectTimeoutError,
+            ):
                 return "timeout", "read timeout (required-only retry)"
             except botocore.exceptions.EndpointConnectionError:
                 return "timeout", "endpoint unreachable (required-only retry)"
         return "needs_params", "client-side validation (never contacted server)"
-    except (botocore.exceptions.ReadTimeoutError,
-            botocore.exceptions.ConnectTimeoutError,
-            socket.timeout) as e:
+    except (
+        TimeoutError,
+        botocore.exceptions.ReadTimeoutError,
+        botocore.exceptions.ConnectTimeoutError,
+    ) as e:
         # A hanging/timing-out handler is a distinct artifact: the twin
         # never answered. Contract labels 500_error as "server crashed",
         # which a timeout is not — bucket it separately.
@@ -334,7 +338,10 @@ def list_services(endpoint: str) -> list[dict]:
 
 
 def probe_service(
-    service_name: str, all_ops: bool, endpoint: str, read_timeout: float = 60.0,
+    service_name: str,
+    all_ops: bool,
+    endpoint: str,
+    read_timeout: float = 60.0,
     budget: float = 0.0,
 ) -> dict:
     """Probe every operation of one service. Returns the artifact dict.
@@ -400,7 +407,10 @@ def _run_all_services(args) -> int:
         svc = entry["name"]
         try:
             result = probe_service(
-                svc, all_ops=True, endpoint=args.endpoint, read_timeout=args.timeout,
+                svc,
+                all_ops=True,
+                endpoint=args.endpoint,
+                read_timeout=args.timeout,
                 budget=args.budget,
             )
         except Exception as exc:  # noqa: BLE001 — one bad service must not stop the fleet
@@ -470,8 +480,13 @@ def main():
     if args.all_services:
         return _run_all_services(args)
 
-    result = probe_service(args.service, all_ops=args.all, endpoint=args.endpoint,
-                           read_timeout=args.timeout, budget=args.budget)
+    result = probe_service(
+        args.service,
+        all_ops=args.all,
+        endpoint=args.endpoint,
+        read_timeout=args.timeout,
+        budget=args.budget,
+    )
     counts = result["counts"]
     results = result["operations"]
 

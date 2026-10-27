@@ -10,22 +10,23 @@ prober gains a "full-shape invocation" mode.
 All content is value synthesis utilities only — no I/O.
 """
 
+# Hand-tuned params for operations where auto-fill isn't good enough.
+# Per-lane hand-written fills live as data files: scripts/lib/fills/<any>.json,
+# each {"Service": {"Op": {param json}}}. Loaded at import so parallel fix
+# lanes can contribute fills without editing this file (merge-free).
+import pathlib as _pl
 import re
 
 import botocore.session
 
-# Hand-tuned params for operations where auto-fill isn't good enough.
-import pathlib as _pl
 
-# Per-lane hand-written fills live as data files: scripts/lib/fills/<any>.json,
-# each {"Service": {"Op": {param json}}}. Loaded at import so parallel fix
-# lanes can contribute fills without editing this file (merge-free).
 def _load_fill_files(base: dict) -> dict:
     fills_dir = _pl.Path(__file__).resolve().parent / "fills"
     if not fills_dir.is_dir():
         return base
     merged = dict(base)
     import json as _json
+
     for path in sorted(fills_dir.glob("*.json")):
         try:
             data = _json.loads(path.read_text())
@@ -38,74 +39,81 @@ def _load_fill_files(base: dict) -> dict:
                     merged[svc].setdefault(op, params)
     return merged
 
-KNOWN_PARAMS: dict[str, dict[str, dict]] = _load_fill_files({
-    "sqs": {
-        "CreateQueue": {"QueueName": "probe-test-queue"},
-        "GetQueueUrl": {"QueueName": "probe-test-queue"},
-    },
-    "s3": {
-        "CreateBucket": {"Bucket": "probe-test-bucket"},
-    },
-    "sns": {
-        "CreateTopic": {"Name": "probe-test-topic"},
-    },
-    "sts": {
-        "GetCallerIdentity": {},
-    },
-    # connect's evaluation-form ops: the full-shape walk hits the tagged
-    # union + nested question tree botocore validates strictly, so seed the
-    # smallest structurally valid fill (as if auto-filled: first enum,
-    # filler-style "probe-*-id" ids).
-    "connect": {
-        "CreateEvaluationForm": {
-            "InstanceId": "probe-instance-id-id",
-            "Title": "probe-test",
-            "Items": [{
-                "Question": {
-                    "Title": "probe-test",
-                    "RefId": "probe-test",
-                    "QuestionType": "TEXT",
-                },
-            }],
+
+KNOWN_PARAMS: dict[str, dict[str, dict]] = _load_fill_files(
+    {
+        "sqs": {
+            "CreateQueue": {"QueueName": "probe-test-queue"},
+            "GetQueueUrl": {"QueueName": "probe-test-queue"},
         },
-        "UpdateEvaluationForm": {
-            "InstanceId": "probe-instance-id-id",
-            "EvaluationFormId": "probe-evaluation-form-id-id",
-            "EvaluationFormVersion": 1,
-            "Title": "probe-test",
-            "Items": [{
-                "Question": {
-                    "Title": "probe-test",
-                    "RefId": "probe-test",
-                    "QuestionType": "TEXT",
-                },
-            }],
+        "s3": {
+            "CreateBucket": {"Bucket": "probe-test-bucket"},
         },
-    },
-    # fsx ids are length/pattern-strict (fsvol-0123456789abcdef0 etc.);
-    # auto-fill's generic probe ids fail botocore's client-side validation,
-    # so these twin-501 ops never reached the server and were bucketed
-    # needs_params. Seed pattern-valid ids so the probe contacts the twin
-    # and records the actual NotImplemented 501 (verified 2026-10-25).
-    "fsx": {
-        "RestoreVolumeFromSnapshot": {
-            "VolumeId": "fsvol-0123456789abcdef0",
-            "SnapshotId": "fssnap-0123456789abcdef0",
+        "sns": {
+            "CreateTopic": {"Name": "probe-test-topic"},
         },
-        "UpdateVolume": {"VolumeId": "fsvol-0123456789abcdef0"},
-        "CopySnapshotAndUpdateVolume": {
-            "VolumeId": "fsvol-0123456789abcdef0",
-            "SourceSnapshotARN": (
-                "arn:aws:fsx:us-east-1:123456789012:snapshot/fssnap-0123456789abcdef0"
-            ),
+        "sts": {
+            "GetCallerIdentity": {},
         },
-        "CreateSnapshot": {
-            "Name": "probe-snapshot-name",
-            "VolumeId": "fsvol-0123456789abcdef0",
+        # connect's evaluation-form ops: the full-shape walk hits the tagged
+        # union + nested question tree botocore validates strictly, so seed the
+        # smallest structurally valid fill (as if auto-filled: first enum,
+        # filler-style "probe-*-id" ids).
+        "connect": {
+            "CreateEvaluationForm": {
+                "InstanceId": "probe-instance-id-id",
+                "Title": "probe-test",
+                "Items": [
+                    {
+                        "Question": {
+                            "Title": "probe-test",
+                            "RefId": "probe-test",
+                            "QuestionType": "TEXT",
+                        },
+                    }
+                ],
+            },
+            "UpdateEvaluationForm": {
+                "InstanceId": "probe-instance-id-id",
+                "EvaluationFormId": "probe-evaluation-form-id-id",
+                "EvaluationFormVersion": 1,
+                "Title": "probe-test",
+                "Items": [
+                    {
+                        "Question": {
+                            "Title": "probe-test",
+                            "RefId": "probe-test",
+                            "QuestionType": "TEXT",
+                        },
+                    }
+                ],
+            },
         },
-        "DeleteVolume": {"VolumeId": "fsvol-0123456789abcdef0"},
-    },
-})
+        # fsx ids are length/pattern-strict (fsvol-0123456789abcdef0 etc.);
+        # auto-fill's generic probe ids fail botocore's client-side validation,
+        # so these twin-501 ops never reached the server and were bucketed
+        # needs_params. Seed pattern-valid ids so the probe contacts the twin
+        # and records the actual NotImplemented 501 (verified 2026-10-25).
+        "fsx": {
+            "RestoreVolumeFromSnapshot": {
+                "VolumeId": "fsvol-0123456789abcdef0",
+                "SnapshotId": "fssnap-0123456789abcdef0",
+            },
+            "UpdateVolume": {"VolumeId": "fsvol-0123456789abcdef0"},
+            "CopySnapshotAndUpdateVolume": {
+                "VolumeId": "fsvol-0123456789abcdef0",
+                "SourceSnapshotARN": (
+                    "arn:aws:fsx:us-east-1:123456789012:snapshot/fssnap-0123456789abcdef0"
+                ),
+            },
+            "CreateSnapshot": {
+                "Name": "probe-snapshot-name",
+                "VolumeId": "fsvol-0123456789abcdef0",
+            },
+            "DeleteVolume": {"VolumeId": "fsvol-0123456789abcdef0"},
+        },
+    }
+)
 
 _ENUM_FALLBACK = "probe-test"
 _FAKE_ACCOUNT = "123456789012"
@@ -156,7 +164,7 @@ def _pattern_string(pattern: str, member_name: str) -> str | None:
     p = pattern.strip().lstrip("^").rstrip("$")
     # <prefix>-<alnum-id> like s-0123abcd
     m = re.fullmatch(r"([A-Za-z]+)-\\?[0-9a-zA-Z\\{\}\[\]\-|\+\.]+\$?", p)
-    if m and re.search(r"[\\\[\]\{\}\-]", p[len(m.group(1)) + 1:]):
+    if m and re.search(r"[\\\[\]\{\}\-]", p[len(m.group(1)) + 1 :]):
         return f"{m.group(1)}-0123456789abcdef"
     # uuid-like
     if re.search(r"8-0-4-89", p.replace("[", "{")) and False:
@@ -224,7 +232,6 @@ def _string_value(member_shape, member_name: str, service: str) -> str:
     mn = getattr(member_shape, "min", None)
     mx = getattr(member_shape, "max", None)
     if mn and len(v) < mn:
-        filler_char = "0"
         body = "0" * (int(mn) - len(v))
         v = f"probe-test-value{body}"[: int(mn)] if mx is None or mx >= int(mn) else v
     return v
@@ -301,7 +308,7 @@ def auto_fill_params(service_name: str, operation_name: str) -> dict | None:
         try:
             model = session.get_service_model(service_name)
         except botocore.exceptions.UnknownServiceError:
-            model = session.get_service_model(service_name.replace("-", "") in botocore_map and (service_name.replace("-", "")) or service_name)
+            model = session.get_service_model(_botocore_service_name(service_name))
         op = model.operation_model(operation_name)
     except Exception:
         return None

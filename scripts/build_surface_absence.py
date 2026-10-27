@@ -229,12 +229,10 @@ def _arm_span(lines: list[str], idx: int) -> tuple[int, int] | None:
     depth = 0
     for i in range(idx, len(lines)):
         row = lines[i]
-        depth += (
-            row.count("{") + row.count("[") + row.count("(")
-        ) - (row.count("}") + row.count("]") + row.count(")"))
-        if depth == 0 and (
-            row.rstrip().endswith(",") or (i > idx and row.rstrip() in ("}", "};"))
-        ):
+        depth += (row.count("{") + row.count("[") + row.count("(")) - (
+            row.count("}") + row.count("]") + row.count(")")
+        )
+        if depth == 0 and (row.rstrip().endswith(",") or (i > idx and row.rstrip() in ("}", "};"))):
             return (idx, i)
     return (idx, len(lines) - 1)
 
@@ -337,9 +335,7 @@ def deny_evidence(svc: str, op: str) -> str | None:
                 _arm_in_pattern(lines, outer, ln - 1) or _FALL_HEAD.match(lines[outer[0]])
             ):
                 span = outer
-            if span is not None and re.search(
-                ARM_DENY, "\n".join(lines[span[0] : span[1] + 1])
-            ):
+            if span is not None and re.search(ARM_DENY, "\n".join(lines[span[0] : span[1] + 1])):
                 return f"twin deny arm at {rel}:{ln}"
     return None
 
@@ -350,10 +346,7 @@ def deny_evidence(svc: str, op: str) -> str | None:
 # any more: it has drifted ahead of the git pin (it already carries
 # vpclattice.list_service_network_vpc_associations, which the pinned fork
 # does not), so every runtime-truth question must resolve against the pin.
-PINNED_FORK = (
-    Path.home()
-    / ".cache/uv/git-v1/checkouts/eacacc220fef84f0/2016563fd/moto"
-)
+PINNED_FORK = Path.home() / ".cache/uv/git-v1/checkouts/eacacc220fef84f0/2016563fd/moto"
 
 
 def fork_path() -> Path | None:

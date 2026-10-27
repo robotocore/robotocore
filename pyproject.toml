@@ -31,6 +31,10 @@ dev = [
     "ruff>=0.5",
     # The ECR OCI-registry compat suite drives the raw registry data plane.
     "httpx>=0.27",
+    # ci.yml unit shards report coverage, lint runs mypy + bandit.
+    "pytest-cov>=5.0",
+    "mypy>=1.10",
+    "bandit>=1.7",
 ]
 
 [dependency-groups]
@@ -40,6 +44,10 @@ dev = [
     "ruff>=0.5",
     # The ECR OCI-registry compat suite drives the raw registry data plane.
     "httpx>=0.27",
+    # ci.yml unit shards report coverage, lint runs mypy + bandit.
+    "pytest-cov>=5.0",
+    "mypy>=1.10",
+    "bandit>=1.7",
 ]
 
 [tool.uv]
@@ -50,9 +58,36 @@ package = false
 [tool.ruff]
 target-version = "py312"
 line-length = 100
+# Deferred python: these paths predate the Rust port and are preserved for
+# reference rather than wired to lint/format gates. Live scripts stay linted.
+exclude = [
+    # python-provider-era test suites parked by the quarantine lane
+    "tests/legacy-py-provider",
+    "tests/compatibility/legacy-py-provider",
+    # python-era provider remnants kept in-tree (reference, no longer server)
+    "src/robotocore/services",
+    # deferred porting/parity wave tooling (python era)
+    "scripts/harness",
+    "tooling",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+# Every python file under src/robotocore/services/ is a python-provider-era
+# remnant kept in-tree for reference; the Rust port owns the real services
+# now. Keep mypy's entry point (ci.yml runs `mypy src/robotocore/`) on the
+# live python under src/robotocore/testing/ only.
+exclude = "^src/robotocore/services/"
+
+[tool.bandit]
+# Bandit config read from pyproject (ci.yml runs `bandit -c pyproject.toml`).
+# src/robotocore/services/** are python-provider-era remnants preserved for
+# reference — the Rust port owns the real service code — so their scanner
+# findings are historical, not live surface.
+exclude_dirs = ["src/robotocore/services"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

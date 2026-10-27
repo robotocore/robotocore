@@ -19,6 +19,7 @@ Usage:
     uv run python scripts/error_census.py --all      # every deny row
     uv run python scripts/error_census.py --json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,17 +32,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))  # probe_service imports `scripts.lib.*`
 
-_spec = importlib.util.spec_from_file_location("probe_service", ROOT / "scripts" / "probe_service.py")
+_spec = importlib.util.spec_from_file_location(
+    "probe_service", ROOT / "scripts" / "probe_service.py"
+)
 probe = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(probe)
+
+import os  # noqa: E402
 
 import boto3  # noqa: E402
 import botocore  # noqa: E402
 
-import os
 ENDPOINT = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
 MANIFEST = ROOT / "tooling" / "surface-absence.json"
-
 
 
 # Manifest keys use the twin's registry names; botocore's client names
@@ -144,18 +147,35 @@ def main() -> int:
         if not ok:
             failures += 1
         results.append(
-            {"service": svc, "op": op, "class": klass, "live_status": status,
-             "reason": reason, "verdict": verdict, "ok": ok}
+            {
+                "service": svc,
+                "op": op,
+                "class": klass,
+                "live_status": status,
+                "reason": reason,
+                "verdict": verdict,
+                "ok": ok,
+            }
         )
 
     ok_n = len(results) - failures
     if args.json:
-        print(json.dumps({"summary": {"total": len(results), "passed": ok_n, "failed": failures},
-                          "failed_rows": [r for r in results if not r["ok"]]}, indent=2))
+        print(
+            json.dumps(
+                {
+                    "summary": {"total": len(results), "passed": ok_n, "failed": failures},
+                    "failed_rows": [r for r in results if not r["ok"]],
+                },
+                indent=2,
+            )
+        )
     else:
         for r in results:
             flag = "ok  " if r["ok"] else "FAIL"
-            print(f"{flag} {r['service']}.{r['op']} class={r['class']} live={r['live_status']} -> {r['verdict']}")
+            print(
+                f"{flag} {r['service']}.{r['op']} class={r['class']} "
+                f"live={r['live_status']} -> {r['verdict']}"
+            )
         extra = f" (+{skipped_model} skipped unknown botocore names)" if skipped_model else ""
         print(f"census: {ok_n}/{len(results)} rows conform to the recorded deny contract{extra}")
     return 0 if failures == 0 else 1

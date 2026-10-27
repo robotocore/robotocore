@@ -1205,4 +1205,3 @@ class TestSESConfigurationSetEventDestination:
                     "SNSDestination": {"TopicARN": "arn:aws:sns:us-east-1:123456789012:test-topic"},
                 },
             )
-

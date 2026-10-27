@@ -12,13 +12,14 @@ Exit 1 with a report when at least one service is stale, so `make parity`
 fails loudly. `--refresh-commands` prints the exact per-service re-probe
 invocations to run next.
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -29,7 +30,9 @@ def git_time(path: str) -> datetime | None:
     """Last commit date (committer, UTC) that touched path, or None."""
     out = subprocess.run(
         ["git", "log", "-1", "--format=%cI", "--", path],
-        cwd=ROOT, capture_output=True, text=True,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
     ).stdout.strip()
     if not out:
         return None
@@ -62,11 +65,9 @@ IMPL_PATH_OVERRIDES: dict[str, list[str]] = {
     "iotdata": ["rotocore/src/services/iot_data.rs"],
     "apigatewaymanagementapi": ["rotocore/src/services/apigw_management.rs"],
     "service-quotas": ["rotocore/src/services/servicequotas/"],
-    "es": ["rotocore/src/services/opensearch.rs",
-           "rotocore/src/services/opensearch/"],
+    "es": ["rotocore/src/services/opensearch.rs", "rotocore/src/services/opensearch/"],
     "neptune": ["rotocore/src/services/rds.rs"],
-    "logs": ["crates/cloudwatch-logs/src/",
-             "rotocore/src/services/cloudwatch_logs.rs"],
+    "logs": ["crates/cloudwatch-logs/src/", "rotocore/src/services/cloudwatch_logs.rs"],
     "sts": ["src/core/services/sts.rs"],
     # bedrock-agentcore-control shares bedrockagentcore's module dir: both
     # botocore models deliver on the `bedrock-agentcore` signing scope and the
@@ -104,7 +105,9 @@ def latest_impl_time(name: str) -> tuple[datetime | None, str | None]:
     for pattern in service_dirs_for(name):
         out = subprocess.run(
             ["git", "log", "-1", "--format=%cI", "--", pattern],
-            cwd=ROOT, capture_output=True, text=True,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
         ).stdout.strip()
         if not out:
             continue
@@ -116,8 +119,9 @@ def latest_impl_time(name: str) -> tuple[datetime | None, str | None]:
 
 def main() -> int:
     arg_parser = argparse.ArgumentParser()
-    arg_parser.add_argument("--refresh-commands", action="store_true",
-                            help="also print the re-probe invocations")
+    arg_parser.add_argument(
+        "--refresh-commands", action="store_true", help="also print the re-probe invocations"
+    )
     args = arg_parser.parse_args()
 
     stale: list[tuple[str, datetime, datetime]] = []
@@ -157,7 +161,10 @@ def main() -> int:
             # silently shrank the corpus (wave-4 finding 1). The writer
             # is not atomic (finding 2): refresh runs should still be
             # followed by `make error-census` and a `git diff` review.
-            print(f"  ENDPOINT_URL=http://localhost:4566 uv run python -m scripts.probe_service --service {name} --all")
+            print(
+                f"  ENDPOINT_URL=http://localhost:4566 "
+                f"uv run python -m scripts.probe_service --service {name} --all"
+            )
 
     return 1 if stale else 0
 

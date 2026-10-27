@@ -148,4 +148,3 @@ class TestRDSDataNotImplementedSurface:
         error = exc.value.response["Error"]
         assert error["Code"] == "NotImplemented", op
         assert error["Message"].startswith("The "), op
-

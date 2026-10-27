@@ -123,13 +123,58 @@ def _extract_boto3_operations(filepath: Path) -> set[str]:
         return set()
 
     filtered = {
-        "get", "set", "items", "keys", "values", "append", "extend", "update",
-        "format", "join", "split", "strip", "encode", "decode", "read", "write",
-        "close", "sleep", "client", "resource", "lower", "upper", "pop", "add",
-        "remove", "clear", "sort", "count", "index", "find", "match", "search",
-        "sub", "group", "dump", "dumps", "load", "loads", "open", "seek", "tell",
-        "flush", "environ", "fixture", "mark", "param", "raises", "skip", "fail",
-        "endswith", "startswith", "replace",
+        "get",
+        "set",
+        "items",
+        "keys",
+        "values",
+        "append",
+        "extend",
+        "update",
+        "format",
+        "join",
+        "split",
+        "strip",
+        "encode",
+        "decode",
+        "read",
+        "write",
+        "close",
+        "sleep",
+        "client",
+        "resource",
+        "lower",
+        "upper",
+        "pop",
+        "add",
+        "remove",
+        "clear",
+        "sort",
+        "count",
+        "index",
+        "find",
+        "match",
+        "search",
+        "sub",
+        "group",
+        "dump",
+        "dumps",
+        "load",
+        "loads",
+        "open",
+        "seek",
+        "tell",
+        "flush",
+        "environ",
+        "fixture",
+        "mark",
+        "param",
+        "raises",
+        "skip",
+        "fail",
+        "endswith",
+        "startswith",
+        "replace",
     }
 
     operations = set()
@@ -231,11 +276,7 @@ def build_report(probes_dir: Path, endpoint: str) -> dict:
     live = fetch_table(endpoint)
     if not live:
         # Twin may be down; fall back to whatever probe artifacts exist.
-        live = {
-            p.stem: {}
-            for p in sorted(probes_dir.glob("*.json"))
-            if read_probe(p) is not None
-        }
+        live = {p.stem: {} for p in sorted(probes_dir.glob("*.json")) if read_probe(p) is not None}
 
     tested_ops, test_counts, unmapped_methods = get_compat_data(set(live))
 

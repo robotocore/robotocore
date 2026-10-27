@@ -14,8 +14,6 @@ workflow's `SERVER_PID=$!` + `kill -0` bookkeeping keeps being true.
 import os
 import subprocess
 import sys
-import time
-import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
