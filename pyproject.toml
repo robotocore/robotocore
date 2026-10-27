@@ -22,6 +22,17 @@ dependencies = [
     "requests>=2.34.2",
 ]
 
+# Synced by the CI workflows (`uv sync --extra dev`) that predate the ape-era
+# uv dependency-groups split; the group below carries the same pins.
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-xdist>=3.5",
+    "ruff>=0.5",
+    # The ECR OCI-registry compat suite drives the raw registry data plane.
+    "httpx>=0.27",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=8.0",

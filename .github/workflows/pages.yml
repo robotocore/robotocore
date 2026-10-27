@@ -30,7 +30,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - run: uv sync --group dev
+      - run: uv sync --extra dev
 
       - name: Build site
         run: |

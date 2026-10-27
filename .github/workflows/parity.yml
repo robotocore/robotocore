@@ -23,7 +23,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-      - run: uv sync --group dev
+      - run: uv sync --extra dev
       - name: Start robotocore
         run: |
           ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
