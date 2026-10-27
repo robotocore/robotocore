@@ -61,17 +61,6 @@ def main() -> int:
         subprocess.run([sys.executable, "-c", "import time;time.sleep(10**9)"])
         return 0
 
-    # CI fast-path: the runner boots docker; the registry image is
-    # identical to the rust tip's release build (tagged v2.0.0).
-    if os.environ.get("GITHUB_ACTIONS") == "true" and shutil.which("docker"):
-        try:
-            _exec_docker([IMAGE, FALLBACK_IMAGE], port)
-        except RuntimeError as e:
-            print(
-                f"shim: docker fast-path unavailable ({e}) — falling back to cargo build",
-                file=sys.stderr,
-            )
-
     # Local path: reuse (or build) the release binary, then exec it in-place
     # so workflows' `SERVER_PID=$!` + `kill -0` stays truthful.
     if _pick_binary() is None or os.environ.get("ROBOTOCORE_FORCE_BUILD") == "1":
