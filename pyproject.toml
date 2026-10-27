@@ -35,6 +35,8 @@ dev = [
     "pytest-cov>=5.0",
     "mypy>=1.10",
     "bandit>=1.7",
+    # app-integration workflow passes --reruns/--reruns-delay to pytest.
+    "pytest-rerunfailures>=14",
 ]
 
 [dependency-groups]
@@ -48,6 +50,8 @@ dev = [
     "pytest-cov>=5.0",
     "mypy>=1.10",
     "bandit>=1.7",
+    # app-integration workflow passes --reruns/--reruns-delay to pytest.
+    "pytest-rerunfailures>=14",
 ]
 
 [tool.uv]
