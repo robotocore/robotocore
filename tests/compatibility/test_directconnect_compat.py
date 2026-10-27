@@ -37,7 +37,7 @@ def connection(dc):
     try:
         dc.delete_connection(connectionId=conn_id)
     except ClientError:
-        pass
+        pass  # best-effort cleanup
 
 
 class TestDirectConnectGapOps:
