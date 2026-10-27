@@ -181,8 +181,14 @@ class TestOSISPutResourcePolicy:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
+
+
 class TestOSISMissingGapOps:
     """Tests for OSIS operations identified as coverage gaps."""
+
+
+
+
 
 
 class TestOSISEndpointGapOps:
@@ -193,9 +199,14 @@ class TestOSISEndpointGapOps:
         return make_client("osis")
 
 
+
+
 class TestOSISPipelineEndpointOps:
     """Tests for pipeline endpoint stubs."""
 
     @pytest.fixture
     def osis(self):
         return make_client("osis")
+
+
+

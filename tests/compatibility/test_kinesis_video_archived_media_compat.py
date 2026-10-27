@@ -40,7 +40,9 @@ class TestKinesisVideoArchivedMediaOperations:
     """The surface moto's kinesisvideoarchivedmedia backend serves."""
 
     def test_get_hls_streaming_session_url(self, kvam, created_stream):
-        resp = kvam.get_hls_streaming_session_url(StreamName=created_stream["StreamName"])
+        resp = kvam.get_hls_streaming_session_url(
+            StreamName=created_stream["StreamName"]
+        )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         url = resp["HLSStreamingSessionURL"]
         assert url.startswith("https://b-")
@@ -54,13 +56,15 @@ class TestKinesisVideoArchivedMediaOperations:
             StreamName=created_stream["StreamName"],
             APIName="GET_HLS_STREAMING_SESSION_URL",
         )["DataEndpoint"]
-        url = kvam.get_hls_streaming_session_url(StreamARN=created_stream["StreamARN"])[
-            "HLSStreamingSessionURL"
-        ]
+        url = kvam.get_hls_streaming_session_url(
+            StreamARN=created_stream["StreamARN"]
+        )["HLSStreamingSessionURL"]
         assert url.startswith(endpoint)
 
     def test_get_dash_streaming_session_url(self, kvam, created_stream):
-        resp = kvam.get_dash_streaming_session_url(StreamName=created_stream["StreamName"])
+        resp = kvam.get_dash_streaming_session_url(
+            StreamName=created_stream["StreamName"]
+        )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         url = resp["DASHStreamingSessionURL"]
         assert "/dash/v1/getDASHManifest.mpd?SessionToken=" in url

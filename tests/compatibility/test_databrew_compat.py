@@ -603,3 +603,37 @@ class TestDatabrewAutoCoverage:
         """ListRulesets returns a response."""
         resp = client.list_rulesets()
         assert "Rulesets" in resp
+
+
+@pytest.fixture
+def created_project(databrew_client):
+    """Create a project and clean up after the test."""
+    name = f"proj-{uuid.uuid4().hex[:8]}"
+    databrew_client.create_project(
+        DatasetName="some-dataset",
+        Name=name,
+        RecipeName="some-recipe",
+        RoleArn="arn:aws:iam::123456789012:role/test-role",
+        Sample={"Size": 500, "Type": "HEAD"},
+    )
+    yield name
+    try:
+        databrew_client.delete_project(Name=name)
+    except Exception:
+        pass  # best-effort cleanup
+
+
+@pytest.fixture
+def created_schedule(databrew_client):
+    """Create a schedule and clean up after the test."""
+    name = f"sched-{uuid.uuid4().hex[:8]}"
+    databrew_client.create_schedule(
+        Name=name,
+        CronExpression="cron(0 12 * * ? *)",
+        JobNames=["job1"],
+    )
+    yield name
+    try:
+        databrew_client.delete_schedule(Name=name)
+    except Exception:
+        pass  # best-effort cleanup

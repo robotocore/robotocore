@@ -32,7 +32,7 @@ def domain(sdb):
     try:
         sdb.delete_domain(DomainName=name)
     except Exception:  # noqa: BLE001 - best-effort cleanup
-        pass  # best-effort cleanup
+        pass
 
 
 class TestSdbCreateDomain:

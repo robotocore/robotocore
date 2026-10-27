@@ -153,9 +153,9 @@ class TestDatasetGroupLifecycle:
             DatasetGroupName=_unique_name(), Domain="INVENTORY_PLANNING"
         )["DatasetGroupArn"]
         time.sleep(1.1)
-        second = forecast.create_dataset_group(DatasetGroupName=_unique_name(), Domain="METRICS")[
-            "DatasetGroupArn"
-        ]
+        second = forecast.create_dataset_group(
+            DatasetGroupName=_unique_name(), Domain="METRICS"
+        )["DatasetGroupArn"]
         entries = forecast.list_dataset_groups()["DatasetGroups"]
         positions = [g["DatasetGroupArn"] for g in entries]
         assert positions.index(second) < positions.index(first)

@@ -218,3 +218,4 @@ class TestConnectCampaignsOperations:
         status = result["connectInstanceOnboardingJobStatus"]
         assert status["connectInstanceId"] == "12345678-1234-1234-1234-123456789012"
         assert status["status"] in ("IN_PROGRESS", "SUCCEEDED", "FAILED")
+

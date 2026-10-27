@@ -371,9 +371,9 @@ class TestLambdaDestinations:
             "    sqs = boto3.client(\n"
             '        "sqs", endpoint_url=endpoint, region_name="us-east-1",\n'
             '        aws_access_key_id="123456789012", aws_secret_access_key="test")\n'
-            f'    queue_url = sqs.get_queue_url(QueueName="{proof_queue_name}")["QueueUrl"]\n'
+            f"    queue_url = sqs.get_queue_url(QueueName=\"{proof_queue_name}\")[\"QueueUrl\"]\n"
             "    cond = event.get('requestContext', {}).get('condition')\n"
-            "    sqs.send_message(\n"
+            '    sqs.send_message(\n'
             "        QueueUrl=queue_url,\n"
             '        MessageBody=json.dumps({"from_b": True, "condition": cond}))\n'
             '    return {"processed": True}\n'
@@ -386,7 +386,9 @@ class TestLambdaDestinations:
             Role=role,
             Handler="lambda_function.handler",
             Code={"ZipFile": _make_zip(code_b)},
-            Environment={"Variables": {"ROBOTOCORE_ENDPOINT": TWIN_URL}},
+            Environment={
+                "Variables": {"ROBOTOCORE_ENDPOINT": TWIN_URL}
+            },
         )
 
         # Source function A: succeeds

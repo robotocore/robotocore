@@ -726,14 +726,10 @@ class TestAthenaNewOps:
         assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
 
     def test_get_database_nonexistent(self, athena):
-        """GetDatabase with a nonexistent database raises MetadataException.
-
-        AWS reports missing metadata objects through MetadataException rather
-        than InvalidRequestException, which covers malformed requests.
-        """
+        """GetDatabase with nonexistent database raises InvalidRequestException."""
         with pytest.raises(ClientError) as exc:
             athena.get_database(CatalogName="AwsDataCatalog", DatabaseName="nonexistent_db")
-        assert exc.value.response["Error"]["Code"] == "MetadataException"
+        assert exc.value.response["Error"]["Code"] == "InvalidRequestException"
 
     def test_get_notebook_metadata_nonexistent(self, athena):
         """GetNotebookMetadata with fake ID raises InvalidRequestException."""

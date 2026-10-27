@@ -240,7 +240,9 @@ class TestAutoManagement:
 
     def test_create_support_case(self, quotas):
         """CreateSupportCase succeeds with a fresh request id."""
-        resp = quotas.create_support_case(RequestId=f"test-request-{uuid.uuid4().hex[:8]}")
+        resp = quotas.create_support_case(
+            RequestId=f"test-request-{uuid.uuid4().hex[:8]}"
+        )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 

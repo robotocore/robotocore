@@ -5,9 +5,8 @@ moto fork's surface. The fork's `moto/directconnect/responses.py` routes 11
 handlers — DescribeConnections, CreateConnection, DeleteConnection,
 UpdateConnection, AssociateMacSecKey, DisassociateMacSecKey, CreateLag,
 DescribeLags, TagResource, UntagResource, DescribeTags — and this suite
-covers 9 of the 11 fork handlers (CreateLag/DescribeLags are unit-covered
-in rotocore/service/directconnect) (60 tests were restored; 50 were removed
-for moto-fork-absent operations, see the TestDirectConnectGapOps docstring).
+covers 9 of the 11 fork handlers (CreateLag/DescribeLags are unit-covered in rotocore/service/directconnect) (60 tests were restored; 50 were removed for
+moto-fork-absent operations, see the TestDirectConnectGapOps docstring).
 
 The suite originally ran against an older vendored moto fork revision that
 implemented more of the model; the current oracle is stock moto 5.2.4
@@ -38,7 +37,7 @@ def connection(dc):
     try:
         dc.delete_connection(connectionId=conn_id)
     except ClientError:
-        pass  # best-effort cleanup
+        pass
 
 
 class TestDirectConnectGapOps:

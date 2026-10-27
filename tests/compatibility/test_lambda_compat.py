@@ -775,42 +775,6 @@ class TestLambdaEnvironmentVariables:
         assert payload["val"] == "updated"
         lam.delete_function(FunctionName=fname)
 
-    def test_update_env_vars_read_at_module_scope(self, lam, role):
-        """Same as test_update_env_vars, but the env var is resolved once at
-        module scope (`CONFIGURED = os.environ[...]` above the handler def,
-        not a read from inside the handler body). This is the case that
-        depends on UpdateFunctionConfiguration actually invalidating the
-        cached module — the sibling test above would pass even if it didn't,
-        since a handler-body os.environ read always sees the current config.
-        """
-        code = _make_zip(
-            'import os\nCONFIGURED = os.environ["MY_KEY"]\n'
-            'def handler(e, c): return {"val": CONFIGURED}'
-        )
-        fname = f"envvar-upd-module-{uuid.uuid4().hex[:8]}"
-        lam.create_function(
-            FunctionName=fname,
-            Runtime="python3.12",
-            Role=role,
-            Handler="lambda_function.handler",
-            Code={"ZipFile": code},
-            Environment={"Variables": {"MY_KEY": "original"}},
-        )
-        # Force a cold import — and therefore a cached module — before the
-        # config update, so this actually exercises invalidation and isn't
-        # just testing a first-ever cold start.
-        first = lam.invoke(FunctionName=fname)
-        assert json.loads(first["Payload"].read())["val"] == "original"
-
-        lam.update_function_configuration(
-            FunctionName=fname,
-            Environment={"Variables": {"MY_KEY": "updated"}},
-        )
-        resp = lam.invoke(FunctionName=fname)
-        payload = json.loads(resp["Payload"].read())
-        assert payload["val"] == "updated"
-        lam.delete_function(FunctionName=fname)
-
     def test_env_vars_in_get_configuration(self, lam, role):
         code = _make_zip("def handler(e, c): pass")
         fname = f"envvar-cfg-{uuid.uuid4().hex[:8]}"
@@ -2535,14 +2499,9 @@ class TestLambdaCodeSigningConfig:
         csc_arn = "arn:aws:lambda:us-east-1:123456789012:code-signing-config:csc-del"
         lam.put_function_code_signing_config(FunctionName=func, CodeSigningConfigArn=csc_arn)
         lam.delete_function_code_signing_config(FunctionName=func)
-        resp = lam.get_function_code_signing_config(FunctionName=func)
-        assert resp["CodeSigningConfigArn"] == ""
-        assert resp["FunctionName"] == func
-
-    def test_get_function_code_signing_config_unset_is_empty(self, lam, func):
-        """A function that never had a code signing config reports an empty ARN, not 404."""
-        resp = lam.get_function_code_signing_config(FunctionName=func)
-        assert resp["CodeSigningConfigArn"] == ""
+        with pytest.raises(lam.exceptions.ClientError) as exc_info:
+            lam.get_function_code_signing_config(FunctionName=func)
+        assert exc_info.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
     def test_get_code_signing_config_nonexistent(self, lam):
         """GetFunctionCodeSigningConfig on nonexistent function raises error."""

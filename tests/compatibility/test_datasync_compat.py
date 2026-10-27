@@ -794,6 +794,10 @@ class TestDataSyncTagAndUpdateOps:
         return resp["LocationArn"]
 
 
+
+
+
+
 class TestDataSyncUpdateLocationGapOps:
     """Tests for DataSync UpdateLocation* ops and UpdateTaskExecution."""
 
@@ -802,3 +806,13 @@ class TestDataSyncUpdateLocationGapOps:
     @pytest.fixture
     def client(self):
         return make_client("datasync")
+
+
+
+
+
+
+
+
+
+

@@ -3465,7 +3465,7 @@ class TestConnectAssociateOpsNotImplemented:
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_associate_phone_number_contact_flow_not_found(self, connect, instance_id):
+    def test_associate_phone_number_contact_flow_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.associate_phone_number_contact_flow(
                 PhoneNumberId="fake-phone-id",
@@ -3499,7 +3499,7 @@ class TestConnectAssociateOpsNotImplemented:
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_associate_traffic_distribution_group_user_not_found(self, connect, instance_id):
+    def test_associate_traffic_distribution_group_user_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.associate_traffic_distribution_group_user(
                 TrafficDistributionGroupId="fake-tdg-id",
@@ -3510,7 +3510,7 @@ class TestConnectAssociateOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_associate_user_proficiencies_not_found(self, connect, instance_id):
+    def test_associate_user_proficiencies_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.associate_user_proficiencies(
                 InstanceId=instance_id,
@@ -3581,7 +3581,7 @@ class TestConnectAssociateOpsNotImplemented:
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_disassociate_phone_number_contact_flow_not_found(self, connect, instance_id):
+    def test_disassociate_phone_number_contact_flow_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.disassociate_phone_number_contact_flow(
                 PhoneNumberId="fake-phone-id",
@@ -3615,7 +3615,9 @@ class TestConnectAssociateOpsNotImplemented:
         # with ResourceNotFoundException instead of the old 501 stub.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_disassociate_traffic_distribution_group_user_not_found(self, connect, instance_id):
+    def test_disassociate_traffic_distribution_group_user_not_implemented(
+        self, connect, instance_id
+    ):
         with pytest.raises(ClientError) as exc:
             connect.disassociate_traffic_distribution_group_user(
                 TrafficDistributionGroupId="fake-tdg-id",
@@ -3626,7 +3628,7 @@ class TestConnectAssociateOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_disassociate_user_proficiencies_not_found(self, connect, instance_id):
+    def test_disassociate_user_proficiencies_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.disassociate_user_proficiencies(
                 InstanceId=instance_id,
@@ -3826,7 +3828,7 @@ class TestConnectCreateVersionOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_create_contact_flow_version_not_found(self, connect, instance_id):
+    def test_create_contact_flow_version_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.create_contact_flow_version(
                 InstanceId=instance_id,
@@ -3875,7 +3877,7 @@ class TestConnectCreateVersionOpsNotImplemented:
         )
         assert "RegistrationId" in resp
 
-    def test_create_view_version_not_found(self, connect, instance_id):
+    def test_create_view_version_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.create_view_version(
                 InstanceId=instance_id,
@@ -4019,7 +4021,7 @@ class TestConnectDescribeGetOpsNotImplemented:
         iid, _ = _create_instance(connect)
         yield iid
 
-    def test_describe_authentication_profile_not_found(self, connect, instance_id):
+    def test_describe_authentication_profile_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.describe_authentication_profile(
                 InstanceId=instance_id,
@@ -4029,7 +4031,7 @@ class TestConnectDescribeGetOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_describe_instance_storage_config_not_found(self, connect, instance_id):
+    def test_describe_instance_storage_config_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.describe_instance_storage_config(
                 InstanceId=instance_id,
@@ -4142,7 +4144,7 @@ class TestConnectDescribeGetOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_get_prompt_file_not_found(self, connect, instance_id):
+    def test_get_prompt_file_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.get_prompt_file(InstanceId=instance_id, PromptId="fake-prompt-id")
         # wave-11 (5b0e0067) arms the op with a modeled deny path: an
@@ -4160,7 +4162,7 @@ class TestConnectDescribeGetOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_get_traffic_distribution_not_found(self, connect):
+    def test_get_traffic_distribution_not_implemented(self, connect):
         with pytest.raises(ClientError) as exc:
             connect.get_traffic_distribution(Id="fake-tdg-id")
         # wave-11 (5b0e0067) arms the op with a modeled deny path: an
@@ -4328,7 +4330,7 @@ class TestConnectListGapOpsNotImplemented:
         )
         assert resp["TestCaseExecutions"] == []
 
-    def test_list_traffic_distribution_group_users_not_found(self, connect):
+    def test_list_traffic_distribution_group_users_not_implemented(self, connect):
         with pytest.raises(ClientError) as exc:
             connect.list_traffic_distribution_group_users(TrafficDistributionGroupId="fake-tdg-id")
         # wave-11 (5b0e0067) arms the op with a modeled deny path: an
@@ -4345,7 +4347,7 @@ class TestConnectListGapOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_list_user_proficiencies_not_found(self, connect, instance_id):
+    def test_list_user_proficiencies_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.list_user_proficiencies(
                 InstanceId=instance_id,
@@ -4420,7 +4422,7 @@ class TestConnectContactOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_pause_contact_not_found(self, connect, instance_id):
+    def test_pause_contact_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.pause_contact(
                 ContactId="fake-contact-id",
@@ -4430,7 +4432,7 @@ class TestConnectContactOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_put_user_status_not_found(self, connect, instance_id):
+    def test_put_user_status_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.put_user_status(
                 UserId="fake-user-id",
@@ -4453,7 +4455,7 @@ class TestConnectContactOpsNotImplemented:
         assert "Id" in resp
         assert "Arn" in resp
 
-    def test_resume_contact_not_found(self, connect, instance_id):
+    def test_resume_contact_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.resume_contact(
                 ContactId="fake-contact-id",
@@ -4641,7 +4643,7 @@ class TestConnectContactOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_tag_contact_not_found(self, connect, instance_id):
+    def test_tag_contact_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.tag_contact(
                 ContactId="fake-contact-id",
@@ -4652,7 +4654,7 @@ class TestConnectContactOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_transfer_contact_not_found(self, connect, instance_id):
+    def test_transfer_contact_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.transfer_contact(
                 InstanceId=instance_id,
@@ -4663,7 +4665,7 @@ class TestConnectContactOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_untag_contact_not_found(self, connect, instance_id):
+    def test_untag_contact_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.untag_contact(
                 ContactId="fake-contact-id",
@@ -4674,7 +4676,7 @@ class TestConnectContactOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_update_contact_routing_data_not_found(self, connect, instance_id):
+    def test_update_contact_routing_data_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.update_contact_routing_data(
                 InstanceId=instance_id,
@@ -4684,7 +4686,7 @@ class TestConnectContactOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_update_contact_schedule_not_found(self, connect, instance_id):
+    def test_update_contact_schedule_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.update_contact_schedule(
                 InstanceId=instance_id,
@@ -4812,7 +4814,7 @@ class TestConnectUpdateGapOpsNotImplemented:
         iid, _ = _create_instance(connect)
         yield iid
 
-    def test_update_authentication_profile_not_found(self, connect, instance_id):
+    def test_update_authentication_profile_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.update_authentication_profile(
                 InstanceId=instance_id,
@@ -4848,7 +4850,7 @@ class TestConnectUpdateGapOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_update_email_address_metadata_not_found(self, connect, instance_id):
+    def test_update_email_address_metadata_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.update_email_address_metadata(
                 InstanceId=instance_id,
@@ -4876,7 +4878,7 @@ class TestConnectUpdateGapOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_update_notification_content_not_found(self, connect, instance_id):
+    def test_update_notification_content_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.update_notification_content(
                 InstanceId=instance_id,
@@ -4916,7 +4918,7 @@ class TestConnectUpdateGapOpsNotImplemented:
             )
         assert exc.value.response["Error"]["Code"] == "NotImplemented"
 
-    def test_update_phone_number_metadata_not_found(self, connect):
+    def test_update_phone_number_metadata_not_implemented(self, connect):
         with pytest.raises(ClientError) as exc:
             connect.update_phone_number_metadata(
                 PhoneNumberId="fake-phone-id",
@@ -4926,7 +4928,7 @@ class TestConnectUpdateGapOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_update_queue_outbound_email_config_not_found(self, connect, instance_id):
+    def test_update_queue_outbound_email_config_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.update_queue_outbound_email_config(
                 InstanceId=instance_id,
@@ -4937,7 +4939,9 @@ class TestConnectUpdateGapOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_update_routing_profile_agent_availability_timer_not_found(self, connect, instance_id):
+    def test_update_routing_profile_agent_availability_timer_not_implemented(
+        self, connect, instance_id
+    ):
         with pytest.raises(ClientError) as exc:
             connect.update_routing_profile_agent_availability_timer(
                 InstanceId=instance_id,
@@ -4948,7 +4952,7 @@ class TestConnectUpdateGapOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_update_traffic_distribution_not_found(self, connect):
+    def test_update_traffic_distribution_not_implemented(self, connect):
         with pytest.raises(ClientError) as exc:
             connect.update_traffic_distribution(
                 Id="fake-tdg-id",
@@ -4968,7 +4972,7 @@ class TestConnectUpdateGapOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_update_user_notification_status_not_found(self, connect, instance_id):
+    def test_update_user_notification_status_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.update_user_notification_status(
                 UserId="fake-user-id",
@@ -4980,7 +4984,7 @@ class TestConnectUpdateGapOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_update_user_proficiencies_not_found(self, connect, instance_id):
+    def test_update_user_proficiencies_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.update_user_proficiencies(
                 InstanceId=instance_id,
@@ -4991,7 +4995,7 @@ class TestConnectUpdateGapOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_update_workspace_metadata_not_found(self, connect, instance_id):
+    def test_update_workspace_metadata_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.update_workspace_metadata(
                 InstanceId=instance_id,
@@ -5013,7 +5017,7 @@ class TestConnectUpdateGapOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_update_workspace_theme_not_found(self, connect, instance_id):
+    def test_update_workspace_theme_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.update_workspace_theme(
                 InstanceId=instance_id,
@@ -5023,7 +5027,7 @@ class TestConnectUpdateGapOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_update_workspace_visibility_not_found(self, connect, instance_id):
+    def test_update_workspace_visibility_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.update_workspace_visibility(
                 InstanceId=instance_id,
@@ -5187,7 +5191,7 @@ class TestConnectMiscGapOpsNotImplemented:
         # unknown member now raises ResourceNotFoundException, not 501.
         assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
 
-    def test_submit_contact_evaluation_not_found(self, connect, instance_id):
+    def test_submit_contact_evaluation_not_implemented(self, connect, instance_id):
         with pytest.raises(ClientError) as exc:
             connect.submit_contact_evaluation(
                 InstanceId=instance_id,

@@ -55,7 +55,9 @@ class TestSageMakerRuntimeInvokeEndpoint:
         assert resp["InvokedProductionVariant"] == "invoked_production_variant"
         assert resp["CustomAttributes"] == "custom_attributes"
 
-    def test_invoke_endpoint_repeatably_returns_the_same_payload(self, sagemaker_runtime):
+    def test_invoke_endpoint_repeatably_returns_the_same_payload(
+        self, sagemaker_runtime
+    ):
         """The result cache returns the identical response per identity."""
         name = f"cache-{_uid()}"
         kwargs = dict(
@@ -68,7 +70,9 @@ class TestSageMakerRuntimeInvokeEndpoint:
         second = sagemaker_runtime.invoke_endpoint(**kwargs)
         assert first["Body"].read() == second["Body"].read()
         assert first["ContentType"] == second["ContentType"]
-        assert first["InvokedProductionVariant"] == second["InvokedProductionVariant"]
+        assert (
+            first["InvokedProductionVariant"] == second["InvokedProductionVariant"]
+        )
 
 
 class TestSageMakerRuntimeInvokeEndpointAsync:
@@ -100,14 +104,18 @@ class TestSageMakerRuntimeInvokeEndpointAsync:
         )
         bucket = resp["OutputLocation"].removeprefix("s3://").split("/")[0]
         s3 = make_client("s3")
-        keys = [obj["Key"] for obj in s3.list_objects_v2(Bucket=bucket).get("Contents", [])]
+        keys = [
+            obj["Key"] for obj in s3.list_objects_v2(Bucket=bucket).get("Contents", [])
+        ]
         assert keys == ["response.json"]
         assert (
             s3.get_object(Bucket=bucket, Key="response.json")["Body"].read()
             == b'{"default": "response"}'
         )
 
-    def test_invoke_endpoint_async_repeats_input_location_is_deduped(self, sagemaker_runtime):
+    def test_invoke_endpoint_async_repeats_input_location_is_deduped(
+        self, sagemaker_runtime
+    ):
         """Same InputLocation returns the cached locations and a fresh id."""
         name = f"async-dedupe-{_uid()}"
         first = sagemaker_runtime.invoke_endpoint_async(
@@ -134,7 +142,9 @@ class TestSageMakerRuntimeInvokeEndpointAsync:
 
 
 class TestSageMakerRuntimeInvokeEndpointWithResponseStream:
-    def test_invoke_endpoint_with_response_stream_not_implemented(self, sagemaker_runtime):
+    def test_invoke_endpoint_with_response_stream_not_implemented(
+        self, sagemaker_runtime
+    ):
         """InvokeEndpointWithResponseStream is outside moto's surface.
 
         The deployed fork's `moto/sagemakerruntime/urls.py` routes only the
