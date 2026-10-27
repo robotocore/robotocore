@@ -6,10 +6,11 @@ literal ids in real code (a peer VPC that exists only outside Terraform, for exa
 """
 
 import boto3
+import os
 import pytest
 import requests
 
-from .conftest import ENDPOINT_URL
+ENDPOINT_URL = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
 
 _ACCOUNT = "555555555555"
 
