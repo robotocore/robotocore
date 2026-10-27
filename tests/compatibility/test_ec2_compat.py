@@ -11123,6 +11123,7 @@ class TestEC2GapRunInstances:
         # Cleanup
         ec2.terminate_instances(InstanceIds=[instance_id])
 
+
 class TestEC2Batch0AcceptAddressTransfer:
     """Tests for AcceptAddressTransfer operation."""
 

@@ -155,15 +155,11 @@ class TestBotAliasesCompat:
             assert alias["botAliasStatus"] == "CREATING"
             assert alias["tags"] == {"layer": "alias"}
         finally:
-            lexv2_client.delete_bot_alias(
-                botAliasId=alias["botAliasId"], botId=bot_id
-            )
+            lexv2_client.delete_bot_alias(botAliasId=alias["botAliasId"], botId=bot_id)
 
     def test_describe_bot_alias_moto_shape(self, lexv2_client, created_alias):
         alias_id = created_alias["botAliasId"]
-        resp = lexv2_client.describe_bot_alias(
-            botAliasId=alias_id, botId=created_alias["botId"]
-        )
+        resp = lexv2_client.describe_bot_alias(botAliasId=alias_id, botId=created_alias["botId"])
         assert resp["botAliasId"] == alias_id
         assert resp["botAliasName"] == created_alias["botAliasName"]
         assert resp["botAliasStatus"] == "CREATING"
@@ -182,9 +178,12 @@ class TestBotAliasesCompat:
         )
         assert resp["botAliasName"] == new_name
         assert resp["description"] == "updated"
-        assert lexv2_client.describe_bot_alias(
-            botAliasId=created_alias["botAliasId"], botId=created_alias["botId"]
-        )["botAliasName"] == new_name
+        assert (
+            lexv2_client.describe_bot_alias(
+                botAliasId=created_alias["botAliasId"], botId=created_alias["botId"]
+            )["botAliasName"]
+            == new_name
+        )
 
     def test_list_bot_aliases_includes_created(self, lexv2_client, created_alias):
         resp = lexv2_client.list_bot_aliases(botId=created_alias["botId"])
@@ -199,9 +198,7 @@ class TestBotAliasesCompat:
             botVersion="1",
             botId=bot_id,
         )
-        resp = lexv2_client.delete_bot_alias(
-            botAliasId=alias["botAliasId"], botId=bot_id
-        )
+        resp = lexv2_client.delete_bot_alias(botAliasId=alias["botAliasId"], botId=bot_id)
         assert resp["botAliasId"] == alias["botAliasId"]
         assert resp["botId"] == bot_id
         assert resp["botAliasStatus"] == "CREATING"
@@ -243,9 +240,7 @@ class TestResourcePolicyCompat:
     def test_resource_policy_crud(self, lexv2_client, created_bot):
         bot_id = created_bot["botId"]
         arn = f"arn:aws:lex:us-east-1:123456789012:bot/{bot_id}"
-        created = lexv2_client.create_resource_policy(
-            resourceArn=arn, policy='{"Statement": []}'
-        )
+        created = lexv2_client.create_resource_policy(resourceArn=arn, policy='{"Statement": []}')
         assert created["resourceArn"] == arn
         revision = created["revisionId"]
         described = lexv2_client.describe_resource_policy(resourceArn=arn)

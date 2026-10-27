@@ -815,9 +815,7 @@ class TestFSxGapOps:
         try:
             src = client.create_backup(FileSystemId=fs_id)
             backup_id = src["Backup"]["BackupId"]
-            copy = client.copy_backup(
-                SourceBackupId=backup_id, ClientRequestToken="f7-copy-token"
-            )
+            copy = client.copy_backup(SourceBackupId=backup_id, ClientRequestToken="f7-copy-token")
             copied = copy["Backup"]
             assert copied["BackupId"] != backup_id
             assert copied["SourceBackupId"] == backup_id
@@ -908,4 +906,3 @@ class TestFSxGapOps:
             "BadRequest",
             "ResourceNotFoundException",
         )
-

@@ -45,9 +45,9 @@ def _pick_binary() -> Path | None:
 
 def _health_ok(port: str) -> bool:
     try:
-        return bool(urllib.request.urlopen(
-            f"http://127.0.0.1:{port}/_robotocore/health", timeout=2
-        ).read())
+        return bool(
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/_robotocore/health", timeout=2).read()
+        )
     except Exception:
         return False
 
@@ -57,13 +57,25 @@ def _exec_docker(pull_targets: list[str], port: str) -> None:
     assert docker is not None
     for image in pull_targets:
         print(f"shim (ci fast path): docker pull {image}", flush=True)
-        if subprocess.run(["docker", "pull", image],
-                          stdout=subprocess.DEVNULL,
-                          stderr=subprocess.DEVNULL).returncode == 0:
+        if (
+            subprocess.run(
+                ["docker", "pull", image], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            ).returncode
+            == 0
+        ):
             print(f"shim: serving the twin from {image} (containerized)")
-            os.execv(docker, [docker, "run", "--rm", "-i",
-                              "-p", f"{port}:4566",
-                              IMAGE if image == IMAGE else image])
+            os.execv(
+                docker,
+                [
+                    docker,
+                    "run",
+                    "--rm",
+                    "-i",
+                    "-p",
+                    f"{port}:4566",
+                    IMAGE if image == IMAGE else image,
+                ],
+            )
             return  # unreachable: execv replaces this process
     raise RuntimeError("no docker image pullable from the release registries")
 
@@ -73,13 +85,11 @@ def main() -> int:
     host = os.environ.get("RUST_HOST", "127.0.0.1")
 
     if _health_ok(port):
-        print(f"shim: a twin is already healthy on {port} — nothing to start",
-              file=sys.stderr)
+        print(f"shim: a twin is already healthy on {port} — nothing to start", file=sys.stderr)
         # Keep the foreground process alive without a second server; the
         # workflow's SERVER_PID then points at a live guardian that dies with
         # its docker container on teardown.
-        subprocess.run([sys.executable, "-c",
-                        "import time;time.sleep(10**9)"])
+        subprocess.run([sys.executable, "-c", "import time;time.sleep(10**9)"])
         return 0
 
     # CI fast-path: the runner boots docker; the registry image is
@@ -89,16 +99,16 @@ def main() -> int:
             _exec_docker([IMAGE, FALLBACK_IMAGE], port)
         except RuntimeError as e:
             print(
-                f"shim: docker fast-path unavailable ({e}) — "
-                "falling back to cargo build", file=sys.stderr,
+                f"shim: docker fast-path unavailable ({e}) — falling back to cargo build",
+                file=sys.stderr,
             )
 
     # Local path: reuse (or build) the release binary, then exec it in-place
     # so workflows' `SERVER_PID=$!` + `kill -0` stays truthful.
     if _pick_binary() is None or os.environ.get("ROBOTOCORE_FORCE_BUILD") == "1":
-        proc = subprocess.Popen(["cargo", "build"],
-                                cwd=str(ROOT),
-                                env={**os.environ, "RUST_PORT": port})
+        proc = subprocess.Popen(
+            ["cargo", "build"], cwd=str(ROOT), env={**os.environ, "RUST_PORT": port}
+        )
         if proc.wait() != 0:
             print("shim: cargo build --release failed", file=sys.stderr)
             return 1
