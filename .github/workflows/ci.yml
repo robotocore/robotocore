@@ -21,7 +21,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-      - run: uv sync --extra dev
+      - run: uv sync --group dev
       - name: ruff
         run: |
           uv run ruff check src/ tests/ scripts/
@@ -44,7 +44,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-      - run: uv sync --extra dev
+      - run: uv sync --group dev
       - name: Check test quality (static analysis)
         run: >
           uv run python scripts/validate_test_quality.py
@@ -91,7 +91,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
-      - run: uv sync --extra dev
+      - run: uv sync --group dev
       - run: >
           uv run pytest
           tests/unit/gateway/
@@ -130,7 +130,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
-      - run: uv sync --extra dev
+      - run: uv sync --group dev
       - run: >
           uv run pytest tests/unit/services/
           -n4 -q --tb=short
@@ -158,7 +158,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
-      - run: uv sync --extra dev
+      - run: uv sync --group dev
       - name: Run infra unit tests
         run: >
           uv run pytest
@@ -192,7 +192,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-      - run: uv sync --extra dev
+      - run: uv sync --group dev
       - run: >
           uv run pytest tests/integration/
           -v --tb=short
@@ -227,7 +227,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-      - run: uv sync --extra dev
+      - run: uv sync --group dev
       - name: Start robotocore
         run: |
           ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
@@ -291,7 +291,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-      - run: uv sync --extra dev
+      - run: uv sync --group dev
       - name: Start robotocore
         run: |
           ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
@@ -348,7 +348,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-      - run: uv sync --extra dev
+      - run: uv sync --group dev
       - name: Start robotocore
         run: |
           ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
@@ -396,7 +396,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-      - run: uv sync --all-extras
+      - run: uv sync --all-groups
       - name: Start robotocore
         run: |
           ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
@@ -762,7 +762,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-      - run: uv sync --extra dev
+      - run: uv sync --group dev
       - name: Generate parity report
         run: >
           uv run python scripts/generate_parity_report.py

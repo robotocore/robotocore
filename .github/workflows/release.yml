@@ -21,7 +21,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-      - run: uv sync --extra dev
+      - run: uv sync --group dev
       - run: uv run ruff check src/ tests/ scripts/
       - run: uv run ruff format --check src/ tests/ scripts/
       - run: uv run mypy src/robotocore/ --ignore-missing-imports
@@ -36,7 +36,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
-      - run: uv sync --extra dev
+      - run: uv sync --group dev
       - run: uv run pytest tests/unit/ -n4 -q --tb=short --junitxml=results-release-unit.xml
       - name: Upload test results
         if: always()
