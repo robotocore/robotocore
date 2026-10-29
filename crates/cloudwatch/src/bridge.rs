@@ -13,7 +13,8 @@
 //! ingest is a no-op (unit tests without CloudWatch).
 
 use parking_lot::RwLock;
-use serde_json::json;
+use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
 use crate::handler::CloudwatchHandler;
@@ -114,6 +115,64 @@ pub fn ingest_kinesis_put_metrics(
             "cloudwatch::bridge: kinesis ingest not accepted (status={}, body={})",
             resp.status, resp.body
         );
+    }
+}
+
+// ---- alarm action delivery (reverse direction: cloudwatch → sns/lambda) ----
+
+/// Delivery hook for one alarm action ARN, shaped exactly like
+/// `events::bridge::HookFn` (SNS: a real `Publish` through the live SNS
+/// handler; lambda: a synchronous invocation with the alarm envelope as the
+/// event). Dependency direction as for the ingest above: cloudwatch must not
+/// depend on sns/lambda, so the gateway registers the hooks here at startup
+/// (src/core/cross_service.rs) — unregistered kinds (unit tests, binaries
+/// without the gateway wiring) silently drop their deliveries.
+pub type AlarmActionHook = Arc<dyn Fn(&str, &str, u64, &str) -> Result<(), String> + Send + Sync>;
+
+fn action_hooks() -> &'static RwLock<HashMap<String, AlarmActionHook>> {
+    static REGISTRY: OnceLock<RwLock<HashMap<String, AlarmActionHook>>> = OnceLock::new();
+    REGISTRY.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+/// Register the delivery hook for an alarm action kind ("sns", "lambda").
+pub fn register_alarm_action(kind: &str, hook: AlarmActionHook) {
+    action_hooks()
+        .write()
+        .insert(kind.to_string(), hook);
+}
+
+/// Test helper: clear the process-global alarm-action registry so a test can
+/// install its own hooks without refusals. Same sole-registrant contract as
+/// [`reset_registry`]; handler.rs delivery tests are the only registrants.
+pub fn reset_alarm_actions() {
+    action_hooks().write().clear();
+}
+
+/// Deliver one alarm notification to every action ARN, fire-and-forget:
+/// kinds without a registered hook (Auto Scaling policies, EC2 actions,
+/// Systems Manager ops items — moto never wired alarm actions at all) and
+/// delivery failures log and never fail the API call that produced the
+/// transition. Real CloudWatch re-subscribes nothing here — the twin does
+/// one synchronous delivery pass per state transition.
+pub fn deliver_actions(action_arns: &[String], message: &Value, account: u64, region: &str) {
+    if action_arns.is_empty() {
+        return;
+    }
+    // The SNS/Lambda payload is the alarm-state envelope serialized once.
+    let payload = serde_json::to_string(message).unwrap_or_else(|_| "{}".to_string());
+    let hooks = action_hooks().read();
+    for arn in action_arns {
+        // arn:<partition>:<service>:…
+        let Some(kind) = arn.split(':').nth(2) else {
+            continue;
+        };
+        let Some(hook) = hooks.get(kind) else {
+            continue;
+        };
+        if let Err(err) = hook(arn, &payload, account, region) {
+            // Surface the dropped delivery like the kinesis ingest above.
+            eprintln!("cloudwatch::bridge: {kind} alarm action failed for {arn}: {err}");
+        }
     }
 }
 

@@ -324,6 +324,53 @@ pub fn register(handlers: &NativeHandlers) {
         }),
     );
 
+    // CloudWatch alarm actions: alarm state transitions (evaluation on
+    // PutMetricData, SetAlarmState) deliver AlarmActions / OKActions /
+    // InsufficientDataActions ARNs through cloudwatch::bridge. SNS targets
+    // are a real `Publish` through the live SNS handler (so the topic's own
+    // queue/lambda subscribers receive the notification envelope) and Lambda
+    // targets invoke synchronously with the alarm envelope as the event —
+    // the same delivery shapes the events hooks above implement. moto's own
+    // cloudwatch backend never delivers alarm actions (5.2.4 models.py keeps
+    // alarms static), so the twin follows the real CloudWatch delivery
+    // semantics for the SNS/Lambda action kinds.
+    cloudwatch::bridge::register_alarm_action(
+        "sns",
+        Arc::new({
+            let sns = handlers.sns.clone();
+            move |arn: &str, payload: &str, account: u64, region: &str| {
+                let resp = sns.handle(sns::AwsRequest {
+                    service: "sns".into(),
+                    operation: "Publish".into(),
+                    account,
+                    region: region.to_string(),
+                    params: json!({ "TopicArn": arn, "Message": payload }),
+                    body: bytes::Bytes::new(),
+                });
+                // Missing topic: no-op like the Python provider's
+                // error-log-and-return behavior.
+                if resp.status >= 400 {
+                    return Err(format!("SNS publish failed for {arn}: {}", resp.status));
+                }
+                Ok(())
+            }
+        }),
+    );
+    cloudwatch::bridge::register_alarm_action(
+        "lambda",
+        Arc::new(
+            move |arn: &str, payload: &str, _account: u64, _region: &str| {
+                let Ok(event) = serde_json::from_str::<Value>(payload) else {
+                    return Err(format!("CloudWatch alarm payload is not JSON: {payload}"));
+                };
+                match lambda::invoke_by_arn(arn, &event) {
+                    Some(_) => Ok(()),
+                    None => Err(format!("Lambda function not found: {arn}")),
+                }
+            },
+        ),
+    );
+
     // CloudTrail management events: successful mutating API calls on the
     // emit-enabled services publish the standard "AWS API Call via
     // CloudTrail" envelope onto the default bus (issue #347). The producers
