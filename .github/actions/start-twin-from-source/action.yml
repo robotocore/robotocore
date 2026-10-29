@@ -60,7 +60,7 @@ runs:
         ./target/debug/robotocore-rust --host 127.0.0.1 --port "${{ inputs.port }}" \
           > .robotocore.log 2>&1 &
         TWIN_PID=$!
-        for i in $(seq 1 400); do
+        for i in $(seq 1 1200); do
           if ! kill -0 "$TWIN_PID" 2>/dev/null; then
             echo "Twin process exited early"
             cat .robotocore.log 2>/dev/null || true
