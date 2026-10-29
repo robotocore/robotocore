@@ -219,6 +219,19 @@ pub struct EventSourceMapping {
     /// Python-truth default `-1` (unconfigured; 0..=2 valid).
     #[serde(default)]
     pub maximum_retry_attempts: i64,
+    /// Attach-time per-shard watermarks for a `LATEST` kinesis mapping:
+    /// shard id → the sequence number that the stream's next put-record will
+    /// take, frozen when CreateEventSourceMapping registered the mapping
+    /// (moto registers the ESM on the stream synchronously
+    /// — moto/kinesis/models.py KinesisStream.lambda_event_source_mappings,
+    /// pushed on put_record — so a LATEST mapping only ever sees records
+    /// assigned after attach). Carried inside the mapping so the engine's
+    /// first sight reads it atomically with the mapping's publication — no
+    /// publish-then-bind window for a poll tick to run through, and state
+    /// save/restore carries it along. LATEST-only: TRIM_HORIZON keeps its
+    /// replay-from-zero contract (real AWS and recorded behavior).
+    #[serde(default)]
+    pub kinesis_bound_watermarks: Option<std::collections::BTreeMap<String, String>>,
 }
 
 /// One stored ESM as seen by the gateway's engine thread, tagged with the

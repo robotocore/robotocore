@@ -1609,8 +1609,10 @@ fn apply_dotnet_compile_env(cmd: &mut std::process::Command) {
 /// Era `_detect_tfm`: the host's best installed .NET runtime major, cached
 /// per process, `net8.0` when detection fails. Local builds compile against
 /// what the host actually runs — never a NuGet restore of a foreign
-/// targeting pack (the twin must stay offline-runnable).
-fn detect_dotnet_tfm() -> String {
+/// targeting pack (the twin must stay offline-runnable). Public so the
+/// bridge tests stage their helper assembly against the same TFM the
+/// executor will use.
+pub fn detect_dotnet_tfm() -> String {
     static CACHE: parking_lot::Mutex<Option<String>> = parking_lot::Mutex::new(None);
     if let Some(tfm) = CACHE.lock().as_ref() {
         return tfm.clone();

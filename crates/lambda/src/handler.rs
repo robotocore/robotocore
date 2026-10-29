@@ -1419,15 +1419,26 @@ impl LambdaHandler {
                 .get("MaximumRetryAttempts")
                 .and_then(Value::as_i64)
                 .unwrap_or(-1),
+            // Attach-time LATEST binding for kinesis mappings (moto registers
+            // the ESM on its source synchronously, so a LATEST mapping never
+            // misses records that the poller merely observes late).
+            // LATEST-only: TRIM_HORIZON keeps its replay contract.
+            kinesis_bound_watermarks: {
+                let arn = req.param_str("EventSourceArn").unwrap_or_default();
+                if req.param_str("StartingPosition").as_deref() == Some("LATEST")
+                    && arn.contains(":kinesis:")
+                {
+                    crate::bridge::kinesis_attach_watermarks(req.account, &req.region, &arn)
+                        .map(|pairs| pairs.into_iter().collect())
+                } else {
+                    None
+                }
+            },
         });
         state
             .event_source_mappings
             .write()
             .insert(uuid_val.clone(), Arc::clone(&em));
-        // Bind the source's cursor at attach time (moto registers the ESM on
-        // its source synchronously, so a LATEST mapping never misses records
-        // created after the CreateEventSourceMapping response).
-        crate::bridge::notify_esm_created(req.account, &req.region, &em.event_source_arn, &uuid_val);
         AwsResponse::json(202, Self::esm_dict(&em))
     }
 
@@ -1504,6 +1515,9 @@ impl LambdaHandler {
                 .get("MaximumRetryAttempts")
                 .and_then(Value::as_i64)
                 .unwrap_or(em.maximum_retry_attempts),
+            // The attach-time binding survives updates; it only re-freezes
+            // when a new mapping is created against the source.
+            kinesis_bound_watermarks: em.kinesis_bound_watermarks.clone(),
         });
         state
             .event_source_mappings
