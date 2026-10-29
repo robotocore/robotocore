@@ -1883,6 +1883,36 @@ fn decode_list_streams_token(token: &str) -> Result<Option<String>, ()> {
         .map(String::from))
 }
 
+impl KinesisHandler {
+    /// Attach-time cursor binding for the ESM engine, mirroring moto's
+    /// push-registration semantics: `moto/kinesis/models.py`
+    /// `KinesisStream.put_record` → `for arn, esm in
+    /// stream.lambda_event_source_mappings.items()` — a mapping registered
+    /// on a stream only ever picks up records assigned *after*
+    /// registration, so a `LATEST` starting position freezes at attach time
+    /// (CreateEventSourceMapping), not at the poller's first tick.
+    /// Returns `(shard id, next sequence number to be assigned)` per active
+    /// shard; callers bind them as `AT_SEQUENCE_NUMBER` iterators so every
+    /// post-attach record is delivered and no pre-attach record is
+    /// replayed.
+    pub fn attach_watermarks(
+        &self,
+        account: u64,
+        region: &str,
+        stream_name: &str,
+    ) -> Vec<(String, String)> {
+        let state = self.get_state(account, region);
+        let Some(stream) = state.get_stream(stream_name) else {
+            return Vec::new();
+        };
+        let shards = stream.shards.read();
+        shards
+            .iter()
+            .map(|sh| (sh.shard_id.clone(), sh.get_latest_sequence()))
+            .collect()
+    }
+}
+
 impl Default for KinesisHandler {
     fn default() -> Self {
         Self::new()

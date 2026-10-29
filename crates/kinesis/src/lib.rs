@@ -45,4 +45,16 @@ impl DefaultKinesisHandler {
     pub fn reset(&self) {
         self.inner.reset()
     }
+
+    /// Attach-time cursor binding for the ESM engine — see
+    /// `handler::KinesisHandler::attach_watermarks` for the moto-semantics
+    /// rationale.
+    pub fn attach_watermarks(
+        &self,
+        account: u64,
+        region: &str,
+        stream_name: &str,
+    ) -> Vec<(String, String)> {
+        self.inner.attach_watermarks(account, region, stream_name)
+    }
 }

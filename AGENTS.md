@@ -335,8 +335,12 @@ result = lam.invoke(FunctionName="hello", Payload=json.dumps({}))
 print(json.loads(result["Payload"].read()))  # {"ok": True}
 ```
 
-Lambda runtimes: the engine executes `python*`/`custom`/`provided.*` in-process
-and `nodejs` via node, on every host. `GET /_robotocore/runtimes` reports what
+Lambda runtimes: the engine executes `python*`/`custom`/`provided.*`
+in-process, `nodejs` via node, and the managed families natively in-process
+when their toolchains are on the host (`ruby` via `which ruby`, `java` when
+javac+java resolve — the bridge compiles once per process —, `dotnet` when
+the dotnet CLI resolves; a missing toolchain answers `Runtime.InvalidRuntime`).
+`GET /_robotocore/runtimes` reports what
 the running server can actually execute:
 
 - Default (`LAMBDA_EXECUTOR=local`): host-toolchain families only.

@@ -216,6 +216,330 @@ enum RuleListAction {
 /// De-duplication key for ListMetrics: (namespace, metric name, dimensions).
 type MetricSet = Vec<(String, String, Vec<(String, String)>)>;
 
+/// One good (data-bearing) evaluation window of a metric alarm.
+struct AlarmWindow {
+    value: f64,
+    /// Bucket end, epoch millis.
+    timestamp: i64,
+}
+
+/// Comparison of one aggregated statistic against the alarm threshold.
+/// Operator names are the PutMetricAlarm API's enum values.
+fn is_breaching(value: f64, threshold: f64, comparison_operator: &str) -> bool {
+    match comparison_operator {
+        "GreaterThanThreshold" => value > threshold,
+        "GreaterThanOrEqualToThreshold" => value >= threshold,
+        "LessThanThreshold" => value < threshold,
+        "LessThanOrEqualToThreshold" => value <= threshold,
+        _ => false,
+    }
+}
+
+/// Human phrasing of the comparison operator in NewStateReason strings.
+fn comparison_phrase(comparison_operator: &str) -> &'static str {
+    match comparison_operator {
+        "GreaterThanThreshold" => "greater than",
+        "GreaterThanOrEqualToThreshold" => "greater than or equal to",
+        "LessThanThreshold" => "less than",
+        "LessThanOrEqualToThreshold" => "less than or equal to",
+        _ => "compared to",
+    }
+}
+
+/// Print a metric value the way real CloudWatch prints datapoints in reason
+/// strings: one decimal place, so integral values read "10.0".
+fn reason_value(v: f64) -> String {
+    if v.fract() == 0.0 {
+        format!("{v:.1}")
+    } else {
+        format!("{v}")
+    }
+}
+
+/// Aggregate one `Period`-wide window of the alarm's metric; `None` when the
+/// window carries no datapoints or the statistic cannot be computed (a
+/// "missing" period). Namespace + metric-name matching only — moto's alarm
+/// evaluation filters `metric_data` by namespace and name and ignores
+/// dimension matching (`MetricDatumBase::filter` with no dimension arg).
+fn alarm_window_stat(
+    metrics: &[MetricDatum],
+    namespace: &str,
+    metric_name: &str,
+    stat: &str,
+    start_ms: i64,
+    end_ms: i64,
+) -> Option<f64> {
+    let mut values: Vec<f64> = Vec::new();
+    let mut aggs: Vec<DatumStats> = Vec::new();
+    for md in metrics {
+        if md.namespace == namespace
+            && md.name == metric_name
+            && md.timestamp > start_ms
+            && md.timestamp <= end_ms
+        {
+            if let Some(v) = md.single_value() {
+                values.push(v);
+            }
+            if let Some(s) = md.stats {
+                aggs.push(s);
+            }
+        }
+    }
+    if values.is_empty() && aggs.is_empty() {
+        return None;
+    }
+    agg_stat(stat, &values, &aggs)
+}
+
+/// The datapoint list part of a reason string: "10.0 (ts), 3.0 (ts)" in
+/// newest-first window order, like real CloudWatch's "Threshold Crossed".
+fn reason_datapoints(windows: &[AlarmWindow]) -> String {
+    windows
+        .iter()
+        .map(|w| format!("{} ({})", reason_value(w.value), ts_str(w.timestamp)))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Reason string for a state decided by the good windows, mirroring real
+/// CloudWatch's "Threshold Crossed: 1 datapoint [10.0 (ts)] was greater than
+/// the threshold (5.0)." — a non-breach inserts " not", and missing windows
+/// under TreatMissingData get the trailing "…{n} missing datapoint(s)
+/// treated as {breaching|notBreaching}." annotation.
+fn threshold_reason(
+    windows: &[AlarmWindow],
+    breached: bool,
+    phrase: &str,
+    threshold_str: &str,
+    missing: usize,
+    treat: &str,
+) -> String {
+    let n = windows.len();
+    let unit = if n == 1 { "" } else { "s" };
+    let was = if n == 1 { "was" } else { "were" };
+    let not = if breached { "" } else { " not" };
+    let mut reason = format!(
+        "Threshold Crossed: {n} datapoint{unit} [{}] {was}{not} {phrase} the threshold ({threshold_str}).",
+        reason_datapoints(windows)
+    );
+    if missing > 0 && matches!(treat, "breaching" | "notBreaching") {
+        let munit = if missing == 1 { "" } else { "s" };
+        reason.push_str(&format!(" {missing} missing datapoint{munit} treated as {treat}."));
+    }
+    reason
+}
+
+/// (state, NewStateReason) this alarm would move to given the current
+/// datapoint store, evaluated over the trailing `EvaluationPeriods` windows
+/// of `Period` seconds ending at `now_ms`. `None` when the alarm cannot be
+/// evaluated (metric-math alarms, unknown statistics) or — with
+/// `TreatMissingData=ignore` and no datapoints at all — must not move: real
+/// CloudWatch keeps such an alarm in its existing state.
+///
+/// Window semantics for `(state, reason)` (TreatMissingData handling per the
+/// real CloudWatch alarm rules; moto 5.2.4 has no evaluation code at all —
+/// `Alarm` in moto/cloudwatch/models.py only ever stores state):
+/// - `EvaluationPeriods` windows, `DatapointsToAlarm` (default =
+///   EvaluationPeriods) of the most recent *good* windows decide the state:
+///   all breaching → ALARM, else OK.
+/// - Fewer good windows than that: missing windows count as
+///   "breaching"/"notBreaching" per TreatMissingData, "missing" (the boto3
+///   default) transitions to INSUFFICIENT_DATA, and "ignore" evaluates the
+///   good windows as if the missing ones were removed.
+fn alarm_candidate(
+    metrics: &[MetricDatum],
+    alarm: &Value,
+    now_ms: i64,
+) -> Option<(String, String)> {
+    let namespace = field_str(alarm, "Namespace");
+    let metric_name = field_str(alarm, "MetricName");
+    let stat = field_str(alarm, "Statistic");
+    let operator = field_str(alarm, "ComparisonOperator");
+    if namespace.is_empty()
+        || metric_name.is_empty()
+        || operator.is_empty()
+        || stat.is_empty()
+        // Metric-math alarms (a Metrics list of MetricDataQuery entries) have
+        // no single Namespace/MetricName+Statistic pair to aggregate — they
+        // are never evaluated by the simple evaluation.
+        || !alarm["Metrics"]
+            .as_array()
+            .map(|m| m.is_empty())
+            .unwrap_or(true)
+    {
+        return None;
+    }
+    let threshold = alarm["Threshold"].as_f64().unwrap_or(0.0);
+    let period_ms = alarm["Period"].as_i64().unwrap_or(60).max(1) * 1000;
+    let eval_periods = alarm["EvaluationPeriods"].as_i64().unwrap_or(1).max(1) as usize;
+    let datapoints_to_alarm = alarm["DatapointsToAlarm"]
+        .as_i64()
+        .map(|m| m.max(1) as usize)
+        .unwrap_or(eval_periods);
+    let treat = field_str_or(alarm, "TreatMissingData", "missing");
+
+    // Anchor at max(now, the newest datapoint for the metric): caller-supplied
+    // Timestamps that run ahead of the evaluator's clock would otherwise fall
+    // outside every trailing window and read as missing at the exact moment
+    // they should breach. Windows are (start, end] so a datapoint stamped at
+    // the anchor point lands in the newest window.
+    let newest = metrics
+        .iter()
+        .filter(|md| md.namespace == namespace && md.name == metric_name)
+        .map(|md| md.timestamp)
+        .max()
+        .unwrap_or(i64::MIN);
+    let anchor = now_ms.max(newest);
+
+    // Newest window first.
+    let mut good: Vec<AlarmWindow> = Vec::new();
+    for i in 0..eval_periods {
+        let end = anchor - (i as i64) * period_ms;
+        let start = end - period_ms;
+        if let Some(v) = alarm_window_stat(metrics, &namespace, &metric_name, &stat, start, end) {
+            good.push(AlarmWindow {
+                value: v,
+                timestamp: end,
+            });
+        }
+    }
+
+    let phrase = comparison_phrase(&operator);
+    let threshold_str = reason_value(threshold);
+    let missing = eval_periods - good.len();
+    let (state, reason) = if good.len() >= datapoints_to_alarm {
+        // The M most recent good windows decide — older breaches age out.
+        let recent = &good[..datapoints_to_alarm];
+        let crossed = recent
+            .iter()
+            .all(|w| is_breaching(w.value, threshold, &operator));
+        (
+            if crossed { "ALARM" } else { "OK" },
+            threshold_reason(recent, crossed, phrase, &threshold_str, missing, &treat),
+        )
+    } else {
+        match treat.as_str() {
+            // Missing windows pad the breach side of the M required: the
+            // alarm enters ALARM when every good window breaches (missing
+            // windows breach by rule).
+            "breaching" => {
+                let crossed = good
+                    .iter()
+                    .all(|w| is_breaching(w.value, threshold, &operator));
+                if crossed {
+                    let reason = if good.is_empty() {
+                        let unit = if missing == 1 { "" } else { "s" };
+                        format!(
+                            "Threshold Crossed: {missing} missing datapoint{unit} treated as breaching."
+                        )
+                    } else {
+                        threshold_reason(&good, crossed, phrase, &threshold_str, missing, &treat)
+                    };
+                    ("ALARM", reason)
+                } else {
+                    (
+                        "OK",
+                        threshold_reason(&good, crossed, phrase, &threshold_str, missing, &treat),
+                    )
+                }
+            }
+            // Missing windows count as not-breaching, which can never
+            // complete an M-breach when the good windows are short.
+            "notBreaching" => {
+                if good.is_empty() {
+                    let unit = if missing == 1 { "" } else { "s" };
+                    (
+                        "OK",
+                        format!(
+                            "Threshold not Crossed: {missing} missing datapoint{unit} treated as notBreaching."
+                        ),
+                    )
+                } else {
+                    (
+                        "OK",
+                        threshold_reason(&good, false, phrase, &threshold_str, missing, &treat),
+                    )
+                }
+            }
+            // Missing windows are removed from the range of evaluation; with
+            // no datapoints at all the alarm is not evaluated (its state
+            // stays where it is — the None answer below).
+            "ignore" => {
+                if good.is_empty() {
+                    return None;
+                }
+                let crossed = good
+                    .iter()
+                    .all(|w| is_breaching(w.value, threshold, &operator));
+                (
+                    if crossed { "ALARM" } else { "OK" },
+                    threshold_reason(&good, crossed, phrase, &threshold_str, 0, &treat),
+                )
+            }
+            // "missing" (and anything unmapped — boto3's default): good
+            // windows short of the required count → INSUFFICIENT_DATA.
+            _ => {
+                let unit = if missing == 1 { "" } else { "s" };
+                (
+                    "INSUFFICIENT_DATA",
+                    format!("Insufficient Data: {missing} datapoint{unit} were unknown."),
+                )
+            }
+        }
+    };
+    Some((state.to_string(), reason))
+}
+
+/// The moto-style alarm state envelope the twin publishes on every state
+/// transition — the SNS/Lambda payload with the AlarmName, AlarmDescription,
+/// AWSAccountId, NewStateValue, NewStateReason, StateChangeTime, Region and
+/// OldStateValue fields the alarm consumers parse (`NewStateValue` gates
+/// "ALARM"/"OK" notifications like moto's documented alarm envelope).
+fn alarm_notification(
+    alarm: &Value,
+    old_state: &str,
+    new_state: &str,
+    reason: &str,
+    region: &str,
+    account: u64,
+) -> Value {
+    json!({
+        "AlarmName": field_str(alarm, "AlarmName"),
+        "AlarmDescription": field_str(alarm, "AlarmDescription"),
+        "AWSAccountId": account.to_string(),
+        "NewStateValue": new_state,
+        "NewStateReason": reason,
+        "StateChangeTime": default_ts_str(),
+        "Region": region,
+        "OldStateValue": old_state,
+    })
+}
+
+/// The action-ARN list + notification envelope for an alarm entering
+/// `new_state`; `None` when no actions are configured (nothing to deliver).
+fn state_notification(
+    alarm: &Value,
+    old_state: &str,
+    new_state: &str,
+    reason: &str,
+    region: &str,
+    account: u64,
+) -> Option<(Vec<String>, Value)> {
+    let actions_key = match new_state {
+        "ALARM" => "AlarmActions",
+        "OK" => "OKActions",
+        _ => "InsufficientDataActions",
+    };
+    let arns = str_list(alarm, actions_key);
+    if arns.is_empty() {
+        return None;
+    }
+    Some((
+        arns,
+        alarm_notification(alarm, old_state, new_state, reason, region, account),
+    ))
+}
+
 /// One MetricDataQuery MetricStat source for GetMetricData collection.
 struct MetricQuerySource {
     namespace: String,
@@ -621,6 +945,9 @@ impl CloudwatchHandler {
         };
         let state = self.get_state(req.account, &req.region);
         let mut metrics = state.metrics.write();
+        // Namespaces this call touched: alarm evaluation runs after the write
+        // lock is released so metric alarms watch their metric again here.
+        let mut touched_namespaces: Vec<String> = Vec::new();
         for dp in &items {
             let name = field_str(dp, "MetricName");
             if name.is_empty() {
@@ -642,6 +969,10 @@ impl CloudwatchHandler {
                 _ => None,
             }
             .unwrap_or_else(now_millis);
+
+            if !namespace.is_empty() && !touched_namespaces.contains(&namespace) {
+                touched_namespaces.push(namespace.clone());
+            }
 
             if let Some(values) = dp.get("Values").and_then(|v| v.as_array()) {
                 let counts_v = dp.get("Counts").and_then(|c| c.as_array());
@@ -674,7 +1005,62 @@ impl CloudwatchHandler {
                 });
             }
         }
+        drop(metrics);
+        // Evaluate the metric alarms of the namespaces this call produced
+        // datapoints for — synchronously on the PutMetricData path (real
+        // CloudWatch evaluates on a one-minute cadence; the twin keeps
+        // in-order semantics by doing it here), then send one notification
+        // per state transition.
+        if !touched_namespaces.is_empty() {
+            self.evaluate_alarms(req.account, &req.region, &touched_namespaces);
+        }
         AwsResponse::json(200, json!({}))
+    }
+
+    /// Evaluate the metric alarms watching one of `namespaces` against the
+    /// account/region metric store and deliver the state's action ARNs for
+    /// every alarm whose state actually changes — repeated evaluations in
+    /// the same state never re-notify (real CloudWatch: one notification per
+    /// transition). Deliveries happen after the alarm store lock is released
+    /// because a Lambda action may call back into this handler on this
+    /// thread. moto's own backend never evaluates alarms (5.2.4 keeps
+    /// `Alarm.state_value` untouched — see models.py/update_state), so the
+    /// twin's transitions follow the real CloudWatch alarm rules above.
+    fn evaluate_alarms(&self, account: u64, region: &str, namespaces: &[String]) {
+        let state = self.get_state(account, region);
+        let mut deliveries: Vec<(Vec<String>, Value)> = Vec::new();
+        {
+            let metrics = state.metrics.read();
+            let mut alarms = state.alarms.write();
+            for alarm in alarms.values_mut() {
+                let ns = field_str(alarm, "Namespace");
+                if !namespaces.contains(&ns) {
+                    continue;
+                }
+                let Some((target, reason)) = alarm_candidate(&metrics, alarm, now_millis())
+                else {
+                    continue;
+                };
+                let old_state = field_str(alarm, "StateValue");
+                if old_state == target {
+                    continue;
+                }
+                alarm["StateValue"] = json!(target);
+                alarm["StateReason"] = json!(reason);
+                alarm["StateUpdatedTimestamp"] = json!(default_ts_str());
+                if !alarm["ActionsEnabled"].as_bool().unwrap_or(true) {
+                    continue;
+                }
+                if let Some((arns, message)) =
+                    state_notification(alarm, &old_state, &target, &reason, region, account)
+                {
+                    deliveries.push((arns, message));
+                }
+            }
+        }
+        for (arns, message) in &deliveries {
+            crate::bridge::deliver_actions(arns, message, account, region);
+        }
     }
 
     fn dims_subset(datum: &[(String, String)], filter: &[(String, String)]) -> bool {
@@ -1124,7 +1510,8 @@ impl CloudwatchHandler {
         let mut alarms = state.alarms.write();
         let mut composites = state.composite_alarms.write();
         let alarm = alarms.get_mut(&name).or_else(|| composites.get_mut(&name));
-        match alarm {
+        let mut delivery: Option<(Vec<String>, Value)> = None;
+        let response = match alarm {
             Some(alarm) => {
                 let value =
                     as_str(req.params.get("StateValue")).unwrap_or_else(|| "OK".to_string());
@@ -1138,8 +1525,19 @@ impl CloudwatchHandler {
                 if let Some(reason_data) = as_str(req.params.get("StateReasonData")) {
                     alarm["StateReasonData"] = json!(reason_data);
                 }
+                let old_state = field_str(alarm, "StateValue");
                 alarm["StateValue"] = json!(value);
                 alarm["StateUpdatedTimestamp"] = json!(default_ts_str());
+                // SetAlarmState invokes the alarm's actions for the new state
+                // when the state actually differs ("When the updated state
+                // differs from the previous value, the action configured for
+                // the appropriate state is invoked" — API_SetAlarmState).
+                if value != old_state && alarm["ActionsEnabled"].as_bool().unwrap_or(true) {
+                    let reason = field_str(alarm, "StateReason");
+                    delivery = state_notification(
+                        alarm, &old_state, &value, &reason, &req.region, req.account,
+                    );
+                }
                 AwsResponse::json(200, json!({}))
             }
             None => AwsResponse::error(
@@ -1147,7 +1545,12 @@ impl CloudwatchHandler {
                 "ResourceNotFoundException",
                 &format!("Alarm {name} not found"),
             ),
+        };
+        // Deliver with the alarm-state locks released (see evaluate_alarms).
+        if let Some((arns, message)) = delivery {
+            crate::bridge::deliver_actions(&arns, &message, req.account, &req.region);
         }
+        response
     }
 
     fn set_alarm_actions(&self, req: &AwsRequest, enabled: bool) -> AwsResponse {
@@ -1859,5 +2262,390 @@ mod tests {
         let dps3 = body3["Datapoints"].as_array().unwrap();
         assert_eq!(dps3.len(), 1, "epoch-ms numbers keep their ms meaning");
         assert_eq!(dps3[0]["Average"], 3.0);
+    }
+
+    // ---- alarm evaluation + action delivery ----
+
+    /// The tests below evaluate alarms over synthetic windows. Every window
+    /// is `Period` seconds wide, so a fresh datapoint written with an
+    /// explicit future Timestamp only carries data for the very newest
+    /// window (no repeated datapoints share an aggregated Sum bucket).
+    fn ts_of(secs_from_now: i64) -> String {
+        (chrono::Utc::now() + chrono::Duration::seconds(secs_from_now)).to_rfc3339()
+    }
+
+    fn make_req_acct(account: u64, operation: &str, params: Value) -> AwsRequest {
+        AwsRequest {
+            account,
+            ..make_req(operation, params)
+        }
+    }
+
+    /// Threshold breach → ALARM transition → SNS AlarmActions delivery; the
+    /// same transition state never re-notifies, recovery delivers OKActions,
+    /// disabled actions update state silently, and SetAlarmState invokes the
+    /// state's actions exactly once per transition. The alarm-action hook
+    /// registry is process-global, so every delivery assertion lives in this
+    /// single test (sole-registrant contract like the kinesis bridge test).
+    #[test]
+    fn alarm_evaluation_notifies_once_per_transition() {
+        use std::sync::Arc;
+
+        crate::bridge::reset_alarm_actions();
+        let deliveries: Arc<parking_lot::Mutex<Vec<(String, String)>>> = Arc::default();
+        let recorded = Arc::clone(&deliveries);
+        crate::bridge::register_alarm_action(
+            "sns",
+            Arc::new(move |arn: &str, payload: &str, _account: u64, _region: &str| {
+                recorded.lock().push((arn.to_string(), payload.to_string()));
+                Ok(())
+            }),
+        );
+
+        let handler = CloudwatchHandler::new();
+        let account = 447089000901u64;
+        let topic_arn = "arn:aws:sns:us-east-1:447089000901:alarm-pings";
+        handler.handle(make_req_acct(account, 
+            "PutMetricAlarm",
+            json!({
+                "AlarmName": "eval-a", "Namespace": "EvalNS", "MetricName": "Hits",
+                "ComparisonOperator": "GreaterThanThreshold", "EvaluationPeriods": 1,
+                "Period": 60, "Statistic": "Sum", "Threshold": 5.0,
+                "AlarmActions": [topic_arn], "OKActions": [topic_arn]
+            }),
+        ));
+        // Second alarm, same namespace, with disabled actions: it must move
+        // state without ever delivering.
+        handler.handle(make_req_acct(account, 
+            "PutMetricAlarm",
+            json!({
+                "AlarmName": "eval-b", "Namespace": "EvalNS", "MetricName": "Drops",
+                "ComparisonOperator": "GreaterThanThreshold", "EvaluationPeriods": 1,
+                "Period": 60, "Statistic": "Sum", "Threshold": 5.0,
+                "AlarmActions": [topic_arn]
+            }),
+        ));
+        handler.handle(make_req_acct(account, 
+            "DisableAlarmActions",
+            json!({ "AlarmNames": ["eval-b"] }),
+        ));
+
+        // Breach: OK → ALARM and one AlarmActions delivery with the alarm
+        // envelope fields (AlarmName, NewStateValue, OldStateValue, AWS…
+        // account, Region).
+        handler.handle(make_req_acct(account, 
+            "PutMetricData",
+            json!({
+                "Namespace": "EvalNS",
+                "MetricData": [
+                    {"MetricName": "Hits", "Value": 10.0, "Timestamp": ts_of(0)},
+                    {"MetricName": "Drops", "Value": 10.0, "Timestamp": ts_of(0)}
+                ]
+            }),
+        ));
+        let desc = parse(&handler.handle(make_req_acct(account, 
+            "DescribeAlarms",
+            json!({ "AlarmNames": ["eval-a", "eval-b"], "AlarmTypes": ["MetricAlarm"] }),
+        )));
+        let alarms = desc["MetricAlarms"].as_array().unwrap();
+        let a = alarms.iter().find(|x| x["AlarmName"] == "eval-a").unwrap();
+        let b = alarms.iter().find(|x| x["AlarmName"] == "eval-b").unwrap();
+        assert_eq!(a["StateValue"], "ALARM");
+        assert!(a["StateReason"].as_str().unwrap().contains("greater than the threshold (5.0)"));
+        assert_eq!(b["StateValue"], "ALARM");
+
+        let records = deliveries.lock();
+        assert_eq!(records.len(), 1, "one transition → one delivery: {records:?}");
+        let (arn, payload) = &records[0];
+        assert_eq!(arn.as_str(), topic_arn);
+        let envelope: Value = serde_json::from_str(payload).unwrap();
+        assert_eq!(envelope["NewStateValue"], "ALARM");
+        assert_eq!(envelope["OldStateValue"], "OK");
+        assert_eq!(envelope["AlarmName"], "eval-a");
+        assert_eq!(envelope["AWSAccountId"], json!("447089000901"));
+        assert_eq!(envelope["Region"], "us-east-1");
+        assert!(envelope["NewStateReason"].as_str().is_some());
+        assert!(envelope["StateChangeTime"].as_str().is_some());
+        drop(records);
+
+        // Same evaluation in the same state: no repeat notification (real
+        // CloudWatch notifies once per transition).
+        handler.handle(make_req_acct(account, 
+            "PutMetricData",
+            json!({
+                "Namespace": "EvalNS",
+                "MetricData": [{"MetricName": "Hits", "Value": 10.0, "Timestamp": ts_of(61)}]
+            }),
+        ));
+        assert_eq!(deliveries.lock().len(), 1);
+
+        // Recovery: ALARM → OK via OKActions.
+        handler.handle(make_req_acct(account, 
+            "PutMetricData",
+            json!({
+                "Namespace": "EvalNS",
+                "MetricData": [{"MetricName": "Hits", "Value": 3.0, "Timestamp": ts_of(122)}]
+            }),
+        ));
+        {
+            let records = deliveries.lock();
+            assert_eq!(records.len(), 2, "recovery delivers OKActions: {records:?}");
+            let (_, payload) = &records[1];
+            let envelope: Value = serde_json::from_str(payload).unwrap();
+            assert_eq!(envelope["NewStateValue"], "OK");
+            assert_eq!(envelope["OldStateValue"], "ALARM");
+        }
+
+        // Still OK: no further delivery.
+        handler.handle(make_req_acct(account, 
+            "PutMetricData",
+            json!({
+                "Namespace": "EvalNS",
+                "MetricData": [{"MetricName": "Hits", "Value": 1.0, "Timestamp": ts_of(183)}]
+            }),
+        ));
+        assert_eq!(deliveries.lock().len(), 2);
+
+        // SetAlarmState invokes the transitioned state's actions exactly
+        // once per actual transition (API_SetAlarmState). eval-a sits in
+        // OK; the forced flip to ALARM delivers AlarmActions again.
+        handler.handle(make_req_acct(account, 
+            "SetAlarmState",
+            json!({ "AlarmName": "eval-a", "StateValue": "ALARM", "StateReason": "Forced for test" }),
+        ));
+        {
+            let records = deliveries.lock();
+            assert_eq!(records.len(), 3);
+            let (_, payload) = &records[2];
+            let envelope: Value = serde_json::from_str(payload).unwrap();
+            assert_eq!(envelope["NewStateValue"], "ALARM");
+            assert_eq!(envelope["OldStateValue"], "OK");
+            assert_eq!(envelope["NewStateReason"], "Forced for test");
+        }
+        // Same state again: nothing new.
+        handler.handle(make_req_acct(account, 
+            "SetAlarmState",
+            json!({ "AlarmName": "eval-a", "StateValue": "ALARM", "StateReason": "Same state" }),
+        ));
+        assert_eq!(deliveries.lock().len(), 3);
+        // And back to OK.
+        handler.handle(make_req_acct(account, 
+            "SetAlarmState",
+            json!({ "AlarmName": "eval-a", "StateValue": "OK", "StateReason": "Manual OK" }),
+        ));
+        {
+            let records = deliveries.lock();
+            assert_eq!(records.len(), 4);
+            let envelope: Value = serde_json::from_str(&records[3].1).unwrap();
+            assert_eq!(envelope["NewStateValue"], "OK");
+        }
+    }
+
+    /// TreatMissingData=breaching: an alarm whose metric produced no
+    /// datapoints at all evaluates as if the missing datapoints were
+    /// breaching (moto keeps alarms static; this is the real CloudWatch
+    /// TreatMissingData rule).
+    #[test]
+    fn breaching_treat_missing_data_transitions_without_datapoints() {
+        let handler = CloudwatchHandler::new();
+        handler.handle(make_req(
+            "PutMetricAlarm",
+            json!({
+                "AlarmName": "ghost-breacher", "Namespace": "MissingNS", "MetricName": "Ghost",
+                "ComparisonOperator": "GreaterThanThreshold", "EvaluationPeriods": 1,
+                "Period": 60, "Statistic": "Sum", "Threshold": 0.0,
+                "TreatMissingData": "breaching"
+            }),
+        ));
+        // Some other metric in the same namespace drives the evaluation.
+        handler.handle(make_req(
+            "PutMetricData",
+            json!({
+                "Namespace": "MissingNS",
+                "MetricData": [{"MetricName": "Other", "Value": 1.0}]
+            }),
+        ));
+        let desc = parse(&handler.handle(make_req(
+            "DescribeAlarms",
+            json!({ "AlarmNames": ["ghost-breacher"] }),
+        )));
+        let alarm = &desc["MetricAlarms"][0];
+        assert_eq!(alarm["StateValue"], "ALARM");
+        assert!(alarm["StateReason"].as_str().unwrap().contains("treated as breaching"));
+    }
+
+    /// TreatMissingData=ignore (and ignore-with-zero-datapoints) leaves the
+    /// alarm in its current state — the only treat mode where evaluation
+    /// declines to move it.
+    #[test]
+    fn ignore_treat_missing_data_keeps_state_without_datapoints() {
+        let handler = CloudwatchHandler::new();
+        handler.handle(make_req(
+            "PutMetricAlarm",
+            json!({
+                "AlarmName": "ghost-ignorer", "Namespace": "MissingIgnoredNS", "MetricName": "Ghost",
+                "ComparisonOperator": "GreaterThanThreshold", "EvaluationPeriods": 1,
+                "Period": 60, "Statistic": "Sum", "Threshold": 0.0,
+                "TreatMissingData": "ignore"
+            }),
+        ));
+        handler.handle(make_req(
+            "PutMetricData",
+            json!({
+                "Namespace": "MissingIgnoredNS",
+                "MetricData": [{"MetricName": "Other", "Value": 1.0}]
+            }),
+        ));
+        let desc = parse(&handler.handle(make_req(
+            "DescribeAlarms",
+            json!({ "AlarmNames": ["ghost-ignorer"] }),
+        )));
+        let alarm = &desc["MetricAlarms"][0];
+        assert_eq!(alarm["StateValue"], "OK");
+        assert_eq!(alarm["StateReason"], "Unchecked: Initial alarm creation");
+    }
+
+    /// The (unset) default TreatMissingData=missing: short datapoint data
+    /// moves the alarm to INSUFFICIENT_DATA.
+    #[test]
+    fn default_treat_missing_transitions_to_insufficient_data() {
+        let handler = CloudwatchHandler::new();
+        handler.handle(make_req(
+            "PutMetricAlarm",
+            json!({
+                "AlarmName": "default-missing", "Namespace": "MissingDefaultNS", "MetricName": "Ghost",
+                "ComparisonOperator": "GreaterThanThreshold", "EvaluationPeriods": 1,
+                "Period": 60, "Statistic": "Sum", "Threshold": 0.0
+            }),
+        ));
+        handler.handle(make_req(
+            "PutMetricData",
+            json!({
+                "Namespace": "MissingDefaultNS",
+                "MetricData": [{"MetricName": "Other", "Value": 1.0}]
+            }),
+        ));
+        let desc = parse(&handler.handle(make_req(
+            "DescribeAlarms",
+            json!({ "AlarmNames": ["default-missing"] }),
+        )));
+        assert_eq!(desc["MetricAlarms"][0]["StateValue"], "INSUFFICIENT_DATA");
+    }
+
+    /// DatapointsToAlarm shortens the breach-set decision: with M=1 of
+    /// EvaluationPeriods=2 a single fresh breaching window is enough, while
+    /// the default (M=EvaluationPeriods) requires every window to breach.
+    #[test]
+    fn datapoints_to_alarm_decides_m_of_n_breach() {
+        let handler = CloudwatchHandler::new();
+        handler.handle(make_req(
+            "PutMetricAlarm",
+            json!({
+                "AlarmName": "m1", "Namespace": "MoN", "MetricName": "Tw",
+                "ComparisonOperator": "GreaterThanThreshold", "EvaluationPeriods": 2,
+                "DatapointsToAlarm": 1, "Period": 60, "Statistic": "Sum",
+                "Threshold": 5.0, "TreatMissingData": "notBreaching"
+            }),
+        ));
+        // The two trailing windows carry [10 (newest), 10] — both modes alarm.
+        handler.handle(make_req(
+            "PutMetricData",
+            json!({
+                "Namespace": "MoN",
+                "MetricData": [{"MetricName": "Tw", "Value": 10.0, "Timestamp": ts_of(0)}]
+            }),
+        ));
+        handler.handle(make_req(
+            "PutMetricData",
+            json!({
+                "Namespace": "MoN",
+                "MetricData": [{"MetricName": "Tw", "Value": 10.0, "Timestamp": ts_of(61)}]
+            }),
+        ));
+        handler.handle(make_req(
+            "PutMetricAlarm",
+            json!({
+                "AlarmName": "m2", "Namespace": "MoN", "MetricName": "Tw",
+                "ComparisonOperator": "GreaterThanThreshold", "EvaluationPeriods": 2,
+                "Period": 60, "Statistic": "Sum",
+                "Threshold": 5.0, "TreatMissingData": "notBreaching"
+            }),
+        ));
+        handler.handle(make_req(
+            "PutMetricData",
+            json!({
+                "Namespace": "MoN",
+                "MetricData": [{"MetricName": "Tw", "Value": 10.0, "Timestamp": ts_of(61)}]
+            }),
+        ));
+        let desc = parse(&handler.handle(make_req(
+            "DescribeAlarms",
+            json!({ "AlarmNames": ["m1", "m2"] }),
+        )));
+        let alarms = desc["MetricAlarms"].as_array().unwrap();
+        let state_of = |name: &str| {
+            alarms
+                .iter()
+                .find(|x| x["AlarmName"] == name)
+                .unwrap()["StateValue"]
+                .clone()
+        };
+        assert_eq!(state_of("m1"), "ALARM");
+        assert_eq!(state_of("m2"), "ALARM", "both windows breaching → ALARM");
+
+        // Newest window goes quiet: M=1 alarms on the newest good window
+        // alone; the default (M=2) needs both and drops to OK.
+        handler.handle(make_req(
+            "PutMetricData",
+            json!({
+                "Namespace": "MoN",
+                "MetricData": [{"MetricName": "Tw", "Value": 0.0, "Timestamp": ts_of(122)}]
+            }),
+        ));
+        let desc = parse(&handler.handle(make_req(
+            "DescribeAlarms",
+            json!({ "AlarmNames": ["m1", "m2"] }),
+        )));
+        let alarms = desc["MetricAlarms"].as_array().unwrap();
+        let state_of = |name: &str| {
+            alarms
+                .iter()
+                .find(|x| x["AlarmName"] == name)
+                .unwrap()["StateValue"]
+                .clone()
+        };
+        assert_eq!(state_of("m1"), "OK", "M=1 follows the newest window");
+        assert_eq!(state_of("m2"), "OK", "M=2 needs every window breaching");
+    }
+
+    /// Alarm evaluation matches on namespace + metric name like moto —
+    /// dimensioned alarms still evaluate dimensioned datapoints.
+    #[test]
+    fn dimensioned_alarms_evaluate_on_namespace_and_metric_name() {
+        let handler = CloudwatchHandler::new();
+        handler.handle(make_req(
+            "PutMetricAlarm",
+            json!({
+                "AlarmName": "dim-alarm", "Namespace": "DimNS", "MetricName": "ErrorRate",
+                "Dimensions": [{"Name": "Service", "Value": "api"}],
+                "ComparisonOperator": "GreaterThanThreshold", "EvaluationPeriods": 1,
+                "Period": 60, "Statistic": "Average", "Threshold": 50.0
+            }),
+        ));
+        handler.handle(make_req(
+            "PutMetricData",
+            json!({
+                "Namespace": "DimNS",
+                "MetricData": [{
+                    "MetricName": "ErrorRate", "Value": 75.0,
+                    "Dimensions": [{"Name": "Service", "Value": "api"}]
+                }]
+            }),
+        ));
+        let desc = parse(&handler.handle(make_req(
+            "DescribeAlarms",
+            json!({ "AlarmNames": ["dim-alarm"] }),
+        )));
+        assert_eq!(desc["MetricAlarms"][0]["StateValue"], "ALARM");
     }
 }

@@ -609,6 +609,12 @@ impl DynamoDbHandler {
                 description["LatestStreamLabel"] = json!(label);
                 description["LatestStreamArn"] =
                     json!(format!("{}/stream/{}", *table.table_arn.read(), label));
+                // real AWS also echoes the StreamSpecification the table was
+                // created/updated with (parity test_dynamodb_streams.pin).
+                description["StreamSpecification"] = json!({
+                    "StreamEnabled": true,
+                    "StreamViewType": table.stream_view_type.read().as_deref().unwrap_or("NEW_AND_OLD_IMAGES"),
+                });
             }
         }
         AwsResponse::json(status, json!({ wrapper: description }))
@@ -5116,8 +5122,8 @@ mod tests {
             json!({"TableName": "getdrop", "Key": {"pk": {"S": "r2"}}}),
         ));
         assert_eq!(
-            resp.body,
-            json!({"Item": {"pk": {"S": "r2"}, "v": {"S": "x"}}}).to_string()
+            serde_json::from_str::<Value>(&resp.body).unwrap(),
+            json!({"Item": {"pk": {"S": "r2"}, "v": {"S": "x"}}})
         );
 
         // Put + Delete + Get: the two modeled members keep the row under
@@ -5453,9 +5459,14 @@ mod tests {
             "GetItem",
             json!({"TableName": "allold", "Key": {"pk": {"S": "r1"}}}),
         ));
+        // Compare as parsed Values, not response strings: JSON object keys
+        // are unordered, and the handler's attribute map can serialize in a
+        // feature-dependent order (a preserve_order unification elsewhere in
+        // the workspace flips serde_json's map type) — string equality is
+        // seed-brittle (this exact assert failed in the v2.0.0 release lane).
         assert_eq!(
-            resp.body,
-            json!({"Item": {"pk": {"S": "r1"}, "v": {"N": "3"}, "s": {"S": "old"}}}).to_string()
+            serde_json::from_str::<Value>(&resp.body).unwrap(),
+            json!({"Item": {"pk": {"S": "r1"}, "v": {"N": "3"}, "s": {"S": "old"}}})
         );
     }
 

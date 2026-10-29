@@ -10,6 +10,10 @@
 # it — `runtimes` (same runner on a Debian-slim base + Node.js/Ruby on
 # PATH) and `java-and-dotnet` (runtimes + OpenJDK 21 + .NET SDK 8) — neither
 # is part of an untargeted build; build them explicitly with `--target`.
+# The managed-family Lambda executors (crates/lambda execute_ruby/
+# execute_java/execute_dotnet) run ruby/java/dotnet handlers from whatever
+# toolchain the running image carries, so those images serve the families
+# with NO docker daemon and no LAMBDA_EXECUTOR=docker needed.
 
 FROM rust:1.99-slim-bookworm AS builder
 
@@ -26,6 +30,18 @@ COPY src/ src/
 
 RUN cargo build --locked --release && strip target/release/robotocore-rust
 
+# ---- lambda-site stage: the boto3 bundle python-family Lambdas expect ----
+# Real AWS Lambda runtimes bundle boto3 (any handler may `import boto3`),
+# and so did the Python twin (moto executed handlers in the server process,
+# which itself depended on boto3). The Rust twin executes handlers in a
+# subprocess python, so the bundle has to ride along: built once here and
+# COPY'd into every runtime stage, exported via PYTHONPATH (the distroless
+# base has no pip or package manager of its own).
+FROM python:3.11-slim-bookworm AS lambda-site
+
+RUN pip install --no-cache-dir --no-compile --target /lambda-site \
+        boto3 botocore
+
 # ---- runtimes stage: Debian-slim runner + Node.js + Ruby on PATH ----
 # Build with: docker build --target runtimes -t robotocore:runtimes .
 #
@@ -35,7 +51,11 @@ RUN cargo build --locked --release && strip target/release/robotocore-rust
 # 20.x) and ruby (trixie ships 3.3) under /usr/bin. The gateway's
 # /_robotocore/runtimes probe and the nodejs Lambda executor look for
 # `node` via std::env::var("PATH") (crates/lambda find_node), so the
-# runtime dirs must be on the image's PATH ENV.
+# runtime dirs must be on the image's PATH ENV. The same PATH is what
+# execute_ruby resolves its interpreter through (versioned `ruby3.x`
+# names first, plain `ruby` as fallback) and what the local-mode
+# /_robotocore/runtimes probe reports for the ruby family — these
+# invocations run on the image itself, no docker daemon involved.
 #
 # The busybox shim is pulled from the same busybox:1.36.1 source the
 # distroless stage uses rather than `COPY --from=runtime`: Dockerfile
@@ -50,8 +70,12 @@ FROM debian:trixie-slim AS runtimes
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates nodejs ruby \
+        ca-certificates nodejs ruby python3 \
     && rm -rf /var/lib/apt/lists/*
+
+# AWS-bundled boto3 for the python-family Lambda executor (see lambda-site).
+COPY --from=lambda-site /lambda-site /lambda-site
+ENV PYTHONPATH=/lambda-site
 
 # Same stripped binary the distroless image ships.
 COPY --from=builder /app/target/release/robotocore-rust /server/robotocore-rust
@@ -72,6 +96,15 @@ ENTRYPOINT ["/server/robotocore-rust", "--host", "0.0.0.0", "--port", "4566"]
 #
 # Mirror of the Python twin's java-and-dotnet image: identical ENTRYPOINT
 # as the other stages, plus the two toolchains its Lambda runtimes use.
+# With the local java/dotnet executors (crates/lambda execute_java/
+# execute_dotnet) the stage now also serves those families in-process:
+# execute_java compiles the runtime bridge with this image's javac on the
+# first invoke (--release 8 class, era pin) and runs handlers with its
+# java; execute_dotnet builds its reflection bootstrap once per TFM
+# against this SDK 8 and drives packages' assemblies via LAMBDA_CODE_DIR —
+# no docker daemon anywhere in either path. JAVA_HOME (exported below) and
+# the /usr/local/bin/dotnet symlink are what the gateway's local-mode
+# /_robotocore/runtimes probe resolves java/dotnet through.
 FROM runtimes AS java-and-dotnet
 
 # openjdk-21-jdk-headless: javac (bootstrap compilation) + java (Lambda
@@ -122,6 +155,12 @@ FROM gcr.io/distroless/python3-debian12 AS runtime
 # same on `docker run` and `docker exec` — this distroless base defines no
 # PATH in its config.
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# AWS-bundled boto3 for the python-family Lambda executor (see lambda-site):
+# handlers importing boto3 resolve through this PYTHONPATH even on the
+# pip-less distroless base.
+COPY --from=lambda-site /lambda-site /lambda-site
+ENV PYTHONPATH=/lambda-site
 
 COPY --from=builder /app/target/release/robotocore-rust /server/robotocore-rust
 # Healthcheck busybox sourced from the `-musl` tag on purpose: on aarch64

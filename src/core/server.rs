@@ -1682,12 +1682,14 @@ fn registry_service_statuses() -> serde_json::Map<String, serde_json::Value> {
 /// equal to _ALL_RUNTIME_FAMILIES). Honesty rule: a family may only appear in
 /// `available` when the Rust lambda handler can actually execute it — keep
 /// this list truthful, not aspirational. Executors live in `crates/lambda`:
-/// the in-process executors cover python/custom (and nodejs when the host has
-/// a `node` binary), and the docker executor (`LAMBDA_EXECUTOR=docker`) runs
-/// every runtime mapped to an official AWS runtime image — including the
-/// managed java/dotnet/ruby families — in containers. Like the python twin
-/// (befd9a8b), the endpoint reports the server's actual capability, not this
-/// process's PATH.
+/// the in-process executors cover python/custom always, nodejs when the host
+/// has a `node` binary, and the managed java/dotnet/ruby families when their
+/// toolchains resolve (ruby via `which ruby`, java via the javac functional
+/// probe, dotnet via `which dotnet` / `$DOTNET_ROOT`); the docker executor
+/// (`LAMBDA_EXECUTOR=docker`) additionally runs every runtime mapped to an
+/// official AWS runtime image — including the managed java/dotnet/ruby
+/// families — in containers. Like the python twin (befd9a8b), the endpoint
+/// reports the server's actual capability, not just this process's PATH.
 pub async fn runtimes_handler() -> impl IntoResponse {
     let all = _ALL_RUNTIME_FAMILIES;
     let available = available_runtime_families();
@@ -1705,7 +1707,14 @@ pub const _ALL_RUNTIME_FAMILIES: [&str; 6] =
 /// - Host (local-mode) families: `python` runs in-process (the shim) and
 ///   `custom` through /bin/sh-style bootstrap: always available. `nodejs`
 ///   has an in-process executor and needs a `node` binary at invoke time:
-///   present only when the host has one (python era: `which node`).
+///   present only when the host has one (python era: `which node`). The
+///   managed families have in-process executors too (`crates/lambda`
+///   `execute_ruby`/`execute_java`/`execute_dotnet`) and surface exactly
+///   when their toolchains resolve: `ruby` via `which ruby`, `java` via the
+///   era `_is_java_functional` probe (see [`java_toolchain_functional`]),
+///   `dotnet` via `which dotnet` or `$DOTNET_ROOT/dotnet` — the same honesty
+///   rule: a family is `available` only when the Rust lambda handler can
+///   actually execute it in this server process.
 /// - `LAMBDA_EXECUTOR=docker`: the docker executor runs every runtime mapped
 ///   to an official AWS runtime image in a container, so the families those
 ///   runtimes belong to (java/dotnet/ruby among them) are unioned in whenever
@@ -1718,6 +1727,15 @@ fn available_runtime_families() -> Vec<&'static str> {
     if which("node") || which("nodejs") {
         available.push("nodejs");
     }
+    if which("ruby") {
+        available.push("ruby");
+    }
+    if java_toolchain_functional() {
+        available.push("java");
+    }
+    if dotnet_cli_present() {
+        available.push("dotnet");
+    }
     if let Some(families) = docker_capability_runtimes_cached() {
         for family in families {
             if !available.contains(&family) {
@@ -1727,6 +1745,68 @@ fn available_runtime_families() -> Vec<&'static str> {
     }
     available.sort_unstable();
     available
+}
+
+/// Era gateway `_is_java_functional`: javac + java resolvable (PATH, or the
+/// `$JAVA_HOME/bin` layout the Dockerfile images export) and `javac
+/// -version` actually runs — macOS stubs sit at /usr/bin/javac and exit
+/// non-zero, so a bare which() would report Java on JDK-less hosts. Cached
+/// process-wide (era cached the single bool): the endpoint is polled by
+/// health checks and test collection, and invoking javac per poll would be
+/// wasteful.
+fn java_toolchain_functional() -> bool {
+    use std::sync::atomic::{AtomicU8, Ordering as AtomicOrdering};
+    static CACHE: AtomicU8 = AtomicU8::new(0); // 0 unknown, 1 yes, 2 no
+    match CACHE.load(AtomicOrdering::Relaxed) {
+        1 => return true,
+        2 => return false,
+        _ => {}
+    }
+    let javac = which_full("javac")
+        .or_else(|| java_home_bin("javac"))
+        .filter(|p| {
+            std::process::Command::new(p)
+                .arg("-version")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        });
+    let functional = javac.is_some() && (which("java") || java_home_bin("java").is_some());
+    CACHE.store(if functional { 1 } else { 2 }, AtomicOrdering::Relaxed);
+    functional
+}
+
+/// dotnet CLI presence (era: `shutil.which("dotnet")`), plus the
+/// `$DOTNET_ROOT/dotnet` layout the official install script produces.
+fn dotnet_cli_present() -> bool {
+    which("dotnet")
+        || std::env::var_os("DOTNET_ROOT")
+            .map(std::path::PathBuf::from)
+            .map(|root| root.join("dotnet").is_file())
+            .unwrap_or(false)
+}
+
+/// Resolves `bin` on PATH as a full path — the predicate form lives in
+/// [`which`].
+fn which_full(bin: &str) -> Option<std::path::PathBuf> {
+    if let Some(paths) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&paths) {
+            let candidate = dir.join(bin);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+/// `$JAVA_HOME/bin/<bin>` when the layout exists — the Dockerfile images
+/// export JAVA_HOME, so a PATH-less `java` can still be resolvable.
+fn java_home_bin(bin: &str) -> Option<std::path::PathBuf> {
+    std::env::var_os("JAVA_HOME")
+        .map(std::path::PathBuf::from)
+        .map(|home| home.join("bin").join(bin))
+        .filter(|p| p.is_file())
 }
 
 /// Probe-cache for the docker executor's runtime families.
@@ -1783,11 +1863,11 @@ mod runtime_families_tests {
         let available = available_runtime_families();
         assert!(available.contains(&"custom"));
         assert!(available.contains(&"python"));
-        // Local mode: nodejs appears exactly when the host has node
-        // (python-era probe), and the managed families stay out — that is
-        // the pre-docker contract. Docker mode: the docker executor serves
-        // nodejs from its mapped runtime image and runs java/dotnet/ruby in
-        // containers, so those families are unioned in (test below).
+        // Local mode: nodejs appears exactly when the host has node (python
+        // era probe), and each managed family appears exactly when its
+        // toolchain resolves — the executors exist in-process, so only the
+        // host toolchains gate availability (same honesty rule as nodejs).
+        // Docker mode unions the full mapped list instead (test below).
         let docker_mode = lambda::docker_runtime::executor_mode() == "docker"
             && lambda::docker_runtime::docker_available(2);
         if !docker_mode {
@@ -1795,12 +1875,9 @@ mod runtime_families_tests {
                 available.contains(&"nodejs"),
                 which("node") || which("nodejs")
             );
-            for absent_family in ["java", "ruby", "dotnet"] {
-                assert!(
-                    !available.contains(&absent_family),
-                    "{absent_family} must not be available outside docker mode"
-                );
-            }
+            assert_eq!(available.contains(&"ruby"), which("ruby"));
+            assert_eq!(available.contains(&"java"), java_toolchain_functional());
+            assert_eq!(available.contains(&"dotnet"), dotnet_cli_present());
         }
         let mut sorted = available.clone();
         sorted.sort_unstable();
@@ -1809,6 +1886,35 @@ mod runtime_families_tests {
             assert!(
                 _ALL_RUNTIME_FAMILIES.contains(&family),
                 "{family} not in all-list"
+            );
+        }
+    }
+
+    /// The managed families are honest: on a host with the toolchains (this
+    /// box) they are available WITHOUT docker mode — the in-process era
+    /// executors run them.
+    #[test]
+    fn managed_families_track_host_toolchains() {
+        let _guard = ENV_GUARD.lock();
+        let saved = std::env::var("LAMBDA_EXECUTOR").ok();
+        std::env::remove_var("LAMBDA_EXECUTOR");
+        let available = available_runtime_families();
+        match saved {
+            Some(v) => std::env::set_var("LAMBDA_EXECUTOR", v),
+            None => {}
+        }
+        // Whenever the twin has ruby/java/dotnet binaries, the executor can
+        // run them, so the endpoint must say so; the contract is equality
+        // with the probes, so a clean CI host (no toolchains) stays honest.
+        for (family, present) in [
+            ("ruby", which("ruby")),
+            ("java", java_toolchain_functional()),
+            ("dotnet", dotnet_cli_present()),
+        ] {
+            assert_eq!(
+                available.contains(&family),
+                present,
+                "{family} availability must track the host toolchain"
             );
         }
     }

@@ -853,6 +853,60 @@ impl LambdaHandler {
                 &req.account.to_string(),
             ));
         }
+        // Managed families execute through the era family executors (the
+        // docker loose-bridge counterpart runs the same era bootstraps inside
+        // the mapped images).
+        if runtime::is_ruby_runtime(&func.runtime.read()) {
+            return Ok(runtime::execute_ruby(
+                &func.runtime.read().clone(),
+                &zip_bytes,
+                &layer_zips,
+                &func.handler.read().clone(),
+                &event,
+                &func.function_name,
+                &func.version.read().clone(),
+                &func.function_arn.clone(),
+                &env_vars,
+                *func.timeout.read(),
+                *func.memory_size.read(),
+                &req.region.clone(),
+                &req.account.to_string(),
+            ));
+        }
+        if runtime::is_java_runtime(&func.runtime.read()) {
+            return Ok(runtime::execute_java(
+                &func.runtime.read().clone(),
+                &zip_bytes,
+                &layer_zips,
+                &func.handler.read().clone(),
+                &event,
+                &func.function_name,
+                &func.version.read().clone(),
+                &func.function_arn.clone(),
+                &env_vars,
+                *func.timeout.read(),
+                *func.memory_size.read(),
+                &req.region.clone(),
+                &req.account.to_string(),
+            ));
+        }
+        if runtime::is_dotnet_runtime(&func.runtime.read()) {
+            return Ok(runtime::execute_dotnet(
+                &func.runtime.read().clone(),
+                &zip_bytes,
+                &layer_zips,
+                &func.handler.read().clone(),
+                &event,
+                &func.function_name,
+                &func.version.read().clone(),
+                &func.function_arn.clone(),
+                &env_vars,
+                *func.timeout.read(),
+                *func.memory_size.read(),
+                &req.region.clone(),
+                &req.account.to_string(),
+            ));
+        }
         let is_python: bool = crate::runtime::is_python_runtime(&func.runtime.read());
         if !is_python {
             // Non-python runtimes have no executor in this backend; mirror
@@ -1370,6 +1424,10 @@ impl LambdaHandler {
             .event_source_mappings
             .write()
             .insert(uuid_val.clone(), Arc::clone(&em));
+        // Bind the source's cursor at attach time (moto registers the ESM on
+        // its source synchronously, so a LATEST mapping never misses records
+        // created after the CreateEventSourceMapping response).
+        crate::bridge::notify_esm_created(req.account, &req.region, &em.event_source_arn, &uuid_val);
         AwsResponse::json(202, Self::esm_dict(&em))
     }
 
@@ -2829,7 +2887,9 @@ mod tests {
     #[test]
     fn test_non_python_runtime_invoke_is_error_shaped() {
         // Runtimes with no executor keep the InvalidRuntime shape; nodejs
-        // runtimes execute through the node bootstrap instead.
+        // runs through the node bootstrap and the managed families
+        // (ruby/java/dotnet) through their era executors — so the fixture
+        // uses an identifier no executor family claims.
         let zip_b64 = base64::engine::general_purpose::STANDARD
             .encode(make_code_zip("exports.handler = async (e) => ({ok: true})"));
         let handler = LambdaHandler::new();
@@ -2837,7 +2897,7 @@ mod tests {
             "POST",
             json!({
                 "FunctionName": "node-fn",
-                "Runtime": "ruby3.2",
+                "Runtime": "bogus10",
                 "Handler": "app.handler",
                 "Code": {"ZipFile": zip_b64}
             }),
