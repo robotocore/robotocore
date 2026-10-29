@@ -26,6 +26,18 @@ COPY src/ src/
 
 RUN cargo build --locked --release && strip target/release/robotocore-rust
 
+# ---- lambda-site stage: the boto3 bundle python-family Lambdas expect ----
+# Real AWS Lambda runtimes bundle boto3 (any handler may `import boto3`),
+# and so did the Python twin (moto executed handlers in the server process,
+# which itself depended on boto3). The Rust twin executes handlers in a
+# subprocess python, so the bundle has to ride along: built once here and
+# COPY'd into every runtime stage, exported via PYTHONPATH (the distroless
+# base has no pip or package manager of its own).
+FROM python:3.11-slim-bookworm AS lambda-site
+
+RUN pip install --no-cache-dir --no-compile --target /lambda-site \
+        boto3 botocore
+
 # ---- runtimes stage: Debian-slim runner + Node.js + Ruby on PATH ----
 # Build with: docker build --target runtimes -t robotocore:runtimes .
 #
@@ -50,8 +62,12 @@ FROM debian:trixie-slim AS runtimes
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates nodejs ruby \
+        ca-certificates nodejs ruby python3 \
     && rm -rf /var/lib/apt/lists/*
+
+# AWS-bundled boto3 for the python-family Lambda executor (see lambda-site).
+COPY --from=lambda-site /lambda-site /lambda-site
+ENV PYTHONPATH=/lambda-site
 
 # Same stripped binary the distroless image ships.
 COPY --from=builder /app/target/release/robotocore-rust /server/robotocore-rust
@@ -122,6 +138,12 @@ FROM gcr.io/distroless/python3-debian12 AS runtime
 # same on `docker run` and `docker exec` — this distroless base defines no
 # PATH in its config.
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# AWS-bundled boto3 for the python-family Lambda executor (see lambda-site):
+# handlers importing boto3 resolve through this PYTHONPATH even on the
+# pip-less distroless base.
+COPY --from=lambda-site /lambda-site /lambda-site
+ENV PYTHONPATH=/lambda-site
 
 COPY --from=builder /app/target/release/robotocore-rust /server/robotocore-rust
 # Healthcheck busybox sourced from the `-musl` tag on purpose: on aarch64
