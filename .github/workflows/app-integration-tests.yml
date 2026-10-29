@@ -65,4 +65,4 @@ jobs:
         with:
           name: server-log-${{ matrix.app }}
           path: .robotocore.log
-        include-hidden-files: true
+          include-hidden-files: true

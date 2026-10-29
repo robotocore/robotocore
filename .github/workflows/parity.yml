@@ -49,4 +49,4 @@ jobs:
         with:
           name: server-log-parity
           path: .robotocore.log
-        include-hidden-files: true
+          include-hidden-files: true
