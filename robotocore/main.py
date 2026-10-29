@@ -70,7 +70,13 @@ def main() -> int:
     # the registries are not reachable.
     if os.environ.get("GITHUB_ACTIONS") == "true" and shutil.which("docker"):
         docker = shutil.which("docker")
-        for image in ("ghcr.io/robotocore/robotocore:v2.0.0",
+        # Prefer :latest: the release workflow pushes it on every tag, so the
+        # shim serves the newest published bits without being pinned to one
+        # version forever; the v2.0.0 mirrors remain first-generation
+        # fallbacks for offline-ish tags.
+        for image in ("ghcr.io/robotocore/robotocore:latest",
+                      "jackdanger/robotocore:latest",
+                      "ghcr.io/robotocore/robotocore:v2.0.0",
                       "jackdanger/robotocore:v2.0.0"):
             pulled = subprocess.run(
                 ["docker", "pull", image],
