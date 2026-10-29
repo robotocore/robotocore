@@ -24,10 +24,9 @@
 
 use crate::core::server::NativeHandlers;
 use bytes::Bytes;
-use parking_lot::RwLock;
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 /// Poll cadence. The trigger suites sleep 5-15s and need sub-second delivery;
@@ -95,13 +94,20 @@ impl RedeliveryGate {
 
 pub fn start(native: Arc<NativeHandlers>) {
     // Attach hook: `CreateEventSourceMapping` runs on a request thread and
-    // freezes a kinesis mapping's LATEST position here — before we even
-    // spawn the poller thread, matching moto's synchronous source
-    // registration (moto/kinesis/models.py KinesisStream.
+    // mints the kinesis LATEST watermarks here — the handler stores them on
+    // the freshly built mapping so the poller's first sight reads them
+    // atomically with the mapping's publication (moto registers the ESM on
+    // its source synchronously: moto/kinesis/models.py KinesisStream.
     // lambda_event_source_mappings).
     lambda::bridge::register_esm_attach_hook(Arc::new({
         let native = native.clone();
-        move |account, region, arn, uuid| bind_kinesis_at_attach(&native, account, region, arn, uuid)
+        move |account, region, arn| match classify_arn(arn) {
+            Some(Source::Kinesis { stream_name }) => {
+                let marks = native.kinesis.attach_watermarks(account, region, &stream_name);
+                (!marks.is_empty()).then_some(marks)
+            }
+            _ => None,
+        }
     }));
     std::thread::Builder::new()
         .name("esm-engine".into())
@@ -205,6 +211,12 @@ fn seq_num(s: &str) -> u128 {
     s.parse().unwrap_or(0)
 }
 
+/// Kinesis watermark comparison for the stale-binding check — same padded
+/// decimal form as DynamoDB's sequence numbers, same parse.
+fn parse_watermark(s: &str) -> u128 {
+    seq_num(s)
+}
+
 fn vec_of_shards(arr: &[Value]) -> Vec<String> {
     arr.iter()
         .filter_map(|s| s["ShardId"].as_str().map(String::from))
@@ -216,36 +228,6 @@ fn seq_of(r: &Value) -> Option<String> {
         .and_then(|d| d.get("SequenceNumber"))
         .and_then(Value::as_str)
         .map(String::from)
-}
-
-/// Attach-time cursor binding, key (account, region, esm-uuid) →
-/// shard id → sequence bound at CreateEventSourceMapping time. Mirrors
-/// moto's push registration (`moto/kinesis/models.py`):
-/// `KinesisStream.lambda_event_source_mappings` only ever picks up records
-/// *assigned after* registration, so a `LATEST` mapping freezes its
-/// position when it is created — never at the poller's first tick, which
-/// may run after a producer's first puts and would silently skip them.
-fn kinesis_bound() -> &'static RwLock<HashMap<MappingKey, HashMap<String, String>>> {
-    static BOUND: OnceLock<RwLock<HashMap<MappingKey, HashMap<String, String>>>> = OnceLock::new();
-    BOUND.get_or_init(|| RwLock::new(HashMap::new()))
-}
-
-/// Record the per-shard `LATEST` watermarks for a kinesis-ARN mapping at
-/// attach time (called from the handler's create hook). No-op for other
-/// ARN families and when the stream does not exist yet (shards created
-/// later still bind at first poll sight).
-fn bind_kinesis_at_attach(native: &Arc<NativeHandlers>, account: u64, region: &str, arn: &str, uuid: &str) {
-    let Some(Source::Kinesis { stream_name }) = classify_arn(arn) else {
-        return;
-    };
-    let marks = native.kinesis.attach_watermarks(account, region, &stream_name);
-    tracing::debug!(stream = stream_name, marks = marks.len(), "esm: attach binding");
-    if marks.is_empty() {
-        return;
-    }
-    kinesis_bound()
-        .write()
-        .insert((account, region.to_string(), uuid.to_string()), marks.into_iter().collect());
 }
 
 /// Engine cursor state (in-memory; restart re-polls from the map's starting
@@ -322,19 +304,33 @@ impl Engine {
                         position = mapping.starting_position.as_deref().unwrap_or("TRIM_HORIZON"),
                         "esm: creating kinesis iterator"
                     );
-                    // Bind at the attach-time watermark when this mapping
-                    // registered with the source before its first poll tick
-                    // (moto semantics); a restart or a shard created after
-                    // attach falls back to first-sight LATEST.
-                    let bound_seq = kinesis_bound()
-                        .read()
-                        .get(&(
-                            entry.account,
-                            entry.region.clone(),
-                            mapping.uuid.clone(),
-                        ))
+                    // Bind at the attach-time watermark when this LATEST
+                    // mapping carries one (moto semantics — the watermark
+                    // rides the mapping itself, so the first sight reads it
+                    // atomically with the mapping's publication). A shard
+                    // created after attach, or a binding above the shard's
+                    // current end (stream re-created / shard counters
+                    // reset), falls back to first-sight position.
+                    let bound_seq = mapping
+                        .kinesis_bound_watermarks
+                        .as_ref()
                         .and_then(|m| m.get(&shard))
-                        .cloned();
+                        .cloned()
+                        .filter(|seq| {
+                            let live_next = native
+                                .kinesis
+                                .attach_watermarks(entry.account, &entry.region, stream_name)
+                                .into_iter()
+                                .find(|(id, _)| *id == shard)
+                                .map(|(_, live)| parse_watermark(&live));
+                            match live_next {
+                                // alive watermark: binding only valid while
+                                // it does not overshoot the shard's real
+                                // next sequence number.
+                                Some(live) => parse_watermark(seq) <= live,
+                                None => false,
+                            }
+                        });
                     let (params_type, params_seq): (Value, Option<Value>) = match bound_seq {
                         Some(seq) => (
                             json!("AT_SEQUENCE_NUMBER"),
@@ -957,7 +953,6 @@ impl Engine {
             .retain(|k, _| active.contains(&(k.0, k.1.clone(), k.2.clone())));
         self.sqs_frontier
             .retain(|k, _| active.contains(&(k.0, k.1.clone(), k.2.clone())));
-        kinesis_bound().write().retain(|k, _| active.contains(k));
     }
 }
 
@@ -1366,6 +1361,7 @@ mod tests {
             function_response_types: None,
             bisect_batch_on_function_error: false,
             maximum_retry_attempts: -1,
+            kinesis_bound_watermarks: None,
         }
     }
 

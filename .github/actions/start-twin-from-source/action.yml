@@ -33,6 +33,10 @@ runs:
     # this build about a minute, a cold first run several — the health poll
     # below gives the cold path room.
     - uses: Swatinem/rust-cache@v2
+      # Cold-first runs build the world and then hit a later flake; the
+      # partially-warmed cache is exactly what the retry wants.
+      with:
+        cache-on-failure: true
 
     - name: cargo build (robotocore-rust)
       shell: bash
@@ -54,7 +58,7 @@ runs:
           line="$(echo "$line" | xargs || true)"
           [ -n "$line" ] || continue
           export "$line"
-        done <<ENVVARS
+        done <<'ENVVARS'
         ${{ inputs.env-vars }}
         ENVVARS
         ./target/debug/robotocore-rust --host 127.0.0.1 --port "${{ inputs.port }}" \

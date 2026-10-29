@@ -26,6 +26,11 @@ jobs:
       - run: uv sync --extra dev
       # Twin built from THIS checkout (cached); never the published image —
       # gates must test the code under review, not a release artifact.
+      # AGENTS port-lane protocol step 2: probes may not lag the arms —
+      # this gate fails the lane before any parity test when a checked-in
+      # probes/<svc>.json predates the newest commit touching that service.
+      - name: Probe freshness gate
+        run: uv run python scripts/probe_freshness.py
       - name: Start robotocore from source
         uses: ./.github/actions/start-twin-from-source
       - name: Run parity tests
@@ -44,3 +49,4 @@ jobs:
         with:
           name: server-log-parity
           path: .robotocore.log
+          include-hidden-files: true
