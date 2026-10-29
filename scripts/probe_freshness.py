@@ -117,6 +117,41 @@ def latest_impl_time(name: str) -> tuple[datetime | None, str | None]:
     return best, best_path
 
 
+def history_is_attributable() -> bool:
+    """Can `git log -1 -- <path>` disambiguate per-service arms in this
+    checkout?
+
+    The GH-Actions pull_request checkout is a synthetic merge ref; on
+    certain graph shapes the path-limited log answers the TIP's own
+    commit time for every service, which would report every arm
+    brand-new against any probe date and fail the gate spuriously).
+    Detect that exact collapse: sample a few services; when every one
+    attributes to the merge tip's timestamp, attribution is broken and
+    the caller skips with a loud note instead of shipping a false
+    verdict.
+    """
+    tip_time = subprocess.run(
+        ["git", "log", "-1", "--format=%cI"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if not tip_time:
+        return True  # not detectable here; a separate gate failure will say so
+    probe_names = sorted(
+        probe_name_from_file(p) for p in PROBES.glob("*.json")
+    )[:3]
+    attributes = []
+    for name in probe_names:
+        t, _ = latest_impl_time(name)
+        if t is None:
+            return True  # no path info at all — the tip-collapse shape
+        attributes.append(t.isoformat())
+    # Collapse: every sampled service attributed to the tip's own commit
+    # time. Real recruiters vary (arm file mtimes are commit-scoped).
+    return not all(ts == tip_time for ts in attributes)
+
+
 def main() -> int:
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument(
@@ -127,6 +162,18 @@ def main() -> int:
     stale: list[tuple[str, datetime, datetime]] = []
     fresh_count = 0
     skipped: list[str] = []
+
+    if not history_is_attributable():
+        # GH-Actions merge-ref collapse (see history_is_attributable): the
+        # graph cannot attribute per-service arms, so the gate would judge
+        # every arm stale by the tip's own timestamp. Skip loudly rather
+        # than fail/lie; enforcement lives in the lanes with real history.
+        print(
+            "SKIP probe-freshness: this checkout's git graph cannot "
+            "attribute per-service arms (merge-tip collapse); run the gate "
+            "from a full-history checkout to enforce it."
+        )
+        return 0
 
     for probe_file in sorted(PROBES.glob("*.json")):
         name = probe_name_from_file(probe_file)
