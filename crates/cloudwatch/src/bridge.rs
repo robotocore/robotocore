@@ -152,9 +152,28 @@ pub fn reset_alarm_actions() {
 /// kinds without a registered hook (Auto Scaling policies, EC2 actions,
 /// Systems Manager ops items — moto never wired alarm actions at all) and
 /// delivery failures log and never fail the API call that produced the
-/// transition. Real CloudWatch re-subscribes nothing here — the twin does
-/// one synchronous delivery pass per state transition.
+/// transition. See [`deliver_actions_if_valid`] for the caller-side
+/// freshness gate; this entry point delivers each ARN unconditionally.
 pub fn deliver_actions(action_arns: &[String], message: &Value, account: u64, region: &str) {
+    deliver_actions_if_valid(action_arns, message, account, region, || true);
+}
+
+/// Deliver one alarm notification to every action ARN, re-asserting
+/// `revalidate` before each ARN goes out. The twin's alarm actions are
+/// synchronous, so an earlier ARN's Lambda target can re-enter the twin and
+/// transition or delete the same alarm while this delivery pass is running —
+/// later ARNs then skip their now-stale copy of the transition (real
+/// CloudWatch notifies once per transition). Missing kinds and failures stay
+/// the fire-and-forget log-and-continue of [`deliver_actions`]. Callers must
+/// invoke this with their alarm-store locks already released — `revalidate`
+/// reads the alarm store, and a Lambda hook may re-enter it too.
+pub fn deliver_actions_if_valid(
+    action_arns: &[String],
+    message: &Value,
+    account: u64,
+    region: &str,
+    revalidate: impl Fn() -> bool,
+) {
     if action_arns.is_empty() {
         return;
     }
@@ -162,10 +181,14 @@ pub fn deliver_actions(action_arns: &[String], message: &Value, account: u64, re
     let payload = serde_json::to_string(message).unwrap_or_else(|_| "{}".to_string());
     let hooks = action_hooks().read();
     for arn in action_arns {
-        // arn:<partition>:<service>:…
         let Some(kind) = arn.split(':').nth(2) else {
             continue;
         };
+        if !revalidate() {
+            // The alarm moved on (or is gone) since the transition was
+            // staged: this notification is stale — skip it.
+            continue;
+        }
         let Some(hook) = hooks.get(kind) else {
             continue;
         };
