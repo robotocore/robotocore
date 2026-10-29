@@ -16,6 +16,8 @@ concurrency:
   group: iac-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
+workflow_dispatch:
+
 jobs:
   terraform:
     runs-on: ubuntu-latest
