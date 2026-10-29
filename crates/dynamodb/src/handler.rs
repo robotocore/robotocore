@@ -609,6 +609,12 @@ impl DynamoDbHandler {
                 description["LatestStreamLabel"] = json!(label);
                 description["LatestStreamArn"] =
                     json!(format!("{}/stream/{}", *table.table_arn.read(), label));
+                // real AWS also echoes the StreamSpecification the table was
+                // created/updated with (parity test_dynamodb_streams.pin).
+                description["StreamSpecification"] = json!({
+                    "StreamEnabled": true,
+                    "StreamViewType": table.stream_view_type.read().as_deref().unwrap_or("NEW_AND_OLD_IMAGES"),
+                });
             }
         }
         AwsResponse::json(status, json!({ wrapper: description }))
