@@ -1,15 +1,8 @@
-"""Shared fixtures for compatibility tests.
-
-These suites talk to a long-lived robotocore process over HTTP (unlike
-`tests/integration`, which boots an in-process server per module). Choose the
-target with `ENDPOINT_URL` (defaults to `http://localhost:4566`); at collection
-time the server must be fresh — see `pytest_collection_modifyitems` below for the guard.
-"""
+"""Shared fixtures for compatibility tests."""
 
 import logging
 import os
 import shutil
-import sys
 
 import boto3
 import pytest
@@ -18,6 +11,9 @@ from botocore.config import Config
 
 logger = logging.getLogger(__name__)
 
+# `localhost` (not 127.0.0.1) on purpose: account-scoped control-plane
+# APIs (s3control and kin) prepend the AccountId as a DNS subdomain;
+# systemd-resolved maps *.localhost to loopback, an IP endpoint cannot.
 ENDPOINT_URL = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
 
 # Cached result of the runtimes probe — set only on a successful HTTP 200 response
@@ -79,56 +75,27 @@ def make_client(service_name: str, **kwargs):
     )
 
 
-# NOTE: there is deliberately NO session-scoped admin-state teardown here.
-# Under pytest-xdist every worker runs its own pytest session against the one
-# shared server; a session-end reset from a *finishing* worker would wipe
-# capacity profiles and chaos overrides that a still-running worker's tests
-# depend on — the InsufficientInstanceCapacity pair failed in CI exactly that
-# way (forensics showed chaos_override=None profile_count=0 mid-test). Tests
-# whose fixtures mutate the admin plane must clean up per test (see
-# test_ec2_capacity_profiles.py's `_clear_capacity_state`). The CI job's server
-# dies when the job ends, so leftovers do not outlive the stage.
+@pytest.fixture(autouse=True, scope="session")
+def _clear_chaos_rules_at_session_end():
+    """Safety net: clear this session's chaos rules when a compat test session ends.
 
-
-def _target_server_is_warm() -> bool:
-    """True when ENDPOINT_URL points at a server older than the freshness limit.
-
-    Unreachable servers are never "warm" — the suites themselves will fail loudly.
-    ``ROBOTOCORE_COMPAT_ALLOW_WARM_SERVER=1`` opts out entirely.
+    Account-scoped (`?account=`): if chaos rules somehow leak into a compat
+    shard (e.g. due to CI misconfiguration), this removes any rule aimed at
+    this session's account without clobbering rules another worker's chaos
+    test on the same shared twin is still using (their rules live in their
+    own account and cannot affect other accounts anyway).
     """
-    if os.environ.get("ROBOTOCORE_COMPAT_ALLOW_WARM_SERVER", "0") == "1":
-        return False
-    max_uptime = float(os.environ.get("ROBOTOCORE_COMPAT_MAX_UPTIME", "600"))
+    yield
     try:
-        resp = requests.get(f"{ENDPOINT_URL}/_robotocore/health", timeout=5)
-        uptime = float(resp.json().get("uptime_seconds", 0))
+        url = f"{ENDPOINT_URL}/_robotocore/chaos/rules/clear?account=123456789012"
+        resp = requests.post(url, timeout=5)
+        if resp.ok and resp.json().get("count", 0) > 0:
+            logger.warning(
+                "Session teardown cleared %d leftover chaos rules — "
+                "chaos tests may have leaked into this shard",
+                resp.json()["count"],
+            )
     except Exception:
-        return False  # unreachable: let the tests fail themselves, loudly
-    return uptime > max_uptime
-
-
-def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    """Skip compat tests, politely, when they target a server someone else owns.
-
-    These suites are only meaningful against a robotocore whose state starts
-    empty (CI boots a fresh server immediately before the run). Pointing them
-    at a long-running robotocore produces phantom failures indistinguishable
-    from real defects — but aborting every whole-tree run because
-    localhost:4566 happens to be busy would be worse for a repo whose unit
-    suites are serverless. When the guard trips, compat items are dropped and
-    one warning is emitted; `scripts/local-ci.sh compat` and CI boot their own
-    fresh server and are unaffected.
-    """
-    if not _target_server_is_warm():
-        return
-    compat_tests = [item for item in items if "/tests/compatibility/" in str(item.fspath)]
-    kept = [item for item in items if item not in compat_tests]
-    if compat_tests:
-        items[:] = kept
-        print(
-            f"WARNING: skipped {len(compat_tests)} compatibility tests — the server at "
-            f"{ENDPOINT_URL} is warm (uptime above the freshness limit), and these "
-            "suites only compare against a freshly started robotocore. Boot one per "
-            "run (scripts/local-ci.sh) or set ROBOTOCORE_COMPAT_ALLOW_WARM_SERVER=1.",
-            sys.stderr,
+        logger.debug(
+            "Could not clear chaos rules at session end (server may be stopped)", exc_info=True
         )

@@ -1,0 +1,239 @@
+{
+  "service": "batch",
+  "generated_at": "2026-10-25T19:41:56.231470+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 39,
+    "needs_params": 0,
+    "not_implemented": 6,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "CancelJob",
+      "status": "working",
+      "message": "likely implemented (ClientException: Job probe-job-id-id not found.)"
+    },
+    {
+      "operation": "CreateComputeEnvironment",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateConsumableResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateJobQueue",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateQuotaShare",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateSchedulingPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateServiceEnvironment",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteComputeEnvironment",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteConsumableResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteJobQueue",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteQuotaShare",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteSchedulingPolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteServiceEnvironment",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeregisterJobDefinition",
+      "status": "working",
+      "message": "likely implemented (ClientException: Job definition probe-test-value not found.)"
+    },
+    {
+      "operation": "DescribeComputeEnvironments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeConsumableResource",
+      "status": "working",
+      "message": "likely implemented (ClientException: Consumable resource probe-test-value does not exist)"
+    },
+    {
+      "operation": "DescribeJobDefinitions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeJobQueues",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeQuotaShare",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeSchedulingPolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeServiceEnvironments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeServiceJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetJobQueueSnapshot",
+      "status": "working",
+      "message": "likely implemented (ClientException: Job queue probe-test-value does not exist)"
+    },
+    {
+      "operation": "ListConsumableResources",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListJobsByConsumableResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListQuotaShares",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListSchedulingPolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListServiceJobs",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "likely implemented (ClientException: Resource not found: arn:aws:batch:us-east-1:123456789012:thi)"
+    },
+    {
+      "operation": "RegisterJobDefinition",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SubmitJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SubmitServiceJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "likely implemented (ClientException: Resource not found: arn:aws:batch:us-east-1:123456789012:thi)"
+    },
+    {
+      "operation": "TerminateJob",
+      "status": "working",
+      "message": "likely implemented (ClientException: Job probe-job-id-id not found.)"
+    },
+    {
+      "operation": "TerminateServiceJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "likely implemented (ClientException: Resource not found: arn:aws:batch:us-east-1:123456789012:thi)"
+    },
+    {
+      "operation": "UpdateComputeEnvironment",
+      "status": "working",
+      "message": "likely implemented (ClientException: Compute environment probe-test-value not found.)"
+    },
+    {
+      "operation": "UpdateConsumableResource",
+      "status": "working",
+      "message": "likely implemented (ClientException: Consumable resource probe-test-value does not exist)"
+    },
+    {
+      "operation": "UpdateJobQueue",
+      "status": "working",
+      "message": "likely implemented (ClientException: Job queue probe-test-value not found.)"
+    },
+    {
+      "operation": "UpdateQuotaShare",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateSchedulingPolicy",
+      "status": "working",
+      "message": "likely implemented (ClientException: Scheduling policy arn:aws:batch:us-east-1:123456789012:thing)"
+    },
+    {
+      "operation": "UpdateServiceEnvironment",
+      "status": "working",
+      "message": "likely implemented (ClientException: Service environment probe-test-value does not exist)"
+    },
+    {
+      "operation": "UpdateServiceJob",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

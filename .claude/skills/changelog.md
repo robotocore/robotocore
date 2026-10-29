@@ -20,10 +20,14 @@ about it, add an entry.
 ## Format
 
 `CHANGELOG.md` uses [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
-with CalVer dates. **Newest first, top of the file.**
+with two heading forms: CalVer dates for point releases and semver
+majors for major versions (`## 2.0.0` shows one). **Newest first, top
+of the file** — release tooling extracts the first `## ` section only,
+so the newest section must sit at the top.
 
 ```markdown
-## YYYY.M.D (YYYY-MM-DD)
+## YYYY.M.D (YYYY-MM-DD)      ← point release
+## MAJOR.MINOR.PATCH          ← semver major release
 
 ### Major: <one-line elevator pitch>      ← only for major features
 

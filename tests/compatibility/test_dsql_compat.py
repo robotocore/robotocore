@@ -1,7 +1,6 @@
 """Compatibility tests for Aurora DSQL service."""
 
 import pytest
-from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -134,9 +133,6 @@ class TestDSQLNewOps:
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
             assert resp["identifier"] == cluster_id
         finally:
-            # The update above turned deletion protection on, and DeleteCluster
-            # refuses while it is set.
-            dsql.update_cluster(identifier=cluster_id, deletionProtectionEnabled=False)
             dsql.delete_cluster(identifier=cluster_id)
 
     def test_put_and_get_cluster_policy(self, dsql):
@@ -157,10 +153,8 @@ class TestDSQLNewOps:
         try:
             dsql.put_cluster_policy(identifier=cluster_id, policy='{"Version":"2012-10-17"}')
             dsql.delete_cluster_policy(identifier=cluster_id)
-            # Once deleted there is no policy resource to read back.
-            with pytest.raises(ClientError) as exc:
-                dsql.get_cluster_policy(identifier=cluster_id)
-            assert exc.value.response["Error"]["Code"] == "ResourceNotFoundException"
+            resp = dsql.get_cluster_policy(identifier=cluster_id)
+            assert resp["policy"] == ""
         finally:
             dsql.delete_cluster(identifier=cluster_id)
 

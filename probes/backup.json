@@ -1,10 +1,13 @@
 {
   "service": "backup",
+  "generated_at": "2026-10-25T19:41:55.589199+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 80,
+    "working": 99,
     "needs_params": 0,
-    "not_implemented": 26,
-    "500_error": 2
+    "not_implemented": 9,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -24,8 +27,8 @@
     },
     {
       "operation": "CreateBackupSelection",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateBackupVault",
@@ -69,8 +72,8 @@
     },
     {
       "operation": "CreateTieringConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteBackupPlan",
@@ -129,8 +132,8 @@
     },
     {
       "operation": "DeleteTieringConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeBackupJob",
@@ -189,8 +192,8 @@
     },
     {
       "operation": "DescribeScanJob",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DisassociateBackupVaultMpaApprovalTeam",
@@ -209,18 +212,18 @@
     },
     {
       "operation": "ExportBackupPlanTemplate",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetBackupPlan",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetBackupPlanFromJSON",
-      "status": "500_error",
-      "message": "server crash (InternalError: Expecting value: line 1 column 1 (char 0))"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetBackupPlanFromTemplate",
@@ -244,8 +247,8 @@
     },
     {
       "operation": "GetLegalHold",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetRecoveryPointIndexDetails",
@@ -284,8 +287,8 @@
     },
     {
       "operation": "GetTieringConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListBackupJobSummaries",
@@ -304,8 +307,8 @@
     },
     {
       "operation": "ListBackupPlanVersions",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListBackupPlans",
@@ -314,8 +317,8 @@
     },
     {
       "operation": "ListBackupSelections",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListBackupVaults",
@@ -354,13 +357,13 @@
     },
     {
       "operation": "ListProtectedResourcesByBackupVault",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListRecoveryPointsByBackupVault",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListRecoveryPointsByLegalHold",
@@ -414,13 +417,13 @@
     },
     {
       "operation": "ListScanJobSummaries",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListScanJobs",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListTags",
@@ -429,8 +432,8 @@
     },
     {
       "operation": "ListTieringConfigurations",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutBackupVaultAccessPolicy",
@@ -469,8 +472,8 @@
     },
     {
       "operation": "StartReportJob",
-      "status": "500_error",
-      "message": "server crash (InternalError: list index out of range)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "StartRestoreJob",
@@ -479,8 +482,8 @@
     },
     {
       "operation": "StartScanJob",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "StopBackupJob",
@@ -490,12 +493,12 @@
     {
       "operation": "TagResource",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (InvalidParameterValueException)"
     },
     {
       "operation": "UntagResource",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (InvalidParameterValueException)"
     },
     {
       "operation": "UpdateBackupPlan",
@@ -544,8 +547,8 @@
     },
     {
       "operation": "UpdateTieringConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     }
   ]
 }

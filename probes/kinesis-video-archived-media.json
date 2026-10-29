@@ -1,0 +1,44 @@
+{
+  "service": "kinesis-video-archived-media",
+  "generated_at": "2026-10-25T19:43:47.231705+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 3,
+    "needs_params": 0,
+    "not_implemented": 3,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "GetClip",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetDASHStreamingSessionURL",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetHLSStreamingSessionURL",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetImages",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetMediaForFragmentList",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListFragments",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

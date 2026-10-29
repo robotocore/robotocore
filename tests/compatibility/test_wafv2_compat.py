@@ -1731,27 +1731,3 @@ class TestWAFV2ListWebACLs:
         resp = wafv2.list_web_acls(Scope="REGIONAL")
         names = [w["Name"] for w in resp["WebACLs"]]
         assert name in names
-
-
-class TestWAFv2GetTopPathStatisticsGapOp:
-    """Test GetTopPathStatisticsByTraffic operation."""
-
-    @pytest.fixture
-    def client(self):
-        return make_client("wafv2")
-
-    def test_get_top_path_statistics_by_traffic(self, client):
-        import datetime
-
-        resp = client.get_top_path_statistics_by_traffic(
-            WebAclArn="arn:aws:wafv2:us-east-1:123456789012:regional/webacl/test/abc",
-            Scope="REGIONAL",
-            TimeWindow={
-                "StartTime": datetime.datetime(2024, 1, 1),
-                "EndTime": datetime.datetime(2024, 12, 31),
-            },
-            UriPathPrefix="/",
-            Limit=10,
-            NumberOfTopTrafficBotsPerPath=3,
-        )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

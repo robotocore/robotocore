@@ -1,10 +1,13 @@
 {
   "service": "mediastore",
+  "generated_at": "2026-10-25T19:44:02.275951+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 11,
-    "needs_params": 2,
-    "not_implemented": 8,
-    "500_error": 0
+    "working": 21,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -19,23 +22,23 @@
     },
     {
       "operation": "DeleteContainerPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ContainerNotFoundException: The specified container does not exist)"
     },
     {
       "operation": "DeleteCorsPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ContainerNotFoundException: The specified container does not exist)"
     },
     {
       "operation": "DeleteLifecyclePolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ContainerNotFoundException: The specified container does not exist)"
     },
     {
       "operation": "DeleteMetricPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ContainerNotFoundException: The specified container does not exist)"
     },
     {
       "operation": "DescribeContainer",
@@ -49,8 +52,8 @@
     },
     {
       "operation": "GetCorsPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ContainerNotFoundException: The specified container does not exist)"
     },
     {
       "operation": "GetLifecyclePolicy",
@@ -79,8 +82,8 @@
     },
     {
       "operation": "PutCorsPolicy",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ContainerNotFoundException: The specified container does not exist)"
     },
     {
       "operation": "PutLifecyclePolicy",
@@ -94,23 +97,23 @@
     },
     {
       "operation": "StartAccessLogging",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ContainerNotFoundException: The specified container does not exist)"
     },
     {
       "operation": "StopAccessLogging",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ContainerNotFoundException: The specified container does not exist)"
     },
     {
       "operation": "TagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ContainerNotFoundException: The specified container does not exist)"
     },
     {
       "operation": "UntagResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ContainerNotFoundException: The specified container does not exist)"
     }
   ]
 }

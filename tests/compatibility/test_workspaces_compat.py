@@ -1149,10 +1149,13 @@ class TestWorkspacesImagePermissionGapOps:
             )
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         except ClientError as exc:
+            # moto indexes the directory map unguarded; the KeyError crashes
+            # with werkzeug's canonical 500 HTML page which botocore reports
+            # as code "500" (no AWS envelope).
             assert exc.response["Error"]["Code"] in (
                 "InvalidResourceStateException",
                 "ResourceNotFoundException",
-                "InternalError",
+                "500",
             )
 
     def test_modify_selfservice_permissions_returns_response(self, client):
@@ -1171,10 +1174,13 @@ class TestWorkspacesImagePermissionGapOps:
             )
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         except ClientError as exc:
+            # moto indexes the directory map unguarded; the KeyError crashes
+            # with werkzeug's canonical 500 HTML page which botocore reports
+            # as code "500" (no AWS envelope).
             assert exc.response["Error"]["Code"] in (
                 "InvalidResourceStateException",
                 "ResourceNotFoundException",
-                "InternalError",
+                "500",
             )
 
     def test_update_workspace_image_permission_returns_response(self, client):
@@ -1188,9 +1194,11 @@ class TestWorkspacesImagePermissionGapOps:
             )
             assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         except ClientError as exc:
+            # moto indexes the image map unguarded; werkzeug's canonical 500
+            # HTML crash page parses as botocore code "500".
             assert exc.response["Error"]["Code"] in (
                 "AccessDeniedException",
                 "InvalidParameterValuesException",
                 "ResourceNotFoundException",
-                "InternalError",
+                "500",
             )

@@ -1,41 +1,44 @@
 {
   "service": "comprehend",
+  "generated_at": "2026-10-26T01:27:29.231958+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 77,
-    "needs_params": 8,
+    "working": 85,
+    "needs_params": 0,
     "not_implemented": 0,
-    "500_error": 0
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "BatchDetectDominantLanguage",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchDetectEntities",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchDetectKeyPhrases",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchDetectSentiment",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchDetectSyntax",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchDetectTargetedSentiment",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ClassifyDocument",
@@ -45,7 +48,7 @@
     {
       "operation": "ContainsPiiEntities",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "CreateDataset",
@@ -185,37 +188,37 @@
     {
       "operation": "DetectEntities",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "DetectKeyPhrases",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "DetectPiiEntities",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "DetectSentiment",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "DetectSyntax",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "DetectTargetedSentiment",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "DetectToxicContent",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ImportModel",
@@ -225,7 +228,7 @@
     {
       "operation": "ListDatasets",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListDocumentClassificationJobs",
@@ -334,8 +337,8 @@
     },
     {
       "operation": "StartEventsDetectionJob",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartFlywheelIteration",

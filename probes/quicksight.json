@@ -1,10 +1,13 @@
 {
   "service": "quicksight",
+  "generated_at": "2026-10-26T03:11:38.464985+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 210,
-    "needs_params": 15,
-    "not_implemented": 4,
-    "500_error": 0
+    "working": 229,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -34,8 +37,8 @@
     },
     {
       "operation": "CreateActionConnector",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateAnalysis",
@@ -45,7 +48,7 @@
     {
       "operation": "CreateBrand",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreateCustomPermissions",
@@ -65,7 +68,7 @@
     {
       "operation": "CreateDataSource",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreateFolder",
@@ -99,8 +102,8 @@
     },
     {
       "operation": "CreateNamespace",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (AccessDeniedException)"
     },
     {
       "operation": "CreateRefreshSchedule",
@@ -144,8 +147,8 @@
     },
     {
       "operation": "CreateVPCConnection",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteAccountCustomPermission",
@@ -404,8 +407,8 @@
     },
     {
       "operation": "DescribeDashboardSnapshotJobResult",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeDashboardsQAConfiguration",
@@ -454,8 +457,8 @@
     },
     {
       "operation": "DescribeFolderResolvedPermissions",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeGroup",
@@ -614,8 +617,8 @@
     },
     {
       "operation": "GetIdentityContext",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetSessionEmbedUrl",
@@ -689,8 +692,8 @@
     },
     {
       "operation": "ListFoldersForResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListGroupMemberships",
@@ -834,23 +837,23 @@
     },
     {
       "operation": "SearchAnalyses",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "SearchDashboards",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "SearchDataSets",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "SearchDataSources",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "SearchFlows",
@@ -864,28 +867,28 @@
     },
     {
       "operation": "SearchGroups",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
-    },
-    {
-      "operation": "SearchTopics",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
-    },
-    {
-      "operation": "StartAssetBundleExportJob",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
-    },
-    {
-      "operation": "StartAssetBundleImportJob",
       "status": "working",
       "message": "OK"
     },
     {
+      "operation": "SearchTopics",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartAssetBundleExportJob",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartAssetBundleImportJob",
+      "status": "working",
+      "message": "OK (required-only fill)"
+    },
+    {
       "operation": "StartDashboardSnapshotJob",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartDashboardSnapshotJobSchedule",
@@ -894,13 +897,13 @@
     },
     {
       "operation": "TagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateAccountCustomPermission",
@@ -919,8 +922,8 @@
     },
     {
       "operation": "UpdateActionConnector",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateActionConnectorPermissions",
@@ -945,7 +948,7 @@
     {
       "operation": "UpdateBrand",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "UpdateBrandAssignment",
@@ -1000,7 +1003,7 @@
     {
       "operation": "UpdateDataSource",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateDataSourcePermissions",
@@ -1140,17 +1143,17 @@
     {
       "operation": "UpdateUser",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "UpdateUserCustomPermission",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "UpdateVPCConnection",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     }
   ]
 }

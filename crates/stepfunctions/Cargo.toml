@@ -1,0 +1,22 @@
+[package]
+name = "stepfunctions"
+version.workspace = true
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0"
+bytes = "1.5"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+parking_lot = "0.12"
+# Task states invoke Lambda functions via the lambda crate's state bridge.
+lambda = { path = "../lambda" }
+# SDK-integration dispatch shares each service's in-process state bridge
+# (era `_dispatch_task` reached into the live backends the same way).
+sqs = { path = "../sqs" }
+sns = { path = "../sns" }
+dynamodb = { path = "../dynamodb" }
+# SQS sendMessage answers Md5OfMessageBody like era `_invoke_sqs_send`.
+md5 = "0.7"

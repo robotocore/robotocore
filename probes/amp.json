@@ -1,21 +1,24 @@
 {
   "service": "amp",
+  "generated_at": "2026-10-26T04:28:30.003656+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 37,
-    "needs_params": 6,
+    "working": 44,
+    "needs_params": 0,
     "not_implemented": 0,
-    "500_error": 1
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "CreateAlertManagerDefinition",
       "status": "working",
-      "message": "likely implemented (404: Workspace not found)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateAnomalyDetector",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateLoggingConfiguration",
@@ -24,8 +27,8 @@
     },
     {
       "operation": "CreateQueryLoggingConfiguration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateRuleGroupsNamespace",
@@ -34,8 +37,8 @@
     },
     {
       "operation": "CreateScraper",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateWorkspace",
@@ -45,12 +48,12 @@
     {
       "operation": "DeleteAlertManagerDefinition",
       "status": "working",
-      "message": "likely implemented (404: Workspace not found)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteAnomalyDetector",
       "status": "working",
-      "message": "likely implemented (404: Workspace not found)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteLoggingConfiguration",
@@ -60,12 +63,12 @@
     {
       "operation": "DeleteQueryLoggingConfiguration",
       "status": "working",
-      "message": "likely implemented (404: Workspace not found)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteResourcePolicy",
       "status": "working",
-      "message": "likely implemented (404: Workspace not found)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteRuleGroupsNamespace",
@@ -75,27 +78,27 @@
     {
       "operation": "DeleteScraper",
       "status": "working",
-      "message": "likely implemented (404: Scraper not found)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteScraperLoggingConfiguration",
       "status": "working",
-      "message": "likely implemented (404: Scraper not found)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteWorkspace",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeAlertManagerDefinition",
       "status": "working",
-      "message": "likely implemented (404: Workspace not found)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeAnomalyDetector",
       "status": "working",
-      "message": "likely implemented (404: Workspace not found)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeLoggingConfiguration",
@@ -105,12 +108,12 @@
     {
       "operation": "DescribeQueryLoggingConfiguration",
       "status": "working",
-      "message": "likely implemented (404: Workspace not found)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeResourcePolicy",
       "status": "working",
-      "message": "likely implemented (404: Workspace not found)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeRuleGroupsNamespace",
@@ -120,12 +123,12 @@
     {
       "operation": "DescribeScraper",
       "status": "working",
-      "message": "likely implemented (404: Scraper not found)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeScraperLoggingConfiguration",
       "status": "working",
-      "message": "likely implemented (404: Scraper not found)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeWorkspace",
@@ -135,7 +138,7 @@
     {
       "operation": "DescribeWorkspaceConfiguration",
       "status": "working",
-      "message": "likely implemented (404: Workspace not found)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetDefaultScraperConfiguration",
@@ -145,7 +148,7 @@
     {
       "operation": "ListAnomalyDetectors",
       "status": "working",
-      "message": "likely implemented (404: Workspace not found)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListRuleGroupsNamespaces",
@@ -170,17 +173,17 @@
     {
       "operation": "PutAlertManagerDefinition",
       "status": "working",
-      "message": "likely implemented (404: Workspace not found)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutAnomalyDetector",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutResourcePolicy",
       "status": "working",
-      "message": "likely implemented (404: Workspace not found)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutRuleGroupsNamespace",
@@ -204,28 +207,28 @@
     },
     {
       "operation": "UpdateQueryLoggingConfiguration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateScraper",
       "status": "working",
-      "message": "likely implemented (404: Scraper not found)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateScraperLoggingConfiguration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateWorkspaceAlias",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateWorkspaceConfiguration",
       "status": "working",
-      "message": "likely implemented (404: Workspace not found)"
+      "message": "implemented (ResourceNotFoundException)"
     }
   ]
 }

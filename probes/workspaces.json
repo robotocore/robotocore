@@ -1,10 +1,13 @@
 {
   "service": "workspaces",
+  "generated_at": "2026-10-26T03:43:31.571859+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 74,
-    "needs_params": 12,
+    "working": 87,
+    "needs_params": 0,
     "not_implemented": 0,
-    "500_error": 5
+    "500_error": 4,
+    "timeout": 0
   },
   "operations": [
     {
@@ -84,8 +87,8 @@
     },
     {
       "operation": "CreateWorkspaces",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "CreateWorkspacesPool",
@@ -99,13 +102,13 @@
     },
     {
       "operation": "DeleteClientBranding",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteConnectClientAddIn",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteConnectionAlias",
@@ -140,7 +143,7 @@
     {
       "operation": "DeregisterWorkspaceDirectory",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "DescribeAccount",
@@ -174,8 +177,8 @@
     },
     {
       "operation": "DescribeClientProperties",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeConnectClientAddIns",
@@ -225,7 +228,7 @@
     {
       "operation": "DescribeWorkspaceDirectories",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "DescribeWorkspaceImagePermissions",
@@ -245,7 +248,7 @@
     {
       "operation": "DescribeWorkspaces",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (InvalidParameterValuesException: An invalid number of parameters provided with DescribeWorksp)"
     },
     {
       "operation": "DescribeWorkspacesConnectionStatus",
@@ -289,8 +292,8 @@
     },
     {
       "operation": "ImportCustomWorkspaceImage",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ImportWorkspaceImage",
@@ -325,7 +328,7 @@
     {
       "operation": "ModifyClientProperties",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "ModifyEndpointEncryptionMode",
@@ -340,7 +343,7 @@
     {
       "operation": "ModifySelfservicePermissions",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "ModifyStreamingProperties",
@@ -369,18 +372,18 @@
     },
     {
       "operation": "RebootWorkspaces",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "RebuildWorkspaces",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "RegisterWorkspaceDirectory",
-      "status": "500_error",
-      "message": "server crash (InternalError: expected string or bytes-like object, got 'NoneType')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "RejectAccountLinkInvitation",
@@ -399,8 +402,8 @@
     },
     {
       "operation": "StartWorkspaces",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartWorkspacesPool",
@@ -409,8 +412,8 @@
     },
     {
       "operation": "StopWorkspaces",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StopWorkspacesPool",
@@ -419,8 +422,8 @@
     },
     {
       "operation": "TerminateWorkspaces",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "TerminateWorkspacesPool",
@@ -429,13 +432,13 @@
     },
     {
       "operation": "TerminateWorkspacesPoolSession",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateConnectClientAddIn",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateConnectionAliasPermission",
@@ -455,7 +458,7 @@
     {
       "operation": "UpdateWorkspaceImagePermission",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "UpdateWorkspacesPool",

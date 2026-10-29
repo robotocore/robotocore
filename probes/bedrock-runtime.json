@@ -1,0 +1,64 @@
+{
+  "service": "bedrock-runtime",
+  "generated_at": "2026-10-26T09:23:46.426389+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 1,
+    "needs_params": 1,
+    "not_implemented": 8,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "ApplyGuardrail",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "Converse",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ConverseStream",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CountTokens",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetAsyncInvoke",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "InvokeModel",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "InvokeModelWithBidirectionalStream",
+      "status": "needs_params",
+      "message": "client-side probe gap (AttributeError: 'BedrockRuntime' object has no attribute 'invoke_model_with_)"
+    },
+    {
+      "operation": "InvokeModelWithResponseStream",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListAsyncInvokes",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "StartAsyncInvoke",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

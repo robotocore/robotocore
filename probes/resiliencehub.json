@@ -1,0 +1,329 @@
+{
+  "service": "resiliencehub",
+  "generated_at": "2026-10-25T19:44:31.191617+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 63,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "AcceptResourceGroupingRecommendations",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AddDraftAppVersionResourceMappings",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "BatchUpdateRecommendationStatus",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateApp",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateAppVersionAppComponent",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateAppVersionResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateRecommendationTemplate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateResiliencyPolicy",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DeleteApp",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteAppAssessment",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteAppInputSource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteAppVersionAppComponent",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteAppVersionResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteRecommendationTemplate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteResiliencyPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeApp",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeAppAssessment",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeAppVersion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeAppVersionAppComponent",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeAppVersionResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeAppVersionResourcesResolutionStatus",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeAppVersionTemplate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeDraftAppVersionResourcesImportStatus",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeMetricsExport",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeResiliencyPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeResourceGroupingRecommendationTask",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ImportResourcesToDraftAppVersion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListAlarmRecommendations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAppAssessmentComplianceDrifts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAppAssessmentResourceDrifts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAppAssessments",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAppComponentCompliances",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAppComponentRecommendations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAppInputSources",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListAppVersionAppComponents",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListAppVersionResourceMappings",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListAppVersionResources",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListAppVersions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListApps",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListMetrics",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListRecommendationTemplates",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResiliencyPolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListResourceGroupingRecommendations",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListSopRecommendations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListSuggestedResiliencyPolicies",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTestRecommendations",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListUnsupportedAppVersionResources",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PublishAppVersion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutDraftAppVersionTemplate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "RejectResourceGroupingRecommendations",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "RemoveDraftAppVersionResourceMappings",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ResolveAppVersionResources",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartAppAssessment",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartMetricsExport",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartResourceGroupingRecommendationTask",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateApp",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateAppVersion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateAppVersionAppComponent",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateAppVersionResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateResiliencyPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    }
+  ]
+}

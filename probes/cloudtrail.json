@@ -1,10 +1,13 @@
 {
   "service": "cloudtrail",
+  "generated_at": "2026-10-26T03:11:16.538081+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 30,
-    "needs_params": 7,
-    "not_implemented": 19,
-    "500_error": 4
+    "working": 60,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -14,18 +17,18 @@
     },
     {
       "operation": "CancelQuery",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (QueryIdNotFoundException: The query ID abcdef01-2345-6789-abcd-ef0123456789 was not fo)"
     },
     {
       "operation": "CreateChannel",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateDashboard",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateEventDataStore",
@@ -35,27 +38,27 @@
     {
       "operation": "CreateTrail",
       "status": "working",
-      "message": "likely implemented (S3BucketDoesNotExistException: S3 bucket probe-test-value does not exist!)"
+      "message": "likely implemented (S3BucketDoesNotExistException: S3 bucket probe-s3name-bucket does not exist!)"
     },
     {
       "operation": "DeleteChannel",
       "status": "working",
-      "message": "likely implemented (ChannelNotFoundException: The channel probe-test-value was not found.)"
+      "message": "likely implemented (ChannelNotFoundException: The channel arn:aws:cloudtrail:us-east-1:123456789012:thing/)"
     },
     {
       "operation": "DeleteDashboard",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteEventDataStore",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (EventDataStoreNotFoundException: The event data store arn:aws:cloudtrail:us-east-1:1234567890)"
     },
     {
       "operation": "DeleteResourcePolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteTrail",
@@ -70,7 +73,7 @@
     {
       "operation": "DescribeQuery",
       "status": "working",
-      "message": "likely implemented (QueryIdNotFoundException: The query ID None was not found.)"
+      "message": "implemented via required-only (QueryIdNotFoundException)"
     },
     {
       "operation": "DescribeTrails",
@@ -80,22 +83,22 @@
     {
       "operation": "DisableFederation",
       "status": "working",
-      "message": "likely implemented (EventDataStoreNotFoundException: The event data store probe-test-value was not found.)"
+      "message": "likely implemented (EventDataStoreNotFoundException: The event data store arn:aws:cloudtrail:us-east-1:1234567890)"
     },
     {
       "operation": "EnableFederation",
       "status": "working",
-      "message": "likely implemented (EventDataStoreNotFoundException: The event data store probe-test-value was not found.)"
+      "message": "likely implemented (EventDataStoreNotFoundException: The event data store arn:aws:cloudtrail:us-east-1:1234567890)"
     },
     {
       "operation": "GenerateQuery",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetChannel",
       "status": "working",
-      "message": "likely implemented (ChannelNotFoundException: The channel probe-test-value was not found.)"
+      "message": "likely implemented (ChannelNotFoundException: The channel arn:aws:cloudtrail:us-east-1:123456789012:thing/)"
     },
     {
       "operation": "GetDashboard",
@@ -110,27 +113,27 @@
     {
       "operation": "GetEventDataStore",
       "status": "working",
-      "message": "likely implemented (EventDataStoreNotFoundException: The event data store probe-test-value was not found.)"
+      "message": "likely implemented (EventDataStoreNotFoundException: The event data store arn:aws:cloudtrail:us-east-1:1234567890)"
     },
     {
       "operation": "GetEventSelectors",
-      "status": "not_implemented",
-      "message": "not implemented (TrailNotFoundException)"
+      "status": "working",
+      "message": "likely implemented (TrailNotFoundException: Unknown trail: probe-test-value for the user: 123456789012)"
     },
     {
       "operation": "GetImport",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ImportNotFoundException: The import abcdef01-2345-6789-abcd-ef0123456789 was not foun)"
     },
     {
       "operation": "GetInsightSelectors",
-      "status": "500_error",
-      "message": "server crash (InternalError: object of type 'NoneType' has no len())"
+      "status": "working",
+      "message": "likely implemented (TrailNotFoundException: Unknown trail: probe-test-value for the user: 123456789012)"
     },
     {
       "operation": "GetQueryResults",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (QueryIdNotFoundException: The query ID abcdef01-2345-6789-abcd-ef0123456789 was not fo)"
     },
     {
       "operation": "GetResourcePolicy",
@@ -139,13 +142,13 @@
     },
     {
       "operation": "GetTrail",
-      "status": "not_implemented",
-      "message": "not implemented (TrailNotFoundException)"
+      "status": "working",
+      "message": "likely implemented (TrailNotFoundException: Unknown trail: probe-test-value for the user: 123456789012)"
     },
     {
       "operation": "GetTrailStatus",
-      "status": "not_implemented",
-      "message": "not implemented (TrailNotFoundException)"
+      "status": "working",
+      "message": "likely implemented (TrailNotFoundException: Unknown trail: arn:aws:cloudtrail:us-east-1:123456789012:tra)"
     },
     {
       "operation": "ListChannels",
@@ -154,8 +157,8 @@
     },
     {
       "operation": "ListDashboards",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListEventDataStores",
@@ -164,8 +167,8 @@
     },
     {
       "operation": "ListImportFailures",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ImportNotFoundException: The import abcdef01-2345-6789-abcd-ef0123456789 was not foun)"
     },
     {
       "operation": "ListImports",
@@ -174,23 +177,23 @@
     },
     {
       "operation": "ListInsightsData",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListInsightsMetricData",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListPublicKeys",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListQueries",
       "status": "working",
-      "message": "likely implemented (EventDataStoreNotFoundException: The event data store probe-test-value was not found.)"
+      "message": "likely implemented (EventDataStoreNotFoundException: The event data store arn:aws:cloudtrail:us-east-1:1234567890)"
     },
     {
       "operation": "ListTags",
@@ -204,23 +207,23 @@
     },
     {
       "operation": "LookupEvents",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutEventConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutEventSelectors",
-      "status": "not_implemented",
-      "message": "not implemented (TrailNotFoundException)"
+      "status": "working",
+      "message": "likely implemented (TrailNotFoundException: Unknown trail: probe-test-value for the user: 123456789012)"
     },
     {
       "operation": "PutInsightSelectors",
-      "status": "500_error",
-      "message": "server crash (InternalError: object of type 'NoneType' has no len())"
+      "status": "working",
+      "message": "likely implemented (TrailNotFoundException: Unknown trail: probe-test-value for the user: 123456789012)"
     },
     {
       "operation": "PutResourcePolicy",
@@ -240,32 +243,32 @@
     {
       "operation": "RestoreEventDataStore",
       "status": "working",
-      "message": "likely implemented (EventDataStoreNotFoundException: The event data store probe-test-value was not found.)"
+      "message": "likely implemented (EventDataStoreNotFoundException: The event data store arn:aws:cloudtrail:us-east-1:1234567890)"
     },
     {
       "operation": "SearchSampleQueries",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
-    },
-    {
-      "operation": "StartDashboardRefresh",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
-    },
-    {
-      "operation": "StartEventDataStoreIngestion",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
-    },
-    {
-      "operation": "StartImport",
       "status": "working",
       "message": "OK"
     },
     {
+      "operation": "StartDashboardRefresh",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartEventDataStoreIngestion",
+      "status": "working",
+      "message": "likely implemented (EventDataStoreNotFoundException: The event data store arn:aws:cloudtrail:us-east-1:1234567890)"
+    },
+    {
+      "operation": "StartImport",
+      "status": "working",
+      "message": "OK (required-only fill)"
+    },
+    {
       "operation": "StartLogging",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartQuery",
@@ -274,38 +277,38 @@
     },
     {
       "operation": "StopEventDataStoreIngestion",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EventDataStoreNotFoundException: The event data store arn:aws:cloudtrail:us-east-1:1234567890)"
     },
     {
       "operation": "StopImport",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ImportNotFoundException: The import abcdef01-2345-6789-abcd-ef0123456789 was not foun)"
     },
     {
       "operation": "StopLogging",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateChannel",
       "status": "working",
-      "message": "likely implemented (ChannelNotFoundException: The channel probe-test-value was not found.)"
+      "message": "likely implemented (ChannelNotFoundException: The channel arn:aws:cloudtrail:us-east-1:123456789012:thing/)"
     },
     {
       "operation": "UpdateDashboard",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateEventDataStore",
       "status": "working",
-      "message": "likely implemented (EventDataStoreNotFoundException: The event data store probe-test-value was not found.)"
+      "message": "likely implemented (EventDataStoreNotFoundException: The event data store arn:aws:cloudtrail:us-east-1:1234567890)"
     },
     {
       "operation": "UpdateTrail",
-      "status": "not_implemented",
-      "message": "not implemented (TrailNotFoundException)"
+      "status": "working",
+      "message": "likely implemented (TrailNotFoundException: Unknown trail: probe-test-value for the user: 123456789012)"
     }
   ]
 }

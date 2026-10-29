@@ -1,0 +1,184 @@
+{
+  "service": "route53domains",
+  "generated_at": "2026-10-26T04:02:23.496306+00:00",
+  "endpoint": "http://localhost:4786",
+  "counts": {
+    "working": 34,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "AcceptDomainTransferFromAnotherAwsAccount",
+      "status": "working",
+      "message": "implemented (InvalidInput)"
+    },
+    {
+      "operation": "AssociateDelegationSignerToDomain",
+      "status": "working",
+      "message": "implemented (InvalidInput)"
+    },
+    {
+      "operation": "CancelDomainTransferToAnotherAwsAccount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CheckDomainAvailability",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CheckDomainTransferability",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteDomain",
+      "status": "working",
+      "message": "implemented (InvalidInput)"
+    },
+    {
+      "operation": "DeleteTagsForDomain",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DisableDomainAutoRenew",
+      "status": "working",
+      "message": "implemented (InvalidInput)"
+    },
+    {
+      "operation": "DisableDomainTransferLock",
+      "status": "working",
+      "message": "implemented (InvalidInput)"
+    },
+    {
+      "operation": "DisassociateDelegationSignerFromDomain",
+      "status": "working",
+      "message": "implemented (InvalidInput)"
+    },
+    {
+      "operation": "EnableDomainAutoRenew",
+      "status": "working",
+      "message": "implemented (InvalidInput)"
+    },
+    {
+      "operation": "EnableDomainTransferLock",
+      "status": "working",
+      "message": "implemented (InvalidInput)"
+    },
+    {
+      "operation": "GetContactReachabilityStatus",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetDomainDetail",
+      "status": "working",
+      "message": "implemented (InvalidInput)"
+    },
+    {
+      "operation": "GetDomainSuggestions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetOperationDetail",
+      "status": "working",
+      "message": "implemented (InvalidInput)"
+    },
+    {
+      "operation": "ListDomains",
+      "status": "working",
+      "message": "implemented (InvalidInput)"
+    },
+    {
+      "operation": "ListOperations",
+      "status": "working",
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
+    },
+    {
+      "operation": "ListPrices",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForDomain",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PushDomain",
+      "status": "working",
+      "message": "implemented (InvalidInput)"
+    },
+    {
+      "operation": "RegisterDomain",
+      "status": "working",
+      "message": "implemented (InvalidInput)"
+    },
+    {
+      "operation": "RejectDomainTransferFromAnotherAwsAccount",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RenewDomain",
+      "status": "working",
+      "message": "implemented (InvalidInput)"
+    },
+    {
+      "operation": "ResendContactReachabilityEmail",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ResendOperationAuthorization",
+      "status": "working",
+      "message": "implemented (InvalidInput)"
+    },
+    {
+      "operation": "RetrieveDomainAuthCode",
+      "status": "working",
+      "message": "implemented (InvalidInput)"
+    },
+    {
+      "operation": "TransferDomain",
+      "status": "working",
+      "message": "implemented (InvalidInput)"
+    },
+    {
+      "operation": "TransferDomainToAnotherAwsAccount",
+      "status": "working",
+      "message": "implemented (InvalidInput)"
+    },
+    {
+      "operation": "UpdateDomainContact",
+      "status": "working",
+      "message": "implemented (InvalidInput)"
+    },
+    {
+      "operation": "UpdateDomainContactPrivacy",
+      "status": "working",
+      "message": "implemented (InvalidInput)"
+    },
+    {
+      "operation": "UpdateDomainNameservers",
+      "status": "working",
+      "message": "implemented (InvalidInput)"
+    },
+    {
+      "operation": "UpdateTagsForDomain",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ViewBilling",
+      "status": "working",
+      "message": "OK"
+    }
+  ]
+}

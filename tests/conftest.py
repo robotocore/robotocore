@@ -1,29 +1,13 @@
-"""Shared test fixtures for robotocore."""
+"""Shared test fixtures for robotocore.
 
-from collections.abc import Callable
+The server under test is the rust binary; tests drive it over HTTP, so the
+fixtures here only hand out boto3 clients pointing at the running server.
+(Fixtures for the removed in-process python server — `client`,
+`reset_state_manager_singleton_*` — are gone; the python server package is
+deleted in a later phase and the unit suites that used them go with it.)
+"""
 
 import pytest
-from starlette.testclient import TestClient
-
-import robotocore.state.manager as _state_manager
-from robotocore.gateway.app import app
-
-
-def reset_state_manager_singleton() -> None:
-    """Reset global StateManager singleton for test isolation."""
-    _state_manager._manager = None
-
-
-@pytest.fixture
-def reset_state_manager_singleton_fixture() -> Callable[[], None]:
-    """Callable fixture for tests that need fresh global StateManager singleton."""
-    return reset_state_manager_singleton
-
-
-@pytest.fixture
-def client():
-    """Starlette test client for unit/integration tests."""
-    return TestClient(app)
 
 
 @pytest.fixture

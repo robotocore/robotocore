@@ -1,16 +1,19 @@
 {
   "service": "acm",
+  "generated_at": "2026-10-26T11:13:33.763296+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 12,
-    "needs_params": 2,
-    "not_implemented": 2,
-    "500_error": 0
+    "working": 16,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "AddTagsToCertificate",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteCertificate",
@@ -55,17 +58,17 @@
     {
       "operation": "PutAccountConfiguration",
       "status": "working",
-      "message": "implemented (MissingParameter)"
+      "message": "OK"
     },
     {
       "operation": "RemoveTagsFromCertificate",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "RenewCertificate",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "RequestCertificate",
@@ -79,13 +82,13 @@
     },
     {
       "operation": "RevokeCertificate",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateCertificateOptions",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     }
   ]
 }

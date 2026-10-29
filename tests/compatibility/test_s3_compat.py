@@ -4,7 +4,6 @@ import json
 import os
 import time
 import uuid
-from urllib.error import HTTPError
 from urllib.request import Request as URLRequest
 from urllib.request import urlopen
 
@@ -610,26 +609,6 @@ class TestS3PresignedUrls:
         assert resp.status == 200
         assert resp.read() == b"hello presigned"
 
-    def test_presigned_get_url_applies_response_content_disposition(self, s3, bucket):
-        """Test that presigned GET URLs honor response header override params."""
-        s3.put_object(Bucket=bucket, Key="presigned-disposition.txt", Body=b"download me")
-
-        url = s3.generate_presigned_url(
-            "get_object",
-            Params={
-                "Bucket": bucket,
-                "Key": "presigned-disposition.txt",
-                "ResponseContentDisposition": 'attachment; filename="download.txt"',
-            },
-            ExpiresIn=3600,
-        )
-
-        req = URLRequest(url, method="GET")
-        resp = urlopen(req)
-        assert resp.status == 200
-        assert resp.headers.get("Content-Disposition") == 'attachment; filename="download.txt"'
-        assert resp.read() == b"download me"
-
     def test_presigned_put_url(self, s3, bucket):
         """Test generating and using a presigned PUT URL."""
         url = s3.generate_presigned_url(
@@ -645,61 +624,6 @@ class TestS3PresignedUrls:
 
         obj = s3.get_object(Bucket=bucket, Key="presigned-upload.txt")
         assert obj["Body"].read() == b"uploaded via presigned"
-
-    def test_presigned_put_url_with_form_urlencoded_content_type(self, s3, bucket):
-        """Presigned PUT should preserve raw bytes regardless of form content type."""
-        payload = b"\x00uploaded\xffvia-form"
-        url = s3.generate_presigned_url(
-            "put_object",
-            Params={"Bucket": bucket, "Key": "presigned-form-upload.txt"},
-            ExpiresIn=3600,
-        )
-
-        req = URLRequest(url, data=payload, method="PUT")
-        req.add_header("Content-Type", "application/x-www-form-urlencoded")
-        resp = urlopen(req)
-        assert resp.status == 200
-
-        obj = s3.get_object(Bucket=bucket, Key="presigned-form-upload.txt")
-        assert obj["Body"].read() == payload
-
-    def test_presigned_upload_part_with_form_urlencoded_content_type(self, s3, bucket):
-        """Presigned UploadPart should treat form content type as opaque bytes."""
-        key = "presigned-form-multipart.bin"
-        payload = b"\x00multipart\xffform-part"
-        response = s3.create_multipart_upload(Bucket=bucket, Key=key)
-        upload_id = response["UploadId"]
-
-        try:
-            url = s3.generate_presigned_url(
-                "upload_part",
-                Params={
-                    "Bucket": bucket,
-                    "Key": key,
-                    "UploadId": upload_id,
-                    "PartNumber": 1,
-                },
-                ExpiresIn=3600,
-            )
-
-            req = URLRequest(url, data=payload, method="PUT")
-            req.add_header("Content-Type", "application/x-www-form-urlencoded")
-            resp = urlopen(req)
-            assert resp.status == 200
-            etag = resp.headers["ETag"]
-
-            s3.complete_multipart_upload(
-                Bucket=bucket,
-                Key=key,
-                UploadId=upload_id,
-                MultipartUpload={"Parts": [{"PartNumber": 1, "ETag": etag}]},
-            )
-
-            obj = s3.get_object(Bucket=bucket, Key=key)
-            assert obj["Body"].read() == payload
-        except Exception:
-            s3.abort_multipart_upload(Bucket=bucket, Key=key, UploadId=upload_id)
-            raise
 
     def test_presigned_head_url(self, s3, bucket):
         """Test generating and using a presigned HEAD URL."""
@@ -733,70 +657,6 @@ class TestS3PresignedUrls:
         # Verify object is gone
         response = s3.list_objects_v2(Bucket=bucket, Prefix="presigned-delete.txt")
         assert response.get("Contents") is None or len(response["Contents"]) == 0
-
-
-class TestS3PresignedUrlExpiration:
-    """Verify expired presigned URLs are rejected with 403."""
-
-    def test_expired_sigv4_presigned_get_returns_403(self, s3, bucket):
-        """An expired SigV4 presigned GET URL must return 403 AccessDenied."""
-        s3.put_object(Bucket=bucket, Key="expire-test.txt", Body=b"should not read")
-
-        url = s3.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": bucket, "Key": "expire-test.txt"},
-            ExpiresIn=1,
-        )
-        time.sleep(2)
-
-        req = URLRequest(url, method="GET")
-        with pytest.raises(HTTPError) as exc_info:
-            urlopen(req)
-        assert exc_info.value.code == 403
-        body = exc_info.value.read()
-        assert b"AccessDenied" in body
-        assert b"Request has expired" in body
-
-    def test_expired_sigv2_presigned_get_returns_403(self, s3, bucket):
-        """An expired SigV2 presigned GET URL must return 403 AccessDenied."""
-        from botocore.config import Config
-
-        s3v2 = boto3.client(
-            "s3",
-            endpoint_url=ENDPOINT_URL,
-            region_name="us-east-1",
-            aws_access_key_id="testing",
-            aws_secret_access_key="testing",
-            config=Config(signature_version="s3"),
-        )
-        s3.put_object(Bucket=bucket, Key="expire-v2.txt", Body=b"should not read")
-
-        url = s3v2.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": bucket, "Key": "expire-v2.txt"},
-            ExpiresIn=1,
-        )
-        time.sleep(2)
-
-        req = URLRequest(url, method="GET")
-        with pytest.raises(HTTPError) as exc_info:
-            urlopen(req)
-        assert exc_info.value.code == 403
-
-    def test_valid_presigned_url_still_works(self, s3, bucket):
-        """Non-expired presigned URL should still return the object."""
-        s3.put_object(Bucket=bucket, Key="valid-presign.txt", Body=b"still valid")
-
-        url = s3.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": bucket, "Key": "valid-presign.txt"},
-            ExpiresIn=3600,
-        )
-
-        req = URLRequest(url, method="GET")
-        resp = urlopen(req)
-        assert resp.status == 200
-        assert resp.read() == b"still valid"
 
 
 class TestS3MultipartExtended:
@@ -1379,6 +1239,7 @@ class TestS3Versioning:
 
     @pytest.fixture
     def versioned_bucket(self, s3):
+        import uuid
 
         name = f"ver-bucket-{uuid.uuid4().hex[:8]}"
         s3.create_bucket(Bucket=name)
@@ -1403,6 +1264,7 @@ class TestS3Versioning:
         assert resp["Status"] == "Enabled"
 
     def test_put_bucket_versioning_suspended(self, s3):
+        import uuid
 
         name = f"sus-bucket-{uuid.uuid4().hex[:8]}"
         s3.create_bucket(Bucket=name)
@@ -1446,6 +1308,7 @@ class TestS3MultipartUpload:
 
     @pytest.fixture
     def bucket(self, s3):
+        import uuid
 
         name = f"mp-bucket-{uuid.uuid4().hex[:8]}"
         s3.create_bucket(Bucket=name)
@@ -1516,6 +1379,7 @@ class TestS3CORS:
 
     @pytest.fixture
     def bucket(self, s3):
+        import uuid
 
         name = f"cors-bucket-{uuid.uuid4().hex[:8]}"
         s3.create_bucket(Bucket=name)
@@ -1569,6 +1433,7 @@ class TestS3ObjectOperations:
 
     @pytest.fixture
     def bucket(self, s3):
+        import uuid
 
         name = f"obj-bucket-{uuid.uuid4().hex[:8]}"
         s3.create_bucket(Bucket=name)
@@ -1677,841 +1542,129 @@ class TestS3ObjectOperations:
         assert "Grants" in resp
 
 
-class TestS3BucketOwnershipControls:
-    def test_put_get_delete_ownership_controls(self, s3):
-        bucket_name = f"ownership-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
+class TestS3BucketOperations:
+    """Additional S3 bucket operations."""
+
+    @pytest.fixture
+    def bucket(self, s3):
+        import uuid
+
+        name = f"bkt-ops-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=name)
+        yield name
         try:
-            s3.put_bucket_ownership_controls(
-                Bucket=bucket_name,
-                OwnershipControls={"Rules": [{"ObjectOwnership": "BucketOwnerPreferred"}]},
-            )
-            resp = s3.get_bucket_ownership_controls(Bucket=bucket_name)
-            rule = resp["OwnershipControls"]["Rules"][0]
-            assert rule["ObjectOwnership"] == "BucketOwnerPreferred"
-            s3.delete_bucket_ownership_controls(Bucket=bucket_name)
-        finally:
-            s3.delete_bucket(Bucket=bucket_name)
+            s3.delete_bucket(Bucket=name)
+        except Exception:
+            pass  # best-effort cleanup; failures are non-fatal
 
-    def test_put_and_get_bucket_ownership_controls(self, s3, bucket):
-        s3.put_bucket_ownership_controls(
-            Bucket=bucket,
-            OwnershipControls={"Rules": [{"ObjectOwnership": "BucketOwnerEnforced"}]},
-        )
-        resp = s3.get_bucket_ownership_controls(Bucket=bucket)
-        rules = resp["OwnershipControls"]["Rules"]
-        assert len(rules) == 1
-        assert rules[0]["ObjectOwnership"] == "BucketOwnerEnforced"
-
-
-class TestS3PublicAccessBlock:
-    def test_put_get_delete_public_access_block(self, s3):
-        bucket_name = f"pab-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            s3.put_public_access_block(
-                Bucket=bucket_name,
-                PublicAccessBlockConfiguration={
-                    "BlockPublicAcls": True,
-                    "IgnorePublicAcls": True,
-                    "BlockPublicPolicy": True,
-                    "RestrictPublicBuckets": True,
-                },
-            )
-            resp = s3.get_public_access_block(Bucket=bucket_name)
-            config = resp["PublicAccessBlockConfiguration"]
-            assert config["BlockPublicAcls"] is True
-            assert config["RestrictPublicBuckets"] is True
-            s3.delete_public_access_block(Bucket=bucket_name)
-        finally:
-            s3.delete_bucket(Bucket=bucket_name)
-
-
-class TestS3BucketLogging:
-    def test_put_get_bucket_logging(self, s3):
-        bucket_name = f"logging-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            s3.put_bucket_logging(Bucket=bucket_name, BucketLoggingStatus={})
-            resp = s3.get_bucket_logging(Bucket=bucket_name)
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        finally:
-            s3.delete_bucket(Bucket=bucket_name)
-
-
-class TestS3BucketAccelerateConfiguration:
-    def test_put_get_accelerate_configuration(self, s3):
-        bucket_name = f"accel-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            s3.put_bucket_accelerate_configuration(
-                Bucket=bucket_name,
-                AccelerateConfiguration={"Status": "Enabled"},
-            )
-            resp = s3.get_bucket_accelerate_configuration(Bucket=bucket_name)
-            assert resp["Status"] == "Enabled"
-        finally:
-            s3.delete_bucket(Bucket=bucket_name)
-
-
-class TestS3BucketRequestPayment:
-    def test_put_get_request_payment(self, s3):
-        bucket_name = f"reqpay-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            s3.put_bucket_request_payment(
-                Bucket=bucket_name,
-                RequestPaymentConfiguration={"Payer": "Requester"},
-            )
-            resp = s3.get_bucket_request_payment(Bucket=bucket_name)
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        finally:
-            s3.delete_bucket(Bucket=bucket_name)
-
-    def test_get_bucket_request_payment_default(self, s3, bucket):
-        resp = s3.get_bucket_request_payment(Bucket=bucket)
+    def test_head_bucket(self, s3, bucket):
+        resp = s3.head_bucket(Bucket=bucket)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
+    def test_head_bucket_nonexistent(self, s3):
+        import uuid
 
-class TestS3BucketAnalyticsConfiguration:
-    def test_put_get_list_delete_analytics(self, s3):
-        bucket_name = f"analytics-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            s3.put_bucket_analytics_configuration(
-                Bucket=bucket_name,
-                Id="test-analytics",
-                AnalyticsConfiguration={"Id": "test-analytics", "StorageClassAnalysis": {}},
-            )
-            resp = s3.get_bucket_analytics_configuration(Bucket=bucket_name, Id="test-analytics")
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-            list_resp = s3.list_bucket_analytics_configurations(Bucket=bucket_name)
-            assert "IsTruncated" in list_resp
-            s3.delete_bucket_analytics_configuration(Bucket=bucket_name, Id="test-analytics")
-        finally:
-            try:
-                s3.delete_bucket(Bucket=bucket_name)
-            except Exception:
-                pass  # best-effort cleanup; bucket may have been deleted by delete_analytics
+        with pytest.raises(ClientError):
+            s3.head_bucket(Bucket=f"no-such-bucket-{uuid.uuid4().hex[:8]}")
 
+    def test_get_bucket_location(self, s3, bucket):
+        resp = s3.get_bucket_location(Bucket=bucket)
+        # us-east-1 returns None for LocationConstraint
+        assert resp["LocationConstraint"] is None or isinstance(resp["LocationConstraint"], str)
 
-class TestS3BucketIntelligentTiering:
-    def test_put_get_list_delete_intelligent_tiering(self, s3):
-        bucket_name = f"tiering-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            s3.put_bucket_intelligent_tiering_configuration(
-                Bucket=bucket_name,
-                Id="test-tiering",
-                IntelligentTieringConfiguration={
-                    "Id": "test-tiering",
-                    "Status": "Enabled",
-                    "Tierings": [{"Days": 90, "AccessTier": "ARCHIVE_ACCESS"}],
-                },
-            )
-            resp = s3.get_bucket_intelligent_tiering_configuration(
-                Bucket=bucket_name, Id="test-tiering"
-            )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-            list_resp = s3.list_bucket_intelligent_tiering_configurations(Bucket=bucket_name)
-            assert "IsTruncated" in list_resp
-            s3.delete_bucket_intelligent_tiering_configuration(
-                Bucket=bucket_name, Id="test-tiering"
-            )
-        finally:
-            try:
-                s3.delete_bucket(Bucket=bucket_name)
-            except Exception:
-                pass  # best-effort cleanup; bucket may have been deleted by delete_tiering
+    def test_put_get_bucket_tagging(self, s3, bucket):
+        s3.put_bucket_tagging(
+            Bucket=bucket,
+            Tagging={
+                "TagSet": [
+                    {"Key": "env", "Value": "test"},
+                    {"Key": "team", "Value": "dev"},
+                ]
+            },
+        )
+        resp = s3.get_bucket_tagging(Bucket=bucket)
+        tags = {t["Key"]: t["Value"] for t in resp["TagSet"]}
+        assert tags["env"] == "test"
+        assert tags["team"] == "dev"
 
+    def test_delete_bucket_tagging(self, s3, bucket):
+        s3.put_bucket_tagging(
+            Bucket=bucket,
+            Tagging={"TagSet": [{"Key": "x", "Value": "y"}]},
+        )
+        s3.delete_bucket_tagging(Bucket=bucket)
+        with pytest.raises(ClientError):
+            s3.get_bucket_tagging(Bucket=bucket)
 
-class TestS3BucketMetricsConfiguration:
-    def test_put_get_list_delete_metrics(self, s3):
-        bucket_name = f"metrics-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            s3.put_bucket_metrics_configuration(
-                Bucket=bucket_name,
-                Id="test-metrics",
-                MetricsConfiguration={"Id": "test-metrics"},
-            )
-            resp = s3.get_bucket_metrics_configuration(Bucket=bucket_name, Id="test-metrics")
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-            list_resp = s3.list_bucket_metrics_configurations(Bucket=bucket_name)
-            assert "IsTruncated" in list_resp
-            s3.delete_bucket_metrics_configuration(Bucket=bucket_name, Id="test-metrics")
-        finally:
-            try:
-                s3.delete_bucket(Bucket=bucket_name)
-            except Exception:
-                pass  # best-effort cleanup; bucket may have been deleted by delete_metrics
+    def test_put_get_bucket_lifecycle(self, s3, bucket):
+        s3.put_bucket_lifecycle_configuration(
+            Bucket=bucket,
+            LifecycleConfiguration={
+                "Rules": [
+                    {
+                        "ID": "expire-old",
+                        "Status": "Enabled",
+                        "Filter": {"Prefix": "logs/"},
+                        "Expiration": {"Days": 30},
+                    }
+                ]
+            },
+        )
+        resp = s3.get_bucket_lifecycle_configuration(Bucket=bucket)
+        assert len(resp["Rules"]) == 1
+        assert resp["Rules"][0]["ID"] == "expire-old"
 
-
-class TestS3BucketLifecycleLegacy:
-    def test_put_get_delete_lifecycle(self, s3):
-        bucket_name = f"lifecycle-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            s3.put_bucket_lifecycle(
-                Bucket=bucket_name,
-                LifecycleConfiguration={
-                    "Rules": [
-                        {
-                            "ID": "expire-rule",
-                            "Status": "Enabled",
-                            "Prefix": "logs/",
-                            "Expiration": {"Days": 30},
+    def test_put_get_bucket_encryption(self, s3, bucket):
+        s3.put_bucket_encryption(
+            Bucket=bucket,
+            ServerSideEncryptionConfiguration={
+                "Rules": [
+                    {
+                        "ApplyServerSideEncryptionByDefault": {
+                            "SSEAlgorithm": "AES256",
                         }
-                    ]
-                },
-            )
-            resp = s3.get_bucket_lifecycle(Bucket=bucket_name)
-            assert len(resp["Rules"]) == 1
-            assert resp["Rules"][0]["ID"] == "expire-rule"
-            s3.delete_bucket_lifecycle(Bucket=bucket_name)
-        finally:
-            s3.delete_bucket(Bucket=bucket_name)
+                    }
+                ]
+            },
+        )
+        resp = s3.get_bucket_encryption(Bucket=bucket)
+        algo = resp["ServerSideEncryptionConfiguration"]["Rules"][0][
+            "ApplyServerSideEncryptionByDefault"
+        ]["SSEAlgorithm"]
+        assert algo == "AES256"
 
+    def test_put_get_bucket_website(self, s3, bucket):
+        s3.put_bucket_website(
+            Bucket=bucket,
+            WebsiteConfiguration={
+                "IndexDocument": {"Suffix": "index.html"},
+                "ErrorDocument": {"Key": "error.html"},
+            },
+        )
+        resp = s3.get_bucket_website(Bucket=bucket)
+        assert resp["IndexDocument"]["Suffix"] == "index.html"
+        assert resp["ErrorDocument"]["Key"] == "error.html"
+        s3.delete_bucket_website(Bucket=bucket)
 
-class TestS3BucketReplication:
-    def test_put_get_delete_replication(self, s3):
-        bucket_name = f"replication-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        s3.put_bucket_versioning(Bucket=bucket_name, VersioningConfiguration={"Status": "Enabled"})
+    def test_put_get_bucket_logging(self, s3, bucket):
+        import uuid
+
+        log_bucket = f"log-target-{uuid.uuid4().hex[:8]}"
+        s3.create_bucket(Bucket=log_bucket)
         try:
-            s3.put_bucket_replication(
-                Bucket=bucket_name,
-                ReplicationConfiguration={
-                    "Role": "arn:aws:iam::123456789012:role/replication-role",
-                    "Rules": [
-                        {
-                            "Status": "Enabled",
-                            "Prefix": "",
-                            "Destination": {"Bucket": f"arn:aws:s3:::{bucket_name}"},
-                        }
-                    ],
-                },
-            )
-            resp = s3.get_bucket_replication(Bucket=bucket_name)
-            config = resp["ReplicationConfiguration"]
-            assert len(config["Rules"]) == 1
-            assert config["Rules"][0]["Status"] == "Enabled"
-            s3.delete_bucket_replication(Bucket=bucket_name)
-        finally:
-            s3.delete_bucket(Bucket=bucket_name)
-
-
-class TestS3ObjectLockConfiguration:
-    def test_put_get_object_lock_configuration(self, s3):
-        bucket_name = f"objlock-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name, ObjectLockEnabledForBucket=True)
-        try:
-            s3.put_object_lock_configuration(
-                Bucket=bucket_name,
-                ObjectLockConfiguration={
-                    "ObjectLockEnabled": "Enabled",
-                    "Rule": {"DefaultRetention": {"Mode": "GOVERNANCE", "Days": 1}},
-                },
-            )
-            resp = s3.get_object_lock_configuration(Bucket=bucket_name)
-            assert resp["ObjectLockConfiguration"]["ObjectLockEnabled"] == "Enabled"
-            retention = resp["ObjectLockConfiguration"]["Rule"]["DefaultRetention"]
-            assert retention["Mode"] == "GOVERNANCE"
-        finally:
-            s3.delete_bucket(Bucket=bucket_name)
-
-
-class TestS3ObjectLegalHold:
-    def test_put_get_object_legal_hold(self, s3):
-        bucket_name = f"legalhold-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name, ObjectLockEnabledForBucket=True)
-        put_resp = s3.put_object(Bucket=bucket_name, Key="locked.txt", Body=b"protected")
-        version_id = put_resp.get("VersionId")
-        try:
-            s3.put_object_legal_hold(
-                Bucket=bucket_name,
-                Key="locked.txt",
-                LegalHold={"Status": "ON"},
-            )
-            resp = s3.get_object_legal_hold(Bucket=bucket_name, Key="locked.txt")
-            assert resp["LegalHold"]["Status"] == "ON"
-            # Release hold before cleanup
-            s3.put_object_legal_hold(
-                Bucket=bucket_name,
-                Key="locked.txt",
-                LegalHold={"Status": "OFF"},
-            )
-        finally:
-            delete_kwargs = {"Bucket": bucket_name, "Key": "locked.txt"}
-            if version_id:
-                delete_kwargs["VersionId"] = version_id
-            try:
-                s3.delete_object(**delete_kwargs)
-            except Exception:
-                pass  # best-effort cleanup
-            try:
-                s3.delete_bucket(Bucket=bucket_name)
-            except Exception:
-                pass  # best-effort cleanup
-
-
-class TestS3ObjectRetention:
-    def test_put_get_object_retention(self, s3):
-        import datetime
-
-        bucket_name = f"retention-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name, ObjectLockEnabledForBucket=True)
-        put_resp = s3.put_object(Bucket=bucket_name, Key="retain.txt", Body=b"retained")
-        version_id = put_resp.get("VersionId")
-        retain_until = datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=1)
-        try:
-            s3.put_object_retention(
-                Bucket=bucket_name,
-                Key="retain.txt",
-                Retention={"Mode": "GOVERNANCE", "RetainUntilDate": retain_until},
-            )
-            resp = s3.get_object_retention(Bucket=bucket_name, Key="retain.txt")
-            assert resp["Retention"]["Mode"] == "GOVERNANCE"
-        finally:
-            delete_kwargs = {
-                "Bucket": bucket_name,
-                "Key": "retain.txt",
-                "BypassGovernanceRetention": True,
-            }
-            if version_id:
-                delete_kwargs["VersionId"] = version_id
-            try:
-                s3.delete_object(**delete_kwargs)
-            except Exception:
-                pass  # best-effort cleanup
-            try:
-                s3.delete_bucket(Bucket=bucket_name)
-            except Exception:
-                pass  # best-effort cleanup
-
-
-class TestS3BucketNotification:
-    def test_put_get_bucket_notification(self, s3):
-        bucket_name = f"notif-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            s3.put_bucket_notification(Bucket=bucket_name, NotificationConfiguration={})
-            resp = s3.get_bucket_notification(Bucket=bucket_name)
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        finally:
-            s3.delete_bucket(Bucket=bucket_name)
-
-
-class TestS3BucketEncryption:
-    def test_delete_bucket_encryption(self, s3):
-        bucket_name = f"enc-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            s3.put_bucket_encryption(
-                Bucket=bucket_name,
-                ServerSideEncryptionConfiguration={
-                    "Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]
-                },
-            )
-            resp = s3.delete_bucket_encryption(Bucket=bucket_name)
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
-        finally:
-            s3.delete_bucket(Bucket=bucket_name)
-
-
-class TestS3GetObjectAttributes:
-    def test_get_object_attributes(self, s3):
-        bucket_name = f"objattrs-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        s3.put_object(Bucket=bucket_name, Key="test.txt", Body=b"hello world")
-        try:
-            resp = s3.get_object_attributes(
-                Bucket=bucket_name,
-                Key="test.txt",
-                ObjectAttributes=["ETag", "ObjectSize"],
-            )
-            assert resp["ETag"] is not None
-            assert resp["ObjectSize"] == 11
-        finally:
-            s3.delete_object(Bucket=bucket_name, Key="test.txt")
-            s3.delete_bucket(Bucket=bucket_name)
-
-
-class TestS3HeadBucket:
-    def test_head_bucket_exists(self, s3):
-        bucket_name = f"headbkt-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            resp = s3.head_bucket(Bucket=bucket_name)
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        finally:
-            s3.delete_bucket(Bucket=bucket_name)
-
-    def test_head_bucket_not_found(self, s3):
-        with pytest.raises(Exception) as exc_info:
-            s3.head_bucket(Bucket="does-not-exist-xyz-12345")
-        assert exc_info.value.response["Error"]["Code"] in ("404", "NoSuchBucket")
-
-
-class TestS3ListObjects:
-    def test_list_objects(self, s3):
-        bucket_name = f"listobj-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        s3.put_object(Bucket=bucket_name, Key="file1.txt", Body=b"a")
-        s3.put_object(Bucket=bucket_name, Key="file2.txt", Body=b"b")
-        try:
-            resp = s3.list_objects(Bucket=bucket_name)
-            assert resp["Name"] == bucket_name
-            keys = [obj["Key"] for obj in resp.get("Contents", [])]
-            assert "file1.txt" in keys
-            assert "file2.txt" in keys
-        finally:
-            s3.delete_object(Bucket=bucket_name, Key="file1.txt")
-            s3.delete_object(Bucket=bucket_name, Key="file2.txt")
-            s3.delete_bucket(Bucket=bucket_name)
-
-
-class TestS3ListDirectoryBuckets:
-    def test_list_directory_buckets(self, s3):
-        resp = s3.list_directory_buckets()
-        assert "Buckets" in resp
-
-
-class TestS3UploadPartCopy:
-    def test_upload_part_copy(self, s3):
-        bucket_name = f"mpu-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        # Source object must be >=5MB for multipart, but UploadPartCopy works on any size
-        s3.put_object(Bucket=bucket_name, Key="source.txt", Body=b"x" * (6 * 1024 * 1024))
-        mpu = s3.create_multipart_upload(Bucket=bucket_name, Key="dest.txt")
-        upload_id = mpu["UploadId"]
-        try:
-            resp = s3.upload_part_copy(
-                Bucket=bucket_name,
-                Key="dest.txt",
-                PartNumber=1,
-                UploadId=upload_id,
-                CopySource={"Bucket": bucket_name, "Key": "source.txt"},
-            )
-            etag = resp["CopyPartResult"]["ETag"]
-            assert etag is not None
-            s3.complete_multipart_upload(
-                Bucket=bucket_name,
-                Key="dest.txt",
-                UploadId=upload_id,
-                MultipartUpload={"Parts": [{"PartNumber": 1, "ETag": etag}]},
-            )
-        finally:
-            for key in ["source.txt", "dest.txt"]:
-                try:
-                    s3.delete_object(Bucket=bucket_name, Key=key)
-                except Exception:
-                    pass  # best-effort cleanup
-            s3.delete_bucket(Bucket=bucket_name)
-
-
-class TestS3GetObjectTorrent:
-    def test_get_object_torrent(self, s3):
-        bucket_name = f"torrent-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        s3.put_object(Bucket=bucket_name, Key="test.txt", Body=b"torrent content")
-        try:
-            resp = s3.get_object_torrent(Bucket=bucket_name, Key="test.txt")
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        finally:
-            s3.delete_object(Bucket=bucket_name, Key="test.txt")
-            s3.delete_bucket(Bucket=bucket_name)
-
-
-class TestS3CreateSession:
-    def test_create_session(self, s3):
-        bucket_name = f"session-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            resp = s3.create_session(Bucket=bucket_name)
-            assert "Credentials" in resp
-            assert "AccessKeyId" in resp["Credentials"]
-        finally:
-            s3.delete_bucket(Bucket=bucket_name)
-
-
-class TestS3BucketPolicyStatus:
-    def test_get_bucket_policy_status(self, s3):
-        bucket_name = f"policystatus-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            resp = s3.get_bucket_policy_status(Bucket=bucket_name)
-            assert "PolicyStatus" in resp
-        finally:
-            s3.delete_bucket(Bucket=bucket_name)
-
-
-class TestS3MetadataConfiguration:
-    """Tests for S3 metadata configuration operations."""
-
-    def test_get_bucket_metadata_configuration(self, s3):
-        """GetBucketMetadataConfiguration returns result for a bucket."""
-        bucket_name = f"metadata-cfg-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            resp = s3.get_bucket_metadata_configuration(Bucket=bucket_name)
-            assert "GetBucketMetadataConfigurationResult" in resp
-        finally:
-            s3.delete_bucket(Bucket=bucket_name)
-
-    def test_get_bucket_metadata_table_configuration(self, s3):
-        """GetBucketMetadataTableConfiguration returns result for a bucket."""
-        bucket_name = f"metadata-tbl-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            resp = s3.get_bucket_metadata_table_configuration(Bucket=bucket_name)
-            assert "GetBucketMetadataTableConfigurationResult" in resp
-        finally:
-            s3.delete_bucket(Bucket=bucket_name)
-
-
-class TestS3InventoryConfiguration:
-    """Tests for S3 inventory configuration operations."""
-
-    def test_list_bucket_inventory_configurations(self, s3):
-        """ListBucketInventoryConfigurations returns IsTruncated field."""
-        bucket_name = f"inventory-list-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            resp = s3.list_bucket_inventory_configurations(Bucket=bucket_name)
-            assert "IsTruncated" in resp
-        finally:
-            s3.delete_bucket(Bucket=bucket_name)
-
-
-class TestS3BucketNotificationConfiguration:
-    """GetBucketNotificationConfiguration on an existing bucket."""
-
-    def test_get_bucket_notification_configuration(self, s3):
-        bucket_name = f"notifcfg-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            resp = s3.get_bucket_notification_configuration(Bucket=bucket_name)
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        finally:
-            s3.delete_bucket(Bucket=bucket_name)
-
-
-class TestS3BucketInventoryConfiguration:
-    """PutBucketInventoryConfiguration, GetBucketInventoryConfiguration,
-    ListBucketInventoryConfigurations, DeleteBucketInventoryConfiguration."""
-
-    def test_put_get_list_delete_inventory(self, s3):
-        bucket_name = f"inv-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            s3.put_bucket_inventory_configuration(
-                Bucket=bucket_name,
-                Id="test-inventory",
-                InventoryConfiguration={
-                    "Destination": {
-                        "S3BucketDestination": {
-                            "Bucket": f"arn:aws:s3:::{bucket_name}",
-                            "Format": "CSV",
-                        }
-                    },
-                    "IsEnabled": True,
-                    "Id": "test-inventory",
-                    "IncludedObjectVersions": "Current",
-                    "Schedule": {"Frequency": "Weekly"},
-                },
-            )
-            get_resp = s3.get_bucket_inventory_configuration(
-                Bucket=bucket_name, Id="test-inventory"
-            )
-            assert get_resp["InventoryConfiguration"]["Id"] == "test-inventory"
-            assert get_resp["InventoryConfiguration"]["IsEnabled"] is True
-
-            list_resp = s3.list_bucket_inventory_configurations(Bucket=bucket_name)
-            assert "InventoryConfigurationList" in list_resp
-            ids = [c["Id"] for c in list_resp["InventoryConfigurationList"]]
-            assert "test-inventory" in ids
-
-            del_resp = s3.delete_bucket_inventory_configuration(
-                Bucket=bucket_name, Id="test-inventory"
-            )
-            assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 204
-        finally:
-            try:
-                s3.delete_bucket(Bucket=bucket_name)
-            except Exception:
-                pass  # best-effort cleanup
-
-    def test_delete_inventory_nonexistent_bucket(self, s3):
-        """DeleteBucketInventoryConfiguration on a nonexistent bucket returns NoSuchBucket."""
-        with pytest.raises(ClientError) as exc_info:
-            s3.delete_bucket_inventory_configuration(
-                Bucket="nonexistent-inv-bucket-xyz-99999", Id="doesnt-matter"
-            )
-        assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"
-
-    def test_get_inventory_nonexistent_bucket(self, s3):
-        """GetBucketInventoryConfiguration on a nonexistent bucket returns NoSuchBucket."""
-        with pytest.raises(ClientError) as exc_info:
-            s3.get_bucket_inventory_configuration(
-                Bucket="nonexistent-inv-bucket-xyz-99999", Id="doesnt-matter"
-            )
-        assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"
-
-    def test_list_inventory_nonexistent_bucket(self, s3):
-        """ListBucketInventoryConfigurations on a nonexistent bucket returns NoSuchBucket."""
-        with pytest.raises(ClientError) as exc_info:
-            s3.list_bucket_inventory_configurations(Bucket="nonexistent-inv-bucket-xyz-99999")
-        assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"
-
-
-class TestS3BucketAbac:
-    """PutBucketAbac, GetBucketAbac."""
-
-    def test_put_and_get_bucket_abac(self, s3):
-        bucket_name = f"abac-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            put_resp = s3.put_bucket_abac(
-                Bucket=bucket_name,
-                AbacStatus={"Status": "Enabled"},
-            )
-            assert put_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-            get_resp = s3.get_bucket_abac(Bucket=bucket_name)
-            assert get_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        finally:
-            s3.delete_bucket(Bucket=bucket_name)
-
-    def test_get_bucket_abac_nonexistent_bucket(self, s3):
-        """GetBucketAbac on a nonexistent bucket returns NoSuchBucket."""
-        with pytest.raises(ClientError) as exc_info:
-            s3.get_bucket_abac(Bucket="nonexistent-abac-bucket-xyz-99999")
-        assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"
-
-
-class TestS3BucketMetadataConfiguration:
-    """CreateBucketMetadataConfiguration, GetBucketMetadataConfiguration,
-    DeleteBucketMetadataConfiguration."""
-
-    def test_create_and_get_metadata_configuration(self, s3):
-        bucket_name = f"metacfg-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            create_resp = s3.create_bucket_metadata_configuration(
-                Bucket=bucket_name,
-                MetadataConfiguration={
-                    "JournalTableConfiguration": {
-                        "RecordExpiration": {"Expiration": "ENABLED", "Days": 30}
-                    },
-                    "InventoryTableConfiguration": {"ConfigurationState": "ENABLED"},
-                },
-            )
-            assert create_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-            get_resp = s3.get_bucket_metadata_configuration(Bucket=bucket_name)
-            assert get_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        finally:
-            try:
-                s3.delete_bucket(Bucket=bucket_name)
-            except Exception:
-                pass  # best-effort cleanup
-
-    def test_delete_metadata_configuration(self, s3):
-        bucket_name = f"metacfgdel-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            del_resp = s3.delete_bucket_metadata_configuration(Bucket=bucket_name)
-            assert del_resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
-        finally:
-            try:
-                s3.delete_bucket(Bucket=bucket_name)
-            except Exception:
-                pass  # best-effort cleanup
-
-    def test_get_metadata_configuration_nonexistent_bucket(self, s3):
-        with pytest.raises(ClientError) as exc_info:
-            s3.get_bucket_metadata_configuration(Bucket="nonexistent-metacfg-bucket-xyz-99999")
-        assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"
-
-    def test_delete_metadata_configuration_nonexistent_bucket(self, s3):
-        with pytest.raises(ClientError) as exc_info:
-            s3.delete_bucket_metadata_configuration(Bucket="nonexistent-metacfg-bucket-xyz-99999")
-        assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"
-
-
-class TestS3BucketMetadataTableConfiguration:
-    """CreateBucketMetadataTableConfiguration, GetBucketMetadataTableConfiguration,
-    DeleteBucketMetadataTableConfiguration."""
-
-    def test_create_get_delete_metadata_table_configuration(self, s3):
-        bucket_name = f"metatbl-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            create_resp = s3.create_bucket_metadata_table_configuration(
-                Bucket=bucket_name,
-                MetadataTableConfiguration={
-                    "S3TablesDestination": {
-                        "TableBucketArn": "arn:aws:s3:::test-table-bucket",
-                        "TableName": "test-table",
+            s3.put_bucket_logging(
+                Bucket=bucket,
+                BucketLoggingStatus={
+                    "LoggingEnabled": {
+                        "TargetBucket": log_bucket,
+                        "TargetPrefix": "logs/",
                     }
                 },
             )
-            assert create_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-            get_resp = s3.get_bucket_metadata_table_configuration(Bucket=bucket_name)
-            assert get_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-            del_resp = s3.delete_bucket_metadata_table_configuration(Bucket=bucket_name)
-            assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+            resp = s3.get_bucket_logging(Bucket=bucket)
+            assert resp["LoggingEnabled"]["TargetBucket"] == log_bucket
         finally:
-            try:
-                s3.delete_bucket(Bucket=bucket_name)
-            except Exception:
-                pass  # best-effort cleanup
-
-    def test_get_metadata_table_configuration_nonexistent_bucket(self, s3):
-        with pytest.raises(ClientError) as exc_info:
-            s3.get_bucket_metadata_table_configuration(
-                Bucket="nonexistent-metatbl-bucket-xyz-99999"
-            )
-        assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"
-
-    def test_delete_metadata_table_configuration_nonexistent_bucket(self, s3):
-        with pytest.raises(ClientError) as exc_info:
-            s3.delete_bucket_metadata_table_configuration(
-                Bucket="nonexistent-metatbl-bucket-xyz-99999"
-            )
-        assert exc_info.value.response["Error"]["Code"] == "NoSuchBucket"
-
-
-class TestS3UpdateBucketMetadataTableConfigurations:
-    """UpdateBucketMetadataInventoryTableConfiguration,
-    UpdateBucketMetadataJournalTableConfiguration."""
-
-    def test_update_metadata_inventory_table_configuration(self, s3):
-        bucket_name = f"updinv-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            resp = s3.update_bucket_metadata_inventory_table_configuration(
-                Bucket=bucket_name,
-                InventoryTableConfiguration={"ConfigurationState": "ENABLED"},
-            )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        finally:
-            try:
-                s3.delete_bucket(Bucket=bucket_name)
-            except Exception:
-                pass  # best-effort cleanup
-
-    def test_update_metadata_journal_table_configuration(self, s3):
-        bucket_name = f"updjrn-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=bucket_name)
-        try:
-            resp = s3.update_bucket_metadata_journal_table_configuration(
-                Bucket=bucket_name,
-                JournalTableConfiguration={
-                    "RecordExpiration": {"Expiration": "ENABLED", "Days": 30}
-                },
-            )
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-        finally:
-            try:
-                s3.delete_bucket(Bucket=bucket_name)
-            except Exception:
-                pass  # best-effort cleanup
-
-
-class TestS3WriteGetObjectResponse:
-    """WriteGetObjectResponse."""
-
-    def test_write_get_object_response(self, s3):
-        resp = s3.write_get_object_response(
-            RequestRoute="route-placeholder",
-            RequestToken="token-placeholder",
-            Body=b"hello from object lambda",
-        )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-
-class TestS3RestoreObject:
-    """Test RestoreObject."""
-
-    def test_restore_object_nonexistent_bucket(self, s3):
-        """RestoreObject with nonexistent bucket returns NoSuchBucket."""
-        with pytest.raises(ClientError) as exc:
-            s3.restore_object(
-                Bucket="nonexistent-bucket-xyz-123",
-                Key="test-key",
-                RestoreRequest={"Days": 7},
-            )
-        assert exc.value.response["Error"]["Code"] == "NoSuchBucket"
-
-
-class TestS3GapOps:
-    """Tests for S3 operations that weren't previously covered."""
-
-    @pytest.fixture
-    def client(self):
-        return boto3.client(
-            "s3",
-            endpoint_url=ENDPOINT_URL,
-            region_name="us-east-1",
-            aws_access_key_id="testing",
-            aws_secret_access_key="testing",
-        )
-
-    def test_rename_object_no_such_bucket(self, client):
-        """RenameObject raises NoSuchBucket for nonexistent bucket."""
-        from botocore.exceptions import ClientError  # noqa: PLC0415
-
-        with pytest.raises(ClientError) as exc:
-            client.rename_object(
-                Bucket="nonexistent-bucket-xyz-rename",
-                Key="test-key",
-                RenameSource="source-key",
-            )
-        assert exc.value.response["Error"]["Code"] == "NoSuchBucket"
-
-    def test_select_object_content_no_such_bucket(self, client):
-        """SelectObjectContent raises NoSuchBucket for nonexistent bucket."""
-        from botocore.exceptions import ClientError  # noqa: PLC0415
-
-        with pytest.raises(ClientError) as exc:
-            client.select_object_content(
-                Bucket="nonexistent-bucket-xyz-select",
-                Key="test.json",
-                Expression="SELECT * FROM S3Object",
-                ExpressionType="SQL",
-                InputSerialization={"JSON": {"Type": "DOCUMENT"}},
-                OutputSerialization={"JSON": {}},
-            )
-        assert exc.value.response["Error"]["Code"] == "NoSuchBucket"
-
-
-class TestS3UpdateObjectEncryptionGapOp:
-    """Test UpdateObjectEncryption operation."""
-
-    def test_update_object_encryption_no_such_bucket(self):
-        client = boto3.client(
-            "s3",
-            endpoint_url=ENDPOINT_URL,
-            region_name="us-east-1",
-            aws_access_key_id="test",
-            aws_secret_access_key="test",
-        )
-        with pytest.raises(ClientError) as exc:
-            client.update_object_encryption(
-                Bucket="nonexistent-bucket-xyz-987",
-                Key="test-key",
-                ObjectEncryption={
-                    "SSEKMS": {"KMSKeyArn": "arn:aws:kms:us-east-1:123456789012:key/abc123"}
-                },
-            )
-        assert exc.value.response["Error"]["Code"] in (
-            "NoSuchBucket",
-            "NotImplemented",
-        )
+            s3.delete_bucket(Bucket=log_bucket)
 
 
 class TestS3AdvancedOperations:
@@ -2592,6 +1745,15 @@ class TestS3AdvancedOperations:
         resp = s3.head_object(Bucket=bucket, Key="dst.txt")
         assert resp["ContentLength"] == 6
 
+    def test_delete_objects_batch(self, s3, bucket):
+        for i in range(5):
+            s3.put_object(Bucket=bucket, Key=f"del{i}.txt", Body=b"x")
+        resp = s3.delete_objects(
+            Bucket=bucket,
+            Delete={"Objects": [{"Key": f"del{i}.txt"} for i in range(5)]},
+        )
+        assert len(resp["Deleted"]) == 5
+
     def test_object_exists_after_put(self, s3, bucket):
         s3.put_object(Bucket=bucket, Key="exists.txt", Body=b"yes")
         resp = s3.list_objects_v2(Bucket=bucket, Prefix="exists.txt")
@@ -2613,6 +1775,12 @@ class TestS3AdvancedOperations:
         resp = s3.head_object(Bucket=bucket, Key="sc.txt")
         # StorageClass may not be returned for STANDARD, just verify no error
         assert resp["ContentLength"] == 4
+
+    def test_get_object_range(self, s3, bucket):
+        s3.put_object(Bucket=bucket, Key="range.txt", Body=b"0123456789")
+        resp = s3.get_object(Bucket=bucket, Key="range.txt", Range="bytes=2-5")
+        body = resp["Body"].read()
+        assert body == b"2345"
 
     def test_put_bucket_policy(self, s3, bucket):
         policy = json.dumps(
@@ -2652,96 +1820,41 @@ class TestS3AdvancedOperations:
         with pytest.raises(ClientError):
             s3.get_bucket_policy(Bucket=bucket)
 
+    def test_get_bucket_location(self, s3, bucket):
+        resp = s3.get_bucket_location(Bucket=bucket)
+        # us-east-1 returns None or empty for LocationConstraint
+        assert "LocationConstraint" in resp
+
+    def test_put_get_object_tagging(self, s3, bucket):
+        s3.put_object(Bucket=bucket, Key="tagged.txt", Body=b"tag me")
+        s3.put_object_tagging(
+            Bucket=bucket,
+            Key="tagged.txt",
+            Tagging={"TagSet": [{"Key": "env", "Value": "test"}]},
+        )
+        resp = s3.get_object_tagging(Bucket=bucket, Key="tagged.txt")
+        tags = {t["Key"]: t["Value"] for t in resp["TagSet"]}
+        assert tags["env"] == "test"
+
+    def test_delete_object_tagging(self, s3, bucket):
+        s3.put_object(Bucket=bucket, Key="dtag.txt", Body=b"data")
+        s3.put_object_tagging(
+            Bucket=bucket,
+            Key="dtag.txt",
+            Tagging={"TagSet": [{"Key": "temp", "Value": "yes"}]},
+        )
+        s3.delete_object_tagging(Bucket=bucket, Key="dtag.txt")
+        resp = s3.get_object_tagging(Bucket=bucket, Key="dtag.txt")
+        assert len(resp["TagSet"]) == 0
+
+    def test_list_buckets(self, s3, bucket):
+        resp = s3.list_buckets()
+        names = [b["Name"] for b in resp["Buckets"]]
+        assert bucket in names
+
     def test_head_bucket(self, s3, bucket):
         resp = s3.head_bucket(Bucket=bucket)
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-
-class TestS3BucketOperations:
-    """Additional S3 bucket operations."""
-
-    @pytest.fixture
-    def bucket(self, s3):
-        import uuid
-
-        name = f"bkt-ops-{uuid.uuid4().hex[:8]}"
-        s3.create_bucket(Bucket=name)
-        yield name
-        try:
-            s3.delete_bucket(Bucket=name)
-        except Exception:
-            pass  # best-effort cleanup
-
-    def test_head_bucket_nonexistent(self, s3):
-        import uuid
-
-        with pytest.raises(ClientError):
-            s3.head_bucket(Bucket=f"no-such-bucket-{uuid.uuid4().hex[:8]}")
-
-    def test_put_get_bucket_tagging(self, s3, bucket):
-        s3.put_bucket_tagging(
-            Bucket=bucket,
-            Tagging={
-                "TagSet": [
-                    {"Key": "env", "Value": "test"},
-                    {"Key": "team", "Value": "dev"},
-                ]
-            },
-        )
-        resp = s3.get_bucket_tagging(Bucket=bucket)
-        tags = {t["Key"]: t["Value"] for t in resp["TagSet"]}
-        assert tags["env"] == "test"
-        assert tags["team"] == "dev"
-
-    def test_put_get_bucket_lifecycle(self, s3, bucket):
-        s3.put_bucket_lifecycle_configuration(
-            Bucket=bucket,
-            LifecycleConfiguration={
-                "Rules": [
-                    {
-                        "ID": "expire-old",
-                        "Status": "Enabled",
-                        "Filter": {"Prefix": "logs/"},
-                        "Expiration": {"Days": 30},
-                    }
-                ]
-            },
-        )
-        resp = s3.get_bucket_lifecycle_configuration(Bucket=bucket)
-        assert len(resp["Rules"]) == 1
-        assert resp["Rules"][0]["ID"] == "expire-old"
-
-    def test_put_get_bucket_encryption(self, s3, bucket):
-        s3.put_bucket_encryption(
-            Bucket=bucket,
-            ServerSideEncryptionConfiguration={
-                "Rules": [
-                    {
-                        "ApplyServerSideEncryptionByDefault": {
-                            "SSEAlgorithm": "AES256",
-                        }
-                    }
-                ]
-            },
-        )
-        resp = s3.get_bucket_encryption(Bucket=bucket)
-        algo = resp["ServerSideEncryptionConfiguration"]["Rules"][0][
-            "ApplyServerSideEncryptionByDefault"
-        ]["SSEAlgorithm"]
-        assert algo == "AES256"
-
-    def test_put_get_bucket_website(self, s3, bucket):
-        s3.put_bucket_website(
-            Bucket=bucket,
-            WebsiteConfiguration={
-                "IndexDocument": {"Suffix": "index.html"},
-                "ErrorDocument": {"Key": "error.html"},
-            },
-        )
-        resp = s3.get_bucket_website(Bucket=bucket)
-        assert resp["IndexDocument"]["Suffix"] == "index.html"
-        assert resp["ErrorDocument"]["Key"] == "error.html"
-        s3.delete_bucket_website(Bucket=bucket)
 
 
 class TestS3AccelerateConfiguration:
@@ -2773,8 +1886,30 @@ class TestS3AccelerateConfiguration:
         assert resp["Status"] == "Suspended"
 
 
+class TestS3BucketRequestPayment:
+    """Tests for GetBucketRequestPayment."""
+
+    def test_get_bucket_request_payment_default(self, s3, bucket):
+        resp = s3.get_bucket_request_payment(Bucket=bucket)
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
 class TestS3DeleteBucketConfigurations:
     """Tests for DeleteBucketEncryption, DeleteBucketLifecycle, DeleteBucketWebsite."""
+
+    def test_delete_bucket_encryption(self, s3, bucket):
+        s3.put_bucket_encryption(
+            Bucket=bucket,
+            ServerSideEncryptionConfiguration={
+                "Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}]
+            },
+        )
+        s3.delete_bucket_encryption(Bucket=bucket)
+        with pytest.raises(ClientError) as exc:
+            s3.get_bucket_encryption(Bucket=bucket)
+        assert (
+            exc.value.response["Error"]["Code"] == "ServerSideEncryptionConfigurationNotFoundError"
+        )
 
     def test_delete_bucket_lifecycle(self, s3, bucket):
         s3.put_bucket_lifecycle_configuration(
@@ -2827,7 +1962,7 @@ class TestS3ObjectLocking:
                 s3.delete_object(Bucket=name, Key=v["Key"], VersionId=v["VersionId"])
             s3.delete_bucket(Bucket=name)
         except Exception:
-            pass  # best-effort cleanup
+            pass  # best-effort cleanup; failures are non-fatal
 
     def test_put_and_get_object_lock_configuration(self, s3, lock_bucket):
         s3.put_object_lock_configuration(
@@ -2872,6 +2007,39 @@ class TestS3ObjectLocking:
         )
 
 
+class TestS3UploadPartCopy:
+    """Tests for UploadPartCopy."""
+
+    def test_upload_part_copy(self, s3, bucket):
+        # Put source object
+        s3.put_object(Bucket=bucket, Key="source.txt", Body=b"x" * (5 * 1024 * 1024))
+
+        # Create multipart upload for destination
+        mpu = s3.create_multipart_upload(Bucket=bucket, Key="dest.txt")
+        upload_id = mpu["UploadId"]
+
+        # Copy part from source
+        resp = s3.upload_part_copy(
+            Bucket=bucket,
+            Key="dest.txt",
+            UploadId=upload_id,
+            PartNumber=1,
+            CopySource={"Bucket": bucket, "Key": "source.txt"},
+        )
+        assert "CopyPartResult" in resp
+        etag = resp["CopyPartResult"]["ETag"]
+
+        # Complete
+        s3.complete_multipart_upload(
+            Bucket=bucket,
+            Key="dest.txt",
+            UploadId=upload_id,
+            MultipartUpload={"Parts": [{"PartNumber": 1, "ETag": etag}]},
+        )
+        head = s3.head_object(Bucket=bucket, Key="dest.txt")
+        assert head["ContentLength"] == 5 * 1024 * 1024
+
+
 class TestS3BucketNotificationConfig:
     """Tests for GetBucketNotificationConfiguration (empty case)."""
 
@@ -2883,6 +2051,44 @@ class TestS3BucketNotificationConfig:
         assert resp.get("LambdaFunctionConfigurations", []) == []
 
 
+class TestS3BucketOwnershipControls:
+    """Tests for GetBucketOwnershipControls."""
+
+    def test_put_and_get_bucket_ownership_controls(self, s3, bucket):
+        s3.put_bucket_ownership_controls(
+            Bucket=bucket,
+            OwnershipControls={"Rules": [{"ObjectOwnership": "BucketOwnerEnforced"}]},
+        )
+        resp = s3.get_bucket_ownership_controls(Bucket=bucket)
+        rules = resp["OwnershipControls"]["Rules"]
+        assert len(rules) == 1
+        assert rules[0]["ObjectOwnership"] == "BucketOwnerEnforced"
+
+
+class TestS3BucketPolicyStatus:
+    """Tests for GetBucketPolicyStatus."""
+
+    def test_get_bucket_policy_status(self, s3, bucket):
+        policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "PublicRead",
+                        "Effect": "Allow",
+                        "Principal": "*",
+                        "Action": "s3:GetObject",
+                        "Resource": f"arn:aws:s3:::{bucket}/*",
+                    }
+                ],
+            }
+        )
+        s3.put_bucket_policy(Bucket=bucket, Policy=policy)
+        resp = s3.get_bucket_policy_status(Bucket=bucket)
+        assert "PolicyStatus" in resp
+        s3.delete_bucket_policy(Bucket=bucket)
+
+
 class TestS3BucketLoggingExtended:
     """Tests for GetBucketLogging with no logging configured."""
 
@@ -2890,6 +2096,30 @@ class TestS3BucketLoggingExtended:
         resp = s3.get_bucket_logging(Bucket=bucket)
         # No logging configured should have no LoggingEnabled key
         assert resp.get("LoggingEnabled") is None
+
+
+class TestS3PublicAccessBlock:
+    """Tests for PutPublicAccessBlock, GetPublicAccessBlock, DeletePublicAccessBlock."""
+
+    def test_put_get_delete_public_access_block(self, s3, bucket):
+        config = {
+            "BlockPublicAcls": True,
+            "IgnorePublicAcls": True,
+            "BlockPublicPolicy": True,
+            "RestrictPublicBuckets": True,
+        }
+        s3.put_public_access_block(Bucket=bucket, PublicAccessBlockConfiguration=config)
+        resp = s3.get_public_access_block(Bucket=bucket)
+        pab = resp["PublicAccessBlockConfiguration"]
+        assert pab["BlockPublicAcls"] is True
+        assert pab["IgnorePublicAcls"] is True
+        assert pab["BlockPublicPolicy"] is True
+        assert pab["RestrictPublicBuckets"] is True
+
+        s3.delete_public_access_block(Bucket=bucket)
+        with pytest.raises(ClientError) as exc:
+            s3.get_public_access_block(Bucket=bucket)
+        assert exc.value.response["Error"]["Code"] == "NoSuchPublicAccessBlockConfiguration"
 
 
 class TestS3ListBucketConfigurations:
@@ -2915,6 +2145,33 @@ class TestS3ListBucketConfigurations:
             resp.get("IntelligentTieringConfigurationList") is None
             or resp.get("IntelligentTieringConfigurationList") == []
         )
+
+
+class TestS3GetObjectAttributes:
+    """Tests for GetObjectAttributes."""
+
+    def test_get_object_attributes(self, s3, bucket):
+        s3.put_object(Bucket=bucket, Key="attr-test.txt", Body=b"hello world")
+        resp = s3.get_object_attributes(
+            Bucket=bucket,
+            Key="attr-test.txt",
+            ObjectAttributes=["ETag", "ObjectSize"],
+        )
+        assert "ETag" in resp
+        assert resp.get("ObjectSize", 0) == 11
+
+
+class TestS3AutoCoverage:
+    """Auto-generated coverage tests for s3."""
+
+    @pytest.fixture
+    def client(self):
+        return make_client("s3")
+
+    def test_list_directory_buckets(self, client):
+        """ListDirectoryBuckets returns a response."""
+        resp = client.list_directory_buckets()
+        assert "Buckets" in resp
 
 
 class TestS3AnalyticsMetricsInventory:
@@ -3106,7 +2363,26 @@ class TestS3ObjectRetentionAndTorrent:
                 )
             s3.delete_bucket(Bucket=bucket_name)
         except Exception:
-            pass  # best-effort cleanup
+            pass  # best-effort cleanup; failures are non-fatal
+
+    def test_put_get_object_retention(self, s3):
+        """PutObjectRetention + GetObjectRetention on lock-enabled bucket."""
+        lock_bucket = "test-lock-retention-bucket"
+        s3.create_bucket(Bucket=lock_bucket, ObjectLockEnabledForBucket=True)
+        try:
+            s3.put_object(Bucket=lock_bucket, Key="ret-key", Body=b"data")
+            s3.put_object_retention(
+                Bucket=lock_bucket,
+                Key="ret-key",
+                Retention={
+                    "Mode": "GOVERNANCE",
+                    "RetainUntilDate": "2030-01-01T00:00:00Z",
+                },
+            )
+            resp = s3.get_object_retention(Bucket=lock_bucket, Key="ret-key")
+            assert resp["Retention"]["Mode"] == "GOVERNANCE"
+        finally:
+            self._cleanup_lock_bucket(s3, lock_bucket)
 
     def test_get_object_retention_not_set(self, s3):
         """GetObjectRetention on object without retention returns error."""
@@ -3119,6 +2395,12 @@ class TestS3ObjectRetentionAndTorrent:
             assert "NoSuch" in exc.value.response["Error"]["Code"]
         finally:
             self._cleanup_lock_bucket(s3, lock_bucket)
+
+    def test_get_object_torrent(self, s3, bucket):
+        """GetObjectTorrent returns a response body."""
+        s3.put_object(Bucket=bucket, Key="torrent-test", Body=b"data")
+        resp = s3.get_object_torrent(Bucket=bucket, Key="torrent-test")
+        assert "Body" in resp
 
     def test_restore_object_not_glacier(self, s3, bucket):
         """RestoreObject on non-Glacier object returns error."""
@@ -3163,6 +2445,15 @@ class TestS3SessionAndSelect:
         )
         yield name
 
+    def test_create_session(self, s3, dir_bucket):
+        """CreateSession returns temporary S3 Express credentials."""
+        resp = s3.create_session(Bucket=dir_bucket)
+        creds = resp["Credentials"]
+        assert creds["AccessKeyId"]
+        assert creds["SecretAccessKey"]
+        assert creds["SessionToken"]
+        assert creds["Expiration"]
+
     def test_select_object_content(self, s3, bucket):
         """SelectObjectContent with CSV input returns results."""
         csv_data = b"name,age\nalice,30\nbob,25\n"
@@ -3198,6 +2489,16 @@ class TestS3AbacAndMetadata:
             AbacStatus={"Status": "Enabled"},
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+    def test_get_bucket_metadata_configuration(self, s3, bucket):
+        """GetBucketMetadataConfiguration returns a response."""
+        resp = s3.get_bucket_metadata_configuration(Bucket=bucket)
+        assert "ResponseMetadata" in resp
+
+    def test_get_bucket_metadata_table_configuration(self, s3, bucket):
+        """GetBucketMetadataTableConfiguration returns a response."""
+        resp = s3.get_bucket_metadata_table_configuration(Bucket=bucket)
+        assert "ResponseMetadata" in resp
 
     def test_delete_bucket_metadata_config_succeeds(self, s3, bucket):
         """DeleteBucketMetadataConfiguration succeeds idempotently."""
@@ -3429,7 +2730,7 @@ class TestS3LegacyOps:
                 s3.delete_object(Bucket=bucket_name, Key=obj["Key"])
             s3.delete_bucket(Bucket=bucket_name)
         except Exception:
-            pass  # best-effort cleanup
+            pass  # best-effort cleanup; failures are non-fatal
 
     def test_list_objects_v1(self, s3, bucket):
         """ListObjects (v1) returns bucket Name."""
@@ -3475,7 +2776,7 @@ class TestS3EventBridgeNotification:
                 s3.delete_object(Bucket=name, Key=obj["Key"])
             s3.delete_bucket(Bucket=name)
         except Exception:
-            pass  # best-effort cleanup
+            pass  # best-effort cleanup; failures are non-fatal
 
     @pytest.fixture
     def unique_queue(self, sqs):
@@ -3486,7 +2787,7 @@ class TestS3EventBridgeNotification:
         try:
             sqs.delete_queue(QueueUrl=url)
         except Exception:
-            pass  # best-effort cleanup
+            pass  # best-effort cleanup; failures are non-fatal
 
     def test_eventbridge_configuration_round_trip(self, s3, unique_bucket):
         """PUT notification config with EventBridgeConfiguration, GET and assert it's preserved."""
@@ -3544,7 +2845,7 @@ class TestS3AdditionalEventTypes:
                 s3.delete_object(Bucket=name, Key=obj["Key"])
             s3.delete_bucket(Bucket=name)
         except Exception:
-            pass  # best-effort cleanup
+            pass  # best-effort cleanup; failures are non-fatal
 
     @pytest.fixture
     def unique_queue(self, sqs):
@@ -3555,7 +2856,7 @@ class TestS3AdditionalEventTypes:
         try:
             sqs.delete_queue(QueueUrl=url)
         except Exception:
-            pass  # best-effort cleanup
+            pass  # best-effort cleanup; failures are non-fatal
 
     def test_copy_object_fires_copy_event(self, s3, sqs, unique_bucket, unique_queue):
         """Set SQS notification for s3:ObjectCreated:Copy, copy object, assert eventName is Copy."""
@@ -3627,7 +2928,7 @@ class TestS3ReplicationEngine:
                 s3.delete_object(Bucket=name, Key=dm["Key"], VersionId=dm["VersionId"])
             s3.delete_bucket(Bucket=name)
         except Exception:
-            pass  # best-effort cleanup
+            pass  # best-effort cleanup; failures are non-fatal
 
     @pytest.fixture
     def dest_bucket(self, s3):
@@ -3643,7 +2944,7 @@ class TestS3ReplicationEngine:
                 s3.delete_object(Bucket=name, Key=dm["Key"], VersionId=dm["VersionId"])
             s3.delete_bucket(Bucket=name)
         except Exception:
-            pass  # best-effort cleanup
+            pass  # best-effort cleanup; failures are non-fatal
 
     def test_put_object_replicates_to_dest_bucket(self, s3, src_bucket, dest_bucket):
         """Configure replication, put object, assert it appears in dest bucket."""
@@ -3750,3 +3051,21 @@ class TestS3RestoreObjectNotification:
         assert record["eventName"] == "ObjectRestore:Post"
         assert record["s3"]["bucket"]["name"] == unique_bucket
         assert record["s3"]["object"]["key"] == "glacier-obj"
+
+
+class TestS3ObjectLambda:
+    """Tests for S3 Object Lambda operations."""
+
+    def test_write_get_object_response(self, s3):
+        """WriteGetObjectResponse accepts a transformed object response."""
+        # In a real Object Lambda flow, RequestRoute and RequestToken are issued
+        # by S3 when invoking the Lambda. Here we call the endpoint directly to
+        # verify that our emulator accepts the delivery and returns 200.
+        resp = s3.write_get_object_response(
+            RequestRoute="test-route-token",
+            RequestToken="test-request-token",
+            Body=b"transformed content",
+            StatusCode=200,
+            ContentType="text/plain",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200

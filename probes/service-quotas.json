@@ -1,0 +1,144 @@
+{
+  "service": "service-quotas",
+  "generated_at": "2026-10-25T19:44:57.781408+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 26,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "AssociateServiceQuotaTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateSupportCase",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteServiceQuotaIncreaseRequestFromTemplate",
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )"
+    },
+    {
+      "operation": "DisassociateServiceQuotaTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAWSDefaultServiceQuota",
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )"
+    },
+    {
+      "operation": "GetAssociationForServiceQuotaTemplate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetAutoManagementConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetQuotaUtilizationReport",
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: Quota utilization report with ID probe-report-id-id cannot b)"
+    },
+    {
+      "operation": "GetRequestedServiceQuotaChange",
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: Quota increase request with ID probe-request-id-id cannot be)"
+    },
+    {
+      "operation": "GetServiceQuota",
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )"
+    },
+    {
+      "operation": "GetServiceQuotaIncreaseRequestFromTemplate",
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )"
+    },
+    {
+      "operation": "ListAWSDefaultServiceQuotas",
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )"
+    },
+    {
+      "operation": "ListRequestedServiceQuotaChangeHistory",
+      "status": "working",
+      "message": "likely implemented (InvalidPaginationTokenException: The NextToken value is invalid.)"
+    },
+    {
+      "operation": "ListRequestedServiceQuotaChangeHistoryByQuota",
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )"
+    },
+    {
+      "operation": "ListServiceQuotaIncreaseRequestsInTemplate",
+      "status": "working",
+      "message": "likely implemented (InvalidPaginationTokenException: The NextToken value is invalid.)"
+    },
+    {
+      "operation": "ListServiceQuotas",
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )"
+    },
+    {
+      "operation": "ListServices",
+      "status": "working",
+      "message": "likely implemented (InvalidPaginationTokenException: The NextToken value is invalid.)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutServiceQuotaIncreaseRequestIntoTemplate",
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )"
+    },
+    {
+      "operation": "RequestServiceQuotaIncrease",
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: This service is not available in the current Region. Choose )"
+    },
+    {
+      "operation": "StartAutoManagement",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StartQuotaUtilizationReport",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "StopAutoManagement",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateAutoManagement",
+      "status": "working",
+      "message": "likely implemented (NoSuchResourceException: Automatic Management is not enabled. Start it first.)"
+    }
+  ]
+}

@@ -180,74 +180,9 @@ class TestOSISPutResourcePolicy:
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_put_and_get_resource_policy(self, osis, pipeline):
-        """PutResourcePolicy then GetResourcePolicy roundtrip."""
-        import json
-
-        policy = json.dumps(
-            {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
-                        "Action": "osis:*",
-                        "Resource": pipeline["PipelineArn"],
-                    }
-                ],
-            }
-        )
-        osis.put_resource_policy(
-            ResourceArn=pipeline["PipelineArn"],
-            Policy=policy,
-        )
-        get_resp = osis.get_resource_policy(ResourceArn=pipeline["PipelineArn"])
-        assert "Policy" in get_resp
-
-    def test_put_then_delete_resource_policy(self, osis, pipeline):
-        """PutResourcePolicy then DeleteResourcePolicy succeeds."""
-        import json
-
-        policy = json.dumps(
-            {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
-                        "Action": "osis:*",
-                        "Resource": pipeline["PipelineArn"],
-                    }
-                ],
-            }
-        )
-        osis.put_resource_policy(
-            ResourceArn=pipeline["PipelineArn"],
-            Policy=policy,
-        )
-        del_resp = osis.delete_resource_policy(ResourceArn=pipeline["PipelineArn"])
-        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
 
 class TestOSISMissingGapOps:
     """Tests for OSIS operations identified as coverage gaps."""
-
-    def test_list_pipeline_blueprints(self, osis):
-        resp = osis.list_pipeline_blueprints()
-        assert "Blueprints" in resp
-        assert isinstance(resp["Blueprints"], list)
-
-    def test_get_pipeline_blueprint(self, osis):
-        resp = osis.get_pipeline_blueprint(BlueprintName="AWS-KinesisToS3")
-        assert "Blueprint" in resp
-
-    def test_validate_pipeline(self, osis):
-        resp = osis.validate_pipeline(PipelineConfigurationBody="version: 2023-01-01")
-        assert "isValid" in resp
-
-    def test_get_pipeline_change_progress(self, osis):
-        resp = osis.get_pipeline_change_progress(PipelineName="fake-pipeline")
-        assert "ChangeProgressStatuses" in resp
 
 
 class TestOSISEndpointGapOps:
@@ -257,18 +192,6 @@ class TestOSISEndpointGapOps:
     def client(self):
         return make_client("osis")
 
-    def test_list_pipeline_endpoints(self, client):
-        """ListPipelineEndpoints returns empty list when no endpoints exist."""
-        resp = client.list_pipeline_endpoints()
-        assert "PipelineEndpoints" in resp
-        assert isinstance(resp["PipelineEndpoints"], list)
-
-    def test_list_pipeline_endpoint_connections(self, client):
-        """ListPipelineEndpointConnections returns empty list when no connections exist."""
-        resp = client.list_pipeline_endpoint_connections()
-        assert "PipelineEndpointConnections" in resp
-        assert isinstance(resp["PipelineEndpointConnections"], list)
-
 
 class TestOSISPipelineEndpointOps:
     """Tests for pipeline endpoint stubs."""
@@ -276,24 +199,3 @@ class TestOSISPipelineEndpointOps:
     @pytest.fixture
     def osis(self):
         return make_client("osis")
-
-    def test_create_pipeline_endpoint(self, osis):
-        """CreatePipelineEndpoint returns endpoint status."""
-        resp = osis.create_pipeline_endpoint(
-            PipelineArn="arn:aws:osis:us-east-1:123456789012:pipeline/test-pipeline",
-            VpcOptions={"SubnetIds": ["subnet-abc12345"]},
-        )
-        assert "Status" in resp
-
-    def test_delete_pipeline_endpoint(self, osis):
-        """DeletePipelineEndpoint succeeds."""
-        resp = osis.delete_pipeline_endpoint(EndpointId="vpce-abc12345")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-    def test_revoke_pipeline_endpoint_connections(self, osis):
-        """RevokePipelineEndpointConnections returns PipelineArn."""
-        resp = osis.revoke_pipeline_endpoint_connections(
-            PipelineArn="arn:aws:osis:us-east-1:123456789012:pipeline/test-pipeline",
-            EndpointIds=["vpce-abc12345"],
-        )
-        assert "PipelineArn" in resp

@@ -34,7 +34,8 @@ Usage:
     uv run python scripts/validate_test_quality.py --behavioral
 
     # Behavioral coverage for a specific service
-    uv run python scripts/validate_test_quality.py --behavioral --file tests/compatibility/test_sqs_compat.py
+    uv run python scripts/validate_test_quality.py \
+        --behavioral --file tests/compatibility/test_sqs_compat.py
 """
 
 import argparse
@@ -460,7 +461,8 @@ def main():
     parser.add_argument(
         "--behavioral",
         action="store_true",
-        help="Show behavioral coverage report (CREATE, RETRIEVE, LIST, UPDATE, DELETE, ERROR patterns)",
+        help="Show behavioral coverage report (CREATE, RETRIEVE, LIST, UPDATE, "
+        "DELETE, ERROR patterns)",
     )
     args = parser.parse_args()
 

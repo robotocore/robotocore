@@ -328,17 +328,24 @@ class TestSignerTagOperations:
 
 
 class TestSignerGetRevocationStatus:
-    """Test GetRevocationStatus which uses data- endpoint prefix."""
+    """Test GetRevocationStatus which uses data- endpoint prefix.
+
+    The client passes ``inject_host_prefix=False`` because botocore would
+    otherwise prepend ``data-`` to the test endpoint's host and try to
+    connect to an address that does not exist (see the probe file entry).
+    """
 
     def test_get_revocation_status_returns_200(self):
         import datetime
+        import os
 
         import boto3
         from botocore.config import Config
 
+        endpoint = os.environ.get("ENDPOINT_URL", "http://localhost:4566")
         client = boto3.client(
             "signer",
-            endpoint_url="http://localhost:4566",
+            endpoint_url=endpoint,
             region_name="us-east-1",
             aws_access_key_id="test",
             aws_secret_access_key="test",

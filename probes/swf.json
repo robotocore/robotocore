@@ -1,0 +1,209 @@
+{
+  "service": "swf",
+  "generated_at": "2026-10-26T23:10:20.102810+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 39,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "CountClosedWorkflowExecutions",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "CountOpenWorkflowExecutions",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "CountPendingActivityTasks",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+    },
+    {
+      "operation": "CountPendingDecisionTasks",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+    },
+    {
+      "operation": "DeleteActivityType",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+    },
+    {
+      "operation": "DeleteWorkflowType",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+    },
+    {
+      "operation": "DeprecateActivityType",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+    },
+    {
+      "operation": "DeprecateDomain",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+    },
+    {
+      "operation": "DeprecateWorkflowType",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+    },
+    {
+      "operation": "DescribeActivityType",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+    },
+    {
+      "operation": "DescribeDomain",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+    },
+    {
+      "operation": "DescribeWorkflowExecution",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+    },
+    {
+      "operation": "DescribeWorkflowType",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+    },
+    {
+      "operation": "GetWorkflowExecutionHistory",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+    },
+    {
+      "operation": "ListActivityTypes",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+    },
+    {
+      "operation": "ListClosedWorkflowExecutions",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "ListDomains",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListOpenWorkflowExecutions",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown domain: arn:aws:swf:us-east-1:123456789012:thing/pro)"
+    },
+    {
+      "operation": "ListWorkflowTypes",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+    },
+    {
+      "operation": "PollForActivityTask",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+    },
+    {
+      "operation": "PollForDecisionTask",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+    },
+    {
+      "operation": "RecordActivityTaskHeartbeat",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "RegisterActivityType",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown domain: probe-test-value)"
+    },
+    {
+      "operation": "RegisterDomain",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RegisterWorkflowType",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RequestCancelWorkflowExecution",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown execution: WorkflowExecution=[workflowId=probe-workf)"
+    },
+    {
+      "operation": "RespondActivityTaskCanceled",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "RespondActivityTaskCompleted",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "RespondActivityTaskFailed",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "RespondDecisionTaskCompleted",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "SignalWorkflowExecution",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown execution: WorkflowExecution=[workflowId=probe-workf)"
+    },
+    {
+      "operation": "StartWorkflowExecution",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown domain: arn:aws:swf:us-east-1:123456789012:thing/pro)"
+    },
+    {
+      "operation": "TerminateWorkflowExecution",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown execution: WorkflowExecution=[workflowId=probe-workf)"
+    },
+    {
+      "operation": "UndeprecateActivityType",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown type: ActivityType=[name=probe-test-value, version=p)"
+    },
+    {
+      "operation": "UndeprecateDomain",
+      "status": "working",
+      "message": "likely implemented (DomainAlreadyExistsFault: probe-test-value)"
+    },
+    {
+      "operation": "UndeprecateWorkflowType",
+      "status": "working",
+      "message": "likely implemented (TypeAlreadyExistsFault: WorkflowType=[name=probe-test-value, version=probe-test-valu)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "likely implemented (UnknownResourceFault: Unknown domain: arn:aws:swf:us-east-1:123456789012:thing/pro)"
+    }
+  ]
+}

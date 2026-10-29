@@ -19,6 +19,15 @@ from tests.compatibility.conftest import ENDPOINT_URL
 CHAOS_URL = f"{ENDPOINT_URL}/_robotocore/chaos/rules"
 CHAOS_CLEAR_URL = f"{CHAOS_URL}/clear"
 
+# Rules are created account-scoped and every client/credential below uses this
+# dedicated account, so injected faults hit ONLY this suite. A parallel
+# pytest-xdist worker sharing the twin (same server, default account) would
+# otherwise see dynamodb/s3/sqs throttled for the duration of each rule —
+# which is exactly what flaked the dynamodbstreams suite and rolled back
+# CFN e2e stacks (mirror CreateTable 429/403 → ROLLBACK_COMPLETE) whenever
+# the chaos file ran concurrently in the lane.
+CHAOS_ACCOUNT = "999777700001"
+
 # boto3 retries ThrottlingException and 5xx errors by default.
 # Disable retries so chaos-injected errors surface immediately.
 NO_RETRY = Config(retries={"max_attempts": 0})
@@ -26,16 +35,29 @@ NO_RETRY_S3 = Config(retries={"max_attempts": 0}, s3={"addressing_style": "path"
 
 
 def _make_client(service: str):
-    """Create a boto3 client with retries disabled."""
+    """Create a boto3 client in the chaos suite's account, retries disabled."""
     cfg = NO_RETRY_S3 if service == "s3" else NO_RETRY
     return boto3.client(
         service,
         endpoint_url=ENDPOINT_URL,
         region_name="us-east-1",
-        aws_access_key_id="testing",
-        aws_secret_access_key="testing",
+        aws_access_key_id=CHAOS_ACCOUNT,
+        aws_secret_access_key="test",
         config=cfg,
     )
+
+
+def _add_rule(payload: dict):
+    """POST a rule scoped to the chaos suite's own account."""
+    resp = requests.post(CHAOS_URL, json={**payload, "account": CHAOS_ACCOUNT})
+    assert resp.status_code == 201
+    return resp.json()["rule_id"]
+
+
+# Raw-HTTP requests must claim the chaos account via header, mirroring the
+# boto3 clients (crates gateway derives the account from X-Robotocore-Account
+# first, then the credential).
+CHAOS_HEADERS = {"X-Robotocore-Account": CHAOS_ACCOUNT}
 
 
 @pytest.fixture(autouse=True)
@@ -54,21 +76,19 @@ def _clear_chaos_rules():
 class TestThrottlingException:
     def test_s3_throttling_via_raw_http(self):
         """Add ThrottlingException rule for S3, verify error via raw HTTP."""
-        resp = requests.post(
-            CHAOS_URL,
-            json={
+        rule_id = _add_rule(
+            {
                 "service": "s3",
                 "error_code": "ThrottlingException",
                 "status_code": 429,
-            },
+            }
         )
-        assert resp.status_code == 201
-        rule_id = resp.json()["rule_id"]
 
         # Raw HTTP request routed to S3
         raw = requests.get(
             f"{ENDPOINT_URL}/",
             headers={
+                **CHAOS_HEADERS,
                 "Authorization": (
                     "AWS4-HMAC-SHA256 Credential=AKID/20260312/us-east-1/s3/aws4_request, "
                     "SignedHeaders=host, Signature=fake"
@@ -84,15 +104,13 @@ class TestThrottlingException:
 
     def test_dynamodb_throttling_via_boto3(self):
         """Add ThrottlingException for DynamoDB (JSON protocol), verify via boto3."""
-        resp = requests.post(
-            CHAOS_URL,
-            json={
+        _add_rule(
+            {
                 "service": "dynamodb",
                 "error_code": "ThrottlingException",
                 "status_code": 429,
-            },
+            }
         )
-        assert resp.status_code == 201
 
         ddb = _make_client("dynamodb")
         try:
@@ -111,15 +129,13 @@ class TestThrottlingException:
 class TestServiceUnavailable:
     def test_dynamodb_service_unavailable(self):
         """Add ServiceUnavailableException for DynamoDB, verify error."""
-        resp = requests.post(
-            CHAOS_URL,
-            json={
+        _add_rule(
+            {
                 "service": "dynamodb",
                 "error_code": "ServiceUnavailableException",
                 "status_code": 503,
-            },
+            }
         )
-        assert resp.status_code == 201
 
         ddb = _make_client("dynamodb")
         try:
@@ -138,15 +154,7 @@ class TestServiceUnavailable:
 class TestLatencyInjection:
     def test_latency_rule_is_created_and_matches(self):
         """Add latency rule, verify it appears in rule list and matches requests."""
-        resp = requests.post(
-            CHAOS_URL,
-            json={
-                "service": "dynamodb",
-                "latency_ms": 500,
-            },
-        )
-        assert resp.status_code == 201
-        rule_id = resp.json()["rule_id"]
+        rule_id = _add_rule({"service": "dynamodb", "latency_ms": 500})
 
         # Make a request so the rule matches
         ddb = _make_client("dynamodb")
@@ -162,16 +170,14 @@ class TestLatencyInjection:
 
     def test_latency_with_error_both_apply(self):
         """A rule with both latency and error_code applies both effects."""
-        resp = requests.post(
-            CHAOS_URL,
-            json={
+        _add_rule(
+            {
                 "service": "dynamodb",
                 "latency_ms": 50,
                 "error_code": "ThrottlingException",
                 "status_code": 429,
-            },
+            }
         )
-        assert resp.status_code == 201
 
         ddb = _make_client("dynamodb")
         try:
@@ -193,16 +199,14 @@ class TestLatencyInjection:
 class TestErrorRate:
     def test_fifty_percent_error_rate(self):
         """50% probability rule: roughly half of 40 requests should fail."""
-        resp = requests.post(
-            CHAOS_URL,
-            json={
+        _add_rule(
+            {
                 "service": "dynamodb",
                 "error_code": "ThrottlingException",
                 "status_code": 429,
                 "probability": 0.5,
-            },
+            }
         )
-        assert resp.status_code == 201
 
         ddb = _make_client("dynamodb")
         successes = 0
@@ -228,20 +232,19 @@ class TestErrorRate:
 class TestServiceSpecificRules:
     def test_s3_rule_does_not_affect_dynamodb(self):
         """A rule targeting S3 should not inject faults on DynamoDB requests."""
-        resp = requests.post(
-            CHAOS_URL,
-            json={
+        _add_rule(
+            {
                 "service": "s3",
                 "error_code": "ThrottlingException",
                 "status_code": 429,
-            },
+            }
         )
-        assert resp.status_code == 201
 
         # S3 should fail (verify via raw HTTP since S3 uses rest-xml)
         raw = requests.get(
             f"{ENDPOINT_URL}/",
             headers={
+                **CHAOS_HEADERS,
                 "Authorization": (
                     "AWS4-HMAC-SHA256 Credential=AKID/20260312/us-east-1/s3/aws4_request, "
                     "SignedHeaders=host, Signature=fake"
@@ -266,16 +269,14 @@ class TestServiceSpecificRules:
 class TestOperationSpecificRules:
     def test_rule_for_putobject_does_not_affect_listbuckets(self):
         """A rule matching PutObject should not affect ListBuckets."""
-        resp = requests.post(
-            CHAOS_URL,
-            json={
+        _add_rule(
+            {
                 "service": "s3",
                 "operation": "PutObject",
                 "error_code": "ThrottlingException",
                 "status_code": 429,
-            },
+            }
         )
-        assert resp.status_code == 201
 
         s3 = _make_client("s3")
         # ListBuckets should work fine (rule only matches PutObject)
@@ -284,16 +285,14 @@ class TestOperationSpecificRules:
 
     def test_rule_for_specific_operation_blocks_it(self):
         """A rule matching CreateTable should block CreateTable requests."""
-        resp = requests.post(
-            CHAOS_URL,
-            json={
+        _add_rule(
+            {
                 "service": "dynamodb",
                 "operation": "CreateTable",
                 "error_code": "AccessDeniedException",
                 "status_code": 403,
-            },
+            }
         )
-        assert resp.status_code == 201
 
         ddb = _make_client("dynamodb")
 
@@ -323,16 +322,13 @@ class TestDeleteRule:
     def test_add_then_delete_rule(self):
         """Add a rule, verify it works, delete it, verify requests succeed."""
         # Add rule
-        resp = requests.post(
-            CHAOS_URL,
-            json={
+        rule_id = _add_rule(
+            {
                 "service": "dynamodb",
                 "error_code": "ThrottlingException",
                 "status_code": 429,
-            },
+            }
         )
-        assert resp.status_code == 201
-        rule_id = resp.json()["rule_id"]
 
         # Verify rule works
         ddb = _make_client("dynamodb")
@@ -368,15 +364,7 @@ class TestListRules:
         """Add multiple rules, verify list returns all of them."""
         rule_ids = []
         for svc in ["s3", "dynamodb", "sqs"]:
-            resp = requests.post(
-                CHAOS_URL,
-                json={
-                    "service": svc,
-                    "error_code": "ThrottlingException",
-                },
-            )
-            assert resp.status_code == 201
-            rule_ids.append(resp.json()["rule_id"])
+            rule_ids.append(_add_rule({"service": svc, "error_code": "ThrottlingException"}))
 
         list_resp = requests.get(CHAOS_URL)
         assert list_resp.status_code == 200
@@ -393,16 +381,15 @@ class TestListRules:
 
     def test_list_includes_rule_fields(self):
         """Verify listed rules contain all expected fields."""
-        requests.post(
-            CHAOS_URL,
-            json={
+        _add_rule(
+            {
                 "service": "s3",
                 "operation": "GetObject",
                 "error_code": "SlowDown",
                 "status_code": 503,
                 "latency_ms": 200,
                 "probability": 0.75,
-            },
+            }
         )
 
         rules = requests.get(CHAOS_URL).json()["rules"]
@@ -428,10 +415,7 @@ class TestClearAllRules:
     def test_clear_removes_all_rules(self):
         """Add several rules, clear all, verify clean state."""
         for svc in ["s3", "dynamodb", "sqs", "sns"]:
-            requests.post(
-                CHAOS_URL,
-                json={"service": svc, "error_code": "InternalError"},
-            )
+            _add_rule({"service": svc, "error_code": "InternalError"})
 
         # Verify rules exist
         rules = requests.get(CHAOS_URL).json()["rules"]
@@ -456,15 +440,13 @@ class TestClearAllRules:
         """After clearing rules, all services should work normally."""
         # Add rules for multiple services
         for svc in ["s3", "dynamodb"]:
-            requests.post(
-                CHAOS_URL,
-                json={"service": svc, "error_code": "InternalError", "status_code": 500},
-            )
+            _add_rule({"service": svc, "error_code": "InternalError", "status_code": 500})
 
         # Both should fail (verify via raw HTTP to avoid boto3 retry issues)
         raw_s3 = requests.get(
             f"{ENDPOINT_URL}/",
             headers={
+                **CHAOS_HEADERS,
                 "Authorization": (
                     "AWS4-HMAC-SHA256 Credential=AKID/20260312/us-east-1/s3/aws4_request, "
                     "SignedHeaders=host, Signature=fake"

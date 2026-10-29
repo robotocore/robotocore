@@ -1,5 +1,13 @@
 #!/bin/bash
+# Local-development entrypoint: prints the banner and execs the rust server.
+#
+# The published image is distroless (no shell) and runs the binary directly —
+# this script is for bare-metal dev runs or any image that mounts a shell.
 set -e
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+BIN="${ROBOTOCORE_BIN:-$ROOT/target/release/robotocore-rust}"
+PORT="${ROBOTOCORE_PORT:-4566}"
 
 echo ""
 echo " ____       _           _                          "
@@ -9,7 +17,7 @@ echo "|  _ < (_) | |_) | (_) | || (_) | (_| (_) | | |  __/ "
 echo "|_| \_\___/|_.__/ \___/ \__\___/ \___\___/|_|  \___| "
 echo ""
 echo "Robotocore v${ROBOTOCORE_VERSION:-1.0.0} — Free AWS Emulator"
-echo "Port: ${ROBOTOCORE_PORT:-4566} | Host: ${ROBOTOCORE_HOST:-0.0.0.0}"
+echo "Port: ${PORT} | Host: loopback only (see src/bin/robotocore-rust.rs)"
 echo ""
 
 # Create state directory if configured
@@ -25,8 +33,10 @@ if [ -d /etc/robotocore/init/boot.d ]; then
     done
 fi
 
-# Start the server (use venv python directly — uv is not in the runtime image)
-exec /app/.venv/bin/python -m uvicorn robotocore.gateway.app:app \
-    --host "${ROBOTOCORE_HOST:-0.0.0.0}" \
-    --port "${ROBOTOCORE_PORT:-4566}" \
-    "$@"
+if [ ! -x "$BIN" ]; then
+    echo "Error: rust server binary not found at $BIN." >&2
+    echo "Build it first with: cargo build --release" >&2
+    exit 1
+fi
+
+exec "$BIN" --port "$PORT" "$@"

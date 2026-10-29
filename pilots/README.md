@@ -1,34 +1,16 @@
-# Moto Operations Pilot — Progress Tracker
+# Moto Operations Pilot — Progress Tracker (historical)
 
-Run this to see where things stand at any point:
-```bash
-make start
-uv run pytest tests/moto_impl/test_connect_lifecycle.py tests/moto_impl/test_iot_lifecycle.py tests/moto_impl/test_glue_lifecycle.py -q --tb=no
-```
+This pilot drove the pre-port moto era (March 2026): connect, iot, and
+glue lifecycle suites were brought to 202/202 passing against the moto
+backends, which unlocked their native ports. **Superseded**: the rust
+branch ported those flows directly into rotocore; the vendored moto
+checkout, `tests/moto_impl/`, and the moto-fork workflow are gone.
 
-## Baseline (2026-03-17)
-- Connect: 48 passed, 10 failed
-- IoT:     54 passed, 12 failed
-- Glue:    52 passed, 26 failed
-- **Total: 154 passed, 48 failed**
-
-## Final (2026-03-17)
+## Final baseline (2026-03-17)
 - Connect: **58/58 passed** ✓
 - IoT:     **66/66 passed** ✓
 - Glue:    **78/78 passed** ✓
 - **Total: 202/202 passed ✓ GOAL ACHIEVED**
 
-## Goal
-~~All 202 tests passing. Then run the same tool on more services.~~
-**COMPLETE.** All 202 tests pass.
-
-## Moto Workflow
-```bash
-cd vendor/moto
-git checkout -b fix/<service>-<noun>   # or add to existing fix branch
-# edit moto/<service>/models.py + responses.py
-git add -A && git commit -m "feat(<service>): implement <noun> ops"
-git push jackdanger master
-cd ../..
-uv lock  # pin new commit
-```
+The equivalent lifecycle coverage now lives in `tests/compatibility/`
+and the parity lane promoted in `.parity/expectations_current.json`.

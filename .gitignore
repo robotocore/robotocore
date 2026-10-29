@@ -31,5 +31,14 @@ logs/
 docs/quality/
 site/
 
-# scripts/local-ci.sh per-run server log
-.local-ci-server.log
+
+# Added by cargo
+
+/target
+# Extension crate has its own build directory (detached workspace)
+docker-extension/vm/target/
+
+# Parity test state (generated); the golden baseline is tracked on purpose
+.parity/*
+!.parity/expectations_current.json
+.worktrees/

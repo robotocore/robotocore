@@ -1,0 +1,134 @@
+{
+  "service": "servicecatalogappregistry",
+  "generated_at": "2026-10-25T19:44:59.465609+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 6,
+    "needs_params": 0,
+    "not_implemented": 18,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "AssociateAttributeGroup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "AssociateResource",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "CreateApplication",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateAttributeGroup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteApplication",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteAttributeGroup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisassociateAttributeGroup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DisassociateResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetApplication",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetAssociatedResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetAttributeGroup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListApplications",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAssociatedAttributeGroups",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListAssociatedResources",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListAttributeGroups",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListAttributeGroupsForApplication",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "PutConfiguration",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "SyncResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateApplication",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateAttributeGroup",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    }
+  ]
+}

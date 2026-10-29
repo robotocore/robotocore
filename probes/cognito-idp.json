@@ -1,0 +1,624 @@
+{
+  "service": "cognito-idp",
+  "generated_at": "2026-10-27T00:20:42.922224+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 121,
+    "needs_params": 0,
+    "not_implemented": 1,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "AddCustomAttributes",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AddUserPoolClientSecret",
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminAddUserToGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminConfirmSignUp",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminCreateUser",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminDeleteUser",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminDeleteUserAttributes",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminDisableProviderForUser",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminDisableUser",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminEnableUser",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminForgetDevice",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminGetDevice",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminGetUser",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminInitiateAuth",
+      "status": "working",
+      "message": "implemented via required-only (InvalidParameterException)"
+    },
+    {
+      "operation": "AdminLinkProviderForUser",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminListDevices",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminListGroupsForUser",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminListUserAuthEvents",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminRemoveUserFromGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminResetUserPassword",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminRespondToAuthChallenge",
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminSetUserMFAPreference",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminSetUserPassword",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminSetUserSettings",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminUpdateAuthEventFeedback",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminUpdateDeviceStatus",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminUpdateUserAttributes",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AdminUserGlobalSignOut",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AssociateSoftwareToken",
+      "status": "working",
+      "message": "implemented via required-only (NotAuthorizedException)"
+    },
+    {
+      "operation": "ChangePassword",
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: Invalid access token.)"
+    },
+    {
+      "operation": "CompleteWebAuthnRegistration",
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: probe-token-1760)"
+    },
+    {
+      "operation": "ConfirmDevice",
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: probe-token-1760)"
+    },
+    {
+      "operation": "ConfirmForgotPassword",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ConfirmSignUp",
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateIdentityProvider",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateManagedLoginBranding",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateResourceServer",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateTerms",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateUserImportJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateUserPool",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateUserPoolClient",
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateUserPoolDomain",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteIdentityProvider",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteManagedLoginBranding",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteResourceServer",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteTerms",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteUser",
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: probe-token-1760)"
+    },
+    {
+      "operation": "DeleteUserAttributes",
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: Invalid access token.)"
+    },
+    {
+      "operation": "DeleteUserPool",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteUserPoolClient",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteUserPoolClientSecret",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteUserPoolDomain",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteWebAuthnCredential",
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: probe-token-1760)"
+    },
+    {
+      "operation": "DescribeIdentityProvider",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeManagedLoginBranding",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeManagedLoginBrandingByClient",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeResourceServer",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeRiskConfiguration",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeTerms",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeUserImportJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeUserPool",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeUserPoolClient",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeUserPoolDomain",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ForgetDevice",
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: probe-token-1760)"
+    },
+    {
+      "operation": "ForgotPassword",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetCSVHeader",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetDevice",
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: probe-token-1760)"
+    },
+    {
+      "operation": "GetGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetIdentityProviderByIdentifier",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetLogDeliveryConfiguration",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetSigningCertificate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetTokensFromRefreshToken",
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetUICustomization",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetUser",
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: Invalid access token.)"
+    },
+    {
+      "operation": "GetUserAttributeVerificationCode",
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: Invalid access token.)"
+    },
+    {
+      "operation": "GetUserAuthFactors",
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: Invalid access token.)"
+    },
+    {
+      "operation": "GetUserPoolMfaConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GlobalSignOut",
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: Invalid access token.)"
+    },
+    {
+      "operation": "InitiateAuth",
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListDevices",
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: probe-token-1760)"
+    },
+    {
+      "operation": "ListGroups",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListIdentityProviders",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListResourceServers",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListTerms",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListUserImportJobs",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListUserPoolClientSecrets",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListUserPoolClients",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListUserPools",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListUsers",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListUsersInGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListWebAuthnCredentials",
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: probe-token-1760)"
+    },
+    {
+      "operation": "ResendConfirmationCode",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "RespondToAuthChallenge",
+      "status": "working",
+      "message": "implemented via required-only (InvalidParameterException)"
+    },
+    {
+      "operation": "RevokeToken",
+      "status": "working",
+      "message": "OK (required-only fill)"
+    },
+    {
+      "operation": "SetLogDeliveryConfiguration",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "SetRiskConfiguration",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "SetUICustomization",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "SetUserMFAPreference",
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: probe-token-1760)"
+    },
+    {
+      "operation": "SetUserPoolMfaConfig",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "SetUserSettings",
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: Invalid access token.)"
+    },
+    {
+      "operation": "SignUp",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartUserImportJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartWebAuthnRegistration",
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: probe-token-1760)"
+    },
+    {
+      "operation": "StopUserImportJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateAuthEventFeedback",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateDeviceStatus",
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: probe-token-1760)"
+    },
+    {
+      "operation": "UpdateGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateIdentityProvider",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateManagedLoginBranding",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateResourceServer",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateTerms",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateUserAttributes",
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: Invalid access token.)"
+    },
+    {
+      "operation": "UpdateUserPool",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateUserPoolClient",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateUserPoolDomain",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "VerifySoftwareToken",
+      "status": "working",
+      "message": "implemented via required-only (NotAuthorizedException)"
+    },
+    {
+      "operation": "VerifyUserAttribute",
+      "status": "working",
+      "message": "likely implemented (NotAuthorizedException: Invalid access token.)"
+    }
+  ]
+}

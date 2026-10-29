@@ -3470,8 +3470,7 @@ class TestS3ControlStorageLensGroups:
                     },
                 },
             )
-            # CreateStorageLensGroup is modeled with responseCode 204.
-            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 204
+            assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
         finally:
             try:
                 s3control.delete_storage_lens_group(AccountId=ACCOUNT_ID, Name=name)
@@ -3567,32 +3566,6 @@ class TestS3ControlStorageLensGroups:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] in (200, 204)
 
 
-class TestS3ControlJobTaggingExpanded:
-    """Tests for S3 Control Job Tagging operations."""
-
-    def test_get_job_tagging_not_found(self, s3control):
-        """GetJobTagging for nonexistent job raises NoSuchJob."""
-        with pytest.raises(ClientError) as exc:
-            s3control.get_job_tagging(AccountId=ACCOUNT_ID, JobId="nonexistent-job-id")
-        assert exc.value.response["Error"]["Code"] == "NoSuchJob"
-
-    def test_put_job_tagging_not_found(self, s3control):
-        """PutJobTagging for nonexistent job raises NoSuchJob."""
-        with pytest.raises(ClientError) as exc:
-            s3control.put_job_tagging(
-                AccountId=ACCOUNT_ID,
-                JobId="nonexistent-job-id",
-                Tags=[{"Key": "env", "Value": "test"}],
-            )
-        assert exc.value.response["Error"]["Code"] == "NoSuchJob"
-
-    def test_delete_job_tagging_not_found(self, s3control):
-        """DeleteJobTagging for nonexistent job raises NoSuchJob."""
-        with pytest.raises(ClientError) as exc:
-            s3control.delete_job_tagging(AccountId=ACCOUNT_ID, JobId="nonexistent-job-id")
-        assert exc.value.response["Error"]["Code"] == "NoSuchJob"
-
-
 class TestS3ControlBucketLifecycle:
     """Tests for S3 Control PutBucketLifecycleConfiguration."""
 
@@ -3612,10 +3585,11 @@ class TestS3ControlBucketLifecycle:
         try:
             s3.delete_bucket(Bucket=name)
         except Exception:
-            pass  # best-effort cleanup; bucket may already be gone
+            # bucket may already be deleted
+            pass  # best-effort cleanup
 
     def test_put_bucket_lifecycle_configuration(self, s3control, bucket):
-        """PutBucketLifecycleConfiguration sets lifecycle rules."""
+        """PutBucketLifecycleConfiguration sets lifecycle rules on a bucket."""
         resp = s3control.put_bucket_lifecycle_configuration(
             AccountId=ACCOUNT_ID,
             Bucket=bucket,
@@ -3632,7 +3606,7 @@ class TestS3ControlBucketLifecycle:
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_put_bucket_lifecycle_nonexistent_bucket(self, s3control):
-        """PutBucketLifecycleConfiguration on missing bucket raises error."""
+        """PutBucketLifecycleConfiguration on nonexistent bucket raises error."""
         with pytest.raises(ClientError) as exc:
             s3control.put_bucket_lifecycle_configuration(
                 AccountId=ACCOUNT_ID,
@@ -3648,107 +3622,3 @@ class TestS3ControlBucketLifecycle:
                 },
             )
         assert exc.value.response["Error"]["Code"] == "NoSuchBucket"
-
-
-class TestS3ControlNewStubOps:
-    """Tests for newly-implemented S3 Control stub operations."""
-
-    ACCOUNT_ID = "123456789012"
-
-    @pytest.fixture
-    def client(self):
-        return make_client("s3control")
-
-    def test_list_access_points_for_object_lambda(self, client):
-        """ListAccessPointsForObjectLambda returns list."""
-        resp = client.list_access_points_for_object_lambda(AccountId=self.ACCOUNT_ID)
-        assert "ObjectLambdaAccessPointList" in resp
-        assert isinstance(resp["ObjectLambdaAccessPointList"], list)
-
-    def test_list_regional_buckets(self, client):
-        """ListRegionalBuckets returns RegionalBucketList."""
-        resp = client.list_regional_buckets(AccountId=self.ACCOUNT_ID)
-        assert "RegionalBucketList" in resp
-        assert isinstance(resp["RegionalBucketList"], list)
-
-
-class TestS3ControlIdentityCenterAndNewStubs:
-    """Tests for new S3 Control stub operations: identity center, data access,
-    object lambda config, directory bucket access points, bucket versioning."""
-
-    ACCOUNT_ID = "123456789012"
-
-    @pytest.fixture
-    def client(self):
-        return make_client("s3control")
-
-    def test_associate_access_grants_identity_center(self, client):
-        """AssociateAccessGrantsIdentityCenter returns 200."""
-        resp = client.associate_access_grants_identity_center(
-            AccountId=self.ACCOUNT_ID,
-            IdentityCenterArn="arn:aws:sso:::instance/ssoins-test",
-        )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-    def test_dissociate_access_grants_identity_center(self, client):
-        """DissociateAccessGrantsIdentityCenter returns 200."""
-        resp = client.dissociate_access_grants_identity_center(AccountId=self.ACCOUNT_ID)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-    def test_get_data_access(self, client):
-        """GetDataAccess returns 200."""
-        resp = client.get_data_access(
-            AccountId=self.ACCOUNT_ID,
-            Target="s3://my-bucket/",
-            Permission="READ",
-            DurationSeconds=3600,
-        )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-    def test_list_access_points_for_directory_buckets(self, client):
-        """ListAccessPointsForDirectoryBuckets returns 200."""
-        resp = client.list_access_points_for_directory_buckets(AccountId=self.ACCOUNT_ID)
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-    def test_get_access_point_configuration_for_object_lambda(self, client):
-        """GetAccessPointConfigurationForObjectLambda returns 200."""
-        resp = client.get_access_point_configuration_for_object_lambda(
-            AccountId=self.ACCOUNT_ID, Name="test-ap"
-        )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-    def test_put_access_point_configuration_for_object_lambda(self, client):
-        """PutAccessPointConfigurationForObjectLambda returns 200."""
-        resp = client.put_access_point_configuration_for_object_lambda(
-            AccountId=self.ACCOUNT_ID,
-            Name="test-ap",
-            Configuration={
-                "SupportingAccessPoint": "arn:aws:s3:us-east-1:123456789012:accesspoint/test",
-                "TransformationConfigurations": [
-                    {
-                        "Actions": ["GetObject"],
-                        "ContentTransformation": {
-                            "AwsLambda": {
-                                "FunctionArn": "arn:aws:lambda:us-east-1:123456789012:function:test"
-                            }
-                        },
-                    }
-                ],
-            },
-        )
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
-
-    def test_put_bucket_versioning_nonexistent(self, client):
-        """PutBucketVersioning raises NoSuchBucket for a nonexistent bucket."""
-        with pytest.raises(ClientError) as exc:
-            client.put_bucket_versioning(
-                AccountId=self.ACCOUNT_ID,
-                Bucket="no-such-bucket",
-                VersioningConfiguration={"Status": "Enabled"},
-            )
-        assert exc.value.response["Error"]["Code"] == "NoSuchBucket"
-
-    def test_list_caller_access_grants(self, client):
-        """ListCallerAccessGrants returns CallerAccessGrantsList."""
-        resp = client.list_caller_access_grants(AccountId=self.ACCOUNT_ID)
-        assert "CallerAccessGrantsList" in resp

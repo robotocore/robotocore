@@ -1,10 +1,13 @@
 {
   "service": "emr",
+  "generated_at": "2026-10-26T04:02:43.461473+00:00",
+  "endpoint": "http://localhost:4786",
   "counts": {
-    "working": 50,
+    "working": 56,
     "needs_params": 0,
-    "not_implemented": 10,
-    "500_error": 0
+    "not_implemented": 1,
+    "500_error": 3,
+    "timeout": 0
   },
   "operations": [
     {
@@ -34,8 +37,8 @@
     },
     {
       "operation": "CreatePersistentAppUI",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateSecurityConfiguration",
@@ -84,8 +87,8 @@
     },
     {
       "operation": "DescribePersistentAppUI",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
     },
     {
       "operation": "DescribeReleaseLabel",
@@ -119,8 +122,8 @@
     },
     {
       "operation": "GetClusterSessionCredentials",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetManagedScalingPolicy",
@@ -129,13 +132,13 @@
     },
     {
       "operation": "GetOnClusterAppUIPresignedURL",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetPersistentAppUIPresignedURL",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (InvalidRequestException)"
     },
     {
       "operation": "GetStudioSessionMapping",
@@ -189,8 +192,8 @@
     },
     {
       "operation": "ListStudioSessionMappings",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListStudios",
@@ -264,28 +267,28 @@
     },
     {
       "operation": "SetKeepJobFlowAliveWhenNoSteps",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "SetTerminationProtection",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "SetUnhealthyNodeReplacement",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
-    },
-    {
-      "operation": "SetVisibleToAllUsers",
       "status": "working",
       "message": "OK"
     },
     {
+      "operation": "SetVisibleToAllUsers",
+      "status": "500_error",
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
+    },
+    {
       "operation": "StartNotebookExecution",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StopNotebookExecution",
@@ -294,8 +297,8 @@
     },
     {
       "operation": "TerminateJobFlows",
-      "status": "working",
-      "message": "OK"
+      "status": "500_error",
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "UpdateStudio",

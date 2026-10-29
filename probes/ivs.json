@@ -1,26 +1,29 @@
 {
   "service": "ivs",
+  "generated_at": "2026-10-25T19:43:45.808511+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 20,
-    "needs_params": 3,
-    "not_implemented": 12,
-    "500_error": 0
+    "working": 34,
+    "needs_params": 0,
+    "not_implemented": 1,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "BatchGetChannel",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchGetStreamKey",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchStartViewerSessionRevocation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateChannel",
@@ -29,8 +32,8 @@
     },
     {
       "operation": "CreatePlaybackRestrictionPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateRecordingConfiguration",
@@ -54,8 +57,8 @@
     },
     {
       "operation": "DeletePlaybackRestrictionPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteRecordingConfiguration",
@@ -79,8 +82,8 @@
     },
     {
       "operation": "GetPlaybackRestrictionPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetRecordingConfiguration",
@@ -99,8 +102,8 @@
     },
     {
       "operation": "GetStreamSession",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "ImportPlaybackKeyPair",
@@ -119,8 +122,8 @@
     },
     {
       "operation": "ListPlaybackRestrictionPolicies",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListRecordingConfigurations",
@@ -134,13 +137,13 @@
     },
     {
       "operation": "ListStreamSessions",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListStreams",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListTagsForResource",
@@ -149,18 +152,18 @@
     },
     {
       "operation": "PutMetadata",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "StartViewerSessionRevocation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "StopStream",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "TagResource",
@@ -179,8 +182,8 @@
     },
     {
       "operation": "UpdatePlaybackRestrictionPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     }
   ]
 }

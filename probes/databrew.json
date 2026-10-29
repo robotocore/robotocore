@@ -1,16 +1,19 @@
 {
   "service": "databrew",
+  "generated_at": "2026-10-25T19:42:29.209756+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 22,
-    "needs_params": 4,
-    "not_implemented": 18,
-    "500_error": 0
+    "working": 34,
+    "needs_params": 0,
+    "not_implemented": 10,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "BatchDeleteRecipeVersion",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "CreateDataset",
@@ -24,8 +27,8 @@
     },
     {
       "operation": "CreateProject",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateRecipe",
@@ -39,13 +42,13 @@
     },
     {
       "operation": "CreateRuleset",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateSchedule",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteDataset",
@@ -59,8 +62,8 @@
     },
     {
       "operation": "DeleteProject",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteRecipeVersion",
@@ -70,12 +73,12 @@
     {
       "operation": "DeleteRuleset",
       "status": "working",
-      "message": "likely implemented (EntityNotFoundException: Ruleset probe-test-value not found.)"
+      "message": "OK"
     },
     {
       "operation": "DeleteSchedule",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeDataset",
@@ -94,13 +97,13 @@
     },
     {
       "operation": "DescribeProject",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeRecipe",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "DescribeRuleset",
@@ -109,8 +112,8 @@
     },
     {
       "operation": "DescribeSchedule",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListDatasets",
@@ -129,8 +132,8 @@
     },
     {
       "operation": "ListProjects",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListRecipeVersions",
@@ -149,8 +152,8 @@
     },
     {
       "operation": "ListSchedules",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListTagsForResource",
@@ -189,8 +192,8 @@
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "UpdateDataset",
@@ -204,8 +207,8 @@
     },
     {
       "operation": "UpdateProject",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateRecipe",
@@ -219,13 +222,13 @@
     },
     {
       "operation": "UpdateRuleset",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Ruleset probe-test-value not found.)"
     },
     {
       "operation": "UpdateSchedule",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     }
   ]
 }

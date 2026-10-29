@@ -1,0 +1,21 @@
+[package]
+name = "robotocore_client"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Thin AWS SDK wrapper that aims aws-config-backed clients at a robotocore twin"
+repository = "https://github.com/robotocore/robotocore"
+publish = false
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+# Detached from the repository workspace on purpose (same pattern as
+# docker-extension/vm): this crate is a binding, not a server component.
+[workspace]
+
+[dependencies]
+aws-config = "1.13.0"
+aws-sdk-s3 = "1.153.0"
+aws-sdk-sqs = "1.115.0"
+

@@ -1,10 +1,13 @@
 {
   "service": "servicediscovery",
+  "generated_at": "2026-10-25T19:44:59.809719+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 25,
-    "needs_params": 1,
-    "not_implemented": 2,
-    "500_error": 2
+    "working": 28,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 2
   },
   "operations": [
     {
@@ -30,7 +33,7 @@
     {
       "operation": "DeleteNamespace",
       "status": "working",
-      "message": "likely implemented (NamespaceNotFound: probe-test-value)"
+      "message": "likely implemented (NamespaceNotFound: arn:aws:servicediscovery:us-east-1:123456789012:thing/probe-)"
     },
     {
       "operation": "DeleteService",
@@ -39,38 +42,38 @@
     },
     {
       "operation": "DeleteServiceAttributes",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (ServiceNotFound: arn:aws:servicediscovery:us-east-1:123456789012:thing/probe-)"
     },
     {
       "operation": "DeregisterInstance",
       "status": "working",
-      "message": "likely implemented (ServiceNotFound: probe-test-value)"
+      "message": "likely implemented (ServiceNotFound: arn:aws:servicediscovery:us-east-1:123456789012:thing/probe-)"
     },
     {
       "operation": "DiscoverInstances",
-      "status": "500_error",
-      "message": "exception: Could not connect to the endpoint URL: \"http://data-localhos"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://data-localhos)"
     },
     {
       "operation": "DiscoverInstancesRevision",
-      "status": "500_error",
-      "message": "exception: Could not connect to the endpoint URL: \"http://data-localhos"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://data-localhos)"
     },
     {
       "operation": "GetInstance",
       "status": "working",
-      "message": "likely implemented (ServiceNotFound: probe-test-value)"
+      "message": "likely implemented (ServiceNotFound: arn:aws:servicediscovery:us-east-1:123456789012:thing/probe-)"
     },
     {
       "operation": "GetInstancesHealthStatus",
       "status": "working",
-      "message": "likely implemented (ServiceNotFound: probe-test-value)"
+      "message": "likely implemented (ServiceNotFound: arn:aws:servicediscovery:us-east-1:123456789012:thing/probe-)"
     },
     {
       "operation": "GetNamespace",
       "status": "working",
-      "message": "likely implemented (NamespaceNotFound: probe-test-value)"
+      "message": "likely implemented (NamespaceNotFound: arn:aws:servicediscovery:us-east-1:123456789012:thing/probe-)"
     },
     {
       "operation": "GetOperation",
@@ -80,17 +83,17 @@
     {
       "operation": "GetService",
       "status": "working",
-      "message": "likely implemented (ServiceNotFound: probe-test-value)"
+      "message": "likely implemented (ServiceNotFound: arn:aws:servicediscovery:us-east-1:123456789012:thing/probe-)"
     },
     {
       "operation": "GetServiceAttributes",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ServiceNotFound: arn:aws:servicediscovery:us-east-1:123456789012:thing/probe-)"
     },
     {
       "operation": "ListInstances",
       "status": "working",
-      "message": "likely implemented (ServiceNotFound: probe-test-value)"
+      "message": "likely implemented (ServiceNotFound: arn:aws:servicediscovery:us-east-1:123456789012:thing/probe-)"
     },
     {
       "operation": "ListNamespaces",
@@ -115,7 +118,7 @@
     {
       "operation": "RegisterInstance",
       "status": "working",
-      "message": "likely implemented (ServiceNotFound: probe-test-value)"
+      "message": "likely implemented (ServiceNotFound: arn:aws:servicediscovery:us-east-1:123456789012:thing/probe-)"
     },
     {
       "operation": "TagResource",
@@ -130,32 +133,32 @@
     {
       "operation": "UpdateHttpNamespace",
       "status": "working",
-      "message": "likely implemented (NamespaceNotFound: probe-test-value)"
+      "message": "likely implemented (NamespaceNotFound: arn:aws:servicediscovery:us-east-1:123456789012:thing/probe-)"
     },
     {
       "operation": "UpdateInstanceCustomHealthStatus",
       "status": "working",
-      "message": "likely implemented (CustomHealthNotFound: probe-test-value)"
+      "message": "likely implemented (ServiceNotFound: arn:aws:servicediscovery:us-east-1:123456789012:thing/probe-)"
     },
     {
       "operation": "UpdatePrivateDnsNamespace",
       "status": "working",
-      "message": "likely implemented (NamespaceNotFound: probe-test-value)"
+      "message": "likely implemented (NamespaceNotFound: arn:aws:servicediscovery:us-east-1:123456789012:thing/probe-)"
     },
     {
       "operation": "UpdatePublicDnsNamespace",
       "status": "working",
-      "message": "likely implemented (NamespaceNotFound: probe-test-value)"
+      "message": "likely implemented (NamespaceNotFound: arn:aws:servicediscovery:us-east-1:123456789012:thing/probe-)"
     },
     {
       "operation": "UpdateService",
       "status": "working",
-      "message": "likely implemented (ServiceNotFound: probe-test-value)"
+      "message": "likely implemented (ServiceNotFound: arn:aws:servicediscovery:us-east-1:123456789012:thing/probe-)"
     },
     {
       "operation": "UpdateServiceAttributes",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (ServiceNotFound: arn:aws:servicediscovery:us-east-1:123456789012:thing/probe-)"
     }
   ]
 }

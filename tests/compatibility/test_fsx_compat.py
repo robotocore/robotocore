@@ -1,7 +1,5 @@
 """Compatibility tests for Amazon FSx service."""
 
-import uuid
-
 import pytest
 from botocore.exceptions import ClientError
 
@@ -11,10 +9,6 @@ from tests.compatibility.conftest import make_client
 @pytest.fixture
 def fsx():
     return make_client("fsx")
-
-
-def _unique(prefix):
-    return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
 class TestFSxDescribeOperations:
@@ -758,59 +752,25 @@ class TestFSxDescribeFiltered:
         assert desc["Volumes"][0]["Name"] == "filtered-vol"
 
 
-class TestFSxMissingGapOps:
-    """Tests for FSx operations identified as coverage gaps."""
-
-    def test_update_shared_vpc_configuration(self, fsx):
-        """UpdateSharedVpcConfiguration sets EnableFsxRouteTableUpdatesFromParticipantAccounts."""
-        resp = fsx.update_shared_vpc_configuration(
-            EnableFsxRouteTableUpdatesFromParticipantAccounts="true"
-        )
-        assert "EnableFsxRouteTableUpdatesFromParticipantAccounts" in resp
-
-    def test_release_file_system_nfs_v3_locks(self, fsx):
-        """ReleaseFileSystemNfsV3Locks returns FileSystem for a fake ID."""
-        fake_fs_id = "fs-" + uuid.uuid4().hex[:8]
-        resp = fsx.release_file_system_nfs_v3_locks(FileSystemId=fake_fs_id)
-        assert "FileSystem" in resp
-
-    def test_update_volume_not_found(self, fsx):
-        """UpdateVolume with fake VolumeId raises VolumeNotFound."""
-        fake_vol_id = "fsvol-" + uuid.uuid4().hex[:17]
-        with pytest.raises(ClientError) as exc:
-            fsx.update_volume(VolumeId=fake_vol_id)
-        err = exc.value.response["Error"]["Code"]
-        assert err in ("VolumeNotFound", "ResourceNotFoundException", "BadRequest")
-
-    def test_update_storage_virtual_machine_not_found(self, fsx):
-        """UpdateStorageVirtualMachine with fake ID raises StorageVirtualMachineNotFound."""
-        fake_svm_id = "svm-" + uuid.uuid4().hex[:17]
-        with pytest.raises(ClientError) as exc:
-            fsx.update_storage_virtual_machine(StorageVirtualMachineId=fake_svm_id)
-        err = exc.value.response["Error"]["Code"]
-        assert err in (
-            "StorageVirtualMachineNotFound",
-            "ResourceNotFoundException",
-            "BadRequest",
-        )
-
-
 class TestFSxGapOps:
-    """Tests for FSx ops that are implemented but weren't covered."""
+    """Tests for FSx ops that are implemented but weren't covered.
+
+    Restored from the 2026-10-25 re-probe of the wave-12 twin surface:
+    the twin now answers 200 or a modeled fault for every gap op whose
+    wire truth was live-verified (UpdateSharedVpcConfiguration,
+    ReleaseFileSystemNfsV3Locks, StartMisconfiguredStateRecovery,
+    UpdateStorageVirtualMachine, CancelDataRepositoryTask, CopyBackup,
+    CreateDataRepositoryTask, CreateFileCache + the file-cache family,
+    CreateAndAttachS3AccessPoint). RestoreVolumeFromSnapshot,
+    UpdateVolume and CopySnapshotAndUpdateVolume remain genuine
+    moto-fork-absent stubs — the twin answers NotImplemented 501
+    (probes/fsx.json records not_implemented for each; manifest
+    modeled_deny rows pin the deny) — so they stay untested here.
+    """
 
     @pytest.fixture
     def client(self):
         return make_client("fsx")
-
-    def test_restore_volume_from_snapshot_not_found(self, client):
-        """RestoreVolumeFromSnapshot raises VolumeNotFound for nonexistent volume."""
-        with pytest.raises(ClientError) as exc:
-            client.restore_volume_from_snapshot(
-                VolumeId="fsvol-0123456789abcdef0",
-                SnapshotId="fssnap-0123456789abcdef0",
-            )
-        err = exc.value.response["Error"]["Code"]
-        assert err in ("VolumeNotFound", "ResourceNotFoundException", "InvalidRequest")
 
     def test_describe_file_system_aliases_not_found(self, client):
         """DescribeFileSystemAliases raises FileSystemNotFound for nonexistent FS."""
@@ -819,74 +779,130 @@ class TestFSxGapOps:
         err = exc.value.response["Error"]["Code"]
         assert err in ("FileSystemNotFound", "ResourceNotFoundException")
 
-    def test_start_misconfigured_state_recovery(self, client):
-        """StartMisconfiguredStateRecovery returns 200 for any filesystem ID."""
-        resp = client.start_misconfigured_state_recovery(FileSystemId="fs-0123456789abcdef0")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+    def test_start_misconfigured_state_recovery_not_found(self, client):
+        """StartMisconfiguredStateRecovery raises for a nonexistent FS."""
+        with pytest.raises(ClientError) as exc:
+            client.start_misconfigured_state_recovery(FileSystemId="fs-0123456789abcdef0")
+        err = exc.value.response["Error"]["Code"]
+        assert err in ("FileSystemNotFound", "ResourceNotFoundException")
 
+    def test_cancel_data_repository_task_not_found(self, client):
+        """CancelDataRepositoryTask raises for a nonexistent task id."""
+        with pytest.raises(ClientError) as exc:
+            client.cancel_data_repository_task(TaskId="drt-0123456789abcdef0")
+        err = exc.value.response["Error"]["Code"]
+        assert err in ("DataRepositoryTaskNotFound", "ResourceNotFoundException")
 
-class TestFSxNewStubOps:
-    """Tests for newly stubbed FSx operations."""
+    def test_copy_backup_not_found(self, client):
+        """CopyBackup raises for a nonexistent source backup id."""
+        with pytest.raises(ClientError) as exc:
+            client.copy_backup(
+                SourceBackupId="backup-0123456789abcdef0",
+                ClientRequestToken="f7-test-token",
+            )
+        err = exc.value.response["Error"]["Code"]
+        assert err in ("BackupNotFound", "ResourceNotFoundException")
 
-    @pytest.fixture
-    def client(self):
-        return make_client("fsx")
-
-    def test_cancel_data_repository_task(self, client):
-        """CancelDataRepositoryTask returns Lifecycle and TaskId for a task ID."""
-        resp = client.cancel_data_repository_task(TaskId="drt-0123456789abcdef0")
-        assert "Lifecycle" in resp
-        assert "TaskId" in resp
-
-    def test_copy_backup(self, client):
-        """CopyBackup returns a Backup object for a source backup ID."""
-        resp = client.copy_backup(SourceBackupId="backup-0123456789abcdef0")
-        assert "Backup" in resp
-
-    def test_copy_snapshot_and_update_volume(self, client):
-        """CopySnapshotAndUpdateVolume returns VolumeId."""
-        resp = client.copy_snapshot_and_update_volume(
-            VolumeId="fsvol-0123456789abcdef0",
-            SourceSnapshotARN="arn:aws:fsx:us-east-1:123456789012:snapshot:fssnap-0123456789abcdef0",
+    def test_copy_backup_lifecycle(self, client):
+        """CopyBackup copies a real backup into a new Backup object."""
+        fs_resp = client.create_file_system(
+            FileSystemType="LUSTRE",
+            StorageCapacity=1200,
+            SubnetIds=["subnet-00000001"],
+            LustreConfiguration={"DeploymentType": "SCRATCH_1"},
         )
-        assert "VolumeId" in resp
+        fs_id = fs_resp["FileSystem"]["FileSystemId"]
+        try:
+            src = client.create_backup(FileSystemId=fs_id)
+            backup_id = src["Backup"]["BackupId"]
+            copy = client.copy_backup(SourceBackupId=backup_id, ClientRequestToken="f7-copy-token")
+            copied = copy["Backup"]
+            assert copied["BackupId"] != backup_id
+            assert copied["SourceBackupId"] == backup_id
+            assert copied["Lifecycle"] in ("COPYING", "AVAILABLE", "CREATING")
+            client.delete_backup(BackupId=copied["BackupId"])
+            client.delete_backup(BackupId=backup_id)
+        finally:
+            client.delete_file_system(FileSystemId=fs_id)
 
-    def test_create_and_attach_s3_access_point(self, client):
-        """CreateAndAttachS3AccessPoint returns HTTP 200."""
-        resp = client.create_and_attach_s3_access_point(Name="test-ap-stub", Type="OPENZFS")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+    def test_create_data_repository_task_not_found(self, client):
+        """CreateDataRepositoryTask raises for a nonexistent file system."""
+        with pytest.raises(ClientError) as exc:
+            client.create_data_repository_task(
+                Type="EXPORT_TO_REPOSITORY",
+                FileSystemId="fs-0123456789abcdef0",
+                Report={"Enabled": False},
+            )
+        err = exc.value.response["Error"]["Code"]
+        assert err in ("FileSystemNotFound", "ResourceNotFoundException")
 
-    def test_create_data_repository_task(self, client):
-        """CreateDataRepositoryTask returns a DataRepositoryTask object."""
-        resp = client.create_data_repository_task(
-            Type="EXPORT_TO_REPOSITORY",
-            FileSystemId="fs-0123456789abcdef0",
-            Report={"Enabled": False},
+    def test_release_file_system_nfs_v3_locks_not_found(self, fsx):
+        """ReleaseFileSystemNfsV3Locks raises for a nonexistent FS."""
+        with pytest.raises(ClientError) as exc:
+            fsx.release_file_system_nfs_v3_locks(FileSystemId="fs-0123456789abcdef0")
+        err = exc.value.response["Error"]["Code"]
+        assert err in ("FileSystemNotFound", "ResourceNotFoundException")
+
+    def test_update_shared_vpc_configuration(self, fsx):
+        """UpdateSharedVpcConfiguration sets EnableFsxRouteTableUpdatesFromParticipantAccounts."""
+        resp = fsx.update_shared_vpc_configuration(
+            EnableFsxRouteTableUpdatesFromParticipantAccounts="true"
         )
-        assert "DataRepositoryTask" in resp
+        assert "EnableFsxRouteTableUpdatesFromParticipantAccounts" in resp
 
-    def test_create_file_cache(self, client):
-        """CreateFileCache returns a FileCache object."""
-        resp = client.create_file_cache(
+    def test_update_storage_virtual_machine_not_found(self, fsx):
+        """UpdateStorageVirtualMachine with fake ID raises StorageVirtualMachineNotFound."""
+        with pytest.raises(ClientError) as exc:
+            fsx.update_storage_virtual_machine(StorageVirtualMachineId="svm-0123456789abcdef0")
+        err = exc.value.response["Error"]["Code"]
+        assert err in (
+            "StorageVirtualMachineNotFound",
+            "ResourceNotFoundException",
+            "BadRequest",
+        )
+
+    def test_create_file_cache_and_delete(self, fsx):
+        """CreateFileCache creates a FileCache; DeleteFileCache tears it down."""
+        resp = fsx.create_file_cache(
             FileCacheType="LUSTRE",
             FileCacheTypeVersion="2.12",
             StorageCapacity=1200,
             SubnetIds=["subnet-00000001"],
         )
         assert "FileCache" in resp
+        cache_id = resp["FileCache"]["FileCacheId"]
+        assert cache_id.startswith("fc-")
+        del_resp = fsx.delete_file_cache(FileCacheId=cache_id)
+        assert del_resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
-    def test_delete_file_cache(self, client):
-        """DeleteFileCache returns FileCacheId and Lifecycle."""
-        resp = client.delete_file_cache(FileCacheId="fc-0123456789abcdef0")
-        assert "FileCacheId" in resp
-        assert "Lifecycle" in resp
+    def test_delete_file_cache_not_found(self, fsx):
+        """DeleteFileCache raises for a nonexistent cache id."""
+        with pytest.raises(ClientError) as exc:
+            fsx.delete_file_cache(FileCacheId="fc-0123456789abcdef0")
+        err = exc.value.response["Error"]["Code"]
+        assert err in ("FileCacheNotFound", "ResourceNotFoundException")
 
-    def test_detach_and_delete_s3_access_point(self, client):
-        """DetachAndDeleteS3AccessPoint returns HTTP 200."""
-        resp = client.detach_and_delete_s3_access_point(Name="test-ap-stub")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+    def test_update_file_cache_not_found(self, fsx):
+        """UpdateFileCache raises for a nonexistent cache id."""
+        with pytest.raises(ClientError) as exc:
+            fsx.update_file_cache(FileCacheId="fc-0123456789abcdef0")
+        err = exc.value.response["Error"]["Code"]
+        assert err in ("FileCacheNotFound", "ResourceNotFoundException")
 
-    def test_update_file_cache(self, client):
-        """UpdateFileCache returns a FileCache object."""
-        resp = client.update_file_cache(FileCacheId="fc-0123456789abcdef0")
-        assert "FileCache" in resp
+    def test_create_and_attach_s3_access_point_modeled(self, fsx):
+        """CreateAndAttachS3AccessPoint validates OPENZFS config (modeled guard)."""
+        with pytest.raises(ClientError) as exc:
+            fsx.create_and_attach_s3_access_point(Name="test-ap-stub", Type="OPENZFS")
+        err = exc.value.response["Error"]["Code"]
+        assert err in ("BadRequest", "InvalidParameterException")
+
+    def test_detach_and_delete_s3_access_point_not_found(self, fsx):
+        """DetachAndDeleteS3AccessPoint raises for a nonexistent attachment."""
+        with pytest.raises(ClientError) as exc:
+            fsx.detach_and_delete_s3_access_point(Name="test-ap-stub")
+        err = exc.value.response["Error"]["Code"]
+        assert err in (
+            "S3AccessPointAttachmentNotFound",
+            "BadRequest",
+            "ResourceNotFoundException",
+        )

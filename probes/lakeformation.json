@@ -1,16 +1,19 @@
 {
   "service": "lakeformation",
+  "generated_at": "2026-10-26T03:43:13.247176+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 31,
-    "needs_params": 10,
-    "not_implemented": 18,
-    "500_error": 2
+    "working": 60,
+    "needs_params": 0,
+    "not_implemented": 1,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "AddLFTagsToResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "AssumeDecoratedRoleWithSAML",
@@ -44,28 +47,28 @@
     },
     {
       "operation": "CreateLFTag",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateLFTagExpression",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateLakeFormationIdentityCenterConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateLakeFormationOptIn",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteDataCellsFilter",
       "status": "working",
-      "message": "likely implemented (EntityNotFoundException: Entity not found)"
+      "message": "OK"
     },
     {
       "operation": "DeleteLFTag",
@@ -74,23 +77,23 @@
     },
     {
       "operation": "DeleteLFTagExpression",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteLakeFormationIdentityCenterConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteLakeFormationOptIn",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteObjectsOnCancel",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeregisterResource",
@@ -100,7 +103,7 @@
     {
       "operation": "DescribeLakeFormationIdentityCenterConfiguration",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (EntityNotFoundException: Entity not found)"
     },
     {
       "operation": "DescribeResource",
@@ -114,13 +117,13 @@
     },
     {
       "operation": "ExtendTransaction",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Entity not found)"
     },
     {
       "operation": "GetDataCellsFilter",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (EntityNotFoundException: Entity not found)"
     },
     {
       "operation": "GetDataLakePrincipal",
@@ -144,18 +147,18 @@
     },
     {
       "operation": "GetLFTagExpression",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Entity not found)"
     },
     {
       "operation": "GetQueryState",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetQueryStatistics",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetResourceLFTags",
@@ -164,18 +167,18 @@
     },
     {
       "operation": "GetTableObjects",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetTemporaryDataLocationCredentials",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetTemporaryGluePartitionCredentials",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetTemporaryGlueTableCredentials",
@@ -184,13 +187,13 @@
     },
     {
       "operation": "GetWorkUnitResults",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetWorkUnits",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GrantPermissions",
@@ -204,8 +207,8 @@
     },
     {
       "operation": "ListLFTagExpressions",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListLFTags",
@@ -214,8 +217,8 @@
     },
     {
       "operation": "ListLakeFormationOptIns",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListPermissions",
@@ -229,8 +232,8 @@
     },
     {
       "operation": "ListTableStorageOptimizers",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListTransactions",
@@ -249,8 +252,8 @@
     },
     {
       "operation": "RemoveLFTagsFromResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "RevokePermissions",
@@ -269,8 +272,8 @@
     },
     {
       "operation": "StartQueryPlanning",
-      "status": "500_error",
-      "message": "exception: Could not connect to the endpoint URL: \"http://query-localho"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartTransaction",
@@ -280,37 +283,37 @@
     {
       "operation": "UpdateDataCellsFilter",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (EntityNotFoundException: Entity not found)"
     },
     {
       "operation": "UpdateLFTag",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateLFTagExpression",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Entity not found)"
     },
     {
       "operation": "UpdateLakeFormationIdentityCenterConfiguration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (EntityNotFoundException: Entity not found)"
     },
     {
       "operation": "UpdateResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateTableObjects",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateTableStorageOptimizer",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     }
   ]
 }

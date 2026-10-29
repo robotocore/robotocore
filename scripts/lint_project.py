@@ -234,6 +234,10 @@ def check_registry_native_sync(findings: list[Finding]):
     registry_path = SRC / "services" / "registry.py"
     app_path = SRC / "gateway" / "app.py"
 
+    if not registry_path.exists() or not app_path.exists():
+        # Python-era gateway layout removed by the Rust port — nothing to sync.
+        return
+
     registry_src = registry_path.read_text()
     app_src = app_path.read_text()
 
@@ -289,6 +293,10 @@ def check_registry_router_sync(findings: list[Finding]):
     """Check 6: Services in registry that have no route path."""
     registry_path = SRC / "services" / "registry.py"
     router_path = SRC / "gateway" / "router.py"
+
+    if not registry_path.exists() or not router_path.exists():
+        # Python-era gateway layout removed by the Rust port — nothing to sync.
+        return
 
     registry_src = registry_path.read_text()
     router_src = router_path.read_text()
@@ -372,6 +380,9 @@ def check_registry_protocol(findings: list[Finding]):
         return
 
     registry_path = SRC / "services" / "registry.py"
+    if not registry_path.exists():
+        # Python-era service registry removed by the Rust port — nothing to sync.
+        return
     registry_src = registry_path.read_text()
 
     session = botocore.session.get_session()
@@ -412,6 +423,9 @@ def check_registry_protocol(findings: list[Finding]):
 def check_provider_import_sync(findings: list[Finding]):
     """Check 8: Provider .py files that exist but aren't imported in app.py."""
     app_path = SRC / "gateway" / "app.py"
+    if not app_path.exists():
+        # Python-era gateway layout removed by the Rust port — nothing to sync.
+        return
     app_src = app_path.read_text()
 
     # Find all provider.py files
@@ -451,6 +465,9 @@ def check_provider_import_sync(findings: list[Finding]):
 def check_stale_operation_sets(findings: list[Finding]):
     """Check 9: Hardcoded operation sets that may drift from botocore."""
     router_path = SRC / "gateway" / "router.py"
+    if not router_path.exists():
+        # Python-era gateway router removed by the Rust port — nothing to sync.
+        return
     router_src = router_path.read_text()
 
     # Find frozenset definitions with operation names

@@ -1,16 +1,19 @@
 {
   "service": "athena",
+  "generated_at": "2026-10-25T19:41:52.845217+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 62,
-    "needs_params": 4,
+    "working": 67,
+    "needs_params": 0,
     "not_implemented": 0,
-    "500_error": 4
+    "500_error": 3,
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "BatchGetNamedQuery",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchGetPreparedStatement",
@@ -19,8 +22,8 @@
     },
     {
       "operation": "BatchGetQueryExecution",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CancelCapacityReservation",
@@ -29,8 +32,8 @@
     },
     {
       "operation": "CreateCapacityReservation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateDataCatalog",
@@ -40,7 +43,7 @@
     {
       "operation": "CreateNamedQuery",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreateNotebook",
@@ -65,7 +68,7 @@
     {
       "operation": "DeleteCapacityReservation",
       "status": "working",
-      "message": "likely implemented (InvalidArgumentException: Capacity Reservation does not exist)"
+      "message": "OK"
     },
     {
       "operation": "DeleteDataCatalog",
@@ -115,7 +118,7 @@
     {
       "operation": "GetCapacityAssignmentConfiguration",
       "status": "working",
-      "message": "implemented (InvalidRequestException)"
+      "message": "OK"
     },
     {
       "operation": "GetCapacityReservation",
@@ -135,7 +138,7 @@
     {
       "operation": "GetNamedQuery",
       "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'name')"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "GetNotebookMetadata",
@@ -144,13 +147,13 @@
     },
     {
       "operation": "GetPreparedStatement",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'statement_name')"
+      "status": "working",
+      "message": "likely implemented (400: )"
     },
     {
       "operation": "GetQueryExecution",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "GetQueryResults",
@@ -235,7 +238,7 @@
     {
       "operation": "ListNamedQueries",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (InvalidRequestException)"
     },
     {
       "operation": "ListNotebookMetadata",
@@ -285,17 +288,17 @@
     {
       "operation": "StartCalculationExecution",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "StartQueryExecution",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "StartSession",
       "status": "working",
-      "message": "implemented (InvalidRequestException)"
+      "message": "implemented via required-only (InvalidRequestException)"
     },
     {
       "operation": "StopCalculationExecution",
@@ -305,7 +308,7 @@
     {
       "operation": "StopQueryExecution",
       "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "TagResource",
@@ -324,8 +327,8 @@
     },
     {
       "operation": "UpdateCapacityReservation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (InvalidArgumentException: Capacity Reservation does not exist)"
     },
     {
       "operation": "UpdateDataCatalog",

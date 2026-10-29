@@ -1,5 +1,6 @@
 """Route53 compatibility tests."""
 
+import os
 import uuid
 
 import boto3
@@ -1588,7 +1589,7 @@ class TestRoute53HostedZonesByVPC:
     def ec2(self):
         return boto3.client(
             "ec2",
-            endpoint_url="http://localhost:4566",
+            endpoint_url=os.environ.get("ENDPOINT_URL", "http://localhost:4566"),
             region_name="us-east-1",
             aws_access_key_id="testing",
             aws_secret_access_key="testing",
@@ -2251,7 +2252,7 @@ class TestRoute53KeySigningKey:
     def kms_key_arn(self):
         kms = boto3.client(
             "kms",
-            endpoint_url="http://localhost:4566",
+            endpoint_url=os.environ.get("ENDPOINT_URL", "http://localhost:4566"),
             region_name="us-east-1",
             aws_access_key_id="test",
             aws_secret_access_key="test",

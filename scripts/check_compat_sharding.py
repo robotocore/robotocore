@@ -30,6 +30,9 @@ SPECIAL_FILES = {
 # Subdirectories with their own CI routing (not matched by root-level globs)
 SPECIAL_DIRS = {
     "chaos",  # tests/compatibility/chaos/ — runs in cross-service-tests job
+    # Python-provider-era compat suites quarantined for the Rust port. Deliberately
+    # not wired to any CI shard here; kept only for reference (see dir README).
+    "legacy-py-provider",
 }
 
 

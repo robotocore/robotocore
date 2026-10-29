@@ -1,0 +1,129 @@
+{
+  "service": "cognitoidentity",
+  "generated_at": "2026-10-26T01:27:27.981873+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 10,
+    "needs_params": 0,
+    "not_implemented": 13,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "CreateIdentityPool",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteIdentities",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteIdentityPool",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeIdentity",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DescribeIdentityPool",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetCredentialsForIdentity",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetId",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetIdentityPoolRoles",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetOpenIdToken",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetOpenIdTokenForDeveloperIdentity",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetPrincipalTagAttributeMap",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListIdentities",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListIdentityPools",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "LookupDeveloperIdentity",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "MergeDeveloperIdentities",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "SetIdentityPoolRoles",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "SetPrincipalTagAttributeMap",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UnlinkDeveloperIdentity",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UnlinkIdentity",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateIdentityPool",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    }
+  ]
+}

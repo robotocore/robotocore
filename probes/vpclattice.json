@@ -1,0 +1,379 @@
+{
+  "service": "vpclattice",
+  "generated_at": "2026-10-26T11:13:39.585526+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 61,
+    "needs_params": 0,
+    "not_implemented": 12,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "BatchUpdateRule",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "CreateAccessLogSubscription",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateListener",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateResourceConfiguration",
+      "status": "working",
+      "message": "implemented via required-only (404)"
+    },
+    {
+      "operation": "CreateResourceGateway",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "CreateRule",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateService",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateServiceNetwork",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateServiceNetworkResourceAssociation",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "CreateServiceNetworkServiceAssociation",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "CreateServiceNetworkVpcAssociation",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTargetGroup",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "DeleteAccessLogSubscription",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteAuthPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteDomainVerification",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "DeleteListener",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteResourceConfiguration",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "DeleteResourceEndpointAssociation",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "DeleteResourceGateway",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "DeleteResourcePolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteRule",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteService",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteServiceNetwork",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteServiceNetworkResourceAssociation",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "DeleteServiceNetworkServiceAssociation",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "DeleteServiceNetworkVpcAssociation",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "DeleteTargetGroup",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "DeregisterTargets",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "GetAccessLogSubscription",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetAuthPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetDomainVerification",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "GetListener",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetResourceConfiguration",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "GetResourceGateway",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "GetResourcePolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetRule",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "GetService",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetServiceNetwork",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetServiceNetworkResourceAssociation",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "GetServiceNetworkServiceAssociation",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "GetServiceNetworkVpcAssociation",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "GetTargetGroup",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "ListAccessLogSubscriptions",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListDomainVerifications",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "ListListeners",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListResourceConfigurations",
+      "status": "working",
+      "message": "implemented via required-only (404)"
+    },
+    {
+      "operation": "ListResourceEndpointAssociations",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "ListResourceGateways",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "ListRules",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListServiceNetworkResourceAssociations",
+      "status": "working",
+      "message": "implemented via required-only (404)"
+    },
+    {
+      "operation": "ListServiceNetworkServiceAssociations",
+      "status": "working",
+      "message": "implemented via required-only (404)"
+    },
+    {
+      "operation": "ListServiceNetworkVpcAssociations",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListServiceNetworkVpcEndpointAssociations",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "ListServiceNetworks",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListServices",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTargetGroups",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "ListTargets",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "PutAuthPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutResourcePolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RegisterTargets",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "StartDomainVerification",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateAccessLogSubscription",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateListener",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateResourceConfiguration",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "UpdateResourceGateway",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "UpdateRule",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateService",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateServiceNetwork",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "UpdateServiceNetworkVpcAssociation",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    },
+    {
+      "operation": "UpdateTargetGroup",
+      "status": "working",
+      "message": "likely implemented (404: )"
+    }
+  ]
+}

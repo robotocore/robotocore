@@ -1,0 +1,129 @@
+{
+  "service": "acmpca",
+  "generated_at": "2026-10-26T03:42:44.049601+00:00",
+  "endpoint": "http://localhost:4795",
+  "counts": {
+    "working": 19,
+    "needs_params": 0,
+    "not_implemented": 4,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "CreateCertificateAuthority",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateCertificateAuthorityAuditReport",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePermission",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeleteCertificateAuthority",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeletePermission",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "DeletePolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeCertificateAuthority",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DescribeCertificateAuthorityAuditReport",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetCertificate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetCertificateAuthorityCertificate",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetCertificateAuthorityCsr",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ImportCertificateAuthorityCertificate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "IssueCertificate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListCertificateAuthorities",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListPermissions",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "ListTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "PutPolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "RestoreCertificateAuthority",
+      "status": "not_implemented",
+      "message": "not implemented (501)"
+    },
+    {
+      "operation": "RevokeCertificate",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "TagCertificateAuthority",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagCertificateAuthority",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateCertificateAuthority",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    }
+  ]
+}

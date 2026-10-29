@@ -3507,9 +3507,10 @@ class TestSSMMiscOpsExtended:
         assert exc.value.response["Error"]["Code"] != "InternalError"
 
     def test_deregister_managed_instance_nonexistent(self, ssm):
-        """DeregisterManagedInstance is a no-op for an unknown instance."""
-        resp = ssm.deregister_managed_instance(InstanceId="mi-0000000000000000f")
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        """DeregisterManagedInstance with fake instance ID."""
+        with pytest.raises(ClientError) as exc:
+            ssm.deregister_managed_instance(InstanceId="mi-0000000000000000f")
+        assert exc.value.response["Error"]["Code"] != "InternalError"
 
     def test_describe_automation_step_executions_nonexistent(self, ssm):
         """DescribeAutomationStepExecutions with fake execution ID."""
@@ -3529,19 +3530,19 @@ class TestSSMMiscOpsExtended:
         assert exc.value.response["Error"]["Code"] != "InternalError"
 
     def test_start_associations_once(self, ssm):
-        """StartAssociationsOnce accepts association ids and returns an empty body."""
-        resp = ssm.start_associations_once(AssociationIds=["00000000-0000-0000-0000-000000000000"])
-        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+        """StartAssociationsOnce with fake association IDs."""
+        with pytest.raises(ClientError) as exc:
+            ssm.start_associations_once(AssociationIds=["00000000-0000-0000-0000-000000000000"])
+        assert exc.value.response["Error"]["Code"] != "InternalError"
 
     def test_get_deployable_patch_snapshot_for_instance_nonexistent(self, ssm):
-        """GetDeployablePatchSnapshotForInstance echoes the instance and snapshot."""
-        resp = ssm.get_deployable_patch_snapshot_for_instance(
-            InstanceId="i-00000000000000000",
-            SnapshotId="00000000-0000-0000-0000-000000000000",
-        )
-        assert resp["InstanceId"] == "i-00000000000000000"
-        assert resp["SnapshotId"] == "00000000-0000-0000-0000-000000000000"
-        assert resp["SnapshotDownloadUrl"] is not None
+        """GetDeployablePatchSnapshotForInstance with fake instance."""
+        with pytest.raises(ClientError) as exc:
+            ssm.get_deployable_patch_snapshot_for_instance(
+                InstanceId="i-00000000000000000",
+                SnapshotId="00000000-0000-0000-0000-000000000000",
+            )
+        assert exc.value.response["Error"]["Code"] != "InternalError"
 
     def test_get_execution_preview_nonexistent(self, ssm):
         """GetExecutionPreview with fake execution preview ID."""

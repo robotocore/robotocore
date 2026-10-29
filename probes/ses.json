@@ -1,10 +1,13 @@
 {
   "service": "ses",
+  "generated_at": "2026-10-25T19:45:00.813091+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 53,
+    "working": 54,
     "needs_params": 0,
-    "not_implemented": 16,
-    "500_error": 2
+    "not_implemented": 17,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -40,7 +43,7 @@
     {
       "operation": "CreateReceiptRule",
       "status": "working",
-      "message": "likely implemented (RuleSetDoesNotExist: RuleSetDoesNotExist: Rule set does not exist: probe-test-val)"
+      "message": "likely implemented (RuleSetDoesNotExist: Rule set does not exist: probe-test-value)"
     },
     {
       "operation": "CreateReceiptRuleSet",
@@ -50,7 +53,7 @@
     {
       "operation": "CreateTemplate",
       "status": "working",
-      "message": "implemented (InvalidParameterValue)"
+      "message": "OK"
     },
     {
       "operation": "DeleteConfigurationSet",
@@ -99,8 +102,8 @@
     },
     {
       "operation": "DeleteTemplate",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'probe-test-value')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteVerifiedEmailAddress",
@@ -129,8 +132,8 @@
     },
     {
       "operation": "GetAccountSendingEnabled",
-      "status": "working",
-      "message": "OK"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "GetCustomVerificationEmailTemplate",
@@ -255,7 +258,7 @@
     {
       "operation": "SendRawEmail",
       "status": "working",
-      "message": "likely implemented (MessageRejected: Source not specified)"
+      "message": "likely implemented (MessageRejected: Did not have authority to send from email probe-test-value)"
     },
     {
       "operation": "SendTemplatedEmail",
@@ -265,7 +268,7 @@
     {
       "operation": "SetActiveReceiptRuleSet",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (RuleSetDoesNotExist: Rule set does not exist: probe-test-value)"
     },
     {
       "operation": "SetIdentityDkimEnabled",
@@ -289,8 +292,8 @@
     },
     {
       "operation": "SetIdentityNotificationTopic",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'SESBackend' object has no attribute 'domains')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "SetReceiptRulePosition",

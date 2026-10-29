@@ -1,10 +1,13 @@
 {
   "service": "elbv2",
+  "generated_at": "2026-10-27T00:21:33.843761+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 36,
-    "needs_params": 1,
-    "not_implemented": 14,
-    "500_error": 0
+    "working": 51,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -14,18 +17,18 @@
     },
     {
       "operation": "AddTags",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (LoadBalancerNotFound: The specified load balancer does not exist.)"
     },
     {
       "operation": "AddTrustStoreRevocations",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (TrustStoreNotFound: The specified trust store does not exist.)"
     },
     {
       "operation": "CreateListener",
       "status": "working",
-      "message": "likely implemented (LoadBalancerNotFound: The specified load balancer does not exist.)"
+      "message": "likely implemented (TargetGroupNotFound: Target group 'arn:aws:elbv2:us-east-1:123456789012:thing/pro)"
     },
     {
       "operation": "CreateLoadBalancer",
@@ -35,17 +38,17 @@
     {
       "operation": "CreateRule",
       "status": "working",
-      "message": "likely implemented (ListenerNotFound: The specified listener does not exist.)"
+      "message": "likely implemented (TargetGroupNotFound: Target group 'arn:aws:elbv2:us-east-1:123456789012:thing/pro)"
     },
     {
       "operation": "CreateTargetGroup",
       "status": "working",
-      "message": "implemented (ValidationError)"
+      "message": "likely implemented (DuplicateTargetGroupName: A target group with the specified name already exists.)"
     },
     {
       "operation": "CreateTrustStore",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (DuplicateTrustStoreName: The specified trust store name is already in use.)"
     },
     {
       "operation": "DeleteListener",
@@ -64,8 +67,8 @@
     },
     {
       "operation": "DeleteSharedTrustStoreAssociation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (TrustStoreNotFound: The specified trust store does not exist.)"
     },
     {
       "operation": "DeleteTargetGroup",
@@ -74,8 +77,8 @@
     },
     {
       "operation": "DeleteTrustStore",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeregisterTargets",
@@ -105,7 +108,7 @@
     {
       "operation": "DescribeListeners",
       "status": "working",
-      "message": "implemented (ValidationError)"
+      "message": "likely implemented (LoadBalancerNotFound: The specified load balancer does not exist.)"
     },
     {
       "operation": "DescribeLoadBalancerAttributes",
@@ -115,7 +118,7 @@
     {
       "operation": "DescribeLoadBalancers",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (LoadBalancerNotFound: The specified load balancer does not exist.)"
     },
     {
       "operation": "DescribeRules",
@@ -140,7 +143,7 @@
     {
       "operation": "DescribeTargetGroups",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationError)"
     },
     {
       "operation": "DescribeTargetHealth",
@@ -149,48 +152,48 @@
     },
     {
       "operation": "DescribeTrustStoreAssociations",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (TrustStoreNotFound: The specified trust store does not exist.)"
     },
     {
       "operation": "DescribeTrustStoreRevocations",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (TrustStoreNotFound: The specified trust store does not exist.)"
     },
     {
       "operation": "DescribeTrustStores",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (TrustStoreNotFound: The specified trust store does not exist.)"
     },
     {
       "operation": "GetResourcePolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetTrustStoreCaCertificatesBundle",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (TrustStoreNotFound: The specified trust store does not exist.)"
     },
     {
       "operation": "GetTrustStoreRevocationContent",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (TrustStoreNotFound: The specified trust store does not exist.)"
     },
     {
       "operation": "ModifyCapacityReservation",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ModifyIpPools",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ModifyListener",
       "status": "working",
-      "message": "likely implemented (ListenerNotFound: The specified listener does not exist.)"
+      "message": "likely implemented (SSLPolicyNotFound: Policy probe-test-value not found)"
     },
     {
       "operation": "ModifyListenerAttributes",
@@ -219,8 +222,8 @@
     },
     {
       "operation": "ModifyTrustStore",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (TrustStoreNotFound: The specified trust store does not exist.)"
     },
     {
       "operation": "RegisterTargets",
@@ -235,22 +238,22 @@
     {
       "operation": "RemoveTags",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (LoadBalancerNotFound: The specified load balancer does not exist.)"
     },
     {
       "operation": "RemoveTrustStoreRevocations",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (TrustStoreNotFound: The specified trust store does not exist.)"
     },
     {
       "operation": "SetIpAddressType",
       "status": "working",
-      "message": "implemented (ValidationError)"
+      "message": "likely implemented (LoadBalancerNotFound: The specified load balancer does not exist.)"
     },
     {
       "operation": "SetRulePriorities",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (RuleNotFound: One or more rules not found)"
     },
     {
       "operation": "SetSecurityGroups",

@@ -1,21 +1,24 @@
 {
   "service": "logs",
+  "generated_at": "2026-10-25T19:43:55.128884+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 91,
-    "needs_params": 10,
-    "not_implemented": 5,
-    "500_error": 2
+    "working": 106,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 2
   },
   "operations": [
     {
       "operation": "AssociateKmsKey",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "AssociateSourceToS3TableIntegration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "CancelExportTask",
@@ -24,8 +27,8 @@
     },
     {
       "operation": "CancelImportTask",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateDelivery",
@@ -35,12 +38,12 @@
     {
       "operation": "CreateExportTask",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateImportTask",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "CreateLogAnomalyDetector",
@@ -60,17 +63,17 @@
     {
       "operation": "CreateScheduledQuery",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "DeleteAccountPolicy",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteDataProtectionPolicy",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteDelivery",
@@ -100,7 +103,7 @@
     {
       "operation": "DeleteIndexPolicy",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteIntegration",
@@ -125,7 +128,7 @@
     {
       "operation": "DeleteMetricFilter",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteQueryDefinition",
@@ -160,7 +163,7 @@
     {
       "operation": "DescribeAccountPolicies",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeConfigurationTemplates",
@@ -190,12 +193,12 @@
     {
       "operation": "DescribeExportTasks",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeFieldIndexes",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "DescribeImportTaskBatches",
@@ -209,8 +212,8 @@
     },
     {
       "operation": "DescribeIndexPolicies",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "DescribeLogGroups",
@@ -245,17 +248,17 @@
     {
       "operation": "DescribeSubscriptionFilters",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DisassociateKmsKey",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DisassociateSourceFromS3TableIntegration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "FilterLogEvents",
@@ -314,8 +317,8 @@
     },
     {
       "operation": "GetLogObject",
-      "status": "500_error",
-      "message": "exception: Could not connect to the endpoint URL: \"http://streaming-loc"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://streaming-loc)"
     },
     {
       "operation": "GetLogRecord",
@@ -335,7 +338,7 @@
     {
       "operation": "GetScheduledQueryHistory",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "GetTransformer",
@@ -379,8 +382,8 @@
     },
     {
       "operation": "ListSourcesForS3TableIntegration",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "ListTagsForResource",
@@ -395,7 +398,7 @@
     {
       "operation": "PutAccountPolicy",
       "status": "working",
-      "message": "implemented (InvalidParameterException)"
+      "message": "OK"
     },
     {
       "operation": "PutBearerTokenAuthentication",
@@ -409,18 +412,18 @@
     },
     {
       "operation": "PutDeliveryDestination",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object is not subscriptable)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutDeliveryDestinationPolicy",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "PutDeliverySource",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "PutDestination",
@@ -439,13 +442,13 @@
     },
     {
       "operation": "PutIntegration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutLogEvents",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutLogGroupDeletionProtection",
@@ -454,13 +457,13 @@
     },
     {
       "operation": "PutMetricFilter",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutQueryDefinition",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "PutResourcePolicy",
@@ -475,22 +478,22 @@
     {
       "operation": "PutSubscriptionFilter",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutTransformer",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "StartLiveTail",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://streaming-loc)"
     },
     {
       "operation": "StartQuery",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (InvalidParameterException)"
     },
     {
       "operation": "StopQuery",
@@ -509,18 +512,18 @@
     },
     {
       "operation": "TestMetricFilter",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "TestTransformer",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "UntagLogGroup",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UntagResource",
@@ -530,7 +533,7 @@
     {
       "operation": "UpdateAnomaly",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateDeliveryConfiguration",
@@ -545,7 +548,7 @@
     {
       "operation": "UpdateScheduledQuery",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented (ValidationException)"
     }
   ]
 }

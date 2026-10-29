@@ -1,0 +1,87 @@
+{
+  "lane": "fills-b",
+  "recorded": "2026-10-26",
+  "purpose": "Terminal dispositions for the FILLS-B needs_params sweep: rows that can no longer be mustered out via probe fills. Every other 2026-10-26 needs_params row in the scoped corpora moved to working or not_implemented (see scripts/lib/fills/fills-b.json).",
+  "oracle": {
+    "moto_fork": "5.1.23.dev (JackDanger fork pin; .motovenv site-packages/moto)",
+    "runner": "tooling/crash-matrix-2026-10-24/crash_matrix.py --moto http://127.0.0.1:4796 --twin http://127.0.0.1:4795",
+    "probe_endpoint": "http://localhost:4795 (scratch twin, robotocore-rust --port 4795)"
+  },
+  "dismiss_classes": {
+    "client_gap_boto3": "boto3 generates no client method for the op (input-eventstream op family): getattr fails before any wire call, so the probe can never classify the twin; corpora row stays needs_params with the client-side probe gap message.",
+    "moto_crash_faithful": "moto routes the op and crashes on cold probe state; the twin mirrors moto's crash envelope byte-for-byte (moto_crash_response). Per scripts/error_census.py these 500_error rows are the recorded allowed exception; verified same-envelope against the pinned fork."
+  },
+  "rows": [
+    {
+      "service": "bedrock-runtime",
+      "operation": "InvokeModelWithBidirectionalStream",
+      "corpus_status": "needs_params (client-side probe gap)",
+      "class": "client_gap_boto3",
+      "evidence": "boto3 exposes no client method: [m for m in dir(client) if 'invoke' in m] == ['get_async_invoke','invoke_model','invoke_model_with_response_stream','list_async_invokes','start_async_invoke'] — InvokeModelWithBidirectionalStream declares both an input and an output event stream and boto3's client builder emits no method for it; to_snake_case/xform_name both produce invoke_model_with_bidirectional_stream and AttributeError. Twin status therefore unprobed by boto3/gap-classified, not asserted against the twin.",
+      "disposition": "pinned 2026-10-26 (fills-b); a raw-eventstream probe lane could determine twin truth — deferred."
+    },
+    {
+      "service": "polly",
+      "operation": "StartSpeechSynthesisStream",
+      "corpus_status": "needs_params (client-side probe gap)",
+      "evidence": "boto3 polly client exposes ['get_speech_synthesis_task','list_speech_synthesis_tasks','start_speech_synthesis_task','synthesize_speech'] while the model announces StartSpeechSynthesisStream (input event stream TextStream) — no client method exists, same boto3 gap family as bedrock-runtime bidirectional.",
+      "disposition": "pinned 2026-10-26 (fills-b); twin status unprobed, not asserted."
+    },
+    {
+      "service": "workspaces",
+      "operation": "DeregisterWorkspaceDirectory",
+      "corpus_status": "500_error (moto_crash_response HTML envelope)",
+      "class": "moto_crash_faithful",
+      "evidence": "moto fork 5.1.23.dev unguarded dict index: moto/workspaces/models.py:889-893 `self.workspace_directories[directory_id].delete_security_group()` raises bare KeyError for any unknown directory (cold probe state) and werkzeug answers the canonical 500 HTML page. Twin mirrors it: rotocore/src/services/workspaces/mod.rs:15-21 documents moto_crash_response for exactly this op; live comparison on 2026-10-26 shows identical <!doctype html> 500 on both scratch servers (twin :4795, moto :4796).",
+      "disposition": "pinned 2026-10-26 (fills-b); crash-faithful mirror, no param combination avoids moto's cold-state crash (single-call probes never create a directory)."
+    },
+    {
+      "service": "workspaces",
+      "operation": "ModifyClientProperties",
+      "corpus_status": "500_error (moto_crash_response HTML envelope)",
+      "class": "moto_crash_faithful",
+      "evidence": "moto/workspaces/models.py:814-819 `res = self.workspace_directories[resource_id]` — bare KeyError for unknown ids; twin mirrors moto's 500 HTML (rotocore/src/services/workspaces/mod.rs:16-21). Verified same envelope on both servers 2026-10-26.",
+      "disposition": "pinned 2026-10-26 (fills-b)"
+    },
+    {
+      "service": "workspaces",
+      "operation": "ModifySelfservicePermissions",
+      "corpus_status": "500_error (moto_crash_response HTML envelope)",
+      "class": "moto_crash_faithful",
+      "evidence": "moto/workspaces/models.py:894-897 bare dict index; twin mirrors via moto_crash_response (workspaces/mod.rs:16-21). Same-envelope verified 2026-10-26.",
+      "disposition": "pinned 2026-10-26 (fills-b)"
+    },
+    {
+      "service": "workspaces",
+      "operation": "UpdateWorkspaceImagePermission",
+      "corpus_status": "500_error (moto_crash_response HTML envelope)",
+      "class": "moto_crash_faithful",
+      "evidence": "moto/workspaces/models.py:860-877 `res = self.workspace_images[image_id]` bare KeyError for unknown images; twin mirrors moto_crash_response (workspaces/mod.rs:16-21). Same-envelope verified 2026-10-26.",
+      "disposition": "pinned 2026-10-26 (fills-b)"
+    },
+    {
+      "service": "timestreaminfluxdb",
+      "operation": "CreateDbParameterGroup",
+      "corpus_status": "500_error (unparsable response)",
+      "class": "moto_crash_faithful",
+      "evidence": "moto fork answers 200 with a response whose `Parameters` tagged union has no member set; botocore raises ResponseParserError 'Invalid service response: Parameters must have one and only one member set.' against both the pinned fork and the twin — crash_matrix verdict SAME on 2026-10-26 (tooling/crash-matrix-2026-10-24 runner, moto :4796 vs twin :4795). Twin arm: rotocore/src/services/timestreaminfluxdb.rs:238 CreateDbParameterGroup stores/echoes an empty parameters union like the fork.",
+      "disposition": "pinned 2026-10-26 (fills-b); parity-faithful moto crash, probe can never parse moto's own schema so no fill moves it past the wire."
+    }
+  ],
+  "moved_counts": {
+    "scope_service_count": 37,
+    "scope_row_count": 2661,
+    "before_lane": {
+      "needs_params_rows_in_scope": 113,
+      "note": "ssm 27, iot 11, budgets 5, timestreaminfluxdb 5, lakeformation 4, lexv2models 4, opensearchserverless 4, workspaces 4, amp 3, appsync 3, bedrock-runtime 3, bedrock 3, ce 3, mediaconnect 3, shield 3, connectcampaigns 2, ec2instanceconnect 2, plus all 1-2 row services"
+    },
+    "after_lane": {
+      "working": 2584,
+      "not_implemented": 70,
+      "needs_params": 2,
+      "moto_crash_faithful_500": 5,
+      "timeout": 0
+    },
+    "needs_params_residual": "the 2 client_gap_boto3 pins above (polly.StartSpeechSynthesisStream, bedrock-runtime.InvokeModelWithBidirectionalStream)"
+  }
+}

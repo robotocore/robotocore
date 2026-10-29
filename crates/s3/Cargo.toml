@@ -1,0 +1,25 @@
+[package]
+name = "s3"
+version.workspace = true
+edition = "2021"
+license = "MIT"
+description = "Native S3 service for robotocore"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0"
+bytes = "1.5"
+thiserror = "1.0"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+base64 = "0.22"
+sha2 = "0.10"
+hmac = "0.12"
+md5 = "0.7"
+hex = "0.4"
+parking_lot = "0.12"
+urlencoding = "2.1"
+sqs = { path = "../sqs" }
+# SNS topic targets publish through the events crate's hook registry (the
+# gateway binds it to the SNS handler), keeping s3 and sns crates acyclic.
+events = { path = "../events" }

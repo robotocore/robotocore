@@ -1,0 +1,534 @@
+[
+  {
+    "noun": "Actors",
+    "operations": [
+      "ListActors"
+    ],
+    "tested": [],
+    "untested": [
+      "ListActors"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListActors": "working"
+    },
+    "working_untested": [
+      "ListActors"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "AgentCard",
+    "operations": [
+      "GetAgentCard"
+    ],
+    "tested": [],
+    "untested": [
+      "GetAgentCard"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetAgentCard": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AgentRuntime",
+    "operations": [
+      "InvokeAgentRuntime"
+    ],
+    "tested": [],
+    "untested": [
+      "InvokeAgentRuntime"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "InvokeAgentRuntime": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "AgentRuntimeCommand",
+    "operations": [
+      "InvokeAgentRuntimeCommand"
+    ],
+    "tested": [],
+    "untested": [
+      "InvokeAgentRuntimeCommand"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "InvokeAgentRuntimeCommand": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "BrowserSession",
+    "operations": [
+      "GetBrowserSession",
+      "StartBrowserSession",
+      "StopBrowserSession"
+    ],
+    "tested": [],
+    "untested": [
+      "GetBrowserSession",
+      "StartBrowserSession",
+      "StopBrowserSession"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "GetBrowserSession": "not_implemented",
+      "StartBrowserSession": "not_implemented",
+      "StopBrowserSession": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "BrowserSessionProfile",
+    "operations": [
+      "SaveBrowserSessionProfile"
+    ],
+    "tested": [],
+    "untested": [
+      "SaveBrowserSessionProfile"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "SaveBrowserSessionProfile": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "BrowserSessions",
+    "operations": [
+      "ListBrowserSessions"
+    ],
+    "tested": [],
+    "untested": [
+      "ListBrowserSessions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListBrowserSessions": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "BrowserStream",
+    "operations": [
+      "UpdateBrowserStream"
+    ],
+    "tested": [],
+    "untested": [
+      "UpdateBrowserStream"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "UpdateBrowserStream": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CodeInterpreter",
+    "operations": [
+      "InvokeCodeInterpreter"
+    ],
+    "tested": [],
+    "untested": [
+      "InvokeCodeInterpreter"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "InvokeCodeInterpreter": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "CodeInterpreterSession",
+    "operations": [
+      "GetCodeInterpreterSession",
+      "StartCodeInterpreterSession",
+      "StopCodeInterpreterSession"
+    ],
+    "tested": [],
+    "untested": [
+      "GetCodeInterpreterSession",
+      "StartCodeInterpreterSession",
+      "StopCodeInterpreterSession"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "GetCodeInterpreterSession": "working",
+      "StartCodeInterpreterSession": "working",
+      "StopCodeInterpreterSession": "working"
+    },
+    "working_untested": [
+      "GetCodeInterpreterSession",
+      "StartCodeInterpreterSession",
+      "StopCodeInterpreterSession"
+    ],
+    "working_untested_count": 3
+  },
+  {
+    "noun": "CodeInterpreterSessions",
+    "operations": [
+      "ListCodeInterpreterSessions"
+    ],
+    "tested": [],
+    "untested": [
+      "ListCodeInterpreterSessions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListCodeInterpreterSessions": "working"
+    },
+    "working_untested": [
+      "ListCodeInterpreterSessions"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "CreateMemoryRecords",
+    "operations": [
+      "BatchCreateMemoryRecords"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchCreateMemoryRecords"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchCreateMemoryRecords": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "DeleteMemoryRecords",
+    "operations": [
+      "BatchDeleteMemoryRecords"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchDeleteMemoryRecords"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchDeleteMemoryRecords": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Evaluate",
+    "operations": [
+      "Evaluate"
+    ],
+    "tested": [],
+    "untested": [
+      "Evaluate"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "Evaluate": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Event",
+    "operations": [
+      "CreateEvent",
+      "DeleteEvent",
+      "GetEvent"
+    ],
+    "tested": [],
+    "untested": [
+      "CreateEvent",
+      "DeleteEvent",
+      "GetEvent"
+    ],
+    "size": 3,
+    "untested_count": 3,
+    "probe_status": {
+      "CreateEvent": "needs_params",
+      "DeleteEvent": "working",
+      "GetEvent": "working"
+    },
+    "working_untested": [
+      "DeleteEvent",
+      "GetEvent"
+    ],
+    "working_untested_count": 2
+  },
+  {
+    "noun": "Events",
+    "operations": [
+      "ListEvents"
+    ],
+    "tested": [],
+    "untested": [
+      "ListEvents"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListEvents": "working"
+    },
+    "working_untested": [
+      "ListEvents"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "MemoryExtractionJob",
+    "operations": [
+      "StartMemoryExtractionJob"
+    ],
+    "tested": [],
+    "untested": [
+      "StartMemoryExtractionJob"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "StartMemoryExtractionJob": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MemoryExtractionJobs",
+    "operations": [
+      "ListMemoryExtractionJobs"
+    ],
+    "tested": [],
+    "untested": [
+      "ListMemoryExtractionJobs"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListMemoryExtractionJobs": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MemoryRecord",
+    "operations": [
+      "DeleteMemoryRecord",
+      "GetMemoryRecord"
+    ],
+    "tested": [],
+    "untested": [
+      "DeleteMemoryRecord",
+      "GetMemoryRecord"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "DeleteMemoryRecord": "needs_params",
+      "GetMemoryRecord": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "MemoryRecords",
+    "operations": [
+      "ListMemoryRecords",
+      "RetrieveMemoryRecords"
+    ],
+    "tested": [],
+    "untested": [
+      "ListMemoryRecords",
+      "RetrieveMemoryRecords"
+    ],
+    "size": 2,
+    "untested_count": 2,
+    "probe_status": {
+      "ListMemoryRecords": "not_implemented",
+      "RetrieveMemoryRecords": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ResourceApiKey",
+    "operations": [
+      "GetResourceApiKey"
+    ],
+    "tested": [],
+    "untested": [
+      "GetResourceApiKey"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetResourceApiKey": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ResourceOauth2Token",
+    "operations": [
+      "GetResourceOauth2Token"
+    ],
+    "tested": [],
+    "untested": [
+      "GetResourceOauth2Token"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetResourceOauth2Token": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "ResourceTokenAuth",
+    "operations": [
+      "CompleteResourceTokenAuth"
+    ],
+    "tested": [],
+    "untested": [
+      "CompleteResourceTokenAuth"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "CompleteResourceTokenAuth": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "RuntimeSession",
+    "operations": [
+      "StopRuntimeSession"
+    ],
+    "tested": [],
+    "untested": [
+      "StopRuntimeSession"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "StopRuntimeSession": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "Sessions",
+    "operations": [
+      "ListSessions"
+    ],
+    "tested": [],
+    "untested": [
+      "ListSessions"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "ListSessions": "working"
+    },
+    "working_untested": [
+      "ListSessions"
+    ],
+    "working_untested_count": 1
+  },
+  {
+    "noun": "UpdateMemoryRecords",
+    "operations": [
+      "BatchUpdateMemoryRecords"
+    ],
+    "tested": [],
+    "untested": [
+      "BatchUpdateMemoryRecords"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "BatchUpdateMemoryRecords": "needs_params"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "WorkloadAccessToken",
+    "operations": [
+      "GetWorkloadAccessToken"
+    ],
+    "tested": [],
+    "untested": [
+      "GetWorkloadAccessToken"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetWorkloadAccessToken": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "WorkloadAccessTokenForJWT",
+    "operations": [
+      "GetWorkloadAccessTokenForJWT"
+    ],
+    "tested": [],
+    "untested": [
+      "GetWorkloadAccessTokenForJWT"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetWorkloadAccessTokenForJWT": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  },
+  {
+    "noun": "WorkloadAccessTokenForUserId",
+    "operations": [
+      "GetWorkloadAccessTokenForUserId"
+    ],
+    "tested": [],
+    "untested": [
+      "GetWorkloadAccessTokenForUserId"
+    ],
+    "size": 1,
+    "untested_count": 1,
+    "probe_status": {
+      "GetWorkloadAccessTokenForUserId": "not_implemented"
+    },
+    "working_untested": [],
+    "working_untested_count": 0
+  }
+]

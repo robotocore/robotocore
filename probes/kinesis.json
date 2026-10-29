@@ -1,10 +1,13 @@
 {
   "service": "kinesis",
+  "generated_at": "2026-10-26T13:36:37.060995+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 27,
-    "needs_params": 6,
-    "not_implemented": 5,
-    "500_error": 1
+    "working": 39,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -20,7 +23,7 @@
     {
       "operation": "DecreaseStreamRetentionPeriod",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "likely implemented (InvalidArgumentException: Minimum retention period is 24 hours.)"
     },
     {
       "operation": "DeleteResourcePolicy",
@@ -30,7 +33,7 @@
     {
       "operation": "DeleteStream",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DeregisterStreamConsumer",
@@ -64,13 +67,13 @@
     },
     {
       "operation": "DisableEnhancedMonitoring",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "EnableEnhancedMonitoring",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetRecords",
@@ -109,8 +112,8 @@
     },
     {
       "operation": "ListTagsForResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListTagsForStream",
@@ -129,8 +132,8 @@
     },
     {
       "operation": "PutRecords",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutResourcePolicy",
@@ -144,8 +147,8 @@
     },
     {
       "operation": "RemoveTagsFromStream",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "SplitShard",
@@ -164,28 +167,28 @@
     },
     {
       "operation": "SubscribeToShard",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "TagResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateAccountSettings",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateMaxRecordSize",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateShardCount",
@@ -194,13 +197,13 @@
     },
     {
       "operation": "UpdateStreamMode",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object has no attribute 'stream_mode' and no __di)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateStreamWarmThroughput",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     }
   ]
 }

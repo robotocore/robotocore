@@ -39,7 +39,7 @@ jobs:
           ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
             uv run python -m robotocore.main > .robotocore.log 2>&1 &
           SERVER_PID=$!
-          for i in $(seq 1 60); do
+          for i in $(seq 1 300); do
             if ! kill -0 $SERVER_PID 2>/dev/null; then
               echo "Server process exited early"
               cat .robotocore.log 2>/dev/null || true
@@ -88,7 +88,7 @@ jobs:
           ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
             uv run python -m robotocore.main > .robotocore.log 2>&1 &
           SERVER_PID=$!
-          for i in $(seq 1 60); do
+          for i in $(seq 1 300); do
             if ! kill -0 $SERVER_PID 2>/dev/null; then
               echo "Server process exited early"
               cat .robotocore.log 2>/dev/null || true
@@ -176,7 +176,7 @@ jobs:
           ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
             uv run python -m robotocore.main > .robotocore.log 2>&1 &
           SERVER_PID=$!
-          for i in $(seq 1 60); do
+          for i in $(seq 1 300); do
             if ! kill -0 $SERVER_PID 2>/dev/null; then
               echo "Server process exited early"
               cat .robotocore.log 2>/dev/null || true

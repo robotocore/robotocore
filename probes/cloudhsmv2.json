@@ -1,0 +1,99 @@
+{
+  "service": "cloudhsmv2",
+  "generated_at": "2026-10-25T19:42:06.923524+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 17,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "CopyBackupToRegion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateCluster",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateHsm",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteBackup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteHsm",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteResourcePolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeBackups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DescribeClusters",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "GetResourcePolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "InitializeCluster",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListTags",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ModifyBackupAttributes",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ModifyCluster",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutResourcePolicy",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RestoreBackup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "OK"
+    }
+  ]
+}

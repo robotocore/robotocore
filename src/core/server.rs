@@ -1,0 +1,3685 @@
+//! Axum-based HTTP server for the Robotocore Rust implementation.
+//!
+//! Implements catch-all routing, protocol detection, and service dispatch.
+
+use axum::{
+    extract::State,
+    http::{HeaderMap, Method, StatusCode, Uri},
+    response::{IntoResponse, Response},
+    routing::{delete, get, post},
+    Router,
+};
+use http_body_util::BodyExt;
+use serde_json::{json, Value};
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, OnceLock};
+use std::time::{Duration, Instant};
+use uuid::Uuid;
+
+use parking_lot::Mutex;
+
+use crate::core::account::parse_account_from_key;
+use crate::core::protocol::{
+    extract_operation, parse_query_protocol, ParsedRequest, ParsedResponse,
+};
+use crate::core::services::sts;
+use crate::router::{route_to_service, AwsRequest};
+use http::header::HeaderValue;
+use sqs::SqsHandler;
+
+/// Service handler trait for AWS services.
+pub trait ServiceHandler: Send + Sync {
+    /// Handle a parsed request and return a response.
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>>;
+
+    /// Request-scoped override for the blocking dispatch blanket timeout
+    /// (seconds). `None` keeps the server default. Default: none — only
+    /// handlers with per-request execution budgets (docker-mode lambda
+    /// invokes) raise it.
+    fn request_timeout_secs(&self, _req: &ParsedRequest) -> Option<u64> {
+        None
+    }
+}
+
+/// Synchronous wrapper for async STS handler
+pub struct StsFunctionHandler;
+
+impl ServiceHandler for StsFunctionHandler {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+        // `handle_sts_request` is async but has no awaits; poll it to
+        // completion on a local waker without touching the current runtime.
+        use std::future::Future;
+        use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+
+        fn noop_raw() -> RawWaker {
+            fn clone(_: *const ()) -> RawWaker {
+                RawWaker::new(null_ptr(), &VTABLE)
+            }
+            fn wakeup(_: *const ()) {}
+            static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wakeup, wakeup, wakeup);
+            RawWaker::new(null_ptr(), &VTABLE)
+        }
+        fn null_ptr() -> *const () {
+            std::ptr::null()
+        }
+
+        let waker = unsafe { Waker::from_raw(noop_raw()) };
+        let mut cx = Context::from_waker(&waker);
+        let mut fut = std::pin::pin!(sts::handle_sts_request(req));
+        match fut.as_mut().poll(&mut cx) {
+            Poll::Ready(result) => result,
+            Poll::Pending => Err("STS handler unexpectedly pending".into()),
+        }
+    }
+}
+
+/// Adapter that bridges the core `ParsedRequest`/`ParsedResponse` protocol to
+/// the native SQS service crate.
+pub struct SqsServiceHandler {
+    inner: Arc<sqs::DefaultSqsHandler>,
+}
+
+impl SqsServiceHandler {
+    fn to_sqs_request(req: &ParsedRequest) -> sqs::protocol::AwsRequest {
+        let params: serde_json::Value = serde_json::to_value(&req.params)
+            .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+        sqs::protocol::AwsRequest {
+            service: req.service.clone(),
+            operation: req.operation.clone(),
+            account: req.account,
+            region: req.region.clone(),
+            params,
+            body: req.body.clone(),
+        }
+    }
+
+    fn to_parsed_response(resp: sqs::protocol::AwsResponse) -> ParsedResponse {
+        let mut headers = std::collections::HashMap::new();
+        for (k, v) in resp.headers {
+            headers.insert(k, v);
+        }
+        ParsedResponse {
+            status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            headers,
+            body: serde_json::Value::Null,
+            raw: Some(resp.body),
+            raw_bytes: None,
+        }
+    }
+}
+
+impl ServiceHandler for SqsServiceHandler {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+        let sqs_req = Self::to_sqs_request(req);
+        let resp = self.inner.handle(sqs_req);
+        Ok(Self::to_parsed_response(resp))
+    }
+}
+
+/// Adapter that bridges the core protocol to the native S3 service crate.
+pub struct S3ServiceHandler {
+    inner: Arc<s3::DefaultS3Handler>,
+}
+
+impl S3ServiceHandler {
+    fn to_s3_request(
+        req: &ParsedRequest,
+        method: &str,
+        query_string: &str,
+    ) -> s3::protocol::AwsRequest {
+        // Extract bucket and key from the path
+        let path = &req.path;
+        let path_parts: Vec<&str> = path.trim_start_matches('/').splitn(2, '/').collect();
+        let bucket = path_parts
+            .first()
+            .map(|s| s.to_string())
+            .filter(|s| !s.is_empty());
+        let key = path_parts
+            .get(1)
+            .map(|s| s.to_string())
+            .filter(|s| !s.is_empty());
+
+        // Parse query params
+        let mut query_params = std::collections::HashMap::new();
+        for pair in query_string.split('&') {
+            if pair.is_empty() {
+                continue;
+            }
+            if let Some((k, v)) = pair.split_once('=') {
+                query_params.insert(
+                    urlencoding::decode(k).unwrap_or_default().into_owned(),
+                    urlencoding::decode(v).unwrap_or_default().into_owned(),
+                );
+            } else {
+                // Value-less query param (e.g. ?session, ?x-amz-encryption) —
+                // S3 operation dispatch reads these keys from query_params,
+                // so they must survive the gateway→crate handoff.
+                query_params.insert(
+                    urlencoding::decode(pair).unwrap_or_default().into_owned(),
+                    String::new(),
+                );
+            }
+        }
+
+        // Use the headers map directly
+        let headers = req.headers.clone();
+
+        s3::protocol::AwsRequest {
+            service: req.service.clone(),
+            operation: req.operation.clone(),
+            account: req.account,
+            region: req.region.clone(),
+            bucket,
+            key,
+            query_params,
+            headers,
+            method: method.to_string(),
+            body: req.body.clone(),
+            params: serde_json::to_value(&req.params).unwrap_or_default(),
+        }
+    }
+
+    fn to_parsed_response(resp: s3::protocol::AwsResponse) -> ParsedResponse {
+        let mut headers = std::collections::HashMap::new();
+        for (k, v) in resp.headers {
+            headers.insert(k, v);
+        }
+        // S3 bodies are arbitrary bytes; carry them losslessly via raw_bytes
+        // (lossy UTF-8 re-encoding corrupted binary objects in transit).
+        ParsedResponse {
+            status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            headers,
+            body: serde_json::Value::Null,
+            raw: None,
+            raw_bytes: Some(resp.body),
+        }
+    }
+}
+
+impl ServiceHandler for S3ServiceHandler {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+        // Detect the S3 operation from method + path + query
+        let mut query_params = std::collections::HashMap::new();
+        for pair in req.query_string.split('&') {
+            if pair.is_empty() {
+                continue;
+            }
+            if let Some((k, v)) = pair.split_once('=') {
+                query_params.insert(
+                    urlencoding::decode(k).unwrap_or_default().into_owned(),
+                    urlencoding::decode(v).unwrap_or_default().into_owned(),
+                );
+            } else {
+                // Value-less query param (e.g. ?policy, ?cors, ?lifecycle)
+                query_params.insert(
+                    urlencoding::decode(pair).unwrap_or_default().into_owned(),
+                    String::new(),
+                );
+            }
+        }
+        let operation =
+            s3::handler::S3Handler::detect_s3_operation(&req.method, &req.path, &query_params)
+                .unwrap_or_else(|| req.operation.clone());
+
+        let mut s3_req = Self::to_s3_request(req, &req.method, &req.query_string);
+        s3_req.operation = operation;
+        let resp = self.inner.handle(s3_req);
+        Ok(Self::to_parsed_response(resp))
+    }
+}
+
+/// Adapter that bridges the core protocol to the native DynamoDB service crate.
+pub struct DynamoDbServiceHandler {
+    inner: Arc<dynamodb::DefaultDynamoDbHandler>,
+}
+
+impl DynamoDbServiceHandler {
+    fn to_dynamo_req(req: &ParsedRequest) -> dynamodb::protocol::AwsRequest {
+        let params = serde_json::to_value(&req.params).unwrap_or_default();
+        dynamodb::protocol::AwsRequest {
+            service: req.service.clone(),
+            operation: req.operation.clone(),
+            account: req.account,
+            region: req.region.clone(),
+            params,
+            body: req.body.clone(),
+        }
+    }
+
+    fn to_parsed_response(resp: dynamodb::protocol::AwsResponse) -> ParsedResponse {
+        let mut headers = std::collections::HashMap::new();
+        for (k, v) in resp.headers {
+            headers.insert(k, v);
+        }
+        ParsedResponse {
+            status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            headers,
+            body: serde_json::Value::Null,
+            raw: Some(resp.body),
+            raw_bytes: None,
+        }
+    }
+}
+
+impl ServiceHandler for DynamoDbServiceHandler {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+        let ddb_req = Self::to_dynamo_req(req);
+        let resp = self.inner.handle(ddb_req);
+        Ok(Self::to_parsed_response(resp))
+    }
+}
+
+/// Adapter that bridges the core protocol to the native SNS service crate.
+pub struct SnsServiceHandler {
+    inner: Arc<sns::DefaultSnsHandler>,
+}
+
+impl SnsServiceHandler {
+    fn to_sns_request(req: &ParsedRequest) -> sns::protocol::AwsRequest {
+        let params = serde_json::to_value(&req.params).unwrap_or_default();
+        sns::protocol::AwsRequest {
+            service: req.service.clone(),
+            operation: req.operation.clone(),
+            account: req.account,
+            region: req.region.clone(),
+            params,
+            body: req.body.clone(),
+        }
+    }
+
+    fn to_parsed_response(resp: sns::protocol::AwsResponse) -> ParsedResponse {
+        let mut headers = std::collections::HashMap::new();
+        for (k, v) in resp.headers {
+            headers.insert(k, v);
+        }
+        ParsedResponse {
+            status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            headers,
+            body: serde_json::Value::Null,
+            raw: Some(resp.body),
+            raw_bytes: None,
+        }
+    }
+}
+
+impl ServiceHandler for SnsServiceHandler {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+        let sns_req = Self::to_sns_request(req);
+        let resp = self.inner.handle(sns_req);
+        Ok(Self::to_parsed_response(resp))
+    }
+}
+
+/// Adapter that bridges the core protocol to the native Secrets Manager service crate.
+pub struct SmServiceHandler {
+    inner: Arc<secretsmanager::DefaultSecretsManagerHandler>,
+}
+
+impl SmServiceHandler {
+    fn to_sm_request(req: &ParsedRequest) -> secretsmanager::protocol::AwsRequest {
+        let params = serde_json::to_value(&req.params).unwrap_or_default();
+        secretsmanager::protocol::AwsRequest {
+            service: req.service.clone(),
+            operation: req.operation.clone(),
+            account: req.account,
+            region: req.region.clone(),
+            params,
+            body: req.body.clone(),
+        }
+    }
+
+    fn to_parsed_response(resp: secretsmanager::protocol::AwsResponse) -> ParsedResponse {
+        let mut headers = std::collections::HashMap::new();
+        for (k, v) in resp.headers {
+            headers.insert(k, v);
+        }
+        ParsedResponse {
+            status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            headers,
+            body: serde_json::Value::Null,
+            raw: Some(resp.body),
+            raw_bytes: None,
+        }
+    }
+}
+
+impl ServiceHandler for SmServiceHandler {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+        let sm_req = Self::to_sm_request(req);
+        let resp = self.inner.handle(sm_req);
+        Ok(Self::to_parsed_response(resp))
+    }
+}
+
+/// Adapter for KMS service crate.
+pub struct KmsServiceHandler {
+    inner: Arc<kms::DefaultKmsHandler>,
+}
+
+impl ServiceHandler for KmsServiceHandler {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+        let params = serde_json::to_value(&req.params).unwrap_or_default();
+        let kms_req = kms::protocol::AwsRequest {
+            service: req.service.clone(),
+            operation: req.operation.clone(),
+            account: req.account,
+            region: req.region.clone(),
+            params,
+            body: req.body.clone(),
+        };
+        let resp = self.inner.handle(kms_req);
+        let mut headers = std::collections::HashMap::new();
+        for (k, v) in resp.headers {
+            headers.insert(k, v);
+        }
+        Ok(ParsedResponse {
+            status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            headers,
+            body: serde_json::Value::Null,
+            raw: Some(resp.body),
+            raw_bytes: None,
+        })
+    }
+}
+
+/// Adapter for SSM service crate.
+pub struct SsmServiceHandler {
+    inner: Arc<ssm::DefaultSsmHandler>,
+}
+
+impl ServiceHandler for SsmServiceHandler {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+        let params = serde_json::to_value(&req.params).unwrap_or_default();
+        let ssm_req = ssm::protocol::AwsRequest {
+            service: req.service.clone(),
+            operation: req.operation.clone(),
+            account: req.account,
+            region: req.region.clone(),
+            params,
+            body: req.body.clone(),
+        };
+        let resp = self.inner.handle(ssm_req);
+        let mut headers = std::collections::HashMap::new();
+        for (k, v) in resp.headers {
+            headers.insert(k, v);
+        }
+        Ok(ParsedResponse {
+            status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            headers,
+            body: serde_json::Value::Null,
+            raw: Some(resp.body),
+            raw_bytes: None,
+        })
+    }
+}
+
+/// Adapter for IAM service crate.
+pub struct IamServiceHandler {
+    inner: Arc<iam::DefaultIamHandler>,
+}
+
+impl ServiceHandler for IamServiceHandler {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+        let params = serde_json::to_value(&req.params).unwrap_or_default();
+        let iam_req = iam::protocol::AwsRequest {
+            service: req.service.clone(),
+            operation: req.operation.clone(),
+            account: req.account,
+            region: req.region.clone(),
+            params,
+            body: req.body.clone(),
+            query: req.query_string.clone(),
+        };
+        let resp = self.inner.handle(iam_req);
+        let mut headers = std::collections::HashMap::new();
+        for (k, v) in resp.headers {
+            headers.insert(k, v);
+        }
+        Ok(ParsedResponse {
+            status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            headers,
+            body: serde_json::Value::Null,
+            raw: Some(resp.body),
+            raw_bytes: None,
+        })
+    }
+}
+
+/// Adapter for Lambda service crate.
+pub struct LambdaServiceHandler {
+    inner: Arc<lambda::DefaultLambdaHandler>,
+}
+
+impl LambdaServiceHandler {
+    /// Protocol bridge: core ParsedRequest → the lambda crate's AwsRequest
+    /// (shape shared by dispatch and the timeout hint).
+    fn to_lambda_req(req: &ParsedRequest) -> lambda::protocol::AwsRequest {
+        lambda::protocol::AwsRequest {
+            service: req.service.clone(),
+            operation: req.operation.clone(),
+            account: req.account,
+            region: req.region.clone(),
+            params: serde_json::to_value(&req.params).unwrap_or_default(),
+            body: req.body.clone(),
+            method: req.method.clone(),
+            path: req.path.clone(),
+            query_string: req.query_string.clone(),
+            headers: req.headers.clone(),
+        }
+    }
+}
+
+impl ServiceHandler for LambdaServiceHandler {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+        let lambda_req = Self::to_lambda_req(req);
+        let resp = self.inner.handle(lambda_req);
+        let mut headers = std::collections::HashMap::new();
+        for (k, v) in resp.headers {
+            headers.insert(k, v);
+        }
+        Ok(ParsedResponse {
+            status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            headers,
+            body: serde_json::Value::Null,
+            raw: Some(resp.body),
+            raw_bytes: None,
+        })
+    }
+
+    fn request_timeout_secs(&self, req: &ParsedRequest) -> Option<u64> {
+        // Docker-mode lambda invokes budget function Timeout+10..15 for one
+        // execution — raise this request's blanket accordingly (floor 30)
+        // instead of 504ing a container that is still inside its own budget.
+        self.inner.request_timeout_hint(&Self::to_lambda_req(req))
+    }
+}
+
+/// Adapter for CloudWatch Logs service crate.
+pub struct LogsServiceHandler {
+    inner: Arc<cloudwatch_logs::DefaultLogsHandler>,
+}
+
+impl ServiceHandler for LogsServiceHandler {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+        let params = serde_json::to_value(&req.params).unwrap_or_default();
+        let logs_req = cloudwatch_logs::protocol::AwsRequest {
+            service: req.service.clone(),
+            operation: req.operation.clone(),
+            account: req.account,
+            region: req.region.clone(),
+            params,
+            body: req.body.clone(),
+        };
+        let resp = self.inner.handle(logs_req);
+        let mut headers = std::collections::HashMap::new();
+        for (k, v) in resp.headers {
+            headers.insert(k, v);
+        }
+        Ok(ParsedResponse {
+            status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            headers,
+            body: serde_json::Value::Null,
+            raw: Some(resp.body),
+            raw_bytes: None,
+        })
+    }
+}
+
+/// Adapter for EventBridge service crate.
+pub struct EventsServiceHandler {
+    inner: Arc<events::DefaultEventsHandler>,
+}
+
+impl ServiceHandler for EventsServiceHandler {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+        let params = serde_json::to_value(&req.params).unwrap_or_default();
+        let events_req = events::protocol::AwsRequest {
+            service: req.service.clone(),
+            operation: req.operation.clone(),
+            account: req.account,
+            region: req.region.clone(),
+            params,
+            body: req.body.clone(),
+        };
+        let resp = self.inner.handle(events_req);
+        let mut headers = std::collections::HashMap::new();
+        for (k, v) in resp.headers {
+            headers.insert(k, v);
+        }
+        Ok(ParsedResponse {
+            status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            headers,
+            body: serde_json::Value::Null,
+            raw: Some(resp.body),
+            raw_bytes: None,
+        })
+    }
+}
+
+/// Adapter for Kinesis service crate.
+pub struct KinesisServiceHandler {
+    inner: Arc<kinesis::DefaultKinesisHandler>,
+}
+
+impl ServiceHandler for KinesisServiceHandler {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+        let params = serde_json::to_value(&req.params).unwrap_or_default();
+        let kinesis_req = kinesis::protocol::AwsRequest {
+            service: req.service.clone(),
+            operation: req.operation.clone(),
+            account: req.account,
+            region: req.region.clone(),
+            params,
+            body: req.body.clone(),
+        };
+        let resp = self.inner.handle(kinesis_req);
+        let mut headers = std::collections::HashMap::new();
+        for (k, v) in resp.headers {
+            headers.insert(k, v);
+        }
+        Ok(ParsedResponse {
+            status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            headers,
+            body: serde_json::Value::Null,
+            raw: Some(resp.body),
+            raw_bytes: None,
+        })
+    }
+}
+
+/// Adapter for Firehose.
+pub struct FirehoseServiceHandler {
+    inner: Arc<firehose::DefaultFirehoseHandler>,
+}
+impl ServiceHandler for FirehoseServiceHandler {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+        let params = serde_json::to_value(&req.params).unwrap_or_default();
+        let r = firehose::protocol::AwsRequest {
+            service: req.service.clone(),
+            operation: req.operation.clone(),
+            account: req.account,
+            region: req.region.clone(),
+            params,
+            body: req.body.clone(),
+        };
+        let resp = self.inner.handle(r);
+        let mut h = std::collections::HashMap::new();
+        for (k, v) in resp.headers {
+            h.insert(k, v);
+        }
+        Ok(ParsedResponse {
+            status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            headers: h,
+            body: serde_json::Value::Null,
+            raw: Some(resp.body),
+            raw_bytes: None,
+        })
+    }
+}
+
+/// Adapter for CloudWatch.
+pub struct CloudWatchServiceHandler {
+    inner: Arc<cloudwatch::DefaultCloudwatchHandler>,
+}
+impl ServiceHandler for CloudWatchServiceHandler {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+        let params = serde_json::to_value(&req.params).unwrap_or_default();
+        let r = cloudwatch::protocol::AwsRequest {
+            service: req.service.clone(),
+            operation: req.operation.clone(),
+            account: req.account,
+            region: req.region.clone(),
+            params,
+            body: req.body.clone(),
+        };
+        let resp = self.inner.handle(r);
+        let mut h = std::collections::HashMap::new();
+        for (k, v) in resp.headers {
+            h.insert(k, v);
+        }
+        Ok(ParsedResponse {
+            status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            headers: h,
+            body: serde_json::Value::Null,
+            raw: Some(resp.body),
+            raw_bytes: None,
+        })
+    }
+}
+
+/// Adapter for ECR.
+pub struct EcrServiceHandler {
+    inner: Arc<ecr::DefaultEcrHandler>,
+}
+impl ServiceHandler for EcrServiceHandler {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+        let params = serde_json::to_value(&req.params).unwrap_or_default();
+        let r = ecr::protocol::AwsRequest {
+            service: req.service.clone(),
+            operation: req.operation.clone(),
+            account: req.account,
+            region: req.region.clone(),
+            params,
+            body: req.body.clone(),
+        };
+        let resp = self.inner.handle(r);
+        let mut h = std::collections::HashMap::new();
+        for (k, v) in resp.headers {
+            h.insert(k, v);
+        }
+        Ok(ParsedResponse {
+            status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            headers: h,
+            body: serde_json::Value::Null,
+            raw: Some(resp.body),
+            raw_bytes: None,
+        })
+    }
+}
+
+/// Adapter for ECS.
+pub struct EcsServiceHandler {
+    inner: Arc<ecs::DefaultEcsHandler>,
+}
+impl ServiceHandler for EcsServiceHandler {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+        let params = serde_json::to_value(&req.params).unwrap_or_default();
+        let r = ecs::protocol::AwsRequest {
+            service: req.service.clone(),
+            operation: req.operation.clone(),
+            account: req.account,
+            region: req.region.clone(),
+            params,
+            body: req.body.clone(),
+        };
+        let resp = self.inner.handle(r);
+        let mut h = std::collections::HashMap::new();
+        for (k, v) in resp.headers {
+            h.insert(k, v);
+        }
+        Ok(ParsedResponse {
+            status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            headers: h,
+            body: serde_json::Value::Null,
+            raw: Some(resp.body),
+            raw_bytes: None,
+        })
+    }
+}
+
+/// Adapter for Step Functions.
+pub struct StepFunctionsServiceHandler {
+    inner: Arc<stepfunctions::DefaultStepfunctionsHandler>,
+}
+impl ServiceHandler for StepFunctionsServiceHandler {
+    fn handle_sync(
+        &self,
+        req: &ParsedRequest,
+    ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
+        let params = serde_json::to_value(&req.params).unwrap_or_default();
+        let r = stepfunctions::protocol::AwsRequest {
+            service: req.service.clone(),
+            operation: req.operation.clone(),
+            account: req.account,
+            region: req.region.clone(),
+            params,
+            body: req.body.clone(),
+        };
+        let resp = self.inner.handle(r);
+        let mut h = std::collections::HashMap::new();
+        for (k, v) in resp.headers {
+            h.insert(k, v);
+        }
+        Ok(ParsedResponse {
+            status: StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            headers: h,
+            body: serde_json::Value::Null,
+            raw: Some(resp.body),
+            raw_bytes: None,
+        })
+    }
+}
+
+/// Handler instances shared between the wire path and the snapshot registry.
+#[derive(Clone)]
+pub struct NativeHandlers {
+    pub sqs: Arc<sqs::DefaultSqsHandler>,
+    pub s3: Arc<s3::DefaultS3Handler>,
+    pub dynamodb: Arc<dynamodb::DefaultDynamoDbHandler>,
+    pub sns: Arc<sns::DefaultSnsHandler>,
+    pub secretsmanager: Arc<secretsmanager::DefaultSecretsManagerHandler>,
+    pub kms: Arc<kms::DefaultKmsHandler>,
+    pub ssm: Arc<ssm::DefaultSsmHandler>,
+    pub iam: Arc<iam::DefaultIamHandler>,
+    pub lambda: Arc<lambda::DefaultLambdaHandler>,
+    pub logs: Arc<cloudwatch_logs::DefaultLogsHandler>,
+    pub events: Arc<events::DefaultEventsHandler>,
+    pub kinesis: Arc<kinesis::DefaultKinesisHandler>,
+    pub firehose: Arc<firehose::DefaultFirehoseHandler>,
+    pub cloudwatch: Arc<cloudwatch::DefaultCloudwatchHandler>,
+    pub ecr: Arc<ecr::DefaultEcrHandler>,
+    pub ecs: Arc<ecs::DefaultEcsHandler>,
+    pub stepfunctions: Arc<stepfunctions::DefaultStepfunctionsHandler>,
+}
+
+impl NativeHandlers {
+    /// Invoke a lambda function with an API Gateway proxy event and shape the
+    /// wire response (mirrors the python executor's proxy handling).
+    pub fn invoke_lambda(
+        &self,
+        account: u64,
+        region: &str,
+        function_name: &str,
+        payload: &serde_json::Value,
+    ) -> axum::response::Response {
+        use axum::response::IntoResponse;
+
+        let anyhow = ("", 0u16);
+        let _ = anyhow;
+        let req = lambda::protocol::AwsRequest {
+            service: "lambda".to_string(),
+            operation: "Invoke".to_string(),
+            account,
+            region: region.to_string(),
+            params: json!({
+                "FunctionName": function_name,
+                "Qualifier": "$LATEST",
+                "Payload": payload.to_string(),
+            }),
+            // The lambda runtime takes the event from the raw request body
+            // (boto's Invoke sends Payload as the body) — the empty body here
+            // is what made proxy events arrive as {}.
+            body: bytes::Bytes::from(payload.to_string()),
+            method: "POST".to_string(),
+            // The lambda handler re-derives the operation from method+path.
+            path: format!("/2015-03-31/functions/{function_name}/invocations"),
+            query_string: String::new(),
+            headers: std::collections::HashMap::new(),
+        };
+        let resp = self.lambda.handle(req);
+        let function_error = resp
+            .headers
+            .iter()
+            .find(|(k, _)| k == "x-amz-function-error")
+            .map(|(_, v)| v.clone())
+            .unwrap_or_default();
+        let body_text = resp.body.clone();
+        let parsed: Value = serde_json::from_str(&body_text).unwrap_or(Value::Null);
+
+        let (status, out_body) = if resp.status == 200 && function_error.is_empty() {
+            match &parsed {
+                Value::Object(obj) if obj.contains_key("statusCode") => {
+                    let code = obj.get("statusCode").cloned().expect("checked above");
+                    let code = code.as_u64().unwrap_or(200);
+                    let out_body = match obj.get("body") {
+                        Some(Value::String(text)) => text.clone(),
+                        Some(other) => other.to_string(),
+                        None => String::new(),
+                    };
+                    (code as u16, out_body)
+                }
+                _ => (200u16, body_text.clone()),
+            }
+        } else {
+            (500, out500(&body_text))
+        };
+
+        (
+            StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            axum::body::Body::from(out_body),
+        )
+            .into_response()
+    }
+}
+
+fn out500(text: &str) -> String {
+    json!({"message": text}).to_string()
+}
+
+/// Registry of service handlers.
+pub struct ServiceRegistry {
+    handlers: HashMap<String, Arc<dyn ServiceHandler>>,
+    /// Shared native handler instances (used by the apigateway executor).
+    pub native: NativeHandlers,
+}
+
+impl ServiceRegistry {
+    /// Create a registry with built-in services, returning the shared
+    /// native handler instances for the state-snapshot registry.
+    pub fn new_with_handlers() -> (Self, NativeHandlers) {
+        let handlers: NativeHandlers = NativeHandlers {
+            sqs: Arc::new(sqs::DefaultSqsHandler::new()),
+            s3: Arc::new(s3::DefaultS3Handler::new()),
+            dynamodb: Arc::new(dynamodb::DefaultDynamoDbHandler::new()),
+            sns: Arc::new(sns::DefaultSnsHandler::new()),
+            secretsmanager: Arc::new(secretsmanager::DefaultSecretsManagerHandler::new()),
+            kms: Arc::new(kms::DefaultKmsHandler::new()),
+            ssm: Arc::new(ssm::DefaultSsmHandler::new()),
+            iam: Arc::new(iam::DefaultIamHandler::new()),
+            lambda: Arc::new(lambda::DefaultLambdaHandler::new()),
+            logs: Arc::new(cloudwatch_logs::DefaultLogsHandler::new()),
+            events: Arc::new(events::DefaultEventsHandler::new()),
+            kinesis: Arc::new(kinesis::DefaultKinesisHandler::new()),
+            firehose: Arc::new(firehose::DefaultFirehoseHandler::new()),
+            cloudwatch: Arc::new(cloudwatch::DefaultCloudwatchHandler::new()),
+            ecr: Arc::new(ecr::DefaultEcrHandler::new()),
+            ecs: Arc::new(ecs::DefaultEcsHandler::new()),
+            stepfunctions: Arc::new(stepfunctions::DefaultStepfunctionsHandler::new()),
+        };
+
+        let mut adapters: HashMap<String, Arc<dyn ServiceHandler>> = HashMap::new();
+
+        // Register STS handler
+        adapters.insert(
+            "sts".to_string(),
+            Arc::new(StsFunctionHandler) as Arc<dyn ServiceHandler>,
+        );
+
+        // Register native handlers (sharing instances with NativeHandlers)
+        adapters.insert(
+            "sqs".to_string(),
+            Arc::new(SqsServiceHandler {
+                inner: handlers.sqs.clone(),
+            }) as Arc<dyn ServiceHandler>,
+        );
+        adapters.insert(
+            "s3".to_string(),
+            Arc::new(S3ServiceHandler {
+                inner: handlers.s3.clone(),
+            }) as Arc<dyn ServiceHandler>,
+        );
+        adapters.insert(
+            "dynamodb".to_string(),
+            Arc::new(DynamoDbServiceHandler {
+                inner: handlers.dynamodb.clone(),
+            }) as Arc<dyn ServiceHandler>,
+        );
+        adapters.insert(
+            "sns".to_string(),
+            Arc::new(SnsServiceHandler {
+                inner: handlers.sns.clone(),
+            }) as Arc<dyn ServiceHandler>,
+        );
+        adapters.insert(
+            "secretsmanager".to_string(),
+            Arc::new(SmServiceHandler {
+                inner: handlers.secretsmanager.clone(),
+            }) as Arc<dyn ServiceHandler>,
+        );
+        adapters.insert(
+            "kms".to_string(),
+            Arc::new(KmsServiceHandler {
+                inner: handlers.kms.clone(),
+            }) as Arc<dyn ServiceHandler>,
+        );
+        adapters.insert(
+            "ssm".to_string(),
+            Arc::new(SsmServiceHandler {
+                inner: handlers.ssm.clone(),
+            }) as Arc<dyn ServiceHandler>,
+        );
+        adapters.insert(
+            "iam".to_string(),
+            Arc::new(IamServiceHandler {
+                inner: handlers.iam.clone(),
+            }) as Arc<dyn ServiceHandler>,
+        );
+        adapters.insert(
+            "lambda".to_string(),
+            Arc::new(LambdaServiceHandler {
+                inner: handlers.lambda.clone(),
+            }) as Arc<dyn ServiceHandler>,
+        );
+        adapters.insert(
+            "logs".to_string(),
+            Arc::new(LogsServiceHandler {
+                inner: handlers.logs.clone(),
+            }) as Arc<dyn ServiceHandler>,
+        );
+        adapters.insert(
+            "events".to_string(),
+            Arc::new(EventsServiceHandler {
+                inner: handlers.events.clone(),
+            }) as Arc<dyn ServiceHandler>,
+        );
+        adapters.insert(
+            "kinesis".to_string(),
+            Arc::new(KinesisServiceHandler {
+                inner: handlers.kinesis.clone(),
+            }) as Arc<dyn ServiceHandler>,
+        );
+        adapters.insert(
+            "firehose".to_string(),
+            Arc::new(FirehoseServiceHandler {
+                inner: handlers.firehose.clone(),
+            }) as Arc<dyn ServiceHandler>,
+        );
+        adapters.insert(
+            "cloudwatch".to_string(),
+            Arc::new(CloudWatchServiceHandler {
+                inner: handlers.cloudwatch.clone(),
+            }) as Arc<dyn ServiceHandler>,
+        );
+        adapters.insert(
+            "ecr".to_string(),
+            Arc::new(EcrServiceHandler {
+                inner: handlers.ecr.clone(),
+            }) as Arc<dyn ServiceHandler>,
+        );
+        adapters.insert(
+            "ecs".to_string(),
+            Arc::new(EcsServiceHandler {
+                inner: handlers.ecs.clone(),
+            }) as Arc<dyn ServiceHandler>,
+        );
+        adapters.insert(
+            "stepfunctions".to_string(),
+            Arc::new(StepFunctionsServiceHandler {
+                inner: handlers.stepfunctions.clone(),
+            }) as Arc<dyn ServiceHandler>,
+        );
+
+        (
+            Self {
+                handlers: adapters,
+                native: NativeHandlers {
+                    sqs: handlers.sqs.clone(),
+                    s3: handlers.s3.clone(),
+                    dynamodb: handlers.dynamodb.clone(),
+                    sns: handlers.sns.clone(),
+                    secretsmanager: handlers.secretsmanager.clone(),
+                    kms: handlers.kms.clone(),
+                    ssm: handlers.ssm.clone(),
+                    iam: handlers.iam.clone(),
+                    lambda: handlers.lambda.clone(),
+                    logs: handlers.logs.clone(),
+                    events: handlers.events.clone(),
+                    kinesis: handlers.kinesis.clone(),
+                    firehose: handlers.firehose.clone(),
+                    cloudwatch: handlers.cloudwatch.clone(),
+                    ecr: handlers.ecr.clone(),
+                    ecs: handlers.ecs.clone(),
+                    stepfunctions: handlers.stepfunctions.clone(),
+                },
+            },
+            handlers,
+        )
+    }
+
+    /// Create a new registry with built-in services.
+    pub fn new() -> Self {
+        Self::new_with_handlers().0
+    }
+
+    /// Get a service handler by name.
+    pub fn get(&self, service: &str) -> Option<Arc<dyn ServiceHandler>> {
+        self.handlers.get(service).cloned()
+    }
+}
+
+impl Default for ServiceRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Application state shared across requests.
+pub struct AppState {
+    pub registry: ServiceRegistry,
+    /// Central (service, snapshot surface) table for the state endpoints.
+    pub snapshots: Arc<crate::core::state::SnapshotRegistry>,
+    /// In-memory named snapshots (`/state/save` without `path`).
+    pub named_snapshots: Arc<crate::core::state::NamedSnapshots>,
+    /// Versioned snapshots (`/state/snapshots/save|load`).
+    pub versioned_snapshots: Arc<crate::core::state::VersionedSnapshots>,
+}
+
+/// Catch-all handler for all AWS API requests.
+pub async fn catch_all_handler(
+    State(state): State<Arc<AppState>>,
+    method: Method,
+    uri: Uri,
+    headers: HeaderMap,
+    body: axum::body::Body,
+) -> impl IntoResponse {
+    let req_start = std::time::Instant::now();
+    let req_method = method.as_str().to_string();
+    let req_path = uri.path().to_string();
+
+    // Read the body
+    let body_bytes = match body.collect().await {
+        Ok(collected) => collected.to_bytes(),
+        Err(e) => {
+            audit_out(
+                None,
+                None,
+                &req_method,
+                &req_path,
+                400,
+                req_start,
+                "",
+                "",
+                Some(format!("Invalid body: {e}")),
+            );
+            return error_response(StatusCode::BAD_REQUEST, "Invalid body");
+        }
+    };
+
+    // Deployed-API execution: /restapis/{api}/{stage}/_user_request_/{path}/
+    // (the ground truth serves these with its own executor, not moto routes).
+    if let Some((api_id, stage, proxy_path)) = crate::core::apigw_exec::match_execute(uri.path()) {
+        // The audit call below needs the account/region rows that are
+        // computed further down; derive them early here.
+        let account =
+            extract_account_from_request(&headers, uri.query().unwrap_or(""), &body_bytes);
+        let account_id = account.to_string();
+        let region_for_audit = extract_region_from_request(&headers)
+            .or_else(|| extract_region_from_query(uri.query().unwrap_or("")))
+            .unwrap_or_else(|| "us-east-1".to_string());
+        let mut exec_headers: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        for (key, value) in headers.iter() {
+            if let Ok(v) = value.to_str() {
+                exec_headers.insert(key.as_str().to_lowercase(), v.to_string());
+            }
+        }
+        let result = crate::core::apigw_exec::execute(
+            &state.registry.native,
+            &method,
+            crate::core::apigw_exec::ExecuteTarget {
+                api_id: &api_id,
+                stage: &stage,
+                proxy_path: &proxy_path,
+            },
+            account,
+            region_for_audit.as_str(),
+            uri.query().unwrap_or(""),
+            &exec_headers,
+            &body_bytes,
+        )
+        .await;
+        audit_out(
+            Some("apigateway"),
+            None,
+            &req_method,
+            &req_path,
+            result.status().as_u16(),
+            req_start,
+            &account_id,
+            &region_for_audit,
+            None,
+        );
+        return result;
+    }
+
+    // Lambda function URL HTTP surface: /lambda-url/{url-id}/{path…}
+    // (served by its own executor like the deployed-API bridge above).
+    // Host form `{url-id}.lambda-url.{region}.on.aws` matches first unless
+    // the request looks like an S3 virtual-host (an S3 bucket named
+    // "lambda-url" would otherwise shadow into this executor).
+    let furl_target = crate::core::furl_exec::match_url(uri.path()).or_else(|| {
+        // The signed Host header carries the function-URL vhost; the connect
+        // host (uri.host()) is 127.0.0.1 on single-port twins and never
+        // matches the pattern.
+        let host = headers
+            .get("host")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or_else(|| uri.host().unwrap_or_default());
+        if looks_like_s3_host(host) {
+            return None;
+        }
+        crate::core::furl_exec::match_url_host(host).map(|t| crate::core::furl_exec::FurlTarget {
+            url_id: t.url_id,
+            sub_path: String::new(),
+            host_region: Some(t.region),
+        })
+    });
+    if let Some(target) = furl_target {
+        let account =
+            extract_account_from_request(&headers, uri.query().unwrap_or(""), &body_bytes);
+        let account_id = account.to_string();
+        let region_for_audit = extract_region_from_request(&headers)
+            .or_else(|| extract_region_from_query(uri.query().unwrap_or("")))
+            .unwrap_or_else(|| "us-east-1".to_string());
+        let mut exec_headers: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        for (key, value) in headers.iter() {
+            if let Ok(v) = value.to_str() {
+                exec_headers.insert(key.as_str().to_lowercase(), v.to_string());
+            }
+        }
+        let result = crate::core::furl_exec::execute(
+            &state.registry.native,
+            &method,
+            target,
+            account,
+            &body_bytes,
+            &exec_headers,
+            uri.query().unwrap_or(""),
+        );
+        audit_out(
+            Some("lambda"),
+            None,
+            &req_method,
+            &req_path,
+            result.status().as_u16(),
+            req_start,
+            &account_id,
+            &region_for_audit,
+            None,
+        );
+        return result;
+    }
+
+    // Determine service from URI and headers
+    let service = match extract_service(&method, &uri, &headers, &body_bytes) {
+        Ok(s) => refine_service_for_body(&s, &body_bytes),
+        Err(e) => {
+            audit_out(
+                None,
+                None,
+                &req_method,
+                &req_path,
+                400,
+                req_start,
+                "",
+                "",
+                Some(format!("Could not determine service: {e}")),
+            );
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                &format!("Could not determine service: {}", e),
+            );
+        }
+    };
+
+    // Add the path to headers for REST operation resolution
+    let mut headers_with_path = headers.clone();
+    if let Ok(path_val) = HeaderValue::from_str(uri.path()) {
+        headers_with_path.insert("x-robotocore-path", path_val);
+    }
+
+    // Determine operation (may be empty for REST services like S3 where
+    // the operation is derived from method + path + query params)
+    let query_string = uri.query().unwrap_or("").to_string();
+    let operation = extract_operation(
+        &method,
+        &headers_with_path,
+        &body_bytes,
+        &service,
+        &query_string,
+    )
+    .unwrap_or_default();
+
+    // Extract account from Authorization header or default
+    let account = extract_account_from_request(&headers, uri.query().unwrap_or(""), &body_bytes);
+    let region = extract_region_from_request(&headers)
+        .or_else(|| extract_region_from_query(uri.query().unwrap_or("")))
+        .unwrap_or_else(|| "us-east-1".to_string());
+    let account_id = account.to_string();
+    let region_for_audit = region.clone();
+
+    // Chaos fault injection runs where the python twin's handler chain ran
+    // it — right after context population, before service dispatch.
+    if let Some(injected) = crate::core::chaos::intercept(
+        &service,
+        &operation,
+        &method,
+        uri.path(),
+        &query_string,
+        &region_for_audit,
+        account,
+    )
+    .await
+    {
+        audit_out(
+            Some(&service),
+            opt_op(&injected.operation),
+            &req_method,
+            &req_path,
+            injected.response.status().as_u16(),
+            req_start,
+            &account_id,
+            &region_for_audit,
+            Some(format!("Injected by chaos rule {}", injected.rule_id)),
+        );
+        return injected.response;
+    }
+
+    // Parse request parameters based on protocol
+    let content_type = headers
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let params = if content_type.contains("json") {
+        crate::core::protocol::parse_json_protocol(&body_bytes).unwrap_or_default()
+    } else {
+        parse_query_protocol(&body_bytes).unwrap_or_default()
+    };
+
+    // Build headers map (lowercase keys)
+    let mut header_map: HashMap<String, String> = HashMap::new();
+    for (k, v) in headers.iter() {
+        if let Ok(v) = v.to_str() {
+            header_map.insert(k.as_str().to_lowercase(), v.to_string());
+        }
+    }
+
+    // Create ParsedRequest
+    let parsed_req = ParsedRequest {
+        service: service.clone(),
+        operation: operation.clone(),
+        params,
+        body: body_bytes.clone(),
+        region,
+        account,
+        method: method.as_str().to_string(),
+        path: uri.path().to_string(),
+        query_string: uri.query().unwrap_or("").to_string(),
+        headers: header_map,
+    };
+
+    // Get service handler
+    let handler = state.registry.get(&service);
+    crate::core::introspection::bump_requests(&service);
+    let handler = match handler {
+        Some(h) => h,
+        None => {
+            // Rotocore is the in-process moto replacement: services that
+            // are not in the gateway core dispatch here. unported ones
+            // fall through to the generic 501 NotImplemented below.
+            // rotocore backends may block on sibling services (loopback
+            // mirror calls), so run the sync dispatch on the blocking
+            // thread pool — never on the async workers, which must stay
+            // free to accept/serve those loopback calls.
+            let mut rot_headers = parsed_req.headers.clone();
+            if !rot_req_headers_have_host(&rot_headers) {
+                // Axum strips Host from HeaderMap; recover it from the
+                // authority so backends that must call back to *this*
+                // twin (the cfnresponse receiver URL, cf
+                // mirror::callback_base) answer the address the caller
+                // actually hit — env values still take precedence inside
+                // rotocore, and the hardcoded 4566 fallback logs.
+                if let Some(authority) = uri.authority() {
+                    rot_headers.insert("host".to_string(), authority.as_str().to_string());
+                }
+            }
+            let rot_req = rotocore::Request {
+                service: service.clone(),
+                operation: parsed_req.operation.clone(),
+                method: parsed_req.method.clone(),
+                path: parsed_req.path.clone(),
+                query_string: parsed_req.query_string.clone(),
+                headers: rot_headers,
+                body: parsed_req.body.clone(),
+                account: parsed_req.account,
+                region: parsed_req.region.clone(),
+            };
+            let dispatch_result =
+                tokio::task::spawn_blocking(move || rotocore::dispatch(&rot_req)).await;
+            if let Ok(Some(resp)) = dispatch_result {
+                let note = audit_error_note(resp.status, &resp.body);
+                audit_out(
+                    Some(&service),
+                    opt_op(&parsed_req.operation),
+                    &req_method,
+                    &req_path,
+                    resp.status,
+                    req_start,
+                    &account_id,
+                    &region_for_audit,
+                    note,
+                );
+                let status =
+                    StatusCode::from_u16(resp.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+                let mut headers: HashMap<String, String> = HashMap::new();
+                for (k, v) in resp.headers {
+                    headers.insert(k, v);
+                }
+                let parsed = crate::core::protocol::ParsedResponse {
+                    status,
+                    headers,
+                    body: serde_json::Value::Null,
+                    raw: None,
+                    raw_bytes: Some(resp.body),
+                };
+                return response_from_parsed(parsed, &service, &parsed_req.operation);
+            }
+            let msg = format!("Service {} not implemented", service);
+            audit_out(
+                Some(&service),
+                opt_op(&operation),
+                &req_method,
+                &req_path,
+                501,
+                req_start,
+                &account_id,
+                &region_for_audit,
+                Some(msg.clone()),
+            );
+            return error_response(StatusCode::NOT_IMPLEMENTED, &msg);
+        }
+    };
+
+    // Handle request with a timeout to catch runaway tasks. The blanket is
+    // the server default of 30s, raised per request for handlers whose
+    // execution budget can exceed it (docker-mode lambda invokes ask for
+    // function Timeout + 15; see ServiceHandler::request_timeout_secs).
+    let handler = handler.clone();
+    let parsed_req = Arc::new(parsed_req);
+    let service = service.clone();
+    let timeout_secs: u64 = handler
+        .request_timeout_secs(parsed_req.as_ref())
+        .unwrap_or(30);
+
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(timeout_secs),
+        tokio::task::spawn_blocking(move || {
+            let req = parsed_req.as_ref();
+            match handler.handle_sync(req) {
+                Ok(resp) => Ok((resp, req.operation.clone())),
+                Err(e) => Err(e.to_string()),
+            }
+        }),
+    )
+    .await;
+
+    match result {
+        Ok(Ok(Ok((resp, op)))) => {
+            // Error snapshots: the wire body lands in raw_bytes (binary/xml)
+            // or `raw` (pre-serialized strings); JSON-protocol envelopes put
+            // the envelope in `body` only. Reconstruct whichever exists.
+            let wire_body: Vec<u8> = match (&resp.raw_bytes, &resp.raw) {
+                (Some(b), _) => b.clone(),
+                (None, Some(r)) => r.clone().into_bytes(),
+                (None, None) => serde_json::to_vec(&resp.body).unwrap_or_default(),
+            };
+            let note = audit_error_note(resp.status.as_u16(), &wire_body);
+            audit_out(
+                Some(&service),
+                opt_op(&op),
+                &req_method,
+                &req_path,
+                resp.status.as_u16(),
+                req_start,
+                &account_id,
+                &region_for_audit,
+                note,
+            );
+            response_from_parsed(resp, &service, &op)
+        }
+        Ok(Ok(Err(e))) => {
+            audit_out(
+                Some(&service),
+                opt_op(&operation),
+                &req_method,
+                &req_path,
+                500,
+                req_start,
+                &account_id,
+                &region_for_audit,
+                Some(e.clone()),
+            );
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, &e)
+        }
+        Ok(Err(e)) => {
+            let msg = format!("Handler task failed: {}", e);
+            audit_out(
+                Some(&service),
+                opt_op(&operation),
+                &req_method,
+                &req_path,
+                500,
+                req_start,
+                &account_id,
+                &region_for_audit,
+                Some(msg.clone()),
+            );
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, &msg)
+        }
+        Err(_) => {
+            tracing::warn!(
+                "Request timed out after {}s: {} {}",
+                timeout_secs,
+                method,
+                uri
+            );
+            audit_out(
+                Some(&service),
+                opt_op(&operation),
+                &req_method,
+                &req_path,
+                504,
+                req_start,
+                &account_id,
+                &region_for_audit,
+                Some(format!("Request timed out after {timeout_secs}s")),
+            );
+            error_response(StatusCode::GATEWAY_TIMEOUT, "Request timed out")
+        }
+    }
+}
+
+/// A short error snapshot for the audit row of a >=400 response: prefer the
+/// JSON envelope's "message", else the trimmed raw text. Bounded so
+/// pathological bodies can't bloat the audit ring.
+fn audit_error_note(status: u16, body: &[u8]) -> Option<String> {
+    if status < 400 || body.is_empty() {
+        return None;
+    }
+    const LIMIT: usize = 256;
+    let text = String::from_utf8_lossy(body);
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let preferred = if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
+        v.get("message")
+            .and_then(serde_json::Value::as_str)
+            .map(String::from)
+            .unwrap_or_else(|| trimmed.to_string())
+    } else {
+        trimmed.to_string()
+    };
+    if preferred.len() <= LIMIT {
+        return Some(preferred);
+    }
+    // Manual char-boundary safe cut.
+    let mut cut = LIMIT;
+    while !preferred.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    Some(format!("{}…", &preferred[..cut]))
+}
+
+/// Build an audit record for a completed request (Python audit-log shape).
+#[allow(clippy::too_many_arguments)]
+fn audit_out(
+    service: Option<&str>,
+    operation: Option<&str>,
+    method: &str,
+    path: &str,
+    status: u16,
+    start: std::time::Instant,
+    account_id: &str,
+    region: &str,
+    error: Option<String>,
+) {
+    crate::core::introspection::record(crate::core::introspection::AuditEntry {
+        timestamp: crate::core::introspection::epoch_now(),
+        service: service.unwrap_or("unknown").to_string(),
+        operation: operation.map(|s| s.to_string()),
+        method: method.to_string(),
+        path: path.to_string(),
+        status_code: status,
+        // ms with µs (3-decimal) precision, as Python's round(ms, 3)
+        duration_ms: (start.elapsed().as_secs_f64() * 1.0e6).round() / 1.0e3,
+        account_id: account_id.to_string(),
+        region: region.to_string(),
+        error,
+    });
+}
+
+/// ELB Classic and ELBv2 share the signing name `elasticloadbalancing`.
+/// The router disambiguates by the `Version=2012-06-01` query parameter, but
+/// boto3 sends that version inside the urlencoded form body, so the gateway
+/// consults it here before the elbv2 arm swallows the request.
+fn refine_service_for_body(service: &str, body: &[u8]) -> String {
+    if service != "elbv2" {
+        return service.to_string();
+    }
+    let form = String::from_utf8_lossy(body);
+    let has_version = form
+        .split('&')
+        .any(|pair| pair == "Version=2012-06-01" || pair.starts_with("Version=2012-06-01&"));
+    if has_version {
+        "elb".to_string()
+    } else {
+        service.to_string()
+    }
+}
+
+/// Axum strips `Host` from HeaderMap; detect its presence so the
+/// rotocore dispatch layer can recover it from the URI authority.
+fn rot_req_headers_have_host(headers: &HashMap<String, String>) -> bool {
+    headers.keys().any(|k| k.eq_ignore_ascii_case("host"))
+}
+
+fn opt_op(operation: &str) -> Option<&str> {
+    (!operation.is_empty()).then_some(operation)
+}
+
+/// Health check endpoint
+pub async fn health_handler() -> impl IntoResponse {
+    let health = json!({
+        "status": "running",
+        "version": env!("CARGO_PKG_VERSION"),
+        "uptime_seconds": crate::core::introspection::uptime_seconds(),
+        "services": registry_service_statuses()
+    });
+
+    (StatusCode::OK, axum::Json(health))
+}
+
+/// Names of every service with a native handler in this build.
+pub const NATIVE_SERVICES: &[&str] = &[
+    "sts",
+    "sqs",
+    "s3",
+    "dynamodb",
+    "sns",
+    "secretsmanager",
+    "kms",
+    "ssm",
+    "iam",
+    "lambda",
+    "logs",
+    "events",
+    "kinesis",
+    "firehose",
+    "cloudwatch",
+    "ecr",
+    "ecs",
+    "stepfunctions",
+];
+
+/// Service names present in the gateway's own registry.
+///
+/// `service_is_native` is consulted once per registry entry on every
+/// introspection request (~157 entries), and constructing a throwaway
+/// `ServiceRegistry` — seventeen default handlers plus the adapter map — for
+/// each probe dominated the health/services endpoints. The handler set is
+/// fixed at compile time, so derive the names from the real constructed
+/// table exactly once and reuse them; the introspection labels stay derived
+/// from real handler tables rather than a hardcoded list.
+fn gateway_native_service_names() -> &'static HashSet<String> {
+    static NAMES: OnceLock<HashSet<String>> = OnceLock::new();
+    NAMES.get_or_init(|| ServiceRegistry::new().handlers.keys().cloned().collect())
+}
+
+fn service_is_native(name: &str) -> bool {
+    // The gateway's own handler table plus rotocore's armed backends. The
+    // registry's static "type" column is stale for both directions, so
+    // introspection derives availability from the real tables.
+    gateway_native_service_names().contains(name) || rotocore::handles_service(name)
+}
+
+fn registry_service_statuses() -> serde_json::Map<String, serde_json::Value> {
+    // Full sorted registry: every service reports status/type/request-count.
+    // "type" is truthful: "native" when a Rust backend answers in-process,
+    // "absent" when requests would get a 501 NotImplemented.
+    let mut map = serde_json::Map::new();
+    for (name, _stype, _protocol, _description) in crate::core::service_registry::SERVICE_REGISTRY {
+        map.insert(
+            name.to_string(),
+            json!({
+                "status": "running",
+                "type": if service_is_native(name) { "native" } else { "absent" },
+                "requests": crate::core::introspection::request_count(name),
+            }),
+        );
+    }
+    map
+}
+
+/// Runtime families report.
+///
+/// Field contract mirrors the Python endpoint (`available` sorted, `all`
+/// equal to _ALL_RUNTIME_FAMILIES). Honesty rule: a family may only appear in
+/// `available` when the Rust lambda handler can actually execute it — keep
+/// this list truthful, not aspirational. Executors live in `crates/lambda`:
+/// the in-process executors cover python/custom (and nodejs when the host has
+/// a `node` binary), and the docker executor (`LAMBDA_EXECUTOR=docker`) runs
+/// every runtime mapped to an official AWS runtime image — including the
+/// managed java/dotnet/ruby families — in containers. Like the python twin
+/// (befd9a8b), the endpoint reports the server's actual capability, not this
+/// process's PATH.
+pub async fn runtimes_handler() -> impl IntoResponse {
+    let all = _ALL_RUNTIME_FAMILIES;
+    let available = available_runtime_families();
+    (
+        StatusCode::OK,
+        axum::Json(json!({ "available": available, "all": all })),
+    )
+}
+
+/// Same tuples array as the python gateway's `_ALL_RUNTIME_FAMILIES`.
+pub const _ALL_RUNTIME_FAMILIES: [&str; 6] =
+    ["custom", "dotnet", "java", "nodejs", "python", "ruby"];
+
+/// Executor + toolchain availability for this server:
+/// - Host (local-mode) families: `python` runs in-process (the shim) and
+///   `custom` through /bin/sh-style bootstrap: always available. `nodejs`
+///   has an in-process executor and needs a `node` binary at invoke time:
+///   present only when the host has one (python era: `which node`).
+/// - `LAMBDA_EXECUTOR=docker`: the docker executor runs every runtime mapped
+///   to an official AWS runtime image in a container, so the families those
+///   runtimes belong to (java/dotnet/ruby among them) are unioned in whenever
+///   the daemon answers. This is the python-era semantics (befd9a8b): the
+///   endpoint reflects the server's actual capability, not this process's
+///   PATH — a containerized twin with no local toolchains still reports the
+///   managed families it can execute.
+fn available_runtime_families() -> Vec<&'static str> {
+    let mut available: Vec<&'static str> = vec!["custom", "python"];
+    if which("node") || which("nodejs") {
+        available.push("nodejs");
+    }
+    if let Some(families) = docker_capability_runtimes_cached() {
+        for family in families {
+            if !available.contains(&family) {
+                available.push(family);
+            }
+        }
+    }
+    available.sort_unstable();
+    available
+}
+
+/// Probe-cache for the docker executor's runtime families.
+///
+/// `docker_capability_runtimes()` shells out to `docker info` (2s timeout)
+/// whenever the executor is in docker mode, and this endpoint is polled
+/// (health checks, test collection) — without caching every poll would pay
+/// the daemon round-trip. The answer is therefore cached for 5s, keyed by
+/// executor mode so a pod (or test) flipping `LAMBDA_EXECUTOR` sees fresh
+/// results instead of a stale mode's probe. Daemon state changes are picked
+/// up within the TTL window, which is acceptable for a capability report.
+/// Cached docker capability report: instant of probe, executor mode it was
+/// probed under, and the families the docker executor covers at that instant.
+type DockerCapabilityCache = Option<(Instant, String, Option<Vec<&'static str>>)>;
+
+fn docker_capability_runtimes_cached() -> Option<Vec<&'static str>> {
+    static CACHE: Mutex<DockerCapabilityCache> = Mutex::new(None);
+    let mode = lambda::docker_runtime::executor_mode();
+    let mut guard = CACHE.lock();
+    if let Some((at, cached_mode, families)) = guard.as_ref() {
+        if *cached_mode == mode && at.elapsed() < Duration::from_secs(5) {
+            return families.clone();
+        }
+    }
+    let families = lambda::docker_runtime::docker_capability_runtimes();
+    *guard = Some((Instant::now(), mode, families.clone()));
+    families
+}
+
+/// shutil.which equivalent over PATH without spawning a process.
+fn which(bin: &str) -> bool {
+    if let Some(paths) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&paths) {
+            if dir.join(bin).is_file() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+#[cfg(test)]
+mod runtime_families_tests {
+    use super::*;
+
+    /// Env mutation (executor mode) is process-global and `available_runtime_
+    /// families()` reads it — serialize every test below on this guard, like
+    /// the crate's docker-executor tests do.
+    static ENV_GUARD: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn available_is_sorted_subset_of_all() {
+        let _guard = ENV_GUARD.lock();
+        let available = available_runtime_families();
+        assert!(available.contains(&"custom"));
+        assert!(available.contains(&"python"));
+        // Local mode: nodejs appears exactly when the host has node
+        // (python-era probe), and the managed families stay out — that is
+        // the pre-docker contract. Docker mode: the docker executor serves
+        // nodejs from its mapped runtime image and runs java/dotnet/ruby in
+        // containers, so those families are unioned in (test below).
+        let docker_mode = lambda::docker_runtime::executor_mode() == "docker"
+            && lambda::docker_runtime::docker_available(2);
+        if !docker_mode {
+            assert_eq!(
+                available.contains(&"nodejs"),
+                which("node") || which("nodejs")
+            );
+            for absent_family in ["java", "ruby", "dotnet"] {
+                assert!(
+                    !available.contains(&absent_family),
+                    "{absent_family} must not be available outside docker mode"
+                );
+            }
+        }
+        let mut sorted = available.clone();
+        sorted.sort_unstable();
+        assert_eq!(available, sorted, "python twin reported available sorted");
+        for &family in &available {
+            assert!(
+                _ALL_RUNTIME_FAMILIES.contains(&family),
+                "{family} not in all-list"
+            );
+        }
+    }
+
+    /// Docker mode unions in the families the executor's mapped runtime
+    /// images cover — the endpoint reflects server capability (containers),
+    /// not this process's PATH (python-era befd9a8b semantics).
+    #[test]
+    fn docker_mode_unions_managed_runtime_families() {
+        // Same guard as the crate's live-docker tests: no daemon, no test.
+        if !lambda::docker_runtime::docker_available(2) {
+            return;
+        }
+        let _guard = ENV_GUARD.lock();
+        let saved = std::env::var("LAMBDA_EXECUTOR").ok();
+        std::env::set_var("LAMBDA_EXECUTOR", "docker");
+        // The probe cache is keyed by mode, so the first docker-mode call
+        // re-probes instead of reusing a local-mode answer.
+        let available = available_runtime_families();
+        match saved {
+            Some(v) => std::env::set_var("LAMBDA_EXECUTOR", v),
+            None => std::env::remove_var("LAMBDA_EXECUTOR"),
+        }
+        for family in ["python", "nodejs", "java", "dotnet", "ruby", "custom"] {
+            assert!(
+                available.contains(&family),
+                "docker mode must report {family} available; got {available:?}"
+            );
+        }
+        assert_eq!(
+            available, _ALL_RUNTIME_FAMILIES,
+            "the docker executor's mapped runtimes cover the full family list"
+        );
+    }
+}
+
+/// Config endpoint
+pub async fn config_handler() -> impl IntoResponse {
+    let config = json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "debug": false,
+        // The twin's botocore data is embedded at build time (chunks/);
+        // the python-era specifications_dir only mattered when the old
+        // product read botocore from a live python install.
+        "specifications_dir": std::env::var("ROBOTOCORE_SPECS_DIR")
+            .unwrap_or_else(|_| "embedded".to_string())
+    });
+
+    (StatusCode::OK, axum::Json(config))
+}
+
+/// `POST /_robotocore/config` — runtime config updates, mirroring the
+/// python twin's behavior verbatim: 403 unless the twin was launched with
+/// `ENABLE_CONFIG_UPDATES=1`, 400 for empty/invalid/non-object bodies and
+/// non-whitelisted keys, `{"status": "updated", "updated": {...}}` on
+/// success.
+///
+/// Values are stored in the runtime-config override table and reflected by
+/// future `runtime_config::get(key)` readers. Only keys with a live
+/// consumer are accepted: whitelisted-but-unconsumed keys answer 400 rather
+/// than a silent no-op (see `core::runtime_config::CONSUMED_SETTINGS`).
+pub async fn config_update_handler(body: axum::body::Bytes) -> Response {
+    const DISABLED: &str = "Runtime config updates are disabled. Set ENABLE_CONFIG_UPDATES=1.";
+    if !crate::core::runtime_config::updates_enabled() {
+        return (
+            StatusCode::FORBIDDEN,
+            axum::Json(json!({ "error": DISABLED })),
+        )
+            .into_response();
+    }
+    if body.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            axum::Json(json!({ "error": "No settings provided" })),
+        )
+            .into_response();
+    }
+    let updates: serde_json::Value = match serde_json::from_slice(&body) {
+        Ok(v) => v,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                axum::Json(json!({ "error": "Invalid JSON" })),
+            )
+                .into_response()
+        }
+    };
+    let Some(updates) = updates.as_object() else {
+        return (
+            StatusCode::BAD_REQUEST,
+            axum::Json(json!({ "error": "Expected JSON object" })),
+        )
+            .into_response();
+    };
+    let mut updated = serde_json::Map::new();
+    for (key, value) in updates {
+        // python twin echoes str(value): `True`/`None`/`['a']` shapes.
+        let value_str = crate::core::runtime_config::python_repr(value);
+        if !crate::core::runtime_config::MUTABLE_SETTINGS
+            .iter()
+            .any(|(k, _)| k == key)
+        {
+            return (
+                StatusCode::BAD_REQUEST,
+                axum::Json(
+                    json!({ "error": format!("Setting {key} cannot be changed at runtime") }),
+                ),
+            )
+                .into_response();
+        }
+        // Only keys with a live rust consumer may be stored. Accepting
+        // ENFORCE_IAM-style keys with no reader would be a silent bypass:
+        // the 200 would claim enforcement changed while nothing reads the
+        // override (see `core::runtime_config::CONSUMED_SETTINGS`).
+        if !crate::core::runtime_config::CONSUMED_SETTINGS
+            .iter()
+            .any(|k| *k == key)
+        {
+            return (
+                StatusCode::BAD_REQUEST,
+                axum::Json(json!({ "error": format!(
+                    "Setting {key} has no consumer in the rust gateway; \
+                     updates are rejected instead of silently ignored"
+                )})),
+            )
+                .into_response();
+        }
+        crate::core::runtime_config::set(key, value_str.clone());
+        updated.insert(key.clone(), json!(value_str));
+    }
+    (
+        StatusCode::OK,
+        axum::Json(json!({ "status": "updated", "updated": updated })),
+    )
+        .into_response()
+}
+
+/// Audit endpoint: `?limit=N` recent call records.
+pub async fn audit_handler(uri: Uri) -> impl IntoResponse {
+    // Python: `limit = int(request.query_params.get("limit", "100"))` —
+    // `int()` trims whitespace and accepts `+`/`-` signs, so `/audit?limit=
+    // %205` or `?limit=-1` were accepted there, not 400s. Negative values
+    // keep python slicing semantics (recent_entries): `-1` returns all
+    // entries except the oldest one.
+    let limit = match uri.query().and_then(|q| {
+        q.split('&').find_map(|kv| {
+            let (k, v) = kv.split_once('=')?;
+            (k == "limit").then_some(v)
+        })
+    }) {
+        Some(v) => match parse_audit_limit(v) {
+            Ok(n) => n,
+            Err(_) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    axum::Json(json!({"error": "limit must be an integer"})),
+                );
+            }
+        },
+        None => 100,
+    };
+    let entries = crate::core::introspection::recent_entries(limit, None, None);
+    (
+        StatusCode::OK,
+        axum::Json(json!({
+            "entries": entries,
+            "count": entries.len(),
+        })),
+    )
+}
+
+/// Python-parity `int()` of the raw `?limit=` query value: percent-decode
+/// (`%20`), treat a bare `+` as space (urllib `parse_qs` does), trim, then
+/// `i64` so signs parse. Anything non-numeric is rejected like python's
+/// `int()` raising `ValueError`.
+fn parse_audit_limit(raw: &str) -> Result<i64, ()> {
+    let decoded = urlencoding::decode(raw)
+        .map(|c| c.into_owned())
+        .unwrap_or_default();
+    decoded
+        .replace('+', " ")
+        .trim()
+        .parse::<i64>()
+        .map_err(|_| ())
+}
+
+/// Per-service protocol listing: `GET /_robotocore/services`.
+///
+/// Mirrors the Python server: every registry entry with its
+/// native/moto status, protocol, description and enabled flag,
+/// sorted by name (the table is already sorted).
+pub async fn services_handler() -> impl IntoResponse {
+    let entries: Vec<serde_json::Value> = crate::core::service_registry::SERVICE_REGISTRY
+        .iter()
+        .map(|(name, _stype, protocol, description)| {
+            let native = service_is_native(name);
+            json!({
+                "name": name,
+                "status": if native { "native" } else { "absent" },
+                "protocol": protocol,
+                "description": description,
+                "enabled": native,
+            })
+        })
+        .collect();
+    (StatusCode::OK, axum::Json(json!({ "services": entries })))
+}
+
+/// Error usage summary: `GET /_robotocore/usage/errors`.
+pub async fn usage_errors_handler() -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        axum::Json(crate::core::introspection::error_summary()),
+    )
+}
+
+/// Build the Axum router.
+pub fn build_router(
+    registry: ServiceRegistry,
+    snapshots: Arc<crate::core::state::SnapshotRegistry>,
+) -> Router {
+    let state = Arc::new(AppState {
+        registry,
+        snapshots,
+        named_snapshots: Arc::new(crate::core::state::NamedSnapshots::default()),
+        versioned_snapshots: Arc::new(crate::core::state::VersionedSnapshots::default()),
+    });
+
+    Router::new()
+        .route("/_robotocore/health", get(health_handler))
+        .route(
+            "/_robotocore/config",
+            get(config_handler).post(config_update_handler),
+        )
+        .route("/_robotocore/audit", get(audit_handler))
+        .route("/_robotocore/runtimes", get(runtimes_handler))
+        .route("/_robotocore/services", get(services_handler))
+        .route("/_robotocore/usage/errors", get(usage_errors_handler))
+        // State save/load/reset (Cloud Pods-style snapshots). Python-era
+        // gateway exposed save/load as POST-only (`gateway/app.py:1353-1354`);
+        // keep the methods tight so audit logs can't be tricked into random
+        // GET-triggered writes either.
+        .route("/_robotocore/state/save", post(state_save_handler))
+        .route("/_robotocore/state/load", post(state_load_handler))
+        .route("/_robotocore/state/reset", post(state_reset_handler))
+        .route(
+            "/_robotocore/state/snapshots",
+            get(state_snapshots_list_handler),
+        )
+        .route(
+            "/robotocore/state/snapshots",
+            get(state_snapshots_list_handler),
+        )
+        .route(
+            "/_robotocore/state/snapshots/save",
+            post(state_snapshot_save_handler),
+        )
+        .route(
+            "/_robotocore/state/snapshots/load",
+            post(state_snapshot_load_handler),
+        )
+        .route("/_robotocore/state/export", get(state_export_handler))
+        .route("/_robotocore/state/import", post(state_import_handler))
+        // Chaos engineering fault-injection admin API
+        // (python-era `/_robotocore/chaos/*` port)
+        .route(
+            "/_robotocore/chaos/rules",
+            get(crate::core::chaos::chaos_list_rules).post(crate::core::chaos::chaos_add_rule),
+        )
+        .route(
+            "/_robotocore/chaos/rules/clear",
+            post(crate::core::chaos::chaos_clear_rules),
+        )
+        .route(
+            "/_robotocore/chaos/rules/:rule_id",
+            delete(crate::core::chaos::chaos_delete_rule),
+        )
+        .fallback(catch_all_handler)
+        .with_state(state)
+}
+
+// ---------------------------------------------------------------------------
+// State save/load endpoints
+// ---------------------------------------------------------------------------
+
+/// Parse the JSON request body for state endpoints ({} for empty bodies).
+/// Small error type so the `Err` variant stays cheap to return inline.
+type StateBodyError = (StatusCode, axum::Json<serde_json::Value>);
+
+fn state_body(body: axum::body::Bytes) -> Result<serde_json::Value, StateBodyError> {
+    if body.is_empty() {
+        return Ok(serde_json::Value::Object(serde_json::Map::new()));
+    }
+    serde_json::from_slice::<serde_json::Value>(&body).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            axum::Json(json!({"error": format!("Invalid JSON: {e}")})),
+        )
+    })
+}
+
+/// Read a string parameter from body or query string.
+fn body_str<'a>(
+    params: &'a serde_json::Value,
+    key: &str,
+    query: Option<&'a str>,
+) -> Option<String> {
+    if let Some(v) = params.get(key) {
+        if let Some(s) = v.as_str() {
+            if !s.is_empty() {
+                return Some(s.to_string());
+            }
+        }
+    }
+    query.and_then(|q| {
+        q.split('&').find_map(|kv| {
+            let (k, v) = kv.split_once('=')?;
+            if k != key {
+                return None;
+            }
+            let decoded = urlencoding::decode(v).ok()?.into_owned();
+            (!decoded.is_empty()).then_some(decoded)
+        })
+    })
+}
+
+/// `services` filter: JSON array, comma-separated string, or query `?services=a,b`.
+fn services_filter(params: &serde_json::Value, query: Option<&str>) -> Option<Vec<String>> {
+    let from_param = params.get("services").cloned();
+    let from_query = query.and_then(|q| {
+        q.split('&').find_map(|kv| {
+            let (k, v) = kv.split_once('=')?;
+            (k == "services").then_some(v.to_string())
+        })
+    });
+    let parsed = from_param
+        .map(|v| match v {
+            serde_json::Value::Array(items) => items
+                .iter()
+                .filter_map(|i| i.as_str().map(String::from))
+                .collect::<Vec<String>>(),
+            serde_json::Value::String(s) => s
+                .split(',')
+                .map(|x| x.trim().to_string())
+                .filter(|x| !x.is_empty())
+                .collect(),
+            _ => Vec::new(),
+        })
+        .or_else(|| {
+            from_query.map(|s| {
+                s.split(',')
+                    .map(|x| x.trim().to_string())
+                    .filter(|x| !x.is_empty())
+                    .collect::<Vec<_>>()
+            })
+        });
+    parsed.filter(|v| !v.is_empty())
+}
+
+/// Save handler: `POST /_robotocore/state/save`.
+///
+/// Snapshot `name`s are validated python-era style
+/// (`state::validate_snapshot_name`, state/manager.py:545-561): traversal
+/// names answer 400.
+pub async fn state_save_handler(
+    State(state): State<Arc<AppState>>,
+    uri: Uri,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    let params = match state_body(body) {
+        Ok(b) => b,
+        Err((status, body)) => return (status, body).into_response(),
+    };
+    let query = uri.query();
+    let path = body_str(&params, "path", query);
+    let name = body_str(&params, "name", query);
+    let services = services_filter(&params, query);
+
+    let (saved_names, state_value) = state.snapshots.snapshot(services.as_deref());
+
+    match path {
+        Some(dir) => {
+            let value = json!({
+                "version": "1.0",
+                "saved_at": crate::core::introspection::epoch_now(),
+                "name": name.clone(),
+                "services": saved_names.clone(),
+                "state": state_value,
+            });
+            match crate::core::state::save_to_path(&dir, name.as_deref(), &value) {
+                Ok(file) => {
+                    let shown_path = match name.as_deref() {
+                        Some(_) => file,
+                        None => dir,
+                    };
+                    (
+                        StatusCode::OK,
+                        axum::Json(json!({
+                            "status": "saved",
+                            "path": shown_path,
+                            "services": saved_names,
+                        })),
+                    )
+                        .into_response()
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::InvalidInput => (
+                    StatusCode::BAD_REQUEST,
+                    axum::Json(json!({"error": e.to_string()})),
+                )
+                    .into_response(),
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    axum::Json(json!({"error": format!("Could not save state: {e}")})),
+                )
+                    .into_response(),
+            }
+        }
+        None => {
+            // No path: keep an in-memory named snapshot.
+            let snap_name = name.unwrap_or_else(|| "default".to_string());
+            let Some(obj) = state_value.as_object() else {
+                return error_response(StatusCode::INTERNAL_SERVER_ERROR, "snapshot failed");
+            };
+            state
+                .named_snapshots
+                .put(crate::core::state::NamedSnapshot {
+                    name: snap_name.clone(),
+                    created_at: crate::core::introspection::epoch_now(),
+                    services: saved_names.clone(),
+                    state: obj.clone(),
+                });
+            (
+                StatusCode::OK,
+                axum::Json(json!({
+                    "status": "saved",
+                    "path": format!("memory://{snap_name}"),
+                    "services": saved_names,
+                })),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Load handler: `POST /_robotocore/state/load`.
+///
+/// Snapshot `name`s are validated python-era style
+/// (`state::validate_snapshot_name`): traversal names answer 400 instead of
+/// writing/reading outside the given directory.
+pub async fn state_load_handler(
+    State(state): State<Arc<AppState>>,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    let params = match state_body(body) {
+        Ok(b) => b,
+        Err((status, body)) => return (status, body).into_response(),
+    };
+    let path = params
+        .get("path")
+        .and_then(Value::as_str)
+        .map(String::from)
+        .or_else(|| {
+            crate::core::state::resolve_state_dir().map(|d| d.to_string_lossy().into_owned())
+        });
+    let name = params.get("name").and_then(Value::as_str).map(String::from);
+    let services = services_filter(&params, None);
+
+    // Source resolution order: path-based file, then in-memory name, then default.
+    let loaded = match (&path, name.as_deref()) {
+        (Some(dir), file_name) => match crate::core::state::load_from_path(dir, file_name) {
+            Ok(Some(v)) => match crate::core::state::unwrap_state_file(&v) {
+                // File saves wrap the services map under `state`; the
+                // registry consumes the inner map.
+                Ok(inner) => Some(("file", inner.clone())),
+                // Unknown format version, missing `state` member, or a
+                // non-object file: clear client error, never a silent
+                // empty restore.
+                Err(e) => {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        axum::Json(json!({ "error": e.to_string() })),
+                    )
+                        .into_response()
+                }
+            },
+            Ok(None) => None,
+            Err(e)
+                if e.kind() == std::io::ErrorKind::InvalidInput
+                    || e.kind() == std::io::ErrorKind::InvalidData =>
+            {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    axum::Json(json!({ "error": e.to_string() })),
+                )
+                    .into_response();
+            }
+            // An unreadable directory stays "no state found" — the twin
+            // answered that shape before the traversal guard existed.
+            Err(_) => None,
+        },
+        (None, Some(n)) => state
+            .named_snapshots
+            .get(n)
+            .map(|snap| ("memory", Value::Object(snap.state))),
+        (None, None) => None,
+    };
+
+    let Some((source, value)) = loaded else {
+        return (
+            StatusCode::OK,
+            axum::Json(json!({
+                "status": "no_state_found",
+                "path": path.clone().map(Value::from).unwrap_or(name.clone().map(Value::from).unwrap_or(Value::Null)),
+            })),
+        )
+            .into_response();
+    };
+
+    // Report what was actually restored: services present in the snapshot
+    // get replaced, the rest of the live state is untouched.
+    let restored = state.snapshots.restore(&value, services.as_deref());
+    let shown = match source {
+        "file" => path.unwrap_or_default(),
+        _ => format!("memory://{}", name.unwrap_or_default()),
+    };
+    (
+        StatusCode::OK,
+        axum::Json(json!({"status": "loaded", "path": shown, "services": restored})),
+    )
+        .into_response()
+}
+
+/// Reset handler: `POST /_robotocore/state/reset` clears every service state.
+pub async fn state_reset_handler(
+    State(state): State<Arc<AppState>>,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    let params = match state_body(body) {
+        Ok(b) => b,
+        Err((status, body)) => return (status, body).into_response(),
+    };
+    let services = services_filter(&params, None);
+    state.snapshots.reset(services.as_deref());
+    (StatusCode::OK, axum::Json(json!({"status": "reset"}))).into_response()
+}
+
+/// Snapshot listing: `GET /_robotocore/state/snapshots` (both spellings).
+pub async fn state_snapshots_list_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let mut out: Vec<Value> = Vec::new();
+    for snap in state.named_snapshots.list() {
+        out.push(json!({
+            "name": snap.name,
+            "timestamp": snap.created_at,
+            "saved_at": snap.created_at,
+            "services": snap.services,
+            "native_services": snap.services,
+            "compressed": false,
+        }));
+    }
+    for (name, latest, count) in state.versioned_snapshots.list() {
+        out.push(json!({
+            "name": name,
+            "timestamp": latest.created_at,
+            "saved_at": latest.created_at,
+            "services": latest.services,
+            "native_services": latest.services,
+            "compressed": false,
+            "versions": count,
+        }));
+    }
+    (StatusCode::OK, axum::Json(json!({ "snapshots": out })))
+}
+
+/// Versioned save: `POST /_robotocore/state/snapshots/save`.
+pub async fn state_snapshot_save_handler(
+    State(state): State<Arc<AppState>>,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    let params = match state_body(body) {
+        Ok(b) => b,
+        Err((status, body)) => return (status, body).into_response(),
+    };
+    let Some(name) = params.get("name").and_then(Value::as_str).map(String::from) else {
+        return error_response(StatusCode::BAD_REQUEST, "Snapshot name must not be empty");
+    };
+    let services = services_filter(&params, None);
+    let (saved_names, state_value) = state.snapshots.snapshot(services.as_deref());
+    let empty_map = serde_json::Map::new();
+    let state_map = state_value.as_object().unwrap_or(&empty_map);
+    let version = state
+        .versioned_snapshots
+        .save(&name, saved_names.clone(), state_map.clone());
+    (
+        StatusCode::OK,
+        axum::Json(json!({
+            "status": "saved",
+            "name": name,
+            "version": version,
+            "services": saved_names,
+        })),
+    )
+        .into_response()
+}
+
+/// Versioned load: `POST /_robotocore/state/snapshots/load`.
+pub async fn state_snapshot_load_handler(
+    State(state): State<Arc<AppState>>,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    let params = match state_body(body) {
+        Ok(b) => b,
+        Err((status, body)) => return (status, body).into_response(),
+    };
+    let Some(name) = params.get("name").and_then(Value::as_str).map(String::from) else {
+        return error_response(StatusCode::BAD_REQUEST, "Snapshot name must not be empty");
+    };
+    let version = params.get("version").and_then(Value::as_u64);
+    let Some(snap) = state.versioned_snapshots.load(&name, version) else {
+        return (
+            StatusCode::OK,
+            axum::Json(json!({"status": "no_state_found", "name": name})),
+        )
+            .into_response();
+    };
+    let restored = state.snapshots.restore(&Value::Object(snap.state), None);
+    (
+        StatusCode::OK,
+        axum::Json(json!({
+            "status": "loaded",
+            "name": name,
+            "version": snap.version,
+            "services": restored,
+        })),
+    )
+        .into_response()
+}
+
+/// Export handler: `GET /_robotocore/state/export`.
+pub async fn state_export_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let (_, state_value) = state.snapshots.snapshot(None);
+    (
+        StatusCode::OK,
+        axum::Json(json!({
+            "version": "1.0",
+            "exported_at": crate::core::introspection::epoch_now(),
+            "native_state": state_value,
+        })),
+    )
+        .into_response()
+}
+
+/// Import handler: `POST /_robotocore/state/import`.
+pub async fn state_import_handler(
+    State(state): State<Arc<AppState>>,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    if body.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            axum::Json(json!({"error": "No data provided"})),
+        )
+            .into_response();
+    }
+    let data = match state_body(body) {
+        Ok(b) => b,
+        Err((status, body)) => return (status, body).into_response(),
+    };
+    let native_state = data.get("native_state").cloned().unwrap_or(data);
+    let restored = state.snapshots.restore(&native_state, None);
+    (
+        StatusCode::OK,
+        axum::Json(json!({"status": "imported", "services": restored})),
+    )
+        .into_response()
+}
+
+/// Extract service name from URI, headers, or body.
+///
+/// Uses the full AWS service router first, falling back to the legacy
+/// X-Amz-Target / path heuristics only when the router cannot decide.
+fn extract_service(
+    method: &Method,
+    uri: &Uri,
+    headers: &HeaderMap,
+    body: &[u8],
+) -> Result<String, String> {
+    // Build a router request from method, URI, and headers
+    let mut header_pairs: Vec<(String, String)> = headers
+        .iter()
+        .filter_map(|(k, v)| {
+            let v = v.to_str().ok()?;
+            Some((k.to_string(), v.to_string()))
+        })
+        .collect();
+    // The full router checks the Host header for virtual-hosted services
+    // (sqs.{region}.localhost.robotocore.cloud, S3 virtual hosts, etc.).
+    // Axum strips Host from HeaderMap, so recover it from the authority.
+    if !header_pairs
+        .iter()
+        .any(|(k, _)| k.eq_ignore_ascii_case("host"))
+    {
+        if let Some(authority) = uri.authority() {
+            header_pairs.push(("host".to_string(), authority.as_str().to_string()));
+        }
+    }
+    let router_req = AwsRequest {
+        method: method.as_str().to_string(),
+        path: uri.path().to_string(),
+        query_string: uri.query().unwrap_or("").to_string(),
+        headers: header_pairs,
+    };
+    if let Some(service) = route_to_service(&router_req) {
+        // route_to_service defaults any unsigned form post on `/` to STS
+        // (it cannot see the body). When the body names a concrete non-STS
+        // operation, that default is a misroute: the client is talking to
+        // some other service, and an STS-shaped InvalidAction error would
+        // mislead the SDK. Veto the default and fall through to the
+        // generic paths below instead. Signed requests keep faithful STS
+        // behavior (the real endpoint answers InvalidAction XML for an
+        // unknown operation).
+        if !(service == "sts" && unsigned_non_sts_action(headers, uri, body).is_some()) {
+            return Ok(service);
+        }
+    }
+
+    // SimpleDB is botocore's only SigV2 service: the signature rides in the
+    // form body, so there is no Authorization header for the credential-scope
+    // check and route_to_service parks the request on the unsigned-STS
+    // default, which the veto above then skips when the body names a non-STS
+    // action — leaving sdb requests named by no service at all. sdb's
+    // protocol pins Version=2009-04-15 in every request body; treat that
+    // exact shape (unsigned form post carrying sdb's fixed API version) as
+    // sdb so the rotocore backend owns the request.
+    if body_is_sdb(headers, body) {
+        return Ok("sdb".to_string());
+    }
+
+    // Fallback: X-Amz-Target header (contains "service.Operation")
+    if let Some(target) = headers.get("X-Amz-Target") {
+        if let Ok(target_str) = target.to_str() {
+            if let Some(service) = target_str.split('.').next() {
+                return Ok(service.to_lowercase());
+            }
+        }
+    }
+
+    // Fallback: path-based detection (e.g., /bucket/key for S3)
+    let path = uri.path();
+    if path == "/" && unsigned_non_sts_action(headers, uri, body).is_none() {
+        // Default to sts for root path
+        return Ok("sts".to_string());
+    }
+
+    // REST-path services (xray, cloudfront, bedrock family, arm paths) route by
+    // credential scope only when the SDK signs with the exact service name;
+    // scope "xray" lowercase etc. all handled by route_to_service. If we got
+    // here, the request is likely signed for a service whose wire name equals
+    // the first path segment. (Note: rotocore's dispatch is visited later with
+    // whatever name lands; returning "" signals "unknown" and the gateway
+    // returns a 501-style JSON error.)
+    Err("request does not match a known AWS service endpoint".to_string())
+}
+
+/// A concrete AWS operation named by an *unsigned* request that is not an
+/// STS operation, found in the `Action` form field or the query string.
+/// `route_to_service` cannot see request bodies, so it parks every
+/// unsigned form-bodied call on `/` with STS; when such a call names a
+/// real non-STS action, answering with STS-shaped XML (e.g. "Unknown STS
+/// operation") misleads SDKs into treating the twin as a broken STS
+/// endpoint. Callers veto the STS default for these requests so the
+/// generic gateway error paths can answer instead.
+fn unsigned_non_sts_action(headers: &HeaderMap, uri: &Uri, body: &[u8]) -> Option<String> {
+    if headers.get("Authorization").is_some() {
+        return None;
+    }
+    let action_in = |encoded: &str| -> Option<String> {
+        encoded.split('&').find_map(|pair| {
+            let (k, v) = pair.split_once('=')?;
+            (k == "Action" && !v.is_empty()).then(|| v.to_string())
+        })
+    };
+    if let Some(action) = action_in(uri.query().unwrap_or("")) {
+        return (!sts::is_known_sts_op(&action)).then_some(action);
+    }
+    // Only form posts may name an Action in the body — rule 7 of
+    // route_to_service parks exactly these — so don't scan other body
+    // types for stray "Action=" substrings.
+    let form_body = headers
+        .get("Content-Type")
+        .and_then(|v| v.to_str().ok())
+        .map(|t| t.to_ascii_lowercase().contains("x-www-form-urlencoded"))
+        .unwrap_or(false);
+    if form_body {
+        if let Some(action) = action_in(&String::from_utf8_lossy(body)) {
+            if !sts::is_known_sts_op(&action) {
+                return Some(action);
+            }
+        }
+    }
+    None
+}
+
+/// True for an unsigned form post carrying SimpleDB's fixed API version
+/// (2009-04-15) — the exact shape botocore's sdb client always emits: a
+/// SigV2 POST form body (auth params inside the body, no Authorization
+/// header). The sdb API version is unique to sdb among `Version=` form
+/// fields, so this identifies only sdb requests.
+fn body_is_sdb(headers: &HeaderMap, body: &[u8]) -> bool {
+    if headers.get("Authorization").is_some() {
+        return false;
+    }
+    let form_body = headers
+        .get("Content-Type")
+        .and_then(|v| v.to_str().ok())
+        .map(|t| t.to_ascii_lowercase().contains("x-www-form-urlencoded"))
+        .unwrap_or(false);
+    form_body
+        && std::str::from_utf8(body)
+            .map(|b| b.contains("Version=2009-04-15"))
+            .unwrap_or(false)
+}
+
+/// Host-header shorthand that names an S3 bucket (path or explicit
+/// s3-style hosts); used to keep an S3 bucket literally named
+/// "lambda-url" from shadowing into the function-URL executor.
+fn looks_like_s3_host(host: &str) -> bool {
+    let host = host.split(':').next().unwrap_or(host);
+    host.contains(".s3.") || host.starts_with("s3.") || host.starts_with("s3-")
+}
+
+/// Extract account ID from Authorization header.
+fn extract_account_from_request(headers: &HeaderMap, query_string: &str, body: &[u8]) -> u64 {
+    // Explicit per-request override header wins over every credential-like
+    // source. This mirrors moto's own account resolution priority
+    // (`moto/core/responses.py get_current_account`, the real source — not
+    // any robotocore bridge layer): PRIO 1 the `MOTO_ACCOUNT_ID` env var
+    // (the rust twin has no per-request env equivalent), PRIO 2 an account
+    // header (moto's `x-moto-account-id`, exposed here as the rename
+    // `X-Robotocore-Account`), PRIO 3 an access-key lookup, PRIO 4 the
+    // hard-coded default account that the tail of this function returns.
+    if let Some(account_header) = headers.get("X-Robotocore-Account") {
+        if let Ok(account_str) = account_header.to_str() {
+            if let Ok(account) = account_str.parse::<u64>() {
+                return account;
+            }
+        }
+    }
+
+    // Try to get account from Authorization header
+    if let Some(auth) = headers.get("Authorization") {
+        if let Ok(auth_str) = auth.to_str() {
+            // Look for Credential=AKIAIOSFODNN7EXAMPLE/...
+            if let Some(cred_part) = auth_str.split("Credential=").nth(1) {
+                if let Some(access_key) = cred_part.split('/').next() {
+                    return parse_account_from_key(access_key);
+                }
+            }
+        }
+    }
+
+    // Presigned requests carry credentials in the query string instead of
+    // the Authorization header: X-Amz-Credential=KEY/DATE/REGION/SVC/aws4_request
+    if let Some(cred) = query_string.split('&').find_map(|kv| {
+        let (k, v) = kv.split_once('=')?;
+        if k != "X-Amz-Credential" {
+            return None;
+        }
+        urlencoding::decode(v).ok().map(|c| c.into_owned())
+    }) {
+        if let Some(access_key) = cred.split('/').next() {
+            return parse_account_from_key(access_key);
+        }
+    }
+
+    // SigV2 presigned query requests (SimpleDB, botocore's only SigV2
+    // service, signs GETs too) carry the access key as an `AWSAccessKeyId`
+    // query parameter — no Authorization header. moto resolves the account
+    // from it exactly this way (`moto/core/responses.py get_access_key`:
+    // Authorization header first, then `querystring["AWSAccessKeyId"]`), so
+    // per-account isolation holds for SigV2 GETs like it does for SigV2
+    // form posts below.
+    if let Some(v) = query_string.split('&').find_map(|kv| {
+        let (k, v) = kv.split_once('=')?;
+        (k == "AWSAccessKeyId" && !v.is_empty()).then(|| v.to_string())
+    }) {
+        let key = urlencoding::decode(&v).unwrap_or_default();
+        if !key.is_empty() {
+            return parse_account_from_key(&key);
+        }
+    }
+
+    // SigV2 bodies (SimpleDB is the only SigV2 service) carry the access
+    // key in the form body: AWSAccessKeyId=KEY&... moto derives the account
+    // the same way (moto/core/responses.py get_account_id_from), so the
+    // documented per-account isolation holds for sdb too.
+    if let Some(v) = String::from_utf8_lossy(body).split('&').find_map(|kv| {
+        let (k, v) = kv.split_once('=')?;
+        (k == "AWSAccessKeyId" && !v.is_empty()).then(|| v.to_string())
+    }) {
+        let key = urlencoding::decode(&v).unwrap_or_default();
+        if !key.is_empty() {
+            return parse_account_from_key(&key);
+        }
+    }
+
+    123456789012
+}
+
+/// Extract region from headers.
+fn extract_region_from_query(query_string: &str) -> Option<String> {
+    query_string.split('&').find_map(|kv| {
+        let (k, v) = kv.split_once('=')?;
+        if k != "X-Amz-Credential" {
+            return None;
+        }
+        let cred = urlencoding::decode(v).ok()?;
+        cred.split('/').nth(2).map(|s| s.to_string())
+    })
+}
+
+/// Extract region from headers.
+fn extract_region_from_request(headers: &HeaderMap) -> Option<String> {
+    if let Some(region) = headers.get("X-Robotocore-Region") {
+        if let Ok(region_str) = region.to_str() {
+            return Some(region_str.to_string());
+        }
+    }
+
+    // Try Authorization header
+    if let Some(auth) = headers.get("Authorization") {
+        if let Ok(auth_str) = auth.to_str() {
+            // Look for credential format: AKIA.../20230101/us-east-1/...
+            if let Some(cred_part) = auth_str.split("Credential=").nth(1) {
+                let parts: Vec<&str> = cred_part.split('/').collect();
+                if parts.len() >= 3 {
+                    return Some(parts[2].to_string());
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Convert ParsedResponse to Axum response with appropriate protocol encoding.
+fn response_from_parsed(resp: ParsedResponse, service: &str, operation: &str) -> Response {
+    use crate::core::protocol::serialize_query_response;
+
+    let request_id = Uuid::new_v4().to_string();
+
+    // Arbitrary bytes first (binary objects, event streams), then
+    // pre-serialized string bodies, then protocol encoding.
+    let body: axum::body::Body = if let Some(bytes) = resp.raw_bytes {
+        axum::body::Body::from(bytes)
+    } else if let Some(raw) = resp.raw {
+        // Pre-serialized body: send verbatim (e.g. native JSON-protocol services).
+        axum::body::Body::from(raw)
+    } else {
+        let body_str = if service == "sts" {
+            serialize_query_response(&resp.body, operation, &request_id)
+        } else {
+            serde_json::to_string(&resp.body).unwrap_or_else(|_| "{}".to_string())
+        };
+        axum::body::Body::from(body_str)
+    };
+
+    let mut headers_map = axum::http::HeaderMap::new();
+    for (key, value) in resp.headers {
+        if let Ok(header_value) = HeaderValue::from_str(&value) {
+            if let Ok(header_name) = axum::http::HeaderName::from_bytes(key.as_bytes()) {
+                headers_map.insert(header_name, header_value);
+            }
+        }
+    }
+    headers_map.insert("server", HeaderValue::from_static("robotocore"));
+    headers_map.insert(
+        "x-robotocore-request-id",
+        HeaderValue::from_str(&request_id).unwrap(),
+    );
+
+    let mut response = Response::builder().status(resp.status).body(body).unwrap();
+    *response.headers_mut() = headers_map;
+    response
+}
+
+/// Build an error response shaped like an AWS SDK error so clients parse it.
+fn error_response(status: StatusCode, message: &str) -> Response {
+    // The one error shape a twin-wide convention depends on: 501 means the
+    // operation is genuinely absent (see AGENTS.md "Reading errors
+    // correctly"), so it must carry the NotImplemented error code, not
+    // InternalError — SDKs treat InternalError as "implemented and broken".
+    let errortype = if status == StatusCode::NOT_IMPLEMENTED {
+        "NotImplemented"
+    } else {
+        "InternalError"
+    };
+    let error = json!({
+        "__type": errortype,
+        "message": message,
+    });
+
+    (
+        status,
+        [("x-amzn-errortype", errortype.to_string())],
+        axum::Json(error),
+    )
+        .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn config_update(body: &str) -> Response {
+        std::env::set_var("ENABLE_CONFIG_UPDATES", "1");
+        config_update_handler(axum::body::Bytes::from(body.to_string())).await
+    }
+
+    async fn config_body_value(resp: Response) -> Value {
+        let bytes = BodyExt::collect(resp.into_body()).await.unwrap().to_bytes();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    #[tokio::test]
+    async fn config_update_rejects_whitelisted_key_with_no_consumer() {
+        // ENFORCE_IAM stays whitelisted (python parity) but nothing in the
+        // rust gateway reads it: accepting it would be a silent bypass, so
+        // the endpoint must answer 400 instead of a lying 200.
+        let resp = config_update(r#"{"ENFORCE_IAM": "1"}"#).await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = config_body_value(resp).await;
+        assert!(body["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("no consumer"));
+    }
+
+    #[tokio::test]
+    async fn config_update_rejects_unknown_key() {
+        let resp = config_update(r#"{"NOT_A_SETTING": "1"}"#).await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = config_body_value(resp).await;
+        assert_eq!(
+            body["error"],
+            "Setting NOT_A_SETTING cannot be changed at runtime"
+        );
+    }
+
+    #[tokio::test]
+    async fn config_update_rejects_non_object_body() {
+        for body in [
+            r#"[]"#,
+            r#""string""#,
+            // invalid JSON
+            r#"{"DEBUG": "1""#,
+            "",
+        ] {
+            let resp = config_update(body).await;
+            assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "body: {body}");
+        }
+    }
+
+    #[test]
+    fn test_extract_service_from_target_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Amz-Target", "STS.GetCallerIdentity".parse().unwrap());
+
+        let uri = "/".parse().unwrap();
+        let method = Method::POST;
+        let service = extract_service(&method, &uri, &headers, b"").unwrap();
+        assert_eq!(service, "sts");
+    }
+
+    #[test]
+    fn test_extract_account_from_auth_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("Authorization", "AWS4-HMAC-SHA256 Credential=123456789012/20230101/us-east-1/sts/aws4_request, SignedHeaders=host;x-amz-date, Signature=xyz".parse().unwrap());
+
+        let account = extract_account_from_request(&headers, "", b"");
+        assert_eq!(account, 123456789012);
+    }
+
+    #[test]
+    fn test_extract_account_from_presigned_query() {
+        // X-Amz-Credential in the query string routes to that account too
+        let headers = HeaderMap::new();
+        let account = extract_account_from_request(&headers, "X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=222222222222%2F20260101%2Fus-east-1%2Fs3%2Faws4_request", b"");
+        assert_eq!(account, 222222222222);
+    }
+
+    #[test]
+    fn test_extract_account_from_sigv2_body() {
+        // SimpleDB is SigV2: AWSAccessKeyId rides the form body (moto's
+        // get_account_id_from path), so per-account isolation holds.
+        let headers = HeaderMap::new();
+        let account = extract_account_from_request(
+            &headers,
+            "",
+            b"Action=CreateDomain&AWSAccessKeyId=222222222222&Signature=x%3D",
+        );
+        assert_eq!(account, 222222222222);
+    }
+
+    #[test]
+    fn test_extract_account_from_sigv2_presigned_query() {
+        // SigV2 GETs (SimpleDB) carry AWSAccessKeyId in the query string
+        // instead of a form body — moto's get_access_key resolves the
+        // account from querystring["AWSAccessKeyId"] the same way.
+        let headers = HeaderMap::new();
+        let account = extract_account_from_request(
+            &headers,
+            "Action=ListDomains&AWSAccessKeyId=322222222223&Signature=vWj1",
+            b"",
+        );
+        assert_eq!(account, 322222222223);
+    }
+
+    #[test]
+    fn test_registry_creation() {
+        let registry = ServiceRegistry::new();
+        assert!(registry.get("sts").is_some());
+        assert!(registry.get("sqs").is_some());
+    }
+
+    #[test]
+    fn test_extract_service_sqs_via_target_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Amz-Target", "AmazonSQS.SendMessage".parse().unwrap());
+        let uri = "/".parse().unwrap();
+        let method = Method::POST;
+        let service = extract_service(&method, &uri, &headers, b"").unwrap();
+        assert_eq!(service, "sqs");
+    }
+
+    #[test]
+    fn test_extract_service_sqs_via_auth_scope() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "Authorization",
+            "AWS4-HMAC-SHA256 Credential=123456789012/20260101/us-east-1/sqs/aws4_request, SignedHeaders=host, Signature=abc".parse().unwrap(),
+        );
+        let uri = "/".parse().unwrap();
+        let method = Method::POST;
+        let service = extract_service(&method, &uri, &headers, b"").unwrap();
+        assert_eq!(service, "sqs");
+    }
+
+    #[test]
+    fn test_extract_service_sqs_via_host_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "Host",
+            "sqs.us-east-1.localhost.robotocore.cloud:4566"
+                .parse()
+                .unwrap(),
+        );
+        let uri = "/123456789012/my-queue".parse().unwrap();
+        let method = Method::POST;
+        let service = extract_service(&method, &uri, &headers, b"").unwrap();
+        assert_eq!(service, "sqs");
+    }
+
+    #[test]
+    fn test_extract_service_unsigned_unknown_action_is_not_sts() {
+        // An unsigned form post naming a concrete non-STS operation must
+        // not park on STS — the twin previously answered such requests
+        // with STS-shaped "Unknown STS operation" XML that SDKs read as a
+        // real STS failure.
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "content-type",
+            "application/x-www-form-urlencoded".parse().unwrap(),
+        );
+        let uri = "/".parse().unwrap();
+        let method = Method::POST;
+        let err = extract_service(
+            &method,
+            &uri,
+            &headers,
+            b"Action=CreateVault&Version=2012-06-15",
+        )
+        .unwrap_err();
+        assert!(err.contains("request does not match a known AWS service endpoint"));
+    }
+
+    #[test]
+    fn test_extract_service_unsigned_post_to_root_without_action_is_sts() {
+        let headers = HeaderMap::new();
+        let uri = "/".parse().unwrap();
+        let method = Method::POST;
+        let service = extract_service(&method, &uri, &headers, b"").unwrap();
+        assert_eq!(service, "sts");
+    }
+
+    #[test]
+    fn test_extract_service_unsigned_unknown_action_with_target() {
+        // Same request, but carrying an X-Amz-Target: the target's service
+        // prefix wins and the gateway degrades to the generic
+        // NotImplemented path later ("Service robocorefake not
+        // implemented") instead of an STS-shaped error.
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Amz-Target", "RobocoreFake.NonExistent".parse().unwrap());
+        let uri = "/".parse().unwrap();
+        let method = Method::POST;
+        let service = extract_service(&method, &uri, &headers, b"Action=Foo").unwrap();
+        assert_eq!(service, "robocorefake");
+    }
+
+    #[test]
+    fn test_extract_service_signed_sts_unknown_action_still_sts() {
+        // A signed STS request with an unknown operation belongs to STS;
+        // the handler keeps faithful InvalidAction behavior.
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "Authorization",
+            "AWS4-HMAC-SHA256 Credential=123456789012/20260101/us-east-1/sts/aws4_request, SignedHeaders=host, Signature=abc"
+                .parse()
+                .unwrap(),
+        );
+        let uri = "/".parse().unwrap();
+        let method = Method::POST;
+        let service = extract_service(&method, &uri, &headers, b"Action=NotARealOp").unwrap();
+        assert_eq!(service, "sts");
+    }
+
+    #[test]
+    fn test_parse_audit_limit_python_int_parity() {
+        // python `int()` accepted these forms; the old usize parse rejected
+        // signed and space-padded values.
+        assert_eq!(parse_audit_limit("5").unwrap_or_default(), 5);
+        assert_eq!(parse_audit_limit("+5").unwrap_or_default(), 5);
+        assert_eq!(parse_audit_limit("%205").unwrap_or_default(), 5);
+        // urllib `parse_qs` maps a bare `+` to a space, so `+ 5` trims to 5.
+        assert_eq!(parse_audit_limit("%2B5").unwrap_or_default(), 5);
+        assert_eq!(parse_audit_limit("-1").unwrap_or_default(), -1);
+        assert!(parse_audit_limit("abc").is_err());
+        assert!(parse_audit_limit("").is_err());
+        assert!(parse_audit_limit("5a").is_err());
+    }
+
+    #[test]
+    fn test_audit_error_note_extracts_message() {
+        let body = br#"{"__type":"NotImplemented","message":"Service x not implemented"}"#;
+        assert_eq!(
+            audit_error_note(501, body).as_deref(),
+            Some("Service x not implemented")
+        );
+        // XML falls back to the trimmed raw text, bounded.
+        let xml = b"<?xml version=\"1.0\"?><ErrorResponse><Error><Code>NotFound</Code></Error></ErrorResponse>";
+        let note = audit_error_note(404, xml).expect("note");
+        assert!(note.starts_with("<?xml"));
+        assert!(audit_error_note(200, body).is_none());
+        assert!(audit_error_note(500, b"").is_none());
+        assert!(audit_error_note(500, b"  \n\t ").is_none());
+    }
+
+    #[test]
+    fn test_error_response_501_carries_not_implemented() {
+        let resp = error_response(StatusCode::NOT_IMPLEMENTED, "Service x not implemented");
+        assert_eq!(resp.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(
+            resp.headers().get("x-amzn-errortype").unwrap(),
+            "NotImplemented"
+        );
+        let other = error_response(StatusCode::SERVICE_UNAVAILABLE, "down");
+        assert_eq!(
+            other.headers().get("x-amzn-errortype").unwrap(),
+            "InternalError"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Request-scoped dispatch blanket (docker lambda invokes)
+    // ------------------------------------------------------------------
+
+    static HINT_ENV_GUARD: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn lambda_invoke_blanket_is_30s_by_default_and_raised_in_docker_mode() {
+        let _guard = HINT_ENV_GUARD.lock();
+        let handler = LambdaServiceHandler {
+            inner: Arc::new(lambda::DefaultLambdaHandler::new()),
+        };
+        let mut create = ParsedRequest {
+            service: "lambda".to_string(),
+            operation: "CreateFunction".to_string(),
+            params: [
+                ("FunctionName".to_string(), json!("blanket-fn")),
+                ("Runtime".to_string(), json!("python3.12")),
+                ("Timeout".to_string(), json!(900)),
+            ]
+            .into_iter()
+            .collect(),
+            body: bytes::Bytes::new(),
+            region: "us-east-1".to_string(),
+            account: 123456789012,
+            method: "POST".to_string(),
+            path: "/2015-03-31/functions".to_string(),
+            query_string: String::new(),
+            headers: HashMap::new(),
+        };
+        create.headers.insert(
+            "content-type".to_string(),
+            "application/x-amz-json-1.1".to_string(),
+        );
+        let resp = handler.handle_sync(&create).unwrap();
+        assert_eq!(resp.status.as_u16(), 201, "body: {:?}", resp.raw);
+        let invoke = ParsedRequest {
+            service: "lambda".to_string(),
+            operation: "Invoke".to_string(),
+            params: [("FunctionName".to_string(), json!("blanket-fn"))]
+                .into_iter()
+                .collect(),
+            body: bytes::Bytes::from_static(b"{}"),
+            region: "us-east-1".to_string(),
+            account: 123456789012,
+            method: "POST".to_string(),
+            path: "/2015-03-31/functions/blanket-fn/invocations".to_string(),
+            query_string: String::new(),
+            headers: HashMap::new(),
+        };
+        // Default (local) mode: the 30s gateway blanket stands.
+        assert_eq!(handler.request_timeout_secs(&invoke), None);
+        // Docker mode with a 900s function budget: the blanket rises to
+        // Timeout + 15, or a container still inside its own budget would
+        // 504 at the dispatch wrapper.
+        let saved = std::env::var("LAMBDA_EXECUTOR").ok();
+        std::env::set_var("LAMBDA_EXECUTOR", "docker");
+        let hint = handler.request_timeout_secs(&invoke);
+        match saved {
+            Some(v) => std::env::set_var("LAMBDA_EXECUTOR", v),
+            None => std::env::remove_var("LAMBDA_EXECUTOR"),
+        }
+        assert_eq!(hint, Some(915), "docker invoke blanket = Timeout + 15");
+        // Non-lambda handlers never raise the blanket.
+        assert_eq!(StsFunctionHandler.request_timeout_secs(&invoke), None);
+    }
+
+    // ------------------------------------------------------------------
+    // /_robotocore/state file save→load round-trip
+    //
+    // The compatibility suites only ever save (they must not restore on a
+    // shared twin), so restore was never exercised end-to-end until the
+    // file-load silent-no-op regression (loaded wrapper instead of the
+    // inner services map). These tests own their native handlers, so they
+    // restore freely without touching anything else in the process.
+    // ------------------------------------------------------------------
+
+    const STATE_TEST_ACCOUNT: u64 = 654_321_098_765;
+    const STATE_TEST_REGION: &str = "us-east-1";
+
+    /// App wiring identical to `build_router`: one shared set of native
+    /// handler instances behind both the service adapters and the snapshot
+    /// registry, so service calls and state endpoints mutate the same
+    /// state.
+    fn state_test_app() -> Arc<AppState> {
+        let (registry, handlers) = ServiceRegistry::new_with_handlers();
+        Arc::new(AppState {
+            registry,
+            snapshots: Arc::new(crate::core::state::SnapshotRegistry::new(&handlers)),
+            named_snapshots: Arc::new(crate::core::state::NamedSnapshots::default()),
+            versioned_snapshots: Arc::new(crate::core::state::VersionedSnapshots::default()),
+        })
+    }
+
+    async fn state_save_via_endpoint(state: &Arc<AppState>, body: Value) -> Response {
+        state_save_handler(
+            State(state.clone()),
+            "/_robotocore/state/save".parse().unwrap(),
+            axum::body::Bytes::from(body.to_string()),
+        )
+        .await
+        .into_response()
+    }
+
+    async fn state_load_via_endpoint(state: &Arc<AppState>, body: Value) -> Response {
+        state_load_handler(
+            State(state.clone()),
+            axum::body::Bytes::from(body.to_string()),
+        )
+        .await
+        .into_response()
+    }
+
+    /// Drive one cross-crate service call through the same native handler
+    /// instance the snapshot registry wraps.
+    fn service_call(state: &AppState, req: ParsedRequest) -> ParsedResponse {
+        let handler = state
+            .registry
+            .get(&req.service)
+            .unwrap_or_else(|| panic!("service {} is registered", req.service));
+        handler
+            .handle_sync(&req)
+            .expect("driver request must be handled")
+    }
+
+    fn aws_request(
+        service: &str,
+        operation: &str,
+        params: Value,
+        method: &str,
+        path: &str,
+        body: Vec<u8>,
+    ) -> ParsedRequest {
+        ParsedRequest {
+            service: service.to_string(),
+            operation: operation.to_string(),
+            params: params
+                .as_object()
+                .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+                .unwrap_or_default(),
+            body: axum::body::Bytes::from(body),
+            region: STATE_TEST_REGION.to_string(),
+            account: STATE_TEST_ACCOUNT,
+            method: method.to_string(),
+            path: path.to_string(),
+            query_string: String::new(),
+            headers: HashMap::new(),
+        }
+    }
+
+    fn aws_json(resp: &ParsedResponse) -> Value {
+        let bytes = if let Some(raw) = resp.raw.as_deref() {
+            Vec::from(raw.as_bytes())
+        } else {
+            resp.raw_bytes.clone().expect("response body bytes")
+        };
+        serde_json::from_slice(&bytes).expect("json response body")
+    }
+
+    fn assert_member(json: &Value, list_key: &str, item: &str) {
+        assert!(
+            json[list_key]
+                .as_array()
+                .is_some_and(|items| items.iter().any(|i| i.as_str() == Some(item))),
+            "expected {list_key} to contain {item:?}: {json}"
+        );
+    }
+
+    #[tokio::test]
+    async fn state_file_save_then_load_restores_deleted_cross_crate_state() {
+        let state = state_test_app();
+
+        // -- seed one unit per service, through three different crates ----
+        let queue_name = "fx6-e2e-queue";
+        let message_body = "fx6-e2e-message";
+        let resp = service_call(
+            &state,
+            aws_request(
+                "sqs",
+                "CreateQueue",
+                json!({"QueueName": queue_name}),
+                "POST",
+                "/",
+                vec![],
+            ),
+        );
+        assert_eq!(resp.status.as_u16(), 200, "CreateQueue: {:?}", resp.raw);
+        let queue_url = aws_json(&resp)["QueueUrl"]
+            .as_str()
+            .expect("QueueUrl in CreateQueue body")
+            .to_string();
+        let sent = service_call(
+            &state,
+            aws_request(
+                "sqs",
+                "SendMessage",
+                json!({"QueueUrl": queue_url, "MessageBody": message_body}),
+                "POST",
+                "/",
+                vec![],
+            ),
+        );
+        assert_eq!(sent.status.as_u16(), 200, "SendMessage: {:?}", sent.raw);
+
+        let bucket = "fx6-e2e-bucket";
+        let key = "fx6-e2e/key.txt";
+        let object_body = b"fx6-e2e-object-payload".to_vec();
+        let created = service_call(
+            &state,
+            aws_request(
+                "s3",
+                "CreateBucket",
+                Value::Null,
+                "PUT",
+                &format!("/{bucket}"),
+                vec![],
+            ),
+        );
+        assert_eq!(
+            created.status.as_u16(),
+            200,
+            "CreateBucket: {:?}",
+            created.raw_bytes
+        );
+        let stored = service_call(
+            &state,
+            aws_request(
+                "s3",
+                "PutObject",
+                Value::Null,
+                "PUT",
+                &format!("/{bucket}/{key}"),
+                object_body.clone(),
+            ),
+        );
+        assert_eq!(
+            stored.status.as_u16(),
+            200,
+            "PutObject: {:?}",
+            stored.raw_bytes
+        );
+
+        let param_name = "/fx6/e2e/param";
+        let param_value = "fx6-e2e-param-value";
+        let resp = service_call(
+            &state,
+            aws_request(
+                "ssm",
+                "PutParameter",
+                json!({"Name": param_name, "Type": "String", "Value": param_value}),
+                "POST",
+                "/",
+                vec![],
+            ),
+        );
+        assert_eq!(resp.status.as_u16(), 200, "PutParameter: {:?}", resp.raw);
+
+        // -- save via the file-based endpoint -----------------------------
+        let dir = std::env::temp_dir().join(format!("robotocore-fx6-e2e-{}", std::process::id()));
+        let save = state_save_via_endpoint(
+            &state,
+            json!({
+                "path": dir.to_str().unwrap(),
+                "name": "e2e",
+                "services": ["sqs", "s3", "ssm"],
+            }),
+        )
+        .await;
+        assert_eq!(save.status(), StatusCode::OK, "file save must succeed");
+        let save_json = config_body_value(save).await;
+        assert_eq!(save_json["status"], "saved");
+        for svc in ["sqs", "s3", "ssm"] {
+            assert_member(&save_json, "services", svc);
+        }
+
+        // The save wrapper contract the file load path unwraps:
+        // services only under `state`, never at the top level.
+        let file_json: Value = serde_json::from_slice(
+            &std::fs::read(dir.join("e2e.json")).expect("saved file exists"),
+        )
+        .unwrap();
+        assert_eq!(file_json["version"], crate::core::state::STATE_FILE_VERSION);
+        let state_block = &file_json["state"];
+        assert!(
+            state_block["sqs"][format!("{STATE_TEST_ACCOUNT}|{STATE_TEST_REGION}")]["queues"]
+                [queue_name]
+                .is_object(),
+            "queue saved under sqs/{STATE_TEST_ACCOUNT}|{STATE_TEST_REGION}/queues/{queue_name}: {file_json}"
+        );
+        assert!(
+            state_block["sqs"].to_string().contains(message_body),
+            "message saved with the queue: {}",
+            state_block["sqs"]
+        );
+        assert!(
+            state_block["s3"][format!("{STATE_TEST_ACCOUNT}|{STATE_TEST_REGION}")][bucket]
+                .is_object(),
+            "bucket saved under s3/{STATE_TEST_ACCOUNT}|{STATE_TEST_REGION}/{bucket}: {file_json}"
+        );
+        assert!(
+            state_block["ssm"][format!("{STATE_TEST_ACCOUNT}|{STATE_TEST_REGION}")]["parameters"]
+                [param_name]
+                .is_object(),
+            "parameter saved under ssm/{STATE_TEST_ACCOUNT}|{STATE_TEST_REGION}/parameters/{param_name}: {file_json}"
+        );
+
+        // -- mutate: delete every saved unit -------------------------------
+        let deleted = service_call(
+            &state,
+            aws_request(
+                "sqs",
+                "DeleteQueue",
+                json!({"QueueUrl": queue_url}),
+                "POST",
+                "/",
+                vec![],
+            ),
+        );
+        assert_eq!(
+            deleted.status.as_u16(),
+            200,
+            "DeleteQueue: {:?}",
+            deleted.raw
+        );
+        let deleted = service_call(
+            &state,
+            aws_request(
+                "s3",
+                "DeleteObject",
+                Value::Null,
+                "DELETE",
+                &format!("/{bucket}/{key}"),
+                vec![],
+            ),
+        );
+        assert!(
+            deleted.status.is_success(),
+            "DeleteObject: {:?}",
+            deleted.raw_bytes
+        );
+        let deleted = service_call(
+            &state,
+            aws_request(
+                "s3",
+                "DeleteBucket",
+                Value::Null,
+                "DELETE",
+                &format!("/{bucket}"),
+                vec![],
+            ),
+        );
+        assert!(
+            deleted.status.is_success(),
+            "DeleteBucket: {:?}",
+            deleted.raw_bytes
+        );
+        let deleted = service_call(
+            &state,
+            aws_request(
+                "ssm",
+                "DeleteParameter",
+                json!({"Name": param_name}),
+                "POST",
+                "/",
+                vec![],
+            ),
+        );
+        assert_eq!(
+            deleted.status.as_u16(),
+            200,
+            "DeleteParameter: {:?}",
+            deleted.raw
+        );
+
+        // The mutation actually landed: every read must fail now.
+        let gone = service_call(
+            &state,
+            aws_request(
+                "sqs",
+                "GetQueueUrl",
+                json!({"QueueName": queue_name}),
+                "POST",
+                "/",
+                vec![],
+            ),
+        );
+        assert!(
+            !gone.status.is_success(),
+            "queue must be gone before load: {:?}",
+            gone.raw
+        );
+        let gone = service_call(
+            &state,
+            aws_request(
+                "s3",
+                "GetObject",
+                Value::Null,
+                "GET",
+                &format!("/{bucket}/{key}"),
+                vec![],
+            ),
+        );
+        assert_eq!(gone.status.as_u16(), 404, "object must be gone");
+        let gone = service_call(
+            &state,
+            aws_request(
+                "ssm",
+                "GetParameter",
+                json!({"Name": param_name}),
+                "POST",
+                "/",
+                vec![],
+            ),
+        );
+        assert!(
+            !gone.status.is_success(),
+            "parameter must be gone before load"
+        );
+
+        // -- load the file back --------------------------------------------
+        let load = state_load_via_endpoint(
+            &state,
+            json!({
+                "path": dir.to_str().unwrap(),
+                "name": "e2e",
+            }),
+        )
+        .await;
+        assert_eq!(load.status(), StatusCode::OK);
+        let load_json = config_body_value(load).await;
+        assert_eq!(
+            load_json["status"], "loaded",
+            "the endpoint must restore, not just claim to"
+        );
+        assert_member(&load_json, "services", "sqs");
+        assert_member(&load_json, "services", "s3");
+        assert_member(&load_json, "services", "ssm");
+
+        // -- assert all three units are back, byte-for-byte -----------------
+        let restored = service_call(
+            &state,
+            aws_request(
+                "sqs",
+                "GetQueueUrl",
+                json!({"QueueName": queue_name}),
+                "POST",
+                "/",
+                vec![],
+            ),
+        );
+        assert_eq!(
+            restored.status.as_u16(),
+            200,
+            "queue restored: {:?}",
+            restored.raw
+        );
+        assert_eq!(
+            aws_json(&restored)["QueueUrl"].as_str(),
+            Some(queue_url.as_str()),
+            "restored queue keeps its identity"
+        );
+        let received = service_call(
+            &state,
+            aws_request(
+                "sqs",
+                "ReceiveMessage",
+                json!({"QueueUrl": queue_url, "MaxNumberOfMessages": 10}),
+                "POST",
+                "/",
+                vec![],
+            ),
+        );
+        assert_eq!(received.status.as_u16(), 200);
+        assert!(
+            aws_json(&received)["Messages"]
+                .as_array()
+                .is_some_and(|msgs| msgs
+                    .iter()
+                    .any(|m| m["Body"].as_str() == Some(message_body))),
+            "message restored: {:?}",
+            received.raw
+        );
+
+        let restored = service_call(
+            &state,
+            aws_request(
+                "s3",
+                "GetObject",
+                Value::Null,
+                "GET",
+                &format!("/{bucket}/{key}"),
+                vec![],
+            ),
+        );
+        assert_eq!(restored.status.as_u16(), 200, "object restored");
+        assert_eq!(
+            restored.raw_bytes.as_deref().unwrap(),
+            object_body.as_slice(),
+            "restored object must be byte-identical"
+        );
+
+        let restored = service_call(
+            &state,
+            aws_request(
+                "ssm",
+                "GetParameter",
+                json!({"Name": param_name}),
+                "POST",
+                "/",
+                vec![],
+            ),
+        );
+        assert_eq!(
+            restored.status.as_u16(),
+            200,
+            "parameter restored: {:?}",
+            restored.raw
+        );
+        assert_eq!(
+            aws_json(&restored)["Parameter"]["Value"].as_str(),
+            Some(param_value),
+            "restored parameter keeps its value"
+        );
+
+        // Cleanup: no filesystem leakage across test runs.
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn state_file_load_rejects_malformed_and_unknown_versions() {
+        let state = state_test_app();
+        let dir =
+            std::env::temp_dir().join(format!("robotocore-fx6-malform-{}", std::process::id()));
+        let saved = state_save_via_endpoint(
+            &state,
+            json!({"path": dir.to_str().unwrap(), "name": "probe"}),
+        )
+        .await;
+        assert_eq!(saved.status(), StatusCode::OK);
+        let file = dir.join("probe.json");
+
+        // An unparseable file is a 400, never a lying "loaded".
+        std::fs::write(&file, b"{truncated").unwrap();
+        let resp = state_load_via_endpoint(
+            &state,
+            json!({"path": dir.to_str().unwrap(), "name": "probe"}),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "garbage file");
+        let body = config_body_value(resp).await;
+        assert!(
+            body["error"]
+                .as_str()
+                .is_some_and(|e| e.contains("not valid JSON")),
+            "garbage file names the parse failure: {body}"
+        );
+
+        // An unknown format version is refused with the twin's support.
+        std::fs::write(&file, br#"{"version": "2.0", "state": {}}"#).unwrap();
+        let resp = state_load_via_endpoint(
+            &state,
+            json!({"path": dir.to_str().unwrap(), "name": "probe"}),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "unknown version");
+        let body = config_body_value(resp).await;
+        assert!(
+            body["error"]
+                .as_str()
+                .is_some_and(|e| e.contains("Unsupported state file version")),
+            "unknown version names the version problem: {body}"
+        );
+
+        // A wrapper without its `state` member is malformed, not empty.
+        std::fs::write(&file, br#"{"version": "1.0", "services": ["sqs"]}"#).unwrap();
+        let resp = state_load_via_endpoint(
+            &state,
+            json!({"path": dir.to_str().unwrap(), "name": "probe"}),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "missing `state`");
+        let body = config_body_value(resp).await;
+        assert!(
+            body["error"]
+                .as_str()
+                .is_some_and(|e| e.contains("`state`")),
+            "missing-state wrapper says what is wrong: {body}"
+        );
+
+        // A genuinely absent file is still "no state found" (unchanged).
+        std::fs::remove_file(&file).unwrap();
+        let resp = state_load_via_endpoint(
+            &state,
+            json!({"path": dir.to_str().unwrap(), "name": "probe"}),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = config_body_value(resp).await;
+        assert_eq!(body["status"], "no_state_found");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+}

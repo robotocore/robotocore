@@ -3,7 +3,6 @@
 import uuid
 
 import pytest
-from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
 
@@ -681,27 +680,25 @@ class TestElasticBeanstalkNewOps:
         assert "elasticbeanstalk" in resp["S3Bucket"]
 
     def test_associate_environment_operations_role_nonexistent(self, eb):
-        """AssociateEnvironmentOperationsRole rejects an unknown environment."""
-        with pytest.raises(ClientError) as exc:
-            eb.associate_environment_operations_role(
-                EnvironmentName="nonexistent-env-xyz",
-                OperationsRole="arn:aws:iam::123456789012:role/fake-role",
-            )
-        assert exc.value.response["Error"]["Code"] == "InvalidParameterValue"
+        """AssociateEnvironmentOperationsRole with nonexistent env succeeds silently."""
+        # AWS silently ignores nonexistent environments
+        resp = eb.associate_environment_operations_role(
+            EnvironmentName="nonexistent-env-xyz",
+            OperationsRole="arn:aws:iam::123456789012:role/fake-role",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_disassociate_environment_operations_role_nonexistent(self, eb):
-        """DisassociateEnvironmentOperationsRole rejects an unknown environment."""
-        with pytest.raises(ClientError) as exc:
-            eb.disassociate_environment_operations_role(
-                EnvironmentName="nonexistent-env-xyz",
-            )
-        assert exc.value.response["Error"]["Code"] == "InvalidParameterValue"
+        """DisassociateEnvironmentOperationsRole with nonexistent env succeeds silently."""
+        resp = eb.disassociate_environment_operations_role(
+            EnvironmentName="nonexistent-env-xyz",
+        )
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_restart_app_server_nonexistent(self, eb):
-        """RestartAppServer rejects an unknown environment, as AWS does."""
-        with pytest.raises(ClientError) as exc:
-            eb.restart_app_server(EnvironmentName="nonexistent-env-xyz")
-        assert exc.value.response["Error"]["Code"] == "InvalidParameterValue"
+        """RestartAppServer with nonexistent env succeeds silently."""
+        resp = eb.restart_app_server(EnvironmentName="nonexistent-env-xyz")
+        assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
 
     def test_delete_environment_configuration_nonexistent(self, eb):
         """DeleteEnvironmentConfiguration with nonexistent env succeeds silently."""

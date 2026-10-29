@@ -2806,16 +2806,12 @@ class TestCloudFormationResourceScan:
         return make_client("cloudformation")
 
     def test_describe_resource_scan_fake(self, client):
-        """DescribeResourceScan reports a completed scan for any id.
-
-        Resource scans are not modelled, so any id reads back as COMPLETE
-        rather than raising ResourceScanNotFoundException as AWS would.
-        """
-        resp = client.describe_resource_scan(
-            ResourceScanId="arn:aws:cloudformation:us-east-1:123456789012:resourceScan/fake-id"
-        )
-        assert resp["Status"] == "COMPLETE"
-        assert resp["PercentageCompleted"] == 100.0
+        """DescribeResourceScan with fake ID raises error."""
+        with pytest.raises(ClientError) as exc:
+            client.describe_resource_scan(
+                ResourceScanId="arn:aws:cloudformation:us-east-1:123456789012:resourceScan/fake-id"
+            )
+        assert "Code" in exc.value.response["Error"]
 
     def test_list_resource_scan_resources_fake(self, client):
         """ListResourceScanResources with fake ID returns response or error."""
@@ -3284,26 +3280,34 @@ class TestCloudFormationTypeRegistrationGapOps:
             "NotImplemented",
         )
 
-    def test_describe_type_registration(self, client):
-        """DescribeTypeRegistration reports the registration's progress."""
-        resp = client.describe_type_registration(RegistrationToken="abc-123-def")
-        assert resp["ProgressStatus"] == "COMPLETE"
-        assert resp["TypeArn"]
-        assert resp["TypeVersionArn"]
-
-    def test_register_type(self, client):
-        """RegisterType hands back a registration token."""
-        resp = client.register_type(
-            TypeName="My::Custom::Resource",
-            SchemaHandlerPackage="s3://bucket/schema.zip",
-            Type="RESOURCE",
+    def test_describe_type_registration_not_implemented(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.describe_type_registration(RegistrationToken="abc-123-def")
+        assert exc.value.response["Error"]["Code"] in (
+            "NotImplemented",
+            "CFNRegistryException",
         )
-        assert resp["RegistrationToken"]
 
-    def test_set_type_configuration(self, client):
-        """SetTypeConfiguration returns the stored configuration's ARN."""
-        resp = client.set_type_configuration(
-            TypeArn="arn:aws:cloudformation:us-east-1:123456789012:type/resource/My-Custom-Resource",
-            Configuration="{}",
+    def test_register_type_not_implemented(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.register_type(
+                TypeName="My::Custom::Resource",
+                SchemaHandlerPackage="s3://bucket/schema.zip",
+                Type="RESOURCE",
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "NotImplemented",
+            "CFNRegistryException",
         )
-        assert resp["ConfigurationArn"]
+
+    def test_set_type_configuration_not_implemented(self, client):
+        with pytest.raises(ClientError) as exc:
+            client.set_type_configuration(
+                TypeArn="arn:aws:cloudformation:us-east-1:123456789012:type/resource/My-Custom-Resource",
+                Configuration="{}",
+            )
+        assert exc.value.response["Error"]["Code"] in (
+            "NotImplemented",
+            "CFNRegistryException",
+            "TypeNotFoundException",
+        )

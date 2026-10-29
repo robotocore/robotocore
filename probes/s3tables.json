@@ -1,16 +1,19 @@
 {
   "service": "s3tables",
+  "generated_at": "2026-10-26T01:27:34.712904+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 43,
-    "needs_params": 3,
+    "working": 48,
+    "needs_params": 0,
     "not_implemented": 0,
-    "500_error": 2
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "CreateNamespace",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "CreateTable",
@@ -69,8 +72,8 @@
     },
     {
       "operation": "GetTable",
-      "status": "500_error",
-      "message": "server crash (InternalError: argument of type 'NoneType' is not iterable)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "GetTableBucket",
@@ -165,7 +168,7 @@
     {
       "operation": "ListTableBuckets",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (BadRequestException: The continuation token is not valid.)"
     },
     {
       "operation": "ListTables",
@@ -199,8 +202,8 @@
     },
     {
       "operation": "PutTableBucketReplication",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "PutTableBucketStorageClass",
@@ -210,7 +213,7 @@
     {
       "operation": "PutTableMaintenanceConfiguration",
       "status": "working",
-      "message": "implemented (NotFoundException)"
+      "message": "implemented via required-only (NotFoundException)"
     },
     {
       "operation": "PutTablePolicy",
@@ -219,18 +222,18 @@
     },
     {
       "operation": "PutTableRecordExpirationConfiguration",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'tableArn')"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "PutTableReplication",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "RenameTable",
       "status": "working",
-      "message": "likely implemented (BadRequestException: Neither a new namespace name nor a new table name is specifi)"
+      "message": "implemented (NotFoundException)"
     },
     {
       "operation": "TagResource",

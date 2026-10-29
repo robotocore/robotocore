@@ -1,0 +1,34 @@
+{
+  "service": "dynamodbstreams",
+  "generated_at": "2026-10-26T03:43:02.366347+00:00",
+  "endpoint": "http://localhost:4795",
+  "counts": {
+    "working": 4,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "DescribeStream",
+      "status": "working",
+      "message": "implemented via required-only (ValidationException)"
+    },
+    {
+      "operation": "GetRecords",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "GetShardIterator",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "ListStreams",
+      "status": "working",
+      "message": "OK"
+    }
+  ]
+}

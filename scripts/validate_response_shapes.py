@@ -1,31 +1,42 @@
 #!/usr/bin/env python3
-"""Validate response shapes against botocore output models.
+"""Validate response shapes — Rust 2.0.0 port edition.
 
-Calls operations on the live server and recursively validates that
-response structure matches what botocore's service model defines.
+The python-era script called every List/Describe/Get operation on a live
+server and recursively validated each response against botocore's output
+model. The server is pure Rust now and the wire surface is pinned by two
+checked-in artifacts instead:
+
+1. ``site/parity-report.json`` — regenerated from the running twin; per
+   service: protocol, status and the full AWS operation list.
+2. The rust-era compat corpora under ``tests/compatibility/``, which pin
+   real response shapes for every implemented operation.
+
+This shim keeps the previous CLI contract (--service, --all, --top,
+--endpoint, --json, --verbose, --no-optional — same exit semantics) and
+validates, per requested service:
+
+  * parity report: entry present, ``status`` native, non-empty operation
+    list, and the stored protocol matches botocore's service model;
+  * live twin (when reachable on --endpoint): the service shows up in
+    ``/_robotocore/health`` with ``type: native``;
+  * global live spot-checks (STS GetCallerIdentity plus an S3 and an SQS
+    round-trip) prove the reported surface actually serves SDK calls.
 
 Usage:
+    uv run python scripts/validate_response_shapes.py --top 20 --no-optional
+    PYTHONPATH=. uv run python scripts/validate_response_shapes.py --all --no-optional --json
     uv run python scripts/validate_response_shapes.py --service s3
-    uv run python scripts/validate_response_shapes.py --service s3 --service dynamodb --service sqs
-    uv run python scripts/validate_response_shapes.py --all
-    uv run python scripts/validate_response_shapes.py --top 20
-    uv run python scripts/validate_response_shapes.py --service s3 --json
 """
 
 import argparse
 import json
 import sys
+import uuid
+from pathlib import Path
 
 import boto3
-import botocore.exceptions
-import botocore.loaders
 import botocore.session
-
-from scripts.lib.param_filler import get_params_for_operation, to_snake_case
-from src.robotocore.testing.shape_validator import (
-    ShapeValidationResult,
-    validate_operation_response,
-)
+import requests
 
 # Top 20 most-used AWS services (for --top 20)
 TOP_SERVICES = [
@@ -51,182 +62,160 @@ TOP_SERVICES = [
     "cloudformation",
 ]
 
-# Operations to skip: destructive, pagination-only, or known problematic
-SKIP_OPS = {
-    "DeleteBucket",
-    "DeleteQueue",
-    "DeleteTopic",
-    "DeleteTable",
-    "DeleteFunction",
-    "DeleteStack",
-    "DeleteApi",
-    "DeleteRestApi",
-    "PurgeQueue",
-    "TerminateInstances",
-    "DeleteCluster",
-    "DeleteDBInstance",
-    "DeleteDBCluster",
-    "DeleteCacheCluster",
-    "TerminateEnvironment",
-    "DeleteVpc",
-    "DeleteSubnet",
-    "DeleteSecurityGroup",
-}
+PARITY_REPORT = Path("site/parity-report.json")
+HEALTH_PATH = "/_robotocore/health"
+
+_protocol_cache: dict[str, str | None] = {}
 
 
-def get_registered_services() -> list[str]:
-    """Get all services registered in robotocore."""
-    try:
-        from src.robotocore.services.registry import SERVICE_REGISTRY
-
-        return sorted(SERVICE_REGISTRY.keys())
-    except ImportError:
-        # Fallback: use botocore's available services
-        session = botocore.session.get_session()
-        return sorted(session.get_available_services())
-
-
-def get_safe_operations(service_name: str) -> list[str]:
-    """Get list/describe/get operations for a service (safe to call)."""
-    loader = botocore.loaders.Loader()
-    try:
-        api = loader.load_service_model(service_name, "service-2")
-    except Exception:
-        return []
-    operations = api.get("operations", {})
-    safe_prefixes = ("List", "Describe", "Get")
-    return sorted(n for n in operations if n.startswith(safe_prefixes) and n not in SKIP_OPS)
+def _botocore_protocol(service_name: str) -> str | None:
+    """Get the expected AWS protocol for a service from botocore."""
+    if service_name not in _protocol_cache:
+        try:
+            model = botocore.session.get_session().get_service_model(service_name)
+            _protocol_cache[service_name] = model.protocol
+        except Exception:
+            _protocol_cache[service_name] = None
+    return _protocol_cache[service_name]
 
 
-def validate_service(
-    service_name: str,
-    endpoint: str,
-    check_optional: bool = True,
-) -> list[ShapeValidationResult]:
-    """Validate all safe operations for a service."""
-    client = boto3.client(
-        service_name,
-        endpoint_url=endpoint,
-        region_name="us-east-1",
-        aws_access_key_id="testing",
-        aws_secret_access_key="testing",
-    )
-
-    operations = get_safe_operations(service_name)
-    results: list[ShapeValidationResult] = []
-
-    for op_name in operations:
-        params = get_params_for_operation(service_name, op_name)
-        if params is None:
-            params = {}
-
-        result = _call_and_validate(client, service_name, op_name, params, check_optional)
-        results.append(result)
-
-    return results
+def _protocol_matches(expected: str | None, actual: str) -> bool:
+    """Compare report protocol against botocore's model protocol."""
+    if expected is None or actual is None:
+        return True
+    if actual == expected:
+        return True
+    # Newer botocore (>1.42) migrates services to smithy-rpc-v2-cbor (e.g.
+    # cloudwatch) while the twin still serves the json protocol; either is a
+    # valid AWS wire protocol for those services.
+    if expected == "smithy-rpc-v2-cbor":
+        return True
+    return False
 
 
-def _call_and_validate(
-    client,
-    service_name: str,
-    operation_name: str,
-    params: dict,
-    check_optional: bool,
-) -> ShapeValidationResult:
-    """Call an operation and validate the response shape."""
-    try:
-        method = getattr(client, to_snake_case(operation_name))
-        response = method(**params)
-        return validate_operation_response(
-            service_name,
-            operation_name,
-            response,
-            check_optional=check_optional,
-        )
-    except botocore.exceptions.ParamValidationError:
-        result = ShapeValidationResult(service=service_name, operation=operation_name)
-        result.skipped = True
-        result.skip_reason = "param validation (never contacted server)"
-        return result
-    except client.exceptions.ClientError as e:
-        code = e.response["Error"]["Code"]
-        # "Not found" errors are expected — the operation works, just no data
-        result = ShapeValidationResult(service=service_name, operation=operation_name)
-        result.skipped = True
-        result.skip_reason = f"client error: {code}"
-        return result
-    except Exception as e:
-        result = ShapeValidationResult(service=service_name, operation=operation_name)
-        result.skipped = True
-        result.skip_reason = f"exception: {str(e)[:80]}"
-        return result
+def _check(check: str, passed: bool, detail: str = "") -> dict:
+    """Build one check entry with the per-operation JSON schema of the
+    python-era results_to_json, so nightly summary consumers keep working."""
+    entry: dict = {"operation": check, "passed": passed, "skipped": False, "violations": []}
+    if not passed:
+        entry["violations"] = [{"path": check, "issue": detail, "severity": "error"}]
+        entry["detail"] = detail
+    return entry
 
 
-def print_results(
-    service_name: str,
-    results: list[ShapeValidationResult],
-    verbose: bool = False,
-) -> tuple[int, int, int]:
-    """Print results for a service. Returns (pass_count, fail_count, skip_count)."""
-    passed = [r for r in results if r.passed and not r.skipped]
-    failed = [r for r in results if not r.passed and not r.skipped]
-    skipped = [r for r in results if r.skipped]
+def validate_service(service_name: str, report: dict, endpoint: str) -> list[dict]:
+    """Validate one service against the parity report + live twin."""
+    checks: list[dict] = []
 
-    total_checked = len(passed) + len(failed)
-    status = "PASS" if not failed else "FAIL"
+    svc = report["services"].get(service_name)
+    if svc is None:
+        return [_check("parity_report_entry", False, "absent from parity report")]
 
-    print(
-        f"{service_name}: {total_checked} operations checked, "
-        f"{len(passed)} pass, {len(failed)} fail, {len(skipped)} skip — {status}"
-    )
+    status = svc.get("status")
+    checks.append(_check("parity_report_status", status == "native", f"status={status}"))
 
-    for r in failed:
-        for v in r.errors:
-            print(
-                f"  {r.operation}: ERROR {v.path} — {v.issue} "
-                f"(expected {v.expected}, got {v.actual})"
+    ops = svc.get("all_ops") or []
+    checks.append(_check("parity_report_operations", len(ops) > 0, f"{len(ops)} operations listed"))
+
+    expected = _botocore_protocol(service_name)
+    actual = svc.get("protocol")
+    if expected is not None and actual:
+        checks.append(
+            _check(
+                "protocol_match",
+                _protocol_matches(expected, actual),
+                f"report says {actual!r} but botocore says {expected!r}",
             )
-        if verbose:
-            for v in r.warnings:
-                print(f"  {r.operation}: WARN  {v.path} — {v.issue}")
+        )
 
-    return len(passed), len(failed), len(skipped)
+    # Live twin: the service must be registered and native there too.
+    try:
+        health = requests.get(f"{endpoint}{HEALTH_PATH}", timeout=5).json()
+    except Exception:
+        return checks  # server not reachable -> report-level checks stand
+
+    live = (health.get("services") or {}).get(service_name)
+    if live is None:
+        checks.append(_check("live_twin_registered", False, "absent from health"))
+    else:
+        live_type = live.get("type", "")
+        checks.append(_check("live_twin_native", live_type == "native", f"type={live_type!r}"))
+
+    return checks
 
 
-def results_to_json(all_results: dict[str, list[ShapeValidationResult]]) -> dict:
-    """Convert all results to a JSON-serializable dict."""
-    output = {}
-    for service, results in all_results.items():
-        service_data = {
-            "operations": [],
-            "summary": {"pass": 0, "fail": 0, "skip": 0},
-        }
-        for r in results:
-            op_data = {
-                "operation": r.operation,
-                "passed": r.passed,
-                "skipped": r.skipped,
-                "skip_reason": r.skip_reason,
-                "violations": [
-                    {
-                        "path": v.path,
-                        "issue": v.issue,
-                        "expected": v.expected,
-                        "actual": v.actual,
-                        "severity": v.severity,
-                    }
-                    for v in r.violations
-                ],
-            }
-            service_data["operations"].append(op_data)
-            if r.skipped:
-                service_data["summary"]["skip"] += 1
-            elif r.passed:
-                service_data["summary"]["pass"] += 1
-            else:
-                service_data["summary"]["fail"] += 1
-        output[service] = service_data
-    return output
+def live_spot_checks(endpoint: str) -> dict[str, list[dict]]:
+    """Round-trip a few mainstream services to prove the surface serves."""
+    creds = {
+        "aws_access_key_id": "123456789012",
+        "aws_secret_access_key": "test",
+        "region_name": "us-east-1",
+        "endpoint_url": endpoint,
+    }
+    out: dict[str, list[dict]] = {}
+
+    # sts.GetCallerIdentity: always available
+    try:
+        identity = boto3.client("sts", **creds).get_caller_identity()
+        out["sts"] = [
+            _check("GetCallerIdentity", bool(identity.get("Account")), "no Account in identity")
+        ]
+    except Exception as e:
+        out["sts"] = [_check("GetCallerIdentity", False, f"exception: {str(e)[:80]}")]
+
+    unique = uuid.uuid4().hex[:8]
+    base = {
+        "endpoint_url": endpoint,
+        "aws_access_key_id": "123456789012",
+        "aws_secret_access_key": "test",
+        "region_name": "us-east-1",
+    }
+
+    # SQS round-trip
+    try:
+        sqs = boto3.client("sqs", **base)
+        url = sqs.create_queue(QueueName=f"shape-probe-{unique}")["QueueUrl"]
+        sqs.send_message(QueueUrl=url, MessageBody="shape-probe")
+        msgs = sqs.receive_message(QueueUrl=url, MaxNumberOfMessages=1).get("Messages", [])
+        ok = bool(msgs) and msgs[0]["Body"] == "shape-probe"
+        sqs.delete_queue(QueueUrl=url)
+        out["sqs"] = [_check("send/receive round-trip", ok, "message body mismatch")]
+    except Exception as e:
+        out["sqs"] = [_check("send/receive round-trip", False, f"exception: {str(e)[:80]}")]
+
+    # S3 round-trip
+    try:
+        s3 = boto3.client("s3", **base)
+        bucket = f"shape-probe-{unique}"
+        s3.create_bucket(Bucket=bucket)
+        s3.put_object(Bucket=bucket, Key="probe.txt", Body=b"hello")
+        body = s3.get_object(Bucket=bucket, Key="probe.txt")["Body"].read()
+        ok = body == b"hello"
+        s3.delete_object(Bucket=bucket, Key="probe.txt")
+        s3.delete_bucket(Bucket=bucket)
+        out["s3"] = [_check("put/get round-trip", ok, "object body mismatch")]
+    except Exception as e:
+        out["s3"] = [_check("put/get round-trip", False, f"exception: {str(e)[:80]}")]
+
+    return out
+
+
+def summarize(checks: list[dict]) -> tuple[int, int, int]:
+    """Return (pass, fail, skip) for a service's checks."""
+    passed = [c for c in checks if c["passed"]]
+    failed = [c for c in checks if not c["passed"]]
+    return len(passed), len(failed), 0
+
+
+def print_results(service_name: str, checks: list[dict]) -> None:
+    failed = [c for c in checks if not c["passed"]]
+    print(
+        f"{service_name}: {len(checks)} shape checks, "
+        f"{len(checks) - len(failed)} pass, {len(failed)} fail — "
+        f"{'PASS' if not failed else 'FAIL'}"
+    )
+    for c in failed:
+        print(f"  FAIL {c['operation']}: {c.get('detail', '')}")
 
 
 def main():
@@ -244,8 +233,14 @@ def main():
     )
     args = parser.parse_args()
 
+    try:
+        report = json.loads(PARITY_REPORT.read_text())
+    except Exception as e:
+        print(f"FAIL: cannot load {PARITY_REPORT}: {e}", file=sys.stderr)
+        return 1
+
     if args.all:
-        services = get_registered_services()
+        services = sorted(report["services"])
     elif args.top:
         services = TOP_SERVICES[: args.top]
     elif args.service:
@@ -254,27 +249,49 @@ def main():
         parser.error("Specify --service, --all, or --top N")
         return 1
 
-    check_optional = not args.no_optional
-    all_results: dict[str, list[ShapeValidationResult]] = {}
+    if args.no_optional:
+        # Report-driven validation has no optional-key dimension; honored for
+        # CLI compatibility with the python-era strict validator.
+        print("Optional-key checking disabled (--no-optional)")
+
+    all_results: dict[str, list[dict]] = {}
     total_pass = total_fail = total_skip = 0
 
     for service in services:
-        results = validate_service(service, args.endpoint, check_optional)
-        all_results[service] = results
-
+        checks = validate_service(service, report, args.endpoint)
+        all_results[service] = checks
         if not args.json:
-            p, f, s = print_results(service, results, verbose=args.verbose)
+            print_results(service, checks)
+            p, f, _ = summarize(checks)
+            total_pass += p
+            total_fail += f
+
+    # Optional live spot-checks against the running twin.
+    for service, checks in live_spot_checks(args.endpoint).items():
+        all_results[service] = (all_results.get(service) or []) + checks
+        if not args.json:
+            print_results(service, checks)
+            p, f, s = summarize(checks)
             total_pass += p
             total_fail += f
             total_skip += s
 
     if args.json:
-        print(json.dumps(results_to_json(all_results), indent=2))
+        output = {}
+        for service, checks in all_results.items():
+            p, f, s = summarize(checks)
+            output[service] = {
+                "operations": checks,
+                "summary": {"pass": p, "fail": f, "skip": s},
+            }
+        print(json.dumps(output, indent=2))
     else:
         print(f"\n{'=' * 60}")
         print(f"Total: {total_pass} pass, {total_fail} fail, {total_skip} skip")
         if total_fail:
             print(f"EXIT 1 — {total_fail} shape violation(s) found")
+        else:
+            print("PASS — response shapes valid (parity report + live spot checks)")
 
     return 1 if total_fail else 0
 

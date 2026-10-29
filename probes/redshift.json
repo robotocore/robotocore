@@ -1,10 +1,13 @@
 {
   "service": "redshift",
+  "generated_at": "2026-10-26T03:43:22.601249+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
     "working": 127,
-    "needs_params": 2,
-    "not_implemented": 11,
-    "500_error": 0
+    "needs_params": 0,
+    "not_implemented": 13,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -35,12 +38,12 @@
     {
       "operation": "AuthorizeEndpointAccess",
       "status": "working",
-      "message": "likely implemented (ClusterNotFound: Cluster None not found.)"
+      "message": "likely implemented (ClusterNotFound: Cluster probe-test-value not found.)"
     },
     {
       "operation": "AuthorizeSnapshotAccess",
       "status": "working",
-      "message": "likely implemented (ClusterSnapshotNotFound: Snapshot None not found.)"
+      "message": "likely implemented (ClusterSnapshotNotFound: Snapshot probe-test-value not found.)"
     },
     {
       "operation": "BatchDeleteClusterSnapshots",
@@ -90,7 +93,7 @@
     {
       "operation": "CreateClusterSubnetGroup",
       "status": "working",
-      "message": "likely implemented (InvalidSubnet: Subnet [] not found.)"
+      "message": "OK"
     },
     {
       "operation": "CreateCustomDomainAssociation",
@@ -100,7 +103,7 @@
     {
       "operation": "CreateEndpointAccess",
       "status": "working",
-      "message": "likely implemented (ClusterNotFound: Cluster None not found.)"
+      "message": "OK"
     },
     {
       "operation": "CreateEventSubscription",
@@ -180,7 +183,7 @@
     {
       "operation": "DeleteClusterSubnetGroup",
       "status": "working",
-      "message": "likely implemented (ClusterSubnetGroupNotFoundFault: Subnet group probe-test-value not found.)"
+      "message": "OK"
     },
     {
       "operation": "DeleteCustomDomainAssociation",
@@ -190,7 +193,7 @@
     {
       "operation": "DeleteEndpointAccess",
       "status": "working",
-      "message": "likely implemented (EndpointNotFound: Endpoint probe-test-value not found.)"
+      "message": "OK"
     },
     {
       "operation": "DeleteEventSubscription",
@@ -240,7 +243,7 @@
     {
       "operation": "DeleteSnapshotSchedule",
       "status": "working",
-      "message": "implemented (ResourceNotFoundFault)"
+      "message": "OK"
     },
     {
       "operation": "DeleteTags",
@@ -250,12 +253,12 @@
     {
       "operation": "DeleteUsageLimit",
       "status": "working",
-      "message": "likely implemented (UsageLimitNotFound: Usage limit probe-test-value not found.)"
+      "message": "likely implemented (UsageLimitNotFound: Usage limit probe-usage-limit-id-id not found.)"
     },
     {
       "operation": "DeregisterNamespace",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "DescribeAccountAttributes",
@@ -265,7 +268,7 @@
     {
       "operation": "DescribeAuthenticationProfiles",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (AuthenticationProfileNotFoundFault: Authentication profile probe-test-value not found.)"
     },
     {
       "operation": "DescribeClusterDbRevisions",
@@ -275,7 +278,7 @@
     {
       "operation": "DescribeClusterParameterGroups",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ClusterParameterGroupNotFound: ClusterParameterGroup not found: probe-test-value)"
     },
     {
       "operation": "DescribeClusterParameters",
@@ -285,17 +288,17 @@
     {
       "operation": "DescribeClusterSecurityGroups",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ClusterSecurityGroupNotFound: Security group probe-test-value not found.)"
     },
     {
       "operation": "DescribeClusterSnapshots",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ClusterSnapshotNotFound: Snapshot probe-test-value not found.)"
     },
     {
       "operation": "DescribeClusterSubnetGroups",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ClusterSubnetGroupNotFoundFault: Subnet group probe-test-value not found.)"
     },
     {
       "operation": "DescribeClusterTracks",
@@ -355,7 +358,7 @@
     {
       "operation": "DescribeEventSubscriptions",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (SubscriptionNotFound: Subscription probe-test-value not found.)"
     },
     {
       "operation": "DescribeEvents",
@@ -365,12 +368,12 @@
     {
       "operation": "DescribeHsmClientCertificates",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (HsmClientCertificateNotFoundFault: HSM client certificate probe-test-value not found.)"
     },
     {
       "operation": "DescribeHsmConfigurations",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (HsmConfigurationNotFoundFault: HSM configuration probe-test-value not found.)"
     },
     {
       "operation": "DescribeInboundIntegrations",
@@ -430,12 +433,12 @@
     {
       "operation": "DescribeScheduledActions",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (ScheduledActionNotFoundFault: Scheduled Action probe-test-value not found.)"
     },
     {
       "operation": "DescribeSnapshotCopyGrants",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (SnapshotCopyGrantNotFoundFault: Snapshot copy grant not found: probe-test-value)"
     },
     {
       "operation": "DescribeSnapshotSchedules",
@@ -455,7 +458,7 @@
     {
       "operation": "DescribeTags",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (InvalidParameterValue)"
     },
     {
       "operation": "DescribeUsageLimits",
@@ -495,12 +498,12 @@
     {
       "operation": "GetClusterCredentials",
       "status": "working",
-      "message": "likely implemented (ClusterNotFound: Cluster None not found.)"
+      "message": "implemented (InvalidParameterValue)"
     },
     {
       "operation": "GetClusterCredentialsWithIAM",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (InvalidParameterValue)"
     },
     {
       "operation": "GetIdentityCenterAuthToken",
@@ -540,7 +543,7 @@
     {
       "operation": "ModifyCluster",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (InvalidParameterValue)"
     },
     {
       "operation": "ModifyClusterDbRevision",
@@ -585,7 +588,7 @@
     {
       "operation": "ModifyEndpointAccess",
       "status": "working",
-      "message": "likely implemented (EndpointNotFound: Endpoint probe-test-value not found.)"
+      "message": "OK"
     },
     {
       "operation": "ModifyEventSubscription",
@@ -610,7 +613,7 @@
     {
       "operation": "ModifyScheduledAction",
       "status": "working",
-      "message": "likely implemented (ScheduledActionNotFound: Scheduled Action probe-test-value not found.)"
+      "message": "likely implemented (ScheduledActionNotFoundFault: Scheduled Action probe-test-value not found.)"
     },
     {
       "operation": "ModifySnapshotCopyRetentionPeriod",
@@ -625,7 +628,7 @@
     {
       "operation": "ModifyUsageLimit",
       "status": "working",
-      "message": "likely implemented (UsageLimitNotFound: Usage limit probe-test-value not found.)"
+      "message": "likely implemented (UsageLimitNotFound: Usage limit probe-usage-limit-id-id not found.)"
     },
     {
       "operation": "PauseCluster",
@@ -649,8 +652,8 @@
     },
     {
       "operation": "RegisterNamespace",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "not_implemented",
+      "message": "not implemented (501)"
     },
     {
       "operation": "RejectDataShare",
@@ -670,7 +673,7 @@
     {
       "operation": "RestoreFromClusterSnapshot",
       "status": "working",
-      "message": "likely implemented (ClusterAlreadyExists: Cluster already exists)"
+      "message": "likely implemented (ClusterSnapshotNotFound: Snapshot probe-test-value not found.)"
     },
     {
       "operation": "RestoreTableFromClusterSnapshot",
@@ -690,12 +693,12 @@
     {
       "operation": "RevokeEndpointAccess",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (EndpointAuthorizationNotFound: Endpoint authorization not found for cluster probe-test-valu)"
     },
     {
       "operation": "RevokeSnapshotAccess",
       "status": "working",
-      "message": "likely implemented (ClusterSnapshotNotFound: Snapshot None not found.)"
+      "message": "likely implemented (ClusterSnapshotNotFound: Snapshot probe-test-value not found.)"
     },
     {
       "operation": "RotateEncryptionKey",

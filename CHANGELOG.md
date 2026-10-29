@@ -1,10 +1,327 @@
 # Changelog
 
 This file follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Robotocore releases use CalVer (`YYYY.M.D[.N]`) — every push to `main`
-auto-tags and publishes a versioned + `:latest` Docker image. Each release
-gets a top-level section here; the project source of truth for the
-maintenance policy is [`CLAUDE.md`](CLAUDE.md) under *Changelog discipline*.
+Robotocore releases historically use CalVer (`YYYY.M.D[.N]`) and now carry
+semver majors; pushes to `main` auto-tag and publish versioned + `:latest`
+Docker images. Each release gets a top-level section here; the project
+source of truth for the maintenance policy is [`CLAUDE.md`](CLAUDE.md)
+under *Changelog discipline*.
+
+## 2.0.0
+
+The Python 2.x line is retired: robotocore 2.0 is a **pure-Rust twin**
+(axum gateway + the `rotocore` crate) — the server ships no Python, no
+moto sidecar, and no second process. Nothing is bridged: 160 of 160
+registered services answer natively with moto-fidelity recorded per op
+(9,929 implemented of 10,391 botocore ops; 406 denies — every deny is a
+recorded decision in `tooling/surface-absence.json`).
+
+### Bedrock AgentCore (issue #371, 2026-10-26)
+
+- **port/iss-agentcore** — Amazon Bedrock AgentCore served natively for the
+  first time: `bedrock-agentcore-control` (code interpreters, agent
+  runtimes + versions + endpoints, gateways + targets, memories with
+  strategy CRUD, tags) and `bedrock-agentcore` (memory events CRUD with
+  moto's exact validation messages, code-interpreter session
+  Start/Get/Stop/List, derived ListActors/ListSessions) registered as the
+  159th and 160th native services. Both botocore models sign with scope
+  `bedrock-agentcore`, so one rotocore backend splits the (disjoint) URI
+  families; the introspection table carries both labels.
+- **Exceeds moto**: moto 5.2.4 implements no code-interpreter surface at
+  all (every `*CodeInterpreter*` op answers its 501); the twin serves the
+  full control CRUD and the session family, including the lazily-seeded
+  pre-provisioned SYSTEM interpreter `aws.codeinterpreter.v1` (undeletable).
+  Runtime/gateway/memory CRUD mirrors moto's pinned backend shapes, ids and
+  ManagedState transitions 1:1.
+- **Genuinely absent**: `InvokeCodeInterpreter` (its return shape is an
+  event stream — `CodeInterpreterStreamOutput`, unbidirectional-servable
+  here exactly as in moto), the memory-record and extraction-job families,
+  browser sessions, runtime invocations, workload tokens and the
+  evaluators/policies/identity-provider surfaces — all recorded as
+  modeled 501 denies in the probe corpora.
+
+### Upstream-parity wave (2026-10-26)
+
+- **port/up-ec2** — `RunInstances` launches `MaxCount` instances instead
+  of the MinCount-only bias (moto-vs-AWS bug, `getmoto/moto#10215`).
+- **port/up-events** — event patterns apply nested patterns per element
+  of an object array, fields never mixing across elements (moto PR
+  `getmoto/moto#10360`, event-ruler "JSON Array Matching").
+- **port/up-dynamodb** — `CreateTable`/`DescribeTable` return the
+  WarmThroughput block (moto `table.py` defaults; Terraform provider
+  polling, localstack #13140).
+- **port/up-sqs** — batch entry Id validation across the three batch ops
+  (moto PR `getmoto/moto#10346`) and the 60-second `PurgeQueueInProgress`
+  throttle with HTTP 403 (moto `getmoto/moto#10234`, 5.2.4).
+- **port/up-s3-markers** — object keys percent-decode exactly once for
+  storage, listing and tokens (localstack discussion 54, ex localstack
+  #13745); GET/HEAD on delete markers carry the marker headers and a
+  marker-version GET answers 405 MethodNotAllowed (moto PR
+  `getmoto/moto#10428`).
+- **port/up-dynamodb2** — WarmThroughput on every
+  GlobalSecondaryIndexDescription and in the UpdateTable response (moto
+  `dynamodb/models/table.py`; `update_table` → `table.describe()`).
+- **port/up-swarm6** — s3control `CreateAccessPoint` Tags + token model
+  (moto 5.2.4 changelog), kinesis `ListStreams` Limit/NextToken paging
+  (moto PR `getmoto/moto#10385`), fsx `DeleteFileSystem` raises
+  FileSystemNotFound (moto 5.2.4 changelog), vpclattice listener trio
+  ported from the botocore model.
+- **port/up-events2** — `create_partner_event_source()` returns the
+  EventSourceArn (moto 5.2.2) and `list_event_buses()` gains
+  Limit/NextToken pagination (moto 5.2.3, PAGINATION_MODEL).
+- **port/up-tinies-b** — wafv2 `GetWebACL` accepts an ARN (moto 5.2.0),
+  rds MonitoringRoleArn/MonitoringInterval combination validation
+  (`getmoto/moto#10137` + `#10212`), glue `GetConnection` HidePassword +
+  `GetConnections` Filter (moto 5.2.4).
+- **port/up-tinies-a** — transfer describe responses omit unset members
+  (moto 5.2.3 `getmoto/moto#10068`), route53 alias record sets carry no
+  TTL (moto 5.2.2 `getmoto/moto#10029`), acm CN-less import tolerance +
+  request_certificate Options merge (moto 5.2.2 `getmoto/moto#9912` +
+  `getmoto/moto#10030`).
+- **port/up-ecs** — `RunTask` honors capacityProviderStrategy with moto's
+  launch-type combination rejection (moto 5.2.3) and DescribeServices
+  returns rolloutState/rolloutStateReason/failedTasks (moto 5.2.0
+  changelog, `MOTO_ECS_SERVICE_FAILED_TASKS`).
+- **port/up-cognito** — `RespondToAuthChallenge` PASSWORD_VERIFIER bound
+  to the initiate_auth session (moto PR `getmoto/moto#10243`, for
+  `getmoto/moto#7562`).
+- **port/up-kin-cw** — kinesis put_record/put_records publish
+  IncomingBytes/IncomingRecords to CloudWatch in-process via the
+  cloudwatch ingest bridge (moto 5.2.4 changelog,
+  `KinesisBackend._send_stream_metrics`).
+- **port/up-ddb3** — dynamodb enforces the 409,600-byte item-size limit
+  with AWS Number byte sizing (`getmoto/moto#10176`), iot lists cap pages
+  at AWS's 100-item maximum (moto PR `getmoto/moto#10417`), sqs batch
+  validation precedes queue existence (moto's response-layer order).
+- **port/up-s3-post** — the S3 POST-form (browser presigned-POST) wire
+  path: multipart parsing, SigV4 policy-signature verification and policy
+  condition enforcement with content-length-range and the covered-field
+  rule (localstack `presigned_url.py::validate_post_policy`, AWS S3 POST
+  docs; verification secret pinned per the divergence table below).
+- **port/up-sfn** — native JSONata for `QueryLanguage: JSONATA` states
+  (AWS Step Functions JSONata docs, JSONata 2.0.6 subset) and the
+  AWS-dialect JSONPath filter operators (moto issue `getmoto/moto#10078`
+  with `#7825` singleton shapes and localstack's singleton-collapse fix).
+- **fix wave (port/fx-\* and port/fx2-\*)** — after each adversarial
+  review round, verification lanes re-derived lane claims against the
+  moto 5.2.4 oracle (`/home/termag/.moto-venv`, stock PyPI 5.2.4 — the
+  same upstream line the deployed fork pinned) and live probe
+  corpora: `port/fx-sqs`, `fx-ddb`, `fx-ecr`, `fx-ecscog`, `fx-events`,
+  `fx-iotvp`, `fx-kinlim`, `fx-s3`, `fx-sfn`, `fx-tinies2`, the ECR
+  layer-upload lane `fx-ecrlayer` (InitiateLayerUpload /
+  UploadLayerPart / CompleteLayerUpload + stored layers behind
+  BatchCheckLayerAvailability; `GetDownloadUrlForLayer` mirrors moto's
+  `NotImplementedError` absence with the 501 genuine-gap envelope), and
+  the round-2 lanes `fx2-*`; plus this documentation/comment truth lane.
+- CloudTrail → EventBridge events for elbv2/autoscaling/ec2 mutations
+  (#347).
+- SSM SendCommand InstanceIds records per-instance invocations (#347).
+- Cognito per-pool JWKS, RS256-signed tokens and OIDC discovery (#347).
+- x-era Powertools redundant-parentheses fix (#283, verified at tip).
+
+### Documented divergences in 2.0.0
+
+- Paginators mint no `parameterChecksum` and validate none (see the
+  last row below for what moto does).
+- ACM: the first-SAN DomainName fallback for CN-less imports is not
+  implemented (stays DomainName `""` / Subject `CN=`).
+- S3 SigV2 POST signatures are accepted unverified (any secret passes).
+- Cognito auth flows do not model the MFA challenge arms.
+- Step Functions JSONata is a deliberate dialect subset (see
+  `crates/stepfunctions/src/jsonata.rs`, "Deliberately not covered").
+- S3 POST-upload SigV4 verification pins the signing secret to `test`
+  (AGENTS.md "Endpoint & credentials" exception row).
+- The 38-significant-digit cap is not enforced in DynamoDB Numbers
+  (shared with moto).
+- The fx-lane paginator token families (list_event_buses, kinesis
+  ListStreams, s3control access points, the iot PAGINATION_MODEL lists,
+  vpclattice list_listeners) mint no `parameterChecksum` and do not
+  validate one — moto's paginator validates a checksum over the
+  non-pagination kwargs and answers `Invalid Token: Input inconsistent
+  with page token` even with `fail_on_invalid_token: False`
+  (moto/utilities/paginator.py:115); moto's s3control paginators
+  fail_closed (`fail_on_invalid_token: InvalidNextTokenException`, which
+  the twin mirrors for undecodable tokens only). Unrelated to that
+  family: the twin's `ds` paginator REQUIRES and validates moto's
+  checksum, `mediapackagev2` mints one, and `cloudhsmv2` mints
+  `parameterChecksum: 0` — mirroring each service's moto shape.
+
+### Added
+
+- **Full lambda language support.** python/nodejs/custom run in-process;
+  every official AWS runtime image (python, nodejs, java, dotnet, go,
+  ruby, provided) executes under `LAMBDA_EXECUTOR=docker`; EventBridge
+  scheduled rules fire; ESM carries MessageAttributes + FilterCriteria
+  operators; Task dispatch fans out to sqs/sns/dynamodb/states.
+- **Two-image release model:** tiny distroless default (python-family
+  runtimes in-image), Debian-slim `runtimes` (+node/ruby) and
+  `java-and-dotnet` variants (OpenJDK 21 + .NET SDK 8).
+- **Real security primitives:** KMS re-keyed to true AES-256-GCM
+  ciphertext blobs with the moto wire layout and `EncryptionContext`
+  bound as AAD; IAM policy evaluation (Effect/NotAction/conditions/
+  variables/permissions-boundaries/cross-account combining).
+- **Business-fidelity gates are machines, not docs:**
+  `make parity` = probe-freshness → parity → coverage-gate →
+  (nightly) error-census, where probe corpora may not lag their
+  implementations and every recorded deny must live-verify 501
+  `NotImplemented` (crash mirrors verified byte-exact against the moto
+  fork).
+
+### Changed
+
+- The workflow modernization drops the python lanes; the
+  `java-and-dotnet` image variant publishes alongside `:latest` and
+  `:runtimes` from the release lane.
+
+### Fixed
+
+See the 2026.10.x entries below (crash-fidelity canon, CFN mirror
+rollback cascade, lambda docker executor hardening, iam/kms/sfn/events
+semantic fixes from the adversarial review waves).
+
+## 2026.10.24 (shipped in 2.0.0)
+
+### Fixed: crashed probe rows now match moto's exact wire behavior
+
+Triaged the committed probe artifacts' HTTP-500 rows against the moto
+line that is robotocore's parity source (the JackDanger fork at
+moto-5.1.23.dev then; today's oracle in `~/.moto-venv` is stock moto
+5.2.4 from the same upstream line) op-by-op. Two moto-crash classes and one
+twin-only divergence:
+
+- **Ses un-routed operations were unreadable to XML SDKs.** The 16 SES
+  operations the moto fork does not route (identity policies, tracking /
+  delivery options, `SendBounce`, rule repositioning, ...) fell through to
+  the gateway's JSON 501 document, which a query-protocol (XML) client
+  cannot parse and therefore surfaced as a `500_error` crash row. The ses
+  module now answers the twin-wide canonical 501 itself, in the
+  query-protocol envelope: `NotImplemented: The <snake_op> action has not
+  been implemented`, matching moto's `call_action` message.
+- **Moto's own unhandled exceptions are now served moto-identically.**
+  moto's unguarded `KeyError` / `AttributeError` / `ValueError` escapes
+  leave the handler and tumble to the werkzeug server, which answers a
+  plain HTML 500 page — no AWS envelope at all. Crash-faithful rows now
+  render those exact bytes (`rotocore::proto::moto_crash_response`) for
+  elb (`Register/DeregisterInstancesFromLoadBalancer`,
+  `Attach/DetachLoadBalancerFromSubnets`,
+  `Describe/ModifyLoadBalancerAttributes` when the load balancer is
+  missing), athena (`GetNamedQuery`, `Get/StopQueryExecution`), dms
+  (invalid filter names, `ListTagsForResource` selector misuse),
+  emr (`SetTerminationProtection`, `SetVisibleToAllUsers`,
+  `TerminateJobFlows`, unknown-instance-group paths), emrcontainers
+  (malformed `containerProvider` bodies, bad next tokens), panorama
+  (unknown devices), s3control (`PutBucketVersioning` — moto indexes
+  `["PutBucketVersioningRequest"]` on a body whose root is always
+  `VersioningConfiguration`).
+- **Two elb crashes were twin-only and are now fixed** to moto's modeled
+  behavior: `ApplySecurityGroupsToLoadBalancer` validates security groups
+  through the EC2 loopback before the load-balancer lookup (moto raises
+  `InvalidSecurityGroupError` → `ValidationError`; the loopback probe also
+  used an EC2 filter encoding that never matched, so every id counted as
+  existing), and `DescribeLoadBalancerPolicies` raises the modeled
+  `LoadBalancerNotFound` like moto's `describe_load_balancers`.
+- Unchanged-by-design rows: `resource-groups` tag-sync tasks (the twin
+  already serves moto's byte-exact werkzeug page), `workspaces` unknown-id
+  `InternalError` mirrors (recorded in probes and pinned by the compat
+  suite), and the `connect` module's codified 501/`InternalError` surface
+  for operations moto never routed.
+- Probe artifacts (`probes/`) re-run through the probe runner for
+  elb, ses, athena, dms, emr, emrcontainers, panorama, s3control and
+  bedrock-runtime: ses drops from 16 crashed rows to
+  16× `not_implemented` and elb from 8 to 7 (its kept crash rows now show
+  moto's unparseable-HTML observables), while the 500 rows it keeps are
+  byte-shape identical to what the moto server serves. `scripts/coverage.py`
+  regenerated `tooling/coverage.json` and advanced the
+  `tooling/coverage-budget.json` ratchet (`covered 9458/10268`, gate OK).
+
+## 2026.10.19 (shipped in 2.0.0)
+
+### Added: native EMR backend on the pure-Rust server
+
+EMR moved from the moto sidecar to a native `rotocore` backend
+(`rotocore/src/services/emr.rs`). The repo's botocore data pins EMR to the
+JSON wire (`jsonVersion 1.1`, target-prefix `ElasticMapReduce`), so the
+backend speaks JSON, not query-XML.
+
+- 52 of the 60 spec operations are implemented: cluster lifecycle
+  (RunJobFlow/Describe/List/Terminate/tags/visibility/concurrency), steps
+  (Add/Describe/List/Cancel), instance groups and instance fleets, bootstrap
+  actions, Auto-Scaling policies, managed-scaling and auto-termination
+  policies, security configurations, block-public-access configuration,
+  studios and studio session mappings, notebook-execution accessors,
+  persistent app UIs, release labels, and per-release supported instance
+  types (data embedded from moto's resource files).
+- 8 operations deny with moto's exact `NotImplemented` document
+  (`The <op> action has not been implemented`, HTTP 501):
+  ListStudioSessionMappings, SetKeepJobFlowAliveWhenNoSteps,
+  SetUnhealthyNodeReplacement, GetClusterSessionCredentials,
+  GetPersistentAppUIPresignedURL, GetOnClusterAppUIPresignedURL,
+  StartNotebookExecution, UpdateStudio.
+- Error shapes mirror moto exactly, including its quirks: unknown clusters
+  answer `InvalidRequestException`/`NoSuchCluster`, a few moto dict reads
+  escape as KeyError → `InternalError` (500), keyword-form exceptions render
+  the fallback message "An unspecified service error occurred", and the
+  studio-session-mapping lookup keys interpolate an absent IdentityId as the
+  string `"None"`.
+- `test_emr_compat.py` holds 74 pass / 7 fail with the fail set identical to
+  the moto-sidecar baseline; `tests/moto_impl/test_emr_lifecycle.py` passes
+  11 / fails 5, matching the sidecar baseline exactly.
+
+#### Migration
+
+EMR calls to the Rust server no longer round-trip through the moto sidecar;
+state is in-memory and per-(account, region) as before. `Instances.
+InstanceFleets` on `RunJobFlow` stays a no-op (moto parity — fleets are
+created with `AddInstanceFleet`).
+
+## 2026.5.14 (shipped in 2.0.0)
+
+### Added: state save/load/reset on the pure-Rust server
+
+The Rust server now speaks the Python server's state-management surface:
+
+- `GET|POST /_robotocore/state/save` — `{name, path?, services?}`; with a
+  `path` writes `<path>/<name>.json` (unnamed: `<dir>/robotocore_state.json`),
+  without one keeps an in-memory named snapshot; responses carry
+  `{status: "saved", path, services}`.
+- `POST /_robotocore/state/load` — `{name, path?, services?}`; restores from a
+  saved file or an in-memory snapshot (`{status: "loaded"}`, or
+  `{status: "no_state_found"}` when absent).
+- `POST /_robotocore/state/reset` — clears every native service's state
+  (`{status: "reset"}`).
+- `GET /_robotocore/state/snapshots` (also `/robotocore/state/snapshots`)
+  — lists in-memory named and versioned snapshots.
+- `POST /_robotocore/state/snapshots/save|load` — versioned named snapshots
+  (each save appends a revision; load restores a chosen or the latest one).
+- `GET /_robotocore/state/export`, `POST /_robotocore/state/import` — JSON
+  dump/reload channel (`native_state` envelope).
+
+Every native service crate exposes a `snapshot_json` / `restore_json` /
+`reset` surface (serde derives + lock-tolerant helpers keyed by
+`account|region`), wired through a central registry built from the same
+handler instances the wire path uses. File writes are atomic (temp +
+rename). This is the last gateway feature the Python branch provided that
+the Rust port lacked; the state/persistence/concurrency compat suites pass
+at parity (20/20).
+
+#### Migration
+
+State endpoints previously returned `NotImplemented` on the Rust server;
+they are now live. `POST /state/reset` wipes native service state for the
+whole process (including cross-service handler instances), matching
+`docker restart` semantics; callers that used the endpoint for
+test-isolation must switch to unique account ids.
+
+### Fixed: deployed-API invocation through the Rust gateway
+
+Proxied (moto-sidecar) requests previously dropped the request path (they
+arrived as `POST /`), which broke rest-json/rest-xml services such as API
+Gateway resource/configuration calls with `501 NotImplemented`. The proxy
+now forwards the original path + query and the `x-robotocore-service`
+header. `/restapis/{api}/{stage}/_user_request_/{path}` invocations are
+served by a rust-side executor that reads the deployed integration config
+from the sidecar and dispatches `AWS_PROXY` integrations into the native
+lambda crate, mirroring the Python executor.
 
 ## 2026.10.12
 
@@ -625,7 +942,7 @@ First GA release. Robotocore is an MIT-licensed, open-source AWS emulator built 
 ### Service Coverage
 
 - **147 registered services** (38 native + 109 Moto-backed)
-- **147 services with automated compat tests** (100% coverage)
+- **158 services with automated compat tests** (100% of the fleet-gated surface)
 - **94/94 smoke tests passing**
 - **5195+ total tests** (2520 unit + 2675 compat + 42 integration), 0 failures
 

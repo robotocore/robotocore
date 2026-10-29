@@ -1,0 +1,374 @@
+{
+  "service": "bedrockagent",
+  "generated_at": "2026-10-25T19:41:59.852606+00:00",
+  "endpoint": "http://localhost:4566",
+  "counts": {
+    "working": 72,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
+  },
+  "operations": [
+    {
+      "operation": "AssociateAgentCollaborator",
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
+    },
+    {
+      "operation": "AssociateAgentKnowledgeBase",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateAgent",
+      "status": "working",
+      "message": "OK (required-only fill)"
+    },
+    {
+      "operation": "CreateAgentActionGroup",
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateAgentAlias",
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateDataSource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateFlow",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateFlowAlias",
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateFlowVersion",
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateKnowledgeBase",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "CreatePrompt",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreatePromptVersion",
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteAgent",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteAgentActionGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteAgentAlias",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteAgentVersion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteDataSource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteFlow",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteFlowAlias",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteFlowVersion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteKnowledgeBase",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeleteKnowledgeBaseDocuments",
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DeletePrompt",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DisassociateAgentCollaborator",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "DisassociateAgentKnowledgeBase",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetAgent",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetAgentActionGroup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetAgentAlias",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetAgentCollaborator",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetAgentKnowledgeBase",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetAgentVersion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetDataSource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetFlow",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetFlowAlias",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetFlowVersion",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetIngestionJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetKnowledgeBase",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetKnowledgeBaseDocuments",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "GetPrompt",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "IngestKnowledgeBaseDocuments",
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListAgentActionGroups",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListAgentAliases",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListAgentCollaborators",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListAgentKnowledgeBases",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListAgentVersions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListAgents",
+      "status": "working",
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
+    },
+    {
+      "operation": "ListDataSources",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListFlowAliases",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListFlowVersions",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListFlows",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListIngestionJobs",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListKnowledgeBaseDocuments",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ListKnowledgeBases",
+      "status": "working",
+      "message": "likely implemented (InvalidToken: Invalid Token: Invalid token)"
+    },
+    {
+      "operation": "ListPrompts",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ListTagsForResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PrepareAgent",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PrepareFlow",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StartIngestionJob",
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
+    },
+    {
+      "operation": "StopIngestionJob",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateAgent",
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateAgentActionGroup",
+      "status": "working",
+      "message": "implemented via required-only (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateAgentAlias",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateAgentCollaborator",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateAgentKnowledgeBase",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateDataSource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateFlow",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateFlowAlias",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateKnowledgeBase",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdatePrompt",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "ValidateFlowDefinition",
+      "status": "working",
+      "message": "OK"
+    }
+  ]
+}

@@ -1,31 +1,34 @@
 {
   "service": "dynamodb",
+  "generated_at": "2026-10-26T21:24:49.582463+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 37,
-    "needs_params": 5,
-    "not_implemented": 9,
-    "500_error": 5
+    "working": 54,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 2,
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "BatchExecuteStatement",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchGetItem",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "BatchWriteItem",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateBackup",
       "status": "working",
-      "message": "implemented (TableNotFoundException)"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateGlobalTable",
@@ -34,38 +37,38 @@
     },
     {
       "operation": "CreateTable",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'KeySchema')"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteBackup",
       "status": "working",
-      "message": "likely implemented (BackupNotFoundException: Backup not found: arn:aws:dynamodb:us-east-1:123456789012:th)"
+      "message": "likely implemented (BackupNotFoundException: Backup not found for ARN arn:aws:dynamodb:us-east-1:12345678)"
     },
     {
       "operation": "DeleteItem",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "DeleteResourcePolicy",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "likely implemented (PolicyNotFoundException: Resource-based policy not found for the provided ResourceArn)"
     },
     {
       "operation": "DescribeBackup",
       "status": "working",
-      "message": "likely implemented (BackupNotFoundException: Backup not found: arn:aws:dynamodb:us-east-1:123456789012:th)"
+      "message": "likely implemented (BackupNotFoundException: Backup not found for ARN arn:aws:dynamodb:us-east-1:12345678)"
     },
     {
       "operation": "DescribeContinuousBackups",
       "status": "working",
-      "message": "implemented (TableNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeContributorInsights",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeEndpoints",
@@ -74,8 +77,8 @@
     },
     {
       "operation": "DescribeExport",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'arn:aws:dynamodb:us-east-1:123456789012:thing/probe-test')"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeGlobalTable",
@@ -84,18 +87,18 @@
     },
     {
       "operation": "DescribeGlobalTableSettings",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeImport",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'arn:aws:dynamodb:us-east-1:123456789012:thing/probe-test')"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeKinesisStreamingDestination",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeLimits",
@@ -105,57 +108,57 @@
     {
       "operation": "DescribeTable",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeTableReplicaAutoScaling",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "DescribeTimeToLive",
       "status": "working",
-      "message": "likely implemented (ResourceNotFound: Table not found)"
+      "message": "OK"
     },
     {
       "operation": "DisableKinesisStreamingDestination",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "EnableKinesisStreamingDestination",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ExecuteStatement",
-      "status": "500_error",
-      "message": "server crash (InternalError: cannot unpack non-iterable NoneType object)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "ExecuteTransaction",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "ExportTableToPointInTime",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'S3Prefix')"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetItem",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "GetResourcePolicy",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "likely implemented (PolicyNotFoundException: Resource-based policy not found for the provided ResourceArn)"
     },
     {
       "operation": "ImportTable",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListBackups",
@@ -180,7 +183,7 @@
     {
       "operation": "ListImports",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "ListTables",
@@ -195,7 +198,7 @@
     {
       "operation": "PutItem",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "PutResourcePolicy",
@@ -205,87 +208,87 @@
     {
       "operation": "Query",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "RestoreTableFromBackup",
       "status": "working",
-      "message": "likely implemented (BackupNotFoundException: Backup not found: arn:aws:dynamodb:us-east-1:123456789012:th)"
+      "message": "likely implemented (BackupNotFoundException: Backup not found for ARN arn:aws:dynamodb:us-east-1:12345678)"
     },
     {
       "operation": "RestoreTableToPointInTime",
       "status": "working",
-      "message": "likely implemented (SourceTableNotFoundException: Source table not found: None)"
+      "message": "likely implemented (ResourceAlreadyExistsException: Table already exists: probe-table-name)"
     },
     {
       "operation": "Scan",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "TagResource",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "TransactGetItems",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "TransactWriteItems",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "500_error",
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "UntagResource",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateContinuousBackups",
       "status": "working",
-      "message": "implemented (TableNotFoundException)"
+      "message": "OK"
     },
     {
       "operation": "UpdateContributorInsights",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
-    },
-    {
-      "operation": "UpdateGlobalTable",
       "status": "working",
       "message": "OK"
     },
     {
+      "operation": "UpdateGlobalTable",
+      "status": "working",
+      "message": "likely implemented (ReplicaAlreadyExistsException: Replica already exists in region 'probe-test-value')"
+    },
+    {
       "operation": "UpdateGlobalTableSettings",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateItem",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented (ValidationException)"
     },
     {
       "operation": "UpdateKinesisStreamingDestination",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateTable",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "500_error",
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
     },
     {
       "operation": "UpdateTableReplicaAutoScaling",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateTimeToLive",
       "status": "working",
-      "message": "likely implemented (ResourceNotFound: Table not found)"
+      "message": "OK"
     }
   ]
 }

@@ -1,10 +1,13 @@
 {
   "service": "wafv2",
+  "generated_at": "2026-10-26T09:23:56.022801+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 49,
-    "needs_params": 4,
+    "working": 54,
+    "needs_params": 0,
     "not_implemented": 1,
-    "500_error": 1
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -19,8 +22,8 @@
     },
     {
       "operation": "CreateAPIKey",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateIPSet",
@@ -150,7 +153,7 @@
     {
       "operation": "GetRuleGroup",
       "status": "working",
-      "message": "likely implemented (AcessDeniedException: Critical information is missing in your request: GetRuleGrou)"
+      "message": "likely implemented (WAFNonexistentItemException: AWS WAF couldn\u2019t perform the operation because your resource)"
     },
     {
       "operation": "GetSampledRequests",
@@ -229,13 +232,13 @@
     },
     {
       "operation": "ListWebACLs",
-      "status": "500_error",
-      "message": "exception: 'WAFV2' object has no attribute 'list_web_ac_ls'"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutLoggingConfiguration",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutManagedRuleSetVersions",
@@ -249,13 +252,13 @@
     },
     {
       "operation": "TagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateIPSet",

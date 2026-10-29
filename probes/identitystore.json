@@ -1,10 +1,13 @@
 {
   "service": "identitystore",
+  "generated_at": "2026-10-26T03:43:04.803038+00:00",
+  "endpoint": "http://localhost:4795",
   "counts": {
-    "working": 10,
-    "needs_params": 8,
-    "not_implemented": 1,
-    "500_error": 0
+    "working": 19,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -14,13 +17,13 @@
     },
     {
       "operation": "CreateGroupMembership",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateUser",
       "status": "working",
-      "message": "implemented (ValidationException)"
+      "message": "OK"
     },
     {
       "operation": "DeleteGroup",
@@ -44,8 +47,8 @@
     },
     {
       "operation": "DescribeGroupMembership",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeUser",
@@ -54,23 +57,23 @@
     },
     {
       "operation": "GetGroupId",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetGroupMembershipId",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetUserId",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "IsMemberInGroups",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListGroupMemberships",
@@ -79,8 +82,8 @@
     },
     {
       "operation": "ListGroupMembershipsForMember",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListGroups",
@@ -94,13 +97,13 @@
     },
     {
       "operation": "UpdateGroup",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateUser",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     }
   ]
 }

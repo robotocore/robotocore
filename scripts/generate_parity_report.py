@@ -1,33 +1,36 @@
 #!/usr/bin/env python3
-"""Generate a parity report showing AWS operation coverage per service.
+"""Generate the parity report the coverage page consumes — rust era.
 
-Analyzes three dimensions for each registered service:
-1. Total AWS operations (from botocore service specs)
-2. Operations implemented (native provider ACTION_MAPs + Moto-backed operations)
-3. Operations tested in compatibility tests (by parsing boto3 calls)
+The python product is gone, so this is data-driven now; there is no provider
+code to parse. Sources of truth, in order:
+  - probes/<service>.json artifacts (scripts/probe_service.py): per-operation
+    working / needs_params / not_implemented / 500_error
+  - the live twin's /_robotocore/services (registration, protocol, description)
+  - botocore service models (required params per operation)
+  - tests/compatibility/*.py (operations exercised + test-method counts)
 
 Usage:
     uv run python scripts/generate_parity_report.py
-    uv run python scripts/generate_parity_report.py --json
+    uv run python scripts/generate_parity_report.py --output site/parity-report.json
     uv run python scripts/generate_parity_report.py --service sqs
     uv run python scripts/generate_parity_report.py --no-color
 """
 
-import ast
+import argparse
 import json
 import os
 import re
 import sys
+import urllib.request
 from pathlib import Path
 
-# Add project root so we can import robotocore
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
+sys.path.insert(0, str(PROJECT_ROOT))
 
-SRC_SERVICES_DIR = PROJECT_ROOT / "src" / "robotocore" / "services"
 COMPAT_TEST_DIR = PROJECT_ROOT / "tests" / "compatibility"
+DEFAULT_ENDPOINT = "http://localhost:4566"
 
-# --- Color helpers ---
+# --- Color helpers (kept from the python-era report) ---
 
 _USE_COLOR = True
 
@@ -41,9 +44,7 @@ def _supports_color() -> bool:
 
 
 def _c(text: str, code: str) -> str:
-    if not _USE_COLOR:
-        return text
-    return f"\033[{code}m{text}\033[0m"
+    return f"\033[{code}m{text}\033[0m" if _USE_COLOR else text
 
 
 def _green(text: str) -> str:
@@ -58,10 +59,6 @@ def _red(text: str) -> str:
     return _c(text, "31")
 
 
-def _cyan(text: str) -> str:
-    return _c(text, "36")
-
-
 def _bold(text: str) -> str:
     return _c(text, "1")
 
@@ -71,753 +68,369 @@ def _dim(text: str) -> str:
 
 
 def _pct_color(pct: float) -> str:
-    """Color a percentage string based on its value."""
-    s = f"{pct:.0f}%"
+    s = f"{pct:.1f}%"
     if pct >= 80:
         return _green(s)
-    elif pct >= 40:
+    if pct >= 40:
         return _yellow(s)
-    else:
-        return _red(s)
+    return _red(s)
 
 
-# --- Registry ---
+# --- Live twin ---
 
 
-def get_registry() -> dict:
-    from robotocore.services.registry import SERVICE_REGISTRY
-
-    return SERVICE_REGISTRY
-
-
-# --- Botocore operations ---
-
-# Map registry service names to botocore service names where they differ
-_BOTOCORE_NAME_MAP = {
-    "lambda": "lambda",
-    "events": "events",
-    "logs": "logs",
-    "s3control": "s3control",
-    "cognito-idp": "cognito-idp",
-    "resource-groups": "resource-groups",
-    "resourcegroupstaggingapi": "resourcegroupstaggingapi",
-    "es": "es",
-    "opensearch": "opensearch",
-}
-
-
-def get_botocore_operations(service_name: str) -> list[str]:
-    """Get all operation names from botocore for a service."""
-    botocore_name = _BOTOCORE_NAME_MAP.get(service_name, service_name)
+def fetch_table(endpoint: str) -> dict[str, dict]:
+    """Read /_robotocore/services. Empty table if the twin is unreachable."""
     try:
-        import botocore.loaders
-
-        loader = botocore.loaders.Loader()
-        model = loader.load_service_model(botocore_name, "service-2")
-        return sorted(model.get("operations", {}).keys())
-    except Exception:
-        return []
-
-
-def get_operation_params(service_name: str) -> dict[str, list[str]]:
-    """Get required input parameters for each operation from botocore shapes."""
-    botocore_name = _BOTOCORE_NAME_MAP.get(service_name, service_name)
-    try:
-        import botocore.loaders
-
-        loader = botocore.loaders.Loader()
-        model = loader.load_service_model(botocore_name, "service-2")
-        ops = model.get("operations", {})
-        shapes = model.get("shapes", {})
-        result: dict[str, list[str]] = {}
-        for op_name, op_data in ops.items():
-            input_ref = op_data.get("input", {})
-            if not input_ref:
-                result[op_name] = []
-                continue
-            shape_name = input_ref.get("shape", "")
-            shape = shapes.get(shape_name, {})
-            result[op_name] = shape.get("required", [])
-        return result
+        with urllib.request.urlopen(
+            f"{endpoint.rstrip('/')}/_robotocore/services", timeout=30
+        ) as r:
+            data = json.load(r)["services"]
+        return {entry["name"]: entry for entry in data}
     except Exception:
         return {}
 
 
-# --- Native provider operations ---
-
-# Complete map: registry service name → provider directory name.
-# Built from actual directory listing + registry cross-reference.
-_SERVICE_DIR_MAP = {
-    "lambda": "lambda_",
-    "cognito-idp": "cognito",
-    "resource-groups": "resource_groups",
-    "resourcegroupstaggingapi": "tagging",
-    "es": "opensearch",  # shared provider with opensearch
-    "sesv2": "ses",  # shared provider with ses
-}
-
-# Some native providers live in a different directory or use non-standard filenames
-_SERVICE_PROVIDER_FILES = {
-    "logs": SRC_SERVICES_DIR / "cloudwatch" / "logs_provider.py",
-}
+# --- Botocore models ---
 
 
-def _extract_action_map_keys(filepath: Path) -> list[str]:
-    """Extract operation names from _ACTION_MAP or ACTION_MAP dicts in a provider file."""
+def get_botocore_data(service_name: str) -> tuple[list[str], dict[str, list[str]]]:
+    """Operation names and required params per operation from botocore."""
     try:
-        content = filepath.read_text()
+        import botocore.loaders
+
+        model = botocore.loaders.Loader().load_service_model(service_name, "service-2")
     except Exception:
-        return []
+        return [], {}
 
-    operations = []
-    # Parse _ACTION_MAP = { "OpName": _handler, ... } using regex
-    # This is more robust than AST for dict literals that reference local functions
-    in_map = False
-    brace_depth = 0
-    for line in content.splitlines():
-        stripped = line.strip()
-        if re.match(r"_?ACTION_MAP\b.*=\s*\{", stripped):
-            in_map = True
-            brace_depth = stripped.count("{") - stripped.count("}")
-            # Check for keys on the same line as the opening
-            for m in re.finditer(r'"([A-Z][a-zA-Z]+)"', stripped):
-                operations.append(m.group(1))
-            continue
-        if in_map:
-            brace_depth += stripped.count("{") - stripped.count("}")
-            for m in re.finditer(r'"([A-Z][a-zA-Z]+)"', stripped):
-                operations.append(m.group(1))
-            if brace_depth <= 0:
-                in_map = False
-
-    return operations
+    op_params: dict[str, list[str]] = {}
+    shapes = model.get("shapes", {})
+    for op_name, op_data in model.get("operations", {}).items():
+        input_ref = op_data.get("input") or {}
+        shape = shapes.get(input_ref.get("shape", ""), {})
+        op_params[op_name] = shape.get("required", []) or []
+    return sorted(model.get("operations", {})), op_params
 
 
-def _extract_rest_route_operations(filepath: Path, service_name: str) -> list[str]:
-    """Extract operations from REST-based providers by analyzing route comments and patterns.
-
-    REST providers (S3, Lambda, Scheduler, API Gateway V2, AppSync, Batch) route
-    by HTTP method + path rather than using an ACTION_MAP. We look for comments like
-    '# GET /functions -- ListFunctions' and method-based routing patterns.
-    """
-    try:
-        content = filepath.read_text()
-    except Exception:
-        return []
-
-    operations = set()
-
-    # Pattern 1: Comments that reference operation names
-    # e.g. "# ListFunctions", "# GET /functions -- ListFunctions"
-    for m in re.finditer(
-        r"#\s*(?:GET|PUT|POST|DELETE|PATCH|HEAD)?\s*(?:/\S+)?\s*[-—]+\s*([A-Z][a-zA-Z]+)",
-        content,
-    ):
-        operations.add(m.group(1))
-
-    # Pattern 2: Comments with just an operation name on a line
-    # e.g. "# CreateFunction" or "#  ListVersionsByFunction"
-    for m in re.finditer(r"^\s*#\s+([A-Z][a-z]+[A-Z][a-zA-Z]+)\b", content, re.MULTILINE):
-        op = m.group(1)
-        # Filter out class/type names that aren't AWS operations
-        if (
-            not op.endswith("Error")
-            and not op.endswith("Exception")
-            and not op.endswith("Response")
-        ):
-            operations.add(op)
-
-    # Pattern 3: Moto backend method calls that map to AWS operations
-    # e.g. backend.create_function, backend.list_functions
-    for m in re.finditer(r"backend\.([a-z_]+)\(", content):
-        method = m.group(1)
-        # Convert snake_case to PascalCase
-        pascal = "".join(word.capitalize() for word in method.split("_"))
-        if len(pascal) > 4 and pascal[0].isupper():
-            operations.add(pascal)
-
-    # Pattern 4: forward_to_moto calls (wraps all Moto operations)
-    if "forward_to_moto" in content:
-        # This service delegates to Moto -- we'll count Moto's operations separately
-        pass
-
-    # Pattern 5: Handler function names (def _create_api, def _get_routes, etc.)
-    # These are the implementation functions in REST-based providers
-    aws_verbs = {
-        "create",
-        "get",
-        "put",
-        "delete",
-        "update",
-        "list",
-        "describe",
-        "register",
-        "deregister",
-        "submit",
-        "cancel",
-        "terminate",
-        "start",
-        "stop",
-        "run",
-        "tag",
-        "untag",
-        "publish",
-        "invoke",
-        "send",
-        "receive",
-        "admin",
-        "initiate",
-        "respond",
-        "confirm",
-        "forgot",
-        "change",
-        "sign",
-        "set",
-        "add",
-        "remove",
-        "batch",
-        "associate",
-        "disassociate",
-        "enable",
-        "disable",
-        "schedule",
-        "query",
-        "scan",
-        "execute",
-    }
-    for m in re.finditer(r"^def _([a-z][a-z_]+)\(", content, re.MULTILINE):
-        func_name = m.group(1)
-        parts = func_name.split("_")
-        # Only include if starts with an AWS-like verb
-        if parts[0] in aws_verbs and len(parts) >= 2:
-            pascal = "".join(word.capitalize() for word in parts)
-            operations.add(pascal)
-
-    return sorted(operations)
-
-
-def get_native_operations(service_name: str) -> tuple[list[str], bool]:
-    """Get implemented operations from a native provider.
-
-    Returns (operations_list, delegates_to_moto).
-    """
-    # Check for non-standard provider file locations first
-    if service_name in _SERVICE_PROVIDER_FILES:
-        provider_path = _SERVICE_PROVIDER_FILES[service_name]
-        if not provider_path.exists():
-            return [], False
-    else:
-        dir_name = _SERVICE_DIR_MAP.get(service_name, service_name)
-        if dir_name is None:
-            return [], False
-        provider_path = SRC_SERVICES_DIR / dir_name / "provider.py"
-        if not provider_path.exists():
-            return [], False
-
-    # Check if this provider delegates to Moto
-    try:
-        content = provider_path.read_text()
-    except Exception:
-        return [], False
-
-    delegates_to_moto = "forward_to_moto" in content
-
-    # Try ACTION_MAP first (most providers)
-    ops = _extract_action_map_keys(provider_path)
-    if ops:
-        return ops, delegates_to_moto
-
-    # Try REST route extraction
-    ops = _extract_rest_route_operations(provider_path, service_name)
-    if ops:
-        return ops, delegates_to_moto
-
-    return [], delegates_to_moto
-
-
-def _find_moto_dir(service_name: str) -> Path | None:
-    """Find the Moto vendor directory for a service."""
-    moto_name_map = {
-        "lambda": "awslambda",
-        "logs": "logs",
-        "events": "events",
-        "cognito-idp": "cognitoidp",
-        "resource-groups": "resourcegroups",
-        "resourcegroupstaggingapi": "resourcegroupstaggingapi",
-        "s3control": "s3control",
-        "es": "es",
-        "opensearch": "opensearch",
-        "apigatewayv2": "apigatewayv2",
-    }
-    moto_name = moto_name_map.get(service_name, service_name)
-    moto_base = PROJECT_ROOT / "vendor" / "moto" / "moto"
-
-    candidates = [
-        moto_name,
-        moto_name.replace("-", ""),
-        moto_name.replace("-", "_"),
-    ]
-    for candidate in candidates:
-        d = moto_base / candidate
-        if d.is_dir():
-            return d
-    return None
-
-
-def get_moto_operations(service_name: str) -> list[str]:
-    """Get operations that Moto implements for a service.
-
-    Strategy: extract public method names from Moto Backend classes in models.py,
-    convert snake_case to PascalCase, and validate against botocore operation names.
-    This avoids the old approach of parsing responses.py which picked up junk
-    (properties, URL dispatch slugs, class names).
-    """
-    moto_dir = _find_moto_dir(service_name)
-    if not moto_dir:
-        return []
-
-    # Get botocore ops for this service to validate against
-    botocore_ops = set(get_botocore_operations(service_name))
-    # Build a snake_case → PascalCase lookup from botocore
-    botocore_snake_to_pascal = {}
-    for op in botocore_ops:
-        # Convert PascalCase to snake_case
-        snake = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", op)
-        snake = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", snake).lower()
-        botocore_snake_to_pascal[snake] = op
-
-    # Scan models.py for Backend class methods
-    models_path = moto_dir / "models.py"
-    source_files = []
-    if models_path.exists():
-        source_files.append(models_path)
-
-    operations = set()
-
-    for src_file in source_files:
-        try:
-            content = src_file.read_text()
-            tree = ast.parse(content)
-        except Exception:
-            continue
-
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.ClassDef):
-                continue
-            # Only look at Backend classes
-            if not node.name.endswith("Backend"):
-                continue
-            for item in node.body:
-                if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    continue
-                name = item.name
-                if name.startswith("_"):
-                    continue
-                # Check if this method name matches a botocore operation (snake_case)
-                if name in botocore_snake_to_pascal:
-                    operations.add(botocore_snake_to_pascal[name])
-
-    # Also scan responses.py, but ONLY keep methods that match botocore ops
-    responses_path = moto_dir / "responses.py"
-    response_files = []
-    if responses_path.exists():
-        response_files.append(responses_path)
-    else:
-        responses_dir = moto_dir / "responses"
-        if responses_dir.is_dir():
-            response_files.extend(responses_dir.glob("*.py"))
-
-    for resp_file in response_files:
-        try:
-            content = resp_file.read_text()
-            tree = ast.parse(content)
-        except Exception:
-            continue
-
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.ClassDef):
-                continue
-            for item in node.body:
-                if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    continue
-                name = item.name
-                if name.startswith("_"):
-                    continue
-                if name in botocore_snake_to_pascal:
-                    operations.add(botocore_snake_to_pascal[name])
-
-    return sorted(operations)
-
-
-# --- Compat test operations ---
-
-# Map compat test filenames to service names
-_COMPAT_FILE_MAP = {
-    "test_resource_groups_tagging_compat.py": "resourcegroupstaggingapi",
-    "test_resource_groups_compat.py": "resource-groups",
-    "test_lambda_event_source_compat.py": "lambda",
-    "test_apigateway_lambda_compat.py": "apigateway",
-    "test_cross_service_compat.py": None,  # skip
-    "test_state_persistence_compat.py": None,  # skip
-    "test_cognito_compat.py": "cognito-idp",
-    "test_es_compat.py": "es",
-    "test_opensearch_compat.py": "opensearch",
-}
+# --- Compat tests ---
 
 
 def _extract_boto3_operations(filepath: Path) -> set[str]:
-    """Extract distinct AWS operations called via boto3 in a test file.
-
-    Looks for patterns like:
-        client.create_queue(...)
-        sqs.send_message(...)
-        s3.put_object(...)
-    and converts snake_case method names to PascalCase operation names.
-    """
+    """Distinct AWS operations called via boto3 in a test file."""
     try:
         content = filepath.read_text()
     except Exception:
         return set()
 
-    operations = set()
+    filtered = {
+        "get",
+        "set",
+        "items",
+        "keys",
+        "values",
+        "append",
+        "extend",
+        "update",
+        "format",
+        "join",
+        "split",
+        "strip",
+        "encode",
+        "decode",
+        "read",
+        "write",
+        "close",
+        "sleep",
+        "client",
+        "resource",
+        "lower",
+        "upper",
+        "pop",
+        "add",
+        "remove",
+        "clear",
+        "sort",
+        "count",
+        "index",
+        "find",
+        "match",
+        "search",
+        "sub",
+        "group",
+        "dump",
+        "dumps",
+        "load",
+        "loads",
+        "open",
+        "seek",
+        "tell",
+        "flush",
+        "environ",
+        "fixture",
+        "mark",
+        "param",
+        "raises",
+        "skip",
+        "fail",
+        "endswith",
+        "startswith",
+        "replace",
+    }
 
-    # Find all boto3 client method calls
-    # Matches: <var>.<method_name>( where method_name is snake_case
+    operations = set()
     for m in re.finditer(r"\b\w+\.([a-z][a-z_]+)\(", content):
         method = m.group(1)
-        # Filter out common non-AWS methods
-        if method in (
-            "get",
-            "set",
-            "items",
-            "keys",
-            "values",
-            "append",
-            "extend",
-            "update",
-            "format",
-            "join",
-            "split",
-            "strip",
-            "encode",
-            "decode",
-            "read",
-            "write",
-            "close",
-            "sleep",
-            "client",
-            "resource",
-            "assert_called",
-            "assert_called_once",
-            "assert_not_called",
-            "assert_called_with",
-            "assert_called_once_with",
-            "start_with",
-            "startswith",
-            "endswith",
-            "replace",
-            "lower",
-            "upper",
-            "pop",
-            "add",
-            "remove",
-            "clear",
-            "copy",
-            "sort",
-            "reverse",
-            "count",
-            "index",
-            "find",
-            "match",
-            "search",
-            "sub",
-            "group",
-            "dump",
-            "dumps",
-            "load",
-            "loads",
-            "open",
-            "seek",
-            "tell",
-            "flush",
-        ):
+        if method in filtered or method.startswith(("assert", "pytest")):
             continue
-        # Filter out pytest/test framework methods
-        if method.startswith("assert") or method.startswith("pytest"):
-            continue
-        # Filter common fixture/helper patterns
-        if method in ("fixture", "mark", "param", "raises", "skip", "fail", "environ"):
-            continue
-
-        # Convert to PascalCase
         pascal = "".join(word.capitalize() for word in method.split("_"))
         if len(pascal) > 3 and pascal[0].isupper():
             operations.add(pascal)
-
     return operations
 
 
-def get_tested_operations() -> dict[str, set[str]]:
-    """Get operations tested in compat tests, keyed by service name."""
-    if not COMPAT_TEST_DIR.exists():
-        return {}
-
-    result: dict[str, set[str]] = {}
-
-    for fname in sorted(os.listdir(COMPAT_TEST_DIR)):
-        if not fname.startswith("test_") or not fname.endswith(".py"):
-            continue
-
-        fpath = COMPAT_TEST_DIR / fname
-
-        # Determine service name
-        if fname in _COMPAT_FILE_MAP:
-            svc = _COMPAT_FILE_MAP[fname]
-            if svc is None:
-                continue
-        else:
-            # Derive from filename: test_{service}_compat.py
-            base = fname.replace("test_", "").replace("_compat.py", "").replace(".py", "")
-            svc = base
-
-        ops = _extract_boto3_operations(fpath)
-        if svc in result:
-            result[svc] |= ops
-        else:
-            result[svc] = ops
-
-    return result
-
-
 def count_test_methods(filepath: Path) -> int:
-    """Count test methods in a file."""
     try:
-        content = filepath.read_text()
+        return len(re.findall(r"\bdef test_", filepath.read_text()))
     except Exception:
         return 0
-    return len(re.findall(r"\bdef test_", content))
 
 
-def get_compat_test_counts() -> dict[str, int]:
-    """Count test methods per service in compat tests."""
+def get_compat_data(service_names: set[str]) -> tuple[dict[str, set[str]], dict[str, int], int]:
+    """Map scraped compat-test data onto twin service names.
+
+    Returns (tested_ops, test_method_counts, unmapped_test_methods). Filenames
+    are matched by stripping separators (test_cognito_idp_compat.py matches
+    "cognito-idp"); ops are attributed via boto3 call scraping, the same
+    heuristic the python-era report used.
+    """
     if not COMPAT_TEST_DIR.exists():
-        return {}
+        return {}, {}, 0
 
-    result: dict[str, int] = {}
-    registry = get_registry()
+    # Filenames that need a manual target; None = never attribute to a service.
+    compat_file_map = {
+        "test_apigateway_lambda_compat.py": "apigateway",
+        "test_cross_service_compat.py": None,
+        "test_cfn_e2e_compat.py": None,
+        "test_concurrent_requests_compat.py": None,
+    }
 
-    for fname in sorted(os.listdir(COMPAT_TEST_DIR)):
-        if not fname.startswith("test_") or not fname.endswith(".py"):
-            continue
+    def _norm(name: str) -> str:
+        return name.replace("_", "").replace("-", "").lower()
 
-        fpath = COMPAT_TEST_DIR / fname
-        n = count_test_methods(fpath)
+    tested: dict[str, set[str]] = {}
+    counts: dict[str, int] = {}
+    unmapped_methods = 0
 
-        if fname in _COMPAT_FILE_MAP:
-            svc = _COMPAT_FILE_MAP[fname]
-            if svc is None:
-                continue
+    for fname in sorted(COMPAT_TEST_DIR.glob("test_*.py")):
+        n_methods = count_test_methods(fname)
+        if fname.name in compat_file_map:
+            svc = compat_file_map[fname.name]
         else:
-            base = fname.replace("test_", "").replace("_compat.py", "").replace(".py", "")
-            # Try to match to registry
-            svc = None
-            for svc_name in registry:
-                clean = svc_name.replace("-", "_")
-                if base == clean or base.startswith(clean + "_"):
-                    svc = svc_name
-                    break
-            if svc is None:
-                svc = base
-
-        result[svc] = result.get(svc, 0) + n
-
-    return result
-
-
-# --- Report generation ---
-
-
-def build_report(filter_service: str | None = None) -> dict:
-    """Build the full parity report data structure."""
-    registry = get_registry()
-    tested_ops = get_tested_operations()
-    test_counts = get_compat_test_counts()
-
-    services = {}
-
-    for svc_name, svc_info in sorted(registry.items()):
-        if filter_service and svc_name != filter_service:
+            base = fname.name.replace("test_", "").replace("_compat.py", "")
+            svc = next(
+                (c for c in service_names if _norm(base) == _norm(c)),
+                None,
+            )
+        if svc is None:
+            unmapped_methods += n_methods
             continue
+        counts[svc] = counts.get(svc, 0) + n_methods
+        ops = _extract_boto3_operations(fname)
+        tested.setdefault(svc, set()).update(ops)
 
-        # 1. Total AWS operations from botocore
-        botocore_ops = get_botocore_operations(svc_name)
+    return tested, counts, unmapped_methods
 
-        # 2. Native provider operations
-        native_ops, delegates_to_moto = get_native_operations(svc_name)
 
-        # 3. Moto operations — check for ALL services, not just moto_backed.
-        # Native providers with forward_to_moto() delegate unknown ops to Moto,
-        # and even native providers without it may still route through Moto for
-        # operations they don't explicitly handle.
-        moto_ops = get_moto_operations(svc_name)
+# --- Report ---
 
-        # Combine implemented operations (native + moto, deduplicated)
-        all_implemented = set(native_ops) | set(moto_ops)
 
-        # Intersect with botocore operations to get valid ones
+def read_probe(path: Path) -> dict | None:
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return None
+
+
+def load_absence_summary() -> dict | None:
+    """Per-class absence counts from the manifest, when present."""
+    path = PROJECT_ROOT / "tooling" / "surface-absence.json"
+    try:
+        data = json.loads(path.read_text())
+    except Exception:
+        return None
+    rows = data.get("services", {}) if isinstance(data, dict) else {}
+    classes: dict[str, int] = {}
+    for ops in rows.values():
+        for row in ops.values():
+            cls = row.get("class", "unclassified")
+            classes[cls] = classes.get(cls, 0) + 1
+    return {
+        "manifest": "tooling/surface-absence.json",
+        "rows": sum(classes.values()),
+        "classes": dict(sorted(classes.items())),
+    }
+
+
+def build_report(probes_dir: Path, endpoint: str) -> dict:
+    """Build parity-report data from probe artifacts + the live twin."""
+    live = fetch_table(endpoint)
+    if not live:
+        # Twin may be down; fall back to whatever probe artifacts exist.
+        live = {p.stem: {} for p in sorted(probes_dir.glob("*.json")) if read_probe(p) is not None}
+
+    tested_ops, test_counts, unmapped_methods = get_compat_data(set(live))
+
+    services: dict[str, dict] = {}
+    for svc_name in sorted(live):
+        info = live.get(svc_name, {})
+        status = info.get("status", "absent")
+        protocol = info.get("protocol", "")
+        description = info.get("description", "")
+
+        counts = {
+            "working": 0,
+            "needs_params": 0,
+            "not_implemented": 0,
+            "500_error": 0,
+            "timeout": 0,
+        }
+        all_ops: list[str] = []
+        implemented_ops: list[str] = []
+        probe = read_probe(probes_dir / f"{svc_name}.json")
+        if probe is not None:
+            counts = {
+                "working": probe["counts"].get("working", 0),
+                "needs_params": probe["counts"].get("needs_params", 0),
+                "not_implemented": probe["counts"].get("not_implemented", 0),
+                "500_error": probe["counts"].get("500_error", 0),
+                "timeout": probe["counts"].get("timeout", 0),
+            }
+            all_ops = [op["operation"] for op in probe["operations"]]
+            implemented_ops = [
+                op["operation"] for op in probe["operations"] if op["status"] == "working"
+            ]
+
+        botocore_ops, op_params = get_botocore_data(svc_name)
         botocore_set = set(botocore_ops)
-        valid_implemented = all_implemented & botocore_set if botocore_set else all_implemented
+        valid_params = {op: op_params[op] for op in all_ops if op in op_params}
 
-        # 4. Tested operations from compat tests
         svc_tested = tested_ops.get(svc_name, set())
-        valid_tested = svc_tested & botocore_set if botocore_set else svc_tested
+        probed_set = set(all_ops)
+        # Tested ops only count against probed ops — same denominator as impl_pct.
+        valid_tested = sorted(svc_tested & botocore_set & probed_set)
 
-        op_params = get_operation_params(svc_name)
+        total = len(all_ops)
+        impl = len(implemented_ops)
+        tested_count = len(valid_tested)
+        # Rust era: implemented ops on a native service are native; there is no
+        # moto tier anymore.
+        native_ops = sorted(implemented_ops) if status == "native" else []
 
         services[svc_name] = {
-            "status": svc_info.status.value,
-            "protocol": svc_info.protocol,
-            "description": svc_info.description,
-            "total_aws_ops": len(botocore_ops),
-            "all_ops": botocore_ops,
-            "op_params": op_params,
-            "implemented_ops": sorted(valid_implemented),
-            "implemented_count": len(valid_implemented),
-            "native_ops": sorted(set(native_ops) & botocore_set) if botocore_set else native_ops,
-            "native_count": (
-                len(set(native_ops) & botocore_set) if botocore_set else len(native_ops)
-            ),
-            "moto_ops": sorted(set(moto_ops) & botocore_set) if botocore_set else moto_ops,
-            "moto_count": len(set(moto_ops) & botocore_set) if botocore_set else len(moto_ops),
-            "tested_ops": sorted(valid_tested),
-            "tested_count": len(valid_tested),
+            "status": status,
+            "protocol": protocol,
+            "description": description,
+            "total_aws_ops": total,
+            "all_ops": all_ops,
+            "op_params": valid_params,
+            "implemented_ops": sorted(implemented_ops),
+            "implemented_count": impl,
+            "native_ops": native_ops,
+            "native_count": len(native_ops),
+            "moto_ops": [],
+            "moto_count": 0,
+            "delegates_to_moto": False,
+            "tested_ops": valid_tested,
+            "tested_count": tested_count,
             "test_method_count": test_counts.get(svc_name, 0),
-            "impl_pct": (len(valid_implemented) / len(botocore_ops) * 100 if botocore_ops else 0),
-            "test_pct": (len(valid_tested) / len(botocore_ops) * 100 if botocore_ops else 0),
-            "delegates_to_moto": delegates_to_moto,
+            "impl_pct": (impl / total * 100 if total else 0),
+            "test_pct": (tested_count / total * 100 if total else 0),
+            "needs_params_count": counts["needs_params"],
+            "not_implemented_count": counts["not_implemented"],
+            "error_count": counts["500_error"],
+            "probed": probe is not None,
         }
 
-    # Summary
+    probed = [s for s in services.values() if s["probed"]]
     total_aws = sum(s["total_aws_ops"] for s in services.values())
     total_impl = sum(s["implemented_count"] for s in services.values())
     total_tested = sum(s["tested_count"] for s in services.values())
     total_tests = sum(s["test_method_count"] for s in services.values())
     native_count = sum(1 for s in services.values() if s["status"] == "native")
-    moto_count = sum(1 for s in services.values() if s["status"] == "moto_backed")
+
+    summary = {
+        "total_services": len(services),
+        "native_services": native_count,
+        "absent_services": len(services) - native_count,
+        "total_aws_operations": total_aws,
+        "total_implemented": total_impl,
+        "total_tested": total_tested,
+        "total_test_methods": total_tests,
+        "unmapped_test_methods": unmapped_methods,
+        "impl_pct": total_impl / total_aws * 100 if total_aws else 0,
+        "test_pct": total_tested / total_aws * 100 if total_aws else 0,
+        "probed_services": len(probed),
+        "needs_params_operations": sum(s["needs_params_count"] for s in services.values()),
+        "not_implemented_operations": sum(s["not_implemented_count"] for s in services.values()),
+        "error_operations": sum(s["error_count"] for s in services.values()),
+    }
+    absence = load_absence_summary()
+    if absence is not None:
+        # Recorded absence classes (the manifest build) alongside the raw
+        # not_implemented total — see docs/botocore-surface-plan.md §3d.
+        summary["absence"] = absence
 
     return {
         "services": services,
-        "summary": {
-            "total_services": len(services),
-            "native_services": native_count,
-            "moto_backed_services": moto_count,
-            "total_aws_operations": total_aws,
-            "total_implemented": total_impl,
-            "total_tested": total_tested,
-            "total_test_methods": total_tests,
-            "impl_pct": total_impl / total_aws * 100 if total_aws else 0,
-            "test_pct": total_tested / total_aws * 100 if total_aws else 0,
+        "summary": summary,
+        "source": {
+            "endpoint": endpoint,
+            "probes_dir": str(probes_dir),
+            "generated_by": "scripts/generate_parity_report.py",
+            "note": (
+                "Destructive operations (TerminateInstances, DeleteBucket, DeleteVpc, …) "
+                "are excluded from probes — see SKIP_OPERATIONS in scripts/probe_service.py"
+            ),
         },
     }
 
 
 def print_report(report: dict) -> None:
-    """Print a formatted, terminal-friendly parity report."""
     services = report["services"]
     summary = report["summary"]
 
-    header = "ROBOTOCORE AWS PARITY REPORT"
     print()
     print(_bold(f"  {'=' * 88}"))
-    print(_bold(f"  {header:^88}"))
+    print(_bold("  ROBOTOCORE AWS PARITY REPORT".center(88)))
     print(_bold(f"  {'=' * 88}"))
     print()
-
-    # Column headers
     hdr = (
-        f"  {'Service':<26}"
-        f"{'Status':>11}"
-        f"{'AWS Ops':>9}"
-        f"{'Impl':>7}"
-        f"{'Impl%':>8}"
-        f"{'Tested':>8}"
-        f"{'Test%':>8}"
-        f"{'Tests':>8}"
+        f"  {'Service':<26}{'Status':>10}{'AWS Ops':>9}{'Impl':>7}"
+        f"{'Impl%':>9}{'NeedsParams':>13}{'501':>6}{'500':>6}{'Tests':>8}"
     )
     print(_bold(hdr))
-    sep = f"  {'-' * 26} {'-' * 10} {'-' * 8} {'-' * 6} {'-' * 7} {'-' * 7} {'-' * 7} {'-' * 7}"
+    sep = (
+        f"  {'-' * 26} {'-' * 9} {'-' * 8} {'-' * 6} {'-' * 8}"
+        f" {'-' * 12} {'-' * 5} {'-' * 5} {'-' * 7}"
+    )
     print(_dim(sep))
 
-    # Group by phase
-    phase1 = [
-        "s3",
-        "sqs",
-        "sns",
-        "dynamodb",
-        "dynamodbstreams",
-        "lambda",
-        "iam",
-        "sts",
-        "cloudformation",
-        "cloudwatch",
-        "logs",
-        "kms",
-    ]
-    phase2 = [
-        "events",
-        "kinesis",
-        "firehose",
-        "stepfunctions",
-        "scheduler",
-        "apigateway",
-        "apigatewayv2",
-        "secretsmanager",
-        "ssm",
-        "s3control",
-    ]
-
-    def print_service_row(svc_name: str, data: dict) -> None:
-        status = data["status"].replace("_", " ")
-        if data["status"] == "native":
-            status_str = _green(f"{status:>10}")
-        else:
-            status_str = _cyan(f"{status:>10}")
-
-        impl_pct_str = _pct_color(data["impl_pct"]) if data["total_aws_ops"] else _dim("  n/a")
-        test_pct_str = _pct_color(data["test_pct"]) if data["total_aws_ops"] else _dim("  n/a")
-
+    for name, data in services.items():
+        status = data["status"]
+        status_str = _green(f"{status:>10}") if status == "native" else _red(f"{status:>10}")
+        if not data["probed"]:
+            print(f"  {name:<26}{status_str}{'--- not probed ---':>30}")
+            continue
         print(
-            f"  {svc_name:<26}"
-            f"{status_str}"
-            f"{data['total_aws_ops']:>9}"
+            f"  {name:<26}{status_str}{data['total_aws_ops']:>9}"
             f"{data['implemented_count']:>7}"
-            f"{impl_pct_str:>16}"
-            f"{data['tested_count']:>8}"
-            f"{test_pct_str:>16}"
+            f"{_pct_color(data['impl_pct']):>13}"
+            f"{data['needs_params_count']:>10}"
+            f"{data['not_implemented_count']:>6}"
+            f"{data['error_count']:>6}"
             f"{data['test_method_count']:>8}"
         )
 
-    phase3 = [k for k in services if k not in phase1 and k not in phase2]
-
-    if any(s in services for s in phase1):
-        print(_dim(f"  {'Phase 1 - Core':}"))
-        for svc in phase1:
-            if svc in services:
-                print_service_row(svc, services[svc])
-
-    if any(s in services for s in phase2):
-        print(_dim(f"  {'Phase 2 - Integration':}"))
-        for svc in phase2:
-            if svc in services:
-                print_service_row(svc, services[svc])
-
-    if phase3:
-        print(_dim(f"  {'Phase 3 - Remaining':}"))
-        for svc in sorted(phase3):
-            if svc in services:
-                print_service_row(svc, services[svc])
-
-    # Summary
     print()
     print(_bold(f"  {'=' * 88}"))
     print(_bold("  SUMMARY"))
@@ -825,131 +438,89 @@ def print_report(report: dict) -> None:
     print()
     print(f"  Services registered:     {_bold(str(summary['total_services']))}")
     print(f"    Native providers:      {_green(str(summary['native_services']))}")
-    print(f"    Moto-backed:           {_cyan(str(summary['moto_backed_services']))}")
+    print(f"    Absent:                {_red(str(summary['absent_services']))}")
+    print(f"    Probed:                {summary['probed_services']}")
     print()
-    print(f"  AWS operations (total):  {summary['total_aws_operations']}")
-    print(
-        f"  Operations implemented:  {summary['total_implemented']}"
-        f"  ({_pct_color(summary['impl_pct'])})"
-    )
-    print(
-        f"  Operations tested:       {summary['total_tested']}  ({_pct_color(summary['test_pct'])})"
-    )
+    print(f"  Operations probed total: {summary['total_aws_operations']}")
+    impl = _pct_color(summary["impl_pct"])
+    print(f"  Operations working:      {summary['total_implemented']}  ({impl})")
+    print(f"  Needs params (unknown):  {summary['needs_params_operations']}")
+    print(f"  Not implemented (501):   {summary['not_implemented_operations']}")
+    absence = summary.get("absence")
+    if absence:
+        classes = ", ".join(f"{k}={v}" for k, v in absence["classes"].items())
+        print(f"  Absence manifest:        {absence['rows']} rows  ({classes})")
+    print(f"  500 errors (bugs):       {summary['error_operations']}")
     print(f"  Compat test methods:     {summary['total_test_methods']}")
-    print()
-
-    # Top gaps (services with lowest implementation coverage)
-    gaps = [
-        (name, data)
-        for name, data in services.items()
-        if data["total_aws_ops"] > 0 and data["impl_pct"] < 100
-    ]
-    gaps.sort(key=lambda x: x[1]["impl_pct"])
-
-    if gaps:
-        print(_bold("  BIGGEST IMPLEMENTATION GAPS (lowest coverage):"))
-        for name, data in gaps[:10]:
-            missing = data["total_aws_ops"] - data["implemented_count"]
-            bar_width = 30
-            filled = int(data["impl_pct"] / 100 * bar_width)
-            bar = _green("*" * filled) + _dim("-" * (bar_width - filled))
-            print(f"    {name:<24} [{bar}] {data['impl_pct']:>5.1f}%  ({missing} ops missing)")
-        print()
-
-    # Untested operations (services with tests but operations not covered)
-    untested_gaps = [
-        (name, data)
-        for name, data in services.items()
-        if data["total_aws_ops"] > 0 and data["implemented_count"] > data["tested_count"]
-    ]
-    untested_gaps.sort(key=lambda x: x[1]["implemented_count"] - x[1]["tested_count"], reverse=True)
-
-    if untested_gaps:
-        print(_bold("  IMPLEMENTED BUT UNTESTED (potential test targets):"))
-        for name, data in untested_gaps[:10]:
-            untested = data["implemented_count"] - data["tested_count"]
-            if untested > 0:
-                print(f"    {name:<24} {untested} implemented ops not covered by compat tests")
-        print()
-
-    print(_bold(f"  {'=' * 88}"))
     print()
 
 
 def print_service_detail(report: dict, service_name: str) -> None:
-    """Print detailed operation-level information for a single service."""
-    if service_name not in report["services"]:
-        print(f"  Service '{service_name}' not found in registry.")
+    data = report["services"].get(service_name)
+    if data is None:
+        print(f"  Service '{service_name}' not registered on the twin.")
         return
-
-    data = report["services"][service_name]
     print()
     print(_bold(f"  Service: {service_name}"))
     print(f"  Status: {data['status']}  |  Protocol: {data['protocol']}  |  {data['description']}")
-    print(f"  Delegates to Moto: {'yes' if data['delegates_to_moto'] else 'no'}")
-    print()
-
-    botocore_ops = get_botocore_operations(service_name)
-    impl_set = set(data["implemented_ops"])
-    tested_set = set(data["tested_ops"])
-    native_set = set(data["native_ops"])
-    moto_set = set(data["moto_ops"])
-
-    print(f"  {'Operation':<45} {'Impl':>6} {'Source':>8} {'Tested':>7}")
-    print(f"  {'-' * 45} {'-' * 6} {'-' * 8} {'-' * 7}")
-
-    for op in botocore_ops:
-        is_impl = op in impl_set
-        is_tested = op in tested_set
-        source = ""
-        if op in native_set and op in moto_set:
-            source = "both"
-        elif op in native_set:
-            source = "native"
-        elif op in moto_set:
-            source = "moto"
-
-        impl_mark = _green("  yes") if is_impl else _red("   no")
-        test_mark = _green("  yes") if is_tested else (_dim("   no") if is_impl else _dim("    -"))
-        source_str = _green(f"{source:>8}") if source else _dim(f"{'':>8}")
-
-        print(f"  {op:<45} {impl_mark} {source_str} {test_mark}")
-
-    print()
+    if not data["probed"]:
+        print("  No probe artifact — run scripts/probe_service.py first.")
+        return
     print(
-        f"  Total: {len(botocore_ops)} operations, "
-        f"{data['implemented_count']} implemented ({data['impl_pct']:.0f}%), "
-        f"{data['tested_count']} tested ({data['test_pct']:.0f}%)"
+        f"  {data['implemented_count']}/{data['total_aws_ops']} working "
+        f"({_pct_color(data['impl_pct'])}), {data['not_implemented_count']} not implemented, "
+        f"{data['needs_params_count']} needs params, {data['error_count']} 500-errors"
     )
     print()
+    op_status = _classify_rows(report, service_name)
+    for op in data["all_ops"]:
+        st = op_status.get(op, "?")
+        marker = {
+            "working": _green("  ✓ working"),
+            "needs_params": _yellow("  ? needs_params"),
+            "not_implemented": _red("  · not_impl (501)"),
+            "500_error": _red("  ! 500_error"),
+        }.get(st, f"  ? {st}")
+        params = ", ".join(data["op_params"].get(op, []) or []) or "—"
+        print(f"  {op:<46}{marker}  [{params}]")
+    print()
+
+
+def _classify_rows(report: dict, service_name: str) -> dict[str, str]:
+    probe = read_probe(PROJECT_ROOT / "probes" / f"{service_name}.json") or {}
+    return {op["operation"]: op["status"] for op in probe.get("operations", [])}
 
 
 def main():
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Generate AWS parity report for robotocore")
-    parser.add_argument("--json", action="store_true", help="Output as JSON")
+    parser = argparse.ArgumentParser(description="Generate the robotocore parity report")
+    parser.add_argument("--json", action="store_true", help="Output as JSON to stdout")
+    parser.add_argument("--output", help="Write JSON output to this file path")
     parser.add_argument("--service", help="Show detailed report for a single service")
     parser.add_argument("--no-color", action="store_true", help="Disable color output")
-    parser.add_argument("--output", help="Write JSON output to this file path")
+    parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT, help="Twin endpoint URL")
+    parser.add_argument(
+        "--probes-dir",
+        default=str(PROJECT_ROOT / "probes"),
+        help="Directory containing probes/<service>.json artifacts",
+    )
     args = parser.parse_args()
 
     global _USE_COLOR
     if args.no_color or not _supports_color():
         _USE_COLOR = False
 
-    report = build_report(filter_service=args.service if args.service else None)
+    if args.service:
+        report = build_report(Path(args.probes_dir), args.endpoint)
+        print_service_detail(report, args.service)
+        return
+
+    report = build_report(Path(args.probes_dir), args.endpoint)
 
     if args.output:
         Path(args.output).write_text(json.dumps(report, indent=2, default=str))
         print(f"Parity report written to {args.output}")
     elif args.json:
-        # Convert sets to lists for JSON serialization
         print(json.dumps(report, indent=2, default=str))
-    elif args.service:
-        # Rebuild full report to get botocore ops for detail view
-        full_report = build_report()
-        print_service_detail(full_report, args.service)
     else:
         print_report(report)
 

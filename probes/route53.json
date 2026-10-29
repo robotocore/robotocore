@@ -1,16 +1,19 @@
 {
   "service": "route53",
+  "generated_at": "2026-10-26T11:13:37.035925+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 43,
-    "needs_params": 3,
-    "not_implemented": 21,
-    "500_error": 4
+    "working": 71,
+    "needs_params": 0,
+    "not_implemented": 0,
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "ActivateKeySigningKey",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchKeySigningKey: No key signing key found with name probe-test-value in zone )"
     },
     {
       "operation": "AssociateVPCWithHostedZone",
@@ -19,18 +22,18 @@
     },
     {
       "operation": "ChangeCidrCollection",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "likely implemented (NoSuchCidrCollectionException: The CIDR collection with ID probe-id-id does not exist.)"
     },
     {
       "operation": "ChangeResourceRecordSets",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (NoSuchHostedZone)"
     },
     {
       "operation": "ChangeTagsForResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateCidrCollection",
@@ -40,7 +43,7 @@
     {
       "operation": "CreateHealthCheck",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreateHostedZone",
@@ -49,8 +52,8 @@
     },
     {
       "operation": "CreateKeySigningKey",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateQueryLoggingConfig",
@@ -64,33 +67,33 @@
     },
     {
       "operation": "CreateTrafficPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateTrafficPolicyInstance",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateTrafficPolicyVersion",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchTrafficPolicy: No traffic policy found with ID probe-id-id)"
     },
     {
       "operation": "CreateVPCAssociationAuthorization",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object is not subscriptable)"
+      "status": "working",
+      "message": "implemented (NoSuchHostedZone)"
     },
     {
       "operation": "DeactivateKeySigningKey",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteCidrCollection",
       "status": "working",
-      "message": "likely implemented (NoSuchCidrCollectionException: The CIDR collection with ID probe-test-value does not exist.)"
+      "message": "likely implemented (NoSuchCidrCollectionException: The CIDR collection with ID probe-id-id does not exist.)"
     },
     {
       "operation": "DeleteHealthCheck",
@@ -104,8 +107,8 @@
     },
     {
       "operation": "DeleteKeySigningKey",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteQueryLoggingConfig",
@@ -115,27 +118,27 @@
     {
       "operation": "DeleteReusableDelegationSet",
       "status": "working",
-      "message": "OK"
+      "message": "likely implemented (NoSuchDelegationSet: probe-id-id)"
     },
     {
       "operation": "DeleteTrafficPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchTrafficPolicy: No traffic policy found with ID probe-id-id)"
     },
     {
       "operation": "DeleteTrafficPolicyInstance",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchTrafficPolicyInstance: No traffic policy instance found with ID probe-id-id)"
     },
     {
       "operation": "DeleteVPCAssociationAuthorization",
-      "status": "500_error",
-      "message": "server crash (InternalError: 'NoneType' object is not subscriptable)"
+      "status": "working",
+      "message": "implemented (NoSuchHostedZone)"
     },
     {
       "operation": "DisableHostedZoneDNSSEC",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NoSuchHostedZone)"
     },
     {
       "operation": "DisassociateVPCFromHostedZone",
@@ -144,8 +147,8 @@
     },
     {
       "operation": "EnableHostedZoneDNSSEC",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NoSuchHostedZone)"
     },
     {
       "operation": "GetAccountLimit",
@@ -175,7 +178,7 @@
     {
       "operation": "GetHealthCheck",
       "status": "working",
-      "message": "likely implemented (NoSuchHealthCheck: A health check with id probe-test-value does not exist.)"
+      "message": "likely implemented (NoSuchHealthCheck: A health check with id probe-health-check-id-id does not exi)"
     },
     {
       "operation": "GetHealthCheckCount",
@@ -185,12 +188,12 @@
     {
       "operation": "GetHealthCheckLastFailureReason",
       "status": "working",
-      "message": "likely implemented (NoSuchHealthCheck: A health check with id probe-test-value does not exist.)"
+      "message": "likely implemented (NoSuchHealthCheck: A health check with id probe-health-check-id-id does not exi)"
     },
     {
       "operation": "GetHealthCheckStatus",
       "status": "working",
-      "message": "likely implemented (NoSuchHealthCheck: A health check with id probe-test-value does not exist.)"
+      "message": "likely implemented (NoSuchHealthCheck: A health check with id probe-health-check-id-id does not exi)"
     },
     {
       "operation": "GetHostedZone",
@@ -215,22 +218,22 @@
     {
       "operation": "GetReusableDelegationSet",
       "status": "working",
-      "message": "likely implemented (NoSuchDelegationSet: probe-test-value)"
+      "message": "likely implemented (NoSuchDelegationSet: probe-id-id)"
     },
     {
       "operation": "GetReusableDelegationSetLimit",
       "status": "working",
-      "message": "likely implemented (NoSuchDelegationSet: probe-test-value)"
+      "message": "likely implemented (NoSuchDelegationSet: probe-delegation-set-id-id)"
     },
     {
       "operation": "GetTrafficPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchTrafficPolicy: No traffic policy found with ID probe-id-id)"
     },
     {
       "operation": "GetTrafficPolicyInstance",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchTrafficPolicyInstance: No traffic policy instance found with ID probe-id-id)"
     },
     {
       "operation": "GetTrafficPolicyInstanceCount",
@@ -240,7 +243,7 @@
     {
       "operation": "ListCidrBlocks",
       "status": "working",
-      "message": "likely implemented (NoSuchCidrCollectionException: The CIDR collection with ID probe-test-value does not exist.)"
+      "message": "likely implemented (NoSuchCidrCollectionException: The CIDR collection with ID probe-collection-id-id does not )"
     },
     {
       "operation": "ListCidrCollections",
@@ -250,7 +253,7 @@
     {
       "operation": "ListCidrLocations",
       "status": "working",
-      "message": "likely implemented (NoSuchCidrCollectionException: The CIDR collection with ID probe-test-value does not exist.)"
+      "message": "likely implemented (NoSuchCidrCollectionException: The CIDR collection with ID probe-collection-id-id does not )"
     },
     {
       "operation": "ListGeoLocations",
@@ -294,13 +297,13 @@
     },
     {
       "operation": "ListTagsForResource",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListTagsForResources",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListTrafficPolicies",
@@ -314,18 +317,18 @@
     },
     {
       "operation": "ListTrafficPolicyInstancesByHostedZone",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListTrafficPolicyInstancesByPolicy",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListTrafficPolicyVersions",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchTrafficPolicy: No traffic policy found with ID probe-id-id)"
     },
     {
       "operation": "ListVPCAssociationAuthorizations",
@@ -339,28 +342,28 @@
     },
     {
       "operation": "UpdateHealthCheck",
-      "status": "500_error",
-      "message": "server crash (InternalError: no element found: line 1, column 0)"
+      "status": "working",
+      "message": "implemented via required-only (InvalidInput)"
     },
     {
       "operation": "UpdateHostedZoneComment",
-      "status": "500_error",
-      "message": "server crash (InternalError: no element found: line 1, column 0)"
+      "status": "working",
+      "message": "implemented (NoSuchHostedZone)"
     },
     {
       "operation": "UpdateHostedZoneFeatures",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "implemented (NoSuchHostedZone)"
     },
     {
       "operation": "UpdateTrafficPolicyComment",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchTrafficPolicy: No traffic policy found with ID probe-id-id)"
     },
     {
       "operation": "UpdateTrafficPolicyInstance",
-      "status": "not_implemented",
-      "message": "not implemented (501)"
+      "status": "working",
+      "message": "likely implemented (NoSuchTrafficPolicyInstance: No traffic policy instance found with ID probe-id-id)"
     }
   ]
 }

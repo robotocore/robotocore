@@ -1,10 +1,13 @@
 {
   "service": "securityhub",
+  "generated_at": "2026-10-26T03:11:31.004214+00:00",
+  "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 93,
-    "needs_params": 14,
+    "working": 107,
+    "needs_params": 0,
     "not_implemented": 0,
-    "500_error": 0
+    "500_error": 0,
+    "timeout": 0
   },
   "operations": [
     {
@@ -19,28 +22,28 @@
     },
     {
       "operation": "BatchDeleteAutomationRules",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchDisableStandards",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "BatchEnableStandards",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchGetAutomationRules",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchGetConfigurationPolicyAssociations",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "BatchGetSecurityControls",
@@ -54,13 +57,13 @@
     },
     {
       "operation": "BatchImportFindings",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchUpdateAutomationRules",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "BatchUpdateFindings",
@@ -89,23 +92,23 @@
     },
     {
       "operation": "CreateAutomationRule",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateAutomationRuleV2",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateConfigurationPolicy",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateConnectorV2",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateFindingAggregator",
@@ -119,8 +122,8 @@
     },
     {
       "operation": "CreateMembers",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateTicketV2",
@@ -180,12 +183,12 @@
     {
       "operation": "DescribeActionTargets",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeHub",
       "status": "working",
-      "message": "likely implemented (InvalidAccessException: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+      "message": "likely implemented (InvalidAccessException: Account is not subscribed to AWS Security Hub)"
     },
     {
       "operation": "DescribeOrganizationConfiguration",
@@ -205,7 +208,7 @@
     {
       "operation": "DescribeSecurityHubV2",
       "status": "working",
-      "message": "likely implemented (InvalidAccessException: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+      "message": "likely implemented (InvalidAccessException: Account is not subscribed to AWS Security Hub V2)"
     },
     {
       "operation": "DescribeStandards",
@@ -225,12 +228,12 @@
     {
       "operation": "DisableOrganizationAdminAccount",
       "status": "working",
-      "message": "likely implemented (AWSOrganizationsNotInUseException: Your account is not a member of an organization.)"
+      "message": "likely implemented (AWSOrganizationsNotInUseException: AWS Organizations is not in use.)"
     },
     {
       "operation": "DisableSecurityHub",
       "status": "working",
-      "message": "likely implemented (InvalidAccessException: <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  <ErrorResponse>\n   )"
+      "message": "likely implemented (InvalidAccessException: Account is not subscribed to AWS Security Hub)"
     },
     {
       "operation": "DisableSecurityHubV2",
@@ -260,7 +263,7 @@
     {
       "operation": "EnableOrganizationAdminAccount",
       "status": "working",
-      "message": "likely implemented (AWSOrganizationsNotInUseException: Your account is not a member of an organization.)"
+      "message": "likely implemented (AWSOrganizationsNotInUseException: AWS Organizations is not in use.)"
     },
     {
       "operation": "EnableSecurityHub",
@@ -294,8 +297,8 @@
     },
     {
       "operation": "GetConfigurationPolicyAssociation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetConnectorV2",
@@ -464,13 +467,13 @@
     },
     {
       "operation": "StartConfigurationPolicyAssociation",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartConfigurationPolicyDisassociation",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "TagResource",
@@ -479,8 +482,8 @@
     },
     {
       "operation": "UntagResource",
-      "status": "needs_params",
-      "message": "client-side validation (never contacted server)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateActionTarget",
@@ -505,7 +508,7 @@
     {
       "operation": "UpdateConnectorV2",
       "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "message": "implemented via required-only (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateFindingAggregator",
@@ -530,7 +533,7 @@
     {
       "operation": "UpdateSecurityControl",
       "status": "working",
-      "message": "OK"
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "UpdateSecurityHubConfiguration",
