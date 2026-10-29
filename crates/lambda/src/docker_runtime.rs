@@ -2307,7 +2307,19 @@ impl DockerLambdaExecutor {
                 cmd.push(script.to_string());
             }
             "ruby" => {
+                // Local-mode parity (review round 2): pin the container cwd
+                // to /var/task (the java bridge builds absolute paths, but
+                // the ruby era bootstrap resolves the handler module against
+                // `Dir.pwd`) and expose the code dir + its layer `ruby/`
+                // subtree the same way the local executor sets RUBYOPT/
+                // GEM_PATH — the official ruby image's WORKDIR must not be
+                // part of the contract, and `require 'helper'`/layer code
+                // must resolve exactly as local mode does.
                 let script = "rc=0\n".to_string()
+                    + "cd /var/task || exit 1\n"
+                    + "RUBYOPT=\"-I/var/task/ruby -I/var/task\"\n"
+                    + "GEM_PATH=\"$GEM_PATH:/var/task/ruby/gems\"\n"
+                    + "export RUBYOPT GEM_PATH\n"
                     + "timeout \"${AWS_LAMBDA_FUNCTION_TIMEOUT}s\" ruby /var/bridge/bootstrap.rb || rc=$?\n"
                     + "if [ \"$rc\" -eq 124 ]; then echo \"Task timed out after ${AWS_LAMBDA_FUNCTION_TIMEOUT}.00 seconds\"; fi\n"
                     + "exit $rc\n";

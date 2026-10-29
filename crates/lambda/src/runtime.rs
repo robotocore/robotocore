@@ -160,10 +160,19 @@ fn missing_runtime_result(msg: &str) -> ExecResult {
 }
 
 /// Cap on captured handler output per stream (stdout, stderr) for the LOCAL
-/// (in-process) executors: the twin's shim answers ride these pipes, which
-/// never exceed the HTTP envelope. When a stream exceeds the cap only the
-/// last bytes are kept (tail semantics).
+/// (in-process) executors' LOG channels — stderr rides this; logs never
+/// exceed the HTTP envelope. When a stream exceeds the cap only the last
+/// bytes are kept (tail semantics).
 const LOCAL_OUTPUT_CAP: usize = 128 * 1024;
+
+/// Cap on the RESULT channel of the stdin-fed family executors
+/// (`run_subprocess_family`: stdout carries the invocation's response
+/// payload, not logs). The tail-truncating 128 KB log cap silently
+/// corrupted handlers returning more than 128 KB of JSON (review round 2):
+/// the kept tail no longer parses as JSON and the caller received a
+/// garbage wrapped string with no function error. Real Lambda responses
+/// reach 6 MB; keep the whole result window up to that budget.
+const FAMILY_RESULT_CAP: usize = 6 * 1024 * 1024;
 
 /// Cap on captured docker-cli output per stream: the EMI-family
 /// invocation answers (whole runtime-interface response bodies) ride the
@@ -1175,14 +1184,18 @@ fn run_subprocess_family(
     };
     // Event JSON goes in over stdin; a bootstrap that exits without reading
     // it all is fine (python's communicate() swallows BrokenPipeError).
+    // Era parity: `subprocess.run(input=...)`'s communicate() feeds stdin
+    // while draining BOTH pipes concurrently — install the pipe drains
+    // BEFORE the (possibly blocking) write or a chatty bootstrap that
+    // fills its stdout pipe before reading stdin would deadlock the
+    // synchronous write and the `timeout+2` deadline would never be
+    // consulted (review-found hang class).
+    let stdout_rx = drain_thread(child.stdout.take(), FAMILY_RESULT_CAP);
+    let stderr_rx = drain_thread(child.stderr.take(), LOCAL_OUTPUT_CAP);
     if let Some(mut stdin) = child.stdin.take() {
         let _ = stdin.write_all(event_json.as_bytes());
         let _ = stdin.flush();
     }
-    // Drain pipes on dedicated threads so a chatty bootstrap cannot deadlock
-    // on the OS pipe buffer while nobody reads (the other executors' rule).
-    let stdout_rx = drain_thread(child.stdout.take(), LOCAL_OUTPUT_CAP);
-    let stderr_rx = drain_thread(child.stderr.take(), LOCAL_OUTPUT_CAP);
 
     let deadline = std::time::Instant::now()
         + std::time::Duration::from_secs(u64::from(timeout_secs.max(1)) + 2);
@@ -1363,19 +1376,33 @@ pub fn execute_ruby(
 /// any JVM ≥ 8, cached in the twin-owned bridge dir. `None` when no javac or
 /// the compile fails (era's "Cannot compile Java bootstrap" InvalidRuntime).
 fn ensure_java_bootstrap() -> Option<std::path::PathBuf> {
-    static CACHE: parking_lot::Mutex<Option<std::path::PathBuf>> = parking_lot::Mutex::new(None);
+    // The inner None memoizes a failed compile: without it a broken
+    // toolchain re-ran `javac` twice under this process-wide mutex on EVERY
+    // java invoke, serializing the pool behind 2×30s retries (review round
+    // 2). Era retried per invoke too but never serialized (per-call
+    // mkdtemp); a javac-broken host cannot self-heal mid-process, so the
+    // memo only clears on restart.
+    static CACHE: parking_lot::Mutex<Option<Option<std::path::PathBuf>>> =
+        parking_lot::Mutex::new(None);
     // Held across the compile: two concurrent java invocations must not race
     // javac into the shared class dir (docker `ensure_dotnet_bridge`
     // serializes its build the same way).
     let mut guard = CACHE.lock();
-    if let Some(dir) = guard.as_ref() {
-        // Pruned-cache guard: a next-start twin's sweep reaps bridge dirs
-        // older than an hour; revalidate before reuse.
-        if dir.join("RobotocoreJavaBridge.class").is_file() {
-            return Some(dir.clone());
+    if let Some(cached) = guard.as_ref() {
+        if let Some(dir) = cached {
+            // Pruned-cache guard: a next-start twin's sweep reaps bridge
+            // dirs older than an hour; revalidate before reuse.
+            if dir.join("RobotocoreJavaBridge.class").is_file() {
+                return Some(dir.clone());
+            }
+        } else {
+            return None; // memoized compile failure
         }
     }
-    let javac = find_javac()?;
+    let Some(javac) = find_javac() else {
+        *guard = Some(None);
+        return None;
+    };
     let bridge_dir = crate::docker_runtime::loose_bridge_dir();
     let source = bridge_dir.join("RobotocoreJavaBridge.java");
     let out_dir = bridge_dir.join("bootstrap-classes");
@@ -1392,26 +1419,25 @@ fn ensure_java_bootstrap() -> Option<std::path::PathBuf> {
         dir_arg.clone(),
         source_arg.clone(),
     ];
-    let ok = crate::docker_runtime::run_subprocess(&argv8, None, 30)
+    let mut ok = crate::docker_runtime::run_subprocess(&argv8, None, 30)
         .map(|o| o.status_code == Some(0))
         .unwrap_or(false);
-    let ok = if ok {
-        true
-    } else {
+    if !ok {
         let argv = vec![
             javac.clone(),
             "-d".to_string(),
             dir_arg.clone(),
             source_arg.clone(),
         ];
-        crate::docker_runtime::run_subprocess(&argv, None, 30)
+        ok = crate::docker_runtime::run_subprocess(&argv, None, 30)
             .map(|o| o.status_code == Some(0))
-            .unwrap_or(false)
-    };
+            .unwrap_or(false);
+    }
     if ok && out_dir.join("RobotocoreJavaBridge.class").is_file() {
-        *guard = Some(out_dir.clone());
+        *guard = Some(Some(out_dir.clone()));
         Some(out_dir)
     } else {
+        *guard = Some(None);
         None
     }
 }
@@ -1952,9 +1978,17 @@ pub fn is_custom_runtime(runtime: &str) -> bool {
     r.starts_with("provided") || r.starts_with("go")
 }
 
+/// Total decompressed-bytes bound per extraction (layer or code package).
+/// Era `limits.py` allowed 250 MB unzipped per function; without the bound a
+/// crafted 2 MB zip expands N-fold into /tmp on every invoke and fills the
+/// disk (review round 2). The work dir is discarded on error so the prune
+/// sweep reaps the partial files.
+const ZIP_UNPACK_LIMIT_TOTAL: u64 = 250 * 1024 * 1024;
+
 pub(crate) fn extract_zip_into(zip_bytes: &[u8], dest: &std::path::Path) -> Result<(), String> {
     let reader = std::io::Cursor::new(zip_bytes);
     let mut archive = zip::ZipArchive::new(reader).map_err(|e| e.to_string())?;
+    let mut copied = 0u64;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
         let Some(rel) = entry.enclosed_name() else {
@@ -1967,8 +2001,12 @@ pub(crate) fn extract_zip_into(zip_bytes: &[u8], dest: &std::path::Path) -> Resu
             if let Some(parent) = out.parent() {
                 fs::create_dir_all(parent).map_err(|e| e.to_string())?;
             }
-            let mut out_file = fs::File::create(&out).map_err(|e| e.to_string())?;
-            std::io::copy(&mut entry, &mut out_file).map_err(|e| e.to_string())?;
+            if copy_entry_capped(&mut entry, &out, &mut copied)? {
+                return Err(format!(
+                    "ZIP archive expands past the {} MB unzipped limit",
+                    ZIP_UNPACK_LIMIT_TOTAL / (1024 * 1024)
+                ));
+            }
             #[cfg(unix)]
             if let Some(mode) = entry.unix_mode() {
                 use std::os::unix::fs::PermissionsExt;
@@ -1977,6 +2015,32 @@ pub(crate) fn extract_zip_into(zip_bytes: &[u8], dest: &std::path::Path) -> Resu
         }
     }
     Ok(())
+}
+
+/// Copy `entry` into `out` while counting total bytes across the whole
+/// archive; returns `true` the moment the shared budget would be exceeded
+/// (partial write; the caller discards the extraction dir, so partial
+/// files never reach an executor).
+fn copy_entry_capped<R: std::io::Read>(
+    entry: &mut R,
+    out: &std::path::Path,
+    copied: &mut u64,
+) -> Result<bool, String> {
+    let mut out_file = fs::File::create(out).map_err(|e| e.to_string())?;
+    let mut chunk = [0u8; 8192];
+    loop {
+        let n = entry.read(&mut chunk).map_err(|e| e.to_string())?;
+        if n == 0 {
+            return Ok(false);
+        }
+        *copied += n as u64;
+        if *copied > ZIP_UNPACK_LIMIT_TOTAL {
+            return Ok(true);
+        }
+        out_file
+            .write_all(&chunk[..n])
+            .map_err(|e| e.to_string())?;
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
