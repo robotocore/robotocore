@@ -34,25 +34,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --all-extras
-      - name: Start robotocore
-        run: |
-          ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
-            uv run python -m robotocore.main > .robotocore.log 2>&1 &
-          SERVER_PID=$!
-          for i in $(seq 1 300); do
-            if ! kill -0 $SERVER_PID 2>/dev/null; then
-              echo "Server process exited early"
-              cat .robotocore.log 2>/dev/null || true
-              exit 1
-            fi
-            curl -sf http://localhost:4566/_robotocore/health && break
-            sleep 1
-          done
-          curl -f http://localhost:4566/_robotocore/health || {
-            echo "=== Server logs ==="
-            cat .robotocore.log 2>/dev/null || true
-            exit 1
-          }
+      # Twin built from THIS checkout (cached); never the published image —
+      # gates must test the code under review, not a release artifact.
+      - name: Start robotocore from source
+        uses: ./.github/actions/start-twin-from-source
       - name: Run all IaC tests
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -83,25 +68,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --extra dev
-      - name: Start robotocore
-        run: |
-          ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
-            uv run python -m robotocore.main > .robotocore.log 2>&1 &
-          SERVER_PID=$!
-          for i in $(seq 1 300); do
-            if ! kill -0 $SERVER_PID 2>/dev/null; then
-              echo "Server process exited early"
-              cat .robotocore.log 2>/dev/null || true
-              exit 1
-            fi
-            curl -sf http://localhost:4566/_robotocore/health && break
-            sleep 1
-          done
-          curl -f http://localhost:4566/_robotocore/health || {
-            echo "=== Server logs ==="
-            cat .robotocore.log 2>/dev/null || true
-            exit 1
-          }
+      # Twin built from THIS checkout (cached); never the published image —
+      # gates must test the code under review, not a release artifact.
+      - name: Start robotocore from source
+        uses: ./.github/actions/start-twin-from-source
       - name: Run parity tests
         run: >
           ENDPOINT_URL=http://localhost:4566
@@ -171,25 +141,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --extra dev
-      - name: Start robotocore
-        run: |
-          ROBOTOCORE_PORT=4566 HTTPS_DISABLED=1 DNS_DISABLED=1 \
-            uv run python -m robotocore.main > .robotocore.log 2>&1 &
-          SERVER_PID=$!
-          for i in $(seq 1 300); do
-            if ! kill -0 $SERVER_PID 2>/dev/null; then
-              echo "Server process exited early"
-              cat .robotocore.log 2>/dev/null || true
-              exit 1
-            fi
-            curl -sf http://localhost:4566/_robotocore/health && break
-            sleep 1
-          done
-          curl -f http://localhost:4566/_robotocore/health || {
-            echo "=== Server logs ==="
-            cat .robotocore.log 2>/dev/null || true
-            exit 1
-          }
+      # Twin built from THIS checkout (cached); never the published image —
+      # gates must test the code under review, not a release artifact.
+      - name: Start robotocore from source
+        uses: ./.github/actions/start-twin-from-source
       - name: Full response shape validation (all services)
         run: >
           PYTHONPATH=.

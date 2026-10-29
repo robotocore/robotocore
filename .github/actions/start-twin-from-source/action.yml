@@ -1,0 +1,78 @@
+name: "Start twin from source"
+description: >-
+  Compile the Rust robotocore twin from this checkout (cached) and start it,
+  waiting for the health endpoint. CI lanes run the twin built from the code
+  under test, never the published image — an implementation regression cannot
+  pass a gate because a release artifact happens to still be green.
+
+inputs:
+  port:
+    description: "Port to serve the twin on"
+    required: false
+    default: "4566"
+  env-vars:
+    description: >-
+      Newline-separated KEY=VALUE lines exported to the twin process
+      (e.g. a runtime knob). They must be valid `export` arguments.
+    required: false
+    default: ""
+
+outputs:
+  endpoint:
+    description: "The twin endpoint URL"
+    value: "http://localhost:${{ inputs.port }}"
+  twin-port:
+    description: "The twin port"
+    value: "${{ inputs.port }}"
+
+runs:
+  using: "composite"
+  steps:
+    - uses: dtolnay/rust-toolchain@stable
+    # Keyed on Cargo.lock + rustc by the action itself; a warm cache makes
+    # this build about a minute, a cold first run several — the health poll
+    # below gives the cold path room.
+    - uses: Swatinem/rust-cache@v2
+
+    - name: cargo build (robotocore-rust)
+      shell: bash
+      run: cargo build --locked -p robotocore-rust
+
+    - name: Start the twin
+      shell: bash
+      run: |
+        set -euo pipefail
+        PY3="$PWD/.venv/bin/python3"
+        if [ -x "$PY3" ]; then
+          # Runtimes execute handlers with this interpreter (ROBOTOCORE_PY in
+          # crates/lambda find_python3) — the project venv always carries
+          # boto3, which real AWS Lambda runtimes bundle.
+          echo "ROBOTOCORE_PY=$PY3" >> "$GITHUB_ENV"
+          export ROBOTOCORE_PY="$PY3"
+        fi
+        while IFS= read -r line; do
+          line="$(echo "$line" | xargs || true)"
+          [ -n "$line" ] || continue
+          export "$line"
+        done <<ENVVARS
+        ${{ inputs.env-vars }}
+        ENVVARS
+        ./target/debug/robotocore-rust --host 127.0.0.1 --port "${{ inputs.port }}" \
+          > .robotocore.log 2>&1 &
+        TWIN_PID=$!
+        for i in $(seq 1 400); do
+          if ! kill -0 "$TWIN_PID" 2>/dev/null; then
+            echo "Twin process exited early"
+            cat .robotocore.log 2>/dev/null || true
+            exit 1
+          fi
+          if curl -sf "http://localhost:${{ inputs.port }}/_robotocore/health"; then
+            break
+          fi
+          sleep 1
+        done
+        curl -f "http://localhost:${{ inputs.port }}/_robotocore/health" > /dev/null || {
+          echo "=== Twin log ==="
+          cat .robotocore.log 2>/dev/null || true
+          exit 1
+        }
