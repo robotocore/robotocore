@@ -1,20 +1,16 @@
 #!/usr/bin/env python3
-"""Legacy invocation shim: boots the Rust robotocore twin from the old workflows.
+"""Invocation shim: keeps `python -m robotocore.main` boots working post-2.0.
 
-robotocore 2.0.0 is pure Rust — the python server that
-`python -m robotocore.main` used to start no longer exists. The GitHub
-workflows (parity, nightly, iac, ci server shapes) still launch the twin
-with that exact invocation, so this shim keeps them at zero-yml-changes
-(the origin OAuth token cannot modify workflow files):
+robotocore is pure Rust since 2.0 — `python -m robotocore.main` no longer
+starts a python server. The repo's CI lanes now build the Rust twin from
+source directly (see .github/actions/start-twin-from-source), so this
+shim's remaining consumers are local dev and third-party example lanes:
 
-- CI runners (GITHUB_ACTIONS): compile-on-the-fly is too slow for the
-  workflows' 60-second health poll, so it runs the released docker
-  image instead — the same v2.0.0 bits that jackdanger/robotocore and
-  ghcr.io/robotocore serve (fast pull, port mapped 1:1). `docker run
-  --rm -i` keeps the CLI alive as the exec target so workflows'
-  `SERVER_PID=$!` + `kill -0`/SIGTERM bookkeeping stays true.
-- Local/non-CI: reuse (or cargo-build) the release binary and exec into
-  it in the same process, same pid bookkeeping.
+- CI runners (GITHUB_ACTIONS) happening to call this shim: run a released
+  docker image — :latest first (the release workflow retags it on every
+  version), with the v2.0.0 mirrors as first-generation fallbacks.
+- Local/no-docker: reuse (or cargo-build) the debug/release binary and
+  exec into it in-process, keeping pid bookkeeping truthful.
 """
 
 import os

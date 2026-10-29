@@ -77,7 +77,7 @@ jobs:
           ENDPOINT_URL=http://localhost:4566
           AWS_ENDPOINT_URL=http://localhost:4566
           uv run pytest tests/parity/ tests/compatibility/
-          -v --tb=short
+          -n8 --dist=loadfile -v --tb=short
           --junitxml=results-nightly-parity.xml
       - uses: actions/upload-artifact@v7
         if: always()

@@ -353,10 +353,10 @@ the running server can actually execute:
 The Docker image model mirrors this: the default image is a distroless
 python3 runner (`gcr.io/distroless/python3-debian12`, bookworm — carries
 `/usr/bin/python3`, Python 3.11) so the in-process python family really runs
-from the image itself (158MB, up from 119MB when the base was python-free
+from the image itself (202MB with the bundled boto3 site riding along (158MB before the lambda-site addition, 119MB when the base was python-free)
 and python-family invocations failed with `Runtime.InternalError`); a
-`runtimes` target bakes node+ruby into the server's runtime (node family
-executes for real, 402MB, node v20.19.2 in trixie); a `java-and-dotnet`
+`runtimes` target bakes node+ruby into the server's runtime (node 18/20/22
+execute for real, ~764MB with the versioned binaries + boto3 bundle, node v20.19.2 in trixie); a `java-and-dotnet`
 variant target adds OpenJDK 21 + .NET SDK 8 (`docker build --target
 java-and-dotnet .`, `docker compose --profile java-dotnet up`).
 

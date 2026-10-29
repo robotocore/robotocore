@@ -531,8 +531,12 @@ jobs:
           SIZE=$(docker image inspect robotocore:standard --format='{{.Size}}')
           SIZE_MB=$((SIZE / 1024 / 1024))
           echo "Standard image size: ${SIZE_MB}MB"
-          if [ "$SIZE_MB" -gt 500 ]; then
-            echo "WARNING: Standard image exceeds 500MB target (${SIZE_MB}MB)"
+          # The trixie runner with node18/20/22 + ruby + python3 + the AWS
+          # boto3 bundle is ~764MB (python-time stand-in was 402MB; the
+          # distroless default is 202MB) — the 500MB watchpoint predates
+          # the versioned node binaries and the lambda-site bundle.
+          if [ "$SIZE_MB" -gt 900 ]; then
+            echo "WARNING: Standard image exceeds target (${SIZE_MB}MB)"
           fi
 
       - name: Stop standard container
@@ -703,6 +707,11 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --extra dev
+      # The report must describe THIS tree: previous runs used no twin and
+      # the generator's connection fallback labeled every service absent,
+      # publishing a useless artifact (review finding 2).
+      - name: Start robotocore from source
+        uses: ./.github/actions/start-twin-from-source
       - name: Generate parity report
         run: >
           uv run python scripts/generate_parity_report.py

@@ -32,3 +32,8 @@ updates:
     commit-message:
       prefix: "docker"
     labels: ["docker"]
+
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
