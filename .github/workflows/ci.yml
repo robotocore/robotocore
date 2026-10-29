@@ -464,7 +464,7 @@ jobs:
       # Standard image: Python + Node.js + Ruby
       # -----------------------------------------------------------------------
       - name: Build standard Docker image
-        run: docker build --target standard -t robotocore:standard .
+        run: docker build --target runtimes -t robotocore:standard .
 
       - name: Start standard container
         run: |
