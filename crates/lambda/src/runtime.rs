@@ -606,12 +606,40 @@ main().catch((e) => {
 "#;
 
 /// Node binary discovery: ROBOTOCORE_NODE override, then $PATH, then the
-/// newest nvm-managed node under ~/.nvm/versions/node.
-fn find_node() -> Option<String> {
+/// newest nvm-managed node under ~/.nvm/versions/node. `runtime` selects a
+/// version-specific binary first, mirroring the python-era
+/// `runtimes/node.py::_RUNTIME_BINARY` map (nodejs18.x → node18 …): a
+/// preferred versioned binary that is absent on the host falls back to the
+/// plain `node` discovery with a warning so the divergence is visible.
+fn find_node(runtime: &str) -> Option<String> {
     if let Ok(path) = std::env::var("ROBOTOCORE_NODE") {
         if !path.is_empty() {
             return Some(path);
         }
+    }
+    // Versioned preference (era _RUNTIME_BINARY): Lambda identifiers to the
+    // versioned binary name in the image.
+    let preferred = match runtime {
+        "nodejs18.x" => Some("node18"),
+        "nodejs20.x" => Some("node20"),
+        "nodejs22.x" => Some("node22"),
+        _ => None,
+    };
+    if let Some(pref) = preferred {
+        if let Ok(paths) = std::env::var("PATH") {
+            for dir in paths.split(':') {
+                if dir.is_empty() {
+                    continue;
+                }
+                let candidate = std::path::Path::new(dir).join(pref);
+                if candidate.is_file() {
+                    return Some(candidate.to_string_lossy().into_owned());
+                }
+            }
+        }
+        eprintln!(
+            "node: {runtime} prefers {pref}, binary not found — running with the default node"
+        );
     }
     if let Ok(paths) = std::env::var("PATH") {
         for dir in paths.split(':') {
@@ -666,6 +694,7 @@ fn find_node() -> Option<String> {
 /// child is killed and a `Task.TimedOut` error is reported.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_nodejs(
+    runtime: &str,
     code_zip: &[u8],
     layer_zips: &[Vec<u8>],
     handler: &str,
@@ -678,7 +707,7 @@ pub fn execute_nodejs(
     region: &str,
     account_id: &str,
 ) -> ExecResult {
-    if find_node().is_none() {
+    if find_node(runtime).is_none() {
         return ExecResult {
             payload: "null".to_string(),
             function_error: Some("Runtime.InvalidRuntime".to_string()),
@@ -764,7 +793,7 @@ pub fn execute_nodejs(
         Ok(f) => f,
         Err(e) => return runtime_broken(e.to_string(), String::new()),
     };
-    let mut cmd = std::process::Command::new(find_node().unwrap_or_else(|| "node".to_string()));
+    let mut cmd = std::process::Command::new(find_node(runtime).unwrap_or_else(|| "node".to_string()));
     cmd.arg(bootstrap)
         .args(&extract_args)
         .current_dir(&code_dir)
@@ -2248,6 +2277,7 @@ pub fn execute_family(
     }
     if is_node_runtime(runtime) {
         return execute_nodejs(
+            runtime,
             code_zip,
             layer_zips,
             handler,
@@ -2549,6 +2579,7 @@ mod tests {
         let code = r#"exports.handler = async (event) => ({ ok: event.spec["x"] });"#;
         let zip = make_zip_named(code, "index.js");
         let res = execute_nodejs(
+            "nodejs20.x",
             &zip,
             &[],
             "index.handler",
@@ -2580,6 +2611,7 @@ exports.handler = async (event, context) => {
 };"#;
         let zip = make_zip_named(code, "index.js");
         let res = execute_nodejs(
+            "nodejs20.x",
             &zip,
             &[],
             "index.handler",
@@ -2603,6 +2635,7 @@ exports.handler = async (event, context) => {
             "index.js",
         );
         let res = execute_nodejs(
+            "nodejs20.x",
             &throw_zip,
             &[],
             "index.handler",
@@ -2625,6 +2658,7 @@ exports.handler = async (event, context) => {
     fn test_execute_nodejs_handler_not_found() {
         let zip = make_zip_named("exports.handler = async () => 'ok';", "index.js");
         let res = execute_nodejs(
+            "nodejs20.x",
             &zip,
             &[],
             "index.wrong_name",

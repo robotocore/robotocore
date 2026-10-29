@@ -73,6 +73,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates nodejs ruby python3 \
     && rm -rf /var/lib/apt/lists/*
 
+# Versioned Node binaries for the AWS nodejs18.x/nodejs22.x runtimes: the
+# era image shipped node18/node20/node22 alongside the default `node` and
+# the executor resolves `nodejsN.x` → `nodeN` (python-era
+# runtimes/node.py::_RUNTIME_BINARY; CI's docker-build smoke asserts the
+# version each family reports). The default trixie node (20.x) doubles as
+# node20; 18 and 22 come from their official image binaries (same glibc
+# line). A missing versioned binary falls back to plain node with a
+# runtime warning.
+COPY --from=node:18-slim /usr/local/bin/node /usr/local/bin/node18
+RUN ln -s /usr/bin/node /usr/local/bin/node20
+COPY --from=node:22-slim /usr/local/bin/node /usr/local/bin/node22
+
 # AWS-bundled boto3 for the python-family Lambda executor (see lambda-site).
 COPY --from=lambda-site /lambda-site /lambda-site
 ENV PYTHONPATH=/lambda-site

@@ -155,6 +155,7 @@ pub fn invoke_by_arn(arn: &str, event: &Value) -> Option<InvokeOutcome> {
         )
     } else if runtime::is_node_runtime(&runtime_name) {
         runtime::execute_nodejs(
+            &runtime_name,
             &zip_bytes,
             &layer_zips,
             &func.handler.read().clone(),

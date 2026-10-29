@@ -840,6 +840,7 @@ impl LambdaHandler {
         // Node.js runtimes execute through the node bootstrap.
         if runtime::is_node_runtime(&func.runtime.read()) {
             return Ok(runtime::execute_nodejs(
+                func.runtime.read().as_str(),
                 &zip_bytes,
                 &layer_zips,
                 &func.handler.read().clone(),
