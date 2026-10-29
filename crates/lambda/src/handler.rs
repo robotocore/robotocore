@@ -1370,6 +1370,10 @@ impl LambdaHandler {
             .event_source_mappings
             .write()
             .insert(uuid_val.clone(), Arc::clone(&em));
+        // Bind the source's cursor at attach time (moto registers the ESM on
+        // its source synchronously, so a LATEST mapping never misses records
+        // created after the CreateEventSourceMapping response).
+        crate::bridge::notify_esm_created(req.account, &req.region, &em.event_source_arn, &uuid_val);
         AwsResponse::json(202, Self::esm_dict(&em))
     }
 

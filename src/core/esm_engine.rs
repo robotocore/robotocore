@@ -24,9 +24,10 @@
 
 use crate::core::server::NativeHandlers;
 use bytes::Bytes;
+use parking_lot::RwLock;
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 /// Poll cadence. The trigger suites sleep 5-15s and need sub-second delivery;
@@ -93,9 +94,18 @@ impl RedeliveryGate {
 }
 
 pub fn start(native: Arc<NativeHandlers>) {
+    // Attach hook: `CreateEventSourceMapping` runs on a request thread and
+    // freezes a kinesis mapping's LATEST position here — before we even
+    // spawn the poller thread, matching moto's synchronous source
+    // registration (moto/kinesis/models.py KinesisStream.
+    // lambda_event_source_mappings).
+    lambda::bridge::register_esm_attach_hook(Arc::new({
+        let native = native.clone();
+        move |account, region, arn, uuid| bind_kinesis_at_attach(&native, account, region, arn, uuid)
+    }));
     std::thread::Builder::new()
         .name("esm-engine".into())
-        .spawn(move || run(native))
+        .spawn(move || run(native.clone()))
         .ok();
 }
 
@@ -116,6 +126,7 @@ fn run(native: Arc<NativeHandlers>) {
 
 fn poll_snapshot(native: &Arc<NativeHandlers>, engine: &mut Engine) {
     let snapshot = native.lambda.esm_snapshot();
+    tracing::debug!(mappings = snapshot.len(), "esm: snapshot");
     let mut active: HashSet<MappingKey> = HashSet::new();
     for entry in snapshot {
         let mapping = &entry.mapping;
@@ -123,7 +134,17 @@ fn poll_snapshot(native: &Arc<NativeHandlers>, engine: &mut Engine) {
             continue;
         }
         active.insert((entry.account, entry.region.clone(), mapping.uuid.clone()));
-        match classify_arn(&mapping.event_source_arn) {
+        let source = classify_arn(&mapping.event_source_arn);
+        if source.is_none() && !mapping.event_source_arn.is_empty() {
+            // Only log once per unmapped ARN family: an unknown ARN means the
+            // mapping silently never triggers, which is what we most need to
+            // see in the logs.
+            tracing::warn!(
+                arn = %mapping.event_source_arn,
+                "esm: unmapped event-source ARN — mapping will not trigger"
+            );
+        }
+        match source {
             Some(Source::Sqs { queue_arn }) => engine.poll_sqs(native, &entry, &queue_arn),
             Some(Source::Kinesis { stream_name }) => {
                 engine.poll_kinesis(native, &entry, &stream_name)
@@ -197,6 +218,36 @@ fn seq_of(r: &Value) -> Option<String> {
         .map(String::from)
 }
 
+/// Attach-time cursor binding, key (account, region, esm-uuid) →
+/// shard id → sequence bound at CreateEventSourceMapping time. Mirrors
+/// moto's push registration (`moto/kinesis/models.py`):
+/// `KinesisStream.lambda_event_source_mappings` only ever picks up records
+/// *assigned after* registration, so a `LATEST` mapping freezes its
+/// position when it is created — never at the poller's first tick, which
+/// may run after a producer's first puts and would silently skip them.
+fn kinesis_bound() -> &'static RwLock<HashMap<MappingKey, HashMap<String, String>>> {
+    static BOUND: OnceLock<RwLock<HashMap<MappingKey, HashMap<String, String>>>> = OnceLock::new();
+    BOUND.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+/// Record the per-shard `LATEST` watermarks for a kinesis-ARN mapping at
+/// attach time (called from the handler's create hook). No-op for other
+/// ARN families and when the stream does not exist yet (shards created
+/// later still bind at first poll sight).
+fn bind_kinesis_at_attach(native: &Arc<NativeHandlers>, account: u64, region: &str, arn: &str, uuid: &str) {
+    let Some(Source::Kinesis { stream_name }) = classify_arn(arn) else {
+        return;
+    };
+    let marks = native.kinesis.attach_watermarks(account, region, &stream_name);
+    tracing::debug!(stream = stream_name, marks = marks.len(), "esm: attach binding");
+    if marks.is_empty() {
+        return;
+    }
+    kinesis_bound()
+        .write()
+        .insert((account, region.to_string(), uuid.to_string()), marks.into_iter().collect());
+}
+
 /// Engine cursor state (in-memory; restart re-polls from the map's starting
 /// position, like moto's backends which lose nothing durable).
 #[derive(Default)]
@@ -265,16 +316,46 @@ impl Engine {
             let iterator = match self.kinesis_iterators.get(&key) {
                 Some(it) => it.clone(),
                 None => {
+                    tracing::debug!(
+                        stream = stream_name,
+                        shard = %shard,
+                        position = mapping.starting_position.as_deref().unwrap_or("TRIM_HORIZON"),
+                        "esm: creating kinesis iterator"
+                    );
+                    // Bind at the attach-time watermark when this mapping
+                    // registered with the source before its first poll tick
+                    // (moto semantics); a restart or a shard created after
+                    // attach falls back to first-sight LATEST.
+                    let bound_seq = kinesis_bound()
+                        .read()
+                        .get(&(
+                            entry.account,
+                            entry.region.clone(),
+                            mapping.uuid.clone(),
+                        ))
+                        .and_then(|m| m.get(&shard))
+                        .cloned();
+                    let (params_type, params_seq): (Value, Option<Value>) = match bound_seq {
+                        Some(seq) => (
+                            json!("AT_SEQUENCE_NUMBER"),
+                            Some(json!(seq)),
+                        ),
+                        None => (json!(Self::starting_position(mapping)), None),
+                    };
+                    let mut params = json!({
+                        "StreamName": stream_name,
+                        "ShardId": shard,
+                        "ShardIteratorType": params_type,
+                    });
+                    if let Some(seq) = params_seq {
+                        params["StartingSequenceNumber"] = seq;
+                    }
                     let resp = native.kinesis.handle(kinesis::AwsRequest {
                         service: "kinesis".into(),
                         operation: "GetShardIterator".into(),
                         account: entry.account,
                         region: entry.region.clone(),
-                        params: json!({
-                            "StreamName": stream_name,
-                            "ShardId": shard,
-                            "ShardIteratorType": Self::starting_position(mapping),
-                        }),
+                        params,
                         body: Bytes::new(),
                     });
                     if resp.status != 200 {
@@ -382,6 +463,7 @@ impl Engine {
                 &json!({"Records": delivered}),
             );
             if result.function_error.is_none() {
+                tracing::debug!(stream = stream_name, records = delivered.len(), "esm: kinesis batch delivered");
                 gate.record_success();
                 match next {
                     Some(next) => {
@@ -392,6 +474,12 @@ impl Engine {
                     }
                 }
             } else {
+                tracing::debug!(
+                    stream = stream_name,
+                    error = %result.function_error.as_deref().unwrap_or(""),
+                    payload = result.payload.get(0..300).unwrap_or(&result.payload),
+                    "esm: kinesis batch invoke FAILED"
+                );
                 gate.record_failure(&fingerprint);
             }
             // On failure: keep the old iterator so the next poll re-delivers.
@@ -869,6 +957,7 @@ impl Engine {
             .retain(|k, _| active.contains(&(k.0, k.1.clone(), k.2.clone())));
         self.sqs_frontier
             .retain(|k, _| active.contains(&(k.0, k.1.clone(), k.2.clone())));
+        kinesis_bound().write().retain(|k, _| active.contains(k));
     }
 }
 

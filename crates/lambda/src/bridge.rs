@@ -35,6 +35,32 @@ pub fn get_state(account: u64, region: &str) -> Option<LambdaState> {
         .cloned()
 }
 
+/// ESM attach hook: the gateway's ESM engine registers itself so that
+/// `CreateEventSourceMapping` can bind a stream's `LATEST` position at
+/// attach time. Mirrors moto, which registers the mapping on its source
+/// object synchronously (`moto/kinesis/models.py` KinesisStream holds
+/// `lambda_event_source_mappings`; `put_record` then pushes to every
+/// registered mapping) — a mapping therefore only sees records assigned
+/// after registration, whatever its starting position. The hook receives
+/// (account, region, event_source_arn, mapping uuid); it is a no-op until
+/// registered.
+pub type EsmAttachHook = Arc<dyn Fn(u64, &str, &str, &str) + Send + Sync>;
+
+fn esm_attach_hook() -> &'static RwLock<Option<EsmAttachHook>> {
+    static HOOK: OnceLock<RwLock<Option<EsmAttachHook>>> = OnceLock::new();
+    HOOK.get_or_init(|| RwLock::new(None))
+}
+
+pub fn register_esm_attach_hook(hook: EsmAttachHook) {
+    *esm_attach_hook().write() = Some(hook);
+}
+
+pub fn notify_esm_created(account: u64, region: &str, event_source_arn: &str, uuid: &str) {
+    if let Some(hook) = esm_attach_hook().read().clone() {
+        hook(account, region, event_source_arn, uuid);
+    }
+}
+
 /// Successful = handler returned; failure = handler raised / runtime invalid.
 pub struct InvokeOutcome {
     pub payload: String,
