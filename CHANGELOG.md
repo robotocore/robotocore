@@ -7,7 +7,7 @@ Docker images. Each release gets a top-level section here; the project
 source of truth for the maintenance policy is [`CLAUDE.md`](CLAUDE.md)
 under *Changelog discipline*.
 
-## 2.0.1
+## 2.0.2
 
 The v2.0.1 follow-through: the review waves against the merged 2.0 tree end
 with kinesis mappings that bind their stream position at attach time, a
