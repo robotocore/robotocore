@@ -1522,30 +1522,20 @@ class TestKinesisLambdaEventSourceMapping:
             decoded = []
             for m in messages:
                 r = json.loads(m["Body"])
-                r["kinesis"]["decoded"] = json.loads(
-                    base64.b64decode(r["kinesis"]["data"])
-                )
+                r["kinesis"]["decoded"] = json.loads(base64.b64decode(r["kinesis"]["data"]))
                 decoded.append(r)
             delivered = [
-                r for r in decoded
-                if r["kinesis"]["decoded"] == {"id": "after-attach", "v": 2}
+                r for r in decoded if r["kinesis"]["decoded"] == {"id": "after-attach", "v": 2}
             ]
             withheld = [
-                r for r in decoded
-                if r["kinesis"]["decoded"] == {"id": "before-attach", "v": 1}
+                r for r in decoded if r["kinesis"]["decoded"] == {"id": "before-attach", "v": 1}
             ]
 
-            assert len(withheld) == 0, (
-                "a LATEST mapping must not replay the pre-attach record"
-            )
-            assert len(delivered) >= 1, (
-                f"the post-attach record must be delivered, got: {decoded}"
-            )
+            assert len(withheld) == 0, "a LATEST mapping must not replay the pre-attach record"
+            assert len(delivered) >= 1, f"the post-attach record must be delivered, got: {decoded}"
             # Exactly one delivery of the post-attach record (no repeated
             # redelivery of a succeeded batch in the window).
-            assert len(delivered) == 1, (
-                f"delivered exactly once, got {len(delivered)}: {delivered}"
-            )
+            assert len(delivered) == 1, f"delivered exactly once, got {len(delivered)}: {delivered}"
 
             rec = delivered[0]
             assert rec["eventSource"] == "aws:kinesis"

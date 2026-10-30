@@ -192,7 +192,7 @@ class TestKinesisLambda:
         "import boto3\n"
         "\n"
         "def handler(event, context):\n"
-        '    endpoint = os.environ[\'ENDPOINT_URL\']\n'
+        "    endpoint = os.environ['ENDPOINT_URL']\n"
         '    ddb = boto3.client("dynamodb", endpoint_url=endpoint)\n'
         '    records = event.get("Records", [])\n'
         "    for record in records:\n"
@@ -205,10 +205,10 @@ class TestKinesisLambda:
         '    sqs = boto3.client("sqs", endpoint_url=endpoint)\n'
         "    sqs.send_message(\n"
         '        QueueUrl=os.environ["VERIFY_QUEUE_URL"],\n'
-        '        MessageBody=json.dumps({\n'
+        "        MessageBody=json.dumps({\n"
         '            "count": len(records),\n'
         '            "records": records,\n'
-        '        }),\n'
+        "        }),\n"
         "    )\n"
         '    return {"delivered": len(records)}\n'
     )
@@ -256,9 +256,10 @@ class TestKinesisLambda:
                 BillingMode="PAY_PER_REQUEST",
             )
             for _ in range(15):
-                if dynamodb.describe_table(TableName=table_name)["Table"][
-                    "TableStatus"
-                ] == "ACTIVE":
+                if (
+                    dynamodb.describe_table(TableName=table_name)["Table"]["TableStatus"]
+                    == "ACTIVE"
+                ):
                     break
                 time.sleep(1)
 
@@ -284,9 +285,7 @@ class TestKinesisLambda:
                 Timeout=30,
             )
             for _ in range(30):
-                if lam.get_function(FunctionName=fn_name)["Configuration"][
-                    "State"
-                ] == "Active":
+                if lam.get_function(FunctionName=fn_name)["Configuration"]["State"] == "Active":
                     break
                 time.sleep(1)
 
@@ -303,16 +302,12 @@ class TestKinesisLambda:
             # must invoke the Lambda with them.
             record_datas = [json.dumps({"delivery": i}) for i in range(4)]
             for data in record_datas:
-                kinesis.put_record(
-                    StreamName=stream_name, Data=data, PartitionKey="p"
-                )
+                kinesis.put_record(StreamName=stream_name, Data=data, PartitionKey="p")
 
             from tests.apps.conftest import wait_for_messages
 
             messages = wait_for_messages(sqs, queue_url, timeout=10, expected=1)
-            assert len(messages) >= 1, (
-                "the kinesis ESM did not deliver to the Lambda within 10s"
-            )
+            assert len(messages) >= 1, "the kinesis ESM did not deliver to the Lambda within 10s"
             report = json.loads(messages[0]["Body"])
             assert report["count"] >= 1
             for record in report["records"]:
@@ -328,8 +323,7 @@ class TestKinesisLambda:
                 seen.update(item["pk"]["S"] for item in scan.get("Items", []))
                 time.sleep(1)
             assert len(seen) >= report["count"], (
-                f"marker rows for every delivered record: {len(seen)} of "
-                f"{report['count']}"
+                f"marker rows for every delivered record: {len(seen)} of {report['count']}"
             )
         finally:
             if esm_uuid:

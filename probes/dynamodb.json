@@ -1,15 +1,60 @@
 {
   "service": "dynamodb",
-  "generated_at": "2026-10-29T21:44:26.051877+00:00",
+  "generated_at": "2026-10-30T02:47:26.337817+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 22,
+    "working": 54,
     "needs_params": 0,
     "not_implemented": 0,
-    "500_error": 0,
+    "500_error": 2,
     "timeout": 0
   },
   "operations": [
+    {
+      "operation": "BatchExecuteStatement",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "BatchGetItem",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "BatchWriteItem",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateBackup",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "CreateGlobalTable",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "CreateTable",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "DeleteBackup",
+      "status": "working",
+      "message": "likely implemented (BackupNotFoundException: Backup not found for ARN arn:aws:dynamodb:us-east-1:12345678)"
+    },
+    {
+      "operation": "DeleteItem",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "DeleteResourcePolicy",
+      "status": "working",
+      "message": "likely implemented (PolicyNotFoundException: Resource-based policy not found for the provided ResourceArn)"
+    },
     {
       "operation": "DescribeBackup",
       "status": "working",
@@ -23,7 +68,7 @@
     {
       "operation": "DescribeContributorInsights",
       "status": "working",
-      "message": "OK"
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DescribeEndpoints",
@@ -76,6 +121,31 @@
       "message": "OK"
     },
     {
+      "operation": "DisableKinesisStreamingDestination",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "EnableKinesisStreamingDestination",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "ExecuteStatement",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "ExecuteTransaction",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "ExportTableToPointInTime",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
       "operation": "GetItem",
       "status": "working",
       "message": "implemented (ValidationException)"
@@ -84,6 +154,11 @@
       "operation": "GetResourcePolicy",
       "status": "working",
       "message": "likely implemented (PolicyNotFoundException: Resource-based policy not found for the provided ResourceArn)"
+    },
+    {
+      "operation": "ImportTable",
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListBackups",
@@ -119,6 +194,101 @@
       "operation": "ListTagsOfResource",
       "status": "working",
       "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "PutItem",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "PutResourcePolicy",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "Query",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "RestoreTableFromBackup",
+      "status": "working",
+      "message": "likely implemented (BackupNotFoundException: Backup not found for ARN arn:aws:dynamodb:us-east-1:12345678)"
+    },
+    {
+      "operation": "RestoreTableToPointInTime",
+      "status": "working",
+      "message": "likely implemented (ResourceAlreadyExistsException: Table already exists: probe-table-name)"
+    },
+    {
+      "operation": "Scan",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TagResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "TransactGetItems",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "TransactWriteItems",
+      "status": "500_error",
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
+    },
+    {
+      "operation": "UntagResource",
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
+    },
+    {
+      "operation": "UpdateContinuousBackups",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateContributorInsights",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateGlobalTable",
+      "status": "working",
+      "message": "likely implemented (ReplicaAlreadyExistsException: Replica already exists in region 'probe-test-value')"
+    },
+    {
+      "operation": "UpdateGlobalTableSettings",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateItem",
+      "status": "working",
+      "message": "implemented (ValidationException)"
+    },
+    {
+      "operation": "UpdateKinesisStreamingDestination",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateTable",
+      "status": "500_error",
+      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
+    },
+    {
+      "operation": "UpdateTableReplicaAutoScaling",
+      "status": "working",
+      "message": "OK"
+    },
+    {
+      "operation": "UpdateTimeToLive",
+      "status": "working",
+      "message": "OK"
     }
   ]
 }
