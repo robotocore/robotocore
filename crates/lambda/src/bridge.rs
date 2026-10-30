@@ -72,6 +72,48 @@ pub fn kinesis_attach_watermarks(
     hook(account, region, event_source_arn)
 }
 
+/// CreateEventSourceMapping source-existence probes (moto's
+/// `LambdaBackend.create_event_source_mapping` resolves its event source
+/// through the owning backend — `kinesis_backends[...].get_stream` for a
+/// kinesis ARN, the dynamodb table for the streams ARN family — and a
+/// missing source fails the create). Service crates stay decoupled: the
+/// gateway's engine registers the probes at startup; without one the
+/// existence check cannot run and the create is accepted (validation never
+/// invents a deny it cannot support).
+pub type SourceExistsProbe = Arc<dyn Fn(u64, &str, &str) -> bool + Send + Sync>;
+
+fn kinesis_probe() -> &'static RwLock<Option<SourceExistsProbe>> {
+    static PROBE: OnceLock<RwLock<Option<SourceExistsProbe>>> = OnceLock::new();
+    PROBE.get_or_init(|| RwLock::new(None))
+}
+
+fn dynamodb_probe() -> &'static RwLock<Option<SourceExistsProbe>> {
+    static PROBE: OnceLock<RwLock<Option<SourceExistsProbe>>> = OnceLock::new();
+    PROBE.get_or_init(|| RwLock::new(None))
+}
+
+pub fn register_kinesis_stream_probe(probe: SourceExistsProbe) {
+    *kinesis_probe().write() = Some(probe);
+}
+
+pub fn register_dynamodb_table_probe(probe: SourceExistsProbe) {
+    *dynamodb_probe().write() = Some(probe);
+}
+
+/// `Some(exists)` when a kinesis stream probe is registered, `None` when
+/// this process cannot answer the existence question.
+pub fn kinesis_stream_exists(account: u64, region: &str, stream_name: &str) -> Option<bool> {
+    let probe = kinesis_probe().read().clone()?;
+    Some(probe(account, region, stream_name))
+}
+
+/// `Some(exists)` when a dynamodb table probe is registered, `None`
+/// otherwise.
+pub fn dynamodb_table_exists(account: u64, region: &str, table_name: &str) -> Option<bool> {
+    let probe = dynamodb_probe().read().clone()?;
+    Some(probe(account, region, table_name))
+}
+
 /// Successful = handler returned; failure = handler raised / runtime invalid.
 pub struct InvokeOutcome {
     pub payload: String,

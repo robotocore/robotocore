@@ -1911,6 +1911,15 @@ impl KinesisHandler {
             .map(|sh| (sh.shard_id.clone(), sh.get_latest_sequence()))
             .collect()
     }
+
+    /// Whether a stream exists in this (account, region) — the probe the
+    /// lambda crate's `CreateEventSourceMapping` validation reaches through
+    /// `lambda::bridge` (moto's `LambdaBackend.create_event_source_mapping`
+    /// resolves its kinesis source via `get_stream` before constructing the
+    /// mapping).
+    pub fn has_stream(&self, account: u64, region: &str, stream_name: &str) -> bool {
+        self.get_state(account, region).get_stream(stream_name).is_some()
+    }
 }
 
 impl Default for KinesisHandler {

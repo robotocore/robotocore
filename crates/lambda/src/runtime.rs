@@ -46,6 +46,13 @@ import uuid
 import zipfile
 
 
+# The running decompressed-bytes budget of one extraction (era limits.py:
+# 250 MB unzipped per function). Without the bound a crafted 2 MB zip
+# expands N-fold into the work dir on every invoke and fills the disk.
+ZIP_UNPACK_BUDGET_BYTES = 250 * 1024 * 1024
+ZIP_UNPACK_BUDGET_MB = ZIP_UNPACK_BUDGET_BYTES // (1024 * 1024)
+
+
 class Ctx:
     def __init__(self, meta):
         self.meta = meta
@@ -72,7 +79,22 @@ def safe_extract(zippath, outdir):
             normalized = name.replace("\\", "/")
             if normalized.startswith("/") or ".." in normalized.split("/"):
                 raise ValueError(f"Unsafe path in ZIP archive: {name}")
-        zf.extractall(outdir)
+        # Budgeted extraction: every entry joins the running decompressed
+        # total (its central-directory uncompressed size, the only honest
+        # size a zip carries) BEFORE anything is written; crossing the
+        # budget aborts with a non-zero exit and the cap text on stderr —
+        # the executor reports the missing result as Runtime.InternalError.
+        written = 0
+        for info in zf.infolist():
+            written += info.file_size
+            if written > ZIP_UNPACK_BUDGET_BYTES:
+                print(
+                    f"ZIP archive expands past the {ZIP_UNPACK_BUDGET_MB} MB unzipped limit",
+                    file=sys.stderr,
+                )
+                sys.stderr.flush()
+                raise SystemExit(1)
+            zf.extract(info, outdir)
 
 
 def main():
@@ -117,6 +139,13 @@ def main():
         open(result_path, "w").write(
             json.dumps({"restocore_result_raw": json.dumps(result, default=str)})
         )
+    except SystemExit:
+        # Budgeted-extraction aborts re-raise past the error recorder:
+        # the process exits non-zero WITHOUT a result record, which the
+        # executor wraps as Runtime.InternalError (like the other shim
+        # failures). Recording it as handler data would mislabel the
+        # extraction crash as a handler exception.
+        raise
     except BaseException as exc:  # report handler errors as data, not as crashes
         tb = traceback.format_exc()
         open(result_path, "w").write(
@@ -397,7 +426,15 @@ pub fn execute_python(
                 logs,
             }
         }
-        _ => missing_runtime_result("handler produced no result"),
+        // No result record: the shim died before/while extracting (the
+        // budgeted-extraction SystemExit aborts exactly here). The captured
+        // logs carry the answer — the cap text or the crash — so they ride
+        // the result instead of being dropped.
+        _ => ExecResult {
+            payload: json!({"errorMessage": "handler produced no result", "errorType": "Runtime.InternalError"}).to_string(),
+            function_error: Some("Unhandled".to_string()),
+            logs,
+        },
     }
 }
 
@@ -438,6 +475,13 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
+// The running decompressed-bytes budget shared by every archive this
+// process extracts (code + layers; era limits.py: 250 MB unzipped per
+// function). Without the bound a crafted 2MB zip expands N-fold into the
+// work dir on every invoke and fills the disk.
+const ZIP_UNPACK_BUDGET_BYTES = 250 * 1024 * 1024;
+let unpackBudgetWritten = 0;
+
 /** Extract one zip archive into destDir (central-directory walk + inflateRaw). */
 function extractZip(zipPath, destDir) {
     const buf = fs.readFileSync(zipPath);
@@ -458,6 +502,7 @@ function extractZip(zipPath, destDir) {
         }
         const method = buf.readUInt16LE(offset + 10);
         const csize = buf.readUInt32LE(offset + 20);
+        const usize = buf.readUInt32LE(offset + 24);
         const nameLen = buf.readUInt16LE(offset + 28);
         const extraLen = buf.readUInt16LE(offset + 30);
         const commentLen = buf.readUInt16LE(offset + 32);
@@ -478,6 +523,17 @@ function extractZip(zipPath, destDir) {
         if (normalized.endsWith('/')) {
             fs.mkdirSync(outPath, { recursive: true });
             continue;
+        }
+        // Budgeted extraction: the entry's central-directory uncompressed
+        // size joins the running total BEFORE the inflate is started (a
+        // bomb entry never writes); crossing the budget aborts the whole
+        // bootstrap non-zero with the cap text — the executor reports the
+        // missing result as a function error.
+        unpackBudgetWritten += usize;
+        if (unpackBudgetWritten > ZIP_UNPACK_BUDGET_BYTES) {
+            throw new Error(
+                `ZIP archive expands past the ${ZIP_UNPACK_BUDGET_BYTES / (1024 * 1024)} MB unzipped limit`
+            );
         }
         fs.mkdirSync(path.dirname(outPath), { recursive: true });
         const data = buf.slice(dataStart, dataStart + csize);
@@ -2041,6 +2097,26 @@ fn copy_entry_capped<R: std::io::Read>(
             .write_all(&chunk[..n])
             .map_err(|e| e.to_string())?;
     }
+}
+
+/// The bound the Python shim (`safe_extract`) and the Node bootstrap
+/// (`extractZip`) embed: the running decompressed total stays inside
+/// [`ZIP_UNPACK_LIMIT_TOTAL`] or the extraction aborts with the shared cap
+/// text before the offending entry writes anything. The Rust tests drive
+/// this fn so the shim strings and this process's budget can never drift
+/// apart on the limit's shape. (The shims implement the accumulation
+/// themselves — they are process-external text — so this fn is the
+/// test-controlled contract.)
+#[cfg(test)]
+pub(crate) fn zip_unpack_budget(running: u64, next_entry: u64) -> Result<u64, String> {
+    let next = running.saturating_add(next_entry);
+    if next > ZIP_UNPACK_LIMIT_TOTAL {
+        return Err(format!(
+            "ZIP archive expands past the {} MB unzipped limit",
+            ZIP_UNPACK_LIMIT_TOTAL / (1024 * 1024)
+        ));
+    }
+    Ok(next)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3621,5 +3697,138 @@ exports.handler = async (event, context) => {
             "payload: {payload}"
         );
         assert_eq!(payload["errorType"], "InvalidOperationException");
+    }
+
+    // === zip-bomb budget (SHIM_PY + node bootstrap extraction) ===
+
+    /// The running decompressed-bytes budget both extraction shims embed
+    /// mirrors the custom-runtime path: exactly-at still passes, one byte
+    /// past aborts with the shared cap text.
+    #[test]
+    fn zip_unpack_budget_bites_at_the_bound() {
+        assert_eq!(
+            zip_unpack_budget(ZIP_UNPACK_LIMIT_TOTAL, 0),
+            Ok(ZIP_UNPACK_LIMIT_TOTAL),
+            "exactly at the budget is still inside it"
+        );
+        let err = zip_unpack_budget(ZIP_UNPACK_LIMIT_TOTAL, 1).unwrap_err();
+        assert_eq!(
+            err,
+            format!(
+                "ZIP archive expands past the {} MB unzipped limit",
+                ZIP_UNPACK_LIMIT_TOTAL / (1024 * 1024)
+            )
+        );
+        // The shim sources carry the same constant and cap text — they are
+        // process-external scripts, so the Rust fn is the shared contract.
+        assert!(
+            SHIM_PY.contains("ZIP_UNPACK_BUDGET_BYTES = 250 * 1024 * 1024"),
+            "python shim carries the 250MB budget"
+        );
+        assert!(
+            BOOTSTRAP_JS.contains("ZIP_UNPACK_BUDGET_BYTES = 250 * 1024 * 1024"),
+            "node bootstrap carries the 250MB budget"
+        );
+        for shim in [SHIM_PY, BOOTSTRAP_JS] {
+            assert!(
+                shim.contains("ZIP archive expands past the"),
+                "the cap text rides both shims"
+            );
+            assert!(
+                shim.contains("raise SystemExit") || shim.contains("throw new Error"),
+                "extraction aborts in both shims"
+            );
+        }
+    }
+
+    /// Bomb-fixture maker (via python3, streaming — no 251MB buffer): one
+    /// deflated 251MB-of-zeros entry beside a working handler entry. The
+    /// declared uncompressed sizes cross the budget; the compressed bytes
+    /// stay tiny.
+    fn make_zip_bomb() -> Vec<u8> {
+        let dir = std::env::temp_dir().join(format!("lam-bomb-{}", uuid::Uuid::new_v4().simple()));
+        fs::create_dir_all(&dir).unwrap();
+        let zpath = dir.join("bomb.zip");
+        let snippet = r#"import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], "w", compression=zipfile.ZIP_DEFLATED) as zf:
+    zf.writestr("lambda_function.py", sys.argv[2])
+    with zf.open("big.bin", "w") as fh:
+        chunk = bytes([0]) * (1024 * 1024)
+        for _ in range(251):
+            fh.write(chunk)
+"#;
+        let out = std::process::Command::new("python3")
+            .arg("-c")
+            .arg(snippet)
+            .arg(zpath.as_os_str())
+            .arg("def handler(e, c):\n    return {'ok': True}")
+            .stdin(Stdio::null())
+            .output()
+            .expect("python3 failed");
+        assert!(
+            out.status.success(),
+            "bomb-zip maker failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let z = fs::read(&zpath).unwrap();
+        let _ = fs::remove_dir_all(&dir);
+        z
+    }
+
+    #[test]
+    fn python_shim_rejects_a_zip_bomb_at_the_budget() {
+        let zip = make_zip_bomb();
+        let res = execute_python(
+            &zip,
+            &[],
+            "lambda_function.handler",
+            r#"{}"#,
+            "bomb-fn",
+            "$LATEST",
+            "arn:aws:lambda:us-east-1:123456789012:function:bomb-fn",
+            &HashMap::new(),
+            20,
+            128,
+            "us-east-1",
+            "123456789012",
+        );
+        assert_eq!(res.function_error.as_deref(), Some("Unhandled"));
+        let payload: Value = serde_json::from_str(&res.payload).unwrap();
+        assert_eq!(
+            payload["errorType"], "Runtime.InternalError",
+            "payload: {payload}"
+        );
+        assert!(
+            res.logs.contains("ZIP archive expands past the 250 MB unzipped limit"),
+            "the shim prints the cap text — logs: {}",
+            res.logs
+        );
+    }
+
+    #[test]
+    fn node_bootstrap_rejects_a_zip_bomb_at_the_budget() {
+        let zip = make_zip_bomb();
+        let res = execute_nodejs(
+            "nodejs20.x",
+            &zip,
+            &[],
+            "lambda_function.handler",
+            r#"{}"#,
+            "bomb-node-fn",
+            "$LATEST",
+            &HashMap::new(),
+            20,
+            128,
+            "us-east-1",
+            "123456789012",
+        );
+        assert!(res.function_error.is_some(), "logs: {}", res.logs);
+        let payload: Value = serde_json::from_str(&res.payload).unwrap();
+        assert_eq!(payload["errorType"], "Runtime.ExitError");
+        assert!(
+            res.logs.contains("ZIP archive expands past the 250 MB unzipped limit"),
+            "the bootstrap prints the cap text — logs: {}",
+            res.logs
+        );
     }
 }

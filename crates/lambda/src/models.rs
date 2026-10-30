@@ -219,6 +219,15 @@ pub struct EventSourceMapping {
     /// Python-truth default `-1` (unconfigured; 0..=2 valid).
     #[serde(default)]
     pub maximum_retry_attempts: i64,
+    /// `MaximumBatchingWindowInSeconds` when the caller configured one —
+    /// omitted from the wire dict when un-set (moto shape-filters the
+    /// 0-valued members out of the details dict).
+    #[serde(default)]
+    pub maximum_batching_window_in_seconds: Option<u64>,
+    /// `MaximumRecordAgeInSeconds` when configured (stream sources); same
+    /// conditional shape as the batching window above.
+    #[serde(default)]
+    pub maximum_record_age_in_seconds: Option<u64>,
     /// Attach-time per-shard watermarks for a `LATEST` kinesis mapping:
     /// shard id → the sequence number that the stream's next put-record will
     /// take, frozen when CreateEventSourceMapping registered the mapping
@@ -241,6 +250,10 @@ pub struct EsmMappingEntry {
     pub account: u64,
     pub region: String,
     pub mapping: EventSourceMapping,
+    /// The mapped function's execution role — the `invokeIdentityArn` the
+    /// kinesis envelope carries (moto builds it from `func.role`). `None`
+    /// (or empty) falls back to the function ARN in the engine.
+    pub role: Option<String>,
 }
 
 /// Result of an engine-triggered invocation (ESM delivery).

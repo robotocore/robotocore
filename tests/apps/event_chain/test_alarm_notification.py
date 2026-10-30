@@ -4,6 +4,7 @@ Verifies that metric data triggers alarms which notify via SNS to SQS.
 """
 
 import json
+import time
 from datetime import UTC, datetime
 
 from tests.apps.conftest import wait_for_messages
@@ -57,7 +58,12 @@ class TestAlarmNotification:
         else:
             alarm_msg = body
 
+        # The real-CloudWatch notification envelope the alarm consumers
+        # parse — every envelope field rides the SNS-delivered message.
+        for field in ("NewStateValue", "AlarmName", "NewStateReason", "OldStateValue"):
+            assert field in alarm_msg, f"alarm envelope missing {field}: {alarm_msg}"
         assert alarm_msg.get("NewStateValue") == "ALARM" or "ALARM" in str(alarm_msg)
+        assert alarm_msg["OldStateValue"] in ("OK", "ALARM", "INSUFFICIENT_DATA")
 
     def test_alarm_returns_to_ok(self, chain, unique_name, sqs, cloudwatch):
         """Force alarm to ALARM state, push metric below threshold → OK notification."""
@@ -101,14 +107,27 @@ class TestAlarmNotification:
             ],
         )
 
-        # Wait for OK state notification (alarm daemon sees below-threshold, transitions to OK)
-        ok_messages = wait_for_messages(sqs, queue_url, timeout=30, expected=1)
-        assert len(ok_messages) >= 1, "OK notification not received within 30s"
+        # Wait for OK state notification (alarm daemon sees below-threshold,
+        # transitions to OK) — scan the delivered envelopes for the OK one:
+        # the queue also brings the forced-ALARM notification itself.
+        deadline = time.time() + 30
+        alarm_msg = None
+        while time.time() < deadline and alarm_msg is None:
+            recv = sqs.receive_message(
+                QueueUrl=queue_url, MaxNumberOfMessages=10, WaitTimeSeconds=2
+            )
+            for m in recv.get("Messages", []):
+                body = json.loads(m["Body"])
+                inner = json.loads(body["Message"]) if "Message" in body else body
+                if inner.get("NewStateValue") == "OK":
+                    alarm_msg = inner
+                    break
 
-        body = json.loads(ok_messages[0]["Body"])
-        if "Message" in body:
-            alarm_msg = json.loads(body["Message"])
-        else:
-            alarm_msg = body
+        assert alarm_msg is not None, "OK notification not received within 30s"
 
-        assert alarm_msg.get("NewStateValue") == "OK" or "OK" in str(alarm_msg)
+        # The envelope fields ride the OK transition's message too.
+        for field in ("NewStateValue", "AlarmName", "NewStateReason", "OldStateValue"):
+            assert field in alarm_msg, f"alarm envelope missing {field}: {alarm_msg}"
+        assert alarm_msg["AlarmName"] == alarm_name
+        assert alarm_msg["OldStateValue"] == "ALARM"
+        assert alarm_msg["NewStateReason"]

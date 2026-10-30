@@ -1,6 +1,6 @@
 {
   "service": "lambda",
-  "generated_at": "2026-10-30T00:35:00.186854+00:00",
+  "generated_at": "2026-10-30T02:47:28.455351+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 84,
