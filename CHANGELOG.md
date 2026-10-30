@@ -7,6 +7,19 @@ Docker images. Each release gets a top-level section here; the project
 source of truth for the maintenance policy is [`CLAUDE.md`](CLAUDE.md)
 under *Changelog discipline*.
 
+## Unreleased
+
+### Fixed
+
+- **S3 decodes `aws-chunked` upload bodies.** `PutObject`, `UploadPart` and
+  replication stored streaming uploads as received, so objects kept the chunk
+  headers, chunk signatures and checksum trailer. Bodies sent with
+  `Content-Encoding: aws-chunked` or an `x-amz-content-sha256` of `STREAMING-*`
+  (signed chunks, and unsigned chunks with a checksum trailer) are now decoded
+  first; a body whose size disagrees with `x-amz-decoded-content-length` gets
+  400 `IncompleteBody`. Affected the .NET SDK's default `PutObject` over plain
+  HTTP and SDKs that stream checksummed uploads.
+
 ## 2.0.2
 
 The v2.0.1 follow-through: the review waves against the merged 2.0 tree end
