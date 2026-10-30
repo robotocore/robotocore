@@ -11,9 +11,7 @@ from .app import EventChainOrchestrator
 # lane runs on non-default ports) or AWS_ENDPOINT_URL, in that order;
 # localhost:4566 is only the no-env default.
 ENDPOINT_URL = (
-    os.environ.get("ENDPOINT_URL")
-    or os.environ.get("AWS_ENDPOINT_URL")
-    or "http://localhost:4566"
+    os.environ.get("ENDPOINT_URL") or os.environ.get("AWS_ENDPOINT_URL") or "http://localhost:4566"
 )
 
 

@@ -1,6 +1,6 @@
 {
   "service": "dynamodb",
-  "generated_at": "2026-10-30T21:06:04.645994+00:00",
+  "generated_at": "2026-10-30T23:28:15.001584+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 54,
