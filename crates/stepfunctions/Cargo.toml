@@ -19,4 +19,4 @@ sqs = { path = "../sqs" }
 sns = { path = "../sns" }
 dynamodb = { path = "../dynamodb" }
 # SQS sendMessage answers Md5OfMessageBody like era `_invoke_sqs_send`.
-md5 = "0.7"
+md5 = "0.8"
