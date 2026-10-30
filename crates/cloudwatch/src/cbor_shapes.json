@@ -1,0 +1,682 @@
+{
+ "errors": {
+  "ConcurrentModificationException": {
+   "code": "ConcurrentModificationException",
+   "sender": true
+  },
+  "ConflictException": {
+   "code": "ConflictException",
+   "sender": false
+  },
+  "DashboardInvalidInputError": {
+   "code": "InvalidParameterInput",
+   "sender": true
+  },
+  "DashboardNotFoundError": {
+   "code": "ResourceNotFound",
+   "sender": true
+  },
+  "InternalServiceFault": {
+   "code": "InternalServiceError",
+   "sender": false
+  },
+  "InvalidFormatFault": {
+   "code": "InvalidFormat",
+   "sender": true
+  },
+  "InvalidNextToken": {
+   "code": "InvalidNextToken",
+   "sender": true
+  },
+  "InvalidParameterCombinationException": {
+   "code": "InvalidParameterCombination",
+   "sender": true
+  },
+  "InvalidParameterValueException": {
+   "code": "InvalidParameterValue",
+   "sender": true
+  },
+  "LimitExceededException": {
+   "code": "LimitExceededException",
+   "sender": true
+  },
+  "LimitExceededFault": {
+   "code": "LimitExceeded",
+   "sender": true
+  },
+  "MissingRequiredParameterException": {
+   "code": "MissingParameter",
+   "sender": true
+  },
+  "ResourceNotFound": {
+   "code": "ResourceNotFound",
+   "sender": true
+  },
+  "ResourceNotFoundException": {
+   "code": "ResourceNotFoundException",
+   "sender": true
+  }
+ },
+ "op_errors": {
+  "DeleteAlarms": [
+   "ResourceNotFound"
+  ],
+  "DeleteAnomalyDetector": [
+   "InternalServiceFault",
+   "InvalidParameterCombinationException",
+   "InvalidParameterValueException",
+   "MissingRequiredParameterException",
+   "ResourceNotFoundException"
+  ],
+  "DeleteDashboards": [
+   "ConflictException",
+   "DashboardNotFoundError",
+   "InternalServiceFault",
+   "InvalidParameterValueException"
+  ],
+  "DeleteInsightRules": [
+   "InvalidParameterValueException",
+   "MissingRequiredParameterException"
+  ],
+  "DeleteMetricStream": [
+   "InternalServiceFault",
+   "InvalidParameterValueException",
+   "MissingRequiredParameterException"
+  ],
+  "DescribeAlarmContributors": [
+   "InvalidNextToken",
+   "ResourceNotFoundException"
+  ],
+  "DescribeAlarmHistory": [
+   "InvalidNextToken"
+  ],
+  "DescribeAlarms": [
+   "InvalidNextToken"
+  ],
+  "DescribeAnomalyDetectors": [
+   "InternalServiceFault",
+   "InvalidNextToken",
+   "InvalidParameterCombinationException",
+   "InvalidParameterValueException"
+  ],
+  "DescribeInsightRules": [
+   "InvalidNextToken"
+  ],
+  "DisableInsightRules": [
+   "InvalidParameterValueException",
+   "MissingRequiredParameterException"
+  ],
+  "EnableInsightRules": [
+   "InvalidParameterValueException",
+   "LimitExceededException",
+   "MissingRequiredParameterException"
+  ],
+  "GetAlarmMuteRule": [
+   "ResourceNotFoundException"
+  ],
+  "GetDashboard": [
+   "DashboardNotFoundError",
+   "InternalServiceFault",
+   "InvalidParameterValueException"
+  ],
+  "GetInsightRuleReport": [
+   "InvalidParameterValueException",
+   "MissingRequiredParameterException",
+   "ResourceNotFoundException"
+  ],
+  "GetMetricData": [
+   "InvalidNextToken"
+  ],
+  "GetMetricStatistics": [
+   "InternalServiceFault",
+   "InvalidParameterCombinationException",
+   "InvalidParameterValueException",
+   "MissingRequiredParameterException"
+  ],
+  "GetMetricStream": [
+   "InternalServiceFault",
+   "InvalidParameterCombinationException",
+   "InvalidParameterValueException",
+   "MissingRequiredParameterException",
+   "ResourceNotFoundException"
+  ],
+  "ListAlarmMuteRules": [
+   "InvalidNextToken",
+   "ResourceNotFoundException"
+  ],
+  "ListDashboards": [
+   "InternalServiceFault",
+   "InvalidParameterValueException"
+  ],
+  "ListManagedInsightRules": [
+   "InvalidNextToken",
+   "InvalidParameterValueException",
+   "MissingRequiredParameterException"
+  ],
+  "ListMetricStreams": [
+   "InternalServiceFault",
+   "InvalidNextToken",
+   "InvalidParameterValueException",
+   "MissingRequiredParameterException"
+  ],
+  "ListMetrics": [
+   "InternalServiceFault",
+   "InvalidParameterValueException"
+  ],
+  "ListTagsForResource": [
+   "InternalServiceFault",
+   "InvalidParameterValueException",
+   "ResourceNotFoundException"
+  ],
+  "PutAlarmMuteRule": [
+   "LimitExceededFault"
+  ],
+  "PutAnomalyDetector": [
+   "InternalServiceFault",
+   "InvalidParameterCombinationException",
+   "InvalidParameterValueException",
+   "LimitExceededException",
+   "MissingRequiredParameterException"
+  ],
+  "PutCompositeAlarm": [
+   "LimitExceededFault"
+  ],
+  "PutDashboard": [
+   "ConflictException",
+   "DashboardInvalidInputError",
+   "InternalServiceFault"
+  ],
+  "PutInsightRule": [
+   "InvalidParameterValueException",
+   "LimitExceededException",
+   "MissingRequiredParameterException"
+  ],
+  "PutManagedInsightRules": [
+   "InvalidParameterValueException",
+   "MissingRequiredParameterException"
+  ],
+  "PutMetricAlarm": [
+   "LimitExceededFault"
+  ],
+  "PutMetricData": [
+   "InternalServiceFault",
+   "InvalidParameterCombinationException",
+   "InvalidParameterValueException",
+   "MissingRequiredParameterException"
+  ],
+  "PutMetricStream": [
+   "ConcurrentModificationException",
+   "InternalServiceFault",
+   "InvalidParameterCombinationException",
+   "InvalidParameterValueException",
+   "MissingRequiredParameterException"
+  ],
+  "SetAlarmState": [
+   "InvalidFormatFault",
+   "ResourceNotFound"
+  ],
+  "StartMetricStreams": [
+   "InternalServiceFault",
+   "InvalidParameterValueException",
+   "MissingRequiredParameterException"
+  ],
+  "StopMetricStreams": [
+   "InternalServiceFault",
+   "InvalidParameterValueException",
+   "MissingRequiredParameterException"
+  ],
+  "TagResource": [
+   "ConcurrentModificationException",
+   "ConflictException",
+   "InternalServiceFault",
+   "InvalidParameterValueException",
+   "ResourceNotFoundException"
+  ],
+  "UntagResource": [
+   "ConcurrentModificationException",
+   "ConflictException",
+   "InternalServiceFault",
+   "InvalidParameterValueException",
+   "ResourceNotFoundException"
+  ]
+ },
+ "ops": {
+  "DescribeAlarmContributors": {
+   "m": {
+    "AlarmContributors": {
+     "e": {
+      "m": {
+       "StateTransitionedTimestamp": {
+        "t": "timestamp"
+       }
+      },
+      "t": "structure"
+     },
+     "t": "list"
+    }
+   },
+   "t": "structure"
+  },
+  "DescribeAlarmHistory": {
+   "m": {
+    "AlarmHistoryItems": {
+     "e": {
+      "m": {
+       "Timestamp": {
+        "t": "timestamp"
+       }
+      },
+      "t": "structure"
+     },
+     "t": "list"
+    }
+   },
+   "t": "structure"
+  },
+  "DescribeAlarms": {
+   "m": {
+    "CompositeAlarms": {
+     "e": {
+      "m": {
+       "ActionsSuppressorExtensionPeriod": {
+        "t": "integer"
+       },
+       "ActionsSuppressorWaitPeriod": {
+        "t": "integer"
+       },
+       "AlarmConfigurationUpdatedTimestamp": {
+        "t": "timestamp"
+       },
+       "StateTransitionedTimestamp": {
+        "t": "timestamp"
+       },
+       "StateUpdatedTimestamp": {
+        "t": "timestamp"
+       }
+      },
+      "t": "structure"
+     },
+     "t": "list"
+    },
+    "MetricAlarms": {
+     "e": {
+      "m": {
+       "AlarmConfigurationUpdatedTimestamp": {
+        "t": "timestamp"
+       },
+       "DatapointsToAlarm": {
+        "t": "integer"
+       },
+       "EvaluationPeriods": {
+        "t": "integer"
+       },
+       "Metrics": {
+        "e": {
+         "m": {
+          "MetricStat": {
+           "m": {
+            "Period": {
+             "t": "integer"
+            }
+           },
+           "t": "structure"
+          },
+          "Period": {
+           "t": "integer"
+          }
+         },
+         "t": "structure"
+        },
+        "t": "list"
+       },
+       "Period": {
+        "t": "integer"
+       },
+       "StateTransitionedTimestamp": {
+        "t": "timestamp"
+       },
+       "StateUpdatedTimestamp": {
+        "t": "timestamp"
+       },
+       "Threshold": {
+        "t": "double"
+       }
+      },
+      "t": "structure"
+     },
+     "t": "list"
+    }
+   },
+   "t": "structure"
+  },
+  "DescribeAlarmsForMetric": {
+   "m": {
+    "MetricAlarms": {
+     "e": {
+      "m": {
+       "AlarmConfigurationUpdatedTimestamp": {
+        "t": "timestamp"
+       },
+       "DatapointsToAlarm": {
+        "t": "integer"
+       },
+       "EvaluationPeriods": {
+        "t": "integer"
+       },
+       "Metrics": {
+        "e": {
+         "m": {
+          "MetricStat": {
+           "m": {
+            "Period": {
+             "t": "integer"
+            }
+           },
+           "t": "structure"
+          },
+          "Period": {
+           "t": "integer"
+          }
+         },
+         "t": "structure"
+        },
+        "t": "list"
+       },
+       "Period": {
+        "t": "integer"
+       },
+       "StateTransitionedTimestamp": {
+        "t": "timestamp"
+       },
+       "StateUpdatedTimestamp": {
+        "t": "timestamp"
+       },
+       "Threshold": {
+        "t": "double"
+       }
+      },
+      "t": "structure"
+     },
+     "t": "list"
+    }
+   },
+   "t": "structure"
+  },
+  "DescribeAnomalyDetectors": {
+   "m": {
+    "AnomalyDetectors": {
+     "e": {
+      "m": {
+       "Configuration": {
+        "m": {
+         "ExcludedTimeRanges": {
+          "e": {
+           "m": {
+            "EndTime": {
+             "t": "timestamp"
+            },
+            "StartTime": {
+             "t": "timestamp"
+            }
+           },
+           "t": "structure"
+          },
+          "t": "list"
+         }
+        },
+        "t": "structure"
+       },
+       "MetricMathAnomalyDetector": {
+        "m": {
+         "MetricDataQueries": {
+          "e": {
+           "m": {
+            "MetricStat": {
+             "m": {
+              "Period": {
+               "t": "integer"
+              }
+             },
+             "t": "structure"
+            },
+            "Period": {
+             "t": "integer"
+            }
+           },
+           "t": "structure"
+          },
+          "t": "list"
+         }
+        },
+        "t": "structure"
+       }
+      },
+      "t": "structure"
+     },
+     "t": "list"
+    }
+   },
+   "t": "structure"
+  },
+  "GetAlarmMuteRule": {
+   "m": {
+    "ExpireDate": {
+     "t": "timestamp"
+    },
+    "LastUpdatedTimestamp": {
+     "t": "timestamp"
+    },
+    "StartDate": {
+     "t": "timestamp"
+    }
+   },
+   "t": "structure"
+  },
+  "GetInsightRuleReport": {
+   "m": {
+    "AggregateValue": {
+     "t": "double"
+    },
+    "ApproximateUniqueCount": {
+     "t": "long"
+    },
+    "Contributors": {
+     "e": {
+      "m": {
+       "ApproximateAggregateValue": {
+        "t": "double"
+       },
+       "Datapoints": {
+        "e": {
+         "m": {
+          "ApproximateValue": {
+           "t": "double"
+          },
+          "Timestamp": {
+           "t": "timestamp"
+          }
+         },
+         "t": "structure"
+        },
+        "t": "list"
+       }
+      },
+      "t": "structure"
+     },
+     "t": "list"
+    },
+    "MetricDatapoints": {
+     "e": {
+      "m": {
+       "Average": {
+        "t": "double"
+       },
+       "MaxContributorValue": {
+        "t": "double"
+       },
+       "Maximum": {
+        "t": "double"
+       },
+       "Minimum": {
+        "t": "double"
+       },
+       "SampleCount": {
+        "t": "double"
+       },
+       "Sum": {
+        "t": "double"
+       },
+       "Timestamp": {
+        "t": "timestamp"
+       },
+       "UniqueContributors": {
+        "t": "double"
+       }
+      },
+      "t": "structure"
+     },
+     "t": "list"
+    }
+   },
+   "t": "structure"
+  },
+  "GetMetricData": {
+   "m": {
+    "MetricDataResults": {
+     "e": {
+      "m": {
+       "Timestamps": {
+        "e": {
+         "t": "timestamp"
+        },
+        "t": "list"
+       },
+       "Values": {
+        "e": {
+         "t": "double"
+        },
+        "t": "list"
+       }
+      },
+      "t": "structure"
+     },
+     "t": "list"
+    }
+   },
+   "t": "structure"
+  },
+  "GetMetricStatistics": {
+   "m": {
+    "Datapoints": {
+     "e": {
+      "m": {
+       "Average": {
+        "t": "double"
+       },
+       "ExtendedStatistics": {
+        "t": "map",
+        "v": {
+         "t": "double"
+        }
+       },
+       "Maximum": {
+        "t": "double"
+       },
+       "Minimum": {
+        "t": "double"
+       },
+       "SampleCount": {
+        "t": "double"
+       },
+       "Sum": {
+        "t": "double"
+       },
+       "Timestamp": {
+        "t": "timestamp"
+       }
+      },
+      "t": "structure"
+     },
+     "t": "list"
+    }
+   },
+   "t": "structure"
+  },
+  "GetMetricStream": {
+   "m": {
+    "CreationDate": {
+     "t": "timestamp"
+    },
+    "LastUpdateDate": {
+     "t": "timestamp"
+    }
+   },
+   "t": "structure"
+  },
+  "GetMetricWidgetImage": {
+   "m": {
+    "MetricWidgetImage": {
+     "t": "blob"
+    }
+   },
+   "t": "structure"
+  },
+  "ListAlarmMuteRules": {
+   "m": {
+    "AlarmMuteRuleSummaries": {
+     "e": {
+      "m": {
+       "ExpireDate": {
+        "t": "timestamp"
+       },
+       "LastUpdatedTimestamp": {
+        "t": "timestamp"
+       }
+      },
+      "t": "structure"
+     },
+     "t": "list"
+    }
+   },
+   "t": "structure"
+  },
+  "ListDashboards": {
+   "m": {
+    "DashboardEntries": {
+     "e": {
+      "m": {
+       "LastModified": {
+        "t": "timestamp"
+       },
+       "Size": {
+        "t": "long"
+       }
+      },
+      "t": "structure"
+     },
+     "t": "list"
+    }
+   },
+   "t": "structure"
+  },
+  "ListMetricStreams": {
+   "m": {
+    "Entries": {
+     "e": {
+      "m": {
+       "CreationDate": {
+        "t": "timestamp"
+       },
+       "LastUpdateDate": {
+        "t": "timestamp"
+       }
+      },
+      "t": "structure"
+     },
+     "t": "list"
+    }
+   },
+   "t": "structure"
+  }
+ }
+}

@@ -680,6 +680,20 @@ impl ServiceHandler for CloudWatchServiceHandler {
             params,
             body: req.body.clone(),
         };
+        // Smithy RPC v2 CBOR (aws-sdk-go-v2, AWS SDK for .NET v4): the
+        // crate decodes the CBOR body and answers in CBOR.
+        let headers = req.headers.iter().map(|(k, v)| (k.as_str(), v.as_str()));
+        if cloudwatch::cbor::is_rpcv2_cbor(headers) {
+            let resp = self.inner.handle_cbor(r);
+            return Ok(ParsedResponse {
+                status: StatusCode::from_u16(resp.status)
+                    .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                headers: resp.headers.into_iter().collect(),
+                body: serde_json::Value::Null,
+                raw: None,
+                raw_bytes: Some(resp.body),
+            });
+        }
         let resp = self.inner.handle(r);
         let mut h = std::collections::HashMap::new();
         for (k, v) in resp.headers {
@@ -1294,6 +1308,24 @@ pub async fn catch_all_handler(
         }
     };
 
+    let body_bytes = match decode_request_compression(&service, &headers, body_bytes) {
+        Ok(b) => b,
+        Err(e) => {
+            audit_out(
+                Some(&service),
+                None,
+                &req_method,
+                &req_path,
+                400,
+                req_start,
+                "",
+                "",
+                Some(e.clone()),
+            );
+            return error_response(StatusCode::BAD_REQUEST, &e);
+        }
+    };
+
     // Add the path to headers for REST operation resolution
     let mut headers_with_path = headers.clone();
     if let Ok(path_val) = HeaderValue::from_str(uri.path()) {
@@ -1639,6 +1671,46 @@ fn refine_service_for_body(service: &str, body: &[u8]) -> String {
     } else {
         service.to_string()
     }
+}
+
+/// Services whose model carries `requestcompression` (in botocore, only
+/// CloudWatch `PutMetricData`). SDKs gzip those bodies (boto3 from 10 KiB,
+/// aws-sdk-go-v2 every time), so the gateway decodes them before reading the
+/// operation and params. Other services keep `Content-Encoding` as part of
+/// the payload (an S3 object stored gzipped).
+const REQUEST_COMPRESSION_SERVICES: &[&str] = &["cloudwatch"];
+
+/// Cap on a decompressed request body (PutMetricData allows 1 MB).
+const MAX_DECOMPRESSED_BODY: u64 = 64 * 1024 * 1024;
+
+fn decode_request_compression(
+    service: &str,
+    headers: &HeaderMap,
+    body: bytes::Bytes,
+) -> Result<bytes::Bytes, String> {
+    use std::io::Read;
+
+    if !REQUEST_COMPRESSION_SERVICES.contains(&service) {
+        return Ok(body);
+    }
+    let gzip = headers
+        .get_all("content-encoding")
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|v| v.split(','))
+        .any(|e| e.trim().eq_ignore_ascii_case("gzip"));
+    if !gzip {
+        return Ok(body);
+    }
+    let mut out = Vec::new();
+    flate2::read::GzDecoder::new(&body[..])
+        .take(MAX_DECOMPRESSED_BODY + 1)
+        .read_to_end(&mut out)
+        .map_err(|e| format!("Invalid gzip request body: {e}"))?;
+    if out.len() as u64 > MAX_DECOMPRESSED_BODY {
+        return Err("Decompressed request body is too large".to_string());
+    }
+    Ok(out.into())
 }
 
 /// Axum strips `Host` from HeaderMap; detect its presence so the
@@ -3190,6 +3262,44 @@ fn error_response(status: StatusCode, message: &str) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn gzip(data: &[u8]) -> bytes::Bytes {
+        use std::io::Write;
+        let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        enc.write_all(data).unwrap();
+        enc.finish().unwrap().into()
+    }
+
+    fn gzip_headers() -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert("content-encoding", HeaderValue::from_static("gzip"));
+        h
+    }
+
+    #[test]
+    fn request_compression_decodes_cloudwatch_gzip() {
+        let body = br#"{"Namespace":"A","MetricData":[]}"#;
+        let out = decode_request_compression("cloudwatch", &gzip_headers(), gzip(body)).unwrap();
+        assert_eq!(&out[..], &body[..]);
+    }
+
+    #[test]
+    fn request_compression_leaves_other_bodies_alone() {
+        // S3 stores a gzip Content-Encoding object as sent.
+        let gz = gzip(b"object bytes");
+        let out = decode_request_compression("s3", &gzip_headers(), gz.clone()).unwrap();
+        assert_eq!(out, gz);
+        // Uncompressed CloudWatch bodies pass through.
+        let plain = bytes::Bytes::from_static(b"{}");
+        let out = decode_request_compression("cloudwatch", &HeaderMap::new(), plain.clone());
+        assert_eq!(out.unwrap(), plain);
+    }
+
+    #[test]
+    fn request_compression_rejects_corrupt_gzip() {
+        let bad = bytes::Bytes::from_static(b"not gzip");
+        assert!(decode_request_compression("cloudwatch", &gzip_headers(), bad).is_err());
+    }
 
     async fn config_update(body: &str) -> Response {
         std::env::set_var("ENABLE_CONFIG_UPDATES", "1");
