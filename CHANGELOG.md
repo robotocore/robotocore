@@ -7,6 +7,18 @@ Docker images. Each release gets a top-level section here; the project
 source of truth for the maintenance policy is [`CLAUDE.md`](CLAUDE.md)
 under *Changelog discipline*.
 
+## Unreleased
+
+### Fixed
+
+- **CloudWatch `GetMetricData` returns MetricStat data.** Results were stored
+  under the metric's namespace and name but looked up by query `Id`, so every
+  `MetricStat` query came back with empty `Values` and `Timestamps`, and metric
+  math expressions over them had no inputs. Results are now keyed by `Id`, so
+  two queries on the same metric (for example `Average` and `Maximum`) get
+  their own values. Queries with `ReturnData: false` feed expressions and are
+  left out of `MetricDataResults`, as in moto and AWS.
+
 ## 2.0.2
 
 The v2.0.1 follow-through: the review waves against the merged 2.0 tree end
