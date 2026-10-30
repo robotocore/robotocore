@@ -96,6 +96,101 @@ fn xml_sections(doc: &str, tag: &str) -> Vec<String> {
     out
 }
 
+// ---------------------------------------------------------------------------
+// Bucket CORS (browser preflights)
+// ---------------------------------------------------------------------------
+
+/// One bucket CORS rule parsed from the stored PutBucketCors XML — the
+/// matching subset of the gateway's dead `S3CorsRule` shape (`src/cors.rs`
+/// builders cannot be imported into this crate; the contract mirrors them).
+struct BucketCorsRule {
+    allowed_origins: Vec<String>,
+    allowed_methods: Vec<String>,
+    allowed_headers: Vec<String>,
+    expose_headers: Vec<String>,
+    max_age_seconds: Option<String>,
+}
+
+/// Parse the stored PutBucketCors XML into rules: one rule per `<CORSRule>`,
+/// repeated `<Allowed*>` members (the same model moto's S3 CORS parser
+/// builds).
+fn parse_bucket_cors_rules(body: &str) -> Vec<BucketCorsRule> {
+    xml_sections(body, "CORSRule")
+        .into_iter()
+        .map(|rule| BucketCorsRule {
+            allowed_origins: xml_sections(&rule, "AllowedOrigin")
+                .iter()
+                .map(|s| xml_unescape(s.trim()))
+                .collect(),
+            allowed_methods: xml_sections(&rule, "AllowedMethod")
+                .iter()
+                .map(|s| xml_unescape(s.trim()))
+                .collect(),
+            allowed_headers: xml_sections(&rule, "AllowedHeader")
+                .iter()
+                .map(|s| xml_unescape(s.trim()))
+                .collect(),
+            expose_headers: xml_sections(&rule, "ExposeHeader")
+                .iter()
+                .map(|s| xml_unescape(s.trim()))
+                .collect(),
+            max_age_seconds: xml_text(&rule, "MaxAgeSeconds"),
+        })
+        .collect()
+}
+
+/// CORS response headers for an origin/method against the bucket's stored
+/// CORS rules, first matching rule wins (same resolution the gateway's
+/// `build_s3_cors_headers` spells out). `None` when no rule matches.
+fn bucket_cors_headers(
+    cors_xml: &str,
+    origin: Option<&str>,
+    method: Option<&str>,
+) -> Option<Vec<(String, String)>> {
+    let origin = origin?;
+    for rule in parse_bucket_cors_rules(cors_xml) {
+        if !rule.allowed_origins.iter().any(|o| o == "*" || o == origin) {
+            continue;
+        }
+        let method = method.unwrap_or("OPTIONS");
+        if !rule
+            .allowed_methods
+            .iter()
+            .any(|m| m == "*" || m.eq_ignore_ascii_case(method))
+        {
+            continue;
+        }
+        let mut headers = vec![(
+            "Access-Control-Allow-Origin".to_string(),
+            origin.to_string(),
+        )];
+        if !rule.allowed_methods.is_empty() {
+            headers.push((
+                "Access-Control-Allow-Methods".to_string(),
+                rule.allowed_methods.join(", "),
+            ));
+        }
+        if !rule.allowed_headers.is_empty() {
+            headers.push((
+                "Access-Control-Allow-Headers".to_string(),
+                rule.allowed_headers.join(", "),
+            ));
+        }
+        if !rule.expose_headers.is_empty() {
+            headers.push((
+                "Access-Control-Expose-Headers".to_string(),
+                rule.expose_headers.join(", "),
+            ));
+        }
+        if let Some(age) = &rule.max_age_seconds {
+            headers.push(("Access-Control-Max-Age".to_string(), age.clone()));
+        }
+        headers.push(("Vary".to_string(), "Origin".to_string()));
+        return Some(headers);
+    }
+    None
+}
+
 /// ISO8601 S3 timestamp (zero fractional seconds, `Z` suffix).
 fn iso8601(unix: u64) -> String {
     chrono::DateTime::from_timestamp(unix as i64, 0)
@@ -889,6 +984,8 @@ impl S3Handler {
             "PutBucketCors" => self.put_bucket_cors(&req),
             "GetBucketCors" => self.get_bucket_cors(&req),
             "DeleteBucketCors" => self.delete_bucket_cors(&req),
+            // Browser CORS preflight (OPTIONS /bucket or OPTIONS /bucket/key)
+            "OptionsPreFlight" => self.options_preflight(&req),
             "PutBucketVersioning" => self.put_bucket_versioning(&req),
             "GetBucketVersioning" => self.get_bucket_versioning(&req),
             "PutBucketTagging" => self.put_bucket_tagging(&req),
@@ -1230,7 +1327,17 @@ impl S3Handler {
             if object_lock_requested(req) {
                 *bucket.object_lock_enabled.write() = true;
             }
-            return AwsResponse::xml(200, crate::xml::create_bucket_result(&bucket.name));
+            // Real AWS/moto answer 200 with a Location header and an EMPTY
+            // body — the twin's fabricated CreateBucketResult XML broke
+            // strict parsers.
+            return AwsResponse {
+                status: 200,
+                headers: vec![
+                    ("Location".to_string(), format!("/{}", bucket.name)),
+                    ("x-amz-bucket-region".to_string(), req.region.clone()),
+                ],
+                body: Vec::new(),
+            };
         }
 
         let mut bucket = Bucket::new(bucket_name.clone(), req.region.clone());
@@ -1239,7 +1346,15 @@ impl S3Handler {
         *bucket.object_lock_enabled.write() = lock;
         let name = bucket.name.clone();
         state.put_bucket(Arc::new(bucket));
-        AwsResponse::xml(200, crate::xml::create_bucket_result(&name))
+        // Same as above: empty body + Location header (real-AWS/moto shape).
+        AwsResponse {
+            status: 200,
+            headers: vec![
+                ("Location".to_string(), format!("/{name}")),
+                ("x-amz-bucket-region".to_string(), req.region.clone()),
+            ],
+            body: Vec::new(),
+        }
     }
 
     fn delete_bucket(&self, req: &AwsRequest) -> AwsResponse {
@@ -2626,7 +2741,13 @@ impl S3Handler {
         let mut contents: Vec<ListingRow> = Vec::new();
         let mut prefixes: Vec<String> = Vec::new();
         let mut seen_prefixes: Vec<String> = Vec::new();
-        let mut last_emitted: Option<String> = None;
+        // The resume point is the last entity RETURNED (contents or common
+        // prefix). It turns into the marker/token ONLY when the page was
+        // size-truncated (a candidate exists beyond the page) — the
+        // natural-fit case answers IsTruncated=false with no token, exactly
+        // like moto/real AWS.
+        let mut last_returned: Option<String> = None;
+        let mut truncation_marker: Option<String> = None;
 
         if max_keys > 0 {
             for key in keys.iter() {
@@ -2640,17 +2761,25 @@ impl S3Handler {
                         if seen_prefixes.contains(&cp) {
                             continue;
                         }
+                        // A resume marker at-or-before the group covers
+                        // pages that already RETURNED the whole prefix —
+                        // the group must not re-enter a later page.
+                        if !after.is_empty() && cp.as_str() <= after.as_str() {
+                            continue;
+                        }
                         if contents.len() + prefixes.len() >= max_keys {
-                            return (contents, prefixes, last_emitted);
+                            truncation_marker = last_returned.clone();
+                            break;
                         }
                         seen_prefixes.push(cp.clone());
                         prefixes.push(cp.clone());
-                        last_emitted = Some(cp);
+                        last_returned = Some(cp);
                         continue;
                     }
                 }
                 if contents.len() + prefixes.len() >= max_keys {
-                    return (contents, prefixes, last_emitted);
+                    truncation_marker = last_returned.clone();
+                    break;
                 }
                 let v = objects[key].versions.first();
                 contents.push((
@@ -2661,12 +2790,12 @@ impl S3Handler {
                     v.map(|x| x.storage_class.clone())
                         .unwrap_or_else(|| "STANDARD".to_string()),
                 ));
-                last_emitted = Some(key.clone());
+                last_returned = Some(key.clone());
             }
         }
         drop(objects);
 
-        (contents, prefixes, last_emitted)
+        (contents, prefixes, truncation_marker)
     }
 
     fn list_objects_v1(&self, req: &AwsRequest) -> AwsResponse {
@@ -2680,11 +2809,16 @@ impl S3Handler {
         let bucket_name = req.bucket.clone().unwrap_or_default();
         let prefix = req.query_params.get("prefix").cloned().unwrap_or_default();
         let marker = req.query_params.get("marker").cloned().unwrap_or_default();
+        // The v1 render clamps max-keys exactly like the shared engine
+        // (values above 1000 answer 1000; junk falls back to the default) —
+        // a raw echo would paginate against a huge number the engine never
+        // used.
         let max_keys: usize = req
             .query_params
             .get("max-keys")
             .and_then(|v| v.parse().ok())
-            .unwrap_or(1000);
+            .unwrap_or(1000)
+            .clamp(0, 1000);
         let delimiter = req
             .query_params
             .get("delimiter")
@@ -2818,6 +2952,25 @@ impl S3Handler {
         };
         let prefix = req.query_params.get("prefix").cloned().unwrap_or_default();
         let bucket_name = bucket.name.clone();
+        // Real pagination knobs (the previous stub answered one giant page
+        // claiming MaxKeys=1000/IsTruncated=false — a superset page that
+        // pointed >1000-version buckets into a lying envelope).
+        let max_keys = req
+            .query_params
+            .get("max-keys")
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(1000)
+            .clamp(0, 1000);
+        let key_marker = req
+            .query_params
+            .get("key-marker")
+            .cloned()
+            .unwrap_or_default();
+        let version_id_marker = req
+            .query_params
+            .get("version-id-marker")
+            .cloned()
+            .unwrap_or_default();
 
         let keys: Vec<(String, ObjectEntry)> = {
             let objects = bucket.objects.read();
@@ -2838,7 +2991,29 @@ impl S3Handler {
             v
         };
 
-        let mut body = String::new();
+        // Flatten into the emit order the renderer used (newest first per
+        // key), resuming strictly after the (key-marker, version-id-marker)
+        // pair when markers are present.
+        #[derive(Clone)]
+        enum Row {
+            Version {
+                key: String,
+                seq: u64,
+                is_latest: bool,
+                version_id: String,
+                last_modified: u64,
+                etag: String,
+                size: u64,
+                storage_class: String,
+            },
+            DeleteMarker {
+                key: String,
+                is_latest: bool,
+                version_id: String,
+                last_modified: u64,
+            },
+        }
+        let mut all_rows: Vec<Row> = Vec::new();
         for (key, entry) in keys.iter() {
             let mut records: Vec<(u64, bool, String)> = entry
                 .versions
@@ -2856,40 +3031,148 @@ impl S3Handler {
                 let is_latest = idx == 0;
                 if *is_version {
                     if let Some(v) = entry.versions.iter().find(|v| v.version_id == *version_id) {
-                        body.push_str(&format!(
-                            "<Version><Key>{k}</Key><VersionId>{vid}</VersionId><IsLatest>{latest}</IsLatest><LastModified>{dt}</LastModified><ETag>&quot;{et}&quot;</ETag><Size>{sz}</Size><StorageClass>{cls}</StorageClass><Owner><ID>{owner}</ID><DisplayName>{disp}</DisplayName></Owner></Version>",
-                            k = xml_escape(key),
-                            vid = v.version_id,
-                            latest = is_latest,
-                            dt = iso8601(v.last_modified),
-                            et = v.etag,
-                            sz = v.size,
-                            cls = v.storage_class,
-                            owner = OWNER_ID,
-                            disp = OWNER_DISPLAY
-                        ));
+                        all_rows.push(Row::Version {
+                            key: key.clone(),
+                            seq: *seq,
+                            is_latest,
+                            version_id: version_id.clone(),
+                            last_modified: v.last_modified,
+                            etag: v.etag.clone(),
+                            size: v.size as u64,
+                            storage_class: v.storage_class.clone(),
+                        });
                     }
                 } else if let Some(m) = entry.markers.iter().find(|m| m.version_id == *version_id) {
+                    all_rows.push(Row::DeleteMarker {
+                        key: key.clone(),
+                        is_latest,
+                        version_id: version_id.clone(),
+                        last_modified: m.last_modified,
+                    });
+                }
+            }
+        }
+
+        // Resume strictly after the (key, version) marker pair when given.
+        let mut page: Vec<&Row> = Vec::new();
+        for row in &all_rows {
+            let (key, version_id) = match row {
+                Row::Version {
+                    key, version_id, ..
+                } => (key, version_id),
+                Row::DeleteMarker {
+                    key, version_id, ..
+                } => (key, version_id),
+            };
+            if !key_marker.is_empty() {
+                if key.as_str() < key_marker.as_str() {
+                    continue;
+                }
+                if key.as_str() == key_marker.as_str() {
+                    // key-marker is inclusive-per-key but the version marker
+                    // (when present) cuts exact rows; without it the key
+                    // itself is the resume origin at its next version.
+                    if !version_id_marker.is_empty() && version_id == &version_id_marker {
+                        continue;
+                    }
+                    if version_id_marker.is_empty() && version_id.as_str() == key_marker.as_str() {
+                        // A bare key marker names the key; real AWS resumes
+                        // at the NEXT version of that key. The twin only has
+                        // opaque version ids here, so skip the marker key's
+                        // rows entirely on resume (bounded, honest paging).
+                        continue;
+                    }
+                }
+            }
+            page.push(row);
+        }
+        let truncated = page.len() > max_keys;
+        page.truncate(max_keys);
+        let mut body = String::new();
+        for row in &page {
+            match row {
+                Row::Version {
+                    key,
+                    seq,
+                    is_latest,
+                    version_id,
+                    last_modified,
+                    etag,
+                    size,
+                    storage_class,
+                } => {
+                    let _ = seq;
                     body.push_str(&format!(
-                        "<DeleteMarker><Key>{k}</Key><VersionId>{vid}</VersionId><IsLatest>{latest}</IsLatest><LastModified>{dt}</LastModified><Owner><ID>{owner}</ID><DisplayName>{disp}</DisplayName></Owner></DeleteMarker>",
+                        "<Version><Key>{k}</Key><VersionId>{vid}</VersionId><IsLatest>{latest}</IsLatest><LastModified>{dt}</LastModified><ETag>&quot;{et}&quot;</ETag><Size>{sz}</Size><StorageClass>{cls}</StorageClass><Owner><ID>{owner}</ID><DisplayName>{disp}</DisplayName></Owner></Version>",
                         k = xml_escape(key),
-                        vid = m.version_id,
+                        vid = xml_escape(version_id),
                         latest = is_latest,
-                        dt = iso8601(m.last_modified),
+                        dt = iso8601(*last_modified),
+                        et = xml_escape(etag),
+                        sz = size,
+                        cls = xml_escape(storage_class),
                         owner = OWNER_ID,
                         disp = OWNER_DISPLAY
                     ));
                 }
-                let _ = seq;
+                Row::DeleteMarker {
+                    key,
+                    is_latest,
+                    version_id,
+                    last_modified,
+                } => {
+                    body.push_str(&format!(
+                        "<DeleteMarker><Key>{k}</Key><VersionId>{vid}</VersionId><IsLatest>{latest}</IsLatest><LastModified>{dt}</LastModified><Owner><ID>{owner}</ID><DisplayName>{disp}</DisplayName></Owner></DeleteMarker>",
+                        k = xml_escape(key),
+                        vid = xml_escape(version_id),
+                        latest = is_latest,
+                        dt = iso8601(*last_modified),
+                        owner = OWNER_ID,
+                        disp = OWNER_DISPLAY
+                    ));
+                }
             }
         }
 
-        let xml = format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ListVersionsResult xmlns=\"{ns}\"><Name>{name}</Name><Prefix>{prefix}</Prefix><KeyMarker></KeyMarker><VersionIdMarker></VersionIdMarker><MaxKeys>1000</MaxKeys><IsTruncated>false</IsTruncated>{body}</ListVersionsResult>",
+        // The resume markers point at the LAST RETURNED row (real AWS
+        // renders NextKeyMarker/NextVersionIdMarker on a truncated page;
+        // the next page resumes strictly after that pair). When the page
+        // was left empty the loop above already skipped the marker key.
+        let (next_key_marker, next_version_id) = if truncated {
+            page.last()
+                .map(|row| match row {
+                    Row::Version {
+                        key, version_id, ..
+                    } => (key.clone(), version_id.clone()),
+                    Row::DeleteMarker {
+                        key, version_id, ..
+                    } => (key.clone(), version_id.clone()),
+                })
+                .map(|(k, v)| (Some(k), Some(v)))
+                .unwrap_or((None, None))
+        } else {
+            (None, None)
+        };
+
+        let mut xml = format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ListVersionsResult xmlns=\"{ns}\"><Name>{name}</Name><Prefix>{prefix}</Prefix><KeyMarker>{km}</KeyMarker><VersionIdMarker>{vm}</VersionIdMarker><MaxKeys>{mk}</MaxKeys><IsTruncated>{tr}</IsTruncated>",
             ns = S3_NS,
             name = xml_escape(&bucket_name),
-            prefix = xml_escape(&prefix)
+            prefix = xml_escape(&prefix),
+            km = xml_escape(&key_marker),
+            vm = xml_escape(&version_id_marker),
+            mk = max_keys,
+            tr = truncated
         );
+        if let Some(nk) = &next_key_marker {
+            xml.push_str(&format!(
+                "<NextKeyMarker>{}</NextKeyMarker><NextVersionIdMarker>{}</NextVersionIdMarker>",
+                xml_escape(nk),
+                xml_escape(next_version_id.as_deref().unwrap_or("null"))
+            ));
+        }
+        xml.push_str(&body);
+        xml.push_str("</ListVersionsResult>");
         AwsResponse::xml(200, xml)
     }
 
@@ -3083,6 +3366,56 @@ impl S3Handler {
         };
         *bucket.cors_xml.write() = None;
         AwsResponse::no_content(204)
+    }
+
+    /// Browser CORS preflight against a bucket: the bucket's stored
+    /// PutBucketCors rules decide (real S3 answers 200 with the rule's
+    /// headers, 403 AccessDenied when no rule matches). This wires the
+    /// twin's old dead gateway helpers' contract (`build_s3_cors_headers`)
+    /// into the crate that actually owns the bucket state.
+    fn options_preflight(&self, req: &AwsRequest) -> AwsResponse {
+        let (_state, bucket) = match self.with_bucket(req) {
+            Ok(p) => p,
+            Err(e) => return e,
+        };
+        let header = |name: &str| {
+            req.headers
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case(name))
+                .map(|(_, v)| v.clone())
+        };
+        let cors_xml = bucket.cors_xml.read().clone();
+        let cors = cors_xml.as_deref().and_then(|body| {
+            bucket_cors_headers(
+                body,
+                header("Origin").as_deref(),
+                header("Access-Control-Request-Method")
+                    .or_else(|| Some(req.method.clone()))
+                    .as_deref(),
+            )
+        });
+        match cors {
+            Some(headers) => AwsResponse {
+                status: 200,
+                headers: [
+                    ("Content-Type".to_string(), "text/plain".to_string()),
+                    (
+                        "x-amz-request-id".to_string(),
+                        uuid::Uuid::new_v4().to_string(),
+                    ),
+                ]
+                .into_iter()
+                .chain(headers)
+                .collect(),
+                body: Vec::new(),
+            },
+            None => AwsResponse::bucket_error(
+                403,
+                "AccessDenied",
+                "CORSResponse: Bucket does not allow CORS for this origin or method.",
+                bucket.name.as_str(),
+            ),
+        }
     }
 
     fn put_bucket_versioning(&self, req: &AwsRequest) -> AwsResponse {
@@ -4811,12 +5144,15 @@ impl S3Handler {
                 // a key, CompleteMultipartUpload, is matched above by
                 // ?uploadId). The form's `key` field names the object.
                 "POST" => Some("PostObject".to_string()),
+                // Browser CORS preflight against an object path.
+                "OPTIONS" => Some("OptionsPreFlight".to_string()),
                 _ => None,
             };
         }
 
         // Bucket-level
         match method {
+            "OPTIONS" => Some("OptionsPreFlight".to_string()),
             "GET" => {
                 if q("versions") {
                     Some("ListObjectVersions".to_string())
@@ -5062,7 +5398,13 @@ mod tests {
         let req = make_req("CreateBucket", Some("my-bucket"), None, b"");
         let resp = handler.handle(req);
         assert_eq!(resp.status, 200);
-        assert!(String::from_utf8_lossy(&resp.body).contains("my-bucket"));
+        // Real AWS/moto answer Location header + EMPTY body (the fabricated
+        // CreateBucketResult XML was dropped in review f5#14).
+        assert!(
+            String::from_utf8_lossy(&resp.body).is_empty(),
+            "CreateBucket body must be empty, got {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
 
         let req = make_req("ListBuckets", None, None, b"");
         let resp = handler.handle(req);
@@ -7818,5 +8160,63 @@ mod catchup_fx5_object_attributes_tests {
         let body = String::from_utf8_lossy(&resp.body);
         assert!(body.contains("<ObjectSize>"), "got {body}");
         assert!(!body.contains("<LastModified>"), "got {body}");
+    }
+
+    // Browser preflights consult the bucket's stored PutBucketCors rules:
+    // a matching origin+method answers 200 with the CORS headers, a
+    // non-matching one answers 403 AccessDenied (real S3 semantics).
+    #[test]
+    fn options_preflight_uses_bucket_cors_rules() {
+        let handler = S3Handler::new();
+        handler.handle(make_req("CreateBucket", Some("cors-bucket"), None, b""));
+        let cors_req = make_req(
+            "PutBucketCors",
+            Some("cors-bucket"),
+            None,
+            br#"<?xml version="1.0" encoding="UTF-8"?><CORSConfiguration><CORSRule><AllowedOrigin>https://app.example.com</AllowedOrigin><AllowedMethod>GET</AllowedMethod><AllowedMethod>PUT</AllowedMethod><AllowedHeader>x-custom</AllowedHeader><ExposeHeader>ETag</ExposeHeader><MaxAgeSeconds>600</MaxAgeSeconds></CORSRule></CORSConfiguration>"#,
+        );
+        assert_eq!(handler.handle(cors_req).status, 200);
+
+        let mut req = make_req(
+            "OptionsPreFlight",
+            Some("cors-bucket"),
+            Some("doc.txt"),
+            b"",
+        );
+        req.headers
+            .insert("Origin".to_string(), "https://app.example.com".to_string());
+        req.headers.insert(
+            "Access-Control-Request-Method".to_string(),
+            "GET".to_string(),
+        );
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 200);
+        let get = |name: &str| {
+            resp.headers
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case(name))
+                .map(|(_, v)| v.clone())
+                .unwrap_or_default()
+        };
+        assert_eq!(
+            get("Access-Control-Allow-Origin"),
+            "https://app.example.com"
+        );
+        assert_eq!(get("Access-Control-Allow-Methods"), "GET, PUT");
+        assert_eq!(get("Access-Control-Allow-Headers"), "x-custom");
+        assert_eq!(get("Access-Control-Expose-Headers"), "ETag");
+        assert_eq!(get("Access-Control-Max-Age"), "600");
+
+        // The preflight method must match: DELETE is not allowed.
+        let mut req = make_req("OptionsPreFlight", Some("cors-bucket"), Some("k"), b"");
+        req.headers
+            .insert("Origin".to_string(), "https://app.example.com".to_string());
+        req.headers.insert(
+            "Access-Control-Request-Method".to_string(),
+            "DELETE".to_string(),
+        );
+        let resp = handler.handle(req);
+        assert_eq!(resp.status, 403);
+        assert!(String::from_utf8_lossy(&resp.body).contains("AccessDenied"));
     }
 }

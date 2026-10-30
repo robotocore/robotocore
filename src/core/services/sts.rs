@@ -191,7 +191,7 @@ fn handle_get_federation_token(
         <FederatedUser>
             <Arn>arn:aws:sts::{}:federated-user/{}</Arn>
             <FederatedUserId>{}/{}-1234567890</FederatedUserId>
-        </FederatedUser>
+        </FederatedUser>/*xml*/
         <Credentials>
             <AccessKeyId>ASIAIOSFODNN7EXAMPLE</AccessKeyId>
             <SecretAccessKey>wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY</SecretAccessKey>
@@ -204,9 +204,9 @@ fn handle_get_federation_token(
     </ResponseMetadata>
 </GetFederationTokenResponse>"#,
         account,
-        name,
+        xml_escape_text(name),
         account,
-        name,
+        xml_escape_text(name),
         session_expiry()
     );
     Ok(xml_response(&body))
@@ -269,7 +269,7 @@ fn handle_assume_role(
         <AssumedRoleUser>
             <Arn>{}</Arn>
             <AssumedRoleId>{}</AssumedRoleId>
-        </AssumedRoleUser>
+        </AssumedRoleUser>/*xml*/
     </{}Result>
     <ResponseMetadata>
         <RequestId>00000000-0000-0000-0000-000000000000</RequestId>
@@ -278,8 +278,8 @@ fn handle_assume_role(
         op,
         op,
         session_expiry(),
-        arn,
-        role_id,
+        xml_escape_text(&arn),
+        xml_escape_text(&role_id),
         op,
         op
     );
@@ -413,6 +413,19 @@ fn handle_get_access_key_last_used(
 }
 
 /// Helper: build a ParsedResponse from raw XML.
+
+/// XML-escape a client-controlled value interpolated into the STS XML body
+/// (rotocore::proto::xml_escape parity; `<`/`&` etc. would otherwise break
+/// the response or inject sibling elements).
+pub(crate) fn xml_escape_text(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
 fn xml_response(body: &str) -> ParsedResponse {
     ParsedResponse {
         status: StatusCode::OK,

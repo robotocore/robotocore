@@ -132,10 +132,14 @@ class TestDeduplication:
         broker.acknowledge_batch(fifo_queue, received)
 
     def test_content_based_dedup_identical_bodies(self, broker, fifo_queue):
-        """Content-based dedup: identical body within 5-min window delivers once."""
-        body = "identical-content-for-dedup"
-        msg1 = Message(body=body, group_id="content-dedup-group", dedup_id="cd-1")
-        msg2 = Message(body=body, group_id="content-dedup-group", dedup_id="cd-1")
+        """Content-based dedup: identical body within 5-min window delivers once.
+
+        No explicit dedup_id is passed, so the
+        ContentBasedDeduplication queue setting is what dedups the body.
+        """
+        body = "identical-content-for-cbdedup"
+        msg1 = Message(body=body, group_id="content-dedup-group")
+        msg2 = Message(body=body, group_id="content-dedup-group")
 
         broker.send(fifo_queue, msg1)
         broker.send(fifo_queue, msg2)

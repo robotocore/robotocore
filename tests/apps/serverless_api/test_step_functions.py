@@ -6,8 +6,21 @@ and input/output verification.
 """
 
 import json
+import time
 
 from .models import WorkflowStep
+
+
+def wait_for_terminal(app, exec_arn, timeout_s: float = 10.0) -> dict:
+    """Poll a SFN execution to a terminal status (the async runner needs a beat)."""
+    deadline = time.monotonic() + timeout_s
+    desc = {}
+    while time.monotonic() < deadline:
+        desc = app.describe_execution(exec_arn)
+        if desc["status"] != "RUNNING":
+            break
+        time.sleep(0.25)
+    return desc
 
 
 class TestStepFunctionsOperations:
@@ -29,7 +42,10 @@ class TestStepFunctionsOperations:
 
         desc = app.describe_execution(exec_arn)
         assert desc["stateMachineArn"] == sm_arn
-        assert desc["status"] in ("RUNNING", "SUCCEEDED")
+        # Poll to the terminal status: the workflow really must complete.
+        desc = wait_for_terminal(app, exec_arn)
+        assert desc["status"] == "SUCCEEDED"
+        assert json.loads(desc["output"]) == {"status": "processed"}
 
     def test_choice_state_branching(self, serverless_app, unique_name):
         """State machine with Choice state branches based on input."""
@@ -69,10 +85,18 @@ class TestStepFunctionsOperations:
             definition_dict=definition,
         )
 
-        # Execute with high value
+        # Execute with high value: 200 > 100 must take the HighValue branch —
+        # poll to the terminal status and assert the branch output so a
+        # Default-only Choice evaluator fails.
         exec_arn = serverless_app.start_execution(sm_arn, input_data={"value": 200})
-        desc = serverless_app.describe_execution(exec_arn)
-        assert desc["status"] in ("RUNNING", "SUCCEEDED")
+        for _ in range(20):
+            desc = serverless_app.describe_execution(exec_arn)
+            if desc["status"] != "RUNNING":
+                break
+            time.sleep(0.5)
+        assert desc["status"] == "SUCCEEDED"
+        output = json.loads(desc["output"])
+        assert output["category"] == "high"
 
     def test_parallel_state(self, serverless_app, unique_name):
         """State machine with Parallel state runs branches concurrently."""
@@ -119,8 +143,12 @@ class TestStepFunctionsOperations:
         )
 
         exec_arn = serverless_app.start_execution(sm_arn, input_data={"test": True})
-        desc = serverless_app.describe_execution(exec_arn)
-        assert desc["status"] in ("RUNNING", "SUCCEEDED")
+        desc = wait_for_terminal(serverless_app, exec_arn)
+        assert desc["status"] == "SUCCEEDED"
+        # The Parallel state merges the branch outputs into an array.
+        branches = json.loads(desc["output"])
+        statuses = sorted(b["branch"] for b in branches if b.get("status") == "done")
+        assert statuses == ["A", "B"]
 
     def test_execution_input_preserved(self, state_machine):
         """Execution input is preserved in the describe response."""
@@ -181,5 +209,6 @@ class TestStepFunctionsOperations:
         exec_arn = serverless_app.start_execution(
             sm_arn, input_data={"order_id": "ORD-BUILDER-001"}
         )
-        desc = serverless_app.describe_execution(exec_arn)
-        assert desc["status"] in ("RUNNING", "SUCCEEDED")
+        desc = wait_for_terminal(serverless_app, exec_arn)
+        assert desc["status"] == "SUCCEEDED"
+        assert json.loads(desc["output"]) == {"step": "shipped"}

@@ -69,4 +69,16 @@ impl DefaultDynamoDbHandler {
     pub fn has_table(&self, account: u64, region: &str, table_name: &str) -> bool {
         self.inner.has_table(account, region, table_name)
     }
+
+    /// LATEST attach seed — the newest stream-capture sequence for the
+    /// table (see `DynamoDbHandler::stream_latest_sequence`).
+    pub fn stream_latest_sequence(
+        &self,
+        account: u64,
+        region: &str,
+        table_name: &str,
+    ) -> Option<String> {
+        self.inner
+            .stream_latest_sequence(account, region, table_name)
+    }
 }

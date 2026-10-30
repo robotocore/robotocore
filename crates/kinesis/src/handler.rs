@@ -721,6 +721,27 @@ impl KinesisHandler {
             (Some(a), Some(b)) => (a, b),
             _ => return AwsResponse::error(400, "ResourceNotFoundException", "Shard not found"),
         };
+        if !s1.is_open() || !s2.is_open() {
+            return AwsResponse::error(
+                400,
+                "InvalidArgumentException",
+                &format!(
+                    "Shard {shard1_id} or {shard2_id} in stream {name} has already merged, \
+                     split, or was deleted and cannot be merged"
+                ),
+            );
+        }
+        // moto merges only ADJACENT shards (models.py:296-302): the second
+        // shard's hash range must start right after the first one's.
+        let adjacent = s1.hash_key_end.checked_add(1) == Some(s2.hash_key_start)
+            || s2.hash_key_end.checked_add(1) == Some(s1.hash_key_start);
+        if !adjacent {
+            return AwsResponse::error(
+                400,
+                "InvalidArgumentException",
+                &format!("Shard {shard1_id} and {shard2_id} are not adjacent"),
+            );
+        }
         let mut shards = stream.shards.write();
         // Same guarded allocation as split_shard: compute from the held
         // write guard to avoid a self-deadlock on re-acquire.
@@ -736,7 +757,21 @@ impl KinesisHandler {
             s1.hash_key_start.min(s2.hash_key_start),
             s1.hash_key_end.max(s2.hash_key_end),
         ));
-        shards.retain(|s| s.shard_id != s1.shard_id && s.shard_id != s2.shard_id);
+        *merged.parent_id.write() = Some(s1.shard_id.clone());
+        *merged.adjacent_parent_id.write() = Some(s2.shard_id.clone());
+        // Records on both merged shards re-fire onto the merged shard — its
+        // range is the union of the parents', so every hash is covered (moto
+        // moves every record into the new shard).
+        for r in s1.take_records() {
+            merged.put_record(&merged.shard_id, r.partition_key.clone(), r.data.clone());
+        }
+        for r in s2.take_records() {
+            merged.put_record(&merged.shard_id, r.partition_key.clone(), r.data.clone());
+        }
+        // Closed parents stay in the list (moto keeps them, with an
+        // EndingSequenceNumber) so consumers can still page their history.
+        *s1.ending_sequence_number.write() = Some(s1.last_sequence_number().parse().unwrap_or(0));
+        *s2.ending_sequence_number.write() = Some(s2.last_sequence_number().parse().unwrap_or(0));
         shards.push(merged);
         AwsResponse::json(200, json!({}))
     }
@@ -772,10 +807,53 @@ impl KinesisHandler {
                 )
             }
         };
+        if !target.is_open() {
+            return AwsResponse::error(
+                400,
+                "InvalidArgumentException",
+                &format!(
+                    "Shard {shard_id} in stream {name} has been merged or split, and cannot \
+                     be split any further"
+                ),
+            );
+        }
+        // moto validates the hash key twice (responses.py:803-808 regex
+        // `0|([1-9]\d{0,38})` against the AWS casing, then the model range
+        // starting_hash < hash <= ending_hash, models.py:252-257).
+        if new_hash.len() > 39
+            || !(new_hash == "0"
+                || (new_hash.starts_with(|c: char| c.is_ascii_digit() && c != '0')
+                    && new_hash.chars().all(|c| c.is_ascii_digit())))
+        {
+            return AwsResponse::error(
+                400,
+                "InvalidArgumentException",
+                &format!("Invalid NewStartingHashKey {new_hash}"),
+            );
+        }
         let mid = if new_hash.is_empty() {
             (target.hash_key_start + target.hash_key_end) / 2
         } else {
-            new_hash.parse::<u128>().unwrap_or(0)
+            match new_hash.parse::<u128>() {
+                Ok(parsed)
+                    // Smaller hash values compare numerically even with more
+                    // digits, so parse first and range-check on u128.
+                    if target.hash_key_start < parsed && parsed < target.hash_key_end =>
+                {
+                    parsed
+                }
+                _ => {
+                    return AwsResponse::error(
+                        400,
+                        "InvalidArgumentException",
+                        &format!(
+                            "NewStartingHashKey {new_hash} used in SplitShard() on shard {} in \
+                             stream {name} is not within shard range",
+                            target.shard_id
+                        ),
+                    )
+                }
+            }
         };
         let mut shards = stream.shards.write();
         // Allocate the successor shard ids numerically greater than every
@@ -798,7 +876,8 @@ impl KinesisHandler {
             mid,
             target.hash_key_end,
         ));
-        shards.retain(|s| s.shard_id != target.shard_id);
+        *shard1.parent_id.write() = Some(target.shard_id.clone());
+        *shard2.parent_id.write() = Some(target.shard_id.clone());
         // Records already stored here land on the shard that covers their
         // partition hash after the split (moto re-fires records post-split).
         for r in target.take_records() {
@@ -809,6 +888,10 @@ impl KinesisHandler {
                 shard2.put_record(&shard2.shard_id, r.partition_key.clone(), r.data.clone());
             }
         }
+        // The parent stays in the list, closed with its ending sequence
+        // number (moto keeps closed shards in ListShards/DescribeStream).
+        *target.ending_sequence_number.write() =
+            Some(target.last_sequence_number().parse().unwrap_or(0));
         shards.push(shard1);
         shards.push(shard2);
         AwsResponse::json(200, json!({}))
@@ -852,12 +935,74 @@ impl KinesisHandler {
                 "TargetShardCount must be at least 1.",
             );
         }
-        let current = stream.shards.read().len() as u64;
-        let new_shards: Vec<Arc<Shard>> = build_shards(target as u32)
+        // moto refuses resharding an ON_DEMAND stream (models.py:332-335).
+        if !stream.stream_mode.read().contains("PROVISIONED") {
+            return AwsResponse::error(
+                400,
+                "InvalidArgumentException",
+                "Shard count for on-demand stream cannot be updated.",
+            );
+        }
+        // moto's CurrentShardCount is the ACTIVE (open) shard count, not the
+        // list length — closed parents stay in the list for history paging.
+        let current = stream.shards.read().iter().filter(|s| s.is_open()).count() as u64;
+        let old_shards: Vec<Arc<Shard>> = stream.shards.read().clone();
+        // fresh ids beyond the existing max: reusing build_shards' default
+        // names would collide with the closed parents' ids (both knew
+        // shardId-000000000000), making two shards in one stream share an id.
+        let next_id = stream
+            .shards
+            .read()
+            .iter()
+            .filter_map(|s| s.shard_id.rsplit('-').next())
+            .filter_map(|n| n.trim_start_matches('0').parse::<u32>().ok())
+            .max()
+            .unwrap_or(0)
+            + 1;
+        let next = next_id;
+        let ranges = build_shards(target as u32);
+        let new_shards: Vec<Arc<Shard>> = ranges
             .into_iter()
-            .map(Arc::new)
+            .enumerate()
+            .map(|(i, r)| {
+                Arc::new(Shard::new(
+                    format!("shardId-{:012}", next + i as u32),
+                    r.hash_key_start,
+                    r.hash_key_end,
+                ))
+            })
             .collect();
-        *stream.shards.write() = new_shards;
+        // Every stored record re-fires onto whichever new shard covers its
+        // partition hash — moto's update_shard_count reshards through
+        // split_shard/merge_shards, which carry the records across.
+        for shard in &old_shards {
+            // Only open shards carry records to re-fire.
+            if !shard.is_open() {
+                continue;
+            }
+            for r in shard.take_records() {
+                let h = KinesisStream::hash_key(&r.partition_key);
+                let dest = new_shards
+                    .iter()
+                    .find(|s| s.hash_key_start <= h && h <= s.hash_key_end)
+                    .or_else(|| new_shards.first());
+                if let Some(dest) = dest {
+                    dest.put_record(&dest.shard_id, r.partition_key.clone(), r.data.clone());
+                }
+            }
+        }
+        // The old shards stay, closed (moto keeps them in the shard list
+        // with EndingSequenceNumber); only open shards accept new records
+        // (select_shard filters).
+        for shard in &old_shards {
+            if shard.is_open() {
+                *shard.ending_sequence_number.write() =
+                    Some(shard.last_sequence_number().parse().unwrap_or(0));
+            }
+        }
+        let mut all = old_shards;
+        all.extend(new_shards);
+        *stream.shards.write() = all;
         AwsResponse::json(
             200,
             json!({
@@ -1788,18 +1933,30 @@ fn invalid_argument(msg: &str) -> AwsResponse {
     AwsResponse::error(400, "InvalidArgumentException", msg)
 }
 
-/// Shard representation in DescribeStream / ListShards responses.
+/// Shard representation in DescribeStream / ListShards responses. Closed
+/// parents stay in the list (moto keeps them) and render their
+/// EndingSequenceNumber plus the parent links a reshard minted.
 fn shard_value(s: &Shard) -> Value {
-    json!({
+    let mut v = json!({
         "ShardId": s.shard_id,
         "HashKeyRange": {
             "StartingHashKey": s.hash_key_start.to_string(),
             "EndingHashKey": s.hash_key_end.to_string()
         },
         "SequenceNumberRange": {
-            "StartingSequenceNumber": s.starting_sequence_number
+            "StartingSequenceNumber": s.starting_sequence_number,
         }
-    })
+    });
+    if let Some(parent) = s.parent_id.read().clone() {
+        v["ParentShardId"] = json!(parent);
+    }
+    if let Some(adjacent) = s.adjacent_parent_id.read().clone() {
+        v["AdjacentParentShardId"] = json!(adjacent);
+    }
+    if let Some(ending) = *s.ending_sequence_number.read() {
+        v["SequenceNumberRange"]["EndingSequenceNumber"] = json!(format!("{ending:020}"));
+    }
+    v
 }
 
 /// Extract the stream name from a stream or consumer ARN.
@@ -1918,7 +2075,9 @@ impl KinesisHandler {
     /// resolves its kinesis source via `get_stream` before constructing the
     /// mapping).
     pub fn has_stream(&self, account: u64, region: &str, stream_name: &str) -> bool {
-        self.get_state(account, region).get_stream(stream_name).is_some()
+        self.get_state(account, region)
+            .get_stream(stream_name)
+            .is_some()
     }
 }
 
@@ -2633,7 +2792,23 @@ mod tests {
             json!({"StreamName": "split-stream"}),
         )))["Shards"]
             .clone();
-        assert_eq!(shards.as_array().unwrap().len(), 2);
+        // moto keeps the closed parent in the list (with an
+        // EndingSequenceNumber) next to the two open children.
+        let all = shards.as_array().unwrap();
+        assert_eq!(all.len(), 3);
+        let open: Vec<&Value> = all
+            .iter()
+            .filter(|s| {
+                s["SequenceNumberRange"]
+                    .get("EndingSequenceNumber")
+                    .is_none()
+            })
+            .collect();
+        assert_eq!(open.len(), 2);
+        assert!(
+            open.iter().all(|s| s["ParentShardId"] == json!(shard_id)),
+            "both children carry the parent link"
+        );
     }
 
     #[test]
@@ -2655,7 +2830,158 @@ mod tests {
             &handler.handle(make_req("ListShards", json!({"StreamName": "usc-stream"}))),
         )["Shards"]
             .clone();
-        assert_eq!(shards.as_array().unwrap().len(), 2);
+        let all = shards.as_array().unwrap();
+        assert_eq!(all.len(), 3, "closed parent + 2 new open shards");
+        assert_eq!(
+            all.iter()
+                .filter(|s| s["SequenceNumberRange"]
+                    .get("EndingSequenceNumber")
+                    .is_none())
+                .count(),
+            2,
+            "two open shards accept records"
+        );
+    }
+
+    #[test]
+    fn test_merge_shards_carries_records() {
+        let handler = KinesisHandler::new();
+        handler.handle(make_req(
+            "CreateStream",
+            json!({"StreamName": "merge-stream", "ShardCount": 2}),
+        ));
+        // Pin one record onto each parent shard by explicit hash key: shard 0
+        // covers the low end, the last shard covers MAX_HASH_KEY.
+        for (data, hash) in [
+            ("first", "0"),
+            ("second", &format!("{}", crate::models::MAX_HASH_KEY)),
+        ] {
+            handler.handle(make_req(
+                "PutRecord",
+                json!({
+                    "StreamName": "merge-stream",
+                    "Data": encode_data(data),
+                    "PartitionKey": data,
+                    "ExplicitHashKey": hash
+                }),
+            ));
+        }
+        let resp = handler.handle(make_req(
+            "MergeShards",
+            json!({
+                "StreamName": "merge-stream",
+                "ShardToMerge": "shardId-000000000000",
+                "AdjacentShardToMerge": "shardId-000000000001"
+            }),
+        ));
+        assert_eq!(resp.status, 200);
+
+        // The merged OPEN shard carries both records; both parents stay,
+        // closed with EndingSequenceNumber and parent links.
+        let shards = parse_body(&handler.handle(make_req(
+            "ListShards",
+            json!({"StreamName": "merge-stream"}),
+        )))["Shards"]
+            .clone();
+        let all = shards.as_array().unwrap();
+        assert_eq!(all.len(), 3);
+        let merged = all
+            .iter()
+            .find(|s| {
+                s["SequenceNumberRange"]
+                    .get("EndingSequenceNumber")
+                    .is_none()
+            })
+            .expect("one open merged shard");
+        assert_eq!(merged["ParentShardId"], json!("shardId-000000000000"));
+        assert_eq!(
+            merged["AdjacentParentShardId"],
+            json!("shardId-000000000001")
+        );
+        let merged_id = merged["ShardId"].as_str().unwrap().to_string();
+        let iter = parse_body(&handler.handle(make_req(
+            "GetShardIterator",
+            json!({
+                "StreamName": "merge-stream", "ShardId": merged_id,
+                "ShardIteratorType": "TRIM_HORIZON"
+            }),
+        )))["ShardIterator"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let recs =
+            parse_body(&handler.handle(make_req("GetRecords", json!({"ShardIterator": iter}))));
+        assert_eq!(recs["Records"].as_array().unwrap().len(), 2);
+        for parent in all
+            .iter()
+            .filter(|s| s["ShardId"].as_str() != Some(merged_id.as_str()))
+        {
+            assert!(
+                parent["SequenceNumberRange"]
+                    .get("EndingSequenceNumber")
+                    .is_some(),
+                "closed parent renders EndingSequenceNumber"
+            );
+        }
+    }
+
+    #[test]
+    fn test_update_shard_count_carries_records() {
+        let handler = KinesisHandler::new();
+        handler.handle(make_req(
+            "CreateStream",
+            json!({"StreamName": "usc-rec-stream"}),
+        ));
+        // Spread three records across the hash range before resharding.
+        for hash in [
+            "0",
+            "170141183460469231731687303715884105727",
+            "340282366920938463463374607431768211455",
+        ] {
+            handler.handle(make_req(
+                "PutRecord",
+                json!({
+                    "StreamName": "usc-rec-stream",
+                    "Data": encode_data(hash),
+                    "PartitionKey": format!("pk-{hash}"),
+                    "ExplicitHashKey": hash
+                }),
+            ));
+        }
+        let resp = handler.handle(make_req(
+            "UpdateShardCount",
+            json!({
+                "StreamName": "usc-rec-stream",
+                "TargetShardCount": 2,
+                "ScalingType": "UNIFORM_SCALING"
+            }),
+        ));
+        assert_eq!(resp.status, 200);
+
+        // The two new shards together still return every record.
+        let shards = parse_body(&handler.handle(make_req(
+            "ListShards",
+            json!({"StreamName": "usc-rec-stream"}),
+        )))["Shards"]
+            .clone();
+        let mut total = 0usize;
+        for shard in shards.as_array().unwrap() {
+            let shard_id = shard["ShardId"].as_str().unwrap().to_string();
+            let iter = parse_body(&handler.handle(make_req(
+                "GetShardIterator",
+                json!({
+                    "StreamName": "usc-rec-stream", "ShardId": shard_id,
+                    "ShardIteratorType": "TRIM_HORIZON"
+                }),
+            )))["ShardIterator"]
+                .as_str()
+                .unwrap()
+                .to_string();
+            let recs =
+                parse_body(&handler.handle(make_req("GetRecords", json!({"ShardIterator": iter}))));
+            total += recs["Records"].as_array().unwrap().len();
+        }
+        assert_eq!(total, 3);
     }
 
     #[test]
@@ -2722,7 +3048,8 @@ mod tests {
             json!({"StreamName": "usc2-stream"}),
         ));
 
-        // CurrentShardCount must reflect the count at call time
+        // CurrentShardCount must reflect the count at call time (open + the
+        // pre-rescale closed parents now stay in the shard list).
         handler.handle(make_req(
             "UpdateShardCount",
             json!({
@@ -2733,15 +3060,24 @@ mod tests {
             &handler.handle(make_req("ListShards", json!({"StreamName": "usc2-stream"}))),
         )["Shards"]
             .clone();
-        assert_eq!(shards.as_array().unwrap().len(), 4);
-        let total = shards.as_array().unwrap().len() as u64;
+        let open_count = shards
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|s| {
+                s["SequenceNumberRange"]
+                    .get("EndingSequenceNumber")
+                    .is_none()
+            })
+            .count() as u64;
+        assert_eq!(open_count, 4, "four open shards after scaling to 4");
         let resp = parse_body(&handler.handle(make_req(
             "UpdateShardCount",
             json!({
                 "StreamName": "usc2-stream", "TargetShardCount": 2, "ScalingType": "UNIFORM_SCALING"
             }),
         )));
-        assert_eq!(resp["CurrentShardCount"], json!(total));
+        assert_eq!(resp["CurrentShardCount"], json!(4));
     }
 
     #[test]

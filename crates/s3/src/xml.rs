@@ -3,6 +3,17 @@
 /// The S3 XML namespace.
 pub const S3_NS: &str = "http://s3.amazonaws.com/doc/2006-03-01/";
 
+/// XML-escape one client-controlled value interpolated into an S3 XML
+/// response (bucket/key/error-message names come off the request path —
+/// `GET /bucket-with-%3Cscript%3E` would otherwise land raw in `<Message>`).
+pub fn xml_escape(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
 /// Format an S3 error response as XML.
 pub fn error_response(code: &str, message: &str) -> String {
     format!(
@@ -11,8 +22,8 @@ pub fn error_response(code: &str, message: &str) -> String {
   <Code>{code}</Code>
   <Message>{message}</Message>
 </Error>"#,
-        code = code,
-        message = message,
+        code = xml_escape(code),
+        message = xml_escape(message),
     )
 }
 
@@ -26,10 +37,10 @@ pub fn error_response_full(code: &str, message: &str, resource: &str, request_id
   <Resource>{resource}</Resource>
   <RequestId>{request_id}</RequestId>
 </Error>"#,
-        code = code,
-        message = message,
-        resource = resource,
-        request_id = request_id,
+        code = xml_escape(code),
+        message = xml_escape(message),
+        resource = xml_escape(resource),
+        request_id = xml_escape(request_id),
     )
 }
 

@@ -576,7 +576,10 @@ impl LambdaHandler {
     }
 
     fn delete_function(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
-        let name = req.path_fn_name();
+        // moto handles ARNs and `name:qualifier` in every path (models.py
+        // `get_function_by_name_or_arn_with_qualifier`) — the raw path
+        // fragment normalizes before the map hit.
+        let name = LambdaState::norm_name(&req.path_fn_name());
         let qual = req.query_param("Qualifier");
         if state.functions.read().get(&name).is_none() {
             return function_not_found(&name, &req.region, req.account);
@@ -1032,7 +1035,9 @@ impl LambdaHandler {
     // ---------------------------------------------------------------
 
     fn publish_version(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
-        let name = req.path_fn_name();
+        // moto resolves ARN/colon-qualified names here too (models.py
+        // get_function_by_name_or_arn_with_qualifier).
+        let name = LambdaState::norm_name(&req.path_fn_name());
         let mut funcs = state.functions.write();
         let Some(entry) = funcs.get_mut(&name) else {
             drop(funcs);
@@ -1065,7 +1070,8 @@ impl LambdaHandler {
     }
 
     fn list_versions_by_function(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
-        let name = req.path_fn_name();
+        // moto resolves ARN/colon-qualified names here too.
+        let name = LambdaState::norm_name(&req.path_fn_name());
         let funcs = state.functions.read();
         let Some(entry) = funcs.get(&name) else {
             drop(funcs);
@@ -1097,7 +1103,9 @@ impl LambdaHandler {
     }
 
     fn create_alias(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
-        let name = req.path_fn_name();
+        // Normalized like moto: the alias map keys off the resolved function
+        // name, so an alias created via an ARN path is reachable by name.
+        let name = LambdaState::norm_name(&req.path_fn_name());
         let Some(alias_name) = req.param_str("Name") else {
             return AwsResponse::error(400, "InvalidParameterValueException", "Missing Name");
         };
@@ -1108,6 +1116,20 @@ impl LambdaHandler {
             Ok(f) => f,
             Err(resp) => return resp,
         };
+        // moto validates the target version before storing (put_alias
+        // resolves get_function_by_name_or_arn_with_qualifier → Unknown
+        // FunctionException "Function not found: ...").
+        if version != "$LATEST" && resolve_fn(state, req, &format!("{name}:{version}")).is_err() {
+            let fn_arn = format!(
+                "arn:aws:lambda:{}:{}:function:{}:{}",
+                req.region, req.account, name, version
+            );
+            return AwsResponse::error(
+                404,
+                "ResourceNotFoundException",
+                &format!("Function not found: {fn_arn}"),
+            );
+        }
         if state.resolve_alias(&name, &alias_name).is_some() {
             return AwsResponse::error(
                 409,
@@ -1149,6 +1171,20 @@ impl LambdaHandler {
         match state.resolve_alias(&name, &alias_name) {
             Some(a) => {
                 if let Some(v) = req.param_str("FunctionVersion") {
+                    // moto re-validates the target version on update
+                    // (models.py update_alias) — a dud version is rejected
+                    // with the Function-not-found shape.
+                    if v != "$LATEST" && resolve_fn(state, req, &format!("{name}:{v}")).is_err() {
+                        let fn_arn = format!(
+                            "arn:aws:lambda:{}:{}:function:{}:{}",
+                            req.region, req.account, name, v
+                        );
+                        return AwsResponse::error(
+                            404,
+                            "ResourceNotFoundException",
+                            &format!("Function not found: {fn_arn}"),
+                        );
+                    }
                     *a.function_version.write() = v;
                 }
                 if let Some(d) = req.param_str("Description") {
@@ -1182,16 +1218,19 @@ impl LambdaHandler {
     }
 
     fn list_aliases(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
-        let name = req.path_fn_name();
-        let Some(fn_arn) = state.get_function(&name).map(|f| f.function_arn.clone()) else {
+        // moto keys aliases per function name (models.py `_get_function_aliases`
+        // filters `x.function_name == function_name`), exact — an ARN-prefix
+        // match leaked fnA's aliases into fn's listing.
+        let name = LambdaState::norm_name(&req.path_fn_name());
+        if state.get_function(&name).is_none() {
             return function_not_found(&name, &req.region, req.account);
-        };
+        }
         let mut list: Vec<Value> = state
             .aliases
             .read()
-            .values()
-            .filter(|a| a.function_arn.starts_with(&fn_arn))
-            .map(|a| Self::alias_dict(a))
+            .iter()
+            .filter(|((alias_fn, _), _)| alias_fn == &name)
+            .map(|(_, a)| Self::alias_dict(a))
             .collect();
         if let Some(fv) = req.query_param("FunctionVersion") {
             list.retain(|a| a.get("FunctionVersion").and_then(Value::as_str) == Some(fv.as_str()));
@@ -1351,12 +1390,15 @@ impl LambdaHandler {
     // ---------------------------------------------------------------
 
     fn esm_dict(e: &crate::models::EventSourceMapping) -> Value {
-        // A deleted-sentinel: State is included as-is. The conditional
-        // members follow moto's shape-filtered details dict: unset
-        // MaximumBatchingWindowInSeconds/MaximumRecordAgeInSeconds are
-        // omitted (the hardcoded 0 used to leak a trailing synthetic
-        // window the caller never configured), LastProcessingResult rides
-        // as null, and the mapping ARN mirrors EventSourceMapping.arn.
+        // moto's get_configuration filters every `None` member
+        // (models.py:1433-1434): unset MaximumBatchingWindowInSeconds/
+        // MaximumRecordAgeInSeconds/BisectBatchOnFunctionError/
+        // MaximumRetryAttempts/FunctionResponseTypes/FilterCriteria are
+        // omitted, and LastProcessingResult rides as null (its stored
+        // value is always None here). State derives from `enabled` at
+        // render time, exactly like moto's `"Enabled" if self.enabled
+        // else "Disabled"` — a create/update bookkeeping mismatch can no
+        // longer lie on the wire.
         let mut m = Map::new();
         m.insert("UUID".into(), json!(e.uuid));
         m.insert("BatchSize".into(), json!(e.batch_size));
@@ -1379,23 +1421,33 @@ impl LambdaHandler {
         if let Some(age) = e.maximum_record_age_in_seconds {
             m.insert("MaximumRecordAgeInSeconds".into(), json!(age));
         }
+        if let Some(types) = &e.function_response_types {
+            if !types.is_empty() {
+                m.insert("FunctionResponseTypes".into(), json!(types));
+            }
+        }
+        if let Some(fc) = &e.filter_criteria {
+            m.insert("FilterCriteria".into(), fc.clone());
+        }
+        if e.bisect_batch_on_function_error {
+            m.insert("BisectBatchOnFunctionError".into(), json!(true));
+        }
+        if e.maximum_retry_attempts >= 0 {
+            m.insert(
+                "MaximumRetryAttempts".into(),
+                json!(e.maximum_retry_attempts),
+            );
+        }
         m.insert("LastProcessingResult".into(), Value::Null);
-        m.insert("State".into(), json!(e.state));
-        m.insert("StateTransitionReason".into(), json!(e.state_transition_reason));
+        m.insert(
+            "State".into(),
+            json!(if e.enabled { "Enabled" } else { "Disabled" }),
+        );
+        m.insert(
+            "StateTransitionReason".into(),
+            json!(e.state_transition_reason),
+        );
         m.insert("LastModified".into(), json!(e.last_modified));
-        m.insert(
-            "FunctionResponseTypes".into(),
-            json!(e.function_response_types.clone().unwrap_or_default()),
-        );
-        m.insert(
-            "FilterCriteria".into(),
-            e.filter_criteria.clone().unwrap_or(Value::Null),
-        );
-        m.insert(
-            "BisectBatchOnFunctionError".into(),
-            json!(e.bisect_batch_on_function_error),
-        );
-        m.insert("MaximumRetryAttempts".into(), json!(e.maximum_retry_attempts));
         Value::Object(m)
     }
 
@@ -1407,16 +1459,17 @@ impl LambdaHandler {
         };
         let uuid_val = uuid::Uuid::new_v4().to_string();
         let event_source_arn = req.param_str("EventSourceArn").unwrap_or_default();
-        // moto's EventSourceMapping.event_source_arn setter: only the
-        // dynamodb / kinesis / sqs families attach (the `.fifo` artifacts
-        // stay in the sqs family for this check).
+        // moto's EventSourceMapping.event_source_arn setter is NOT the
+        // REST-path check (models.py:2111-2165): every ARN whose family is
+        // not one of the attachable sources — SNS included — falls to 404
+        // ResourceNotFoundException "Invalid EventSourceArn".
         let source = match esm_source(&event_source_arn) {
             Some(source) => source,
             None => {
                 return AwsResponse::error(
-                    400,
-                    "InvalidParameterValueException",
-                    "Unsupported event source type",
+                    404,
+                    "ResourceNotFoundException",
+                    "Invalid EventSourceArn",
                 )
             }
         };
@@ -1467,7 +1520,20 @@ impl LambdaHandler {
                     );
                 }
             }
-            _ => {}
+            // The queue existence probe mirrors moto's sqs-backend lookup:
+            // an ARN naming a queue that does not exist is a 404 too.
+            EsmSource::Sqs | EsmSource::SqsFifo => {
+                let queue_name = event_source_arn.rsplit(':').next().unwrap_or_default();
+                if crate::bridge::sqs_queue_exists(req.account, &req.region, queue_name)
+                    == Some(false)
+                {
+                    return AwsResponse::error(
+                        404,
+                        "ResourceNotFoundException",
+                        "Invalid EventSourceArn",
+                    );
+                }
+            }
         }
         let is_sqs = source.is_sqs();
         // moto: stream sources default their starting position to TRIM_HORIZON.
@@ -1479,7 +1545,7 @@ impl LambdaHandler {
             function_arn: func.function_arn.clone(),
             event_source_arn: event_source_arn.clone(),
             state: "Enabled".to_string(),
-            state_transition_reason: "User action".to_string(),
+            state_transition_reason: "User initiated".to_string(),
             last_modified: epoch_now(),
             batch_size,
             enabled: req
@@ -1536,12 +1602,25 @@ impl LambdaHandler {
                     None
                 }
             },
+            // LATEST dynamodb-streams seed: the same attach-time freezing,
+            // bound to the table's live stream max (TRIM keeps its replay
+            // contract).
+            ddb_attached_watermark: {
+                let want_latest = req.param_str("StartingPosition").as_deref() == Some("LATEST");
+                match (want_latest, &source) {
+                    (true, EsmSource::DynamoDb { table_name }) => {
+                        crate::bridge::dynamodb_stream_latest(req.account, &req.region, table_name)
+                    }
+                    _ => None,
+                }
+            },
         });
         state
             .event_source_mappings
             .write()
             .insert(uuid_val.clone(), Arc::clone(&em));
-        AwsResponse::json(202, Self::esm_dict(&em))
+        // moto answers 201 on create (responses.py:170).
+        AwsResponse::json(201, Self::esm_dict(&em))
     }
 
     fn get_event_source_mapping(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
@@ -1644,19 +1723,27 @@ impl LambdaHandler {
             // The attach-time binding survives updates; it only re-freezes
             // when a new mapping is created against the source.
             kinesis_bound_watermarks: em.kinesis_bound_watermarks.clone(),
+            ddb_attached_watermark: em.ddb_attached_watermark.clone(),
         });
         state
             .event_source_mappings
             .write()
             .insert(uuid_val, Arc::clone(&updated));
-        AwsResponse::json(200, Self::esm_dict(&updated))
+        // moto answers 202 on update (responses.py:196).
+        AwsResponse::json(202, Self::esm_dict(&updated))
     }
 
     fn delete_event_source_mapping(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
         let uuid_val = uuid_of_path(req);
         let removed = state.event_source_mappings.write().remove(&uuid_val);
         match removed {
-            Some(e) => AwsResponse::json(200, Self::esm_dict(&e)),
+            Some(e) => {
+                let mut dict = Self::esm_dict(&e);
+                // moto renders the deleting sentinel on the delete response
+                // itself (responses.py:200-208).
+                dict["State"] = json!("Deleting");
+                AwsResponse::json(202, dict)
+            }
             None => AwsResponse::error(
                 404,
                 "ResourceNotFoundException",
@@ -3260,7 +3347,11 @@ mod tests {
     // ------------------------------------------------------------------
 
     fn create_esm(handler: &LambdaHandler, params: Value) -> AwsResponse {
-        handler.handle(make_req("POST", params, "/2015-03-31/event-source-mappings"))
+        handler.handle(make_req(
+            "POST",
+            params,
+            "/2015-03-31/event-source-mappings",
+        ))
     }
 
     fn get_esm(handler: &LambdaHandler, uuid: &str) -> AwsResponse {
@@ -3303,7 +3394,7 @@ mod tests {
             &handler,
             json!({"EventSourceArn": kinesis_arn, "FunctionName": fn_name, "StartingPosition": "LATEST"}),
         );
-        assert_eq!(resp.status, 202, "body: {}", resp.body);
+        assert_eq!(resp.status, 201, "body: {}", resp.body);
         let esm: Value = serde_json::from_str(&resp.body).unwrap();
         assert_eq!(esm["BatchSize"], json!(100));
 
@@ -3315,31 +3406,52 @@ mod tests {
                    "StartingPosition": "LATEST", "BatchSize": 100001}),
         );
         assert_eq!(resp.status, 400, "body: {}", resp.body);
-        assert!(resp.body.contains("BatchSize 100001 exceeds the max of 10000"), "body: {}", resp.body);
+        assert!(
+            resp.body
+                .contains("BatchSize 100001 exceeds the max of 10000"),
+            "body: {}",
+            resp.body
+        );
         let resp = create_esm(
             &handler,
             json!({"EventSourceArn": "arn:aws:sqs:us-east-1:123456789012:src.fifo",
                    "FunctionName": fn_name, "BatchSize": 50}),
         );
         assert_eq!(resp.status, 400, "body: {}", resp.body);
-        assert!(resp.body.contains("BatchSize 50 exceeds the max of 10"), "body: {}", resp.body);
+        assert!(
+            resp.body.contains("BatchSize 50 exceeds the max of 10"),
+            "body: {}",
+            resp.body
+        );
         // Values 0 and 1 stay legal on both sides of the default logic.
         let resp = create_esm(
             &handler,
             json!({"EventSourceArn": "arn:aws:sqs:us-east-1:123456789012:q0", "FunctionName": fn_name, "BatchSize": 0}),
         );
-        assert_eq!(resp.status, 202);
-        assert_eq!(serde_json::from_str::<Value>(&resp.body).unwrap()["BatchSize"], json!(0));
+        assert_eq!(resp.status, 201);
+        assert_eq!(
+            serde_json::from_str::<Value>(&resp.body).unwrap()["BatchSize"],
+            json!(0)
+        );
 
-        // (c) ARN families outside dynamodb/kinesis/sqs → 400 "Unsupported
-        // event source type".
+        // (c) ARN families outside dynamodb/kinesis/sqs → 404
+        // ResourceNotFoundException "Invalid EventSourceArn" — moto's
+        // create path resolves EVERY unmatched ARN (SNS included) to that
+        // 404 (models.py:2111-2165), not a 400 unsupported-type.
         for bad_arn in [
             "arn:aws:sns:us-east-1:123456789012:topic",
             "arn:aws:mq:us-east-1:123456789012:q",
         ] {
-            let resp = create_esm(&handler, json!({"EventSourceArn": bad_arn, "FunctionName": fn_name}));
-            assert_eq!(resp.status, 400, "{bad_arn}: {}", resp.body);
-            assert!(resp.body.contains("Unsupported event source type"), "body: {}", resp.body);
+            let resp = create_esm(
+                &handler,
+                json!({"EventSourceArn": bad_arn, "FunctionName": fn_name}),
+            );
+            assert_eq!(resp.status, 404, "{bad_arn}: {}", resp.body);
+            assert!(
+                resp.body.contains("Invalid EventSourceArn"),
+                "body: {}",
+                resp.body
+            );
         }
 
         // (d) a kinesis source that does not resolve → 404
@@ -3350,8 +3462,16 @@ mod tests {
                    "FunctionName": fn_name, "StartingPosition": "TRIM_HORIZON"}),
         );
         assert_eq!(resp.status, 404, "body: {}", resp.body);
-        assert!(resp.body.contains("Invalid EventSourceArn"), "body: {}", resp.body);
-        assert!(resp.body.contains("ResourceNotFoundException"), "body: {}", resp.body);
+        assert!(
+            resp.body.contains("Invalid EventSourceArn"),
+            "body: {}",
+            resp.body
+        );
+        assert!(
+            resp.body.contains("ResourceNotFoundException"),
+            "body: {}",
+            resp.body
+        );
 
         // (e) the wire dict: mapping ARN + null LastProcessingResult ride
         // every response; the optional windows appear only when set.
@@ -3361,21 +3481,35 @@ mod tests {
                    "FunctionName": fn_name, "StartingPosition": "LATEST",
                    "MaximumBatchingWindowInSeconds": 5, "MaximumRecordAgeInSeconds": 60}),
         );
-        assert_eq!(resp.status, 202, "body: {}", resp.body);
+        assert_eq!(resp.status, 201, "body: {}", resp.body);
         let configured: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(resp.status, 201, "body: {}", resp.body);
         let uuid = configured["UUID"].as_str().unwrap().to_string();
         assert_eq!(
             configured["EventSourceMappingArn"],
-            json!(format!("arn:aws:lambda:us-east-1:123456789012:event-source-mapping:{uuid}"))
+            json!(format!(
+                "arn:aws:lambda:us-east-1:123456789012:event-source-mapping:{uuid}"
+            ))
         );
         assert!(
-            configured.get("LastProcessingResult").is_some_and(Value::is_null),
+            configured
+                .get("LastProcessingResult")
+                .is_some_and(Value::is_null),
             "LastProcessingResult rides as null: {configured}"
         );
-        assert_eq!(configured.get("MaximumBatchingWindowInSeconds"), Some(&json!(5)));
-        assert_eq!(configured.get("MaximumRecordAgeInSeconds"), Some(&json!(60)));
+        assert_eq!(
+            configured.get("MaximumBatchingWindowInSeconds"),
+            Some(&json!(5))
+        );
+        assert_eq!(
+            configured.get("MaximumRecordAgeInSeconds"),
+            Some(&json!(60))
+        );
         let dict: Value = serde_json::from_str(&get_esm(&handler, &uuid).body).unwrap();
-        assert_eq!(dict["EventSourceMappingArn"], configured["EventSourceMappingArn"]);
+        assert_eq!(
+            dict["EventSourceMappingArn"],
+            configured["EventSourceMappingArn"]
+        );
 
         // Unconfigured: no MaximumBatchingWindowInSeconds key at all (the
         // hardcoded 0 used to leak; moto shape-filters unset members).
@@ -3386,7 +3520,7 @@ mod tests {
             json!({"EventSourceArn": "arn:aws:dynamodb:us-east-1:123456789012:table/ddb-stream-x/stream/2026",
                    "FunctionName": fn_name, "StartingPosition": "LATEST"}),
         );
-        assert_eq!(bare_esm.status, 202, "body: {}", bare_esm.body);
+        assert_eq!(bare_esm.status, 201, "body: {}", bare_esm.body);
         let bare: Value = serde_json::from_str(&bare_esm.body).unwrap();
         // dynamodb family default BatchSize is 100 too.
         assert_eq!(bare["BatchSize"], json!(100));
@@ -3400,9 +3534,14 @@ mod tests {
         let resp = handler.handle(make_req(
             "DELETE",
             json!({}),
-            &format!("/2015-03-31/event-source-mappings/{}", bare["UUID"].as_str().unwrap()),
+            &format!(
+                "/2015-03-31/event-source-mappings/{}",
+                bare["UUID"].as_str().unwrap()
+            ),
         ));
-        assert_eq!(resp.status, 200);
+        assert_eq!(resp.status, 202);
+        let deleted: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(deleted["State"], json!("Deleting"));
     }
 
     #[test]
@@ -3422,7 +3561,7 @@ mod tests {
             json!({"EventSourceArn": "arn:aws:sqs:us-east-1:123456789012:role-q",
                    "FunctionName": "role-fn"}),
         );
-        assert_eq!(resp.status, 202);
+        assert_eq!(resp.status, 201);
 
         let entries = handler.esm_snapshot();
         let entry = entries
@@ -3446,14 +3585,17 @@ mod tests {
         handler.handle(make_req(
             "DELETE",
             json!({}),
-            &format!("/2015-03-31/event-source-mappings/{}", esm["UUID"].as_str().unwrap()),
+            &format!(
+                "/2015-03-31/event-source-mappings/{}",
+                esm["UUID"].as_str().unwrap()
+            ),
         ));
         let resp2 = create_esm(
             &handler,
             json!({"EventSourceArn": "arn:aws:sqs:us-east-1:123456789012:role-less-q",
                    "FunctionName": "role-less-fn"}),
         );
-        assert_eq!(resp2.status, 202);
+        assert_eq!(resp2.status, 201);
         let entries = handler.esm_snapshot();
         let bare_entry = entries
             .iter()

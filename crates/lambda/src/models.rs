@@ -241,6 +241,13 @@ pub struct EventSourceMapping {
     /// replay-from-zero contract (real AWS and recorded behavior).
     #[serde(default)]
     pub kinesis_bound_watermarks: Option<std::collections::BTreeMap<String, String>>,
+    /// Attach-time seed for a `LATEST` dynamodb-streams mapping: the newest
+    /// stream-capture sequence at attach, frozen the same way the kinesis
+    /// watermarks are — the engine's first poll skips every record at or
+    /// below it instead of replaying the pre-attach history. Real Lambda
+    /// delivers nothing for new mappings until a write happens.
+    #[serde(default)]
+    pub ddb_attached_watermark: Option<String>,
 }
 
 /// One stored ESM as seen by the gateway's engine thread, tagged with the

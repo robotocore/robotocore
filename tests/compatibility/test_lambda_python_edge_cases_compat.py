@@ -703,7 +703,12 @@ def handler(event, ctx):
 """
         resp, body, fname = _create_and_invoke(lam, role, code)
         assert resp.get("FunctionError") is not None
-        assert body["errorType"] == "ModuleNotFoundError"
+        # Load-era shape shared with the docker runtime: the bootstrap reports
+        # module resolution failures as Runtime.ImportModuleError (message
+        # "Cannot find module: ..."), not the bare interpreter's
+        # ModuleNotFoundError.
+        assert body["errorType"] == "Runtime.ImportModuleError"
+        assert body["errorMessage"].startswith("Cannot find module")
         lam.delete_function(FunctionName=fname)
 
 

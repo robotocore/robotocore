@@ -1,6 +1,6 @@
 {
   "service": "sns",
-  "generated_at": "2026-10-25T19:45:03.926236+00:00",
+  "generated_at": "2026-10-30T20:21:18.856502+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
     "working": 41,

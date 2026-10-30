@@ -71,7 +71,20 @@ class Ctx:
         return max(0, self._timeout_ms - elapsed_ms)
 
 
-def safe_extract(zippath, outdir):
+def render_budget_error():
+    print(
+        f"ZIP archive expands past the {ZIP_UNPACK_BUDGET_MB} MB unzipped limit",
+        file=sys.stderr,
+    )
+    sys.stderr.flush()
+    raise SystemExit(1)
+
+
+def safe_extract(zippath, outdir, written=0):
+    """Budgeted extraction, carrying `written` across calls: ONE per-function
+    budget spans code + every layer (era limits.py: 250 MB unzipped per
+    FUNCTION, not per archive — per-archive resets let N layers draw N×250 MB).
+    Returns the running total."""
     with open(zippath, "rb") as fh:
         blob = fh.read()
     with zipfile.ZipFile(io.BytesIO(blob)) as zf:
@@ -79,22 +92,20 @@ def safe_extract(zippath, outdir):
             normalized = name.replace("\\", "/")
             if normalized.startswith("/") or ".." in normalized.split("/"):
                 raise ValueError(f"Unsafe path in ZIP archive: {name}")
-        # Budgeted extraction: every entry joins the running decompressed
-        # total (its central-directory uncompressed size, the only honest
-        # size a zip carries) BEFORE anything is written; crossing the
-        # budget aborts with a non-zero exit and the cap text on stderr —
-        # the executor reports the missing result as Runtime.InternalError.
-        written = 0
         for info in zf.infolist():
             written += info.file_size
             if written > ZIP_UNPACK_BUDGET_BYTES:
-                print(
-                    f"ZIP archive expands past the {ZIP_UNPACK_BUDGET_MB} MB unzipped limit",
-                    file=sys.stderr,
-                )
-                sys.stderr.flush()
-                raise SystemExit(1)
+                render_budget_error()
             zf.extract(info, outdir)
+    return written
+
+
+class HandlerLoadError(Exception):
+    """Handler-string/binding problems (era bootstrap.py: Runtime.HandlerNotFound)."""
+
+
+class HandlerImportError(Exception):
+    """Module resolution problems (era runtime: Runtime.ImportModuleError)."""
 
 
 def main():
@@ -106,34 +117,51 @@ def main():
         handler = meta.get("handler") or "lambda_function.handler"
         code_dir = os.path.join(work, "code")
         os.makedirs(code_dir, exist_ok=True)
-        safe_extract(os.path.join(work, "code.zip"), code_dir)
+        unpacked = safe_extract(os.path.join(work, "code.zip"), code_dir)
 
         # Unpack each layerN.zip into layerN/ so its python/ subtree (or
         # package dirs) lands there and the sys.path scan below finds it.
-        for layer_zip in sorted(
-            p for p in os.listdir(work)
-            if p.startswith("layer") and p.endswith(".zip")
-        ):
+        # Layers carry the SAME running budget as the code zip (one
+        # per-function total, like the node bootstrap).
+        def layer_index(name):
+            # Numeric-aware: layer2 must sort before layer10 (a plain string
+            # sort put layer10 first, and the per-layer insert(0/1) pattern
+            # then REVERSED priority) — era layers are attached in list
+            # order with LATER attachments winning, so sort by the parsed
+            # suffix then reverse the insertion.
+            digits = "".join(ch for ch in name if ch.isdigit())
+            return (int(digits) if digits else -1, name)
+
+        layer_zips = sorted(
+            (p for p in os.listdir(work)
+             if p.startswith("layer") and p.endswith(".zip")),
+            key=layer_index,
+        )
+        for layer_zip in layer_zips:
             dest = os.path.join(work, layer_zip[:-4])
             os.makedirs(dest, exist_ok=True)
-            safe_extract(os.path.join(work, layer_zip), dest)
+            unpacked = safe_extract(os.path.join(work, layer_zip), dest, unpacked)
 
         sys.path.insert(0, code_dir)
-        for layer_name in sorted(
-            p for p in os.listdir(work)
-            if p.startswith("layer") and os.path.isdir(os.path.join(work, p))
-        ):
-            sys.path.insert(1, os.path.join(work, layer_name, "python"))
+        # Attached-1st..last insert such that LATER attachments keep winning
+        # (insert(0) puts the LAST layer at the front of the scan).
+        layer_dirs = [os.path.join(work, name[:-4], "python") for name in layer_zips]
+        for layer_path in reversed(layer_dirs):
+            if os.path.isdir(os.path.join(os.path.dirname(layer_path))):
+                sys.path.insert(1, layer_path)
 
         if "." not in handler:
-            raise ValueError(f"Bad handler: {handler}")
+            raise HandlerLoadError(f"Bad handler format: {handler}")
         module_path, func_name = handler.rsplit(".", 1)
         ctx = Ctx(meta)
-        module = importlib.import_module(module_path)
+        try:
+            module = importlib.import_module(module_path)
+        except ModuleNotFoundError as exc:
+            raise HandlerImportError(f"Cannot find module: {module_path}") from exc
         fn = getattr(module, func_name, None)
         if fn is None or not callable(fn):
-            raise ValueError(
-                f"Handler function '{func_name}' not found in {module_path}"
+            raise HandlerLoadError(
+                f"Handler '{func_name}' not found in module '{module_path}'"
             )
         result = fn(event, ctx)
         open(result_path, "w").write(
@@ -146,6 +174,27 @@ def main():
         # failures). Recording it as handler data would mislabel the
         # extraction crash as a handler exception.
         raise
+    except (HandlerLoadError, HandlerImportError) as exc:
+        # Load-era failures carry the era bootstrap's Runtime.* types so the
+        # local shim answers the same shape the docker renormalizer (and
+        # every other runtime family) produces.
+        open(result_path, "w").write(
+            json.dumps(
+                {
+                    "restocore_error": {
+                        "errorMessage": str(exc),
+                        "errorType": (
+                            "Runtime.HandlerNotFound"
+                            if isinstance(exc, HandlerLoadError)
+                            else "Runtime.ImportModuleError"
+                        ),
+                        "stackTrace": [],
+                    }
+                }
+            )
+        )
+        sys.stderr.write(f"{exc}\n")
+        sys.stderr.flush()
     except BaseException as exc:  # report handler errors as data, not as crashes
         tb = traceback.format_exc()
         open(result_path, "w").write(
@@ -249,6 +298,30 @@ pub(crate) fn collect_by(rx: &mpsc::Receiver<String>, deadline: std::time::Insta
         .unwrap_or_default()
 }
 
+/// Install the stdout/stderr pipe drains and feed the event JSON over stdin
+/// from a dedicated thread — the era `communicate()` shape. A bootstrap that
+/// defers (or never performs) its stdin read can no longer suspend the
+/// parent's deadline loop: the parent kills the child at the deadline and
+/// the writer thread unblocks with an EPIPE instead of wedging the invoke
+/// thread forever behind an OS pipe buffer.
+pub(crate) fn communicate_event(
+    child: &mut Child,
+    event: &str,
+    stdout_cap: usize,
+    stderr_cap: usize,
+) -> (mpsc::Receiver<String>, mpsc::Receiver<String>) {
+    let stdout_rx = drain_thread(child.stdout.take(), stdout_cap);
+    let stderr_rx = drain_thread(child.stderr.take(), stderr_cap);
+    if let Some(mut stdin) = child.stdin.take() {
+        let event = event.to_string();
+        std::thread::spawn(move || {
+            let _ = stdin.write_all(event.as_bytes());
+            let _ = stdin.flush();
+        });
+    }
+    (stdout_rx, stderr_rx)
+}
+
 /// Execute a Python Lambda handler in a subprocess shim.
 ///
 /// * `env_vars` — user-configured environment variables from the function config
@@ -319,24 +392,44 @@ pub fn execute_python(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .stdin(Stdio::null());
-    cmd.env("AWS_LAMBDA_FUNCTION_NAME", function_name)
-        .env("AWS_LAMBDA_FUNCTION_VERSION", function_version)
-        .env("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", memory_size.to_string())
-        .env("AWS_LAMBDA_FUNCTION_TIMEOUT", timeout_secs.to_string())
-        .env("AWS_REGION", region)
-        .env("AWS_DEFAULT_REGION", region)
-        .env("AWS_ACCOUNT_ID", account_id)
-        .env("AWS_ACCESS_KEY_ID", "testing")
-        .env("AWS_SECRET_ACCESS_KEY", "testing")
-        .env("AWS_SESSION_TOKEN", "testing")
-        .env("_HANDLER", handler);
-    for (k, v) in env_vars {
-        cmd.env(k, v);
-    }
+    // Era build_env ordering via the shared helper: user env first,
+    // built-ins after, credential trio setdefault.
+    apply_era_env(
+        &mut cmd,
+        env_vars,
+        &[
+            ("AWS_LAMBDA_FUNCTION_NAME", function_name.to_string()),
+            ("AWS_LAMBDA_FUNCTION_VERSION", function_version.to_string()),
+            ("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", memory_size.to_string()),
+            ("AWS_LAMBDA_FUNCTION_TIMEOUT", timeout_secs.to_string()),
+            ("AWS_REGION", region.to_string()),
+            ("AWS_DEFAULT_REGION", region.to_string()),
+            ("AWS_ACCOUNT_ID", account_id.to_string()),
+            ("_HANDLER", handler.to_string()),
+        ],
+    );
 
     let mut child: Child = match cmd.spawn() {
         Ok(c) => c,
-        Err(e) => return missing_runtime_result(&e.to_string()),
+        Err(e) => {
+            // Era parity: a NotFound interpreter (the spawn raised
+            // FileNotFoundError) is Runtime.InvalidRuntime, not
+            // Runtime.InternalError — and the work dir is cleaned up (the
+            // err_result path leaks it previously).
+            cleanup(&work);
+            if e.kind() == std::io::ErrorKind::NotFound {
+                return ExecResult {
+                    payload: json!({
+                        "errorMessage": format!("python3 interpreter not found: {e}"),
+                        "errorType": "Runtime.InvalidRuntime",
+                    })
+                    .to_string(),
+                    function_error: Some("Runtime.InvalidRuntime".to_string()),
+                    logs: String::new(),
+                };
+            }
+            return missing_runtime_result(&e.to_string());
+        }
     };
 
     // Start draining pipes immediately, from dedicated threads. Output
@@ -346,8 +439,10 @@ pub fn execute_python(
     let stdout_rx = drain_thread(child.stdout.take(), LOCAL_OUTPUT_CAP);
     let stderr_rx = drain_thread(child.stderr.take(), LOCAL_OUTPUT_CAP);
 
-    // Wait up to the function timeout; kill on overrun.
-    let wait_secs = u64::from(timeout_secs.max(1)) + 5;
+    // Wait up to the function timeout plus the python-era 2s grace; kill on
+    // overrun (all executors share the `+2` kill budget — the era's
+    // `subprocess.run(..., timeout=timeout+2)`).
+    let wait_secs = u64::from(timeout_secs.max(1)) + 2;
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(wait_secs);
     let mut timed_out = false;
     loop {
@@ -373,7 +468,6 @@ pub fn execute_python(
     // new can arrive on a pipe whose producer is gone) instead of waiting
     // out the whole remaining timeout budget.
     let drain_deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
-    let _ = timed_out; // still consulted below for the kill path
     let stdout = collect_by(&stdout_rx, drain_deadline);
     let stderr = collect_by(&stderr_rx, drain_deadline);
 
@@ -392,15 +486,10 @@ pub fn execute_python(
     }
 
     if timed_out {
-        return ExecResult {
-            payload: json!({
-                "errorMessage": format!("Task timed out after {timeout_secs} seconds"),
-                "errorType": "Task.TimedOut",
-            })
-            .to_string(),
-            function_error: Some("Handled".to_string()),
-            logs,
-        };
+        // Era TimeoutExpired contract (executor.py:771-776): the platform
+        // timeout rides `x-amz-function-error: Task.TimedOut` with the
+        // .00-formatted message — like every other executor's kill path.
+        return crate::docker_runtime::run_timed_out_result(timeout_secs, &logs);
     }
 
     let parsed: Value = serde_json::from_str(&result_raw).unwrap_or(Value::Null);
@@ -495,6 +584,16 @@ function extractZip(zipPath, destDir) {
     }
     if (eocd < 0) throw new Error(`Invalid ZIP archive: ${zipPath}`);
     const entryCount = buf.readUInt16LE(eocd + 10);
+    // EOCD stores a 16-bit count; 0xFFFF marks the zip64 overflow sentinel.
+    // A >65,535-entry package previously SILENTLY extracted only the first
+    // 65,535 files and answered a confusing module-not-found. The node
+    // bootstrap has no zip64 reader — fail the invoke with the explicit
+    // error instead of a lying partial extraction.
+    if (entryCount === 0xffff) {
+        throw new Error(
+            'ZIP archive has more than 65535 entries (zip64); the node bootstrap cannot read it'
+        );
+    }
     let offset = buf.readUInt32LE(eocd + 16);
     for (let i = 0; i < entryCount; i++) {
         if (buf.readUInt32LE(offset) !== 0x02014b50) {
@@ -524,11 +623,15 @@ function extractZip(zipPath, destDir) {
             fs.mkdirSync(outPath, { recursive: true });
             continue;
         }
-        // Budgeted extraction: the entry's central-directory uncompressed
-        // size joins the running total BEFORE the inflate is started (a
-        // bomb entry never writes); crossing the budget aborts the whole
-        // bootstrap non-zero with the cap text — the executor reports the
-        // missing result as a function error.
+        // Budgeted extraction on BOTH the declaration and the real bytes:
+        // the central-directory uncompressed size joins the running total
+        // BEFORE the inflate starts (an honestly-declared bomb never
+        // inflates), but the declaration is not trusted as the truth — the
+        // inflate is clamped to the remaining budget and the running total
+        // is reconciled to the REAL inflated size afterward, so a lying
+        // central directory (claims 1 MB, actually inflates 300 MB) hits
+        // the clamp and aborts non-zero with the cap text instead of
+        // writing 300 MB to the work dir.
         unpackBudgetWritten += usize;
         if (unpackBudgetWritten > ZIP_UNPACK_BUDGET_BYTES) {
             throw new Error(
@@ -537,13 +640,26 @@ function extractZip(zipPath, destDir) {
         }
         fs.mkdirSync(path.dirname(outPath), { recursive: true });
         const data = buf.slice(dataStart, dataStart + csize);
+        const remaining = Math.max(ZIP_UNPACK_BUDGET_BYTES - unpackBudgetWritten, 0);
         let content;
         if (method === 0) {
             content = data;
         } else if (method === 8) {
-            content = zlib.inflateRawSync(data);
+            try {
+                content = zlib.inflateRawSync(data, { maxOutputLength: remaining });
+            } catch (e) {
+                throw new Error(
+                    `ZIP archive expands past the ${ZIP_UNPACK_BUDGET_BYTES / (1024 * 1024)} MB unzipped limit`
+                );
+            }
         } else {
             throw new Error(`Unsupported compression method ${method} for ${name}`);
+        }
+        unpackBudgetWritten += content.length - usize;
+        if (unpackBudgetWritten > ZIP_UNPACK_BUDGET_BYTES) {
+            throw new Error(
+                `ZIP archive expands past the ${ZIP_UNPACK_BUDGET_BYTES / (1024 * 1024)} MB unzipped limit`
+            );
         }
         fs.writeFileSync(outPath, content);
     }
@@ -858,27 +974,32 @@ pub fn execute_nodejs(
         Ok(f) => f,
         Err(e) => return runtime_broken(e.to_string(), String::new()),
     };
-    let mut cmd = std::process::Command::new(find_node(runtime).unwrap_or_else(|| "node".to_string()));
+    let mut cmd =
+        std::process::Command::new(find_node(runtime).unwrap_or_else(|| "node".to_string()));
     cmd.arg(bootstrap)
         .args(&extract_args)
         .current_dir(&code_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .stdin(Stdio::from(event_file));
-    cmd.env("NODE_PATH", node_path)
-        .env("AWS_LAMBDA_FUNCTION_NAME", function_name)
-        .env("AWS_LAMBDA_FUNCTION_VERSION", function_version)
-        .env("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", memory_size.to_string())
-        .env("AWS_LAMBDA_FUNCTION_TIMEOUT", timeout_secs.to_string())
-        .env("AWS_REGION", region)
-        .env("AWS_DEFAULT_REGION", region)
-        .env("AWS_ACCOUNT_ID", account_id)
-        .env("AWS_ACCESS_KEY_ID", "testing")
-        .env("AWS_SECRET_ACCESS_KEY", "testing")
-        .env("_HANDLER", handler);
-    for (k, v) in env_vars {
-        cmd.env(k, v);
-    }
+    // Era build_env ordering via the shared helper (user env first,
+    // built-ins after, credential trio setdefault); NODE_PATH rides the
+    // built-ins block — the runtime picks the module resolution root.
+    apply_era_env(
+        &mut cmd,
+        env_vars,
+        &[
+            ("NODE_PATH", node_path.clone()),
+            ("AWS_LAMBDA_FUNCTION_NAME", function_name.to_string()),
+            ("AWS_LAMBDA_FUNCTION_VERSION", function_version.to_string()),
+            ("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", memory_size.to_string()),
+            ("AWS_LAMBDA_FUNCTION_TIMEOUT", timeout_secs.to_string()),
+            ("AWS_REGION", region.to_string()),
+            ("AWS_DEFAULT_REGION", region.to_string()),
+            ("AWS_ACCOUNT_ID", account_id.to_string()),
+            ("_HANDLER", handler.to_string()),
+        ],
+    );
 
     let mut child: Child = match cmd.spawn() {
         Ok(c) => c,
@@ -1157,11 +1278,41 @@ fn extract_family_code(
     extract_zip_into(code_zip, work)
 }
 
+/// Era `runtimes/base.py build_env` ordering shared by every executor:
+/// user-configured env vars go down FIRST, Lambda built-ins are assigned
+/// AFTER (the built-ins win for `AWS_LAMBDA_*`, region, `AWS_ACCOUNT_ID`,
+/// `_HANDLER` — a spoofing user value can't lie in `context.function_name`),
+/// and the credential trio follows `setdefault` semantics (user-configured
+/// `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN` are
+/// preserved; the `testing` defaults fill only the gaps).
+fn apply_era_env(
+    cmd: &mut std::process::Command,
+    env_vars: &HashMap<String, String>,
+    builtins: &[(&str, String)],
+) {
+    for (k, v) in env_vars {
+        cmd.env(k, v);
+    }
+    for (k, v) in builtins {
+        cmd.env(k, v);
+    }
+    for cred in [
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+    ] {
+        if !env_vars.contains_key(cred) {
+            cmd.env(cred, "testing");
+        }
+    }
+}
+
 /// Builtin Lambda env pairs for the managed-family executors — the same core
 /// set the docker loose-bridge prefix sets (`loose_bridge_run_prefix`), so a
 /// handler sees identical context inputs whether the invocation ran locally
-/// or inside a mapped runtime image. Applied AFTER user env vars (era
-/// `build_env` ordered user overrides in first, builtins last).
+/// or inside a mapped runtime image. Ordering follows era `build_env` via
+/// [`apply_era_env`]: user overrides first, builtins last, credentials
+/// setdefault.
 #[allow(clippy::too_many_arguments)]
 fn apply_family_env(
     cmd: &mut std::process::Command,
@@ -1175,23 +1326,26 @@ fn apply_family_env(
     region: &str,
     account_id: &str,
 ) {
-    for (k, v) in env_vars {
-        cmd.env(k, v);
-    }
-    cmd.env("AWS_LAMBDA_FUNCTION_NAME", function_name)
-        .env("AWS_LAMBDA_FUNCTION_VERSION", function_version)
-        .env("AWS_LAMBDA_FUNCTION_ARN", function_arn)
-        .env("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", memory_size.to_string())
-        .env("AWS_LAMBDA_FUNCTION_TIMEOUT", timeout_secs.to_string())
-        .env("AWS_REGION", region)
-        .env("AWS_DEFAULT_REGION", region)
-        .env("AWS_ACCOUNT_ID", account_id)
-        .env("AWS_LAMBDA_LOG_GROUP_NAME", format!("/aws/lambda/{function_name}"))
-        .env("AWS_LAMBDA_LOG_STREAM_NAME", shim_log_stream_name())
-        .env("AWS_ACCESS_KEY_ID", "testing")
-        .env("AWS_SECRET_ACCESS_KEY", "testing")
-        .env("AWS_SESSION_TOKEN", "testing")
-        .env("_HANDLER", handler);
+    apply_era_env(
+        cmd,
+        env_vars,
+        &[
+            ("AWS_LAMBDA_FUNCTION_NAME", function_name.to_string()),
+            ("AWS_LAMBDA_FUNCTION_VERSION", function_version.to_string()),
+            ("AWS_LAMBDA_FUNCTION_ARN", function_arn.to_string()),
+            ("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", memory_size.to_string()),
+            ("AWS_LAMBDA_FUNCTION_TIMEOUT", timeout_secs.to_string()),
+            ("AWS_REGION", region.to_string()),
+            ("AWS_DEFAULT_REGION", region.to_string()),
+            ("AWS_ACCOUNT_ID", account_id.to_string()),
+            (
+                "AWS_LAMBDA_LOG_GROUP_NAME",
+                format!("/aws/lambda/{function_name}"),
+            ),
+            ("AWS_LAMBDA_LOG_STREAM_NAME", shim_log_stream_name()),
+            ("_HANDLER", handler.to_string()),
+        ],
+    );
 }
 
 /// The shim's per-invocation log-stream name (`YYYY/MM/DD/[$LATEST]{uuid32}`),
@@ -1238,20 +1392,15 @@ fn run_subprocess_family(
         }
         Err(e) => return missing_runtime_result(&e.to_string()),
     };
-    // Event JSON goes in over stdin; a bootstrap that exits without reading
-    // it all is fine (python's communicate() swallows BrokenPipeError).
     // Era parity: `subprocess.run(input=...)`'s communicate() feeds stdin
     // while draining BOTH pipes concurrently — install the pipe drains
-    // BEFORE the (possibly blocking) write or a chatty bootstrap that
-    // fills its stdout pipe before reading stdin would deadlock the
-    // synchronous write and the `timeout+2` deadline would never be
-    // consulted (review-found hang class).
-    let stdout_rx = drain_thread(child.stdout.take(), FAMILY_RESULT_CAP);
-    let stderr_rx = drain_thread(child.stderr.take(), LOCAL_OUTPUT_CAP);
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(event_json.as_bytes());
-        let _ = stdin.flush();
-    }
+    // BEFORE touching the (possibly blocking) write and feed stdin from a
+    // dedicated thread, or a bootstrap that fills its stdout pipe (or never
+    // reads stdin at all) would wedge the synchronous write and the
+    // `timeout+2` deadline would never be consulted (review-found hang
+    // class).
+    let (stdout_rx, stderr_rx) =
+        communicate_event(&mut child, &event_json, FAMILY_RESULT_CAP, LOCAL_OUTPUT_CAP);
 
     let deadline = std::time::Instant::now()
         + std::time::Duration::from_secs(u64::from(timeout_secs.max(1)) + 2);
@@ -1280,6 +1429,11 @@ fn run_subprocess_family(
     let stdout_raw = collect_by(&stdout_rx, drain_deadline);
     let stderr = collect_by(&stderr_rx, drain_deadline);
     let stdout = stdout_raw.trim().to_string();
+    // Fail loud on a budget-overrun capture: the drain keeps a bounded TAIL
+    // (the last cap bytes), and a handler that ran past the budget would
+    // otherwise deliver a garbage tail-fragment re-encoded as a JSON string
+    // with no error. Real AWS fails the invoke over the response cap.
+    let stdout_hit_cap = stdout_raw.len() >= FAMILY_RESULT_CAP - 1;
 
     if timed_out {
         // Era TimeoutExpired branch: (error_obj, "Task.TimedOut", "Function
@@ -1330,6 +1484,21 @@ fn run_subprocess_family(
         return ExecResult {
             payload: "null".to_string(),
             function_error: None,
+            logs: stderr,
+        };
+    }
+    // (n) fail-loud: a handler whose stdout hit the capture budget cannot be
+    // trusted — its tail was dropped, so JSON parses (if any) arrive in the
+    // WRONG reads or fail. Real AWS answers Function.ResponseSizeTooLarge;
+    // surface that instead of silently wrapping a fragment as a string.
+    if stdout_hit_cap {
+        return ExecResult {
+            payload: json!({
+                "errorMessage": "Response payload size exceeded maximum allowed size (6 MB)",
+                "errorType": "RequestEntityTooLargeException",
+            })
+            .to_string(),
+            function_error: Some("Function.ResponseSizeTooLarge".to_string()),
             logs: stderr,
         };
     }
@@ -1765,7 +1934,7 @@ pub fn detect_dotnet_tfm() -> String {
 /// Run a build/introspection subprocess with bounded waiting: stdout/stderr
 /// drained on the executor's drain threads, killed at the deadline. Returns
 /// `(status code, stdout, stderr)`.
-fn run_bounded(
+pub(crate) fn run_bounded(
     mut cmd: std::process::Command,
     timeout_secs: u64,
 ) -> Option<(Option<i32>, String, String)> {
@@ -2001,7 +2170,9 @@ pub fn execute_dotnet(
             };
         };
         let mut cmd = std::process::Command::new(&dotnet_bin);
-        cmd.arg("exec").arg(bootstrap_dir.join("Bootstrap.dll")).current_dir(&bootstrap_dir);
+        cmd.arg("exec")
+            .arg(bootstrap_dir.join("Bootstrap.dll"))
+            .current_dir(&bootstrap_dir);
         cmd
     };
 
@@ -2093,9 +2264,7 @@ fn copy_entry_capped<R: std::io::Read>(
         if *copied > ZIP_UNPACK_LIMIT_TOTAL {
             return Ok(true);
         }
-        out_file
-            .write_all(&chunk[..n])
-            .map_err(|e| e.to_string())?;
+        out_file.write_all(&chunk[..n]).map_err(|e| e.to_string())?;
     }
 }
 
@@ -2215,22 +2384,23 @@ pub fn execute_custom(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .stdin(Stdio::piped());
-    // User-configured variables first, built-ins after (both mirror the
-    // python-era build_env ordering).
-    for (k, v) in env_vars {
-        cmd.env(k, v);
-    }
-    cmd.env("AWS_LAMBDA_FUNCTION_NAME", function_name)
-        .env("AWS_LAMBDA_FUNCTION_VERSION", function_version)
-        .env("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", memory_size.to_string())
-        .env("AWS_LAMBDA_FUNCTION_TIMEOUT", timeout_secs.to_string())
-        .env("AWS_REGION", region)
-        .env("AWS_DEFAULT_REGION", region)
-        .env("AWS_ACCOUNT_ID", account_id)
-        .env("AWS_ACCESS_KEY_ID", "testing")
-        .env("AWS_SECRET_ACCESS_KEY", "testing")
-        .env("AWS_SESSION_TOKEN", "testing")
-        .env("_HANDLER", handler);
+    // Era build_env ordering via the shared helper (user env first,
+    // built-ins after, credential trio setdefault — a user-configured
+    // AWS_ACCESS_KEY_ID survives, the python-era setdefault semantics).
+    apply_era_env(
+        &mut cmd,
+        env_vars,
+        &[
+            ("AWS_LAMBDA_FUNCTION_NAME", function_name.to_string()),
+            ("AWS_LAMBDA_FUNCTION_VERSION", function_version.to_string()),
+            ("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", memory_size.to_string()),
+            ("AWS_LAMBDA_FUNCTION_TIMEOUT", timeout_secs.to_string()),
+            ("AWS_REGION", region.to_string()),
+            ("AWS_DEFAULT_REGION", region.to_string()),
+            ("AWS_ACCOUNT_ID", account_id.to_string()),
+            ("_HANDLER", handler.to_string()),
+        ],
+    );
 
     let mut child: Child = match cmd.spawn() {
         Ok(c) => c,
@@ -2255,17 +2425,12 @@ pub fn execute_custom(
         }
     };
 
-    // Event JSON goes in over stdin; a write error (a bootstrap that exited
-    // without reading it all) is swallowed, mirroring python's communicate().
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(event_str.as_bytes());
-        let _ = stdin.flush();
-    }
-
-    // Start draining pipes immediately, from dedicated threads, so a
-    // chatty bootstrap cannot deadlock on the OS pipe buffer.
-    let stdout_rx = drain_thread(child.stdout.take(), LOCAL_OUTPUT_CAP);
-    let stderr_rx = drain_thread(child.stderr.take(), LOCAL_OUTPUT_CAP);
+    // Communicate() discipline (see communicate_event): drains before any
+    // write and the event fed from a writer thread, so a chatty bootstrap or
+    // one that never reads stdin cannot wedge the invoke thread — the
+    // deadline loop below kills the child either way.
+    let (stdout_rx, stderr_rx) =
+        communicate_event(&mut child, &event_str, LOCAL_OUTPUT_CAP, LOCAL_OUTPUT_CAP);
 
     // Wait up to the function timeout plus the python-era 2s grace; kill the
     // child on overrun.
@@ -3043,10 +3208,10 @@ exports.handler = async (event, context) => {
             }
             fs::write(path, content).unwrap();
         }
-        let out = dir
-            .parent()
-            .unwrap()
-            .join(format!("{}.zip", dir.file_name().unwrap().to_string_lossy()));
+        let out = dir.parent().unwrap().join(format!(
+            "{}.zip",
+            dir.file_name().unwrap().to_string_lossy()
+        ));
 
         let zip = make_zip_dir(&dir, &out);
         let _ = fs::remove_dir_all(&dir);
@@ -3082,10 +3247,10 @@ exports.handler = async (event, context) => {
             "javac failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        let out = dir
-            .parent()
-            .unwrap()
-            .join(format!("{}.zip", dir.file_name().unwrap().to_string_lossy()));
+        let out = dir.parent().unwrap().join(format!(
+            "{}.zip",
+            dir.file_name().unwrap().to_string_lossy()
+        ));
         let zip = make_zip_dir(&dir, &out);
         let _ = fs::remove_dir_all(&dir);
         let _ = fs::remove_file(&out);
@@ -3123,8 +3288,7 @@ exports.handler = async (event, context) => {
         apply_dotnet_compile_env(&mut cmd);
         let output = cmd.output().expect("dotnet build failed");
         assert!(
-            output.status.success()
-                && out_dir.join("MyLambda.dll").is_file(),
+            output.status.success() && out_dir.join("MyLambda.dll").is_file(),
             "dotnet build failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
@@ -3174,12 +3338,21 @@ exports.handler = async (event, context) => {
         // the default `ruby` is the fallback (fault-in installs are out of
         // scope for the offline twin). On this host both live at /usr/bin.
         if which_bin("ruby3.2").is_some() {
-            assert_eq!(find_ruby("ruby3.2").as_deref(), which_bin("ruby3.2").as_deref());
+            assert_eq!(
+                find_ruby("ruby3.2").as_deref(),
+                which_bin("ruby3.2").as_deref()
+            );
         } else {
-            assert_eq!(find_ruby("ruby3.2").as_deref(), which_bin("ruby").as_deref());
+            assert_eq!(
+                find_ruby("ruby3.2").as_deref(),
+                which_bin("ruby").as_deref()
+            );
         }
         // Unknown identifiers go straight to the default binary.
-        assert_eq!(find_ruby("ruby2.7").as_deref(), which_bin("ruby").as_deref());
+        assert_eq!(
+            find_ruby("ruby2.7").as_deref(),
+            which_bin("ruby").as_deref()
+        );
     }
 
     #[test]
@@ -3282,15 +3455,15 @@ exports.handler = async (event, context) => {
         let payload: Value = serde_json::from_str(&raised.payload).unwrap();
         assert_eq!(payload["errorType"], "RuntimeError");
         assert!(
-            payload["errorMessage"].as_str().unwrap_or_default().contains("boom"),
+            payload["errorMessage"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("boom"),
             "payload: {payload}"
         );
 
         let missing_module = exec_ruby(
-            &make_files_zip(&[(
-                "other.rb",
-                "def handler(event:, context:)\n  'ok'\nend\n",
-            )]),
+            &make_files_zip(&[("other.rb", "def handler(event:, context:)\n  'ok'\nend\n")]),
             "lambda_function.handler",
             r#"{}"#,
             10,
@@ -3299,7 +3472,10 @@ exports.handler = async (event, context) => {
         let payload: Value = serde_json::from_str(&missing_module.payload).unwrap();
         assert_eq!(payload["errorType"], "Runtime.ImportModuleError");
         assert!(
-            payload["errorMessage"].as_str().unwrap_or_default().contains("Cannot find module"),
+            payload["errorMessage"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("Cannot find module"),
             "payload: {payload}"
         );
 
@@ -3315,7 +3491,10 @@ exports.handler = async (event, context) => {
         assert_eq!(missing_method.function_error.as_deref(), Some("Handled"));
         let payload: Value = serde_json::from_str(&missing_method.payload).unwrap();
         assert!(
-            payload["errorMessage"].as_str().unwrap_or_default().contains("HandlerNotFound")
+            payload["errorMessage"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("HandlerNotFound")
                 || payload["errorType"] == "Runtime.HandlerNotFound",
             "payload: {payload}"
         );
@@ -3389,7 +3568,11 @@ exports.handler = async (event, context) => {
             "us-east-1",
             "123456789012",
         );
-        assert_eq!(res.function_error, None, "logs: {} payload: {}", res.logs, res.payload);
+        assert_eq!(
+            res.function_error, None,
+            "logs: {} payload: {}",
+            res.logs, res.payload
+        );
         let payload: Value = serde_json::from_str(&res.payload).unwrap();
         assert_eq!(payload["val"], json!("from-layer"));
     }
@@ -3443,7 +3626,12 @@ exports.handler = async (event, context) => {
             "Handler.java",
             "public class Handler {\n    public String handleRequest(String event, Object context) {\n        return event;\n    }\n}\n",
         )]);
-        let echo = exec_java(&echo_zip, "Handler::handleRequest", r#"{"hello": "java"}"#, 30);
+        let echo = exec_java(
+            &echo_zip,
+            "Handler::handleRequest",
+            r#"{"hello": "java"}"#,
+            30,
+        );
         assert_eq!(echo.function_error, None, "logs: {}", echo.logs);
         let payload: Value = serde_json::from_str(&echo.payload).unwrap();
         assert_eq!(payload["hello"], json!("java"));
@@ -3457,7 +3645,10 @@ exports.handler = async (event, context) => {
         let payload: Value = serde_json::from_str(&raised.payload).unwrap();
         assert_eq!(payload["errorType"], "RuntimeException");
         assert!(
-            payload["errorMessage"].as_str().unwrap_or_default().contains("java boom"),
+            payload["errorMessage"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("java boom"),
             "payload: {payload}"
         );
 
@@ -3524,7 +3715,11 @@ exports.handler = async (event, context) => {
             "public class Handler {\n    public String handleRequest(String event, Object context) {\n        return \"default-method\";\n    }\n}\n",
         )]);
         let default_method = exec_java(&default_zip, "Handler", r#"{}"#, 30);
-        assert_eq!(default_method.function_error, None, "logs: {}", default_method.logs);
+        assert_eq!(
+            default_method.function_error, None,
+            "logs: {}",
+            default_method.logs
+        );
         assert_eq!(default_method.payload, json!("default-method").to_string());
 
         let stream_zip = make_java_zip(&[(
@@ -3566,7 +3761,10 @@ exports.handler = async (event, context) => {
             r#"{}"#,
             30,
         );
-        assert_eq!(bad_format.function_error.as_deref(), Some("Runtime.HandlerNotFound"));
+        assert_eq!(
+            bad_format.function_error.as_deref(),
+            Some("Runtime.HandlerNotFound")
+        );
         let payload: Value = serde_json::from_str(&bad_format.payload).unwrap();
         assert_eq!(payload["errorType"], "Runtime.HandlerNotFound");
         assert!(
@@ -3583,11 +3781,17 @@ exports.handler = async (event, context) => {
             r#"{}"#,
             30,
         );
-        assert_eq!(guard.function_error.as_deref(), Some("Runtime.ImportModuleError"));
+        assert_eq!(
+            guard.function_error.as_deref(),
+            Some("Runtime.ImportModuleError")
+        );
         let payload: Value = serde_json::from_str(&guard.payload).unwrap();
         assert_eq!(payload["errorType"], "Runtime.ImportModuleError");
         assert!(
-            payload["errorMessage"].as_str().unwrap_or_default().contains("../evil"),
+            payload["errorMessage"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("../evil"),
             "payload: {payload}"
         );
     }
@@ -3603,7 +3807,10 @@ exports.handler = async (event, context) => {
             r#"{}"#,
             30,
         );
-        assert_eq!(res.function_error.as_deref(), Some("Runtime.ImportModuleError"));
+        assert_eq!(
+            res.function_error.as_deref(),
+            Some("Runtime.ImportModuleError")
+        );
         let payload: Value = serde_json::from_str(&res.payload).unwrap();
         assert_eq!(payload["errorType"], "Runtime.ImportModuleError");
         assert!(
@@ -3626,7 +3833,11 @@ exports.handler = async (event, context) => {
         let cs = "using System;\nnamespace MyLambda\n{\n    public class Function\n    {\n        public string Handler(string eventJson, object context)\n        {\n            return \"{\\\"compiled\\\": true}\";\n        }\n    }\n}\n";
         let zip = make_files_zip(&[("Handler.cs", cs)]);
         let res = exec_dotnet(&zip, "MyLambda::MyLambda.Function::Handler", r#"{}"#, 60);
-        assert_eq!(res.function_error, None, "logs: {} payload: {}", res.logs, res.payload);
+        assert_eq!(
+            res.function_error, None,
+            "logs: {} payload: {}",
+            res.logs, res.payload
+        );
         let payload: Value = serde_json::from_str(&res.payload).unwrap();
         assert_eq!(payload["compiled"], json!(true));
     }
@@ -3642,23 +3853,25 @@ exports.handler = async (event, context) => {
         let cs = "using System;\n\nnamespace MyLambda\n{\n    public class Function\n    {\n        public string Handler(string eventJson, object context)\n        {\n            return \"{\\\"prefab\\\": \\\"yes\\\"}\";\n        }\n    }\n}\n";
         let zip = make_dotnet_dll_zip(cs);
         let res = exec_dotnet(&zip, "MyLambda::MyLambda.Function::Handler", r#"{}"#, 60);
-        assert_eq!(res.function_error, None, "logs: {} payload: {}", res.logs, res.payload);
+        assert_eq!(
+            res.function_error, None,
+            "logs: {} payload: {}",
+            res.logs, res.payload
+        );
         let payload: Value = serde_json::from_str(&res.payload).unwrap();
         assert_eq!(payload["prefab"], json!("yes"));
 
         // Compat not-found shapes against the same assembly: a wrong type
         // (ImportModuleError) and a wrong method (HandlerNotFound).
-        let wrong_type = exec_dotnet(
-            &zip,
-            "MyLambda::MyLambda.WrongClass::Handler",
-            r#"{}"#,
-            60,
-        );
+        let wrong_type = exec_dotnet(&zip, "MyLambda::MyLambda.WrongClass::Handler", r#"{}"#, 60);
         assert_eq!(wrong_type.function_error.as_deref(), Some("Handled"));
         let payload: Value = serde_json::from_str(&wrong_type.payload).unwrap();
         assert_eq!(payload["errorType"], "Runtime.ImportModuleError");
         assert!(
-            payload["errorMessage"].as_str().unwrap_or_default().contains("WrongClass"),
+            payload["errorMessage"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("WrongClass"),
             "payload: {payload}"
         );
 
@@ -3693,7 +3906,10 @@ exports.handler = async (event, context) => {
         assert_eq!(res.function_error.as_deref(), Some("Handled"));
         let payload: Value = serde_json::from_str(&res.payload).unwrap();
         assert!(
-            payload["errorMessage"].as_str().unwrap_or_default().contains("something went wrong"),
+            payload["errorMessage"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("something went wrong"),
             "payload: {payload}"
         );
         assert_eq!(payload["errorType"], "InvalidOperationException");
@@ -3799,7 +4015,8 @@ with zipfile.ZipFile(sys.argv[1], "w", compression=zipfile.ZIP_DEFLATED) as zf:
             "payload: {payload}"
         );
         assert!(
-            res.logs.contains("ZIP archive expands past the 250 MB unzipped limit"),
+            res.logs
+                .contains("ZIP archive expands past the 250 MB unzipped limit"),
             "the shim prints the cap text — logs: {}",
             res.logs
         );
@@ -3826,8 +4043,113 @@ with zipfile.ZipFile(sys.argv[1], "w", compression=zipfile.ZIP_DEFLATED) as zf:
         let payload: Value = serde_json::from_str(&res.payload).unwrap();
         assert_eq!(payload["errorType"], "Runtime.ExitError");
         assert!(
-            res.logs.contains("ZIP archive expands past the 250 MB unzipped limit"),
+            res.logs
+                .contains("ZIP archive expands past the 250 MB unzipped limit"),
             "the bootstrap prints the cap text — logs: {}",
+            res.logs
+        );
+    }
+
+    // The node bootstrap's budget holds against a LYING central directory:
+    // an entry declaring 1 MB while actually inflating 300 MB (patched
+    // fixture, the review's verified 306KB→300MB write) is stopped by the
+    // inflate clamp and aborts with the cap text instead of writing.
+    #[test]
+    fn node_bootstrap_rejects_a_lying_central_directory() {
+        // Same fixture shape as make_zip_bomb, but the central directory's
+        // (and local header's) uncompressed size gets patched down to 1 MB
+        // so only the real-byte accounting can refuse it.
+        let dir = std::env::temp_dir().join(format!("lam-lie-{}", uuid::Uuid::new_v4().simple()));
+        fs::create_dir_all(&dir).unwrap();
+        let zpath = dir.join("lying.zip");
+        let snippet = r#"import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], "w", compression=zipfile.ZIP_DEFLATED) as zf:
+    zf.writestr("lambda_function.py", sys.argv[2])
+    with zf.open("big.bin", "w") as fh:
+        chunk = bytes([0]) * (1024 * 1024)
+        for _ in range(300):
+            fh.write(chunk)
+"#;
+        let out = std::process::Command::new("python3")
+            .arg("-c")
+            .arg(snippet)
+            .arg(zpath.as_os_str())
+            .arg("def handler(e, c):\n    return {'ok': True}")
+            .stdin(Stdio::null())
+            .output()
+            .expect("python3 failed");
+        assert!(
+            out.status.success(),
+            "lying-zip maker failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let mut zip = fs::read(&zpath).unwrap();
+        let _ = fs::remove_dir_all(&dir);
+
+        // Patch every big.bin size declaration down to 1 MB: the central
+        // directory entry's usize (offset +24) and the local header's usize
+        // (+22).
+        fn le32(buf: &[u8], at: usize) -> u32 {
+            u32::from_le_bytes(buf[at..at + 4].try_into().unwrap())
+        }
+        let locate_eocd = |buf: &[u8]| -> usize {
+            let lower = buf.len().saturating_sub(22 + 65535);
+            // `..=len-22`: a comment-less archive ends exactly at the EOCD.
+            (lower..buf.len().saturating_sub(21))
+                .rev()
+                .find(|&i| buf[i..i + 4] == [0x50, 0x4b, 0x05, 0x06])
+                .expect("EOCD present")
+        };
+        let eocd = locate_eocd(&zip) as usize;
+        let entry_count =
+            u16::from_le_bytes(zip[eocd + 10..eocd + 12].try_into().unwrap()) as usize;
+        let mut offset = le32(&zip, eocd + 16) as usize;
+        let mut patched = false;
+        for _ in 0..entry_count {
+            assert_eq!(
+                le32(&zip, offset),
+                0x02014b50,
+                "central directory entry signature"
+            );
+            let name_len =
+                u16::from_le_bytes(zip[offset + 28..offset + 30].try_into().unwrap()) as usize;
+            let extra_len =
+                u16::from_le_bytes(zip[offset + 30..offset + 32].try_into().unwrap()) as usize;
+            let comment_len =
+                u16::from_le_bytes(zip[offset + 32..offset + 34].try_into().unwrap()) as usize;
+            let lfh_offset = le32(&zip, offset + 42) as usize;
+            let name = &zip[offset + 46..offset + 46 + name_len];
+            if name == b"big.bin" {
+                zip[offset + 24..offset + 28].copy_from_slice(&1_048_576u32.to_le_bytes());
+                zip[lfh_offset + 22..lfh_offset + 26].copy_from_slice(&1_048_576u32.to_le_bytes());
+                patched = true;
+                break;
+            }
+            offset += 46 + name_len + extra_len + comment_len;
+        }
+        assert!(patched, "big.bin entry found in the fixture");
+
+        let res = execute_nodejs(
+            "nodejs20.x",
+            &zip,
+            &[],
+            "lambda_function.handler",
+            r#"{}"#,
+            "bomb-node-fn",
+            "$LATEST",
+            &HashMap::new(),
+            20,
+            128,
+            "us-east-1",
+            "123456789012",
+        );
+        assert!(res.function_error.is_some(), "logs: {}", res.logs);
+        let payload: Value = serde_json::from_str(&res.payload).unwrap();
+        assert_eq!(payload["errorType"], "Runtime.ExitError");
+        assert!(
+            res.logs
+                .contains("ZIP archive expands past the 250 MB unzipped limit"),
+            "the declared budget pass must not smuggle a 300MB write: {}",
             res.logs
         );
     }

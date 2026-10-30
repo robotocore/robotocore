@@ -1,12 +1,16 @@
 """Fixtures for the event chain test suite."""
 
+import os
 import uuid
 
 import pytest
 
 from .app import EventChainOrchestrator
 
-ENDPOINT_URL = "http://localhost:4566"
+# The AGENTS.md portability rule: suites follow ENDPOINT_URL (the compat
+# lane runs on non-default ports); localhost:4566 is only the no-env
+# default.
+ENDPOINT_URL = os.environ.get("AWS_ENDPOINT_URL", "http://localhost:4566")
 
 
 @pytest.fixture

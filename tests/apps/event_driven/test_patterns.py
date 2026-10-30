@@ -89,10 +89,10 @@ class TestEventPatterns:
         )
 
         messages = event_router.receive_messages(q_url, expected=1, timeout=5)
-        assert len(messages) >= 1
+        # Exactly the matching event is delivered; the non-match is excluded.
+        assert len(messages) == 1
         body = json.loads(messages[0]["Body"])
-        if "detail-type" in body:
-            assert body["detail-type"] == "OrderCreated"
+        assert body["detail-type"] == "OrderCreated"
 
     def test_multiple_values_in_pattern_acts_as_or(
         self, event_router: EventRouter, event_bus: str, unique_name: str
@@ -151,11 +151,11 @@ class TestEventPatterns:
         )
 
         messages = event_router.receive_messages(q_url, expected=1, timeout=5)
-        # Should receive exactly 1 (the matching event)
-        assert len(messages) >= 1
+        # The AND pattern delivers exactly the matching event; the source
+        # -only event is excluded.
+        assert len(messages) == 1
         body = json.loads(messages[0]["Body"])
-        if "detail-type" in body:
-            assert body["detail-type"] == "OrderCreated"
+        assert body["detail-type"] == "OrderCreated"
 
     def test_detail_field_exact_match(
         self, event_router: EventRouter, event_bus: str, unique_name: str
@@ -196,7 +196,12 @@ class TestEventPatterns:
         )
 
         messages = event_router.receive_messages(q_url, expected=1, timeout=5)
-        assert len(messages) >= 1
+        # Exactly the confirmed event is delivered; the pending one is
+        # excluded.
+        assert len(messages) == 1
+        body = json.loads(messages[0]["Body"])
+        assert body["detail"]["order_id"] == "O1"
+        assert body["detail"]["status"] == "confirmed"
 
     def test_rule_with_description(
         self, event_router: EventRouter, event_bus: str, unique_name: str

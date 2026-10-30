@@ -21,6 +21,10 @@ COPY ui/ /app/ui/
 COPY metadata.json /app/
 COPY docker-compose.yaml /app/
 
+# The extension icon ships next to metadata.json (Docker Desktop resolves
+# `metadata.json`'s "icon" relative to the extension root).
+COPY robotocore.svg /app/robotocore.svg
+
 LABEL com.docker.desktop.extension.api.version="0.3.4"
 LABEL com.docker.desktop.extension.icon="robotocore.svg"
 

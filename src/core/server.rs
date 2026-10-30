@@ -828,8 +828,6 @@ impl NativeHandlers {
     ) -> axum::response::Response {
         use axum::response::IntoResponse;
 
-        let anyhow = ("", 0u16);
-        let _ = anyhow;
         let req = lambda::protocol::AwsRequest {
             service: "lambda".to_string(),
             operation: "Invoke".to_string(),
@@ -1126,7 +1124,11 @@ pub async fn catch_all_handler(
         // computed further down; derive them early here.
         let account =
             extract_account_from_request(&headers, uri.query().unwrap_or(""), &body_bytes);
-        let account_id = account.to_string();
+        // The audit row shows the 12-digit form the client sent (leading
+        // zeros are real account ids — the u64 key collapses but the audit
+        // row must not).
+        let account_id = canonical_account_string(&headers, uri.query().unwrap_or(""), &body_bytes)
+            .unwrap_or_else(|| account.to_string());
         let region_for_audit = extract_region_from_request(&headers)
             .or_else(|| extract_region_from_query(uri.query().unwrap_or("")))
             .unwrap_or_else(|| "us-east-1".to_string());
@@ -1137,21 +1139,42 @@ pub async fn catch_all_handler(
                 exec_headers.insert(key.as_str().to_lowercase(), v.to_string());
             }
         }
-        let result = crate::core::apigw_exec::execute(
-            &state.registry.native,
-            &method,
-            crate::core::apigw_exec::ExecuteTarget {
-                api_id: &api_id,
-                stage: &stage,
-                proxy_path: &proxy_path,
-            },
-            account,
-            region_for_audit.as_str(),
-            uri.query().unwrap_or(""),
-            &exec_headers,
-            &body_bytes,
+        // The executor runs in-process lambda invokes synchronously: dispatch
+        // onto the blocking pool (with the same blanket timeout the
+        // spawn_blocking service path applies via request_timeout_secs) so
+        // the async workers stay free while a handler runs.
+        let native = state.registry.native.clone();
+        let region_audit = region_for_audit.clone();
+        let query_string = uri.query().unwrap_or("").to_string();
+        let body_for_exec = body_bytes.clone();
+        let timed = tokio::time::timeout(
+            EXEC_BLOCKING_TIMEOUT,
+            tokio::task::spawn_blocking(move || {
+                crate::core::apigw_exec::execute(
+                    &native,
+                    &method,
+                    crate::core::apigw_exec::ExecuteTarget {
+                        api_id: &api_id,
+                        stage: &stage,
+                        proxy_path: &proxy_path,
+                    },
+                    account,
+                    region_audit.as_str(),
+                    query_string.as_str(),
+                    &exec_headers,
+                    &body_for_exec,
+                )
+            }),
         )
         .await;
+        let result = match timed {
+            Ok(Ok(resp)) => resp,
+            Ok(Err(e)) => error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("Handler task failed: {e}"),
+            ),
+            Err(_) => error_response(StatusCode::GATEWAY_TIMEOUT, "Request timed out"),
+        };
         audit_out(
             Some("apigateway"),
             None,
@@ -1191,7 +1214,11 @@ pub async fn catch_all_handler(
     if let Some(target) = furl_target {
         let account =
             extract_account_from_request(&headers, uri.query().unwrap_or(""), &body_bytes);
-        let account_id = account.to_string();
+        // The audit row shows the 12-digit form the client sent (leading
+        // zeros are real account ids — the u64 key collapses but the audit
+        // row must not).
+        let account_id = canonical_account_string(&headers, uri.query().unwrap_or(""), &body_bytes)
+            .unwrap_or_else(|| account.to_string());
         let region_for_audit = extract_region_from_request(&headers)
             .or_else(|| extract_region_from_query(uri.query().unwrap_or("")))
             .unwrap_or_else(|| "us-east-1".to_string());
@@ -1202,15 +1229,35 @@ pub async fn catch_all_handler(
                 exec_headers.insert(key.as_str().to_lowercase(), v.to_string());
             }
         }
-        let result = crate::core::furl_exec::execute(
-            &state.registry.native,
-            &method,
-            target,
-            account,
-            &body_bytes,
-            &exec_headers,
-            uri.query().unwrap_or(""),
-        );
+        // Same blocking-pool dispatch as the apigw executor above: the in
+        // -process invoke must not pin an async worker for the handler's
+        // whole runtime.
+        let native = state.registry.native.clone();
+        let query_string = uri.query().unwrap_or("").to_string();
+        let body_for_exec = body_bytes.clone();
+        let timed = tokio::time::timeout(
+            EXEC_BLOCKING_TIMEOUT,
+            tokio::task::spawn_blocking(move || {
+                crate::core::furl_exec::execute(
+                    &native,
+                    &method,
+                    target,
+                    account,
+                    &body_for_exec,
+                    &exec_headers,
+                    query_string.as_str(),
+                )
+            }),
+        )
+        .await;
+        let result = match timed {
+            Ok(Ok(resp)) => resp,
+            Ok(Err(e)) => error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("Handler task failed: {e}"),
+            ),
+            Err(_) => error_response(StatusCode::GATEWAY_TIMEOUT, "Request timed out"),
+        };
         audit_out(
             Some("lambda"),
             None,
@@ -1270,7 +1317,8 @@ pub async fn catch_all_handler(
     let region = extract_region_from_request(&headers)
         .or_else(|| extract_region_from_query(uri.query().unwrap_or("")))
         .unwrap_or_else(|| "us-east-1".to_string());
-    let account_id = account.to_string();
+    let account_id = canonical_account_string(&headers, uri.query().unwrap_or(""), &body_bytes)
+        .unwrap_or_else(|| account.to_string());
     let region_for_audit = region.clone();
 
     // Chaos fault injection runs where the python twin's handler chain ran
@@ -2131,6 +2179,135 @@ pub async fn usage_errors_handler() -> impl IntoResponse {
     )
 }
 
+/// The process's CORS configuration (env-driven, read once).
+fn cors_config() -> &'static crate::cors::CorsConfig {
+    static CONFIG: OnceLock<crate::cors::CorsConfig> = OnceLock::new();
+    CONFIG.get_or_init(crate::cors::CorsConfig::from_env)
+}
+
+/// Blanket for the furl/apigw executors' blocking lambda dispatch — the same
+/// timeout discipline the spawn_blocking service path applies (30s default,
+/// raised per request). An in-process invoke budget can reach the 900s AWS
+/// function-timeout maximum, so these unaccounted executors blanket at that
+/// bound instead of the default.
+const EXEC_BLOCKING_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(900);
+
+/// Attach `headers` to `response` unless a same-name header is already set
+/// (route-responses win: function-URL/s3 CORS policies must not be shadowed
+/// by the gateway defaults).
+fn append_cors_headers(response: &mut Response, headers: Vec<(String, String)>) {
+    for (name, value) in headers {
+        if response.headers().contains_key(name.as_str()) {
+            continue;
+        }
+        if let (Ok(name), Ok(value)) = (
+            http::header::HeaderName::from_bytes(name.as_bytes()),
+            HeaderValue::from_str(&value),
+        ) {
+            response.headers_mut().append(name, value);
+        }
+    }
+}
+
+/// Browser preflight answer: 204 with the configured CORS headers and no AWS
+/// call.
+fn preflight_response(origin: Option<&str>) -> Response {
+    let mut response = (StatusCode::NO_CONTENT, axum::body::Body::empty()).into_response();
+    let headers = crate::cors::build_cors_headers(cors_config(), origin);
+    append_cors_headers(&mut response, headers);
+    response
+}
+
+/// Bucket-rule preflight straight to the S3 crate: a bucket-backed OPTIONS
+/// request consults the bucket's PutBucketCors rules (`Some(response)` when
+/// an S3 cors answer exists, `None` to fall through to the generic
+/// preflight).
+fn s3_options_preflight(state: &AppState, headers: &HeaderMap, path: &str) -> Option<Response> {
+    let parts: Vec<&str> = path.trim_start_matches('/').splitn(2, '/').collect();
+    let bucket = parts.first().filter(|b| !b.is_empty()).map(|s| *s);
+    let bucket = bucket?;
+    let key = parts.get(1).filter(|k| !k.is_empty()).map(|s| *s);
+    let mut header_map: HashMap<String, String> = HashMap::new();
+    for (k, v) in headers.iter() {
+        if let Ok(v) = v.to_str() {
+            header_map.insert(k.as_str().to_lowercase(), v.to_string());
+        }
+    }
+    let account = extract_account_from_request(headers, "", &[]);
+    let req = s3::protocol::AwsRequest {
+        service: "s3".to_string(),
+        operation: "OptionsPreFlight".to_string(),
+        account,
+        region: "us-east-1".to_string(),
+        bucket: Some(bucket.to_string()),
+        key: key.map(String::from),
+        query_params: HashMap::new(),
+        headers: header_map,
+        method: "OPTIONS".to_string(),
+        body: bytes::Bytes::new(),
+        params: serde_json::Value::Null,
+    };
+    let resp = state.registry.native.s3.handle(req);
+    let status = StatusCode::from_u16(resp.status).unwrap_or(StatusCode::OK);
+    let mut response = Response::builder()
+        .status(status)
+        .body(axum::body::Body::from(resp.body))
+        .unwrap_or_else(|_| {
+            error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "invalid preflight response",
+            )
+        });
+    for (name, value) in resp.headers {
+        if let (Ok(name), Ok(value)) = (
+            http::header::HeaderName::from_bytes(name.as_bytes()),
+            HeaderValue::from_str(&value),
+        ) {
+            response.headers_mut().append(name, value);
+        }
+    }
+    Some(response)
+}
+
+/// Browser CORS layer, wiring the previously-dead `src/cors.rs` builders:
+/// OPTIONS preflights (Origin + Access-Control-Request-Method) answer 204
+/// with the configured headers — except on surfaces with their own policy
+/// (function-URL preflights answer from the URL config; S3 bucket preflights
+/// consult the bucket's PutBucketCors rules) — and every response to a
+/// request carrying an Origin header gains the configured CORS headers.
+async fn cors_middleware(
+    State(state): State<Arc<AppState>>,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let origin = req
+        .headers()
+        .get("origin")
+        .and_then(|v| v.to_str().ok())
+        .map(String::from);
+    // Function-URL preflights answer from the URL config inside the
+    // executor; the layer must not shadow that policy.
+    let furl_owned = crate::core::furl_exec::match_url(req.uri().path()).is_some();
+    let is_preflight = req.method() == Method::OPTIONS
+        && origin.is_some()
+        && req.headers().contains_key("access-control-request-method")
+        && !cors_config().disable_preflight_processing;
+
+    if is_preflight && !furl_owned {
+        if let Some(resp) = s3_options_preflight(&state, req.headers(), req.uri().path()) {
+            return resp;
+        }
+        return preflight_response(origin.as_deref());
+    }
+
+    let mut response = next.run(req).await;
+    if let Some(origin) = origin.filter(|_| !furl_owned) {
+        let headers = crate::cors::build_cors_headers(cors_config(), Some(&origin));
+        append_cors_headers(&mut response, headers);
+    }
+    response
+}
+
 /// Build the Axum router.
 pub fn build_router(
     registry: ServiceRegistry,
@@ -2193,6 +2370,12 @@ pub fn build_router(
             delete(crate::core::chaos::chaos_delete_rule),
         )
         .fallback(catch_all_handler)
+        // Browser CORS layer (see cors_middleware): preflight + header wiring
+        // for requests carrying an Origin header.
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            cors_middleware,
+        ))
         .with_state(state)
 }
 
@@ -2823,6 +3006,83 @@ fn extract_account_from_request(headers: &HeaderMap, query_string: &str, body: &
     123456789012
 }
 
+/// The string form of the account a request resolved to — used for the
+/// audit row. The u64 state key is load-bearing, but the audit display must
+/// not collapse distinct 12-digit accounts that only differ in leading
+/// zeros (`X-Robotocore-Account: 000000000123` reporting `123` names an
+/// account no client sent). Re-derive the 12-digit form the same way the
+/// payer was found; ids that went through `parse_account_from_key` keep
+/// their original digits.
+fn canonical_account_string(
+    headers: &HeaderMap,
+    query_string: &str,
+    body: &[u8],
+) -> Option<String> {
+    // Same priority chain extract_account_from_request uses; only sources
+    // that can tell a 12-digit id apart matter here — `None` falls back to
+    // the plain u64 render at the call site.
+    if let Some(account_header) = headers.get("X-Robotocore-Account") {
+        if let Ok(account_str) = account_header.to_str() {
+            if account_str.len() == 12 && account_str.chars().all(|c| c.is_ascii_digit()) {
+                return Some(account_str.to_string());
+            }
+        }
+    }
+    let twelve_digit = |candidate: &str| -> Option<String> {
+        (candidate.len() == 12 && candidate.chars().all(|c| c.is_ascii_digit()))
+            .then(|| candidate.to_string())
+    };
+    if let Some(auth) = headers.get("Authorization").and_then(|v| v.to_str().ok()) {
+        if let Some(cred_part) = auth.split("Credential=").nth(1) {
+            if let Some(access_key) = cred_part.split('/').next() {
+                if let Some(id) = twelve_digit(access_key) {
+                    return Some(id);
+                }
+            }
+        }
+    }
+    if let Some(cred) = query_string.split('&').find_map(|kv| {
+        let (k, v) = kv.split_once('=')?;
+        if k != "X-Amz-Credential" {
+            return None;
+        }
+        urlencoding::decode(v).ok().map(|c| c.into_owned())
+    }) {
+        if let Some(access_key) = cred.split('/').next() {
+            if let Some(id) = twelve_digit(access_key) {
+                return Some(id);
+            }
+        }
+    }
+    for source in [
+        query_string.split('&').find_map(|kv| {
+            let (k, v) = kv.split_once('=')?;
+            (k == "AWSAccessKeyId" && !v.is_empty()).then(|| {
+                urlencoding::decode(v)
+                    .ok()
+                    .map(|c| c.into_owned())
+                    .unwrap_or_default()
+            })
+        }),
+        String::from_utf8_lossy(body).split('&').find_map(|kv| {
+            let (k, v) = kv.split_once('=')?;
+            (k == "AWSAccessKeyId" && !v.is_empty()).then(|| {
+                urlencoding::decode(v)
+                    .ok()
+                    .map(|c| c.into_owned())
+                    .unwrap_or_default()
+            })
+        }),
+    ] {
+        if let Some(key) = source {
+            if let Some(id) = twelve_digit(&key) {
+                return Some(id);
+            }
+        }
+    }
+    None
+}
+
 /// Extract region from headers.
 fn extract_region_from_query(query_string: &str) -> Option<String> {
     query_string.split('&').find_map(|kv| {
@@ -2885,7 +3145,10 @@ fn response_from_parsed(resp: ParsedResponse, service: &str, operation: &str) ->
     for (key, value) in resp.headers {
         if let Ok(header_value) = HeaderValue::from_str(&value) {
             if let Ok(header_name) = axum::http::HeaderName::from_bytes(key.as_bytes()) {
-                headers_map.insert(header_name, header_value);
+                // APPEND, not insert: a backend may emit repeated headers
+                // (auth flows use several `Set-Cookie`s) and HashMap keying
+                // collapsed them to one.
+                headers_map.append(header_name, header_value);
             }
         }
     }
@@ -3787,5 +4050,167 @@ mod tests {
         assert_eq!(body["status"], "no_state_found");
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // Router wiring identical to build_router, sharing one seedable handler
+    // set so tests can pre-place bucket state the middleware consults.
+    fn cors_test_app(seeded: impl FnOnce(&crate::core::server::NativeHandlers)) -> Router {
+        let (registry, handlers) = ServiceRegistry::new_with_handlers();
+        seeded(&handlers);
+        let state = Arc::new(AppState {
+            registry,
+            snapshots: Arc::new(crate::core::state::SnapshotRegistry::new(&handlers)),
+            named_snapshots: Arc::new(crate::core::state::NamedSnapshots::default()),
+            versioned_snapshots: Arc::new(crate::core::state::VersionedSnapshots::default()),
+        });
+        Router::new()
+            .fallback(|| async { "router-never-reached" })
+            .layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                cors_middleware,
+            ))
+            .with_state(state)
+    }
+
+    // The CORS layer (cors_middleware wired by build_router) uses the
+    // src/cors.rs builders that were previously dead: preflights answer 204
+    // with the configured headers.
+    #[tokio::test]
+    async fn cors_preflight_answers_204_with_headers() {
+        let app = cors_test_app(|_| {});
+        let req = axum::http::Request::builder()
+            .method(Method::OPTIONS)
+            .uri("/")
+            .header("origin", "https://app")
+            .header("access-control-request-method", "POST")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let resp = tower::ServiceExt::oneshot(app, req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+        let allow = resp
+            .headers()
+            .get("access-control-allow-origin")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default();
+        assert_eq!(
+            allow, "*",
+            "no configured allowed_origins -> wildcard allow"
+        );
+        assert!(resp.headers().contains_key("access-control-allow-methods"));
+
+        // No Origin/ACRM headers: the request flows through the router —
+        // the fallback below answers, not a preflight 204.
+        let app = cors_test_app(|_| {});
+        let req = axum::http::Request::builder()
+            .method(Method::OPTIONS)
+            .uri("/")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let resp = tower::ServiceExt::oneshot(app, req).await.unwrap();
+        assert_ne!(resp.status(), StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn cors_headers_added_to_origin_requests() {
+        // A request carrying Origin gets the CORS headers on the response;
+        // the same request without Origin does not.
+        let app = cors_test_app(|_| {});
+        let req = axum::http::Request::builder()
+            .method(Method::GET)
+            .uri("/any-path")
+            .header("origin", "https://app")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let resp = tower::ServiceExt::oneshot(app, req).await.unwrap();
+        assert!(
+            resp.headers().contains_key("access-control-allow-origin"),
+            "responses to Origin-carrying requests carry the CORS headers"
+        );
+
+        let app = cors_test_app(|_| {});
+        let req = axum::http::Request::builder()
+            .method(Method::GET)
+            .uri("/any-path")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let resp = tower::ServiceExt::oneshot(app, req).await.unwrap();
+        assert!(!resp.headers().contains_key("access-control-allow-origin"));
+    }
+
+    // S3 bucket preflights bypass the generic 204 and answer from the
+    // bucket's stored PutBucketCors rules (matching rule -> its headers,
+    // unmatched -> 403 AccessDenied).
+    #[tokio::test]
+    async fn cors_s3_preflight_answers_from_bucket_rules() {
+        fn s3_skeleton() -> s3::protocol::AwsRequest {
+            s3::protocol::AwsRequest {
+                service: "s3".into(),
+                operation: String::new(),
+                account: 123456789012,
+                region: "us-east-1".into(),
+                bucket: Some("cors-rules-bucket".into()),
+                key: None,
+                query_params: std::collections::HashMap::new(),
+                headers: std::collections::HashMap::new(),
+                method: "PUT".into(),
+                body: bytes::Bytes::new(),
+                params: serde_json::Value::Null,
+            }
+        }
+        let app = cors_test_app(|handlers| {
+            let mut create = s3_skeleton();
+            create.operation = "CreateBucket".into();
+            assert_eq!(handlers.s3.handle(create).status, 200);
+            let mut put = s3_skeleton();
+            put.operation = "PutBucketCors".into();
+            put.body = bytes::Bytes::from_static(
+                br#"<CORSConfiguration><CORSRule><AllowedOrigin>https://app</AllowedOrigin><AllowedMethod>GET</AllowedMethod></CORSRule></CORSConfiguration>"#,
+            );
+            assert_eq!(handlers.s3.handle(put).status, 200);
+        });
+        let req = axum::http::Request::builder()
+            .method(Method::OPTIONS)
+            .uri("/cors-rules-bucket/doc.txt")
+            .header("origin", "https://app")
+            .header("access-control-request-method", "GET")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let resp = tower::ServiceExt::oneshot(app, req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let allow = resp
+            .headers()
+            .get("access-control-allow-origin")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default();
+        assert_eq!(allow, "https://app");
+        assert_eq!(
+            resp.headers()
+                .get("access-control-allow-methods")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or_default(),
+            "GET"
+        );
+        // The preflight must not have run the router's fallback (the
+        // answered CORS body comes from the bucket rules, not the catch-all).
+        let body = BodyExt::collect(resp.into_body()).await.unwrap().to_bytes();
+        assert!(body.is_empty(), "S3 preflight carries no body");
+
+        // Unmatched origin answers the bucket-level AccessDenied.
+        let app = cors_test_app(|_| {
+            // No CORS rules on the (nonexistent) bucket: generic 204.
+        });
+        let req = axum::http::Request::builder()
+            .method(Method::OPTIONS)
+            .uri("/some-bucket/doc.txt")
+            .header("origin", "https://other")
+            .header("access-control-request-method", "GET")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let resp = tower::ServiceExt::oneshot(app, req).await.unwrap();
+        let body = BodyExt::collect(resp.into_body()).await.unwrap().to_bytes();
+        assert!(
+            String::from_utf8_lossy(&body).contains("<Error>"),
+            "S3-shaped OPTIONS for an unknown bucket falls back to the crate's error path"
+        );
     }
 }

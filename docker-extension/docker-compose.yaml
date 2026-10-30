@@ -1,6 +1,11 @@
 services:
   robotocore-extension:
-    image: robotocore/docker-desktop-extension:latest
+    # Built from this repo context (the image is not published on any
+    # registry): Docker Desktop's `compose up` runs this file next to
+    # metadata.json, so the UI/VM image builds locally on install.
+    build:
+      context: .
+      dockerfile: Dockerfile
     volumes:
       - robotocore-data:/tmp/robotocore/state
 

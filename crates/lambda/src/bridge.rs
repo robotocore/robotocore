@@ -92,12 +92,21 @@ fn dynamodb_probe() -> &'static RwLock<Option<SourceExistsProbe>> {
     PROBE.get_or_init(|| RwLock::new(None))
 }
 
+fn sqs_probe() -> &'static RwLock<Option<SourceExistsProbe>> {
+    static PROBE: OnceLock<RwLock<Option<SourceExistsProbe>>> = OnceLock::new();
+    PROBE.get_or_init(|| RwLock::new(None))
+}
+
 pub fn register_kinesis_stream_probe(probe: SourceExistsProbe) {
     *kinesis_probe().write() = Some(probe);
 }
 
 pub fn register_dynamodb_table_probe(probe: SourceExistsProbe) {
     *dynamodb_probe().write() = Some(probe);
+}
+
+pub fn register_sqs_queue_probe(probe: SourceExistsProbe) {
+    *sqs_probe().write() = Some(probe);
 }
 
 /// `Some(exists)` when a kinesis stream probe is registered, `None` when
@@ -112,6 +121,31 @@ pub fn kinesis_stream_exists(account: u64, region: &str, stream_name: &str) -> O
 pub fn dynamodb_table_exists(account: u64, region: &str, table_name: &str) -> Option<bool> {
     let probe = dynamodb_probe().read().clone()?;
     Some(probe(account, region, table_name))
+}
+
+/// `Some(exists)` when an sqs queue probe is registered, `None` otherwise.
+pub fn sqs_queue_exists(account: u64, region: &str, queue_name: &str) -> Option<bool> {
+    let probe = sqs_probe().read().clone()?;
+    Some(probe(account, region, queue_name))
+}
+
+/// Attach-time LATEST watermark for a dynamodb-streams mapping (the newest
+/// capture sequence at attach, `None` when unset). The lambda crate stays
+/// decoupled — the gateway engine registers the hook like the kinesis one.
+pub type StreamWatermarkHook = Arc<dyn Fn(u64, &str, &str) -> Option<String> + Send + Sync>;
+
+fn ddb_watermark_hook() -> &'static RwLock<Option<StreamWatermarkHook>> {
+    static HOOK: OnceLock<RwLock<Option<StreamWatermarkHook>>> = OnceLock::new();
+    HOOK.get_or_init(|| RwLock::new(None))
+}
+
+pub fn register_ddb_stream_watermarks(hook: StreamWatermarkHook) {
+    *ddb_watermark_hook().write() = Some(hook);
+}
+
+pub fn dynamodb_stream_latest(account: u64, region: &str, table_name: &str) -> Option<String> {
+    let hook = ddb_watermark_hook().read().clone()?;
+    hook(account, region, table_name)
 }
 
 /// Successful = handler returned; failure = handler raised / runtime invalid.
@@ -421,8 +455,10 @@ mod tests {
     /// (walk + relative paths, like a real deployment package) — works for
     /// text sources and compiled artifacts (.class/.dll) alike.
     fn make_staged_zip(files: &[(&str, &[u8])]) -> Vec<u8> {
-        let dir =
-            std::env::temp_dir().join(format!("lam-bridge-stage-{}", uuid::Uuid::new_v4().simple()));
+        let dir = std::env::temp_dir().join(format!(
+            "lam-bridge-stage-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         for (name, content) in files {
             let path = dir.join(name);
@@ -431,8 +467,10 @@ mod tests {
             }
             std::fs::write(path, content).unwrap();
         }
-        let out_path =
-            dir.parent().unwrap().join(format!("{}.zip", dir.file_name().unwrap().to_string_lossy()));
+        let out_path = dir.parent().unwrap().join(format!(
+            "{}.zip",
+            dir.file_name().unwrap().to_string_lossy()
+        ));
         let out_str = out_path.to_string_lossy().into_owned();
         let root_str = dir.to_string_lossy().into_owned();
         let snippet = "import os, sys, zipfile\nroot, out = sys.argv[1], sys.argv[2]\nwith zipfile.ZipFile(out, 'w') as zf:\n    for dirpath, _, names in os.walk(root):\n        for f in names:\n            p = os.path.join(dirpath, f)\n            zf.write(p, os.path.relpath(p, root))\n";
@@ -567,8 +605,10 @@ mod tests {
         let state = LambdaState::new();
         // Build the class library with the same host TFM the executor uses.
         let tfm = runtime::detect_dotnet_tfm();
-        let dir = std::env::temp_dir()
-            .join(format!("lam-bridge-dotnet-{}", uuid::Uuid::new_v4().simple()));
+        let dir = std::env::temp_dir().join(format!(
+            "lam-bridge-dotnet-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("Function.cs"), "using System.Text.Json;\n\nnamespace MyLambda\n{\n    public class Function\n    {\n        public string Handler(string eventJson, object context)\n        {\n            return \"{\\\"ok\\\": true, \\\"n\\\": 3}\";\n        }\n    }\n}\n").unwrap();
         std::fs::write(

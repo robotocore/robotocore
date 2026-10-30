@@ -712,6 +712,32 @@ impl EventsHandler {
                 continue;
             }
 
+            // Archive capture: the canonical event lands in every archive
+            // whose source bus is this entry's bus and whose EventPattern
+            // matches (archives without a pattern take the whole bus), so
+            // StartReplay can re-deliver the window later.
+            let bus_arn = state.bus_arn(req.account, &req.region, &bus_name);
+            let capture: Vec<String> = state
+                .archives
+                .read()
+                .iter()
+                .filter(|(_, a)| {
+                    a.get("EventSourceArn").and_then(|s| s.as_str()) == Some(bus_arn.as_str())
+                        && a.get("EventPattern")
+                            .and_then(|p| p.as_str())
+                            .and_then(|p| serde_json::from_str::<Value>(p).ok())
+                            .map(|p| matches_pattern(&p, &event))
+                            .unwrap_or(true)
+                })
+                .map(|(n, _)| n.clone())
+                .collect();
+            if !capture.is_empty() {
+                let mut archived = state.archived_events.write();
+                for name in capture {
+                    archived.entry(name).or_default().push(event.clone());
+                }
+            }
+
             let matching: Vec<Arc<Rule>> = state
                 .rules
                 .read()
@@ -1142,7 +1168,17 @@ impl EventsHandler {
                 &format!("Archive {name} not found"),
             );
         };
-        let obj = row.as_object_mut().unwrap();
+        let Some(obj) = row.as_object_mut() else {
+            // A corrupted snapshot import can store a non-object archive
+            // row (e.g. `"a": "string"`) — degrade to not-found instead of
+            // panicking the blocking task into an opaque 500.
+            state.archives.write().remove(&name);
+            return AwsResponse::error(
+                400,
+                "ResourceNotFoundException",
+                &format!("Archive {name} not found"),
+            );
+        };
         if let Some(description) = req.params.get("Description").and_then(|v| v.as_str()) {
             obj.insert("Description".into(), json!(description));
         }
@@ -1170,6 +1206,9 @@ impl EventsHandler {
                 &format!("Archive {name} not found"),
             );
         }
+        // Drop the captured events with the archive config (keep-alive: the
+        // event store must not outlive its archive).
+        state.archived_events.write().remove(&name);
         state.tags.write().remove(&format!(
             "arn:aws:events:{}:{}:archive/{}",
             req.region, req.account, name
@@ -1216,10 +1255,93 @@ impl EventsHandler {
         )
     }
 
+    /// StartReplay window value → epoch seconds. Accepts ISO-8601 strings
+    /// (what botocore sends) and epoch-seconds numbers (what the JSON-1.0
+    /// bridges send); None when absent — an unparseable value does not clip
+    /// the window.
+    fn ts_epoch(v: Option<&Value>) -> Option<f64> {
+        match v? {
+            Value::Number(n) => n.as_f64(),
+            Value::String(s) => chrono::DateTime::parse_from_rfc3339(s)
+                .map(|d| d.timestamp() as f64)
+                .ok(),
+            _ => None,
+        }
+    }
+
     fn start_replay(&self, req: &AwsRequest) -> AwsResponse {
         let name = Self::param_str(req, &["ReplayName"]);
         let state = self.get_state(req.account, &req.region);
         let arn = self.replay_arn(req, &name);
+        // Ground truth: a replay re-delivers the archive's events to the
+        // destination event bus, where the bus's rules run their pattern
+        // filters over the re-delivery (API_StartReplay/ReplayDestination).
+        // The engine replays synchronously, so the terminal state COMPLETED
+        // is answerable immediately and `EventsReplayed` is final.
+        let event_source = Self::param_str(req, &["EventSourceArn"]);
+        let archive_name = event_source
+            .rsplit('/')
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        let dest_bus = req
+            .params
+            .get("Destination")
+            .and_then(|d| d.get("Arn"))
+            .and_then(|a| a.as_str())
+            .and_then(|a| a.rsplit('/').next())
+            .unwrap_or_default()
+            .to_string();
+        let start = Self::ts_epoch(req.params.get("EventStartTime"));
+        let end = Self::ts_epoch(req.params.get("EventEndTime"));
+        let window: Vec<Value> = state
+            .archived_events
+            .read()
+            .get(&archive_name)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|ev| match (start, end, Self::ts_epoch(ev.get("time"))) {
+                (Some(s), _, Some(t)) if t < s => false,
+                (_, Some(e), Some(t)) if t > e => false,
+                _ => true,
+            })
+            .collect();
+        let mut replayed_count = 0u64;
+        for ev in &window {
+            // Re-delivery is a fresh occurrence: a new id/time rides the
+            // archived payload (source/detail-type/detail/resources).
+            let event = json!({
+                "version": "0",
+                "id": uuid::Uuid::new_v4().to_string(),
+                "source": ev["source"],
+                "account": req.account.to_string(),
+                "time": now_rfc3339(),
+                "region": req.region,
+                "resources": ev["resources"],
+                "detail-type": ev["detail-type"],
+                "detail": ev["detail"],
+            });
+            // Rules on the destination bus watch the replay, selected with
+            // the same matching PutEvents uses for live events.
+            let matching: Vec<Arc<Rule>> = state
+                .rules
+                .read()
+                .values()
+                .filter(|r| r.bus_name == dest_bus)
+                .filter(|r| r.state.read().as_str() == "ENABLED")
+                .filter(|r| {
+                    serde_json::from_str::<Value>(&r.event_pattern)
+                        .map(|p| matches_pattern(&p, &event))
+                        .unwrap_or(false)
+                })
+                .cloned()
+                .collect();
+            for rule in &matching {
+                Self::dispatch_to_targets(rule, &event, req.account, &req.region, 0);
+            }
+            replayed_count += 1;
+        }
         let record = json!({
             "ReplayName": name,
             "ReplayArn": arn,
@@ -1228,7 +1350,7 @@ impl EventsHandler {
             "StateReason": "Replay completed successfully",
             "EventStartTime": req.params.get("EventStartTime").cloned().unwrap_or(Value::Null),
             "EventEndTime": req.params.get("EventEndTime").cloned().unwrap_or(Value::Null),
-            "EventsReplayed": 0,
+            "EventsReplayed": replayed_count,
         });
         state.replays.write().insert(name, record);
         AwsResponse::json(
@@ -2765,5 +2887,85 @@ mod tests {
             first["EventSourceArn"],
             format!("arn:aws:events:us-east-1::event-source/aws.partner/{name}")
         );
+    }
+
+    // -- Archive capture + StartReplay re-delivery ------------------------------
+
+    /// Runs under a dedicated account: the capture/replay pipeline mutates
+    /// shared (account, region) state, like the pagination tests above.
+    #[test]
+    fn test_archive_capture_and_replay_redelivery() {
+        let handler = EventsHandler::new();
+        let account = (uuid::Uuid::new_v4().as_u128() % 800_000_000_000) as u64;
+        let req = |operation: &str, params: Value| req_acc(operation, params, account);
+        let archive = format!("replay-archive-{}", uuid::Uuid::new_v4().simple());
+        let replay = format!("replay-{}", uuid::Uuid::new_v4().simple());
+        let bus_arn = format!("arn:aws:events:us-east-1:{account}:event-bus/default");
+        handler.handle(req(
+            "CreateArchive",
+            json!({
+                "ArchiveName": archive,
+                "EventSourceArn": bus_arn,
+            }),
+        ));
+
+        handler.handle(req(
+            "PutEvents",
+            json!({
+                "Entries": [
+                    {"Source": "test.replay", "DetailType": "ReplayTest",
+                     "Detail": "{\"idx\": 1}"},
+                    {"Source": "test.replay", "DetailType": "ReplayTest",
+                     "Detail": "{\"idx\": 2}"},
+                ],
+            }),
+        ));
+        // Archives carry the capture even before a replay exists.
+        let stored = handler
+            .get_state(account, "us-east-1")
+            .archived_events
+            .read()
+            .get(&archive)
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(stored.len(), 2, "both entries archived: {stored:?}");
+
+        // Window bounds ride as ISO strings (what botocore sends); the whole
+        // window covers the just-archived events.
+        let resp = body(&handler.handle(req(
+            "StartReplay",
+            json!({
+                "ReplayName": replay,
+                "EventSourceArn": format!("arn:aws:events:us-east-1:{account}:archive/{}", archive),
+                "Destination": {"Arn": bus_arn},
+                "EventStartTime": (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339(),
+                "EventEndTime": (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339(),
+            }),
+        )));
+        assert_eq!(resp["State"], "COMPLETED");
+
+        let desc = body(&handler.handle(req("DescribeReplay", json!({"ReplayName": replay}))));
+        assert_eq!(desc["State"], "COMPLETED");
+        assert_eq!(desc["ReplayName"], replay);
+        assert_eq!(desc["EventsReplayed"], 2);
+
+        // A window that starts after the archived events replays nothing.
+        let future = (chrono::Utc::now() + chrono::Duration::hours(10)).to_rfc3339();
+        let resp = body(&handler.handle(req(
+            "StartReplay",
+            json!({
+                "ReplayName": format!("{replay}-empty"),
+                "EventSourceArn": format!("arn:aws:events:us-east-1:{account}:archive/{}", archive),
+                "Destination": {"Arn": bus_arn},
+                "EventStartTime": future,
+                "EventEndTime": (chrono::Utc::now() + chrono::Duration::hours(11)).to_rfc3339(),
+            }),
+        )));
+        assert_eq!(resp["State"], "COMPLETED");
+        let desc = body(&handler.handle(req(
+            "DescribeReplay",
+            json!({"ReplayName": format!("{replay}-empty")}),
+        )));
+        assert_eq!(desc["EventsReplayed"], 0);
     }
 }
