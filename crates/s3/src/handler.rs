@@ -139,17 +139,61 @@ fn parse_bucket_cors_rules(body: &str) -> Vec<BucketCorsRule> {
         .collect()
 }
 
+/// Wildcard match for S3-CORS origin/header patterns (`*` spans any
+/// sequence, multiple literal sections allowed — the subset of the
+/// gateway's `src/cors.rs::fnmatch` that S3 rules use: literal text and
+/// `*`).
+fn glob_match(pattern: &str, text: &str) -> bool {
+    if pattern == "*" {
+        return true;
+    }
+    let mut pat = pattern;
+    let mut txt = text;
+    while let Some(star) = pat.find('*') {
+        let (head, tail) = pat.split_at(star);
+        if !txt.starts_with(head) {
+            return false;
+        }
+        txt = &txt[head.len()..];
+        pat = &tail[1..];
+        match pat.find('*') {
+            None => break,
+            Some(next) => {
+                let mid = &pat[..next];
+                match txt.find(mid) {
+                    Some(idx) => {
+                        txt = &txt[idx + mid.len()..];
+                        pat = &pat[next + 1..];
+                    }
+                    None => return false,
+                }
+            }
+        }
+    }
+    txt.ends_with(pat)
+}
+
 /// CORS response headers for an origin/method against the bucket's stored
 /// CORS rules, first matching rule wins (same resolution the gateway's
 /// `build_s3_cors_headers` spells out). `None` when no rule matches.
+///
+/// Origin patterns match with fnmatch semantics (`https://*.example.com`
+/// works); when `request_headers` (the preflight's
+/// Access-Control-Request-Headers value) is present, Access-Control-Allow-
+/// Headers echoes only the requested members the rule permits.
 fn bucket_cors_headers(
     cors_xml: &str,
     origin: Option<&str>,
     method: Option<&str>,
+    request_headers: Option<&str>,
 ) -> Option<Vec<(String, String)>> {
     let origin = origin?;
     for rule in parse_bucket_cors_rules(cors_xml) {
-        if !rule.allowed_origins.iter().any(|o| o == "*" || o == origin) {
+        if !rule
+            .allowed_origins
+            .iter()
+            .any(|o| o == "*" || glob_match(o, origin))
+        {
             continue;
         }
         let method = method.unwrap_or("OPTIONS");
@@ -170,10 +214,27 @@ fn bucket_cors_headers(
                 rule.allowed_methods.join(", "),
             ));
         }
-        if !rule.allowed_headers.is_empty() {
+        let allowed_headers_echo: Vec<String> = match request_headers {
+            Some(reqs) => reqs
+                .split(',')
+                .map(|h| h.trim())
+                .filter(|h| {
+                    !h.is_empty()
+                        && rule
+                            .allowed_headers
+                            .iter()
+                            .any(|a| a == "*" || glob_match(a, h))
+                })
+                .map(String::from)
+                .collect(),
+            // No Access-Control-Request-Headers on the wire (or a real
+            // -object response): the rule's own list is the answer.
+            None => rule.allowed_headers.clone(),
+        };
+        if !allowed_headers_echo.is_empty() {
             headers.push((
                 "Access-Control-Allow-Headers".to_string(),
-                rule.allowed_headers.join(", "),
+                allowed_headers_echo.join(", "),
             ));
         }
         if !rule.expose_headers.is_empty() {
@@ -846,6 +907,27 @@ impl S3Handler {
         }
     }
 
+    /// Bucket-rule CORS headers for a REAL (non-preflight) response, invoked
+    /// from the gateway's CORS layer when the bucket target is known:
+    /// `Some(headers)` when a rule matches, `Some(vec![])` when the bucket
+    /// has rules but none accept this origin/method (real S3 then sends no
+    /// CORS headers), `None` when the bucket is unknown or stores no rules
+    /// (the gateway's generic CORS headers stay eligible).
+    pub fn cors_rule_response_headers(
+        &self,
+        account: u64,
+        region: &str,
+        bucket: Option<&str>,
+        origin: &str,
+        method: &str,
+    ) -> Option<Vec<(String, String)>> {
+        let bucket = bucket?;
+        let state = self.get_state(account, region);
+        let b = state.get_bucket(bucket)?;
+        let cors_xml = b.cors_xml.read().clone()?;
+        Some(bucket_cors_headers(&cors_xml, Some(origin), Some(method), None).unwrap_or_default())
+    }
+
     /// Bucket name carried in the Host header of a virtual-hosted-style
     /// request (`<bucket>.<endpoint-host>`).
     ///
@@ -857,7 +939,7 @@ impl S3Handler {
     /// `S3_HOSTNAME` custom base, `<bucket>.s3.<rest>`, and
     /// `<bucket>.localhost` (which is how botocore addresses a localhost
     /// custom endpoint).
-    fn vhost_bucket_from_host(host: Option<&str>) -> Option<String> {
+    pub fn vhost_bucket_from_host(host: Option<&str>) -> Option<String> {
         let host = host?;
         let host = match host.rsplit_once(':') {
             Some((h, port)) if port.chars().all(|c| c.is_ascii_digit()) => h,
@@ -3086,7 +3168,9 @@ impl S3Handler {
             }
             page.push(row);
         }
-        let truncated = page.len() > max_keys;
+        // MaxKeys=0 never truncates (real AWS: IsTruncated=false, empty page,
+        // no markers) even when rows remain beyond the page.
+        let truncated = max_keys > 0 && page.len() > max_keys;
         page.truncate(max_keys);
         let mut body = String::new();
         for row in &page {
@@ -3392,6 +3476,7 @@ impl S3Handler {
                 header("Access-Control-Request-Method")
                     .or_else(|| Some(req.method.clone()))
                     .as_deref(),
+                header("Access-Control-Request-Headers").as_deref(),
             )
         });
         match cors {

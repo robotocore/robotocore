@@ -213,21 +213,25 @@ pub struct EventSourceMapping {
     /// Non-empty only with `FunctionResponseTypes` (e.g. ReportBatchItemFailures).
     #[serde(default)]
     pub function_response_types: Option<Vec<String>>,
-    /// Retry each half of a failed batch once (bool; default false).
+    /// Retry each half of a failed batch once. `None` = member unset; moto's
+    /// configuration dict filters unset members, so an explicit `false`
+    /// still renders (only unconfigured values drop).
     #[serde(default)]
-    pub bisect_batch_on_function_error: bool,
-    /// Python-truth default `-1` (unconfigured; 0..=2 valid).
+    pub bisect_batch_on_function_error: Option<bool>,
+    /// Retry budget; `None` = unconfigured (0..=2 valid, real-AWS `-1` =
+    /// never give up rides through and renders like moto's stored value).
     #[serde(default)]
-    pub maximum_retry_attempts: i64,
+    pub maximum_retry_attempts: Option<i64>,
     /// `MaximumBatchingWindowInSeconds` when the caller configured one —
     /// omitted from the wire dict when un-set (moto shape-filters the
     /// 0-valued members out of the details dict).
     #[serde(default)]
     pub maximum_batching_window_in_seconds: Option<u64>,
-    /// `MaximumRecordAgeInSeconds` when configured (stream sources); same
+    /// `MaximumRecordAgeInSeconds` when configured (stream sources; the
+    /// real-AWS `-1` = never-expire sentinel rides through as-is); same
     /// conditional shape as the batching window above.
     #[serde(default)]
-    pub maximum_record_age_in_seconds: Option<u64>,
+    pub maximum_record_age_in_seconds: Option<i64>,
     /// Attach-time per-shard watermarks for a `LATEST` kinesis mapping:
     /// shard id → the sequence number that the stream's next put-record will
     /// take, frozen when CreateEventSourceMapping registered the mapping

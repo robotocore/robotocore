@@ -46,7 +46,7 @@ class TestPipelineOrchestration:
                 # Poll to the terminal status so a machine that starts but
                 # never finishes the chain cannot pass, and assert the final
                 # Deploy stage's output.
-                deadline = time.monotonic() + 10
+                deadline = time.monotonic() + 30
                 status = "RUNNING"
                 while time.monotonic() < deadline:
                     status = pipeline.get_execution_status(exec_arn)

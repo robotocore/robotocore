@@ -117,8 +117,6 @@ jobs:
 ```
 
 
-nd owner IDs.
-
 ---
 
 ## What is robotocore?
@@ -496,7 +494,8 @@ docker build -t robotocore .
 docker run -p 4566:4566 robotocore
 ```
 
-The default image is a distroless python3 runner (~202MB, up from 158MB when the base was python-free): no shell, no
+The default image is a distroless python3 runner (~202MB, up from 158MB
+when the base gained python (119MB when python-free)): no shell, no
 package manager — the Rust gateway binary, a Python 3.11 interpreter so
 python-family Lambdas execute in-image, and a static busybox for the
 healthcheck. `--target runtimes` bakes Node.js/Ruby (~764MB);
