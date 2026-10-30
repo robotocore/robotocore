@@ -770,12 +770,8 @@ impl KinesisHandler {
         }
         // Closed parents stay in the list (moto keeps them, with an
         // EndingSequenceNumber) so consumers can still page their history.
-        *s1.ending_sequence_number.write() = Some(
-            s1.last_sequence_number().parse().unwrap_or(0),
-        );
-        *s2.ending_sequence_number.write() = Some(
-            s2.last_sequence_number().parse().unwrap_or(0),
-        );
+        *s1.ending_sequence_number.write() = Some(s1.last_sequence_number().parse().unwrap_or(0));
+        *s2.ending_sequence_number.write() = Some(s2.last_sequence_number().parse().unwrap_or(0));
         shards.push(merged);
         AwsResponse::json(200, json!({}))
     }
@@ -825,7 +821,9 @@ impl KinesisHandler {
         // `0|([1-9]\d{0,38})` against the AWS casing, then the model range
         // starting_hash < hash <= ending_hash, models.py:252-257).
         if new_hash.len() > 39
-            || !(new_hash == "0" || (new_hash.starts_with(|c: char| c.is_ascii_digit() && c != '0') && new_hash.chars().all(|c| c.is_ascii_digit())))
+            || !(new_hash == "0"
+                || (new_hash.starts_with(|c: char| c.is_ascii_digit() && c != '0')
+                    && new_hash.chars().all(|c| c.is_ascii_digit())))
         {
             return AwsResponse::error(
                 400,
@@ -1956,8 +1954,7 @@ fn shard_value(s: &Shard) -> Value {
         v["AdjacentParentShardId"] = json!(adjacent);
     }
     if let Some(ending) = *s.ending_sequence_number.read() {
-        v["SequenceNumberRange"]["EndingSequenceNumber"] =
-            json!(format!("{ending:020}"));
+        v["SequenceNumberRange"]["EndingSequenceNumber"] = json!(format!("{ending:020}"));
     }
     v
 }
@@ -2078,7 +2075,9 @@ impl KinesisHandler {
     /// resolves its kinesis source via `get_stream` before constructing the
     /// mapping).
     pub fn has_stream(&self, account: u64, region: &str, stream_name: &str) -> bool {
-        self.get_state(account, region).get_stream(stream_name).is_some()
+        self.get_state(account, region)
+            .get_stream(stream_name)
+            .is_some()
     }
 }
 
@@ -2799,13 +2798,17 @@ mod tests {
         assert_eq!(all.len(), 3);
         let open: Vec<&Value> = all
             .iter()
-            .filter(|s| s["SequenceNumberRange"].get("EndingSequenceNumber").is_none())
+            .filter(|s| {
+                s["SequenceNumberRange"]
+                    .get("EndingSequenceNumber")
+                    .is_none()
+            })
             .collect();
         assert_eq!(open.len(), 2);
-        assert!(open
-            .iter()
-            .all(|s| s["ParentShardId"] == json!(shard_id)),
-            "both children carry the parent link");
+        assert!(
+            open.iter().all(|s| s["ParentShardId"] == json!(shard_id)),
+            "both children carry the parent link"
+        );
     }
 
     #[test]
@@ -2831,7 +2834,9 @@ mod tests {
         assert_eq!(all.len(), 3, "closed parent + 2 new open shards");
         assert_eq!(
             all.iter()
-                .filter(|s| s["SequenceNumberRange"].get("EndingSequenceNumber").is_none())
+                .filter(|s| s["SequenceNumberRange"]
+                    .get("EndingSequenceNumber")
+                    .is_none())
                 .count(),
             2,
             "two open shards accept records"
@@ -2873,15 +2878,20 @@ mod tests {
 
         // The merged OPEN shard carries both records; both parents stay,
         // closed with EndingSequenceNumber and parent links.
-        let shards = parse_body(
-            &handler.handle(make_req("ListShards", json!({"StreamName": "merge-stream"}))),
-        )["Shards"]
+        let shards = parse_body(&handler.handle(make_req(
+            "ListShards",
+            json!({"StreamName": "merge-stream"}),
+        )))["Shards"]
             .clone();
         let all = shards.as_array().unwrap();
         assert_eq!(all.len(), 3);
         let merged = all
             .iter()
-            .find(|s| s["SequenceNumberRange"].get("EndingSequenceNumber").is_none())
+            .find(|s| {
+                s["SequenceNumberRange"]
+                    .get("EndingSequenceNumber")
+                    .is_none()
+            })
             .expect("one open merged shard");
         assert_eq!(merged["ParentShardId"], json!("shardId-000000000000"));
         assert_eq!(
@@ -2899,14 +2909,17 @@ mod tests {
             .as_str()
             .unwrap()
             .to_string();
-        let recs = parse_body(&handler.handle(make_req(
-            "GetRecords",
-            json!({"ShardIterator": iter}),
-        )));
+        let recs =
+            parse_body(&handler.handle(make_req("GetRecords", json!({"ShardIterator": iter}))));
         assert_eq!(recs["Records"].as_array().unwrap().len(), 2);
-        for parent in all.iter().filter(|s| s["ShardId"].as_str() != Some(merged_id.as_str())) {
+        for parent in all
+            .iter()
+            .filter(|s| s["ShardId"].as_str() != Some(merged_id.as_str()))
+        {
             assert!(
-                parent["SequenceNumberRange"].get("EndingSequenceNumber").is_some(),
+                parent["SequenceNumberRange"]
+                    .get("EndingSequenceNumber")
+                    .is_some(),
                 "closed parent renders EndingSequenceNumber"
             );
         }
@@ -2946,12 +2959,10 @@ mod tests {
         assert_eq!(resp.status, 200);
 
         // The two new shards together still return every record.
-        let shards = parse_body(
-            &handler.handle(make_req(
-                "ListShards",
-                json!({"StreamName": "usc-rec-stream"}),
-            )),
-        )["Shards"]
+        let shards = parse_body(&handler.handle(make_req(
+            "ListShards",
+            json!({"StreamName": "usc-rec-stream"}),
+        )))["Shards"]
             .clone();
         let mut total = 0usize;
         for shard in shards.as_array().unwrap() {
@@ -2966,10 +2977,8 @@ mod tests {
                 .as_str()
                 .unwrap()
                 .to_string();
-            let recs = parse_body(&handler.handle(make_req(
-                "GetRecords",
-                json!({"ShardIterator": iter}),
-            )));
+            let recs =
+                parse_body(&handler.handle(make_req("GetRecords", json!({"ShardIterator": iter}))));
             total += recs["Records"].as_array().unwrap().len();
         }
         assert_eq!(total, 3);
@@ -3055,7 +3064,11 @@ mod tests {
             .as_array()
             .unwrap()
             .iter()
-            .filter(|s| s["SequenceNumberRange"].get("EndingSequenceNumber").is_none())
+            .filter(|s| {
+                s["SequenceNumberRange"]
+                    .get("EndingSequenceNumber")
+                    .is_none()
+            })
             .count() as u64;
         assert_eq!(open_count, 4, "four open shards after scaling to 4");
         let resp = parse_body(&handler.handle(make_req(

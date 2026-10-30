@@ -62,6 +62,10 @@ fn store_snapshot_json(st: &EventsState) -> Value {
         "tags".into(),
         serde_json::to_value(&*st.tags.read()).unwrap_or(Value::Null),
     );
+    out.insert(
+        "archived_events".into(),
+        serde_json::to_value(&*st.archived_events.read()).unwrap_or(Value::Null),
+    );
 
     Value::Object(out)
 }
@@ -96,6 +100,7 @@ fn store_restore_json(st: &EventsState, v: &Value) {
     swap_field!(bus_policies, "bus_policies", Value);
     swap_field!(tags, "tags", Vec<Value>);
     swap_field!(archives, "archives", Value);
+    swap_field!(archived_events, "archived_events", Vec<Value>);
     swap_field!(connections, "connections", Value);
     swap_field!(api_destinations, "api_destinations", Value);
     swap_field!(replays, "replays", Value);

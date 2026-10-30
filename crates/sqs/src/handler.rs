@@ -2760,11 +2760,7 @@ fn query_flatten_members(params: &mut serde_json::Value) {
         rows.sort_by_key(|(i, _)| *i);
         obj.insert(
             "Entries".to_string(),
-            Value::Array(
-                rows.into_iter()
-                    .map(|(_, r)| Value::Object(r))
-                    .collect(),
-            ),
+            Value::Array(rows.into_iter().map(|(_, r)| Value::Object(r)).collect()),
         );
     }
 }

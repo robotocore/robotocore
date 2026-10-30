@@ -68,8 +68,12 @@ impl DefaultKinesisHandler {
     /// the stream (`None` when the stream does not exist) — the engine's
     /// parked-cursor "new content" signal (see `attach_watermarks` for the
     /// watermarks channel).
-    pub fn shard_frontiers(&self, account: u64, region: &str, stream_name: &str)
-    -> Vec<(String, String)> {
+    pub fn shard_frontiers(
+        &self,
+        account: u64,
+        region: &str,
+        stream_name: &str,
+    ) -> Vec<(String, String)> {
         self.inner.attach_watermarks(account, region, stream_name)
     }
 }

@@ -30,7 +30,6 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
-
 /// Host base for the queue URLs the engine mints for its SQS polls —
 /// env-derived like the sqs crate's own QueueUrl host (`SQS_PUBLIC_BASE` /
 /// `RUST_PORT`; portability rule, AGENTS.md merge protocol item 5). The
@@ -68,7 +67,6 @@ fn minted_queue_url(account: u64, queue_name: &str) -> String {
         port = queue_url_base_port()
     )
 }
-
 
 /// Poll cadence. The trigger suites sleep 5-15s and need sub-second delivery;
 /// 300ms is fast enough and cheap on an idle process.
@@ -158,7 +156,9 @@ pub fn start(native: Arc<NativeHandlers>) {
         let native = native.clone();
         move |account, region, arn| match classify_arn(arn) {
             Some(Source::Kinesis { stream_name }) => {
-                let marks = native.kinesis.attach_watermarks(account, region, &stream_name);
+                let marks = native
+                    .kinesis
+                    .attach_watermarks(account, region, &stream_name);
                 (!marks.is_empty()).then_some(marks)
             }
             _ => None,
@@ -169,30 +169,26 @@ pub fn start(native: Arc<NativeHandlers>) {
     // resolves the stream / owning table through its backends first).
     lambda::bridge::register_kinesis_stream_probe(Arc::new({
         let native = native.clone();
-        move |account, region, stream_name| {
-            native.kinesis.has_stream(account, region, stream_name)
-        }
+        move |account, region, stream_name| native.kinesis.has_stream(account, region, stream_name)
     }));
     lambda::bridge::register_dynamodb_table_probe(Arc::new({
         let native = native.clone();
-        move |account, region, table_name| {
-            native.dynamodb.has_table(account, region, table_name)
-        }
+        move |account, region, table_name| native.dynamodb.has_table(account, region, table_name)
     }));
     // SQS probe for the same create path (moto resolves the sqs queue
     // through its backend; a dead ARN is a 404 "Invalid EventSourceArn").
     lambda::bridge::register_sqs_queue_probe(Arc::new({
         let native = native.clone();
-        move |account, region, queue_name| {
-            native.sqs.has_queue(account, region, queue_name)
-        }
+        move |account, region, queue_name| native.sqs.has_queue(account, region, queue_name)
     }));
     // LATEST dynamodb-streams attach seed: the same freeze-at-create
     // semantics as the kinesis watermarks (new mappings replay no history).
     lambda::bridge::register_ddb_stream_watermarks(Arc::new({
         let native = native.clone();
         move |account, region, table_name| {
-            native.dynamodb.stream_latest_sequence(account, region, table_name)
+            native
+                .dynamodb
+                .stream_latest_sequence(account, region, table_name)
         }
     }));
     std::thread::Builder::new()
@@ -462,10 +458,7 @@ impl Engine {
                             }
                         });
                     let (params_type, params_seq): (Value, Option<Value>) = match bound_seq {
-                        Some(seq) => (
-                            json!("AT_SEQUENCE_NUMBER"),
-                            Some(json!(seq)),
-                        ),
+                        Some(seq) => (json!("AT_SEQUENCE_NUMBER"), Some(json!(seq))),
                         None => (json!(Self::starting_position(mapping)), None),
                     };
                     let mut params = json!({
@@ -597,7 +590,11 @@ impl Engine {
                 &json!({"Records": delivered}),
             );
             if result.function_error.is_none() {
-                tracing::debug!(stream = stream_name, records = delivered.len(), "esm: kinesis batch delivered");
+                tracing::debug!(
+                    stream = stream_name,
+                    records = delivered.len(),
+                    "esm: kinesis batch delivered"
+                );
                 gate.record_success();
                 match next {
                     Some(next) => {
@@ -907,7 +904,10 @@ impl Engine {
         // messages untouched, until new content (a different fingerprint)
         // or a config change (recorded by `may_deliver`) reopens delivery.
         let fingerprint = message_fingerprint(&matched);
-        if !self.sqs_gate(entry).may_deliver(&fingerprint, config, false) {
+        if !self
+            .sqs_gate(entry)
+            .may_deliver(&fingerprint, config, false)
+        {
             for msg in &matched {
                 change_sqs_visibility(
                     native,

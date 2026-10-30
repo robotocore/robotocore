@@ -2743,7 +2743,8 @@ class TestEventBridgeToFirehose:
         # dispatch state, so the acceptance row is the closest observable
         # for the dispatched event.
         found = any(
-            entry.get("service") == "events" and entry.get("operation") == "PutEvents"
+            entry.get("service") == "events"
+            and entry.get("operation") == "PutEvents"
             and entry.get("status_code", 500) == 200
             for entry in entries
         )
@@ -2974,7 +2975,8 @@ class TestEventBridgeSimulatedTargets:
         audit = json.loads(resp.read())
         entries = audit.get("entries", audit.get("calls", []))
         found = any(
-            entry.get("service") == "events" and entry.get("operation") == "PutEvents"
+            entry.get("service") == "events"
+            and entry.get("operation") == "PutEvents"
             and entry.get("status_code", 500) == 200
             for entry in entries
         )
@@ -3126,10 +3128,10 @@ class TestEventBridgeArchiveReplay:
         deadline = time.monotonic() + 20
         while time.monotonic() < deadline:
             desc = events.describe_replay(ReplayName=f"replay-{suffix}")
-            if desc.get("ReplayState") == "COMPLETED":
+            if desc.get("State") == "COMPLETED":
                 break
             time.sleep(0.5)
-        assert desc.get("ReplayState") == "COMPLETED", f"replay state: {desc.get('ReplayState')}"
+        assert desc.get("State") == "COMPLETED", f"replay state: {desc.get('State')}"
 
         replayed = []
         replay_deadline = time.monotonic() + 10
@@ -3141,9 +3143,7 @@ class TestEventBridgeArchiveReplay:
             )
             new_msgs = recv.get("Messages", [])
             if new_msgs:
-                replayed.extend(
-                    json.loads(m["Body"]) for m in new_msgs
-                )
+                replayed.extend(json.loads(m["Body"]) for m in new_msgs)
                 for m in new_msgs:
                     sqs.delete_message(
                         QueueUrl=queue_url,
@@ -3164,7 +3164,7 @@ class TestEventBridgeArchiveReplay:
             try:
                 _cleanup()
             except Exception:
-                pass
+                pass  # best-effort cleanup
 
 
 class TestLambdaDestinations:

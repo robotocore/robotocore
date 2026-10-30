@@ -1174,9 +1174,7 @@ impl LambdaHandler {
                     // moto re-validates the target version on update
                     // (models.py update_alias) — a dud version is rejected
                     // with the Function-not-found shape.
-                    if v != "$LATEST"
-                        && resolve_fn(state, req, &format!("{name}:{v}")).is_err()
-                    {
+                    if v != "$LATEST" && resolve_fn(state, req, &format!("{name}:{v}")).is_err() {
                         let fn_arn = format!(
                             "arn:aws:lambda:{}:{}:function:{}:{}",
                             req.region, req.account, name, v
@@ -1435,18 +1433,20 @@ impl LambdaHandler {
             m.insert("BisectBatchOnFunctionError".into(), json!(true));
         }
         if e.maximum_retry_attempts >= 0 {
-            m.insert("MaximumRetryAttempts".into(), json!(e.maximum_retry_attempts));
+            m.insert(
+                "MaximumRetryAttempts".into(),
+                json!(e.maximum_retry_attempts),
+            );
         }
         m.insert("LastProcessingResult".into(), Value::Null);
         m.insert(
             "State".into(),
-            json!(if e.enabled {
-                "Enabled"
-            } else {
-                "Disabled"
-            }),
+            json!(if e.enabled { "Enabled" } else { "Disabled" }),
         );
-        m.insert("StateTransitionReason".into(), json!(e.state_transition_reason));
+        m.insert(
+            "StateTransitionReason".into(),
+            json!(e.state_transition_reason),
+        );
         m.insert("LastModified".into(), json!(e.last_modified));
         Value::Object(m)
     }
@@ -1606,11 +1606,11 @@ impl LambdaHandler {
             // bound to the table's live stream max (TRIM keeps its replay
             // contract).
             ddb_attached_watermark: {
-                let want_latest = req.param_str("StartingPosition").as_deref()
-                    == Some("LATEST");
+                let want_latest = req.param_str("StartingPosition").as_deref() == Some("LATEST");
                 match (want_latest, &source) {
-                    (true, EsmSource::DynamoDb { table_name }) => crate::bridge
-                        ::dynamodb_stream_latest(req.account, &req.region, table_name),
+                    (true, EsmSource::DynamoDb { table_name }) => {
+                        crate::bridge::dynamodb_stream_latest(req.account, &req.region, table_name)
+                    }
                     _ => None,
                 }
             },
@@ -3347,7 +3347,11 @@ mod tests {
     // ------------------------------------------------------------------
 
     fn create_esm(handler: &LambdaHandler, params: Value) -> AwsResponse {
-        handler.handle(make_req("POST", params, "/2015-03-31/event-source-mappings"))
+        handler.handle(make_req(
+            "POST",
+            params,
+            "/2015-03-31/event-source-mappings",
+        ))
     }
 
     fn get_esm(handler: &LambdaHandler, uuid: &str) -> AwsResponse {
@@ -3402,21 +3406,33 @@ mod tests {
                    "StartingPosition": "LATEST", "BatchSize": 100001}),
         );
         assert_eq!(resp.status, 400, "body: {}", resp.body);
-        assert!(resp.body.contains("BatchSize 100001 exceeds the max of 10000"), "body: {}", resp.body);
+        assert!(
+            resp.body
+                .contains("BatchSize 100001 exceeds the max of 10000"),
+            "body: {}",
+            resp.body
+        );
         let resp = create_esm(
             &handler,
             json!({"EventSourceArn": "arn:aws:sqs:us-east-1:123456789012:src.fifo",
                    "FunctionName": fn_name, "BatchSize": 50}),
         );
         assert_eq!(resp.status, 400, "body: {}", resp.body);
-        assert!(resp.body.contains("BatchSize 50 exceeds the max of 10"), "body: {}", resp.body);
+        assert!(
+            resp.body.contains("BatchSize 50 exceeds the max of 10"),
+            "body: {}",
+            resp.body
+        );
         // Values 0 and 1 stay legal on both sides of the default logic.
         let resp = create_esm(
             &handler,
             json!({"EventSourceArn": "arn:aws:sqs:us-east-1:123456789012:q0", "FunctionName": fn_name, "BatchSize": 0}),
         );
         assert_eq!(resp.status, 201);
-        assert_eq!(serde_json::from_str::<Value>(&resp.body).unwrap()["BatchSize"], json!(0));
+        assert_eq!(
+            serde_json::from_str::<Value>(&resp.body).unwrap()["BatchSize"],
+            json!(0)
+        );
 
         // (c) ARN families outside dynamodb/kinesis/sqs → 404
         // ResourceNotFoundException "Invalid EventSourceArn" — moto's
@@ -3426,9 +3442,16 @@ mod tests {
             "arn:aws:sns:us-east-1:123456789012:topic",
             "arn:aws:mq:us-east-1:123456789012:q",
         ] {
-            let resp = create_esm(&handler, json!({"EventSourceArn": bad_arn, "FunctionName": fn_name}));
+            let resp = create_esm(
+                &handler,
+                json!({"EventSourceArn": bad_arn, "FunctionName": fn_name}),
+            );
             assert_eq!(resp.status, 404, "{bad_arn}: {}", resp.body);
-            assert!(resp.body.contains("Invalid EventSourceArn"), "body: {}", resp.body);
+            assert!(
+                resp.body.contains("Invalid EventSourceArn"),
+                "body: {}",
+                resp.body
+            );
         }
 
         // (d) a kinesis source that does not resolve → 404
@@ -3439,8 +3462,16 @@ mod tests {
                    "FunctionName": fn_name, "StartingPosition": "TRIM_HORIZON"}),
         );
         assert_eq!(resp.status, 404, "body: {}", resp.body);
-        assert!(resp.body.contains("Invalid EventSourceArn"), "body: {}", resp.body);
-        assert!(resp.body.contains("ResourceNotFoundException"), "body: {}", resp.body);
+        assert!(
+            resp.body.contains("Invalid EventSourceArn"),
+            "body: {}",
+            resp.body
+        );
+        assert!(
+            resp.body.contains("ResourceNotFoundException"),
+            "body: {}",
+            resp.body
+        );
 
         // (e) the wire dict: mapping ARN + null LastProcessingResult ride
         // every response; the optional windows appear only when set.
@@ -3456,16 +3487,29 @@ mod tests {
         let uuid = configured["UUID"].as_str().unwrap().to_string();
         assert_eq!(
             configured["EventSourceMappingArn"],
-            json!(format!("arn:aws:lambda:us-east-1:123456789012:event-source-mapping:{uuid}"))
+            json!(format!(
+                "arn:aws:lambda:us-east-1:123456789012:event-source-mapping:{uuid}"
+            ))
         );
         assert!(
-            configured.get("LastProcessingResult").is_some_and(Value::is_null),
+            configured
+                .get("LastProcessingResult")
+                .is_some_and(Value::is_null),
             "LastProcessingResult rides as null: {configured}"
         );
-        assert_eq!(configured.get("MaximumBatchingWindowInSeconds"), Some(&json!(5)));
-        assert_eq!(configured.get("MaximumRecordAgeInSeconds"), Some(&json!(60)));
+        assert_eq!(
+            configured.get("MaximumBatchingWindowInSeconds"),
+            Some(&json!(5))
+        );
+        assert_eq!(
+            configured.get("MaximumRecordAgeInSeconds"),
+            Some(&json!(60))
+        );
         let dict: Value = serde_json::from_str(&get_esm(&handler, &uuid).body).unwrap();
-        assert_eq!(dict["EventSourceMappingArn"], configured["EventSourceMappingArn"]);
+        assert_eq!(
+            dict["EventSourceMappingArn"],
+            configured["EventSourceMappingArn"]
+        );
 
         // Unconfigured: no MaximumBatchingWindowInSeconds key at all (the
         // hardcoded 0 used to leak; moto shape-filters unset members).
@@ -3490,7 +3534,10 @@ mod tests {
         let resp = handler.handle(make_req(
             "DELETE",
             json!({}),
-            &format!("/2015-03-31/event-source-mappings/{}", bare["UUID"].as_str().unwrap()),
+            &format!(
+                "/2015-03-31/event-source-mappings/{}",
+                bare["UUID"].as_str().unwrap()
+            ),
         ));
         assert_eq!(resp.status, 202);
         let deleted: Value = serde_json::from_str(&resp.body).unwrap();
@@ -3538,7 +3585,10 @@ mod tests {
         handler.handle(make_req(
             "DELETE",
             json!({}),
-            &format!("/2015-03-31/event-source-mappings/{}", esm["UUID"].as_str().unwrap()),
+            &format!(
+                "/2015-03-31/event-source-mappings/{}",
+                esm["UUID"].as_str().unwrap()
+            ),
         ));
         let resp2 = create_esm(
             &handler,

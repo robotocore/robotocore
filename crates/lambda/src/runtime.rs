@@ -400,14 +400,8 @@ pub fn execute_python(
         &[
             ("AWS_LAMBDA_FUNCTION_NAME", function_name.to_string()),
             ("AWS_LAMBDA_FUNCTION_VERSION", function_version.to_string()),
-            (
-                "AWS_LAMBDA_FUNCTION_MEMORY_SIZE",
-                memory_size.to_string(),
-            ),
-            (
-                "AWS_LAMBDA_FUNCTION_TIMEOUT",
-                timeout_secs.to_string(),
-            ),
+            ("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", memory_size.to_string()),
+            ("AWS_LAMBDA_FUNCTION_TIMEOUT", timeout_secs.to_string()),
             ("AWS_REGION", region.to_string()),
             ("AWS_DEFAULT_REGION", region.to_string()),
             ("AWS_ACCOUNT_ID", account_id.to_string()),
@@ -980,7 +974,8 @@ pub fn execute_nodejs(
         Ok(f) => f,
         Err(e) => return runtime_broken(e.to_string(), String::new()),
     };
-    let mut cmd = std::process::Command::new(find_node(runtime).unwrap_or_else(|| "node".to_string()));
+    let mut cmd =
+        std::process::Command::new(find_node(runtime).unwrap_or_else(|| "node".to_string()));
     cmd.arg(bootstrap)
         .args(&extract_args)
         .current_dir(&code_dir)
@@ -997,14 +992,8 @@ pub fn execute_nodejs(
             ("NODE_PATH", node_path.clone()),
             ("AWS_LAMBDA_FUNCTION_NAME", function_name.to_string()),
             ("AWS_LAMBDA_FUNCTION_VERSION", function_version.to_string()),
-            (
-                "AWS_LAMBDA_FUNCTION_MEMORY_SIZE",
-                memory_size.to_string(),
-            ),
-            (
-                "AWS_LAMBDA_FUNCTION_TIMEOUT",
-                timeout_secs.to_string(),
-            ),
+            ("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", memory_size.to_string()),
+            ("AWS_LAMBDA_FUNCTION_TIMEOUT", timeout_secs.to_string()),
             ("AWS_REGION", region.to_string()),
             ("AWS_DEFAULT_REGION", region.to_string()),
             ("AWS_ACCOUNT_ID", account_id.to_string()),
@@ -1307,7 +1296,11 @@ fn apply_era_env(
     for (k, v) in builtins {
         cmd.env(k, v);
     }
-    for cred in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"] {
+    for cred in [
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+    ] {
         if !env_vars.contains_key(cred) {
             cmd.env(cred, "testing");
         }
@@ -1340,14 +1333,8 @@ fn apply_family_env(
             ("AWS_LAMBDA_FUNCTION_NAME", function_name.to_string()),
             ("AWS_LAMBDA_FUNCTION_VERSION", function_version.to_string()),
             ("AWS_LAMBDA_FUNCTION_ARN", function_arn.to_string()),
-            (
-                "AWS_LAMBDA_FUNCTION_MEMORY_SIZE",
-                memory_size.to_string(),
-            ),
-            (
-                "AWS_LAMBDA_FUNCTION_TIMEOUT",
-                timeout_secs.to_string(),
-            ),
+            ("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", memory_size.to_string()),
+            ("AWS_LAMBDA_FUNCTION_TIMEOUT", timeout_secs.to_string()),
             ("AWS_REGION", region.to_string()),
             ("AWS_DEFAULT_REGION", region.to_string()),
             ("AWS_ACCOUNT_ID", account_id.to_string()),
@@ -1412,12 +1399,8 @@ fn run_subprocess_family(
     // reads stdin at all) would wedge the synchronous write and the
     // `timeout+2` deadline would never be consulted (review-found hang
     // class).
-    let (stdout_rx, stderr_rx) = communicate_event(
-        &mut child,
-        &event_json,
-        FAMILY_RESULT_CAP,
-        LOCAL_OUTPUT_CAP,
-    );
+    let (stdout_rx, stderr_rx) =
+        communicate_event(&mut child, &event_json, FAMILY_RESULT_CAP, LOCAL_OUTPUT_CAP);
 
     let deadline = std::time::Instant::now()
         + std::time::Duration::from_secs(u64::from(timeout_secs.max(1)) + 2);
@@ -2187,7 +2170,9 @@ pub fn execute_dotnet(
             };
         };
         let mut cmd = std::process::Command::new(&dotnet_bin);
-        cmd.arg("exec").arg(bootstrap_dir.join("Bootstrap.dll")).current_dir(&bootstrap_dir);
+        cmd.arg("exec")
+            .arg(bootstrap_dir.join("Bootstrap.dll"))
+            .current_dir(&bootstrap_dir);
         cmd
     };
 
@@ -2279,9 +2264,7 @@ fn copy_entry_capped<R: std::io::Read>(
         if *copied > ZIP_UNPACK_LIMIT_TOTAL {
             return Ok(true);
         }
-        out_file
-            .write_all(&chunk[..n])
-            .map_err(|e| e.to_string())?;
+        out_file.write_all(&chunk[..n]).map_err(|e| e.to_string())?;
     }
 }
 
@@ -2410,14 +2393,8 @@ pub fn execute_custom(
         &[
             ("AWS_LAMBDA_FUNCTION_NAME", function_name.to_string()),
             ("AWS_LAMBDA_FUNCTION_VERSION", function_version.to_string()),
-            (
-                "AWS_LAMBDA_FUNCTION_MEMORY_SIZE",
-                memory_size.to_string(),
-            ),
-            (
-                "AWS_LAMBDA_FUNCTION_TIMEOUT",
-                timeout_secs.to_string(),
-            ),
+            ("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", memory_size.to_string()),
+            ("AWS_LAMBDA_FUNCTION_TIMEOUT", timeout_secs.to_string()),
             ("AWS_REGION", region.to_string()),
             ("AWS_DEFAULT_REGION", region.to_string()),
             ("AWS_ACCOUNT_ID", account_id.to_string()),
@@ -2452,12 +2429,8 @@ pub fn execute_custom(
     // write and the event fed from a writer thread, so a chatty bootstrap or
     // one that never reads stdin cannot wedge the invoke thread — the
     // deadline loop below kills the child either way.
-    let (stdout_rx, stderr_rx) = communicate_event(
-        &mut child,
-        &event_str,
-        LOCAL_OUTPUT_CAP,
-        LOCAL_OUTPUT_CAP,
-    );
+    let (stdout_rx, stderr_rx) =
+        communicate_event(&mut child, &event_str, LOCAL_OUTPUT_CAP, LOCAL_OUTPUT_CAP);
 
     // Wait up to the function timeout plus the python-era 2s grace; kill the
     // child on overrun.
@@ -3235,10 +3208,10 @@ exports.handler = async (event, context) => {
             }
             fs::write(path, content).unwrap();
         }
-        let out = dir
-            .parent()
-            .unwrap()
-            .join(format!("{}.zip", dir.file_name().unwrap().to_string_lossy()));
+        let out = dir.parent().unwrap().join(format!(
+            "{}.zip",
+            dir.file_name().unwrap().to_string_lossy()
+        ));
 
         let zip = make_zip_dir(&dir, &out);
         let _ = fs::remove_dir_all(&dir);
@@ -3274,10 +3247,10 @@ exports.handler = async (event, context) => {
             "javac failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        let out = dir
-            .parent()
-            .unwrap()
-            .join(format!("{}.zip", dir.file_name().unwrap().to_string_lossy()));
+        let out = dir.parent().unwrap().join(format!(
+            "{}.zip",
+            dir.file_name().unwrap().to_string_lossy()
+        ));
         let zip = make_zip_dir(&dir, &out);
         let _ = fs::remove_dir_all(&dir);
         let _ = fs::remove_file(&out);
@@ -3315,8 +3288,7 @@ exports.handler = async (event, context) => {
         apply_dotnet_compile_env(&mut cmd);
         let output = cmd.output().expect("dotnet build failed");
         assert!(
-            output.status.success()
-                && out_dir.join("MyLambda.dll").is_file(),
+            output.status.success() && out_dir.join("MyLambda.dll").is_file(),
             "dotnet build failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
@@ -3366,12 +3338,21 @@ exports.handler = async (event, context) => {
         // the default `ruby` is the fallback (fault-in installs are out of
         // scope for the offline twin). On this host both live at /usr/bin.
         if which_bin("ruby3.2").is_some() {
-            assert_eq!(find_ruby("ruby3.2").as_deref(), which_bin("ruby3.2").as_deref());
+            assert_eq!(
+                find_ruby("ruby3.2").as_deref(),
+                which_bin("ruby3.2").as_deref()
+            );
         } else {
-            assert_eq!(find_ruby("ruby3.2").as_deref(), which_bin("ruby").as_deref());
+            assert_eq!(
+                find_ruby("ruby3.2").as_deref(),
+                which_bin("ruby").as_deref()
+            );
         }
         // Unknown identifiers go straight to the default binary.
-        assert_eq!(find_ruby("ruby2.7").as_deref(), which_bin("ruby").as_deref());
+        assert_eq!(
+            find_ruby("ruby2.7").as_deref(),
+            which_bin("ruby").as_deref()
+        );
     }
 
     #[test]
@@ -3474,15 +3455,15 @@ exports.handler = async (event, context) => {
         let payload: Value = serde_json::from_str(&raised.payload).unwrap();
         assert_eq!(payload["errorType"], "RuntimeError");
         assert!(
-            payload["errorMessage"].as_str().unwrap_or_default().contains("boom"),
+            payload["errorMessage"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("boom"),
             "payload: {payload}"
         );
 
         let missing_module = exec_ruby(
-            &make_files_zip(&[(
-                "other.rb",
-                "def handler(event:, context:)\n  'ok'\nend\n",
-            )]),
+            &make_files_zip(&[("other.rb", "def handler(event:, context:)\n  'ok'\nend\n")]),
             "lambda_function.handler",
             r#"{}"#,
             10,
@@ -3491,7 +3472,10 @@ exports.handler = async (event, context) => {
         let payload: Value = serde_json::from_str(&missing_module.payload).unwrap();
         assert_eq!(payload["errorType"], "Runtime.ImportModuleError");
         assert!(
-            payload["errorMessage"].as_str().unwrap_or_default().contains("Cannot find module"),
+            payload["errorMessage"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("Cannot find module"),
             "payload: {payload}"
         );
 
@@ -3507,7 +3491,10 @@ exports.handler = async (event, context) => {
         assert_eq!(missing_method.function_error.as_deref(), Some("Handled"));
         let payload: Value = serde_json::from_str(&missing_method.payload).unwrap();
         assert!(
-            payload["errorMessage"].as_str().unwrap_or_default().contains("HandlerNotFound")
+            payload["errorMessage"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("HandlerNotFound")
                 || payload["errorType"] == "Runtime.HandlerNotFound",
             "payload: {payload}"
         );
@@ -3581,7 +3568,11 @@ exports.handler = async (event, context) => {
             "us-east-1",
             "123456789012",
         );
-        assert_eq!(res.function_error, None, "logs: {} payload: {}", res.logs, res.payload);
+        assert_eq!(
+            res.function_error, None,
+            "logs: {} payload: {}",
+            res.logs, res.payload
+        );
         let payload: Value = serde_json::from_str(&res.payload).unwrap();
         assert_eq!(payload["val"], json!("from-layer"));
     }
@@ -3635,7 +3626,12 @@ exports.handler = async (event, context) => {
             "Handler.java",
             "public class Handler {\n    public String handleRequest(String event, Object context) {\n        return event;\n    }\n}\n",
         )]);
-        let echo = exec_java(&echo_zip, "Handler::handleRequest", r#"{"hello": "java"}"#, 30);
+        let echo = exec_java(
+            &echo_zip,
+            "Handler::handleRequest",
+            r#"{"hello": "java"}"#,
+            30,
+        );
         assert_eq!(echo.function_error, None, "logs: {}", echo.logs);
         let payload: Value = serde_json::from_str(&echo.payload).unwrap();
         assert_eq!(payload["hello"], json!("java"));
@@ -3649,7 +3645,10 @@ exports.handler = async (event, context) => {
         let payload: Value = serde_json::from_str(&raised.payload).unwrap();
         assert_eq!(payload["errorType"], "RuntimeException");
         assert!(
-            payload["errorMessage"].as_str().unwrap_or_default().contains("java boom"),
+            payload["errorMessage"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("java boom"),
             "payload: {payload}"
         );
 
@@ -3716,7 +3715,11 @@ exports.handler = async (event, context) => {
             "public class Handler {\n    public String handleRequest(String event, Object context) {\n        return \"default-method\";\n    }\n}\n",
         )]);
         let default_method = exec_java(&default_zip, "Handler", r#"{}"#, 30);
-        assert_eq!(default_method.function_error, None, "logs: {}", default_method.logs);
+        assert_eq!(
+            default_method.function_error, None,
+            "logs: {}",
+            default_method.logs
+        );
         assert_eq!(default_method.payload, json!("default-method").to_string());
 
         let stream_zip = make_java_zip(&[(
@@ -3758,7 +3761,10 @@ exports.handler = async (event, context) => {
             r#"{}"#,
             30,
         );
-        assert_eq!(bad_format.function_error.as_deref(), Some("Runtime.HandlerNotFound"));
+        assert_eq!(
+            bad_format.function_error.as_deref(),
+            Some("Runtime.HandlerNotFound")
+        );
         let payload: Value = serde_json::from_str(&bad_format.payload).unwrap();
         assert_eq!(payload["errorType"], "Runtime.HandlerNotFound");
         assert!(
@@ -3775,11 +3781,17 @@ exports.handler = async (event, context) => {
             r#"{}"#,
             30,
         );
-        assert_eq!(guard.function_error.as_deref(), Some("Runtime.ImportModuleError"));
+        assert_eq!(
+            guard.function_error.as_deref(),
+            Some("Runtime.ImportModuleError")
+        );
         let payload: Value = serde_json::from_str(&guard.payload).unwrap();
         assert_eq!(payload["errorType"], "Runtime.ImportModuleError");
         assert!(
-            payload["errorMessage"].as_str().unwrap_or_default().contains("../evil"),
+            payload["errorMessage"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("../evil"),
             "payload: {payload}"
         );
     }
@@ -3795,7 +3807,10 @@ exports.handler = async (event, context) => {
             r#"{}"#,
             30,
         );
-        assert_eq!(res.function_error.as_deref(), Some("Runtime.ImportModuleError"));
+        assert_eq!(
+            res.function_error.as_deref(),
+            Some("Runtime.ImportModuleError")
+        );
         let payload: Value = serde_json::from_str(&res.payload).unwrap();
         assert_eq!(payload["errorType"], "Runtime.ImportModuleError");
         assert!(
@@ -3818,7 +3833,11 @@ exports.handler = async (event, context) => {
         let cs = "using System;\nnamespace MyLambda\n{\n    public class Function\n    {\n        public string Handler(string eventJson, object context)\n        {\n            return \"{\\\"compiled\\\": true}\";\n        }\n    }\n}\n";
         let zip = make_files_zip(&[("Handler.cs", cs)]);
         let res = exec_dotnet(&zip, "MyLambda::MyLambda.Function::Handler", r#"{}"#, 60);
-        assert_eq!(res.function_error, None, "logs: {} payload: {}", res.logs, res.payload);
+        assert_eq!(
+            res.function_error, None,
+            "logs: {} payload: {}",
+            res.logs, res.payload
+        );
         let payload: Value = serde_json::from_str(&res.payload).unwrap();
         assert_eq!(payload["compiled"], json!(true));
     }
@@ -3834,23 +3853,25 @@ exports.handler = async (event, context) => {
         let cs = "using System;\n\nnamespace MyLambda\n{\n    public class Function\n    {\n        public string Handler(string eventJson, object context)\n        {\n            return \"{\\\"prefab\\\": \\\"yes\\\"}\";\n        }\n    }\n}\n";
         let zip = make_dotnet_dll_zip(cs);
         let res = exec_dotnet(&zip, "MyLambda::MyLambda.Function::Handler", r#"{}"#, 60);
-        assert_eq!(res.function_error, None, "logs: {} payload: {}", res.logs, res.payload);
+        assert_eq!(
+            res.function_error, None,
+            "logs: {} payload: {}",
+            res.logs, res.payload
+        );
         let payload: Value = serde_json::from_str(&res.payload).unwrap();
         assert_eq!(payload["prefab"], json!("yes"));
 
         // Compat not-found shapes against the same assembly: a wrong type
         // (ImportModuleError) and a wrong method (HandlerNotFound).
-        let wrong_type = exec_dotnet(
-            &zip,
-            "MyLambda::MyLambda.WrongClass::Handler",
-            r#"{}"#,
-            60,
-        );
+        let wrong_type = exec_dotnet(&zip, "MyLambda::MyLambda.WrongClass::Handler", r#"{}"#, 60);
         assert_eq!(wrong_type.function_error.as_deref(), Some("Handled"));
         let payload: Value = serde_json::from_str(&wrong_type.payload).unwrap();
         assert_eq!(payload["errorType"], "Runtime.ImportModuleError");
         assert!(
-            payload["errorMessage"].as_str().unwrap_or_default().contains("WrongClass"),
+            payload["errorMessage"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("WrongClass"),
             "payload: {payload}"
         );
 
@@ -3885,7 +3906,10 @@ exports.handler = async (event, context) => {
         assert_eq!(res.function_error.as_deref(), Some("Handled"));
         let payload: Value = serde_json::from_str(&res.payload).unwrap();
         assert!(
-            payload["errorMessage"].as_str().unwrap_or_default().contains("something went wrong"),
+            payload["errorMessage"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("something went wrong"),
             "payload: {payload}"
         );
         assert_eq!(payload["errorType"], "InvalidOperationException");
@@ -3991,7 +4015,8 @@ with zipfile.ZipFile(sys.argv[1], "w", compression=zipfile.ZIP_DEFLATED) as zf:
             "payload: {payload}"
         );
         assert!(
-            res.logs.contains("ZIP archive expands past the 250 MB unzipped limit"),
+            res.logs
+                .contains("ZIP archive expands past the 250 MB unzipped limit"),
             "the shim prints the cap text — logs: {}",
             res.logs
         );
@@ -4018,7 +4043,8 @@ with zipfile.ZipFile(sys.argv[1], "w", compression=zipfile.ZIP_DEFLATED) as zf:
         let payload: Value = serde_json::from_str(&res.payload).unwrap();
         assert_eq!(payload["errorType"], "Runtime.ExitError");
         assert!(
-            res.logs.contains("ZIP archive expands past the 250 MB unzipped limit"),
+            res.logs
+                .contains("ZIP archive expands past the 250 MB unzipped limit"),
             "the bootstrap prints the cap text — logs: {}",
             res.logs
         );
@@ -4075,7 +4101,8 @@ with zipfile.ZipFile(sys.argv[1], "w", compression=zipfile.ZIP_DEFLATED) as zf:
                 .expect("EOCD present")
         };
         let eocd = locate_eocd(&zip) as usize;
-        let entry_count = u16::from_le_bytes(zip[eocd + 10..eocd + 12].try_into().unwrap()) as usize;
+        let entry_count =
+            u16::from_le_bytes(zip[eocd + 10..eocd + 12].try_into().unwrap()) as usize;
         let mut offset = le32(&zip, eocd + 16) as usize;
         let mut patched = false;
         for _ in 0..entry_count {
@@ -4084,9 +4111,12 @@ with zipfile.ZipFile(sys.argv[1], "w", compression=zipfile.ZIP_DEFLATED) as zf:
                 0x02014b50,
                 "central directory entry signature"
             );
-            let name_len = u16::from_le_bytes(zip[offset + 28..offset + 30].try_into().unwrap()) as usize;
-            let extra_len = u16::from_le_bytes(zip[offset + 30..offset + 32].try_into().unwrap()) as usize;
-            let comment_len = u16::from_le_bytes(zip[offset + 32..offset + 34].try_into().unwrap()) as usize;
+            let name_len =
+                u16::from_le_bytes(zip[offset + 28..offset + 30].try_into().unwrap()) as usize;
+            let extra_len =
+                u16::from_le_bytes(zip[offset + 30..offset + 32].try_into().unwrap()) as usize;
+            let comment_len =
+                u16::from_le_bytes(zip[offset + 32..offset + 34].try_into().unwrap()) as usize;
             let lfh_offset = le32(&zip, offset + 42) as usize;
             let name = &zip[offset + 46..offset + 46 + name_len];
             if name == b"big.bin" {
@@ -4117,7 +4147,8 @@ with zipfile.ZipFile(sys.argv[1], "w", compression=zipfile.ZIP_DEFLATED) as zf:
         let payload: Value = serde_json::from_str(&res.payload).unwrap();
         assert_eq!(payload["errorType"], "Runtime.ExitError");
         assert!(
-            res.logs.contains("ZIP archive expands past the 250 MB unzipped limit"),
+            res.logs
+                .contains("ZIP archive expands past the 250 MB unzipped limit"),
             "the declared budget pass must not smuggle a 300MB write: {}",
             res.logs
         );

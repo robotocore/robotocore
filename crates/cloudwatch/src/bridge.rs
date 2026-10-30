@@ -13,7 +13,7 @@
 //! ingest is a no-op (unit tests without CloudWatch).
 
 use parking_lot::RwLock;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
@@ -136,9 +136,7 @@ fn action_hooks() -> &'static RwLock<HashMap<String, AlarmActionHook>> {
 
 /// Register the delivery hook for an alarm action kind ("sns", "lambda").
 pub fn register_alarm_action(kind: &str, hook: AlarmActionHook) {
-    action_hooks()
-        .write()
-        .insert(kind.to_string(), hook);
+    action_hooks().write().insert(kind.to_string(), hook);
 }
 
 /// Test helper: clear the process-global alarm-action registry so a test can

@@ -455,8 +455,10 @@ mod tests {
     /// (walk + relative paths, like a real deployment package) — works for
     /// text sources and compiled artifacts (.class/.dll) alike.
     fn make_staged_zip(files: &[(&str, &[u8])]) -> Vec<u8> {
-        let dir =
-            std::env::temp_dir().join(format!("lam-bridge-stage-{}", uuid::Uuid::new_v4().simple()));
+        let dir = std::env::temp_dir().join(format!(
+            "lam-bridge-stage-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         for (name, content) in files {
             let path = dir.join(name);
@@ -465,8 +467,10 @@ mod tests {
             }
             std::fs::write(path, content).unwrap();
         }
-        let out_path =
-            dir.parent().unwrap().join(format!("{}.zip", dir.file_name().unwrap().to_string_lossy()));
+        let out_path = dir.parent().unwrap().join(format!(
+            "{}.zip",
+            dir.file_name().unwrap().to_string_lossy()
+        ));
         let out_str = out_path.to_string_lossy().into_owned();
         let root_str = dir.to_string_lossy().into_owned();
         let snippet = "import os, sys, zipfile\nroot, out = sys.argv[1], sys.argv[2]\nwith zipfile.ZipFile(out, 'w') as zf:\n    for dirpath, _, names in os.walk(root):\n        for f in names:\n            p = os.path.join(dirpath, f)\n            zf.write(p, os.path.relpath(p, root))\n";
@@ -601,8 +605,10 @@ mod tests {
         let state = LambdaState::new();
         // Build the class library with the same host TFM the executor uses.
         let tfm = runtime::detect_dotnet_tfm();
-        let dir = std::env::temp_dir()
-            .join(format!("lam-bridge-dotnet-{}", uuid::Uuid::new_v4().simple()));
+        let dir = std::env::temp_dir().join(format!(
+            "lam-bridge-dotnet-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("Function.cs"), "using System.Text.Json;\n\nnamespace MyLambda\n{\n    public class Function\n    {\n        public string Handler(string eventJson, object context)\n        {\n            return \"{\\\"ok\\\": true, \\\"n\\\": 3}\";\n        }\n    }\n}\n").unwrap();
         std::fs::write(

@@ -4879,7 +4879,8 @@ fn query_flatten_rebuilds_batch_entries() {
 #[test]
 fn json_body_with_action_substring_stays_json() {
     let params = json!({"QueueUrl": "http://localhost:4566/000000000000/nope"});
-    let body_bytes = Bytes::from_static(br#"{"Action": "SendMessage", "MessageBody": "hello Action=x"}"#);
+    let body_bytes =
+        Bytes::from_static(br#"{"Action": "SendMessage", "MessageBody": "hello Action=x"}"#);
     let mut req = make_request("SendMessage", params);
     req.body = body_bytes;
     let resp = DefaultSqsHandler::new().handle(req);

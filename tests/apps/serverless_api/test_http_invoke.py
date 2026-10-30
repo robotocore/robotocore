@@ -118,4 +118,4 @@ def handler(event, context):
                 try:
                     _cleanup()
                 except Exception:
-                    pass
+                    pass  # best-effort cleanup

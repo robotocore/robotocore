@@ -862,16 +862,10 @@ impl SnsHandler {
         // `"Statement": {…}` (an object where an array belongs); adding a
         // permission must normalize into the array shape instead of
         // unwrapping an absent array into a panic.
-        let statements = match obj
-            .get_mut("Statement")
-            .and_then(|v| v.as_array_mut())
-        {
+        let statements = match obj.get_mut("Statement").and_then(|v| v.as_array_mut()) {
             Some(stmts) => stmts,
             None => {
-                obj.insert(
-                    "Statement".to_string(),
-                    json!([statement]),
-                );
+                obj.insert("Statement".to_string(), json!([statement]));
                 topic.set_attr("Policy".into(), policy.to_string());
                 return AwsResponse::query_success("AddPermission", String::new());
             }

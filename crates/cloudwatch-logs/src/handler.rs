@@ -115,10 +115,7 @@ impl LogsHandler {
 
     // ---- shared response helpers ----
 
-    fn group_json_with_filters(
-        g: &LogGroupRec,
-        metric_filter_count: usize,
-    ) -> Value {
+    fn group_json_with_filters(g: &LogGroupRec, metric_filter_count: usize) -> Value {
         let stored: i64 = g.streams.values().map(|s| s.stored_bytes).sum();
         let mut out = json!({
             "arn": format!("{}:*", g.arn),
@@ -454,7 +451,12 @@ impl LogsHandler {
         let name = Self::str_param(&req.params, "logGroupName");
         match state.get_group(name) {
             Some(g) => {
-                let metric_filter_count = state.metric_filters.read().iter().filter(|f| f.log_group_name == *name).count();
+                let metric_filter_count = state
+                    .metric_filters
+                    .read()
+                    .iter()
+                    .filter(|f| f.log_group_name == *name)
+                    .count();
                 AwsResponse::json(200, Self::group_json_with_filters(&g, metric_filter_count))
             }
             None => Self::missing_group(),

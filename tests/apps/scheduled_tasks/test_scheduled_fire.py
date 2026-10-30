@@ -61,4 +61,4 @@ class TestScheduledFire:
             try:
                 _cleanup()
             except Exception:
-                pass
+                pass  # best-effort cleanup

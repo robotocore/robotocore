@@ -648,7 +648,10 @@ pub(crate) fn compile_dotnet_source_if_needed(
     // Bounded build (era dotnet.py bounded it at timeout+30): a wedged build
     // server or a hung SDK must not suspend the invoke forever.
     let run = crate::runtime::run_bounded(builder, 45);
-    let ok = run.as_ref().map(|(status, _, _)| *status == Some(0)).unwrap_or(false);
+    let ok = run
+        .as_ref()
+        .map(|(status, _, _)| *status == Some(0))
+        .unwrap_or(false);
     if ok {
         for entry in std::fs::read_dir(&build_out)
             .map(|entries| entries.filter_map(|e| e.ok()).collect::<Vec<_>>())

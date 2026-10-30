@@ -1127,9 +1127,8 @@ pub async fn catch_all_handler(
         // The audit row shows the 12-digit form the client sent (leading
         // zeros are real account ids — the u64 key collapses but the audit
         // row must not).
-        let account_id =
-            canonical_account_string(&headers, uri.query().unwrap_or(""), &body_bytes)
-                .unwrap_or_else(|| account.to_string());
+        let account_id = canonical_account_string(&headers, uri.query().unwrap_or(""), &body_bytes)
+            .unwrap_or_else(|| account.to_string());
         let region_for_audit = extract_region_from_request(&headers)
             .or_else(|| extract_region_from_query(uri.query().unwrap_or("")))
             .unwrap_or_else(|| "us-east-1".to_string());
@@ -1218,9 +1217,8 @@ pub async fn catch_all_handler(
         // The audit row shows the 12-digit form the client sent (leading
         // zeros are real account ids — the u64 key collapses but the audit
         // row must not).
-        let account_id =
-            canonical_account_string(&headers, uri.query().unwrap_or(""), &body_bytes)
-                .unwrap_or_else(|| account.to_string());
+        let account_id = canonical_account_string(&headers, uri.query().unwrap_or(""), &body_bytes)
+            .unwrap_or_else(|| account.to_string());
         let region_for_audit = extract_region_from_request(&headers)
             .or_else(|| extract_region_from_query(uri.query().unwrap_or("")))
             .unwrap_or_else(|| "us-east-1".to_string());
@@ -2214,11 +2212,7 @@ fn append_cors_headers(response: &mut Response, headers: Vec<(String, String)>) 
 /// Browser preflight answer: 204 with the configured CORS headers and no AWS
 /// call.
 fn preflight_response(origin: Option<&str>) -> Response {
-    let mut response = (
-        StatusCode::NO_CONTENT,
-        axum::body::Body::empty(),
-    )
-        .into_response();
+    let mut response = (StatusCode::NO_CONTENT, axum::body::Body::empty()).into_response();
     let headers = crate::cors::build_cors_headers(cors_config(), origin);
     append_cors_headers(&mut response, headers);
     response
@@ -2259,7 +2253,10 @@ fn s3_options_preflight(state: &AppState, headers: &HeaderMap, path: &str) -> Op
         .status(status)
         .body(axum::body::Body::from(resp.body))
         .unwrap_or_else(|_| {
-            error_response(StatusCode::INTERNAL_SERVER_ERROR, "invalid preflight response")
+            error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "invalid preflight response",
+            )
         });
     for (name, value) in resp.headers {
         if let (Ok(name), Ok(value)) = (
@@ -2293,9 +2290,7 @@ async fn cors_middleware(
     let furl_owned = crate::core::furl_exec::match_url(req.uri().path()).is_some();
     let is_preflight = req.method() == Method::OPTIONS
         && origin.is_some()
-        && req
-            .headers()
-            .contains_key("access-control-request-method")
+        && req.headers().contains_key("access-control-request-method")
         && !cors_config().disable_preflight_processing;
 
     if is_preflight && !furl_owned {
@@ -3062,15 +3057,22 @@ fn canonical_account_string(
     for source in [
         query_string.split('&').find_map(|kv| {
             let (k, v) = kv.split_once('=')?;
-            (k == "AWSAccessKeyId" && !v.is_empty()).then(|| urlencoding::decode(v).ok().map(|c| c.into_owned()).unwrap_or_default())
+            (k == "AWSAccessKeyId" && !v.is_empty()).then(|| {
+                urlencoding::decode(v)
+                    .ok()
+                    .map(|c| c.into_owned())
+                    .unwrap_or_default()
+            })
         }),
-        String::from_utf8_lossy(body)
-            .split('&')
-            .find_map(|kv| {
-                let (k, v) = kv.split_once('=')?;
-                (k == "AWSAccessKeyId" && !v.is_empty())
-                    .then(|| urlencoding::decode(v).ok().map(|c| c.into_owned()).unwrap_or_default())
-            }),
+        String::from_utf8_lossy(body).split('&').find_map(|kv| {
+            let (k, v) = kv.split_once('=')?;
+            (k == "AWSAccessKeyId" && !v.is_empty()).then(|| {
+                urlencoding::decode(v)
+                    .ok()
+                    .map(|c| c.into_owned())
+                    .unwrap_or_default()
+            })
+        }),
     ] {
         if let Some(key) = source {
             if let Some(id) = twelve_digit(&key) {
@@ -4190,10 +4192,7 @@ mod tests {
         );
         // The preflight must not have run the router's fallback (the
         // answered CORS body comes from the bucket rules, not the catch-all).
-        let body = BodyExt::collect(resp.into_body())
-            .await
-            .unwrap()
-            .to_bytes();
+        let body = BodyExt::collect(resp.into_body()).await.unwrap().to_bytes();
         assert!(body.is_empty(), "S3 preflight carries no body");
 
         // Unmatched origin answers the bucket-level AccessDenied.
@@ -4208,10 +4207,7 @@ mod tests {
             .body(axum::body::Body::empty())
             .unwrap();
         let resp = tower::ServiceExt::oneshot(app, req).await.unwrap();
-        let body = BodyExt::collect(resp.into_body())
-            .await
-            .unwrap()
-            .to_bytes();
+        let body = BodyExt::collect(resp.into_body()).await.unwrap().to_bytes();
         assert!(
             String::from_utf8_lossy(&body).contains("<Error>"),
             "S3-shaped OPTIONS for an unknown bucket falls back to the crate's error path"

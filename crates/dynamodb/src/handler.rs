@@ -474,7 +474,9 @@ impl DynamoDbHandler {
     /// resolves the dynamodb streams source's owning table the same way
     /// it resolves a kinesis stream).
     pub fn has_table(&self, account: u64, region: &str, table_name: &str) -> bool {
-        self.get_state(account, region).get_table(table_name).is_some()
+        self.get_state(account, region)
+            .get_table(table_name)
+            .is_some()
     }
 
     /// The newest stream-capture sequence number currently on `table_name`
@@ -1501,18 +1503,17 @@ impl DynamoDbHandler {
         // (get_filter_expression → MockValidationException): a pre-pass with
         // an empty probe item surfaces unresolved tokens and malformed
         // grammar instead of a silently-empty result set.
-        for (expr, member) in [(key_cond, "KeyConditionExpression"), (&filter, "FilterExpression")] {
+        for (expr, member) in [
+            (key_cond, "KeyConditionExpression"),
+            (&filter, "FilterExpression"),
+        ] {
             if expr.trim().is_empty() {
                 continue;
             }
             if let Err(e) =
                 expr_engine::eval_condition(expr, &Value::Object(Map::new()), &names, &values)
             {
-                return AwsResponse::error(
-                    400,
-                    "ValidationException",
-                    &format!("{member}: {e}"),
-                );
+                return AwsResponse::error(400, "ValidationException", &format!("{member}: {e}"));
             }
         }
         let projection = expr_str(req.params.get("ProjectionExpression")).unwrap_or("");
@@ -2439,12 +2440,8 @@ impl DynamoDbHandler {
                     // op.get("ExpressionAttributeNames"...) for every arm
                     // uniformly (models/__init__.py:640-665); TransactWriteItems
                     // has no request-level expression members.
-                    match Self::eval_condition_on(
-                        cond,
-                        pre.as_ref(),
-                        &op_names(op),
-                        &op_values(op),
-                    ) {
+                    match Self::eval_condition_on(cond, pre.as_ref(), &op_names(op), &op_values(op))
+                    {
                         Ok(()) => cancellation.push(RowCancellation {
                             code: None,
                             item: None,
@@ -3184,8 +3181,7 @@ fn partiql_run(
     // A clause that is present but unparseable is a 400 ValidationException —
     // never "empty condition = match every row".
     let where_pos = find_keyword_ci(&stmt, "WHERE");
-    let where_clause = where_pos
-        .map(|pos| stmt[pos + "WHERE".len()..].trim().to_string());
+    let where_clause = where_pos.map(|pos| stmt[pos + "WHERE".len()..].trim().to_string());
     let conds = match &where_clause {
         Some(w) if !w.trim().is_empty() => parse_where(w.trim(), parameters).ok_or_else(invalid)?,
         Some(_) => return Err(invalid()),
@@ -6243,7 +6239,11 @@ mod tests {
         ));
         assert_eq!(resp.status, 400);
         assert!(resp.body.contains("ValidationException"), "{}", resp.body);
-        assert!(!resp.body.contains("TransactionCanceledException"), "{}", resp.body);
+        assert!(
+            !resp.body.contains("TransactionCanceledException"),
+            "{}",
+            resp.body
+        );
     }
 
     // PartiQL resolves the table name from the FROM/INTO/UPDATE position

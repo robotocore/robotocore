@@ -149,11 +149,7 @@ fn bucket_cors_headers(
 ) -> Option<Vec<(String, String)>> {
     let origin = origin?;
     for rule in parse_bucket_cors_rules(cors_xml) {
-        if !rule
-            .allowed_origins
-            .iter()
-            .any(|o| o == "*" || o == origin)
-        {
+        if !rule.allowed_origins.iter().any(|o| o == "*" || o == origin) {
             continue;
         }
         let method = method.unwrap_or("OPTIONS");
@@ -1337,14 +1333,8 @@ impl S3Handler {
             return AwsResponse {
                 status: 200,
                 headers: vec![
-                    (
-                        "Location".to_string(),
-                        format!("/{}", bucket.name),
-                    ),
-                    (
-                        "x-amz-bucket-region".to_string(),
-                        req.region.clone(),
-                    ),
+                    ("Location".to_string(), format!("/{}", bucket.name)),
+                    ("x-amz-bucket-region".to_string(), req.region.clone()),
                 ],
                 body: Vec::new(),
             };
@@ -1361,10 +1351,7 @@ impl S3Handler {
             status: 200,
             headers: vec![
                 ("Location".to_string(), format!("/{name}")),
-                (
-                    "x-amz-bucket-region".to_string(),
-                    req.region.clone(),
-                ),
+                ("x-amz-bucket-region".to_string(), req.region.clone()),
             ],
             body: Vec::new(),
         }
@@ -2974,7 +2961,11 @@ impl S3Handler {
             .and_then(|v| v.parse::<usize>().ok())
             .unwrap_or(1000)
             .clamp(0, 1000);
-        let key_marker = req.query_params.get("key-marker").cloned().unwrap_or_default();
+        let key_marker = req
+            .query_params
+            .get("key-marker")
+            .cloned()
+            .unwrap_or_default();
         let version_id_marker = req
             .query_params
             .get("version-id-marker")
@@ -3066,8 +3057,12 @@ impl S3Handler {
         let mut page: Vec<&Row> = Vec::new();
         for row in &all_rows {
             let (key, version_id) = match row {
-                Row::Version { key, version_id, .. } => (key, version_id),
-                Row::DeleteMarker { key, version_id, .. } => (key, version_id),
+                Row::Version {
+                    key, version_id, ..
+                } => (key, version_id),
+                Row::DeleteMarker {
+                    key, version_id, ..
+                } => (key, version_id),
             };
             if !key_marker.is_empty() {
                 if key.as_str() < key_marker.as_str() {
@@ -3096,7 +3091,16 @@ impl S3Handler {
         let mut body = String::new();
         for row in &page {
             match row {
-                Row::Version { key, seq, is_latest, version_id, last_modified, etag, size, storage_class } => {
+                Row::Version {
+                    key,
+                    seq,
+                    is_latest,
+                    version_id,
+                    last_modified,
+                    etag,
+                    size,
+                    storage_class,
+                } => {
                     let _ = seq;
                     body.push_str(&format!(
                         "<Version><Key>{k}</Key><VersionId>{vid}</VersionId><IsLatest>{latest}</IsLatest><LastModified>{dt}</LastModified><ETag>&quot;{et}&quot;</ETag><Size>{sz}</Size><StorageClass>{cls}</StorageClass><Owner><ID>{owner}</ID><DisplayName>{disp}</DisplayName></Owner></Version>",
@@ -3111,7 +3115,12 @@ impl S3Handler {
                         disp = OWNER_DISPLAY
                     ));
                 }
-                Row::DeleteMarker { key, is_latest, version_id, last_modified } => {
+                Row::DeleteMarker {
+                    key,
+                    is_latest,
+                    version_id,
+                    last_modified,
+                } => {
                     body.push_str(&format!(
                         "<DeleteMarker><Key>{k}</Key><VersionId>{vid}</VersionId><IsLatest>{latest}</IsLatest><LastModified>{dt}</LastModified><Owner><ID>{owner}</ID><DisplayName>{disp}</DisplayName></Owner></DeleteMarker>",
                         k = xml_escape(key),
@@ -3130,12 +3139,17 @@ impl S3Handler {
         // the next page resumes strictly after that pair). When the page
         // was left empty the loop above already skipped the marker key.
         let (next_key_marker, next_version_id) = if truncated {
-            page.last().map(|row| match row {
-                Row::Version { key, version_id, .. } => (key.clone(), version_id.clone()),
-                Row::DeleteMarker { key, version_id, .. } => (key.clone(), version_id.clone()),
-            })
-            .map(|(k, v)| (Some(k), Some(v)))
-            .unwrap_or((None, None))
+            page.last()
+                .map(|row| match row {
+                    Row::Version {
+                        key, version_id, ..
+                    } => (key.clone(), version_id.clone()),
+                    Row::DeleteMarker {
+                        key, version_id, ..
+                    } => (key.clone(), version_id.clone()),
+                })
+                .map(|(k, v)| (Some(k), Some(v)))
+                .unwrap_or((None, None))
         } else {
             (None, None)
         };
@@ -8163,11 +8177,18 @@ mod catchup_fx5_object_attributes_tests {
         );
         assert_eq!(handler.handle(cors_req).status, 200);
 
-        let mut req = make_req("OptionsPreFlight", Some("cors-bucket"), Some("doc.txt"), b"");
+        let mut req = make_req(
+            "OptionsPreFlight",
+            Some("cors-bucket"),
+            Some("doc.txt"),
+            b"",
+        );
         req.headers
             .insert("Origin".to_string(), "https://app.example.com".to_string());
-        req.headers
-            .insert("Access-Control-Request-Method".to_string(), "GET".to_string());
+        req.headers.insert(
+            "Access-Control-Request-Method".to_string(),
+            "GET".to_string(),
+        );
         let resp = handler.handle(req);
         assert_eq!(resp.status, 200);
         let get = |name: &str| {
@@ -8177,7 +8198,10 @@ mod catchup_fx5_object_attributes_tests {
                 .map(|(_, v)| v.clone())
                 .unwrap_or_default()
         };
-        assert_eq!(get("Access-Control-Allow-Origin"), "https://app.example.com");
+        assert_eq!(
+            get("Access-Control-Allow-Origin"),
+            "https://app.example.com"
+        );
         assert_eq!(get("Access-Control-Allow-Methods"), "GET, PUT");
         assert_eq!(get("Access-Control-Allow-Headers"), "x-custom");
         assert_eq!(get("Access-Control-Expose-Headers"), "ETag");
@@ -8187,8 +8211,10 @@ mod catchup_fx5_object_attributes_tests {
         let mut req = make_req("OptionsPreFlight", Some("cors-bucket"), Some("k"), b"");
         req.headers
             .insert("Origin".to_string(), "https://app.example.com".to_string());
-        req.headers
-            .insert("Access-Control-Request-Method".to_string(), "DELETE".to_string());
+        req.headers.insert(
+            "Access-Control-Request-Method".to_string(),
+            "DELETE".to_string(),
+        );
         let resp = handler.handle(req);
         assert_eq!(resp.status, 403);
         assert!(String::from_utf8_lossy(&resp.body).contains("AccessDenied"));

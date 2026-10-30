@@ -351,7 +351,9 @@ fn threshold_reason(
     );
     if missing > 0 && matches!(treat, "breaching" | "notBreaching") {
         let munit = if missing == 1 { "" } else { "s" };
-        reason.push_str(&format!(" {missing} missing datapoint{munit} treated as {treat}."));
+        reason.push_str(&format!(
+            " {missing} missing datapoint{munit} treated as {treat}."
+        ));
     }
     reason
 }
@@ -513,7 +515,14 @@ fn alarm_candidate(
         } else {
             (
                 "ALARM",
-                threshold_reason(&breaching_windows, true, phrase, &threshold_str, missing, &treat),
+                threshold_reason(
+                    &breaching_windows,
+                    true,
+                    phrase,
+                    &threshold_str,
+                    missing,
+                    &treat,
+                ),
             )
         }
     } else if clears >= clear_needed {
@@ -528,7 +537,14 @@ fn alarm_candidate(
         } else {
             (
                 "OK",
-                threshold_reason(&clear_windows, false, phrase, &threshold_str, missing, &treat),
+                threshold_reason(
+                    &clear_windows,
+                    false,
+                    phrase,
+                    &threshold_str,
+                    missing,
+                    &treat,
+                ),
             )
         }
     } else {
@@ -1031,7 +1047,8 @@ impl CloudwatchHandler {
             "GetAlarmMuteRule" => self.get_alarm_mute_rule(&req),
             "DeleteAlarmMuteRule" => self.delete_alarm_mute_rule(&req),
             "ListAlarmMuteRules" => AwsResponse::json(200, json!({})),
-            other => AwsResponse::error(
+            other => Self::error_for(
+                &req,
                 400,
                 "ValidationException",
                 &format!("The operation {} is not implemented", other),
@@ -1065,7 +1082,8 @@ impl CloudwatchHandler {
             let has_value = dp.get("Value").is_some();
             let has_stats = dp.get("StatisticValues").is_some();
             if has_value && has_stats {
-                return AwsResponse::error(
+                return Self::error_for(
+                    req,
                     400,
                     "InvalidParameterCombination",
                     "Value and StatisticValues cannot be used together",
@@ -1074,7 +1092,8 @@ impl CloudwatchHandler {
             if let Some(sv) = dp.get("StatisticValues") {
                 for member in ["Sum", "SampleCount", "Minimum", "Maximum"] {
                     if sv.get(member).is_none() {
-                        return AwsResponse::error(
+                        return Self::error_for(
+                            req,
                             400,
                             "MissingRequiredParameter",
                             &format!("Missing required parameter in MetricData.StatisticValues: {member}"),
@@ -1087,7 +1106,8 @@ impl CloudwatchHandler {
             // was silently DROPPED from state save. Reject at the wire.
             let nan_value = |v: Option<f64>| v.map(|f| f.is_nan()).unwrap_or(false);
             if nan_value(dp.get("Value").and_then(as_f64)) {
-                return AwsResponse::error(
+                return Self::error_for(
+                    req,
                     400,
                     "InvalidParameterValue",
                     "Value must be a finite number",
@@ -1096,7 +1116,8 @@ impl CloudwatchHandler {
             if let Some(sv) = dp.get("StatisticValues") {
                 for member in ["Sum", "SampleCount", "Minimum", "Maximum"] {
                     if nan_value(sv.get(member).and_then(as_f64)) {
-                        return AwsResponse::error(
+                        return Self::error_for(
+                            req,
                             400,
                             "InvalidParameterValue",
                             &format!("StatisticValues.{member} must be a finite number"),
@@ -1130,7 +1151,8 @@ impl CloudwatchHandler {
                 // moto validates Values and Counts lengths match.
                 if let Some(counts) = counts_v {
                     if counts.len() != values.len() {
-                        return AwsResponse::error(
+                        return Self::error_for(
+                            req,
                             400,
                             "InvalidParameter",
                             &format!(
@@ -1149,7 +1171,8 @@ impl CloudwatchHandler {
                         .and_then(as_f64)
                         .unwrap_or(1.0);
                     if count.is_nan() || count != count.floor() {
-                        return AwsResponse::error(
+                        return Self::error_for(
+                            req,
                             400,
                             "InvalidParameterValue",
                             "Counts must be positive integers",
@@ -1213,8 +1236,7 @@ impl CloudwatchHandler {
                 if !namespaces.contains(&ns) {
                     continue;
                 }
-                let Some((target, reason)) = alarm_candidate(&metrics, alarm, now_millis())
-                else {
+                let Some((target, reason)) = alarm_candidate(&metrics, alarm, now_millis()) else {
                     continue;
                 };
                 let old_state = field_str(alarm, "StateValue");
@@ -1288,8 +1310,16 @@ impl CloudwatchHandler {
     /// (`X-Amz-Target` bodies) get the JSON envelope, form-encoded
     /// query-protocol requests get the AWS `<ErrorResponse>` XML.
     fn error_for(req: &AwsRequest, status: u16, code: &str, message: &str) -> AwsResponse {
-        let is_query =
-            !req.body.is_empty() && String::from_utf8_lossy(req.body.as_ref()).contains("Action=");
+        // The sniff rides the gateway-parsed params (`Action` exists only for
+        // a form-encoded query body — the gateway consumes the raw body, so a
+        // body-substring check misses real query posts). Mirrors the sqs
+        // handler's chooser.
+        let is_query = req
+            .params
+            .get("Action")
+            .and_then(|v| v.as_str())
+            .map(|a| !a.is_empty())
+            .unwrap_or(false);
         if is_query {
             AwsResponse::query_error(status, code, message)
         } else {
@@ -1306,7 +1336,8 @@ impl CloudwatchHandler {
         let start = Self::ts_param_strict(&req.params, "StartTime")
             .ok_or(())
             .or_else(|_| {
-                Err(AwsResponse::error(
+                Err(Self::error_for(
+                    req,
                     400,
                     "InvalidParameterValue",
                     "StartTime is required and must be a valid timestamp",
@@ -1319,7 +1350,8 @@ impl CloudwatchHandler {
         let end = Self::ts_param_strict(&req.params, "EndTime")
             .ok_or(())
             .or_else(|_| {
-                Err(AwsResponse::error(
+                Err(Self::error_for(
+                    req,
                     400,
                     "InvalidParameterValue",
                     "EndTime is required and must be a valid timestamp",
@@ -1330,7 +1362,8 @@ impl CloudwatchHandler {
             Err(resp) => return resp,
         };
         if start >= end {
-            return AwsResponse::error(
+            return Self::error_for(
+                req,
                 400,
                 "InvalidParameterValue",
                 "StartTime must be before EndTime",
@@ -1458,7 +1491,7 @@ impl CloudwatchHandler {
         )
     }
 
-fn get_metric_data(&self, req: &AwsRequest) -> AwsResponse {
+    fn get_metric_data(&self, req: &AwsRequest) -> AwsResponse {
         // moto's get_metric_data rejects start >= end (InvalidParameterValue);
         // the [start, end) window bounds every MetricStat source before the
         // collection pass. Missing markers read "no bound" — the twin keeps
@@ -1474,7 +1507,8 @@ fn get_metric_data(&self, req: &AwsRequest) -> AwsResponse {
         let end_ms = opt_ts("EndTime");
         if let (Some(s), Some(e)) = (start_ms, end_ms) {
             if s >= e {
-                return AwsResponse::error(
+                return Self::error_for(
+                    req,
                     400,
                     "InvalidParameterValue",
                     "StartTime must be less than EndTime",
@@ -1568,7 +1602,7 @@ fn get_metric_data(&self, req: &AwsRequest) -> AwsResponse {
     fn put_metric_alarm(&self, req: &AwsRequest) -> AwsResponse {
         let name = str_param(&req.params, "AlarmName");
         if name.is_empty() {
-            return AwsResponse::error(400, "ValidationError", "AlarmName is required");
+            return Self::error_for(req, 400, "ValidationError", "AlarmName is required");
         }
         let arn = format!(
             "arn:aws:cloudwatch:{}:{}:alarm:{}",
@@ -1615,12 +1649,16 @@ fn get_metric_data(&self, req: &AwsRequest) -> AwsResponse {
             alarm["ExtendedStatistic"] = json!(es);
         }
         if let Some(dta) = req.params.get("DatapointsToAlarm").and_then(as_i64) {
-            let eval_periods =
-                req.params.get("EvaluationPeriods").and_then(as_i64).unwrap_or(1);
+            let eval_periods = req
+                .params
+                .get("EvaluationPeriods")
+                .and_then(as_i64)
+                .unwrap_or(1);
             // real-AWS validation: M must be <= N — an M>N alarm can never
             // reach ALARM (M datapoints cannot collect within N windows).
             if dta > eval_periods {
-                return AwsResponse::error(
+                return Self::error_for(
+                    req,
                     400,
                     "ValidationError",
                     "DatapointsToAlarm must be less than or equal to EvaluationPeriods",
@@ -1781,7 +1819,7 @@ fn get_metric_data(&self, req: &AwsRequest) -> AwsResponse {
                     let value =
                         as_str(req.params.get("StateValue")).unwrap_or_else(|| "OK".to_string());
                     if value != "OK" && value != "ALARM" && value != "INSUFFICIENT_DATA" {
-                        return AwsResponse::error(400, "ValidationError",
+                        return Self::error_for(req, 400, "ValidationError",
                             &format!("1 validation error detected: Value '{value}' at 'stateValue' failed to satisfy constraint: Member must satisfy enum value set: [INSUFFICIENT_DATA, ALARM, OK]"));
                     }
                     if let Some(reason) = as_str(req.params.get("StateReason")) {
@@ -1801,14 +1839,20 @@ fn get_metric_data(&self, req: &AwsRequest) -> AwsResponse {
                     if value != old_state && alarm["ActionsEnabled"].as_bool().unwrap_or(true) {
                         let reason = field_str(alarm, "StateReason");
                         if let Some((arns, message)) = state_notification(
-                            alarm, &old_state, &value, &reason, &req.region, req.account,
+                            alarm,
+                            &old_state,
+                            &value,
+                            &reason,
+                            &req.region,
+                            req.account,
                         ) {
                             delivery = Some((name.clone(), value.clone(), arns, message));
                         }
                     }
                     AwsResponse::json(200, json!({}))
                 }
-                None => AwsResponse::error(
+                None => Self::error_for(
+                    req,
                     400,
                     "ResourceNotFoundException",
                     &format!("Alarm {name} not found"),
@@ -1821,9 +1865,13 @@ fn get_metric_data(&self, req: &AwsRequest) -> AwsResponse {
         // ([`delivery_is_current`]) because the lock-free window above lets
         // another caller or a nested hook move or delete the alarm.
         if let Some((_, target, arns, message)) = delivery {
-            crate::bridge::deliver_actions_if_valid(&arns, &message, req.account, &req.region, || {
-                delivery_is_current(&state, &name, &target)
-            });
+            crate::bridge::deliver_actions_if_valid(
+                &arns,
+                &message,
+                req.account,
+                &req.region,
+                || delivery_is_current(&state, &name, &target),
+            );
         }
         response
     }
@@ -1853,11 +1901,11 @@ fn get_metric_data(&self, req: &AwsRequest) -> AwsResponse {
     fn put_composite_alarm(&self, req: &AwsRequest) -> AwsResponse {
         let name = str_param(&req.params, "AlarmName");
         if name.is_empty() {
-            return AwsResponse::error(400, "ValidationError", "AlarmName is required");
+            return Self::error_for(req, 400, "ValidationError", "AlarmName is required");
         }
         let rule = str_param(&req.params, "AlarmRule");
         if rule.is_empty() {
-            return AwsResponse::error(400, "ValidationError", "AlarmRule is required");
+            return Self::error_for(req, 400, "ValidationError", "AlarmRule is required");
         }
         let arn = format!(
             "arn:aws:cloudwatch:{}:{}:alarm:{}",
@@ -1889,7 +1937,8 @@ fn get_metric_data(&self, req: &AwsRequest) -> AwsResponse {
         let name = str_param(&req.params, "DashboardName");
         let body = str_param(&req.params, "DashboardBody");
         if serde_json::from_str::<Value>(&body).is_err() {
-            return AwsResponse::error(
+            return Self::error_for(
+                req,
                 400,
                 "InvalidParameterValue",
                 "The value of DashboardBody must be valid JSON",
@@ -1920,7 +1969,8 @@ fn get_metric_data(&self, req: &AwsRequest) -> AwsResponse {
                     "DashboardBody": entry.get("DashboardBody").cloned().unwrap_or(Value::Null)
                 }),
             ),
-            None => AwsResponse::error(
+            None => Self::error_for(
+                req,
                 400,
                 "ResourceNotFound",
                 &format!("Dashboard {name} does not exist"),
@@ -1953,7 +2003,8 @@ fn get_metric_data(&self, req: &AwsRequest) -> AwsResponse {
         let mut dashboards = state.dashboards.write();
         for name in &names {
             if !dashboards.contains_key(name) {
-                return AwsResponse::error(
+                return Self::error_for(
+                    req,
                     400,
                     "ResourceNotFound",
                     &format!("Dashboard {name} does not exist"),
@@ -2082,7 +2133,7 @@ fn get_metric_data(&self, req: &AwsRequest) -> AwsResponse {
     fn put_insight_rule(&self, req: &AwsRequest) -> AwsResponse {
         let name = str_param(&req.params, "RuleName");
         if name.is_empty() {
-            return AwsResponse::error(400, "ValidationError", "RuleName is required");
+            return Self::error_for(req, 400, "ValidationError", "RuleName is required");
         }
         let state = self.get_state(req.account, &req.region);
         let rule = json!({
@@ -2131,7 +2182,7 @@ fn get_metric_data(&self, req: &AwsRequest) -> AwsResponse {
     fn put_metric_stream(&self, req: &AwsRequest) -> AwsResponse {
         let name = str_param(&req.params, "Name");
         if name.is_empty() {
-            return AwsResponse::error(400, "ValidationError", "Name is required");
+            return Self::error_for(req, 400, "ValidationError", "Name is required");
         }
         let arn = format!(
             "arn:aws:cloudwatch:{}:{}:metric-stream/{}",
@@ -2169,7 +2220,8 @@ fn get_metric_data(&self, req: &AwsRequest) -> AwsResponse {
         let found = state.metric_streams.read().get(&name).cloned();
         match found {
             Some(stream) => AwsResponse::json(200, stream),
-            None => AwsResponse::error(
+            None => Self::error_for(
+                req,
                 400,
                 "ResourceNotFoundException",
                 &format!("MetricStream {name} does not exist"),
@@ -2207,7 +2259,7 @@ fn get_metric_data(&self, req: &AwsRequest) -> AwsResponse {
     fn put_alarm_mute_rule(&self, req: &AwsRequest) -> AwsResponse {
         let name = str_param(&req.params, "Name");
         if name.is_empty() {
-            return AwsResponse::error(400, "ValidationError", "Name is required");
+            return Self::error_for(req, 400, "ValidationError", "Name is required");
         }
         let state = self.get_state(req.account, &req.region);
         let rule = json!({
@@ -2224,7 +2276,8 @@ fn get_metric_data(&self, req: &AwsRequest) -> AwsResponse {
         let found = state.mute_rules.read().get(&name).cloned();
         match found {
             Some(rule) => AwsResponse::json(200, rule),
-            None => AwsResponse::error(
+            None => Self::error_for(
+                req,
                 400,
                 "ResourceNotFoundException",
                 &format!("Mute rule {name} does not exist"),
@@ -2583,18 +2636,20 @@ mod tests {
         let armed_hook = Arc::clone(&armed);
         crate::bridge::register_alarm_action(
             "sns",
-            Arc::new(move |arn: &str, payload: &str, _account: u64, _region: &str| {
-                recorded.lock().push((arn.to_string(), payload.to_string()));
-                // Take first, then run: the mutex guard must be gone before
-                // the nested handle call starts, or the nested deliveries'
-                // own hook invocations re-lock the same (non-reentrant)
-                // mutex and hang.
-                let reenters = armed_hook.lock().take();
-                if let Some((nested_handler, nested_req)) = reenters {
-                    let _ = nested_handler.handle(nested_req);
-                }
-                Ok(())
-            }),
+            Arc::new(
+                move |arn: &str, payload: &str, _account: u64, _region: &str| {
+                    recorded.lock().push((arn.to_string(), payload.to_string()));
+                    // Take first, then run: the mutex guard must be gone before
+                    // the nested handle call starts, or the nested deliveries'
+                    // own hook invocations re-lock the same (non-reentrant)
+                    // mutex and hang.
+                    let reenters = armed_hook.lock().take();
+                    if let Some((nested_handler, nested_req)) = reenters {
+                        let _ = nested_handler.handle(nested_req);
+                    }
+                    Ok(())
+                },
+            ),
         );
 
         let handler = Arc::new(CloudwatchHandler::new());
@@ -2689,7 +2744,8 @@ mod tests {
         let icd = envelope_of(topic_arn, "eval-icd", "INSUFFICIENT_DATA");
         assert_eq!(icd["OldStateValue"], "OK");
         assert_eq!(
-            icd["NewStateReason"], "Insufficient Data: 1 datapoint was unknown."
+            icd["NewStateReason"],
+            "Insufficient Data: 1 datapoint was unknown."
         );
         let first_alarm = envelope_of(topic_arn, "eval-a", "ALARM");
         assert_eq!(first_alarm["OldStateValue"], "OK");
@@ -2990,7 +3046,10 @@ mod tests {
         )));
         let alarm = &desc["MetricAlarms"][0];
         assert_eq!(alarm["StateValue"], "ALARM");
-        assert!(alarm["StateReason"].as_str().unwrap().contains("treated as breaching"));
+        assert!(alarm["StateReason"]
+            .as_str()
+            .unwrap()
+            .contains("treated as breaching"));
     }
 
     /// TreatMissingData=ignore ("The current alarm state is maintained." —
@@ -3132,11 +3191,7 @@ mod tests {
         )));
         let alarms = desc["MetricAlarms"].as_array().unwrap();
         let state_of = |name: &str| {
-            alarms
-                .iter()
-                .find(|x| x["AlarmName"] == name)
-                .unwrap()["StateValue"]
-                .clone()
+            alarms.iter().find(|x| x["AlarmName"] == name).unwrap()["StateValue"].clone()
         };
         assert_eq!(state_of("m1"), "ALARM");
         assert_eq!(state_of("m2"), "ALARM", "both windows breaching → ALARM");
@@ -3158,14 +3213,18 @@ mod tests {
         )));
         let alarms = desc["MetricAlarms"].as_array().unwrap();
         let state_of = |name: &str| {
-            alarms
-                .iter()
-                .find(|x| x["AlarmName"] == name)
-                .unwrap()["StateValue"]
-                .clone()
+            alarms.iter().find(|x| x["AlarmName"] == name).unwrap()["StateValue"].clone()
         };
-        assert_eq!(state_of("m1"), "ALARM", "M=1 holds ALARM while any window breaches");
-        assert_eq!(state_of("m2"), "OK", "M=2 of 2 needs every window breaching");
+        assert_eq!(
+            state_of("m1"),
+            "ALARM",
+            "M=1 holds ALARM while any window breaches"
+        );
+        assert_eq!(
+            state_of("m2"),
+            "OK",
+            "M=2 of 2 needs every window breaching"
+        );
     }
 
     /// The real CloudWatch M-of-N rule counts breaching datapoints across the
@@ -3227,8 +3286,7 @@ mod tests {
             json!({ "AlarmNames": ["mnbr"] }),
         )));
         assert_eq!(
-            desc["MetricAlarms"][0]["StateValue"],
-            "ALARM",
+            desc["MetricAlarms"][0]["StateValue"], "ALARM",
             "1 breaching + 1 treated-as-breaching missing fills M=2"
         );
 
