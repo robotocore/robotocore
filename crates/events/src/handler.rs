@@ -67,12 +67,46 @@ fn now_rfc3339() -> String {
     chrono::Utc::now().to_rfc3339()
 }
 
+/// Archive capture: `event` lands in every archive whose EventSourceArn
+/// names `bus_arn` and whose EventPattern matches (an archive without a
+/// pattern takes the whole bus) — the replay corpus `StartReplay` re-delivers
+/// later. Shared by the PutEvents entry loop and `publish_event_to_bus` (S3
+/// notifications, CloudTrail bridge events and other cross-crate emitters
+/// land here, attributed by their source-bus ARN).
+fn capture_to_archives(state: &EventsState, bus_arn: &str, event: &Value) {
+    let capture: Vec<String> = state
+        .archives
+        .read()
+        .iter()
+        .filter(|(_, a)| {
+            a.get("EventSourceArn").and_then(|s| s.as_str()) == Some(bus_arn)
+                && a.get("EventPattern")
+                    .and_then(|p| p.as_str())
+                    .and_then(|p| serde_json::from_str::<Value>(p).ok())
+                    .map(|p| matches_pattern(&p, event))
+                    .unwrap_or(true)
+        })
+        .map(|(n, _)| n.clone())
+        .collect();
+    if capture.is_empty() {
+        return;
+    }
+    let mut archived = state.archived_events.write();
+    for name in capture {
+        archived.entry(name).or_default().push(event.clone());
+    }
+}
+
 /// Routing target ARN supported for delivery.
 /// Route a pre-built event through EventBridge rule matching and deliver it
 /// to matching rules' targets, using the shared pattern matcher. Mirrors the
 /// Python provider's `publish_event_to_bus` (S3 and friends publish here).
 pub fn publish_event_to_bus(event: &Value, account: u64, region: &str) {
     let state = global_state(account, region);
+    // Cross-crate highways deliver into the (account, region)'s default bus
+    // surface, so its archives capture the delivery the same way a PutEvents
+    // on that bus would.
+    capture_to_archives(&state, &state.bus_arn(account, region, "default"), event);
     let matching: Vec<Arc<Rule>> = {
         let rules = state.rules.read();
         rules
@@ -712,31 +746,12 @@ impl EventsHandler {
                 continue;
             }
 
-            // Archive capture: the canonical event lands in every archive
-            // whose source bus is this entry's bus and whose EventPattern
-            // matches (archives without a pattern take the whole bus), so
-            // StartReplay can re-deliver the window later.
+            // Archive capture (shared with publish_event_to_bus): the
+            // canonical event lands in every archive sourced from this bus
+            // whose EventPattern matches, so StartReplay can re-deliver the
+            // window later.
             let bus_arn = state.bus_arn(req.account, &req.region, &bus_name);
-            let capture: Vec<String> = state
-                .archives
-                .read()
-                .iter()
-                .filter(|(_, a)| {
-                    a.get("EventSourceArn").and_then(|s| s.as_str()) == Some(bus_arn.as_str())
-                        && a.get("EventPattern")
-                            .and_then(|p| p.as_str())
-                            .and_then(|p| serde_json::from_str::<Value>(p).ok())
-                            .map(|p| matches_pattern(&p, &event))
-                            .unwrap_or(true)
-                })
-                .map(|(n, _)| n.clone())
-                .collect();
-            if !capture.is_empty() {
-                let mut archived = state.archived_events.write();
-                for name in capture {
-                    archived.entry(name).or_default().push(event.clone());
-                }
-            }
+            capture_to_archives(&state, &bus_arn, &event);
 
             let matching: Vec<Arc<Rule>> = state
                 .rules

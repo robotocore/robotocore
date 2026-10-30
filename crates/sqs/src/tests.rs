@@ -4855,19 +4855,26 @@ fn cmv_batch_row_without_receipt_handle_key_crashes_like_moto() {
 // EmptyBatchRequest (AWS SDK Go v1 / old-botocore lane).
 #[test]
 fn query_flatten_rebuilds_batch_entries() {
+    // Own its queue (like every sibling test): the hardcoded
+    // localhost:4566/000000000000/q made a 200 answer depend on whichever
+    // unrelated test happened to mint that queue first.
+    let handler = DefaultSqsHandler::new();
+    let queue_url = create_queue(&handler, "q");
     let params = json!({
         "Action": "SendMessageBatch",
-        "QueueUrl": "http://localhost:4566/000000000000/q",
+        "QueueUrl": queue_url,
         "SendMessageBatchRequestEntry.1.Id": "first",
         "SendMessageBatchRequestEntry.1.MessageBody": "one",
         "SendMessageBatchRequestEntry.2.Id": "second",
         "SendMessageBatchRequestEntry.2.MessageBody": "two"
     });
-    let handler = DefaultSqsHandler::new();
     let resp = handler.handle(make_request("SendMessageBatch", params));
     assert_eq!(resp.status, 200, "body: {}", resp.body);
     let body: Value = serde_json::from_str(&resp.body).unwrap();
-    let entries = body["SendMessageBatchResult"]["Successful"]
+    // The direct crate body carries the batch result unwrapped (the XML
+    // route adds the SendMessageBatchResponse/Result envelope on the way
+    // out); sibling tests read the same top-level arrays.
+    let entries = body["Successful"]
         .as_array()
         .expect("both flattened entries rebuilt into the batch");
     assert_eq!(entries.len(), 2, "body: {}", resp.body);

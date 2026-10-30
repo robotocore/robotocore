@@ -296,8 +296,12 @@ fn parse_decimal(s: &str) -> Option<(bool, String, i64)> {
     let scale = frac_part.len() as i64 - exp;
     // An exponent can scale the digit string enormously ("1e2000000000");
     // cap it so a hostile-but-legal input cannot trigger multi-GB
-    // allocations. Digits stay exact; padding beyond the bound falls back
-    // to an inexact (f64) value in the callers.
+    // allocations. Digits stay exact within the ±256 shift window; the
+    // write path (number_validity) rejects the out-of-band magnitudes
+    // before anything reaches the store, so the clamp can only ever see the
+    // in-band values moto would accept (moto itself 400s both |x|>9.99…e126
+    // and sub-1e-130). Padding beyond the bound falls back to an inexact
+    // (f64) value in the callers.
     const MAX_SCALE_SHIFT: i64 = 256;
     if scale >= 0 {
         Some((neg, digits, scale.min(MAX_SCALE_SHIFT)))
@@ -354,11 +358,44 @@ pub fn canonical_decimal(raw: &str) -> String {
     }
 }
 
-/// Whether a string is a valid DynamoDB number literal (the write-path
-/// member validation mirrors moto's number conversion: {"N": "abc"} is a
-/// ValidationException).
-pub fn is_valid_number(raw: &str) -> bool {
-    parse_decimal(raw).is_some()
+/// The numeric-literal verdict for the write path — the three failures moto's
+/// `_validate_number_type` (table.py:578-619) raises, each with its own wire
+/// message: unparseable / whitespace-padded are "cannot be converted",
+/// magnitudes beyond the 1E-130..9.999…E+125 band are Number overflow /
+/// underflow.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum NumberValidity {
+    Valid,
+    NonNumeric,
+    Overflow,
+    Underflow,
+}
+
+pub fn number_validity(raw: &str) -> NumberValidity {
+    // moto validates through python's float(): whitespace-padded literals
+    // PARSE there, so the explicit whitespace check fires AFTER the parse —
+    // " 1", "1 ", "\n1" are non-numeric too ("value != value.strip()"); so
+    // is anything float cannot read (empty, inf/nan spellings, junk).
+    if raw.trim() != raw || parse_decimal(raw).is_none() {
+        return NumberValidity::NonNumeric;
+    }
+    // The magnitude band rides f64 exactly like moto's float() checks, so
+    // edge values land the same verdicts.
+    let Ok(v) = raw.parse::<f64>() else {
+        return NumberValidity::NonNumeric;
+    };
+    if !v.is_finite() {
+        return NumberValidity::NonNumeric;
+    }
+    if v != 0.0 {
+        if v.abs() > 9.9999999999999999999999999999999999999e125 {
+            return NumberValidity::Overflow;
+        }
+        if v.abs() < 1e-130 {
+            return NumberValidity::Underflow;
+        }
+    }
+    NumberValidity::Valid
 }
 
 /// Exact add on DynamoDB number strings; None falls back to the caller's f64

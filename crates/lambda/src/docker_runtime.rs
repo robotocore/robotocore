@@ -2089,16 +2089,10 @@ impl DockerLambdaExecutor {
 
         if timed_out {
             // Killed on the timeout budget, like the python-era
-            // subprocess.TimeoutExpired branch of docker run.
-            return ExecResult {
-                payload: json!({
-                    "errorMessage": format!("Task timed out after {timeout_secs}s"),
-                    "errorType": "Task.TimedOut",
-                })
-                .to_string(),
-                function_error: Some("Task.TimedOut".to_string()),
-                logs: format!("Function timed out after {timeout_secs}s"),
-            };
+            // subprocess.TimeoutExpired branch of docker run — the same
+            // `.00` message contract the other lanes' timeout helper
+            // renders (one shape for every execution mode).
+            return run_timed_out_result(timeout_secs, "");
         }
         if container_gone {
             return ExecResult {
@@ -3162,7 +3156,9 @@ mod tests {
         let res = run_execute(&ex, "python3.12", r#"{}"#);
         assert_eq!(res.function_error.as_deref(), Some("Task.TimedOut"));
         let payload: Value = serde_json::from_str(&res.payload).unwrap();
-        assert_eq!(payload["errorMessage"], "Task timed out after 3s");
+        // Shared era contract: every lane's timeout renders `.00 seconds`
+        // (run_timed_out_result, same helper the family lanes use).
+        assert_eq!(payload["errorMessage"], "Task timed out after 3.00 seconds");
         assert_eq!(res.logs, "Function timed out after 3s");
         // The container is force-removed on timeout, exactly once.
         assert_eq!(cli.rm_calls().len(), 1);

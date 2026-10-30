@@ -400,15 +400,16 @@ impl DynamoDbHandler {
         let state = self.get_state(req.account, &req.region);
         if let Some(table) = state.get_table(&table_name) {
             // moto resolves DeletionProtectedException when the flag is on
-            // (models/__init__.py:115-120) — the table cannot be removed
-            // until UpdateTable turns it back off.
+            // (models/__init__.py:115-120) — a MockValidationException
+            // subclass, so the WIRE type is ValidationException with moto's
+            // exact message (dynamo_db exceptions.py:412-416).
             if *table.deletion_protection_enabled.read() {
                 return AwsResponse::error(
                     400,
-                    "DeletionProtectedException",
+                    "ValidationException",
                     &format!(
-                        "Table {table_name} can't be deleted while DeletionProtectionEnabled \
-                         is enabled"
+                        "1 validation error detected: Table '{table_name}' can't be deleted \
+                         while DeletionProtectionEnabled is set to True"
                     ),
                 );
             }
@@ -477,6 +478,38 @@ impl DynamoDbHandler {
         self.get_state(account, region)
             .get_table(table_name)
             .is_some()
+    }
+
+    /// Whether `stream_arn` names the table's LIVE stream (moto's create
+    /// loop resolves the mapping source through the dynamodbstreams backend
+    /// and answers 404 "Invalid EventSourceArn" unless the given ARN matches
+    /// the table's current stream — `lambda/models.py` + `dynamodbstreams`
+    /// backend). Kinesis-style sources name the full
+    /// `.../stream/{LatestStreamLabel}` form; a stream-less table has none
+    /// and matches nothing.
+    pub fn has_stream_arn(&self, account: u64, region: &str, stream_arn: &str) -> bool {
+        // arn:...:table/{name}/stream/{label}
+        let Some(resource) = stream_arn.splitn(6, ':').nth(5) else {
+            return false;
+        };
+        let Some((name, label)) = resource
+            .strip_prefix("table/")
+            .and_then(|r| r.split_once("/stream/"))
+        else {
+            return false;
+        };
+        let name = name.to_string();
+        let Some(table) = self.get_state(account, region).get_table(&name) else {
+            return false;
+        };
+        if !streaming::stream_enabled(&table) {
+            return false;
+        }
+        let live_guard = table.stream_label.read();
+        let Some(live_label) = live_guard.as_deref() else {
+            return false;
+        };
+        label == live_label
     }
 
     /// The newest stream-capture sequence number currently on `table_name`
@@ -947,6 +980,41 @@ fn get_names(req: &AwsRequest) -> Names {
         .unwrap_or_default()
 }
 
+/// The first `#name` token in `expr` absent from the names map (the strict
+/// name resolution moto's evaluator rides). `None` when every reference
+/// resolves; single-quoted operator literals are skipped.
+fn unbound_name_token(expr: &str, names: &Names) -> Option<String> {
+    let bytes = expr.as_bytes();
+    let mut in_literal = false;
+    let mut found: Option<String> = None;
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\'' => in_literal = !in_literal,
+            b'#' if !in_literal => {
+                let start = i;
+                let mut end = i + 1;
+                while end < bytes.len()
+                    && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_')
+                {
+                    end += 1;
+                }
+                if found.is_none() {
+                    let tok = &expr[start..end];
+                    if !names.contains_key(tok) {
+                        found = Some(tok.to_string());
+                    }
+                }
+                i = end;
+                continue;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    found
+}
+
 fn get_values(req: &AwsRequest) -> Values {
     req.params
         .get("ExpressionAttributeValues")
@@ -971,6 +1039,33 @@ fn format_created_at(ts: u64) -> String {
 /// Canonical storage key for an item given its key attributes.
 fn item_key(table: &Table, attrs: &Map<String, Value>) -> Option<String> {
     compute_key_from_attrs(&table.key_schema, &attrs_to_map(attrs))
+}
+
+/// The 400 for a batch row whose key cannot resolve against the schema. A
+/// key member that is entirely ABSENT reads moto's "Missing the key {attr}
+/// in the item" (table.py:620-632 — the name rides the schema, first
+/// missing member wins); a present-but-unusable member keeps the real-AWS
+/// schema-mismatch text.
+fn keyed_lookup_error(table: &Table, attrs: &Map<String, Value>) -> AwsResponse {
+    match table
+        .key_schema
+        .iter()
+        .map(|k| k.attribute_name.as_str())
+        .find(|name| !attrs.contains_key(*name))
+    {
+        Some(missing) => AwsResponse::error(
+            400,
+            "ValidationException",
+            &format!(
+                "One or more parameter values were invalid: Missing the key {missing} in the item"
+            ),
+        ),
+        None => AwsResponse::error(
+            400,
+            "ValidationException",
+            "The provided key element does not match the schema",
+        ),
+    }
 }
 
 /// Enforce the real-AWS per-item 400 KB limit on the item about to be
@@ -1006,26 +1101,49 @@ fn check_item_size(attrs: &Map<String, Value>, is_update: bool) -> Option<AwsRes
     }
 }
 
+/// Moto's per-failure wire text for a numeric verdict (table.py:578-619).
+fn number_validity_error(
+    validity: expr_engine::NumberValidity,
+    shown: &str,
+) -> Option<AwsResponse> {
+    match validity {
+        expr_engine::NumberValidity::Valid => None,
+        expr_engine::NumberValidity::NonNumeric => Some(AwsResponse::error(
+            400,
+            "ValidationException",
+            &format!("The parameter cannot be converted to a numeric value: {shown}"),
+        )),
+        expr_engine::NumberValidity::Overflow => Some(AwsResponse::error(
+            400,
+            "ValidationException",
+            "Number overflow. Attempting to store a number with magnitude larger than \
+             supported range",
+        )),
+        expr_engine::NumberValidity::Underflow => Some(AwsResponse::error(
+            400,
+            "ValidationException",
+            "Number underflow. Attempting to store a number with magnitude smaller than \
+             supported range",
+        )),
+    }
+}
+
 /// Recursive member-shape validation (moto table.py _validate_number_type +
-/// the NULL-type check): a numeric claim with an unparseable literal and a
-/// non-true NULL are ValidationExceptions on every write path.
+/// the NULL-type check): numeric-claim failures and a non-true NULL are
+/// ValidationExceptions on every write path, with moto's per-failure text
+/// (unparseable/whitespace = "cannot be converted", overflow/underflow the
+/// Number {over,under}flow messages).
 fn validate_attribute_values(value: &Value) -> Option<AwsResponse> {
     if let Some(n) = value.get("N").and_then(Value::as_str) {
-        if !expr_engine::is_valid_number(n) {
-            return Some(AwsResponse::error(
-                400,
-                "ValidationException",
-                &format!("The parameter cannot be converted to a numeric value: {n}"),
-            ));
-        }
-        return None;
+        return number_validity_error(expr_engine::number_validity(n), n);
     }
     if let Some(null) = value.get("NULL") {
         if *null != Value::Bool(true) {
+            // moto table.py:558-560.
             return Some(AwsResponse::error(
                 400,
                 "ValidationException",
-                "NULL attribute value must be true by definition of NULL",
+                "Null attribute value types must have the value of true",
             ));
         }
         return None;
@@ -1046,13 +1164,18 @@ fn validate_attribute_values(value: &Value) -> Option<AwsResponse> {
     }
     if let Some(ns) = value.get("NS").and_then(Value::as_array) {
         for v in ns {
-            if v.as_str().map(expr_engine::is_valid_number) != Some(true) {
-                let shown = v.as_str().unwrap_or_default();
+            let Some(s) = v.as_str() else {
+                // moto's NS members ride the same numeric validator; a
+                // non-string member has no numeric conversion and prints
+                // the offending literal in full (not a blank).
                 return Some(AwsResponse::error(
                     400,
                     "ValidationException",
-                    &format!("The parameter cannot be converted to a numeric value: {shown}"),
+                    &format!("The parameter cannot be converted to a numeric value: {v}"),
                 ));
+            };
+            if let Some(err) = number_validity_error(expr_engine::number_validity(s), s) {
+                return Some(err);
             }
         }
     }
@@ -1510,6 +1633,19 @@ impl DynamoDbHandler {
             if expr.trim().is_empty() {
                 continue;
             }
+            // moto's name resolution is a strict dict access (a probe (g)
+            // KeyError '#nores'): an expression token whose #name is absent
+            // from ExpressionAttributeNames fails the query instead of
+            // resolving into a phantom attribute that scans as empty. The
+            // value-side misses pour through eval_condition's parser; the
+            // names map has no parse-error surface of its own.
+            if let Some(tok) = unbound_name_token(expr, &names) {
+                return AwsResponse::error(
+                    400,
+                    "ValidationException",
+                    &format!("{member}: unbound expression attribute name {tok}"),
+                );
+            }
             if let Err(e) =
                 expr_engine::eval_condition(expr, &Value::Object(Map::new()), &names, &values)
             {
@@ -1925,12 +2061,14 @@ impl DynamoDbHandler {
                         key_json.as_object().cloned().unwrap_or_default();
                     // moto's response layer resolves each key against the
                     // table schema before the get (responses.py:748-769) —
-                    // a key that does not match is a 400, never a silent skip.
+                    // a key that does not match is a 400, never a silent
+                    // skip; moto's arm answers the generic "Validation
+                    // Exception" text (verified probe (1)).
                     let Some(key) = item_key(&table, &key_attrs) else {
                         return AwsResponse::error(
                             400,
                             "ValidationException",
-                            "The provided key element does not match the schema",
+                            "Validation Exception",
                         );
                     };
                     let items = table.items.read();
@@ -1968,14 +2106,27 @@ impl DynamoDbHandler {
             .cloned()
             .unwrap_or(Value::Null);
 
-        // moto's response layer resolves every row's key against the table
-        // schema (responses.py:748-769): a key that does not match (or is
-        // missing) is a 400 "The provided key element does not match the
-        // schema", a key repeated across the whole call is a 400 "Provided
-        // list of item keys contains duplicates", and nothing is written in
-        // either case. One 1.0-unit ConsumedCapacity entry is rendered per
-        // table.
-        let mut seen_keys: HashSet<String> = HashSet::new();
+        // moto's response layer (responses.py:734-764) COLLECTS every row
+        // into put/delete lists first, runs the duplicate check over the
+        // collected sets — WHOLE-ITEM dumps for puts, key dumps for deletes
+        // — and only then executes, so the "Provided list of item keys
+        // contains duplicates" raise commits nothing. Put+Delete rows on the
+        // same (table, key) coexist (separate lists; the delete loop runs
+        // last and wins), and two puts of one key with different payloads
+        // are both accepted (identical whole items are the duplicate).
+        struct PutRow {
+            table: Arc<crate::models::Table>,
+            key: String,
+            attrs: Map<String, Value>,
+        }
+        struct DeleteRow {
+            table: Arc<crate::models::Table>,
+            key: String,
+        }
+        let mut puts: Vec<PutRow> = Vec::new();
+        let mut deletes: Vec<DeleteRow> = Vec::new();
+        let mut seen_puts: HashSet<String> = HashSet::new();
+        let mut seen_deletes: HashSet<String> = HashSet::new();
         if let Some(obj) = request_items.as_object() {
             for (table_name, writes) in obj {
                 let Some(table) = state.get_table(table_name) else {
@@ -1985,18 +2136,23 @@ impl DynamoDbHandler {
                         &format!("Requested resource not found: Table: {table_name} not found"),
                     );
                 };
+                let table = &table;
                 for write in writes.as_array().cloned().unwrap_or_default() {
                     if let Some(item_json) = write.pointer("/PutRequest/Item").cloned() {
                         let attrs: Map<String, Value> =
                             item_json.as_object().cloned().unwrap_or_default();
                         let Some(key) = item_key(&table, &attrs) else {
-                            return AwsResponse::error(
-                                400,
-                                "ValidationException",
-                                "The provided key element does not match the schema",
-                            );
+                            return keyed_lookup_error(&table, &attrs);
                         };
-                        if !seen_keys.insert(format!("{table_name}:{key}")) {
+                        // moto dedups puts on the WHOLE item dump
+                        // (dynamo_json_dump over the item): identical items
+                        // twice raise; same key with differing payloads
+                        // passes (both stored; later put wins).
+                        let fingerprint = format!(
+                            "{table_name}:{}",
+                            serde_json::to_string(&item_json).unwrap_or_default()
+                        );
+                        if !seen_puts.insert(fingerprint) {
                             return AwsResponse::error(
                                 400,
                                 "ValidationException",
@@ -2008,53 +2164,73 @@ impl DynamoDbHandler {
                         if let Some(e) = check_item_size(&attrs, false) {
                             return e;
                         }
-                        // Stream capture mirrors moto's batch put hook.
-                        let old = table.items.read().get(&key).map(|i| i.attributes.clone());
-                        table
-                            .items
-                            .write()
-                            .insert(key, Arc::new(Item::new(attrs_to_map(&attrs))));
-                        let old_serde = streaming::stream_enabled(&table)
-                            .then(|| old.as_ref().map(attrmap_to_serde))
-                            .flatten();
-                        streaming::record_mutation(
-                            &table,
-                            old_serde.as_ref().map(|m| m as &Map<String, Value>),
-                            Some(&attrs),
-                        );
+                        puts.push(PutRow {
+                            table: table.clone(),
+                            key,
+                            attrs,
+                        });
                     }
                     if let Some(key_json) = write.pointer("/DeleteRequest/Key").cloned() {
                         let key_attrs: Map<String, Value> =
                             key_json.as_object().cloned().unwrap_or_default();
                         let Some(key) = item_key(&table, &key_attrs) else {
-                            return AwsResponse::error(
-                                400,
-                                "ValidationException",
-                                "The provided key element does not match the schema",
-                            );
+                            return keyed_lookup_error(&table, &key_attrs);
                         };
-                        if !seen_keys.insert(format!("{table_name}:{key}")) {
+                        if !seen_deletes.insert(format!("{table_name}:{key}")) {
                             return AwsResponse::error(
                                 400,
                                 "ValidationException",
                                 "Provided list of item keys contains duplicates",
                             );
                         }
-                        let old = table.items.write().remove(&key);
-                        let old_serde = streaming::stream_enabled(&table)
-                            .then(|| old.as_ref().map(|i| attrmap_to_serde(&i.attributes)))
-                            .flatten();
-                        streaming::record_mutation(
-                            &table,
-                            old_serde.as_ref().map(|m| m as &Map<String, Value>),
-                            None,
-                        );
+                        deletes.push(DeleteRow {
+                            table: table.clone(),
+                            key,
+                        });
                     }
                 }
             }
         }
 
-        let mut body = json!({ "UnprocessedItems": {} });
+        // Phase 2 — the collected rows execute: puts first, then deletes
+        // (moto's loop order; a row doing both on a key ends DELETED).
+        for row in puts {
+            let old = row
+                .table
+                .items
+                .read()
+                .get(&row.key)
+                .map(|i| i.attributes.clone());
+            row.table
+                .items
+                .write()
+                .insert(row.key, Arc::new(Item::new(attrs_to_map(&row.attrs))));
+            let old_serde = streaming::stream_enabled(&row.table)
+                .then(|| old.as_ref().map(attrmap_to_serde))
+                .flatten();
+            streaming::record_mutation(
+                &row.table,
+                old_serde.as_ref().map(|m| m as &Map<String, Value>),
+                Some(&row.attrs),
+            );
+        }
+        for row in deletes {
+            let old = row.table.items.write().remove(&row.key);
+            let old_serde = streaming::stream_enabled(&row.table)
+                .then(|| old.as_ref().map(|i| attrmap_to_serde(&i.attributes)))
+                .flatten();
+            streaming::record_mutation(
+                &row.table,
+                old_serde.as_ref().map(|m| m as &Map<String, Value>),
+                None,
+            );
+        }
+
+        // moto's batch_write_item renders a ConsumedCapacity entry per table
+        // (one 1.0 unit with the Table member) plus the empty
+        // ItemCollectionMetrics map (verified: CC = [{"CapacityUnits": 1.0,
+        // "Table": {"CapacityUnits": 1.0}, "TableName": "t"}]).
+        let mut body = json!({ "UnprocessedItems": {}, "ItemCollectionMetrics": {} });
         if let Some(obj) = request_items.as_object() {
             let consumed: Vec<Value> = obj
                 .keys()
@@ -2062,6 +2238,7 @@ impl DynamoDbHandler {
                     json!({
                         "TableName": table_name,
                         "CapacityUnits": 1.0,
+                        "Table": { "CapacityUnits": 1.0 },
                     })
                 })
                 .collect();
@@ -4960,9 +5137,17 @@ mod tests {
             "PutItem",
             json!({"TableName": "nsize", "Item": {"pk": {"S": "big"}, "n": {"N": big_number}}}),
         ));
-        // The item totals ~150 KB under AWS's byte formula, below the
-        // 409,600-byte limit the twin enforces.
-        assert_eq!(resp.status, 200);
+        // The literal is enormous and float()-rounds to inf — moto's numeric
+        // validation (table.py:578-619) 400s it as non-numeric before any
+        // size math could run; the bytes formula below the 409,600-byte cap
+        // never gets a say.
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(
+            resp.body
+                .contains("The parameter cannot be converted to a numeric value"),
+            "body: {}",
+            resp.body
+        );
     }
 
     // The issue's own repro: pk(2+40) + data(4+409530 raw) + ttl(3+6 with

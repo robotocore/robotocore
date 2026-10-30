@@ -191,7 +191,7 @@ fn handle_get_federation_token(
         <FederatedUser>
             <Arn>arn:aws:sts::{}:federated-user/{}</Arn>
             <FederatedUserId>{}/{}-1234567890</FederatedUserId>
-        </FederatedUser>/*xml*/
+        </FederatedUser>
         <Credentials>
             <AccessKeyId>ASIAIOSFODNN7EXAMPLE</AccessKeyId>
             <SecretAccessKey>wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY</SecretAccessKey>
@@ -269,7 +269,7 @@ fn handle_assume_role(
         <AssumedRoleUser>
             <Arn>{}</Arn>
             <AssumedRoleId>{}</AssumedRoleId>
-        </AssumedRoleUser>/*xml*/
+        </AssumedRoleUser>
     </{}Result>
     <ResponseMetadata>
         <RequestId>00000000-0000-0000-0000-000000000000</RequestId>

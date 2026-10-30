@@ -101,7 +101,7 @@ pub fn register_kinesis_stream_probe(probe: SourceExistsProbe) {
     *kinesis_probe().write() = Some(probe);
 }
 
-pub fn register_dynamodb_table_probe(probe: SourceExistsProbe) {
+pub fn register_dynamodb_stream_probe(probe: SourceExistsProbe) {
     *dynamodb_probe().write() = Some(probe);
 }
 
@@ -116,11 +116,14 @@ pub fn kinesis_stream_exists(account: u64, region: &str, stream_name: &str) -> O
     Some(probe(account, region, stream_name))
 }
 
-/// `Some(exists)` when a dynamodb table probe is registered, `None`
-/// otherwise.
-pub fn dynamodb_table_exists(account: u64, region: &str, table_name: &str) -> Option<bool> {
+/// `Some(live-stream match)` when a dynamodb streams ARN probe is
+/// registered, `None` otherwise. The token is the FULL source ARN
+/// (`arn:…:table/{name}/stream/{label}`) — moto matches the whole stream
+/// ARN against the table's current stream, not merely the table's
+/// existence.
+pub fn dynamodb_stream_arn_exists(account: u64, region: &str, stream_arn: &str) -> Option<bool> {
     let probe = dynamodb_probe().read().clone()?;
-    Some(probe(account, region, table_name))
+    Some(probe(account, region, stream_arn))
 }
 
 /// `Some(exists)` when an sqs queue probe is registered, `None` otherwise.

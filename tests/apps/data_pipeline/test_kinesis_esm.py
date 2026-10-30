@@ -125,18 +125,20 @@ def handler(event, context):
                 break
             time.sleep(1)
 
-        assert item is not None, "Lambda did not process Kinesis record within 15s"
-        assert float(item["reading"]["N"]) == 23.5
-
-        # Cleanup (best-effort: a failed assert must still release the stack)
-        for _cleanup in (
-            lambda: lambda_client.delete_event_source_mapping(UUID=esm_uuid),
-            lambda: lambda_client.delete_function(FunctionName=fn_name),
-            lambda: kinesis.delete_stream(StreamName=stream_name),
-            lambda: dynamodb.delete_table(TableName=table_name),
-            lambda: iam.delete_role(RoleName=f"kin-role-{unique_name}"),
-        ):
-            try:
-                _cleanup()
-            except Exception:
-                pass  # best-effort cleanup
+        try:
+            assert item is not None, "Lambda did not process Kinesis record within 15s"
+            assert float(item["reading"]["N"]) == 23.5
+        finally:
+            # Best-effort teardown: a failed assert must release the stack,
+            # and a delete error must not mask the original failure.
+            for _cleanup in (
+                lambda: lambda_client.delete_event_source_mapping(UUID=esm_uuid),
+                lambda: lambda_client.delete_function(FunctionName=fn_name),
+                lambda: kinesis.delete_stream(StreamName=stream_name),
+                lambda: dynamodb.delete_table(TableName=table_name),
+                lambda: iam.delete_role(RoleName=f"kin-role-{unique_name}"),
+            ):
+                try:
+                    _cleanup()
+                except Exception:
+                    pass  # best-effort cleanup

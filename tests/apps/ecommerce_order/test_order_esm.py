@@ -125,19 +125,21 @@ def handler(event, context):
                 break
             time.sleep(1)
 
-        assert item is not None, "Lambda did not process order from SQS within 15s"
-        assert item["status"]["S"] == "processed"
-        assert float(item["total"]["N"]) == 149.99
-
-        # Cleanup (best-effort: a failed assert must still release the stack)
-        for _cleanup in (
-            lambda: lambda_client.delete_event_source_mapping(UUID=esm_uuid),
-            lambda: lambda_client.delete_function(FunctionName=fn_name),
-            lambda: sqs.delete_queue(QueueUrl=queue_url),
-            lambda: dynamodb.delete_table(TableName=table_name),
-            lambda: iam.delete_role(RoleName=f"ec-role-{suffix}"),
-        ):
-            try:
-                _cleanup()
-            except Exception:
-                pass  # best-effort cleanup
+        try:
+            assert item is not None, "Lambda did not process order from SQS within 15s"
+            assert item["status"]["S"] == "processed"
+            assert float(item["total"]["N"]) == 149.99
+        finally:
+            # Best-effort teardown: a failed assert must release the stack,
+            # and a delete error must not mask the original failure.
+            for _cleanup in (
+                lambda: lambda_client.delete_event_source_mapping(UUID=esm_uuid),
+                lambda: lambda_client.delete_function(FunctionName=fn_name),
+                lambda: sqs.delete_queue(QueueUrl=queue_url),
+                lambda: dynamodb.delete_table(TableName=table_name),
+                lambda: iam.delete_role(RoleName=f"ec-role-{suffix}"),
+            ):
+                try:
+                    _cleanup()
+                except Exception:
+                    pass  # best-effort cleanup

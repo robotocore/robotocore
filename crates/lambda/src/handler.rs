@@ -1213,7 +1213,10 @@ impl LambdaHandler {
                 &format!("Alias not found: {alias_name}"),
             );
         }
-        state.aliases.write().remove(&(name, alias_name));
+        state
+            .aliases
+            .write()
+            .remove(&(LambdaState::norm_name(&name), alias_name));
         AwsResponse::empty(204)
     }
 
@@ -1429,14 +1432,11 @@ impl LambdaHandler {
         if let Some(fc) = &e.filter_criteria {
             m.insert("FilterCriteria".into(), fc.clone());
         }
-        if e.bisect_batch_on_function_error {
-            m.insert("BisectBatchOnFunctionError".into(), json!(true));
+        if let Some(bisect) = e.bisect_batch_on_function_error {
+            m.insert("BisectBatchOnFunctionError".into(), json!(bisect));
         }
-        if e.maximum_retry_attempts >= 0 {
-            m.insert(
-                "MaximumRetryAttempts".into(),
-                json!(e.maximum_retry_attempts),
-            );
+        if let Some(retry) = e.maximum_retry_attempts {
+            m.insert("MaximumRetryAttempts".into(), json!(retry));
         }
         m.insert("LastProcessingResult".into(), Value::Null);
         m.insert(
@@ -1490,13 +1490,14 @@ impl LambdaHandler {
         };
         // moto's LambdaBackend.create_event_source_mapping resolves the
         // event source through its owning backend before constructing the
-        // mapping: a kinesis stream (or the table a streams-ARN source
-        // points at) that does not exist answers 404
-        // ResourceNotFoundException "Invalid EventSourceArn". A dynamodb
-        // ARN without its /stream/ label still accepts — the missing
-        // label just leaves the TRIM default; moto does not 404 it.
-        // No probe registered in a bare process — no deny without
-        // evidence.
+        // mapping: a kinesis stream that does not exist answers 404
+        // ResourceNotFoundException "Invalid EventSourceArn". The
+        // dynamodbstreams side matches the FULL stream ARN against the
+        // table's current store — a table without a stream, or a
+        // differently-labeled stream, is the same 404 (moto links sources
+        // through its streams backend, arn-equality, probed by the wave-2
+        // review). No probe registered in a bare process — no deny
+        // without evidence.
         match &source {
             EsmSource::Kinesis { stream_name } => {
                 if crate::bridge::kinesis_stream_exists(req.account, &req.region, stream_name)
@@ -1509,9 +1510,12 @@ impl LambdaHandler {
                     );
                 }
             }
-            EsmSource::DynamoDb { table_name } => {
-                if crate::bridge::dynamodb_table_exists(req.account, &req.region, table_name)
-                    == Some(false)
+            EsmSource::DynamoDb { .. } => {
+                if crate::bridge::dynamodb_stream_arn_exists(
+                    req.account,
+                    &req.region,
+                    &event_source_arn,
+                ) == Some(false)
                 {
                     return AwsResponse::error(
                         404,
@@ -1569,13 +1573,11 @@ impl LambdaHandler {
             bisect_batch_on_function_error: req
                 .params
                 .get("BisectBatchOnFunctionError")
-                .and_then(Value::as_bool)
-                .unwrap_or(false),
+                .and_then(Value::as_bool),
             maximum_retry_attempts: req
                 .params
                 .get("MaximumRetryAttempts")
-                .and_then(Value::as_i64)
-                .unwrap_or(-1),
+                .and_then(Value::as_i64),
             maximum_batching_window_in_seconds: req
                 .params
                 .get("MaximumBatchingWindowInSeconds")
@@ -1583,7 +1585,7 @@ impl LambdaHandler {
             maximum_record_age_in_seconds: req
                 .params
                 .get("MaximumRecordAgeInSeconds")
-                .and_then(Value::as_u64),
+                .and_then(Value::as_i64),
             // Attach-time LATEST binding for kinesis mappings (moto registers
             // the ESM on its source synchronously, so a LATEST mapping never
             // misses records that the poller merely observes late).
@@ -1704,12 +1706,12 @@ impl LambdaHandler {
                 .params
                 .get("BisectBatchOnFunctionError")
                 .and_then(Value::as_bool)
-                .unwrap_or(em.bisect_batch_on_function_error),
+                .or(em.bisect_batch_on_function_error),
             maximum_retry_attempts: req
                 .params
                 .get("MaximumRetryAttempts")
                 .and_then(Value::as_i64)
-                .unwrap_or(em.maximum_retry_attempts),
+                .or(em.maximum_retry_attempts),
             maximum_batching_window_in_seconds: req
                 .params
                 .get("MaximumBatchingWindowInSeconds")
@@ -1718,7 +1720,7 @@ impl LambdaHandler {
             maximum_record_age_in_seconds: req
                 .params
                 .get("MaximumRecordAgeInSeconds")
-                .and_then(Value::as_u64)
+                .and_then(Value::as_i64)
                 .or(em.maximum_record_age_in_seconds),
             // The attach-time binding survives updates; it only re-freezes
             // when a new mapping is created against the source.
@@ -3378,7 +3380,7 @@ mod tests {
         crate::bridge::register_kinesis_stream_probe(Arc::new(
             |_: u64, _: &str, stream_name: &str| stream_name != "missing-stream",
         ));
-        crate::bridge::register_dynamodb_table_probe(Arc::new(|_: u64, _, _: &str| true));
+        crate::bridge::register_dynamodb_stream_probe(Arc::new(|_: u64, _, _: &str| true));
 
         let handler = LambdaHandler::new();
         let fn_name = "esm-fn";

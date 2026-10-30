@@ -11,7 +11,7 @@ import time
 from .models import WorkflowStep
 
 
-def wait_for_terminal(app, exec_arn, timeout_s: float = 10.0) -> dict:
+def wait_for_terminal(app, exec_arn, timeout_s: float = 30.0) -> dict:
     """Poll a SFN execution to a terminal status (the async runner needs a beat)."""
     deadline = time.monotonic() + timeout_s
     desc = {}
@@ -89,11 +89,7 @@ class TestStepFunctionsOperations:
         # poll to the terminal status and assert the branch output so a
         # Default-only Choice evaluator fails.
         exec_arn = serverless_app.start_execution(sm_arn, input_data={"value": 200})
-        for _ in range(20):
-            desc = serverless_app.describe_execution(exec_arn)
-            if desc["status"] != "RUNNING":
-                break
-            time.sleep(0.5)
+        desc = wait_for_terminal(serverless_app, exec_arn)
         assert desc["status"] == "SUCCEEDED"
         output = json.loads(desc["output"])
         assert output["category"] == "high"

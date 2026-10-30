@@ -143,10 +143,13 @@ def main():
             unpacked = safe_extract(os.path.join(work, layer_zip), dest, unpacked)
 
         sys.path.insert(0, code_dir)
-        # Attached-1st..last insert such that LATER attachments keep winning
-        # (insert(0) puts the LAST layer at the front of the scan).
+        # Each layer insert(1)s after the code dir in ATTACHMENT ORDER, so
+        # the LAST attachment ends up highest on the scan order and keeps
+        # winning — real-AWS layer precedence. The numeric layer_index above
+        # already fixed the only pre-existing bug (a plain string sort put
+        # layer10 before layer2).
         layer_dirs = [os.path.join(work, name[:-4], "python") for name in layer_zips]
-        for layer_path in reversed(layer_dirs):
+        for layer_path in layer_dirs:
             if os.path.isdir(os.path.join(os.path.dirname(layer_path))):
                 sys.path.insert(1, layer_path)
 
@@ -646,7 +649,12 @@ function extractZip(zipPath, destDir) {
             content = data;
         } else if (method === 8) {
             try {
-                content = zlib.inflateRawSync(data, { maxOutputLength: remaining });
+                // maxOutputLength=0 is a hard 0-byte limit in node: the
+                // exactly-exhausted-budget edge (remaining == 0) would
+                // false-abort even a legit last entry. Clamp to at least 1
+                // so the non-zero-cap semantics hold; the real-bytes
+                // reconciliation below still throws on overrun.
+                content = zlib.inflateRawSync(data, { maxOutputLength: Math.max(remaining, 1) });
             } catch (e) {
                 throw new Error(
                     `ZIP archive expands past the ${ZIP_UNPACK_BUDGET_BYTES / (1024 * 1024)} MB unzipped limit`
@@ -1007,8 +1015,11 @@ pub fn execute_nodejs(
     };
 
     // Drain pipes on dedicated threads (bounded tail) so the child never
-    // deadlocks on a full pipe buffer while nobody reads.
-    let stdout_rx = drain_thread(child.stdout.take(), LOCAL_OUTPUT_CAP);
+    // deadlocks on a full pipe buffer while nobody reads. The node result
+    // rides stdout — that channel needs the 6MB result budget (the 128KB
+    // log cap's tail semantics silently corrupt a larger JSON payload);
+    // stderr is the log channel and stays at the log cap.
+    let stdout_rx = drain_thread(child.stdout.take(), FAMILY_RESULT_CAP);
     let stderr_rx = drain_thread(child.stderr.take(), LOCAL_OUTPUT_CAP);
 
     // Grace period beyond the Lambda timeout, as in the Python-era twin.
@@ -1489,16 +1500,17 @@ fn run_subprocess_family(
     }
     // (n) fail-loud: a handler whose stdout hit the capture budget cannot be
     // trusted — its tail was dropped, so JSON parses (if any) arrive in the
-    // WRONG reads or fail. Real AWS answers Function.ResponseSizeTooLarge;
-    // surface that instead of silently wrapping a fragment as a string.
+    // WRONG reads or fail. Real AWS/moto answer Function.ResponseSizeTooLarge;
+    // surface that instead of silently wrapping a fragment as a string
+    // (moto's exact message text and Unhandled error family).
     if stdout_hit_cap {
         return ExecResult {
             payload: json!({
-                "errorMessage": "Response payload size exceeded maximum allowed size (6 MB)",
+                "errorMessage": "Response payload size exceeded maximum allowed payload size (6291556 bytes).",
                 "errorType": "RequestEntityTooLargeException",
             })
             .to_string(),
-            function_error: Some("Function.ResponseSizeTooLarge".to_string()),
+            function_error: Some("Unhandled".to_string()),
             logs: stderr,
         };
     }
@@ -2428,9 +2440,12 @@ pub fn execute_custom(
     // Communicate() discipline (see communicate_event): drains before any
     // write and the event fed from a writer thread, so a chatty bootstrap or
     // one that never reads stdin cannot wedge the invoke thread — the
-    // deadline loop below kills the child either way.
+    // deadline loop below kills the child either way. The custom runtime's
+    // result rides stdout, so that channel takes the 6MB result budget and
+    // only stderr keeps the 128KB log cap (same shape run_subprocess_family
+    // uses, for the same tail-truncation reason).
     let (stdout_rx, stderr_rx) =
-        communicate_event(&mut child, &event_str, LOCAL_OUTPUT_CAP, LOCAL_OUTPUT_CAP);
+        communicate_event(&mut child, &event_str, FAMILY_RESULT_CAP, LOCAL_OUTPUT_CAP);
 
     // Wait up to the function timeout plus the python-era 2s grace; kill the
     // child on overrun.
