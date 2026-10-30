@@ -17,9 +17,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
+      # The probe-freshness gate attributes probes to the newest commit
+      # per service path via `git log` — a shallow checkout (GH default)
+      # leaves the merge tip as the only commit and marks every service
+      # stale, so fetch the full history.
       - uses: actions/checkout@v7
         with:
           submodules: recursive
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
