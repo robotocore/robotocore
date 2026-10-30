@@ -2,6 +2,7 @@
 //! Protocol: smithy-rpc-v2-cbor, Target: GraniteServiceVersion20100801
 
 pub mod bridge;
+pub mod cbor;
 pub mod handler;
 pub mod models;
 pub mod protocol;
@@ -25,6 +26,21 @@ impl DefaultCloudwatchHandler {
     }
     pub fn handle(&self, req: AwsRequest) -> AwsResponse {
         self.inner.handle(req)
+    }
+
+    /// Serve a Smithy RPC v2 CBOR request: `req.body` is the CBOR payload
+    /// (its `params` are ignored) and the response is CBOR-encoded.
+    pub fn handle_cbor(&self, req: AwsRequest) -> cbor::CborResponse {
+        let operation = req.operation.clone();
+        let resp = match cbor::decode_request(&req.body) {
+            Ok(params) => self.inner.handle(AwsRequest { params, ..req }),
+            Err(e) => AwsResponse::error(
+                400,
+                "SerializationException",
+                &format!("Unable to parse the CBOR request body: {e}"),
+            ),
+        };
+        cbor::encode_response(&operation, resp)
     }
 }
 
