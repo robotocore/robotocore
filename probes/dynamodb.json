@@ -1,294 +1,294 @@
 {
   "service": "dynamodb",
-  "generated_at": "2026-10-30T02:47:26.337817+00:00",
+  "generated_at": "2026-10-30T03:28:05.591190+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 54,
+    "working": 0,
     "needs_params": 0,
     "not_implemented": 0,
-    "500_error": 2,
-    "timeout": 0
+    "500_error": 0,
+    "timeout": 56
   },
   "operations": [
     {
       "operation": "BatchExecuteStatement",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "BatchGetItem",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "BatchWriteItem",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "CreateBackup",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "CreateGlobalTable",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "CreateTable",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DeleteBackup",
-      "status": "working",
-      "message": "likely implemented (BackupNotFoundException: Backup not found for ARN arn:aws:dynamodb:us-east-1:12345678)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DeleteItem",
-      "status": "working",
-      "message": "implemented (ValidationException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DeleteResourcePolicy",
-      "status": "working",
-      "message": "likely implemented (PolicyNotFoundException: Resource-based policy not found for the provided ResourceArn)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DescribeBackup",
-      "status": "working",
-      "message": "likely implemented (BackupNotFoundException: Backup not found for ARN arn:aws:dynamodb:us-east-1:12345678)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DescribeContinuousBackups",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DescribeContributorInsights",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DescribeEndpoints",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DescribeExport",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DescribeGlobalTable",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DescribeGlobalTableSettings",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DescribeImport",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DescribeKinesisStreamingDestination",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DescribeLimits",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DescribeTable",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DescribeTableReplicaAutoScaling",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DescribeTimeToLive",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DisableKinesisStreamingDestination",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "EnableKinesisStreamingDestination",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "ExecuteStatement",
-      "status": "working",
-      "message": "implemented (ValidationException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "ExecuteTransaction",
-      "status": "working",
-      "message": "implemented (ValidationException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "ExportTableToPointInTime",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "GetItem",
-      "status": "working",
-      "message": "implemented (ValidationException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "GetResourcePolicy",
-      "status": "working",
-      "message": "likely implemented (PolicyNotFoundException: Resource-based policy not found for the provided ResourceArn)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "ImportTable",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "ListBackups",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "ListContributorInsights",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "ListExports",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "ListGlobalTables",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "ListImports",
-      "status": "working",
-      "message": "OK (required-only fill)"
+      "status": "timeout",
+      "message": "endpoint unreachable (required-only retry)"
     },
     {
       "operation": "ListTables",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "ListTagsOfResource",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "PutItem",
-      "status": "working",
-      "message": "implemented (ValidationException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "PutResourcePolicy",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "Query",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "RestoreTableFromBackup",
-      "status": "working",
-      "message": "likely implemented (BackupNotFoundException: Backup not found for ARN arn:aws:dynamodb:us-east-1:12345678)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "RestoreTableToPointInTime",
-      "status": "working",
-      "message": "likely implemented (ResourceAlreadyExistsException: Table already exists: probe-table-name)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "Scan",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "TagResource",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "TransactGetItems",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "TransactWriteItems",
-      "status": "500_error",
-      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "UntagResource",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "UpdateContinuousBackups",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "UpdateContributorInsights",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "UpdateGlobalTable",
-      "status": "working",
-      "message": "likely implemented (ReplicaAlreadyExistsException: Replica already exists in region 'probe-test-value')"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "UpdateGlobalTableSettings",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "UpdateItem",
-      "status": "working",
-      "message": "implemented (ValidationException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "UpdateKinesisStreamingDestination",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "UpdateTable",
-      "status": "500_error",
-      "message": "server crash (500: <!doctype html>\n<html lang=en>\n<title>500 Internal Server Er)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "UpdateTableReplicaAutoScaling",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "UpdateTimeToLive",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     }
   ]
 }

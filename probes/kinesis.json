@@ -1,209 +1,209 @@
 {
   "service": "kinesis",
-  "generated_at": "2026-10-30T02:47:27.009152+00:00",
+  "generated_at": "2026-10-30T03:28:06.241861+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 39,
+    "working": 0,
     "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
-    "timeout": 0
+    "timeout": 39
   },
   "operations": [
     {
       "operation": "AddTagsToStream",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "CreateStream",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DecreaseStreamRetentionPeriod",
-      "status": "working",
-      "message": "likely implemented (InvalidArgumentException: Minimum retention period is 24 hours.)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DeleteResourcePolicy",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DeleteStream",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DeregisterStreamConsumer",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DescribeAccountSettings",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DescribeLimits",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DescribeStream",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DescribeStreamConsumer",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DescribeStreamSummary",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "DisableEnhancedMonitoring",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "EnableEnhancedMonitoring",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "GetRecords",
-      "status": "working",
-      "message": "likely implemented (InvalidArgumentException: Invalid ShardIterator.)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "GetResourcePolicy",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "GetShardIterator",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "IncreaseStreamRetentionPeriod",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "ListShards",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "ListStreamConsumers",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "ListStreams",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "ListTagsForResource",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "ListTagsForStream",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "MergeShards",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "PutRecord",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "PutRecords",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "PutResourcePolicy",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "RegisterStreamConsumer",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "RemoveTagsFromStream",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "SplitShard",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "StartStreamEncryption",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "StopStreamEncryption",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "SubscribeToShard",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "TagResource",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "UntagResource",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "UpdateAccountSettings",
-      "status": "working",
-      "message": "OK"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "UpdateMaxRecordSize",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "UpdateShardCount",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "UpdateStreamMode",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     },
     {
       "operation": "UpdateStreamWarmThroughput",
-      "status": "working",
-      "message": "implemented (ResourceNotFoundException)"
+      "status": "timeout",
+      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
     }
   ]
 }
