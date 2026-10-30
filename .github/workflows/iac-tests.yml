@@ -16,7 +16,9 @@ concurrency:
   group: iac-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
-workflow_dispatch:
+  # on: push triggers only on tests/iac & src/robotocore paths; manual
+  # dispatch lets failed lanes be re-run after runner hiccups.
+  workflow_dispatch:
 
 jobs:
   terraform:
