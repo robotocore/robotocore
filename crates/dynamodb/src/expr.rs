@@ -312,6 +312,8 @@ fn parse_decimal(s: &str) -> Option<(bool, String, i64)> {
 
 /// Render (negative, unscaled digits, scale) as a DynamoDB number string,
 /// without leading or trailing zeros ("2.0" renders as "2").
+/// Render (negative, unscaled digits, scale) as a DynamoDB number string,
+/// without leading or trailing zeros ("2.0" renders as "2").
 fn render_decimal(neg: bool, digits: String, scale: usize) -> String {
     let digits = strip_lead_zeros(&digits);
     if digits == "0" {
@@ -338,6 +340,25 @@ fn render_decimal(neg: bool, digits: String, scale: usize) -> String {
         s = format!("-{s}");
     }
     s
+}
+
+/// Canonical DynamoDB number rendering for storage keys: numeric-equal
+/// numbers ("1", "1.0", "1e0") must collapse onto ONE item (real AWS keys
+/// numeric-equal values equal; moto's DynamoType equality is Decimal-based),
+/// so the canonical form rides the exact decimal renderer. Unparseable
+/// inputs stay verbatim.
+pub fn canonical_decimal(raw: &str) -> String {
+    match parse_decimal(raw) {
+        Some((neg, digits, scale)) => render_decimal(neg, digits, scale as usize),
+        None => raw.to_string(),
+    }
+}
+
+/// Whether a string is a valid DynamoDB number literal (the write-path
+/// member validation mirrors moto's number conversion: {"N": "abc"} is a
+/// ValidationException).
+pub fn is_valid_number(raw: &str) -> bool {
+    parse_decimal(raw).is_some()
 }
 
 /// Exact add on DynamoDB number strings; None falls back to the caller's f64

@@ -101,9 +101,11 @@ impl AwsResponse {
   <Message>{message}</Message>
   <BucketName>{name}</BucketName>
 </Error>"#,
-            code = code,
-            message = message,
-            name = bucket
+            // Bucket names arrive from the request path (`GET /bucket-with-
+            // %3Cscript%3E` on a missing bucket) — escape like xml::error_response.
+            code = crate::xml::xml_escape(code),
+            message = crate::xml::xml_escape(message),
+            name = crate::xml::xml_escape(bucket)
         );
         Self {
             status,

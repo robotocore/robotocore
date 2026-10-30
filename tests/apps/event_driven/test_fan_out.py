@@ -27,8 +27,10 @@ class TestFanOut:
         for i, q_url in enumerate(queue_urls):
             messages = event_router.receive_messages(q_url)
             assert len(messages) >= 1, f"Queue {i + 1} should have received the message"
+            # The SNS envelope is delivered unconditionally (real SNS→SQS
+            # contract); parse_sns_from_sqs rejects any bare body.
             body = event_router.parse_sns_from_sqs(messages[0])
-            assert "Message" in body or "order_id" in str(body)
+            assert "Message" in body
 
     def test_filter_policy_only_matching_messages_delivered(
         self, event_router: EventRouter, unique_name: str
@@ -86,12 +88,12 @@ class TestFanOut:
 
         messages = event_router.receive_messages(q_url)
         assert len(messages) >= 1
+        # The SNS envelope carries MessageAttributes unconditionally (real
+        # SNS→SQS contract).
         body = json.loads(messages[0]["Body"])
-        # SNS envelope should contain MessageAttributes
-        if "MessageAttributes" in body:
-            attrs = body["MessageAttributes"]
-            assert "env" in attrs
-            assert attrs["env"]["Value"] == "production"
+        attrs = body["MessageAttributes"]
+        assert "env" in attrs
+        assert attrs["env"]["Value"] == "production"
 
     def test_raw_message_delivery(self, event_router: EventRouter, unique_name: str):
         """Raw message delivery skips the SNS envelope wrapper."""
@@ -111,14 +113,10 @@ class TestFanOut:
 
         messages = event_router.receive_messages(q_url)
         assert len(messages) >= 1
-        body = json.loads(messages[0]["Body"])
-        # With raw delivery, the body IS the message (no SNS envelope)
-        if isinstance(body, dict) and "raw_field" in body:
-            assert body["raw_field"] == "raw_value"
-            assert body["count"] == 42
-        else:
-            # Some implementations may still wrap — at minimum the message content is there
-            assert "raw_value" in str(body)
+        # With RawMessageDelivery=True the SQS body IS the raw message —
+        # no SNS envelope (real AWS contract).
+        body = messages[0]["Body"]
+        assert body == raw_payload
 
     def test_batch_events_all_fan_out(
         self, event_router: EventRouter, fan_out: tuple[FanOutConfig, list[str]]
@@ -158,6 +156,7 @@ class TestFanOut:
 
         messages = event_router.receive_messages(q_url)
         assert len(messages) >= 1
+        # The SNS envelope carries Subject unconditionally (real SNS→SQS
+        # contract).
         body = json.loads(messages[0]["Body"])
-        if "Subject" in body:
-            assert body["Subject"] == "ShipmentNotification"
+        assert body["Subject"] == "ShipmentNotification"

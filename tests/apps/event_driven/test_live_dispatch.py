@@ -119,12 +119,20 @@ def handler(event, context):
                 break
             time.sleep(0.5)
 
-        assert item is not None, "Lambda not invoked by EventBridge rule"
-        assert item["source"]["S"] == "shop.orders"
-
-        # Cleanup
-        events.remove_targets(Rule=rule_name, Ids=["lambda-target"])
-        events.delete_rule(Name=rule_name)
-        lambda_client.delete_function(FunctionName=fn_name)
-        dynamodb.delete_table(TableName=table_name)
-        iam.delete_role(RoleName=f"ed-role-{suffix}")
+        try:
+            assert item is not None, "Lambda not invoked by EventBridge rule"
+            assert item["source"]["S"] == "shop.orders"
+        finally:
+            # Best-effort teardown: a failed assert must release the stack,
+            # and a delete error must not mask the original failure.
+            for _cleanup in (
+                lambda: events.remove_targets(Rule=rule_name, Ids=["lambda-target"]),
+                lambda: events.delete_rule(Name=rule_name),
+                lambda: lambda_client.delete_function(FunctionName=fn_name),
+                lambda: dynamodb.delete_table(TableName=table_name),
+                lambda: iam.delete_role(RoleName=f"ed-role-{suffix}"),
+            ):
+                try:
+                    _cleanup()
+                except Exception:
+                    pass

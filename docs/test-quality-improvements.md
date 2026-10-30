@@ -11,7 +11,7 @@ This document outlines systematic improvements to test quality tooling and proce
 - In progress: IAM, Events, Config, CloudFormation (parallel agents)
 
 📊 **Metrics:**
-- 147 services registered
+- 160 services registered
 - 6,383 total tests
 - ~70-90% test quality for major services (after fixes)
 - 16 services with coverage gaps
@@ -44,7 +44,7 @@ assert queue_name in response["QueueUrl"]  # Semantic check
 
 ### 2.2 CI Quality Gates
 
-**Add to `.github/workflows/test.yml`:**
+**Add to `.github/workflows/ci.yml`** (the quality stage there runs these gates):
 
 ```yaml
 - name: Validate test quality

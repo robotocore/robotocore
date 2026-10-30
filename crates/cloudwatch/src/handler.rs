@@ -203,17 +203,9 @@ fn unflatten(params: &Value, prefix: &str) -> Option<Value> {
         for idx in indices {
             arr.push(unflatten(params, &format!("{member_pref}{idx}")).unwrap_or(Value::Null));
         }
-        if !names.is_empty() {
-            // Scalar fields alongside a list: rebuild the object wrapper.
-            let mut obj = Map::new();
-            for name in &names {
-                if let Some(v) = unflatten(params, &format!("{prefix}.{name}")) {
-                    obj.insert(name.clone(), v);
-                }
-            }
-            // Not reachable for well-formed request keys: the list *is* the prefix value.
-            return Some(Value::Array(arr));
-        }
+        // A request prefix with BOTH indexed members and sibling scalars is
+        // not a well-formed wire shape — the members carry everything, so
+        // the array wins (the dead object-rebuild below never returned).
         return Some(Value::Array(arr));
     }
     let mut obj = Map::new();
@@ -242,6 +234,7 @@ fn dims_subset(datum: &[(String, String)], filter: &[(String, String)]) -> bool 
 type MetricSet = Vec<(String, String, Vec<(String, String)>)>;
 
 /// One good (data-bearing) evaluation window of a metric alarm.
+#[derive(Clone, Copy)]
 struct AlarmWindow {
     value: f64,
     /// Bucket end, epoch millis.
@@ -376,10 +369,13 @@ fn threshold_reason(
 ///
 /// Window semantics for `(state, reason)` (TreatMissingData handling per the
 /// docs above):
-/// - `EvaluationPeriods` windows, `DatapointsToAlarm` (default =
-///   EvaluationPeriods) of the most recent *good* windows decide the state:
-///   all breaching → ALARM, else OK.
-/// - Fewer good windows than that: missing windows count as
+/// - `EvaluationPeriods` windows; the alarm moves to ALARM when
+///   `DatapointsToAlarm` (default = EvaluationPeriods) of them breach and
+///   back to OK when `EvaluationPeriods - DatapointsToAlarm + 1` of them are
+///   not breaching — a *count* over the whole range, AlarmThatSendsEmail's
+///   "the alarm goes to ALARM when M out of N datapoints are breaching",
+///   not a newest-streak of good windows.
+/// - Fewer resolving datapoints than that: missing windows count as
 ///   "breaching"/"notBreaching" per TreatMissingData, "missing" (the boto3
 ///   default) transitions to INSUFFICIENT_DATA, and "ignore" refuses to
 ///   move the alarm at all (the None answer above).
@@ -404,6 +400,13 @@ fn alarm_candidate(
             .map(|m| m.is_empty())
             .unwrap_or(true)
     {
+        // ExtendedStatistic-only alarms (p99 etc., Statistic absent) fall
+        // into this gate and are NEVER evaluated: no state transition, no
+        // notifications, forever. Known absence — the simple evaluation has
+        // no percentile store; extending it would need a percentile
+        // aggregator over the window stats. Documented here so the
+        // `DescribeAlarms` 200 (which reads as success) is not mistaken for
+        // a live alarm.
         return None;
     }
     let threshold = alarm["Threshold"].as_f64().unwrap_or(0.0);
@@ -463,79 +466,80 @@ fn alarm_candidate(
     // TreatMissingData=ignore ("The current alarm state is maintained." —
     // AlarmThatSendsEmail docs): any missing datapoint anywhere in the
     // evaluation range holds the alarm in its current state. This gate also
-    // covers the full-range case — when every window has data the first
-    // branch below decides normally.
+    // covers the full-range case — when every window has data the count
+    // below decides normally.
     if treat == "ignore" && missing > 0 {
         return None;
     }
-    let (state, reason) = if good.len() >= datapoints_to_alarm {
-        // The M most recent good windows decide — older breaches age out.
-        let recent = &good[..datapoints_to_alarm];
-        let crossed = recent
-            .iter()
-            .all(|w| is_breaching(w.value, threshold, &operator));
-        (
-            if crossed { "ALARM" } else { "OK" },
-            threshold_reason(recent, crossed, phrase, &threshold_str, missing, &treat),
-        )
-    } else {
-        match treat.as_str() {
-            // Missing windows pad the breach side of the M required: the
-            // alarm enters ALARM when every good window breaches (missing
-            // windows breach by rule).
-            "breaching" => {
-                let crossed = good
-                    .iter()
-                    .all(|w| is_breaching(w.value, threshold, &operator));
-                if crossed {
-                    let reason = if good.is_empty() {
-                        let unit = if missing == 1 { "" } else { "s" };
-                        format!(
-                            "Threshold Crossed: {missing} missing datapoint{unit} treated as breaching."
-                        )
-                    } else {
-                        threshold_reason(&good, crossed, phrase, &threshold_str, missing, &treat)
-                    };
-                    ("ALARM", reason)
-                } else {
-                    (
-                        "OK",
-                        threshold_reason(&good, crossed, phrase, &threshold_str, missing, &treat),
-                    )
-                }
-            }
-            // Missing windows count as not-breaching, which can never
-            // complete an M-breach when the good windows are short.
-            "notBreaching" => {
-                if good.is_empty() {
-                    let unit = if missing == 1 { "" } else { "s" };
-                    (
-                        "OK",
-                        format!(
-                            "Threshold not Crossed: {missing} missing datapoint{unit} treated as notBreaching."
-                        ),
-                    )
-                } else {
-                    (
-                        "OK",
-                        threshold_reason(&good, false, phrase, &threshold_str, missing, &treat),
-                    )
-                }
-            }
-            // Missing windows are removed from the range of evaluation; with
-            // no datapoints at all the alarm is not evaluated (its state
-            // stays where it is — the None answer below).
-            // "missing" (and anything unmapped — boto3's default): good
-            // windows short of the required count → INSUFFICIENT_DATA.
-            _ => {
-                let unit = if missing == 1 { "" } else { "s" };
-                let verb = if missing == 1 { "was" } else { "were" };
-                (
-                    "INSUFFICIENT_DATA",
-                    format!("Insufficient Data: {missing} datapoint{unit} {verb} unknown."),
-                )
-            }
+
+    // Real CloudWatch counts, not streaks: split the evaluated windows into
+    // breaching and not-breaching datapoints and let the counts decide. With
+    // TreatMissingData=breaching the missing windows pad the breach side and
+    // with notBreaching the clear side; one side settling implies ALARM/OK
+    // exactly (both sides are mutually exclusive because the counts over the
+    // N-window range always sum to N). Anything else — only reachable with
+    // the default "missing" treat — is INSUFFICIENT_DATA.
+    let breaching_windows: Vec<AlarmWindow> = good
+        .iter()
+        .filter(|w| is_breaching(w.value, threshold, &operator))
+        .cloned()
+        .collect();
+    let clear_windows: Vec<AlarmWindow> = good
+        .iter()
+        .filter(|w| !is_breaching(w.value, threshold, &operator))
+        .cloned()
+        .collect();
+    let breaches = breaching_windows.len()
+        + match treat.as_str() {
+            "breaching" => missing,
+            _ => 0,
+        };
+    let clears = clear_windows.len()
+        + match treat.as_str() {
+            "notBreaching" => missing,
+            _ => 0,
+        };
+    let clear_needed = eval_periods.saturating_sub(datapoints_to_alarm) + 1;
+
+    let (state, reason) = if breaches >= datapoints_to_alarm {
+        if breaching_windows.is_empty() {
+            let unit = if missing == 1 { "" } else { "s" };
+            (
+                "ALARM",
+                format!(
+                    "Threshold Crossed: {missing} missing datapoint{unit} treated as breaching."
+                ),
+            )
+        } else {
+            (
+                "ALARM",
+                threshold_reason(&breaching_windows, true, phrase, &threshold_str, missing, &treat),
+            )
         }
+    } else if clears >= clear_needed {
+        if clear_windows.is_empty() {
+            let unit = if missing == 1 { "" } else { "s" };
+            (
+                "OK",
+                format!(
+                    "Threshold not Crossed: {missing} missing datapoint{unit} treated as notBreaching."
+                ),
+            )
+        } else {
+            (
+                "OK",
+                threshold_reason(&clear_windows, false, phrase, &threshold_str, missing, &treat),
+            )
+        }
+    } else {
+        // Neither side settled: only the "missing" treat can get here
+        // (breaching/notBreaching convert every window into a count).
+        let unit = if missing == 1 { "" } else { "s" };
+        let verb = if missing == 1 { "was" } else { "were" };
+        (
+            "INSUFFICIENT_DATA",
+            format!("Insufficient Data: {missing} datapoint{unit} {verb} unknown."),
+        )
     };
     Some((state.to_string(), reason))
 }
@@ -625,6 +629,11 @@ struct MetricQuerySource {
     dimensions: Vec<(String, String)>,
     period: i64,
     stat: String,
+    /// The requested [StartTime, EndTime) window (epoch millis, half-open
+    /// like moto's `get_metric_data` filter — `start <= t < end`); None
+    /// bounds mean "no bound from this actor".
+    start_ms: Option<i64>,
+    end_ms: Option<i64>,
 }
 
 impl MetricQuerySource {
@@ -639,6 +648,12 @@ impl MetricQuerySource {
                 md.namespace == self.namespace
                     && md.name == self.metric_name
                     && Self::dims_ok(&md.dimensions, &self.dimensions)
+                    // The requested window bounds the store (moto's
+                    // get_metric_data filters `start <= t < end` before
+                    // bucketing — otherwise old datapoints dilute every
+                    // statistic).
+                    && self.start_ms.map(|s| md.timestamp >= s).unwrap_or(true)
+                    && self.end_ms.map(|e| md.timestamp < e).unwrap_or(true)
             })
             .collect();
         if filtered.is_empty() {
@@ -893,6 +908,17 @@ impl CloudwatchHandler {
         .unwrap_or_else(now_millis)
     }
 
+    /// Strict variant: `None` when the member is absent/malformed (moto
+    /// answers InvalidParameterValue for a missing StartTime/EndTime — the
+    /// old default-to-now silently evaluated the WRONG window).
+    fn ts_param_strict(params: &Value, key: &str) -> Option<i64> {
+        match params.get(key) {
+            Some(Value::String(s)) => parse_iso_ts(s),
+            Some(Value::Number(n)) => n.as_f64().and_then(epoch_scalar_to_millis),
+            _ => None,
+        }
+    }
+
     /// (ActionPrefix, AlarmNamePrefix, AlarmNames, StateValue) filters.
     fn alarm_filters(
         params: &Value,
@@ -1031,6 +1057,53 @@ impl CloudwatchHandler {
             if name.is_empty() {
                 continue;
             }
+            // moto models.py _validate_parameters_put_metric_data: a Value
+            // AND StatisticValues together is an InvalidParamCombination,
+            // and a StatisticValues object missing any of its four members
+            // is a missing required parameter (the silent 0.0 fallback
+            // poisoned Minimum/Maximum aggregation).
+            let has_value = dp.get("Value").is_some();
+            let has_stats = dp.get("StatisticValues").is_some();
+            if has_value && has_stats {
+                return AwsResponse::error(
+                    400,
+                    "InvalidParameterCombination",
+                    "Value and StatisticValues cannot be used together",
+                );
+            }
+            if let Some(sv) = dp.get("StatisticValues") {
+                for member in ["Sum", "SampleCount", "Minimum", "Maximum"] {
+                    if sv.get(member).is_none() {
+                        return AwsResponse::error(
+                            400,
+                            "MissingRequiredParameter",
+                            &format!("Missing required parameter in MetricData.StatisticValues: {member}"),
+                        );
+                    }
+                }
+            }
+            // A NaN value cannot serialize into the snapshot (serde_json
+            // renders it `null` on save) — the (account, region) partition
+            // was silently DROPPED from state save. Reject at the wire.
+            let nan_value = |v: Option<f64>| v.map(|f| f.is_nan()).unwrap_or(false);
+            if nan_value(dp.get("Value").and_then(as_f64)) {
+                return AwsResponse::error(
+                    400,
+                    "InvalidParameterValue",
+                    "Value must be a finite number",
+                );
+            }
+            if let Some(sv) = dp.get("StatisticValues") {
+                for member in ["Sum", "SampleCount", "Minimum", "Maximum"] {
+                    if nan_value(sv.get(member).and_then(as_f64)) {
+                        return AwsResponse::error(
+                            400,
+                            "InvalidParameterValue",
+                            &format!("StatisticValues.{member} must be a finite number"),
+                        );
+                    }
+                }
+            }
             let dimensions = dims_from_value(dp.get("Dimensions"));
             let value = dp.get("Value").and_then(as_f64);
             let stats = dp.get("StatisticValues").map(|sv| DatumStats {
@@ -1054,12 +1127,35 @@ impl CloudwatchHandler {
 
             if let Some(values) = dp.get("Values").and_then(|v| v.as_array()) {
                 let counts_v = dp.get("Counts").and_then(|c| c.as_array());
+                // moto validates Values and Counts lengths match.
+                if let Some(counts) = counts_v {
+                    if counts.len() != values.len() {
+                        return AwsResponse::error(
+                            400,
+                            "InvalidParameter",
+                            &format!(
+                                "The parameter Counts must be the same length as Values ({} vs {})",
+                                counts.len(),
+                                values.len()
+                            ),
+                        );
+                    }
+                }
                 for (i, v) in values.iter().enumerate() {
+                    // Count=0 contributes ZERO datapoints (the old max(1)
+                    // turned a legit "no occurrences" count into a datum).
                     let count = counts_v
                         .and_then(|c| c.get(i))
                         .and_then(as_f64)
-                        .unwrap_or(1.0) as usize;
-                    for _ in 0..count.max(1) {
+                        .unwrap_or(1.0);
+                    if count.is_nan() || count != count.floor() {
+                        return AwsResponse::error(
+                            400,
+                            "InvalidParameterValue",
+                            "Counts must be positive integers",
+                        );
+                    }
+                    for _ in 0..(count.max(0.0) as usize) {
                         metrics.push(MetricDatum {
                             namespace: namespace.clone(),
                             name: name.clone(),
@@ -1204,8 +1300,42 @@ impl CloudwatchHandler {
     fn get_metric_statistics(&self, req: &AwsRequest) -> AwsResponse {
         let namespace = str_param(&req.params, "Namespace");
         let metric_name = str_param(&req.params, "MetricName");
-        let start = Self::ts_param(&req.params, "StartTime");
-        let end = Self::ts_param(&req.params, "EndTime");
+        // moto: start/end are required and must be ordered
+        // (InvalidParameterValue otherwise) — defaulting missing markers to
+        // "now" evaluated empty ranges against the wrong domain silently.
+        let start = Self::ts_param_strict(&req.params, "StartTime")
+            .ok_or(())
+            .or_else(|_| {
+                Err(AwsResponse::error(
+                    400,
+                    "InvalidParameterValue",
+                    "StartTime is required and must be a valid timestamp",
+                ))
+            });
+        let start = match start {
+            Ok(v) => v,
+            Err(resp) => return resp,
+        };
+        let end = Self::ts_param_strict(&req.params, "EndTime")
+            .ok_or(())
+            .or_else(|_| {
+                Err(AwsResponse::error(
+                    400,
+                    "InvalidParameterValue",
+                    "EndTime is required and must be a valid timestamp",
+                ))
+            });
+        let end = match end {
+            Ok(v) => v,
+            Err(resp) => return resp,
+        };
+        if start >= end {
+            return AwsResponse::error(
+                400,
+                "InvalidParameterValue",
+                "StartTime must be before EndTime",
+            );
+        }
         let period = req
             .params
             .get("Period")
@@ -1328,7 +1458,29 @@ impl CloudwatchHandler {
         )
     }
 
-    fn get_metric_data(&self, req: &AwsRequest) -> AwsResponse {
+fn get_metric_data(&self, req: &AwsRequest) -> AwsResponse {
+        // moto's get_metric_data rejects start >= end (InvalidParameterValue);
+        // the [start, end) window bounds every MetricStat source before the
+        // collection pass. Missing markers read "no bound" — the twin keeps
+        // its whole-store fallback for the legacy callers that sent none.
+        let opt_ts = |key: &str| -> Option<i64> {
+            match req.params.get(key) {
+                Some(Value::String(s)) => parse_iso_ts(s),
+                Some(Value::Number(n)) => n.as_f64().and_then(epoch_scalar_to_millis),
+                _ => None,
+            }
+        };
+        let start_ms = opt_ts("StartTime");
+        let end_ms = opt_ts("EndTime");
+        if let (Some(s), Some(e)) = (start_ms, end_ms) {
+            if s >= e {
+                return AwsResponse::error(
+                    400,
+                    "InvalidParameterValue",
+                    "StartTime must be less than EndTime",
+                );
+            }
+        }
         let queries: Vec<Value> = match req.params.get("MetricDataQueries") {
             Some(Value::Array(a)) => a.clone(),
             _ => vec![],
@@ -1351,6 +1503,8 @@ impl CloudwatchHandler {
                 dimensions: dims_from_value(metric.get("Dimensions")),
                 period: stat_obj.get("Period").and_then(as_f64).unwrap_or(60.0) as i64,
                 stat: field_str_or(&stat_obj, "Stat", "Average"),
+                start_ms,
+                end_ms,
             };
             source.collect(&metrics, &mut collected);
         }
@@ -1461,6 +1615,17 @@ impl CloudwatchHandler {
             alarm["ExtendedStatistic"] = json!(es);
         }
         if let Some(dta) = req.params.get("DatapointsToAlarm").and_then(as_i64) {
+            let eval_periods =
+                req.params.get("EvaluationPeriods").and_then(as_i64).unwrap_or(1);
+            // real-AWS validation: M must be <= N — an M>N alarm can never
+            // reach ALARM (M datapoints cannot collect within N windows).
+            if dta > eval_periods {
+                return AwsResponse::error(
+                    400,
+                    "ValidationError",
+                    "DatapointsToAlarm must be less than or equal to EvaluationPeriods",
+                );
+            }
             alarm["DatapointsToAlarm"] = json!(dta);
         }
         if let Some(desc) = as_str(req.params.get("AlarmDescription")) {
@@ -2976,8 +3141,10 @@ mod tests {
         assert_eq!(state_of("m1"), "ALARM");
         assert_eq!(state_of("m2"), "ALARM", "both windows breaching → ALARM");
 
-        // Newest window goes quiet: M=1 alarms on the newest good window
-        // alone; the default (M=2) needs both and drops to OK.
+        // Newest window goes quiet — real semantics keep M=1 in ALARM whenever
+        // any of the N trailing windows breaches (a count, not a
+        // newest-window check); the default (M=2 of 2) drops to OK because
+        // only 1 of 2 datapoints is breaching (clear_needed = N - M + 1 = 1).
         handler.handle(make_req(
             "PutMetricData",
             json!({
@@ -2997,8 +3164,99 @@ mod tests {
                 .unwrap()["StateValue"]
                 .clone()
         };
-        assert_eq!(state_of("m1"), "OK", "M=1 follows the newest window");
-        assert_eq!(state_of("m2"), "OK", "M=2 needs every window breaching");
+        assert_eq!(state_of("m1"), "ALARM", "M=1 holds ALARM while any window breaches");
+        assert_eq!(state_of("m2"), "OK", "M=2 of 2 needs every window breaching");
+    }
+
+    /// The real CloudWatch M-of-N rule counts breaching datapoints across the
+    /// whole trailing range — windows [10, 0, 10] with M=2/N=3 breach (the
+    /// counter-example from the review: a "M newest good windows ALL
+    /// breaching" streak rule answered OK there), and the same rule fills the
+    /// breach side from missing windows treated as breaching.
+    #[test]
+    fn datapoints_count_across_the_whole_range() {
+        let handler = CloudwatchHandler::new();
+        handler.handle(make_req(
+            "PutMetricAlarm",
+            json!({
+                "AlarmName": "mont", "Namespace": "MoNCountA", "MetricName": "Tw",
+                "ComparisonOperator": "GreaterThanThreshold", "EvaluationPeriods": 3,
+                "DatapointsToAlarm": 2, "Period": 60, "Statistic": "Average",
+                "Threshold": 5.0, "TreatMissingData": "notBreaching"
+            }),
+        ));
+        // Trailing three windows arrive newest-first as [10, 0, 10]. The
+        // stamps are placed inside each (start, end] bucket of Period=60
+        // ending at the anchor (the newest stamp).
+        for (secs, value) in [(120, 10.0), (30, 0.0), (-30, 10.0)] {
+            handler.handle(make_req(
+                "PutMetricData",
+                json!({
+                    "Namespace": "MoNCountA",
+                    "MetricData": [{"MetricName": "Tw", "Value": value, "Timestamp": ts_of(secs)}]
+                }),
+            ));
+        }
+        let desc = parse(&handler.handle(make_req(
+            "DescribeAlarms",
+            json!({ "AlarmNames": ["mont"] }),
+        )));
+        assert_eq!(desc["MetricAlarms"][0]["StateValue"], "ALARM");
+
+        // The breaching-count side of TreatMissingData: one breaching window
+        // plus one missing treated as breaching completes M=2 — the old
+        // all-good-windows-breach rule answered OK here.
+        handler.handle(make_req(
+            "PutMetricAlarm",
+            json!({
+                "AlarmName": "mnbr", "Namespace": "MoNCountB", "MetricName": "Tw",
+                "ComparisonOperator": "GreaterThanThreshold", "EvaluationPeriods": 3,
+                "DatapointsToAlarm": 2, "Period": 60, "Statistic": "Average",
+                "Threshold": 5.0, "TreatMissingData": "breaching"
+            }),
+        ));
+        handler.handle(make_req(
+            "PutMetricData",
+            json!({
+                "Namespace": "MoNCountB",
+                "MetricData": [{"MetricName": "Tw", "Value": 10.0, "Timestamp": ts_of(1)}]
+            }),
+        ));
+        let desc = parse(&handler.handle(make_req(
+            "DescribeAlarms",
+            json!({ "AlarmNames": ["mnbr"] }),
+        )));
+        assert_eq!(
+            desc["MetricAlarms"][0]["StateValue"],
+            "ALARM",
+            "1 breaching + 1 treated-as-breaching missing fills M=2"
+        );
+
+        // And two clean windows (plus one missing treated as notBreaching)
+        // clear the M=2 count to OK.
+        handler.handle(make_req(
+            "PutMetricAlarm",
+            json!({
+                "AlarmName": "mclr", "Namespace": "MoNCountC", "MetricName": "Tw",
+                "ComparisonOperator": "GreaterThanThreshold", "EvaluationPeriods": 3,
+                "DatapointsToAlarm": 2, "Period": 60, "Statistic": "Average",
+                "Threshold": 5.0, "TreatMissingData": "notBreaching"
+            }),
+        ));
+        for secs in [120, 60, 1] {
+            handler.handle(make_req(
+                "PutMetricData",
+                json!({
+                    "Namespace": "MoNCountC",
+                    "MetricData": [{"MetricName": "Tw", "Value": 1.0, "Timestamp": ts_of(secs)}]
+                }),
+            ));
+        }
+        let desc = parse(&handler.handle(make_req(
+            "DescribeAlarms",
+            json!({ "AlarmNames": ["mclr"] }),
+        )));
+        assert_eq!(desc["MetricAlarms"][0]["StateValue"], "OK");
     }
 
     /// Query-protocol-shaped PutMetricAlarm: integer members arrive as

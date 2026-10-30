@@ -6,6 +6,7 @@ workflows combining API Gateway, Lambda, DynamoDB, and Step Functions.
 """
 
 import json
+import time
 import uuid
 
 from .handlers import HELLO_HANDLER
@@ -142,14 +143,23 @@ class TestEndToEnd:
             steps=steps,
         )
 
-        # 4. Execute workflow
+        # 4. Execute workflow — poll to the terminal status and assert the
+        # final Pass chain's output ({"notification": "sent"} from
+        # SendWelcome), so a machine that fails mid-chain cannot pass.
         exec_arn = serverless_app.start_execution(
             sm_arn,
             input_data={"user_id": user_id, "email": "workflow@example.com"},
         )
 
-        desc = serverless_app.describe_execution(exec_arn)
-        assert desc["status"] in ("RUNNING", "SUCCEEDED")
+        deadline = time.monotonic() + 10
+        desc = {}
+        while time.monotonic() < deadline:
+            desc = serverless_app.describe_execution(exec_arn)
+            if desc["status"] != "RUNNING":
+                break
+            time.sleep(0.25)
+        assert desc["status"] == "SUCCEEDED"
+        assert json.loads(desc["output"]) == {"notification": "sent"}
 
         # 5. Update user status in DynamoDB
         serverless_app.update_item(

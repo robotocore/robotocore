@@ -73,7 +73,13 @@ class TestAlarmTrigger:
 
         assert "ALARM" in str(alarm_msg)
 
-        # Cleanup
-        cloudwatch.delete_alarms(AlarmNames=[alarm_name])
-        sqs.delete_queue(QueueUrl=queue_url)
-        sns.delete_topic(TopicArn=topic_arn)
+        # Cleanup (best-effort: a failed assert must still release the stack)
+        for _cleanup in (
+            lambda: cloudwatch.delete_alarms(AlarmNames=[alarm_name]),
+            lambda: sqs.delete_queue(QueueUrl=queue_url),
+            lambda: sns.delete_topic(TopicArn=topic_arn),
+        ):
+            try:
+                _cleanup()
+            except Exception:
+                pass

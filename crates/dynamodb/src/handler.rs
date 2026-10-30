@@ -398,6 +398,21 @@ impl DynamoDbHandler {
             .unwrap_or_default()
             .to_string();
         let state = self.get_state(req.account, &req.region);
+        if let Some(table) = state.get_table(&table_name) {
+            // moto resolves DeletionProtectedException when the flag is on
+            // (models/__init__.py:115-120) — the table cannot be removed
+            // until UpdateTable turns it back off.
+            if *table.deletion_protection_enabled.read() {
+                return AwsResponse::error(
+                    400,
+                    "DeletionProtectedException",
+                    &format!(
+                        "Table {table_name} can't be deleted while DeletionProtectionEnabled \
+                         is enabled"
+                    ),
+                );
+            }
+        }
         match state.delete_table(&table_name) {
             Some(table) => AwsResponse::json(
                 200,
@@ -460,6 +475,39 @@ impl DynamoDbHandler {
     /// it resolves a kinesis stream).
     pub fn has_table(&self, account: u64, region: &str, table_name: &str) -> bool {
         self.get_state(account, region).get_table(table_name).is_some()
+    }
+
+    /// The newest stream-capture sequence number currently on `table_name`
+    /// (`None` when the table does not exist or its streams are off). The
+    /// LATEST attach-time seed rides this — a fresh TRIM-default replay set
+    /// must not include attach-time history (mirror of the kinesis
+    /// attach-watermarks binding).
+    pub fn stream_latest_sequence(
+        &self,
+        account: u64,
+        region: &str,
+        table_name: &str,
+    ) -> Option<String> {
+        let state = self.get_state(account, region);
+        let table = state.get_table(table_name)?;
+        if !streaming::stream_enabled(&table) {
+            return None;
+        }
+        let shard_guard = table.stream_shard.read();
+        let shard = shard_guard.as_ref()?;
+        let records = shard.records.read();
+        let mut latest = String::new();
+        for r in records.iter() {
+            let seq = r
+                .get("dynamodb")
+                .and_then(|d| d.get("SequenceNumber"))
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if latest.is_empty() || compare_seq(seq, &latest) {
+                latest = seq.to_string();
+            }
+        }
+        Some(latest)
     }
 
     fn describe_table(&self, req: &AwsRequest) -> AwsResponse {
@@ -935,6 +983,15 @@ fn item_key(table: &Table, attrs: &Map<String, Value>) -> Option<String> {
 /// Put, PartiQL INSERT/UPDATE via put_item) keep moto's put-flavored
 /// "Item size has exceeded the maximum allowed size".
 fn check_item_size(attrs: &Map<String, Value>, is_update: bool) -> Option<AwsResponse> {
+    // moto validates member shapes at item construction (table.py
+    // _validate_number_type + the NULL check) before sizing: a numeric claim
+    // with a non-numeric literal and a non-true NULL are 400s on every
+    // write path that funnels through the item check.
+    for v in attrs.values() {
+        if let Some(e) = validate_attribute_values(v) {
+            return Some(e);
+        }
+    }
     if crate::models::item_size(attrs) > crate::models::MAX_ITEM_SIZE {
         let message = if is_update {
             "Item size to update has exceeded the maximum allowed size"
@@ -945,6 +1002,59 @@ fn check_item_size(attrs: &Map<String, Value>, is_update: bool) -> Option<AwsRes
     } else {
         None
     }
+}
+
+/// Recursive member-shape validation (moto table.py _validate_number_type +
+/// the NULL-type check): a numeric claim with an unparseable literal and a
+/// non-true NULL are ValidationExceptions on every write path.
+fn validate_attribute_values(value: &Value) -> Option<AwsResponse> {
+    if let Some(n) = value.get("N").and_then(Value::as_str) {
+        if !expr_engine::is_valid_number(n) {
+            return Some(AwsResponse::error(
+                400,
+                "ValidationException",
+                &format!("The parameter cannot be converted to a numeric value: {n}"),
+            ));
+        }
+        return None;
+    }
+    if let Some(null) = value.get("NULL") {
+        if *null != Value::Bool(true) {
+            return Some(AwsResponse::error(
+                400,
+                "ValidationException",
+                "NULL attribute value must be true by definition of NULL",
+            ));
+        }
+        return None;
+    }
+    if let Some(obj) = value.get("M").and_then(Value::as_object) {
+        for v in obj.values() {
+            if let Some(e) = validate_attribute_values(v) {
+                return Some(e);
+            }
+        }
+    }
+    if let Some(list) = value.get("L").and_then(Value::as_array) {
+        for v in list {
+            if let Some(e) = validate_attribute_values(v) {
+                return Some(e);
+            }
+        }
+    }
+    if let Some(ns) = value.get("NS").and_then(Value::as_array) {
+        for v in ns {
+            if v.as_str().map(expr_engine::is_valid_number) != Some(true) {
+                let shown = v.as_str().unwrap_or_default();
+                return Some(AwsResponse::error(
+                    400,
+                    "ValidationException",
+                    &format!("The parameter cannot be converted to a numeric value: {shown}"),
+                ));
+            }
+        }
+    }
+    None
 }
 
 fn kh_to_attrmap(key: &Map<String, Value>) -> AttrMap {
@@ -1387,6 +1497,24 @@ impl DynamoDbHandler {
         let names = get_names(req);
         let values = get_values(req);
         let filter = expr_str(req.params.get("FilterExpression")).unwrap_or("");
+        // moto raises expression parse/validation errors back
+        // (get_filter_expression → MockValidationException): a pre-pass with
+        // an empty probe item surfaces unresolved tokens and malformed
+        // grammar instead of a silently-empty result set.
+        for (expr, member) in [(key_cond, "KeyConditionExpression"), (&filter, "FilterExpression")] {
+            if expr.trim().is_empty() {
+                continue;
+            }
+            if let Err(e) =
+                expr_engine::eval_condition(expr, &Value::Object(Map::new()), &names, &values)
+            {
+                return AwsResponse::error(
+                    400,
+                    "ValidationException",
+                    &format!("{member}: {e}"),
+                );
+            }
+        }
         let projection = expr_str(req.params.get("ProjectionExpression")).unwrap_or("");
         let select = param_str(&req.params, "Select")
             .unwrap_or("ALL_ATTRIBUTES")
@@ -1496,6 +1624,22 @@ impl DynamoDbHandler {
         }
 
         let limit = limit.unwrap_or(usize::MAX);
+        // LastEvaluatedKey carries only the key schema (base keys + the
+        // queried index's keys, moto table.py renders {hash, range?, index
+        // keys}) — the whole-item token smuggles non-key members and later
+        // feeds real AWS an invalid starting key.
+        let mut lek_attrs: Vec<String> = table
+            .key_schema
+            .iter()
+            .map(|k| k.attribute_name.clone())
+            .collect();
+        if let Some(idx) = index_of(table, param_str(&req.params, "IndexName").unwrap_or("")) {
+            for k in &idx.key_schema {
+                if !lek_attrs.contains(&k.attribute_name) {
+                    lek_attrs.push(k.attribute_name.clone());
+                }
+            }
+        }
         let mut out: Vec<Value> = Vec::new();
         let mut scanned = 0usize;
         let mut last_key: Option<Map<String, Value>> = None;
@@ -1545,7 +1689,13 @@ impl DynamoDbHandler {
         }
         if truncated {
             if let Some(lk) = last_key {
-                body["LastEvaluatedKey"] = map_to_value(&kh_to_attrmap(&lk));
+                let mut limited: Map<String, Value> = Map::new();
+                for a in &lek_attrs {
+                    if let Some(v) = lk.get(a) {
+                        limited.insert(a.clone(), v.clone());
+                    }
+                }
+                body["LastEvaluatedKey"] = map_to_value(&kh_to_attrmap(&limited));
             }
         }
         AwsResponse::json(200, body)
@@ -1595,6 +1745,23 @@ fn dyn_cmp(a: &Value, b: &Value) -> std::cmp::Ordering {
 
 fn expr_str(v: Option<&Value>) -> Option<&str> {
     v.and_then(|x| x.as_str())
+}
+
+/// Does this error carry an expression parse/validation failure rather than a
+/// false condition? moto raises the parse error out of the transact row loop
+/// as a plain ValidationException (models/__init__.py:701-705 raises
+/// MockValidationException out of the loop, rolling the whole transaction
+/// back); only a FALSE condition becomes a ConditionalCheckFailed row.
+fn is_validation_error(e: &AwsResponse) -> bool {
+    if e.status < 400 {
+        return false;
+    }
+    let Ok(body) = serde_json::from_str::<Value>(&e.body) else {
+        return false;
+    };
+    body.get("__type")
+        .and_then(Value::as_str)
+        .is_some_and(|t| t.ends_with("ValidationException"))
 }
 
 /// Locate a named index; errors when the table has no such index.
@@ -1755,8 +1922,15 @@ impl DynamoDbHandler {
                 {
                     let key_attrs: Map<String, Value> =
                         key_json.as_object().cloned().unwrap_or_default();
+                    // moto's response layer resolves each key against the
+                    // table schema before the get (responses.py:748-769) —
+                    // a key that does not match is a 400, never a silent skip.
                     let Some(key) = item_key(&table, &key_attrs) else {
-                        continue;
+                        return AwsResponse::error(
+                            400,
+                            "ValidationException",
+                            "The provided key element does not match the schema",
+                        );
                     };
                     let items = table.items.read();
                     let Some(item) = items.get(&key).cloned() else {
@@ -1793,6 +1967,14 @@ impl DynamoDbHandler {
             .cloned()
             .unwrap_or(Value::Null);
 
+        // moto's response layer resolves every row's key against the table
+        // schema (responses.py:748-769): a key that does not match (or is
+        // missing) is a 400 "The provided key element does not match the
+        // schema", a key repeated across the whole call is a 400 "Provided
+        // list of item keys contains duplicates", and nothing is written in
+        // either case. One 1.0-unit ConsumedCapacity entry is rendered per
+        // table.
+        let mut seen_keys: HashSet<String> = HashSet::new();
         if let Some(obj) = request_items.as_object() {
             for (table_name, writes) in obj {
                 let Some(table) = state.get_table(table_name) else {
@@ -1807,8 +1989,19 @@ impl DynamoDbHandler {
                         let attrs: Map<String, Value> =
                             item_json.as_object().cloned().unwrap_or_default();
                         let Some(key) = item_key(&table, &attrs) else {
-                            continue;
+                            return AwsResponse::error(
+                                400,
+                                "ValidationException",
+                                "The provided key element does not match the schema",
+                            );
                         };
+                        if !seen_keys.insert(format!("{table_name}:{key}")) {
+                            return AwsResponse::error(
+                                400,
+                                "ValidationException",
+                                "Provided list of item keys contains duplicates",
+                            );
+                        }
                         // moto's batch save lands in the same
                         // LimitedSizeDict check as put_item (getmoto/moto#1874).
                         if let Some(e) = check_item_size(&attrs, false) {
@@ -1832,23 +2025,50 @@ impl DynamoDbHandler {
                     if let Some(key_json) = write.pointer("/DeleteRequest/Key").cloned() {
                         let key_attrs: Map<String, Value> =
                             key_json.as_object().cloned().unwrap_or_default();
-                        if let Some(key) = item_key(&table, &key_attrs) {
-                            let old = table.items.write().remove(&key);
-                            let old_serde = streaming::stream_enabled(&table)
-                                .then(|| old.as_ref().map(|i| attrmap_to_serde(&i.attributes)))
-                                .flatten();
-                            streaming::record_mutation(
-                                &table,
-                                old_serde.as_ref().map(|m| m as &Map<String, Value>),
-                                None,
+                        let Some(key) = item_key(&table, &key_attrs) else {
+                            return AwsResponse::error(
+                                400,
+                                "ValidationException",
+                                "The provided key element does not match the schema",
+                            );
+                        };
+                        if !seen_keys.insert(format!("{table_name}:{key}")) {
+                            return AwsResponse::error(
+                                400,
+                                "ValidationException",
+                                "Provided list of item keys contains duplicates",
                             );
                         }
+                        let old = table.items.write().remove(&key);
+                        let old_serde = streaming::stream_enabled(&table)
+                            .then(|| old.as_ref().map(|i| attrmap_to_serde(&i.attributes)))
+                            .flatten();
+                        streaming::record_mutation(
+                            &table,
+                            old_serde.as_ref().map(|m| m as &Map<String, Value>),
+                            None,
+                        );
                     }
                 }
             }
         }
 
-        AwsResponse::json(200, json!({ "UnprocessedItems": {} }))
+        let mut body = json!({ "UnprocessedItems": {} });
+        if let Some(obj) = request_items.as_object() {
+            let consumed: Vec<Value> = obj
+                .keys()
+                .map(|table_name| {
+                    json!({
+                        "TableName": table_name,
+                        "CapacityUnits": 1.0,
+                    })
+                })
+                .collect();
+            if !consumed.is_empty() {
+                body["ConsumedCapacity"] = Value::Array(consumed);
+            }
+        }
+        AwsResponse::json(200, body)
     }
 
     // ------------------------------------------------------------------
@@ -2041,7 +2261,14 @@ impl DynamoDbHandler {
                                 attrs: attrs_to_map(&attrs),
                             });
                         }
-                        Err(_) => {
+                        Err(e) => {
+                            // Only a false condition cancels the transaction;
+                            // an expression parse error raises out of the row
+                            // loop as a plain ValidationException (moto
+                            // models/__init__.py:701-705).
+                            if is_validation_error(&e) {
+                                return e;
+                            }
                             failed = true;
                             cancellation.push(RowCancellation {
                                 code: Some("ConditionalCheckFailed".to_string()),
@@ -2120,7 +2347,14 @@ impl DynamoDbHandler {
                                 new_attrs: attrs_to_map(&new_attrs),
                             });
                         }
-                        Err(_) => {
+                        Err(e) => {
+                            // Only a false condition cancels the transaction;
+                            // an expression parse error raises out of the row
+                            // loop as a plain ValidationException (moto
+                            // models/__init__.py:701-705).
+                            if is_validation_error(&e) {
+                                return e;
+                            }
                             failed = true;
                             cancellation.push(RowCancellation {
                                 code: Some("ConditionalCheckFailed".to_string()),
@@ -2159,7 +2393,14 @@ impl DynamoDbHandler {
                             });
                             deletes.push(PendingDelete { table, key });
                         }
-                        Err(_) => {
+                        Err(e) => {
+                            // Only a false condition cancels the transaction;
+                            // an expression parse error raises out of the row
+                            // loop as a plain ValidationException (moto
+                            // models/__init__.py:701-705).
+                            if is_validation_error(&e) {
+                                return e;
+                            }
                             failed = true;
                             cancellation.push(RowCancellation {
                                 code: Some("ConditionalCheckFailed".to_string()),
@@ -2193,12 +2434,28 @@ impl DynamoDbHandler {
                             "ConditionExpression is required in ConditionCheck",
                         );
                     }
-                    match Self::check_condition(req, cond, pre.as_ref().map(|m| m as &AttrMap)) {
+                    // ConditionCheck rows carry expression attributes per row,
+                    // like the Put/Update/Delete arms — moto reads
+                    // op.get("ExpressionAttributeNames"...) for every arm
+                    // uniformly (models/__init__.py:640-665); TransactWriteItems
+                    // has no request-level expression members.
+                    match Self::eval_condition_on(
+                        cond,
+                        pre.as_ref(),
+                        &op_names(op),
+                        &op_values(op),
+                    ) {
                         Ok(()) => cancellation.push(RowCancellation {
                             code: None,
                             item: None,
                         }),
-                        Err(_) => {
+                        Err(e) => {
+                            // Same split as the write arms: a parse error
+                            // propagates as a plain ValidationException, only
+                            // a false condition is a cancellation row.
+                            if is_validation_error(&e) {
+                                return e;
+                            }
                             failed = true;
                             cancellation.push(RowCancellation {
                                 code: Some("ConditionalCheckFailed".to_string()),
@@ -2385,7 +2642,19 @@ impl DynamoDbHandler {
             };
             let key_json = get.get("Key").cloned().unwrap_or(Value::Null);
             let key_attrs: Map<String, Value> = key_json.as_object().cloned().unwrap_or_default();
-            let key = item_key(&table, &key_attrs).unwrap_or_default();
+            // moto validates the key against the table schema (same
+            // provided-key-element message as batch) — an empty `{}` response
+            // row for a schema-mismatched key must not leak out silently.
+            let key = match item_key(&table, &key_attrs) {
+                Some(k) => k,
+                None => {
+                    return AwsResponse::error(
+                        400,
+                        "ValidationException",
+                        "The provided key element does not match the schema",
+                    )
+                }
+            };
             let item = table.items.read().get(&key).cloned();
 
             let names: Names = get
@@ -2520,7 +2789,15 @@ impl DynamoDbHandler {
                 .get("Statement")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            match partiql_run(&state, statement, &[]) {
+            // Each statement binds its own Parameters member, like
+            // ExecuteStatement's top-level bind — moto passes
+            // statement["Parameters"] into bind_statement per row.
+            let parameters: Vec<Value> = entry
+                .get("Parameters")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            match partiql_run(&state, statement, &parameters) {
                 Ok(Some(items)) => {
                     let mut obj = Map::new();
                     if let Some(first) = items.into_iter().next() {
@@ -2549,7 +2826,15 @@ impl DynamoDbHandler {
                 .get("Statement")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            match partiql_run(&state, statement, &[]) {
+            // Each statement binds its own Parameters member, like
+            // ExecuteStatement's top-level bind — moto passes
+            // statement["Parameters"] into bind_statement per row.
+            let parameters: Vec<Value> = entry
+                .get("Parameters")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            match partiql_run(&state, statement, &parameters) {
                 Ok(Some(items)) => {
                     let mut obj = Map::new();
                     if let Some(first) = items.into_iter().next() {
@@ -2675,10 +2960,13 @@ struct PartiQlCond {
     value: Value,
 }
 
-/// Parse a WHERE fragment into `path = literal [AND ...]` conditions.
+/// Parse a WHERE fragment into `path = literal [AND ...]` conditions. The
+/// ` AND ` split is case-insensitive and quote-aware (split_and_clauses); a
+/// fragment without any comparison yields None, which the caller turns into
+/// the statement's 400 ValidationException.
 fn parse_where(where_clause: &str, params: &[Value]) -> Option<Vec<PartiQlCond>> {
     let mut conds = Vec::new();
-    for clause in where_clause.split(" AND ") {
+    for clause in split_and_clauses(where_clause) {
         let clause = clause.trim();
         if clause.is_empty() {
             continue;
@@ -2730,27 +3018,136 @@ fn where_matches(item: &Value, conds: &[PartiQlCond]) -> bool {
     })
 }
 
-/// Extract the first quoted identifier (the table name) from a statement.
-fn table_name_of(stmt: &str) -> String {
-    let mut in_quoted = false;
-    let mut quote = '"';
-    let mut name = String::new();
-    for c in stmt.chars() {
-        if in_quoted {
-            if c == quote {
-                return name;
-            }
-            name.push(c);
-        } else if c == '"' || c == '`' || c == '\'' {
-            in_quoted = true;
-            quote = c;
+/// Extract the statement's table target: the token following FROM (SELECT and
+/// DELETE) or INTO (INSERT) — case-insensitively, outside quoted spans, since
+/// PartiQL keywords are case-insensitive and a table name or a string literal
+/// may itself spell the keyword. A bare identifier (`users`) is accepted the
+/// way real PartiQL and moto's parser do; the previous "first quoted
+/// identifier anywhere" heuristic 400'd unquoted tables and mispicked
+/// per-row string literals (`DELETE FROM t WHERE pk = 'x'`).
+fn table_name_of(stmt: &str, head: &str) -> String {
+    match head {
+        "INSERT" => {
+            let Some(pos) = find_keyword_ci(stmt, "INTO") else {
+                return String::new();
+            };
+            partiql_target_token(&stmt[pos + "INTO".len()..])
         }
+        "SELECT" | "DELETE" => {
+            let Some(pos) = find_keyword_ci(stmt, "FROM") else {
+                return String::new();
+            };
+            partiql_target_token(&stmt[pos + "FROM".len()..])
+        }
+        "UPDATE" => update_table_of(stmt),
+        _ => String::new(),
     }
-    name
 }
 
-fn find_keyword(stmt: &str, keyword: &str) -> Option<usize> {
-    stmt.find(keyword)
+/// The first token of a clause fragment — bare identifier, or a `"`/backtick
+/// quoted identifier (unquoted content inside the quotes, as the wire
+/// convention spells table names). Single quotes open a string literal, never
+/// a table name.
+fn partiql_target_token(after_keyword: &str) -> String {
+    let rest = after_keyword.trim_start();
+    if rest.is_empty() {
+        return String::new();
+    }
+    match rest.as_bytes()[0] {
+        b'"' | b'`' => {
+            let quote = rest.as_bytes()[0] as char;
+            match rest[1..].find(quote) {
+                Some(end) => rest[1..1 + end].to_string(),
+                None => String::new(),
+            }
+        }
+        _ => rest.split_whitespace().next().unwrap_or("").to_string(),
+    }
+}
+
+/// Byte index of the first case-insensitive whole-word `keyword` in `stmt`,
+/// skipping quoted spans — `WHERE` inside a string literal, or `INTO` inside
+/// a quoted table name, is not the keyword.
+fn find_keyword_ci(stmt: &str, keyword: &str) -> Option<usize> {
+    let lower = stmt.to_ascii_lowercase();
+    let keyword_lower = keyword.to_ascii_lowercase();
+    let kw = keyword_lower.as_bytes();
+    let low = lower.as_bytes();
+    let mut in_quote: Option<u8> = None;
+    for (i, &b) in low.iter().enumerate() {
+        if let Some(q) = in_quote {
+            if b == q {
+                in_quote = None;
+            }
+            continue;
+        }
+        if b == b'\'' || b == b'"' || b == b'`' {
+            in_quote = Some(b);
+            continue;
+        }
+        if b == kw[0]
+            && low[i..].starts_with(kw)
+            && (i == 0 || !is_word_byte(low[i - 1]))
+            && (i + kw.len() == low.len() || !is_word_byte(low[i + kw.len()]))
+        {
+            return Some(i);
+        }
+    }
+    None
+}
+
+/// Is this byte valid inside an identifier word?
+fn is_word_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_'
+}
+
+/// Split on ` AND ` case-insensitively outside quoted spans — `where b = 'a
+/// and b'` must stay one condition. Together with the WHERE keyword search
+/// above this keeps the clause tokenizer quote-aware.
+fn split_and_clauses(text: &str) -> Vec<String> {
+    let lower = text.to_ascii_lowercase();
+    let low = lower.as_bytes();
+    let mut parts: Vec<String> = Vec::new();
+    let mut in_quote: Option<u8> = None;
+    let mut start = 0usize;
+    let mut i = 0usize;
+    while i < low.len() {
+        let b = low[i];
+        if let Some(q) = in_quote {
+            if b == q {
+                in_quote = None;
+            }
+            i += 1;
+            continue;
+        }
+        if b == b'\'' || b == b'"' || b == b'`' {
+            in_quote = Some(b);
+            i += 1;
+            continue;
+        }
+        if b == b'a'
+            && low[i..].starts_with(b"and")
+            && (i == 0 || !is_word_byte(low[i - 1]))
+            && (i + 3 == low.len() || !is_word_byte(low[i + 3]))
+        {
+            parts.push(text[start..i].to_string());
+            i += 3;
+            start = i;
+            continue;
+        }
+        i += 1;
+    }
+    parts.push(text[start..].to_string());
+    parts
+}
+
+/// Handle the UPDATE target, which directly follows the head word rather
+/// than a FROM/INTO keyword.
+fn update_table_of(stmt: &str) -> String {
+    let Some(space) = stmt.find(char::is_whitespace) else {
+        return String::new();
+    };
+    partiql_target_token(&stmt[space..])
 }
 
 /// Convert a serde_json Map into an AttrMap view handled upstream.
@@ -2772,7 +3169,7 @@ fn partiql_run(
         _ => return Err(invalid()),
     }
 
-    let table_name = table_name_of(&stmt);
+    let table_name = table_name_of(&stmt, &head);
     if table_name.is_empty() {
         return Err(invalid());
     }
@@ -2783,13 +3180,16 @@ fn partiql_run(
             &format!("Requested resource not found: Table: {table_name} not found"),
         )
     })?;
-    let where_start = stmt
-        .split_once(" WHERE ")
-        .map(|(_, w)| w.to_string())
-        .or_else(|| stmt.split_once(" WHERE").map(|(_, w)| w.trim().to_string()));
-    let conds = match &where_start {
+    // The WHERE keyword is case-insensitive (real PartiQL accepts `where`).
+    // A clause that is present but unparseable is a 400 ValidationException —
+    // never "empty condition = match every row".
+    let where_pos = find_keyword_ci(&stmt, "WHERE");
+    let where_clause = where_pos
+        .map(|pos| stmt[pos + "WHERE".len()..].trim().to_string());
+    let conds = match &where_clause {
         Some(w) if !w.trim().is_empty() => parse_where(w.trim(), parameters).ok_or_else(invalid)?,
-        _ => Vec::new(),
+        Some(_) => return Err(invalid()),
+        None => Vec::new(),
     };
 
     match head.as_str() {
@@ -2804,7 +3204,7 @@ fn partiql_run(
             Ok(Some(items))
         }
         "INSERT" => {
-            let Some(value_pos) = find_keyword(&stmt, "VALUE") else {
+            let Some(value_pos) = find_keyword_ci(&stmt, "VALUE") else {
                 return Err(invalid());
             };
             let raw = stmt[value_pos + "VALUE".len()..].trim();
@@ -2845,18 +3245,19 @@ fn partiql_run(
             Ok(None)
         }
         "UPDATE" => {
-            let set_start = stmt.find(" SET ").map(|p| p + 5);
-            let set_text = match (set_start, where_start.as_ref()) {
-                (Some(start), _) => {
-                    // find WHERE after the SET clause
-                    let after = &stmt[start..];
-                    match after.find(" WHERE") {
-                        Some(rel) => after[..rel].trim().to_string(),
-                        None => after.trim().to_string(),
-                    }
-                }
-                _ => return Err(invalid()),
+            let Some(set_pos) = find_keyword_ci(&stmt, "SET") else {
+                return Err(invalid());
             };
+            // The SET clause runs to the WHERE keyword (or to the end). SET
+            // must appear before WHERE for the statement to parse at all.
+            let set_text = match where_pos {
+                Some(wp) if wp < set_pos => return Err(invalid()),
+                Some(wp) => stmt[set_pos + "SET".len()..wp].trim().to_string(),
+                None => stmt[set_pos + "SET".len()..].trim().to_string(),
+            };
+            if set_text.is_empty() {
+                return Err(invalid());
+            }
             // Parse SET assignments.
             let mut assignments: Vec<(Vec<String>, Value)> = Vec::new();
             for assignment in set_text.split(',') {
@@ -5757,5 +6158,225 @@ mod tests {
             body["Table"]["GlobalSecondaryIndexes"][0]["ProvisionedThroughput"],
             json!({"ReadCapacityUnits": 0, "WriteCapacityUnits": 0})
         );
+    }
+
+    // A ConditionCheck row carries its own ExpressionAttribute* maps, like
+    // every other transact row — moto reads op.get("ExpressionAttributeNames"...)
+    // uniformly for all four arms (models/__init__.py:640-665). The old
+    // request-map lookup left transact ConditionChecks with placeholders
+    // broken (names/values read empty).
+    #[test]
+    fn transact_condition_check_uses_row_expression_maps() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "cc",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        handler.handle(make_req(
+            "PutItem",
+            json!({"TableName": "cc", "Item": {"pk": {"S": "k"}, "v": {"N": "7"}}}),
+        ));
+
+        // Passing ConditionCheck with per-row names/values -> 200.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [{"ConditionCheck": {
+                "TableName": "cc",
+                "Key": {"pk": {"S": "k"}},
+                "ConditionExpression": "#v = :v",
+                "ExpressionAttributeNames": {"#v": "v"},
+                "ExpressionAttributeValues": {":v": {"N": "7"}}
+            }}]}),
+        ));
+        assert_eq!(resp.status, 200);
+
+        // False ConditionCheck with per-row maps -> cancellation row.
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [{"ConditionCheck": {
+                "TableName": "cc",
+                "Key": {"pk": {"S": "k"}},
+                "ConditionExpression": "#v = :v",
+                "ExpressionAttributeNames": {"#v": "v"},
+                "ExpressionAttributeValues": {":v": {"N": "6"}}
+            }}]}),
+        ));
+        assert_eq!(resp.status, 400);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(
+            body["CancellationReasons"],
+            json!([{"Code": "ConditionalCheckFailed",
+                    "Message": "The conditional request failed"}])
+        );
+    }
+
+    // A transact row whose condition does not PARSE (an unresolved
+    // :value reference) raises a plain ValidationException out of the row
+    // loop — moto raises MockValidationException out of the loop and rolls
+    // the transaction back (models/__init__.py:701-705) — instead of a fake
+    // TransactionCanceledException with a ConditionalCheckFailed row.
+    #[test]
+    fn transact_expression_parse_error_propagates_validation() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "perr",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+
+        let resp = handler.handle(make_req(
+            "TransactWriteItems",
+            json!({"TransactItems": [{"Put": {
+                "TableName": "perr",
+                "Item": {"pk": {"S": "k"}, "v": {"S": "x"}},
+                "ConditionExpression": "pk = :nores"
+            }}]}),
+        ));
+        assert_eq!(resp.status, 400);
+        assert!(resp.body.contains("ValidationException"), "{}", resp.body);
+        assert!(!resp.body.contains("TransactionCanceledException"), "{}", resp.body);
+    }
+
+    // PartiQL resolves the table name from the FROM/INTO/UPDATE position
+    // (real PartiQL and moto's parser accept bare identifiers, and a quoted
+    // table may coexist with string literals; the old "first quoted
+    // identifier anywhere" heuristic 400'd `SELECT * FROM users` and
+    // mispicked `pk = 'x'`), and its keywords are case-insensitive — a
+    // lowercase `where` must filter, not silently match every row.
+    #[test]
+    fn partiql_bare_tables_and_case_insensitive_where() {
+        let handler = DynamoDbHandler::new();
+        for name in ["pq-bare", "pq-ci"] {
+            handler.handle(make_req(
+                "CreateTable",
+                json!({
+                    "TableName": name,
+                    "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                    "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                    "BillingMode": "PAY_PER_REQUEST"
+                }),
+            ));
+        }
+        for row in ["a", "b"] {
+            handler.handle(make_req(
+                "PutItem",
+                json!({"TableName": "pq-ci",
+                       "Item": {"pk": {"S": row}, "v": {"S": "keep"}}}),
+            ));
+        }
+
+        // Unquoted table + unquoted SELECT.
+        handler.handle(make_req(
+            "PutItem",
+            json!({"TableName": "pq-bare", "Item": {"pk": {"S": "r"}, "v": {"S": "1"}}}),
+        ));
+        let resp = handler.handle(make_req(
+            "ExecuteStatement",
+            json!({"Statement": "SELECT * FROM pq-bare"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(body["Items"][0]["pk"]["S"], json!("r"));
+
+        // Lowercase WHERE deletes exactly the matching row.
+        let resp = handler.handle(make_req(
+            "ExecuteStatement",
+            json!({"Statement": "DELETE FROM pq-ci where pk = 'a'"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let resp = handler.handle(make_req(
+            "ExecuteStatement",
+            json!({"Statement": "SELECT * FROM pq-ci"}),
+        ));
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        let items = body["Items"].as_array().unwrap();
+        assert_eq!(items.len(), 1, "lowercase where must filter, not match all");
+        assert_eq!(items[0]["pk"]["S"], json!("b"));
+
+        // Lowercase `and` splits into two conditions (both comparisons bind).
+        let resp = handler.handle(make_req(
+            "PutItem",
+            json!({"TableName": "pq-ci", "Item": {"pk": {"S": "c"}, "v": {"S": "keep"}}}),
+        ));
+        assert_eq!(resp.status, 200);
+        let resp = handler.handle(make_req(
+            "ExecuteStatement",
+            json!({"Statement": "UPDATE pq-ci SET v = 'upd' where pk = 'b' and v = 'keep'"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let resp = handler.handle(make_req(
+            "ExecuteStatement",
+            json!({"Statement": "SELECT * FROM pq-ci where pk = 'b'"}),
+        ));
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(body["Items"][0]["v"]["S"], json!("upd"));
+
+        // A string literal containing " and " does not split the clause.
+        let resp = handler.handle(make_req(
+            "ExecuteStatement",
+            json!({"Statement": "SELECT * FROM pq-ci where v = 'a and b'"}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(body["Items"].as_array().unwrap().len(), 0);
+    }
+
+    // ExecuteTransaction and BatchExecuteStatement bind each statement's own
+    // Parameters member (moto passes statement["Parameters"] into the
+    // statement's binding), so `?` placeholders bind instead of staying in
+    // the statement text as stray literals.
+    #[test]
+    fn transact_and_batch_partiql_bind_statement_parameters() {
+        let handler = DynamoDbHandler::new();
+        handler.handle(make_req(
+            "CreateTable",
+            json!({
+                "TableName": "pb",
+                "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                "BillingMode": "PAY_PER_REQUEST"
+            }),
+        ));
+        handler.handle(make_req(
+            "PutItem",
+            json!({"TableName": "pb", "Item": {"pk": {"S": "a"}, "v": {"S": "one"}}}),
+        ));
+
+        let resp = handler.handle(make_req(
+            "ExecuteTransaction",
+            json!({"TransactStatements": [
+                {"Statement": "SELECT * FROM \"pb\" WHERE pk = ?", "Parameters": [{"S": "a"}]}
+            ]}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(body["Responses"][0]["Item"]["v"]["S"], json!("one"));
+
+        let resp = handler.handle(make_req(
+            "BatchExecuteStatement",
+            json!({"Statements": [
+                {"Statement": "UPDATE \"pb\" SET v = ? WHERE pk = ?",
+                 "Parameters": [{"S": "two"}, {"S": "a"}]},
+                {"Statement": "SELECT * FROM \"pb\" WHERE pk = ?", "Parameters": [{"S": "a"}]}
+            ]}),
+        ));
+        assert_eq!(resp.status, 200);
+        let body: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(body["Responses"][1]["Item"]["v"]["S"], json!("two"));
+        // The parameterized UPDATE really wrote the row.
+        let resp = handler.handle(make_req(
+            "GetItem",
+            json!({"TableName": "pb", "Key": {"pk": {"S": "a"}}}),
+        ));
+        assert!(resp.body.contains("\"two\""), "{}", resp.body);
     }
 }

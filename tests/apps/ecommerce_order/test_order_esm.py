@@ -129,9 +129,15 @@ def handler(event, context):
         assert item["status"]["S"] == "processed"
         assert float(item["total"]["N"]) == 149.99
 
-        # Cleanup
-        lambda_client.delete_event_source_mapping(UUID=esm_uuid)
-        lambda_client.delete_function(FunctionName=fn_name)
-        sqs.delete_queue(QueueUrl=queue_url)
-        dynamodb.delete_table(TableName=table_name)
-        iam.delete_role(RoleName=f"ec-role-{suffix}")
+        # Cleanup (best-effort: a failed assert must still release the stack)
+        for _cleanup in (
+            lambda: lambda_client.delete_event_source_mapping(UUID=esm_uuid),
+            lambda: lambda_client.delete_function(FunctionName=fn_name),
+            lambda: sqs.delete_queue(QueueUrl=queue_url),
+            lambda: dynamodb.delete_table(TableName=table_name),
+            lambda: iam.delete_role(RoleName=f"ec-role-{suffix}"),
+        ):
+            try:
+                _cleanup()
+            except Exception:
+                pass

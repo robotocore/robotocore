@@ -142,9 +142,15 @@ def handler(event, context):
         assert item is not None, "Stream Lambda did not track content change"
         assert item["action"]["S"] == "INSERT"
 
-        # Cleanup
-        lambda_client.delete_event_source_mapping(UUID=esm_uuid)
-        lambda_client.delete_function(FunctionName=fn_name)
-        dynamodb.delete_table(TableName=content_table)
-        dynamodb.delete_table(TableName=tracker_table)
-        iam.delete_role(RoleName=f"cm-role-{suffix}")
+        # Cleanup (best-effort: a failed assert must still release the stack)
+        for _cleanup in (
+            lambda: lambda_client.delete_event_source_mapping(UUID=esm_uuid),
+            lambda: lambda_client.delete_function(FunctionName=fn_name),
+            lambda: dynamodb.delete_table(TableName=content_table),
+            lambda: dynamodb.delete_table(TableName=tracker_table),
+            lambda: iam.delete_role(RoleName=f"cm-role-{suffix}"),
+        ):
+            try:
+                _cleanup()
+            except Exception:
+                pass

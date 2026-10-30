@@ -52,7 +52,13 @@ class TestScheduledFire:
         assert body.get("scheduled") is True
         assert body.get("rule") == rule_name
 
-        # Cleanup
-        events.remove_targets(Rule=rule_name, Ids=["sqs-target"])
-        events.delete_rule(Name=rule_name)
-        sqs.delete_queue(QueueUrl=queue_url)
+        # Cleanup (best-effort: a failed assert must still release the stack)
+        for _cleanup in (
+            lambda: events.remove_targets(Rule=rule_name, Ids=["sqs-target"]),
+            lambda: events.delete_rule(Name=rule_name),
+            lambda: sqs.delete_queue(QueueUrl=queue_url),
+        ):
+            try:
+                _cleanup()
+            except Exception:
+                pass

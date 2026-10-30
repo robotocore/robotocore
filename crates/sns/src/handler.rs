@@ -858,10 +858,25 @@ impl SnsHandler {
             "Action": if actions.len() == 1 { json!(actions[0]) } else { json!(actions) },
             "Resource": arn,
         });
-        obj.get_mut("Statement")
+        // Corrupted (snapshot-imported) topics can carry
+        // `"Statement": {…}` (an object where an array belongs); adding a
+        // permission must normalize into the array shape instead of
+        // unwrapping an absent array into a panic.
+        let statements = match obj
+            .get_mut("Statement")
             .and_then(|v| v.as_array_mut())
-            .unwrap()
-            .push(statement);
+        {
+            Some(stmts) => stmts,
+            None => {
+                obj.insert(
+                    "Statement".to_string(),
+                    json!([statement]),
+                );
+                topic.set_attr("Policy".into(), policy.to_string());
+                return AwsResponse::query_success("AddPermission", String::new());
+            }
+        };
+        statements.push(statement);
         topic.set_attr("Policy".into(), policy.to_string());
         AwsResponse::query_success("AddPermission", String::new())
     }

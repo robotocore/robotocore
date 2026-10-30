@@ -128,9 +128,15 @@ def handler(event, context):
         assert item is not None, "Lambda did not process Kinesis record within 15s"
         assert float(item["reading"]["N"]) == 23.5
 
-        # Cleanup
-        lambda_client.delete_event_source_mapping(UUID=esm_uuid)
-        lambda_client.delete_function(FunctionName=fn_name)
-        kinesis.delete_stream(StreamName=stream_name)
-        dynamodb.delete_table(TableName=table_name)
-        iam.delete_role(RoleName=f"kin-role-{unique_name}")
+        # Cleanup (best-effort: a failed assert must still release the stack)
+        for _cleanup in (
+            lambda: lambda_client.delete_event_source_mapping(UUID=esm_uuid),
+            lambda: lambda_client.delete_function(FunctionName=fn_name),
+            lambda: kinesis.delete_stream(StreamName=stream_name),
+            lambda: dynamodb.delete_table(TableName=table_name),
+            lambda: iam.delete_role(RoleName=f"kin-role-{unique_name}"),
+        ):
+            try:
+                _cleanup()
+            except Exception:
+                pass

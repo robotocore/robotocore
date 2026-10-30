@@ -130,7 +130,7 @@ jobs:
             results-nightly-unit.xml
 
   full-shape-validation:
-    name: "nightly: full shape + error contract validation (all 147 services)"
+    name: "nightly: full shape + error contract validation (all 160 services)"
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

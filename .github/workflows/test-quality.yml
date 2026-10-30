@@ -29,10 +29,12 @@ jobs:
 
       - name: Validate test quality
         run: |
-          # Fail if >5% of tests don't contact server or >10% have no assertions
+          # Same contract as ci.yml's quality stage (review f6#28: two gates
+          # with different budgets let PRs pass what main would fail).
           uv run python scripts/validate_test_quality.py \
             --max-no-contact-pct 5 \
-            --max-no-assertion-pct 10
+            --max-no-assertion-pct 6 \
+            --max-weak-assertion-pct 25
 
       - name: Generate quality report (with behavioral coverage)
         if: always()

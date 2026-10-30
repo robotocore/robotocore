@@ -5,12 +5,16 @@ on:
     branches: [main]
     paths:
       - "tests/iac/**"
-      - "src/robotocore/**"
+      - "rotocore/**"
+      - "crates/**"
+      - "src/**"
   pull_request:
     branches: [main]
     paths:
       - "tests/iac/**"
-      - "src/robotocore/**"
+      - "rotocore/**"
+      - "crates/**"
+      - "src/**"
   workflow_dispatch:
 
 concurrency:

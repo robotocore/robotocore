@@ -92,12 +92,21 @@ fn dynamodb_probe() -> &'static RwLock<Option<SourceExistsProbe>> {
     PROBE.get_or_init(|| RwLock::new(None))
 }
 
+fn sqs_probe() -> &'static RwLock<Option<SourceExistsProbe>> {
+    static PROBE: OnceLock<RwLock<Option<SourceExistsProbe>>> = OnceLock::new();
+    PROBE.get_or_init(|| RwLock::new(None))
+}
+
 pub fn register_kinesis_stream_probe(probe: SourceExistsProbe) {
     *kinesis_probe().write() = Some(probe);
 }
 
 pub fn register_dynamodb_table_probe(probe: SourceExistsProbe) {
     *dynamodb_probe().write() = Some(probe);
+}
+
+pub fn register_sqs_queue_probe(probe: SourceExistsProbe) {
+    *sqs_probe().write() = Some(probe);
 }
 
 /// `Some(exists)` when a kinesis stream probe is registered, `None` when
@@ -112,6 +121,31 @@ pub fn kinesis_stream_exists(account: u64, region: &str, stream_name: &str) -> O
 pub fn dynamodb_table_exists(account: u64, region: &str, table_name: &str) -> Option<bool> {
     let probe = dynamodb_probe().read().clone()?;
     Some(probe(account, region, table_name))
+}
+
+/// `Some(exists)` when an sqs queue probe is registered, `None` otherwise.
+pub fn sqs_queue_exists(account: u64, region: &str, queue_name: &str) -> Option<bool> {
+    let probe = sqs_probe().read().clone()?;
+    Some(probe(account, region, queue_name))
+}
+
+/// Attach-time LATEST watermark for a dynamodb-streams mapping (the newest
+/// capture sequence at attach, `None` when unset). The lambda crate stays
+/// decoupled — the gateway engine registers the hook like the kinesis one.
+pub type StreamWatermarkHook = Arc<dyn Fn(u64, &str, &str) -> Option<String> + Send + Sync>;
+
+fn ddb_watermark_hook() -> &'static RwLock<Option<StreamWatermarkHook>> {
+    static HOOK: OnceLock<RwLock<Option<StreamWatermarkHook>>> = OnceLock::new();
+    HOOK.get_or_init(|| RwLock::new(None))
+}
+
+pub fn register_ddb_stream_watermarks(hook: StreamWatermarkHook) {
+    *ddb_watermark_hook().write() = Some(hook);
+}
+
+pub fn dynamodb_stream_latest(account: u64, region: &str, table_name: &str) -> Option<String> {
+    let hook = ddb_watermark_hook().read().clone()?;
+    hook(account, region, table_name)
 }
 
 /// Successful = handler returned; failure = handler raised / runtime invalid.

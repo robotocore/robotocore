@@ -135,6 +135,15 @@ impl DefaultSqsHandler {
             .clone()
     }
 
+    /// CreateEventSourceMapping existence probe (lambda bridge): does this
+    /// account's region know the queue name? FIFO names resolve bare.
+    pub fn has_queue(&self, account: u64, region: &str, name: &str) -> bool {
+        let bare = name.strip_suffix(".fifo").unwrap_or(name);
+        self.get_store(account, region)
+            .get_queue_any(bare)
+            .is_some()
+    }
+
     fn validate_queue_name(name: &str) -> Result<(), SqsError> {
         // moto's Queue.name setter (moto/sqs/models.py) answers every
         // malformed name with the same single InvalidParameterValue message:
@@ -1956,25 +1965,15 @@ impl DefaultSqsHandler {
     }
 
     /// Validate a batch operation's `Entries` list, raising moto's batch
-    /// errors before any entry is processed:
+    /// errors before any entry is processed. Entries can arrive rebuilt from
+    /// the flattened query wire (see `query_flatten_members`) — both shapes
+    /// reach here as the JSON array.
     ///
     /// `EmptyBatchRequest` (per-operation entry noun), then the batch-Id
     /// checks — InvalidBatchEntryId when any Id fails python's
     /// `^[\w-]{1,80}$` regex, BatchEntryIdsNotDistinct for the first
     /// repeated Id, and TooManyEntriesInBatchRequest above 10 entries —
     /// each a top-level 400.
-    ///
-    /// moto 5.2.4 alone validates batch Ids only on SendMessageBatch and
-    /// only inside its backend (`moto/sqs/models.py`
-    /// `send_message_batch`); for DeleteMessageBatch and
-    /// ChangeMessageVisibilityBatch the Id checks exist solely in
-    /// UNMERGED PR getmoto/moto#10346, ported here deliberately: real AWS
-    /// documents TooManyEntriesInBatchRequest for every batch operation,
-    /// so DELETE/VIS were given the shared Id checks instead of dropping
-    /// them. The message wordings are live-verified on the pinned fork;
-    /// `entry_noun` fills the EmptyBatchRequest wording the way moto
-    /// responses.py's `EmptyBatchRequest(action=...)` interpolates the
-    /// action name.
     fn validate_batch_entries(
         params: &Value,
         entry_noun: &'static str,
@@ -2675,13 +2674,25 @@ impl Default for DefaultSqsHandler {
 
 impl SqsHandler for DefaultSqsHandler {
     fn handle(&self, req: AwsRequest) -> AwsResponse {
-        let result = self.handle_request(&req);
         // Error envelope follows the request protocol: query-protocol callers
         // send the `Action=` form body and get the AWS query `<ErrorResponse>`
         // XML; JSON-protocol callers (botocore's sqs json service model,
-        // cross-crate bridges with an empty body) get the JSON envelope.
-        let is_query_protocol =
-            !req.body.is_empty() && String::from_utf8_lossy(req.body.as_ref()).contains("Action=");
+        // cross-crate bridges with an empty body) get the JSON envelope. The
+        // sniff rides the gateway-parsed params (`Action` exists only for a
+        // form body) instead of a raw body substring — a JSON SendMessage
+        // whose MessageBody literally contains "Action=" was previously
+        // misrouted to XML errors.
+        let is_query_protocol = req
+            .params
+            .get("Action")
+            .and_then(|v| v.as_str())
+            .map(|a| !a.is_empty())
+            .unwrap_or(false);
+        let result = {
+            let mut req = req;
+            query_flatten_members(&mut req.params);
+            self.handle_request(&req)
+        };
         match result {
             Ok(resp) => resp,
             Err(err) => {
@@ -2692,6 +2703,69 @@ impl SqsHandler for DefaultSqsHandler {
                 }
             }
         }
+    }
+}
+
+/// Rebuild structured batch members from a query-protocol flattened map:
+/// gateway param flattening leaves `SendMessageBatchRequestEntry.1.Id` /
+/// `SendMessageBatchRequestEntry.1.MessageBody` dotted keys (AWS SDK Go v1,
+/// old botocore), so `Entries` (the array the JSON shape expects) never
+/// arrives and the batch ops answer a phantom EmptyBatchRequest. Rebuild the
+/// member lists from the `.N.` groups the same shape the JSON protocol
+/// carries (moto flattens query POSTs with the same semantics).
+fn query_flatten_members(params: &mut serde_json::Value) {
+    let Some(obj) = params.as_object_mut() else {
+        return;
+    };
+    // The three batch entry families the query wire flattens as
+    // `<Family>.<N>.<Member>`.
+    for prefix in [
+        "SendMessageBatchRequestEntry",
+        "DeleteMessageBatchRequestEntry",
+        "ChangeMessageVisibilityBatchRequestEntry",
+    ] {
+        let family_prefix = format!("{prefix}.");
+        if !obj.keys().any(|k| k.starts_with(&family_prefix)) {
+            continue;
+        }
+        let flats: Vec<String> = obj
+            .keys()
+            .filter(|k| k.starts_with(&family_prefix))
+            .cloned()
+            .collect();
+        let mut rows: Vec<(u32, serde_json::Map<String, Value>)> = Vec::new();
+        for flat in &flats {
+            let mut segs = flat
+                .strip_prefix(&family_prefix)
+                .expect("starts_with checked")
+                .splitn(2, '.');
+            let Some(idx) = segs.next().and_then(|s| s.parse::<u32>().ok()) else {
+                continue;
+            };
+            let Some(field) = segs.next() else {
+                continue;
+            };
+            let value = obj.get(flat).cloned().unwrap_or(Value::Null);
+            let row = match rows.iter_mut().find(|(i, _)| *i == idx) {
+                Some((_, row)) => row,
+                None => {
+                    rows.push((idx, serde_json::Map::new()));
+                    let last = rows.last_mut().expect("just pushed");
+                    &mut last.1
+                }
+            };
+            row.insert(field.to_string(), value);
+            obj.remove(flat);
+        }
+        rows.sort_by_key(|(i, _)| *i);
+        obj.insert(
+            "Entries".to_string(),
+            Value::Array(
+                rows.into_iter()
+                    .map(|(_, r)| Value::Object(r))
+                    .collect(),
+            ),
+        );
     }
 }
 

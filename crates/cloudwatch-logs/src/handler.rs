@@ -115,14 +115,17 @@ impl LogsHandler {
 
     // ---- shared response helpers ----
 
-    fn group_json(g: &LogGroupRec) -> Value {
+    fn group_json_with_filters(
+        g: &LogGroupRec,
+        metric_filter_count: usize,
+    ) -> Value {
         let stored: i64 = g.streams.values().map(|s| s.stored_bytes).sum();
         let mut out = json!({
             "arn": format!("{}:*", g.arn),
             "logGroupArn": g.arn,
             "creationTime": g.creation_time,
             "logGroupName": g.name,
-            "metricFilterCount": 0,
+            "metricFilterCount": metric_filter_count,
             "storedBytes": stored,
         });
         if let Some(d) = g.retention_in_days {
@@ -218,6 +221,13 @@ impl LogsHandler {
             "TagResource" => self.tag_resource(&req),
             "UntagResource" => self.untag_resource(&req),
 
+            // NOTE (documented absence): PutMetricFilter stores the row and
+            // DescribeMetricFilters reads it, but PutLogEvents never APPLIES
+            // the transformation — no datapoints are emitted to CloudWatch
+            // from metric filters, and PutSubscriptionFilter records are
+            // stored without any delivery path. moto pushes metric filters
+            // into the CW backend; the twin does NOT (gap vs moto, not a
+            // 501-class absence — the describe/store surface works).
             "PutMetricFilter" => self.put_metric_filter(&req),
             "DeleteMetricFilter" => self.delete_metric_filter(&req),
             "DescribeMetricFilters" => self.describe_metric_filters(&req),
@@ -417,7 +427,17 @@ impl LogsHandler {
             .read()
             .iter()
             .filter(|(name, _)| name.starts_with(prefix))
-            .map(|(_, g)| Self::group_json(g))
+            .map(|(name, g)| {
+                // The real count of PutMetricFilter rows on this group
+                // (the hardcoded 0 contradicted DescribeMetricFilters).
+                let count = state
+                    .metric_filters
+                    .read()
+                    .iter()
+                    .filter(|f| f.log_group_name == *name)
+                    .count();
+                Self::group_json_with_filters(g, count)
+            })
             .take(limit)
             .collect();
         AwsResponse::json(
@@ -433,7 +453,10 @@ impl LogsHandler {
         let state = self.get_state(req.account, &req.region);
         let name = Self::str_param(&req.params, "logGroupName");
         match state.get_group(name) {
-            Some(g) => AwsResponse::json(200, Self::group_json(&g)),
+            Some(g) => {
+                let metric_filter_count = state.metric_filters.read().iter().filter(|f| f.log_group_name == *name).count();
+                AwsResponse::json(200, Self::group_json_with_filters(&g, metric_filter_count))
+            }
             None => Self::missing_group(),
         }
     }
@@ -447,7 +470,15 @@ impl LogsHandler {
             .read()
             .values()
             .filter(|g| g.name.starts_with(prefix))
-            .map(Self::group_json)
+            .map(|g| {
+                let count = state
+                    .metric_filters
+                    .read()
+                    .iter()
+                    .filter(|f| f.log_group_name == g.name)
+                    .count();
+                Self::group_json_with_filters(g, count)
+            })
             .take(limit)
             .collect();
         AwsResponse::json(200, json!({ "logGroups": groups }))
@@ -944,6 +975,10 @@ impl LogsHandler {
 
         let mut first_index = 0usize;
         if !next_token.is_empty() {
+            // Unrecognized tokens previously restarted from page 0 and
+            // duplicated events — GetLogEvents answers InvalidParameterException
+            // for a token it cannot parse; match that contract (moto parity).
+            let mut found: Option<usize> = None;
             for (i, e) in results.iter().enumerate() {
                 let t = format!(
                     "{}@{}@{}",
@@ -952,10 +987,14 @@ impl LogsHandler {
                     e["eventId"].as_str().unwrap_or("")
                 );
                 if t == next_token {
-                    first_index = i + 1;
+                    found = Some(i);
                     break;
                 }
             }
+            if found.is_none() {
+                return Self::invalid_param("The specified nextToken is invalid.");
+            }
+            first_index = found.unwrap() + 1;
         }
         let last_index = results.len();
         let first_index = first_index.min(last_index);

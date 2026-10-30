@@ -103,11 +103,19 @@ def handler(event, context):
         url = f"{ENDPOINT_URL}/restapis/{api_id}/test/_user_request_/hello?name=Robotocore"
         resp = requests.get(url, timeout=10)
 
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["message"] == "Hello, Robotocore!"
-
-        # Cleanup
-        apigateway.delete_rest_api(restApiId=api_id)
-        lambda_client.delete_function(FunctionName=fn_name)
-        iam.delete_role(RoleName=f"apigw-role-{suffix}")
+        try:
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["message"] == "Hello, Robotocore!"
+        finally:
+            # Best-effort teardown: a failed assert must release the stack,
+            # and a delete error must not mask the original failure.
+            for _cleanup in (
+                lambda: apigateway.delete_rest_api(restApiId=api_id),
+                lambda: lambda_client.delete_function(FunctionName=fn_name),
+                lambda: iam.delete_role(RoleName=f"apigw-role-{suffix}"),
+            ):
+                try:
+                    _cleanup()
+                except Exception:
+                    pass

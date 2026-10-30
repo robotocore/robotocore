@@ -258,17 +258,18 @@ recorded decision in `tooling/surface-absence.json`).
   bound as AAD; IAM policy evaluation (Effect/NotAction/conditions/
   variables/permissions-boundaries/cross-account combining).
 - **Business-fidelity gates are machines, not docs:**
-  `make parity` = probe-freshness → parity → coverage-gate →
-  (nightly) error-census, where probe corpora may not lag their
-  implementations and every recorded deny must live-verify 501
-  `NotImplemented` (crash mirrors verified byte-exact against the moto
-  fork).
+  `make parity` = probe-freshness → parity → coverage-gate (the error
+  census is a live wire census run manually at wave boundaries), where
+  probe corpora may not lag their implementations and every recorded deny
+  must live-verify 501 `NotImplemented` (crash mirrors verified
+  byte-exact against the moto fork).
 
 ### Changed
 
 - The workflow modernization drops the python lanes; the
-  `java-and-dotnet` image variant publishes alongside `:latest` and
-  `:runtimes` from the release lane.
+  `java-and-dotnet` image variant publishes alongside `:latest` and the
+  version tag from the release lane (the standard image IS the `runtimes`
+  stage).
 
 ### Fixed
 
@@ -420,7 +421,7 @@ served by a rust-side executor that reads the deployed integration config
 from the sidecar and dispatches `AWS_PROXY` integrations into the native
 lambda crate, mirroring the Python executor.
 
-## 2026.10.12
+## 2026.10.12 (shipped in 2.0.0) (python-era server)
 
 IAM's policy simulator answered `allowed` for every action no matter what policies it was
 given. `SimulateCustomPolicy` and `SimulatePrincipalPolicy` now evaluate those policies with
@@ -457,7 +458,7 @@ simulated resource is `*`, which only statements with `"Resource": "*"` match. U
 `ENFORCE_IAM=1`, a Deny statement guarded by a negated operator now applies when the request
 lacks the condition key.
 
-## 2026.10.10
+## 2026.10.10 (shipped in 2.0.0) (python-era server)
 
 ### Added
 
@@ -548,7 +549,7 @@ lacks the condition key.
 - **Validate fault rules on create**: an invalid operation regex in a chaos payload answers
   400 with the reason instead of crashing the admin route.
 
-## 2026.10.8
+## 2026.10.8 (shipped in 2.0.0) (python-era server)
 
 ### Added
 
@@ -581,7 +582,7 @@ lacks the condition key.
   `ValidationException`** instead of crashing moto's parser (which surfaced as a 500
   InternalError). moto advanced to that commit.
 
-## 2026.10.6
+## 2026.10.6 (shipped in 2.0.0) (python-era server)
 
 ### Added
 

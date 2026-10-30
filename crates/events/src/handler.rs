@@ -1142,7 +1142,17 @@ impl EventsHandler {
                 &format!("Archive {name} not found"),
             );
         };
-        let obj = row.as_object_mut().unwrap();
+        let Some(obj) = row.as_object_mut() else {
+            // A corrupted snapshot import can store a non-object archive
+            // row (e.g. `"a": "string"`) — degrade to not-found instead of
+            // panicking the blocking task into an opaque 500.
+            state.archives.write().remove(&name);
+            return AwsResponse::error(
+                400,
+                "ResourceNotFoundException",
+                &format!("Archive {name} not found"),
+            );
+        };
         if let Some(description) = req.params.get("Description").and_then(|v| v.as_str()) {
             obj.insert("Description".into(), json!(description));
         }

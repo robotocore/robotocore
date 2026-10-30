@@ -42,7 +42,16 @@ pub struct Shard {
     #[serde(with = "crate::snapshot::u128_str")]
     pub hash_key_end: u128,
     pub starting_sequence_number: String,
-    pub parent_id: Option<String>,
+    #[serde(with = "crate::snapshot::rw")]
+    pub parent_id: RwLock<Option<String>>,
+    /// The adjacency partner of a merged pair (moto's merged shard carries
+    /// ParentShardId + AdjacentParentShardId).
+    #[serde(with = "crate::snapshot::rw")]
+    pub adjacent_parent_id: RwLock<Option<String>>,
+    /// Set when a reshard closes this shard: the last sequence number ever
+    /// assigned inside it. Open shards stay None.
+    #[serde(with = "crate::snapshot::rw")]
+    pub ending_sequence_number: RwLock<Option<u64>>,
     #[serde(with = "crate::snapshot::mutex_serde")]
     pub(crate) records: Mutex<Vec<KinesisRecord>>,
     #[serde(with = "crate::snapshot::mutex_u64")]
@@ -56,10 +65,25 @@ impl Shard {
             hash_key_start,
             hash_key_end,
             starting_sequence_number: "00000000000000000000".to_string(),
-            parent_id: None,
+            parent_id: RwLock::new(None),
+            adjacent_parent_id: RwLock::new(None),
+            ending_sequence_number: RwLock::new(None),
             records: Mutex::new(Vec::new()),
             sequence_counter: Mutex::new(0),
         }
+    }
+
+    /// Closed by a reshard (moto keeps closed shards in the stream's shard
+    /// list with an EndingSequenceNumber; consumers may still page their
+    /// history until retention expiry).
+    pub fn is_open(&self) -> bool {
+        self.ending_sequence_number.read().is_none()
+    }
+
+    /// The last sequence number assigned inside this shard (its counter) —
+    /// what a reshard's EndingSequenceNumber renders.
+    pub fn last_sequence_number(&self) -> String {
+        format!("{:020}", *self.sequence_counter.lock())
     }
 
     /// Drain this shard's stored records (used by SplitShard to carry
@@ -218,9 +242,13 @@ impl KinesisStream {
         let shards = self.shards.read();
         shards
             .iter()
-            .find(|s| s.hash_key_start <= hash && hash <= s.hash_key_end)
+            // Only open shards accept new records: a reshard's closed
+            // parents keep their (overlapping) ranges in the list for every
+            // consumer of history, and a first-match on that range would
+            // otherwise route new records into the closed shard.
+            .find(|s| s.is_open() && s.hash_key_start <= hash && hash <= s.hash_key_end)
             .cloned()
-            .or_else(|| shards.first().cloned())
+            .or_else(|| shards.iter().find(|s| s.is_open()).cloned())
     }
 
     /// Write a record; picks the shard via explicit hash key or partition key.

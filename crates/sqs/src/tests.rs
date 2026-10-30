@@ -4849,3 +4849,45 @@ fn cmv_batch_row_without_receipt_handle_key_crashes_like_moto() {
     assert_eq!(successful.len(), 1);
     assert_eq!(successful[0]["Id"], "b");
 }
+
+// Query-protocol callers flatten batch entries into dotted keys; the crate
+// rebuilds the `Entries` array from them instead of answering a phantom
+// EmptyBatchRequest (AWS SDK Go v1 / old-botocore lane).
+#[test]
+fn query_flatten_rebuilds_batch_entries() {
+    let params = json!({
+        "Action": "SendMessageBatch",
+        "QueueUrl": "http://localhost:4566/000000000000/q",
+        "SendMessageBatchRequestEntry.1.Id": "first",
+        "SendMessageBatchRequestEntry.1.MessageBody": "one",
+        "SendMessageBatchRequestEntry.2.Id": "second",
+        "SendMessageBatchRequestEntry.2.MessageBody": "two"
+    });
+    let handler = DefaultSqsHandler::new();
+    let resp = handler.handle(make_request("SendMessageBatch", params));
+    assert_eq!(resp.status, 200, "body: {}", resp.body);
+    let body: Value = serde_json::from_str(&resp.body).unwrap();
+    let entries = body["SendMessageBatchResult"]["Successful"]
+        .as_array()
+        .expect("both flattened entries rebuilt into the batch");
+    assert_eq!(entries.len(), 2, "body: {}", resp.body);
+}
+
+// The error envelope follows the parsed params, not a body substring: a
+// JSON-protocol SendMessage whose MessageBody literally contains "Action="
+// keeps its JSON envelope.
+#[test]
+fn json_body_with_action_substring_stays_json() {
+    let params = json!({"QueueUrl": "http://localhost:4566/000000000000/nope"});
+    let body_bytes = Bytes::from_static(br#"{"Action": "SendMessage", "MessageBody": "hello Action=x"}"#);
+    let mut req = make_request("SendMessage", params);
+    req.body = body_bytes;
+    let resp = DefaultSqsHandler::new().handle(req);
+    // The queue does not exist: the envelope chosen for the error is JSON
+    // (the twin's AWSError JSON shape), not the query XML ErrorResponse.
+    assert!(
+        !resp.body.contains("<ErrorResponse"),
+        "a JSON body must not get the query XML envelope: {}",
+        resp.body
+    );
+}
