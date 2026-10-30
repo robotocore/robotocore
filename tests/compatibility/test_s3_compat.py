@@ -4,11 +4,15 @@ import json
 import os
 import time
 import uuid
+from urllib.error import HTTPError
 from urllib.request import Request as URLRequest
 from urllib.request import urlopen
 
 import boto3
 import pytest
+from botocore.auth import SigV4Auth
+from botocore.awsrequest import AWSRequest
+from botocore.credentials import Credentials
 from botocore.exceptions import ClientError
 
 from tests.compatibility.conftest import make_client
@@ -3069,3 +3073,93 @@ class TestS3ObjectLambda:
             ContentType="text/plain",
         )
         assert resp["ResponseMetadata"]["HTTPStatusCode"] == 200
+
+
+def _aws_chunked(chunks: list[bytes], signed: bool, trailer: bytes = b"") -> bytes:
+    """Frames chunks the way SDKs stream uploads (Content-Encoding: aws-chunked)."""
+    signature = b";chunk-signature=" + b"0" * 64 if signed else b""
+    body = b""
+    for chunk in chunks:
+        body += f"{len(chunk):x}".encode() + signature + b"\r\n" + chunk + b"\r\n"
+    body += b"0" + signature + b"\r\n"
+    if trailer:
+        body += trailer + b"\r\n"
+    return body + b"\r\n"
+
+
+def _put_aws_chunked(path: str, body: bytes, content_sha256: str, decoded_length: int):
+    """Sends a SigV4-signed PUT with an aws-chunked body, as an SDK streaming upload does."""
+    request = AWSRequest(
+        method="PUT",
+        url=f"{ENDPOINT_URL}/{path}",
+        data=body,
+        headers={
+            "Content-Encoding": "aws-chunked",
+            "X-Amz-Content-SHA256": content_sha256,
+            "X-Amz-Decoded-Content-Length": str(decoded_length),
+        },
+    )
+    SigV4Auth(Credentials("testing", "testing"), "s3", "us-east-1").add_auth(request)
+    prepared = request.prepare()
+    return urlopen(
+        URLRequest(prepared.url, data=body, method="PUT", headers=dict(prepared.headers))
+    )
+
+
+class TestS3AwsChunkedUploads:
+    """Streaming uploads arrive aws-chunked framed; S3 stores only the chunk data."""
+
+    def test_put_object_with_signed_chunks(self, s3, bucket):
+        chunks = [b"a" * 8192, b"b" * 100]
+        body = _aws_chunked(chunks, signed=True)
+        resp = _put_aws_chunked(
+            f"{bucket}/signed.bin", body, "STREAMING-AWS4-HMAC-SHA256-PAYLOAD", 8292
+        )
+        assert resp.status == 200
+
+        obj = s3.get_object(Bucket=bucket, Key="signed.bin")
+        assert obj["ContentLength"] == 8292
+        assert obj["Body"].read() == b"".join(chunks)
+
+    def test_put_object_with_unsigned_chunks_and_checksum_trailer(self, s3, bucket):
+        body = _aws_chunked(
+            [b"hello world"], signed=False, trailer=b"x-amz-checksum-crc32:DUoRhQ=="
+        )
+        resp = _put_aws_chunked(
+            f"{bucket}/trailer.txt", body, "STREAMING-UNSIGNED-PAYLOAD-TRAILER", 11
+        )
+        assert resp.status == 200
+
+        obj = s3.get_object(Bucket=bucket, Key="trailer.txt")
+        assert obj["Body"].read() == b"hello world"
+        assert "aws-chunked" not in (obj.get("ContentEncoding") or "")
+
+    def test_upload_part_with_signed_chunks(self, s3, bucket):
+        upload = s3.create_multipart_upload(Bucket=bucket, Key="multipart.bin")
+        upload_id = upload["UploadId"]
+        part = b"p" * (5 * 1024 * 1024)
+        body = _aws_chunked([part[:65536], part[65536:]], signed=True)
+        resp = _put_aws_chunked(
+            f"{bucket}/multipart.bin?partNumber=1&uploadId={upload_id}",
+            body,
+            "STREAMING-AWS4-HMAC-SHA256-PAYLOAD",
+            len(part),
+        )
+        assert resp.status == 200
+        etag = resp.headers["ETag"]
+
+        s3.complete_multipart_upload(
+            Bucket=bucket,
+            Key="multipart.bin",
+            UploadId=upload_id,
+            MultipartUpload={"Parts": [{"PartNumber": 1, "ETag": etag}]},
+        )
+        obj = s3.get_object(Bucket=bucket, Key="multipart.bin")
+        assert obj["Body"].read() == part
+
+    def test_put_object_with_wrong_decoded_length_is_rejected(self, bucket):
+        body = _aws_chunked([b"hello world"], signed=True)
+        with pytest.raises(HTTPError) as excinfo:
+            _put_aws_chunked(f"{bucket}/short.txt", body, "STREAMING-AWS4-HMAC-SHA256-PAYLOAD", 12)
+        assert excinfo.value.code == 400
+        assert b"IncompleteBody" in excinfo.value.read()
