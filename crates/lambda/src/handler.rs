@@ -1351,22 +1351,52 @@ impl LambdaHandler {
     // ---------------------------------------------------------------
 
     fn esm_dict(e: &crate::models::EventSourceMapping) -> Value {
-        // A deleted-sentinel: State is included as-is.
-        json!({
-            "UUID": e.uuid,
-            "BatchSize": e.batch_size,
-            "EventSourceArn": e.event_source_arn,
-            "FunctionArn": e.function_arn,
-            "StartingPosition": e.starting_position,
-            "MaximumBatchingWindowInSeconds": 0,
-            "State": e.state,
-            "StateTransitionReason": e.state_transition_reason,
-            "LastModified": e.last_modified,
-            "FunctionResponseTypes": e.function_response_types.clone().unwrap_or_default(),
-            "FilterCriteria": e.filter_criteria.clone().unwrap_or(Value::Null),
-            "BisectBatchOnFunctionError": e.bisect_batch_on_function_error,
-            "MaximumRetryAttempts": e.maximum_retry_attempts,
-        })
+        // A deleted-sentinel: State is included as-is. The conditional
+        // members follow moto's shape-filtered details dict: unset
+        // MaximumBatchingWindowInSeconds/MaximumRecordAgeInSeconds are
+        // omitted (the hardcoded 0 used to leak a trailing synthetic
+        // window the caller never configured), LastProcessingResult rides
+        // as null, and the mapping ARN mirrors EventSourceMapping.arn.
+        let mut m = Map::new();
+        m.insert("UUID".into(), json!(e.uuid));
+        m.insert("BatchSize".into(), json!(e.batch_size));
+        m.insert("EventSourceArn".into(), json!(e.event_source_arn));
+        m.insert("FunctionArn".into(), json!(e.function_arn));
+        m.insert(
+            "EventSourceMappingArn".into(),
+            json!(esm_mapping_arn(&e.function_arn, &e.uuid)),
+        );
+        m.insert(
+            "StartingPosition".into(),
+            match &e.starting_position {
+                Some(pos) => json!(pos),
+                None => Value::Null,
+            },
+        );
+        if let Some(w) = e.maximum_batching_window_in_seconds {
+            m.insert("MaximumBatchingWindowInSeconds".into(), json!(w));
+        }
+        if let Some(age) = e.maximum_record_age_in_seconds {
+            m.insert("MaximumRecordAgeInSeconds".into(), json!(age));
+        }
+        m.insert("LastProcessingResult".into(), Value::Null);
+        m.insert("State".into(), json!(e.state));
+        m.insert("StateTransitionReason".into(), json!(e.state_transition_reason));
+        m.insert("LastModified".into(), json!(e.last_modified));
+        m.insert(
+            "FunctionResponseTypes".into(),
+            json!(e.function_response_types.clone().unwrap_or_default()),
+        );
+        m.insert(
+            "FilterCriteria".into(),
+            e.filter_criteria.clone().unwrap_or(Value::Null),
+        );
+        m.insert(
+            "BisectBatchOnFunctionError".into(),
+            json!(e.bisect_batch_on_function_error),
+        );
+        m.insert("MaximumRetryAttempts".into(), json!(e.maximum_retry_attempts));
+        Value::Object(m)
     }
 
     fn create_event_source_mapping(&self, state: &LambdaState, req: &AwsRequest) -> AwsResponse {
@@ -1376,10 +1406,70 @@ impl LambdaHandler {
             Err(resp) => return resp,
         };
         let uuid_val = uuid::Uuid::new_v4().to_string();
-        let is_sqs = req
-            .param_str("EventSourceArn")
-            .map(|a| a.contains(":sqs:"))
-            .unwrap_or(true);
+        let event_source_arn = req.param_str("EventSourceArn").unwrap_or_default();
+        // moto's EventSourceMapping.event_source_arn setter: only the
+        // dynamodb / kinesis / sqs families attach (the `.fifo` artifacts
+        // stay in the sqs family for this check).
+        let source = match esm_source(&event_source_arn) {
+            Some(source) => source,
+            None => {
+                return AwsResponse::error(
+                    400,
+                    "InvalidParameterValueException",
+                    "Unsupported event source type",
+                )
+            }
+        };
+        // moto's batch_size table: family default, family max, and a wire
+        // error when a configured BatchSize exceeds the max (0 and 1 stay
+        // legal — only the upper bound is validated).
+        let (_, batch_default, batch_max) = source.batch_rules();
+        let batch_size = match req.param_u64("BatchSize") {
+            Some(n) if n > batch_max => {
+                return AwsResponse::error(
+                    400,
+                    "InvalidParameterValueException",
+                    &format!("BatchSize {n} exceeds the max of {batch_max}"),
+                )
+            }
+            Some(n) => n as u32,
+            None => batch_default as u32,
+        };
+        // moto's LambdaBackend.create_event_source_mapping resolves the
+        // event source through its owning backend before constructing the
+        // mapping: a kinesis stream (or the table a streams-ARN source
+        // points at) that does not exist answers 404
+        // ResourceNotFoundException "Invalid EventSourceArn". A dynamodb
+        // ARN without its /stream/ label still accepts — the missing
+        // label just leaves the TRIM default; moto does not 404 it.
+        // No probe registered in a bare process — no deny without
+        // evidence.
+        match &source {
+            EsmSource::Kinesis { stream_name } => {
+                if crate::bridge::kinesis_stream_exists(req.account, &req.region, stream_name)
+                    == Some(false)
+                {
+                    return AwsResponse::error(
+                        404,
+                        "ResourceNotFoundException",
+                        "Invalid EventSourceArn",
+                    );
+                }
+            }
+            EsmSource::DynamoDb { table_name } => {
+                if crate::bridge::dynamodb_table_exists(req.account, &req.region, table_name)
+                    == Some(false)
+                {
+                    return AwsResponse::error(
+                        404,
+                        "ResourceNotFoundException",
+                        "Invalid EventSourceArn",
+                    );
+                }
+            }
+            _ => {}
+        }
+        let is_sqs = source.is_sqs();
         // moto: stream sources default their starting position to TRIM_HORIZON.
         let starting_position = req
             .param_str("StartingPosition")
@@ -1387,11 +1477,11 @@ impl LambdaHandler {
         let em = Arc::new(crate::models::EventSourceMapping {
             uuid: uuid_val.clone(),
             function_arn: func.function_arn.clone(),
-            event_source_arn: req.param_str("EventSourceArn").unwrap_or_default(),
+            event_source_arn: event_source_arn.clone(),
             state: "Enabled".to_string(),
             state_transition_reason: "User action".to_string(),
             last_modified: epoch_now(),
-            batch_size: req.param_u64("BatchSize").unwrap_or(10) as u32,
+            batch_size,
             enabled: req
                 .params
                 .get("Enabled")
@@ -1420,17 +1510,28 @@ impl LambdaHandler {
                 .get("MaximumRetryAttempts")
                 .and_then(Value::as_i64)
                 .unwrap_or(-1),
+            maximum_batching_window_in_seconds: req
+                .params
+                .get("MaximumBatchingWindowInSeconds")
+                .and_then(Value::as_u64),
+            maximum_record_age_in_seconds: req
+                .params
+                .get("MaximumRecordAgeInSeconds")
+                .and_then(Value::as_u64),
             // Attach-time LATEST binding for kinesis mappings (moto registers
             // the ESM on its source synchronously, so a LATEST mapping never
             // misses records that the poller merely observes late).
             // LATEST-only: TRIM_HORIZON keeps its replay contract.
             kinesis_bound_watermarks: {
-                let arn = req.param_str("EventSourceArn").unwrap_or_default();
                 if req.param_str("StartingPosition").as_deref() == Some("LATEST")
-                    && arn.contains(":kinesis:")
+                    && event_source_arn.contains(":kinesis:")
                 {
-                    crate::bridge::kinesis_attach_watermarks(req.account, &req.region, &arn)
-                        .map(|pairs| pairs.into_iter().collect())
+                    crate::bridge::kinesis_attach_watermarks(
+                        req.account,
+                        &req.region,
+                        &event_source_arn,
+                    )
+                    .map(|pairs| pairs.into_iter().collect())
                 } else {
                     None
                 }
@@ -1466,10 +1567,24 @@ impl LambdaHandler {
                 &format!("Event source mapping not found: {uuid_val}"),
             );
         };
-        let batch_size = req
-            .param_u64("BatchSize")
-            .map(|b| b as u32)
-            .unwrap_or(em.batch_size);
+        // The same family rules the create path enforces (moto's update
+        // extracts the BatchSize against the source's max the same way).
+        let batch_size = match req.param_u64("BatchSize") {
+            Some(n) => {
+                let max = esm_source(&em.event_source_arn)
+                    .map(|s| s.batch_rules().2)
+                    .unwrap_or(u32::MAX as u64);
+                if n > max {
+                    return AwsResponse::error(
+                        400,
+                        "InvalidParameterValueException",
+                        &format!("BatchSize {n} exceeds the max of {max}"),
+                    );
+                }
+                n as u32
+            }
+            None => em.batch_size,
+        };
         let (enabled, state_value) = match req.params.get("Enabled").and_then(Value::as_bool) {
             Some(on) => (on, if on { "Enabled" } else { "Disabled" }),
             None => (em.enabled, "Enabled"),
@@ -1516,6 +1631,16 @@ impl LambdaHandler {
                 .get("MaximumRetryAttempts")
                 .and_then(Value::as_i64)
                 .unwrap_or(em.maximum_retry_attempts),
+            maximum_batching_window_in_seconds: req
+                .params
+                .get("MaximumBatchingWindowInSeconds")
+                .and_then(Value::as_u64)
+                .or(em.maximum_batching_window_in_seconds),
+            maximum_record_age_in_seconds: req
+                .params
+                .get("MaximumRecordAgeInSeconds")
+                .and_then(Value::as_u64)
+                .or(em.maximum_record_age_in_seconds),
             // The attach-time binding survives updates; it only re-freezes
             // when a new mapping is created against the source.
             kinesis_bound_watermarks: em.kinesis_bound_watermarks.clone(),
@@ -1567,11 +1692,21 @@ impl LambdaHandler {
         let states = self.state.read();
         let mut out = Vec::new();
         for ((account, region), st) in states.iter() {
+            let functions = st.functions.read();
             for m in st.event_source_mappings.read().values() {
+                // The mapped function's execution role rides the snapshot:
+                // the engine builds the kinesis envelope's invokeIdentityArn
+                // from it (moto: func.role). Fall back to None; the engine
+                // substitutes the function ARN when unset.
+                let role = esm_function_name(&m.function_arn)
+                    .and_then(|name| functions.get(name)?.latest.clone())
+                    .map(|f| f.role.read().clone())
+                    .filter(|role| !role.is_empty());
                 out.push(crate::models::EsmMappingEntry {
                     account: *account,
                     region: region.clone(),
                     mapping: (**m).clone(),
+                    role,
                 });
             }
         }
@@ -2724,6 +2859,96 @@ fn epoch_now() -> f64 {
         .unwrap_or(0.0)
 }
 
+/// The ESM event source a `CreateEventSourceMapping` / stored
+/// `EventSourceArn` names, mirroring moto's `EventSourceMapping.
+/// event_source_arn` setter: exactly three ARN families attach, with the
+/// `.fifo` SQS artifacts in their own sub-family because the batch-size
+/// table gives them their own max.
+#[derive(Debug, Clone, PartialEq)]
+enum EsmSource {
+    Kinesis { stream_name: String },
+    DynamoDb { table_name: String },
+    Sqs,
+    SqsFifo,
+}
+
+/// Parse an EventSourceArn into its [`EsmSource`] (never an error — the
+/// caller 400s an unclassifiable ARN with moto's "Unsupported event source
+/// type").
+fn esm_source(event_source_arn: &str) -> Option<EsmSource> {
+    let parts: Vec<&str> = event_source_arn.split(':').collect();
+    if parts.len() < 6 || parts[0] != "arn" {
+        return None;
+    }
+    match parts[2] {
+        "kinesis" => Some(EsmSource::Kinesis {
+            stream_name: parts[5].strip_prefix("stream/")?.to_string(),
+        }),
+        // arn:aws:dynamodb:{region}:{account}:table/{name}[/stream/{label}]
+        // — the stream-suffix parse mirrors the engine's classify_arn: the
+        // table family attaches whether or not a stream label rides the
+        // ARN (a missing label just leaves the TRIM default).
+        "dynamodb" => Some(EsmSource::DynamoDb {
+            table_name: parts[5]
+                .strip_prefix("table/")?
+                .split("/stream/")
+                .next()?
+                .to_string(),
+        }),
+        "sqs" if event_source_arn.ends_with(".fifo") => Some(EsmSource::SqsFifo),
+        "sqs" => Some(EsmSource::Sqs),
+        _ => None,
+    }
+}
+
+impl EsmSource {
+    /// (family name, default BatchSize, wire max) per moto's
+    /// `awslambda/models.py batch_size_service_map` +
+    /// `batch_size_max_map`: the stream-ish sources default 100 and cap at
+    /// 10000, plain SQS defaults 10 capping at 10000, and the FIFO sub-
+    /// family caps at 10 (its own batch semantics carry one group at a
+    /// time).
+    fn batch_rules(&self) -> (&'static str, u64, u64) {
+        match self {
+            Self::Kinesis { .. } => ("kinesis", 100, 10_000),
+            Self::DynamoDb { .. } => ("dynamodb", 100, 10_000),
+            Self::Sqs => ("sqs", 10, 10_000),
+            Self::SqsFifo => ("sqs-fifo", 10, 10),
+        }
+    }
+
+    /// Starting-position default: stream sources default TRIM_HORIZON,
+    /// SQS sources start with none (moto `EventSourceMapping`).
+    fn is_sqs(&self) -> bool {
+        !matches!(self, Self::Kinesis { .. } | Self::DynamoDb { .. })
+    }
+}
+
+/// `arn:aws:lambda:{region}:{account}:event-source-mapping:{uuid}` — moto's
+/// `EventSourceMapping.arn` (computed off the owning function's scope).
+fn esm_mapping_arn(function_arn: &str, uuid: &str) -> String {
+    let parts: Vec<&str> = function_arn.split(':').collect();
+    if parts.len() >= 5 && parts[0] == "arn" && parts[2] == "lambda" {
+        format!(
+            "arn:aws:lambda:{}:{}:event-source-mapping:{}",
+            parts[3], parts[4], uuid
+        )
+    } else {
+        format!("arn:aws:lambda:::event-source-mapping:{uuid}")
+    }
+}
+
+/// Base function name of a mapping's FunctionArn (the ARN's `:function:`
+/// record; qualifier dropped — ESM delivery invokes unversioned).
+fn esm_function_name(function_arn: &str) -> Option<&str> {
+    function_arn
+        .split(":function:")
+        .nth(1)?
+        .split(':')
+        .next()
+        .filter(|s| !s.is_empty())
+}
+
 /// Last `max` BYTES of `s`, snapped forward to a UTF-8 char boundary so the
 /// tail never ends in a partial multi-byte code point.
 fn tail_utf8(s: &str, max: usize) -> &str {
@@ -3028,6 +3253,213 @@ mod tests {
             .insert("x-amz-invocation-type".to_string(), "Event".to_string());
         let resp = handler.handle(req);
         assert_eq!(resp.status, 202);
+    }
+
+    // ------------------------------------------------------------------
+    // Event source mappings: family batch rules + source validation
+    // ------------------------------------------------------------------
+
+    fn create_esm(handler: &LambdaHandler, params: Value) -> AwsResponse {
+        handler.handle(make_req("POST", params, "/2015-03-31/event-source-mappings"))
+    }
+
+    fn get_esm(handler: &LambdaHandler, uuid: &str) -> AwsResponse {
+        handler.handle(make_req(
+            "GET",
+            json!({}),
+            &format!("/2015-03-31/event-source-mappings/{uuid}"),
+        ))
+    }
+
+    /// moto's `batch_size_service_map` + `batch_size_max_map` shape the
+    /// CreateEventSourceMapping contract: family defaults (kinesis/dynamodb
+    /// 100, sqs incl. `.fifo` 10), a 400 InvalidParameterValueException
+    /// above the family max, the three-family ARN gate ("Unsupported event
+    /// source type"), the 404 for a kinesis source that does not resolve
+    /// ("Invalid EventSourceArn"), and the shape-filtered dict (mapping
+    /// ARN, null LastProcessingResult, MaximumBatchingWindowInSeconds only
+    /// when configured). The source-existence probes are process-global,
+    /// so every probe-dependent assertion lives in this single
+    /// sole-registrant test (the surge-guard style of the cloudwatch hook
+    /// tests).
+    #[test]
+    fn esm_create_batch_rules_and_source_validation() {
+        crate::bridge::register_kinesis_stream_probe(Arc::new(
+            |_: u64, _: &str, stream_name: &str| stream_name != "missing-stream",
+        ));
+        crate::bridge::register_dynamodb_table_probe(Arc::new(|_: u64, _, _: &str| true));
+
+        let handler = LambdaHandler::new();
+        let fn_name = "esm-fn";
+        handler.handle(make_req(
+            "POST",
+            json!({"FunctionName": fn_name, "Runtime": "python3.12", "Handler": "index.handler"}),
+            "/2015-03-31/functions",
+        ));
+
+        // (a) kinesis family default: 100 (moto batch_size_service_map).
+        let kinesis_arn = "arn:aws:kinesis:us-east-1:123456789012:stream/esm-batch-stream";
+        let resp = create_esm(
+            &handler,
+            json!({"EventSourceArn": kinesis_arn, "FunctionName": fn_name, "StartingPosition": "LATEST"}),
+        );
+        assert_eq!(resp.status, 202, "body: {}", resp.body);
+        let esm: Value = serde_json::from_str(&resp.body).unwrap();
+        assert_eq!(esm["BatchSize"], json!(100));
+
+        // (b) above the family max → 400 with moto's wording. The same map
+        // governs SQS FIFO's max of 10.
+        let resp = create_esm(
+            &handler,
+            json!({"EventSourceArn": kinesis_arn, "FunctionName": fn_name,
+                   "StartingPosition": "LATEST", "BatchSize": 100001}),
+        );
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(resp.body.contains("BatchSize 100001 exceeds the max of 10000"), "body: {}", resp.body);
+        let resp = create_esm(
+            &handler,
+            json!({"EventSourceArn": "arn:aws:sqs:us-east-1:123456789012:src.fifo",
+                   "FunctionName": fn_name, "BatchSize": 50}),
+        );
+        assert_eq!(resp.status, 400, "body: {}", resp.body);
+        assert!(resp.body.contains("BatchSize 50 exceeds the max of 10"), "body: {}", resp.body);
+        // Values 0 and 1 stay legal on both sides of the default logic.
+        let resp = create_esm(
+            &handler,
+            json!({"EventSourceArn": "arn:aws:sqs:us-east-1:123456789012:q0", "FunctionName": fn_name, "BatchSize": 0}),
+        );
+        assert_eq!(resp.status, 202);
+        assert_eq!(serde_json::from_str::<Value>(&resp.body).unwrap()["BatchSize"], json!(0));
+
+        // (c) ARN families outside dynamodb/kinesis/sqs → 400 "Unsupported
+        // event source type".
+        for bad_arn in [
+            "arn:aws:sns:us-east-1:123456789012:topic",
+            "arn:aws:mq:us-east-1:123456789012:q",
+        ] {
+            let resp = create_esm(&handler, json!({"EventSourceArn": bad_arn, "FunctionName": fn_name}));
+            assert_eq!(resp.status, 400, "{bad_arn}: {}", resp.body);
+            assert!(resp.body.contains("Unsupported event source type"), "body: {}", resp.body);
+        }
+
+        // (d) a kinesis source that does not resolve → 404
+        // ResourceNotFoundException "Invalid EventSourceArn".
+        let resp = create_esm(
+            &handler,
+            json!({"EventSourceArn": "arn:aws:kinesis:us-east-1:123456789012:stream/missing-stream",
+                   "FunctionName": fn_name, "StartingPosition": "TRIM_HORIZON"}),
+        );
+        assert_eq!(resp.status, 404, "body: {}", resp.body);
+        assert!(resp.body.contains("Invalid EventSourceArn"), "body: {}", resp.body);
+        assert!(resp.body.contains("ResourceNotFoundException"), "body: {}", resp.body);
+
+        // (e) the wire dict: mapping ARN + null LastProcessingResult ride
+        // every response; the optional windows appear only when set.
+        let resp = create_esm(
+            &handler,
+            json!({"EventSourceArn": "arn:aws:kinesis:us-east-1:123456789012:stream/esm-dict-stream",
+                   "FunctionName": fn_name, "StartingPosition": "LATEST",
+                   "MaximumBatchingWindowInSeconds": 5, "MaximumRecordAgeInSeconds": 60}),
+        );
+        assert_eq!(resp.status, 202, "body: {}", resp.body);
+        let configured: Value = serde_json::from_str(&resp.body).unwrap();
+        let uuid = configured["UUID"].as_str().unwrap().to_string();
+        assert_eq!(
+            configured["EventSourceMappingArn"],
+            json!(format!("arn:aws:lambda:us-east-1:123456789012:event-source-mapping:{uuid}"))
+        );
+        assert!(
+            configured.get("LastProcessingResult").is_some_and(Value::is_null),
+            "LastProcessingResult rides as null: {configured}"
+        );
+        assert_eq!(configured.get("MaximumBatchingWindowInSeconds"), Some(&json!(5)));
+        assert_eq!(configured.get("MaximumRecordAgeInSeconds"), Some(&json!(60)));
+        let dict: Value = serde_json::from_str(&get_esm(&handler, &uuid).body).unwrap();
+        assert_eq!(dict["EventSourceMappingArn"], configured["EventSourceMappingArn"]);
+
+        // Unconfigured: no MaximumBatchingWindowInSeconds key at all (the
+        // hardcoded 0 used to leak; moto shape-filters unset members).
+        let resp = get_esm(&handler, &uuid);
+        let _ = serde_json::from_str::<Value>(&resp.body).unwrap();
+        let bare_esm = create_esm(
+            &handler,
+            json!({"EventSourceArn": "arn:aws:dynamodb:us-east-1:123456789012:table/ddb-stream-x/stream/2026",
+                   "FunctionName": fn_name, "StartingPosition": "LATEST"}),
+        );
+        assert_eq!(bare_esm.status, 202, "body: {}", bare_esm.body);
+        let bare: Value = serde_json::from_str(&bare_esm.body).unwrap();
+        // dynamodb family default BatchSize is 100 too.
+        assert_eq!(bare["BatchSize"], json!(100));
+        assert!(
+            bare.get("MaximumBatchingWindowInSeconds").is_none()
+                && bare.get("MaximumRecordAgeInSeconds").is_none(),
+            "unconfigured windows must be omitted: {bare}"
+        );
+        assert_eq!(bare["StartingPosition"], json!("LATEST"));
+        // And the delete path returns the same shape filters.
+        let resp = handler.handle(make_req(
+            "DELETE",
+            json!({}),
+            &format!("/2015-03-31/event-source-mappings/{}", bare["UUID"].as_str().unwrap()),
+        ));
+        assert_eq!(resp.status, 200);
+    }
+
+    #[test]
+    fn esm_snapshot_carries_the_execution_role() {
+        // moto builds the kinesis envelope's invokeIdentityArn from the
+        // function's execution role (func.role); the snapshot is the only
+        // channel the engine thread has, so it must ride along.
+        let handler = LambdaHandler::new();
+        handler.handle(make_req(
+            "POST",
+            json!({"FunctionName": "role-fn", "Runtime": "python3.12",
+                   "Role": "arn:aws:iam::123456789012:role/executor", "Code": {}}),
+            "/2015-03-31/functions",
+        ));
+        let resp = create_esm(
+            &handler,
+            json!({"EventSourceArn": "arn:aws:sqs:us-east-1:123456789012:role-q",
+                   "FunctionName": "role-fn"}),
+        );
+        assert_eq!(resp.status, 202);
+
+        let entries = handler.esm_snapshot();
+        let entry = entries
+            .iter()
+            .find(|e| e.mapping.event_source_arn.contains(":sqs:"))
+            .expect("the mapping shows up in the snapshot");
+        assert_eq!(
+            entry.role.as_deref(),
+            Some("arn:aws:iam::123456789012:role/executor"),
+            "the execution role must ride the snapshot"
+        );
+
+        // A function without a configured role snapshots None — the engine
+        // substitutes the function ARN for the envelope then.
+        handler.handle(make_req(
+            "POST",
+            json!({"FunctionName": "role-less-fn", "Runtime": "python3.12"}),
+            "/2015-03-31/functions",
+        ));
+        let esm: Value = serde_json::from_str(&resp.body).unwrap();
+        handler.handle(make_req(
+            "DELETE",
+            json!({}),
+            &format!("/2015-03-31/event-source-mappings/{}", esm["UUID"].as_str().unwrap()),
+        ));
+        let resp2 = create_esm(
+            &handler,
+            json!({"EventSourceArn": "arn:aws:sqs:us-east-1:123456789012:role-less-q",
+                   "FunctionName": "role-less-fn"}),
+        );
+        assert_eq!(resp2.status, 202);
+        let entries = handler.esm_snapshot();
+        let bare_entry = entries
+            .iter()
+            .find(|e| e.mapping.event_source_arn.contains("role-less-q"))
+            .expect("the bare mapping shows up");
+        assert_eq!(bare_entry.role, None, "an unconfigured role stays None");
     }
 
     // ------------------------------------------------------------------

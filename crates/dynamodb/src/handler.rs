@@ -453,6 +453,15 @@ impl DynamoDbHandler {
         )
     }
 
+    /// Whether the table exists in this (account, region) — the probe the
+    /// lambda crate's `CreateEventSourceMapping` validation reaches through
+    /// `lambda::bridge` (moto's `LambdaBackend.create_event_source_mapping`
+    /// resolves the dynamodb streams source's owning table the same way
+    /// it resolves a kinesis stream).
+    pub fn has_table(&self, account: u64, region: &str, table_name: &str) -> bool {
+        self.get_state(account, region).get_table(table_name).is_some()
+    }
+
     fn describe_table(&self, req: &AwsRequest) -> AwsResponse {
         let table_name = param_str(&req.params, "TableName")
             .unwrap_or_default()

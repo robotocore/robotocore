@@ -5,6 +5,7 @@ multiple AWS services working together. These are the features that
 differentiate us from basic Moto.
 """
 
+import base64
 import io
 import json
 import os
@@ -1322,6 +1323,241 @@ class TestKinesisLambdaEventSourceMapping:
         lam.delete_function(FunctionName=func_name)
         kinesis.delete_stream(StreamName=stream_name)
         iam.delete_role(RoleName=role_name)
+
+    # LATEST binding mirrors the DynamoDB-streams ESM test below: a record
+    # put before the mapping existed must be withheld, a record put after
+    # must be delivered once — the attach-time watermark registers the
+    # mapping on the stream at CreateEventSourceMapping, nothing falls
+    # behind the poller's first tick.
+    _LAMBDA_CODE = (
+        "import json, boto3, os\n"
+        "def handler(event, ctx):\n"
+        "    sqs = boto3.client(\n"
+        '        "sqs",\n'
+        "        endpoint_url=os.environ["
+        '            "SQS_ENDPOINT"],\n'
+        '        region_name="us-east-1",\n'
+        '        aws_access_key_id="testing",\n'
+        '        aws_secret_access_key="testing")\n'
+        '    queue_url = os.environ["VERIFY_QUEUE_URL"]\n'
+        "    for rec in event.get('Records', []):\n"
+        "        sqs.send_message(\n"
+        "            QueueUrl=queue_url,\n"
+        "            MessageBody=json.dumps(rec))\n"
+        '    return {"statusCode": 200}\n'
+    )
+
+    def test_kinesis_batch_size_defaults_and_dict_shape(self):
+        """A kinesis source defaults BatchSize to 100 (moto's service map)."""
+        lam = make_client("lambda")
+        kinesis = make_client("kinesis")
+        suffix = uuid.uuid4().hex[:8]
+        func_name = f"esm-kin-default-{suffix}"
+        stream_name = f"esm-kin-default-{suffix}"
+
+        iam, role_name, role_arn = _create_lambda_role()
+        try:
+            kinesis.create_stream(StreamName=stream_name, ShardCount=1)
+            for _ in range(10):
+                desc = kinesis.describe_stream(StreamName=stream_name)
+                if desc["StreamDescription"]["StreamStatus"] == "ACTIVE":
+                    break
+                time.sleep(0.5)
+            stream_arn = desc["StreamDescription"]["StreamARN"]
+
+            code = _make_lambda_zip("def handler(event, ctx): return {'ok': True}")
+            lam.create_function(
+                FunctionName=func_name,
+                Runtime="python3.12",
+                Role=role_arn,
+                Handler="lambda_function.handler",
+                Code={"ZipFile": code},
+            )
+            esm_resp = lam.create_event_source_mapping(
+                EventSourceArn=stream_arn,
+                FunctionName=func_name,
+                StartingPosition="LATEST",
+            )
+            assert esm_resp["BatchSize"] == 100, (
+                f"kinesis sources default BatchSize 100, got {esm_resp['BatchSize']}"
+            )
+            described = lam.get_event_source_mapping(UUID=esm_resp["UUID"])
+            assert described["BatchSize"] == 100
+            assert described["EventSourceArn"] == stream_arn
+        finally:
+            lam.delete_function(FunctionName=func_name)
+            kinesis.delete_stream(StreamName=stream_name)
+            iam.delete_role(RoleName=role_name)
+
+    def _setup_kinesis_esm(self, suffix, esm_kwargs=None, attach_esm=True):
+        """Shared setup: IAM role, SQS verify queue, Lambda, kinesis stream;
+        returns dict of clients/names. `attach_esm=False` stages everything
+        but the mapping (a test may put a pre-attach record first)."""
+        iam, role_name, role_arn = _create_lambda_role()
+
+        sqs = make_client("sqs")
+        queue_name = f"verify-kinesis-{suffix}"
+        q_resp = sqs.create_queue(QueueName=queue_name)
+        queue_url = q_resp["QueueUrl"]
+
+        lam = make_client("lambda")
+        func_name = f"kinesis-fn-{suffix}"
+        code = _make_lambda_zip(self._LAMBDA_CODE)
+        func_resp = lam.create_function(
+            FunctionName=func_name,
+            Runtime="python3.12",
+            Role=role_arn,
+            Handler="lambda_function.handler",
+            Code={"ZipFile": code},
+            Environment={
+                "Variables": {
+                    "VERIFY_QUEUE_URL": queue_url,
+                    "SQS_ENDPOINT": TWIN_URL,
+                }
+            },
+        )
+        func_arn = func_resp["FunctionArn"]
+
+        kinesis = make_client("kinesis")
+        stream_name = f"kinesis-esm-{suffix}"
+        kinesis.create_stream(StreamName=stream_name, ShardCount=1)
+        for _ in range(10):
+            desc = kinesis.describe_stream(StreamName=stream_name)
+            if desc["StreamDescription"]["StreamStatus"] == "ACTIVE":
+                break
+            time.sleep(0.5)
+        stream_arn = desc["StreamDescription"]["StreamARN"]
+
+        esm_uuid = None
+        if attach_esm:
+            esm_defaults = {
+                "EventSourceArn": stream_arn,
+                "FunctionName": func_name,
+                "StartingPosition": "LATEST",
+            }
+            esm_defaults.update(esm_kwargs or {})
+            esm_resp = lam.create_event_source_mapping(**esm_defaults)
+            esm_uuid = esm_resp["UUID"]
+
+        return {
+            "iam": iam,
+            "sqs": sqs,
+            "lam": lam,
+            "kinesis": kinesis,
+            "role_name": role_name,
+            "role_arn": role_arn,
+            "queue_url": queue_url,
+            "queue_name": queue_name,
+            "func_name": func_name,
+            "func_arn": func_arn,
+            "stream_name": stream_name,
+            "stream_arn": stream_arn,
+            "esm_uuid": esm_uuid,
+        }
+
+    def _cleanup_kinesis_esm(self, ctx, has_esm=True):
+        if has_esm:
+            ctx["lam"].delete_event_source_mapping(UUID=ctx["esm_uuid"])
+        ctx["lam"].delete_function(FunctionName=ctx["func_name"])
+        ctx["kinesis"].delete_stream(StreamName=ctx["stream_name"])
+        ctx["sqs"].delete_queue(QueueUrl=ctx["queue_url"])
+        ctx["iam"].delete_role(RoleName=ctx["role_name"])
+
+    def test_kinesis_put_record_triggers_lambda_envelope(self):
+        """Pre-attach LATEST withholding + record wire shape (DDB-streams
+        mirror): a record put BEFORE CreateEventSourceMapping is withheld,
+        one put after is delivered exactly once, with the moto-style
+        envelope fields. The attach-time binding is what makes the
+        withholding precise (the mapping registers on the stream)."""
+        suffix = uuid.uuid4().hex[:8]
+        ctx = self._setup_kinesis_esm(
+            suffix,
+            # LATEST binding + family default batch size (no explicit
+            # BatchSize — describe must show the kinesis default of 100).
+            attach_esm=False,
+        )
+
+        try:
+            pre_data = json.dumps({"id": "before-attach", "v": 1})
+            post_data = json.dumps({"id": "after-attach", "v": 2})
+
+            # The pre-attach record first: LATEST binds the mapping at
+            # CreateEventSourceMapping — the record already on the stream
+            # must never replay.
+            ctx["kinesis"].put_record(
+                StreamName=ctx["stream_name"],
+                Data=pre_data,
+                PartitionKey="k-1",
+            )
+
+            esm_resp = ctx["lam"].create_event_source_mapping(
+                EventSourceArn=ctx["stream_arn"],
+                FunctionName=ctx["func_name"],
+                StartingPosition="LATEST",
+            )
+            ctx["esm_uuid"] = esm_resp["UUID"]
+            described = ctx["lam"].get_event_source_mapping(UUID=ctx["esm_uuid"])
+            assert described["BatchSize"] == 100, (
+                f"kinesis sources default BatchSize 100, got {described['BatchSize']}"
+            )
+
+            ctx["kinesis"].put_record(
+                StreamName=ctx["stream_name"],
+                Data=post_data,
+                PartitionKey="k-2",
+            )
+
+            # Drain for ~10s: exactly the post-attach record may arrive.
+            deadline = time.time() + 10
+            messages = []
+            while len(messages) < 1 and time.time() < deadline:
+                recv = ctx["sqs"].receive_message(
+                    QueueUrl=ctx["queue_url"],
+                    WaitTimeSeconds=2,
+                    MaxNumberOfMessages=10,
+                )
+                messages.extend(recv.get("Messages", []))
+
+            assert len(messages) >= 1, "no record delivered within 10s"
+            decoded = []
+            for m in messages:
+                r = json.loads(m["Body"])
+                r["kinesis"]["decoded"] = json.loads(
+                    base64.b64decode(r["kinesis"]["data"])
+                )
+                decoded.append(r)
+            delivered = [
+                r for r in decoded
+                if r["kinesis"]["decoded"] == {"id": "after-attach", "v": 2}
+            ]
+            withheld = [
+                r for r in decoded
+                if r["kinesis"]["decoded"] == {"id": "before-attach", "v": 1}
+            ]
+
+            assert len(withheld) == 0, (
+                "a LATEST mapping must not replay the pre-attach record"
+            )
+            assert len(delivered) >= 1, (
+                f"the post-attach record must be delivered, got: {decoded}"
+            )
+            # Exactly one delivery of the post-attach record (no repeated
+            # redelivery of a succeeded batch in the window).
+            assert len(delivered) == 1, (
+                f"delivered exactly once, got {len(delivered)}: {delivered}"
+            )
+
+            rec = delivered[0]
+            assert rec["eventSource"] == "aws:kinesis"
+            assert rec["eventSourceARN"] == ctx["stream_arn"]
+            # moto builds invokeIdentityArn from the function's execution
+            # role; the role created here carries that ARN.
+            assert rec["invokeIdentityArn"] == ctx["role_arn"], rec
+            assert rec["kinesis"]["data"] is not None
+            assert rec["kinesis"]["sequenceNumber"]
+            assert rec["kinesis"]["partitionKey"] == "k-2"
+        finally:
+            self._cleanup_kinesis_esm(ctx, has_esm=bool(ctx.get("esm_uuid")))
 
 
 class TestS3ToLambdaNotification:

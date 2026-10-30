@@ -109,6 +109,21 @@ pub fn start(native: Arc<NativeHandlers>) {
             _ => None,
         }
     }));
+    // Source-existence probes for the same create path: the lambda crate
+    // validates a kinesis/dynamodb source through these (moto's create
+    // resolves the stream / owning table through its backends first).
+    lambda::bridge::register_kinesis_stream_probe(Arc::new({
+        let native = native.clone();
+        move |account, region, stream_name| {
+            native.kinesis.has_stream(account, region, stream_name)
+        }
+    }));
+    lambda::bridge::register_dynamodb_table_probe(Arc::new({
+        let native = native.clone();
+        move |account, region, table_name| {
+            native.dynamodb.has_table(account, region, table_name)
+        }
+    }));
     std::thread::Builder::new()
         .name("esm-engine".into())
         .spawn(move || run(native.clone()))
@@ -253,6 +268,44 @@ struct SqsFrontier {
     layers: Vec<Vec<Value>>,
 }
 
+/// One kinesis record row of the invocation envelope (moto's
+/// `send_kinesis_message` shape): the kinesis block plus the per-mapping
+/// envelope fields, with `invokeIdentityArn` carrying the mapping
+/// function's EXECUTION role (func.role — the snapshot's `role`; the
+/// function ARN substitutes while the role is unset).
+fn kinesis_record(
+    mapping: &lambda::models::EventSourceMapping,
+    role: Option<&String>,
+    shard: &str,
+    region: &str,
+    r: &Value,
+) -> Value {
+    json!({
+        "kinesis": {
+            "kinesisSchemaVersion": "1.0",
+            "partitionKey": r.get("PartitionKey"),
+            "sequenceNumber": r.get("SequenceNumber"),
+            "data": r.get("Data"),
+            "approximateArrivalTimestamp": r.get("ApproximateArrivalTimestamp"),
+        },
+        "eventSource": "aws:kinesis",
+        "eventVersion": "1.0",
+        "eventID": format!(
+            "{}:{}",
+            shard,
+            r.get("SequenceNumber")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+        ),
+        "eventName": "aws:kinesis:record",
+        "invokeIdentityArn": role
+            .filter(|r| !r.is_empty())
+            .unwrap_or(&mapping.function_arn),
+        "awsRegion": region,
+        "eventSourceARN": mapping.event_source_arn,
+    })
+}
+
 impl Engine {
     fn starting_position(mapping: &lambda::models::EventSourceMapping) -> String {
         mapping
@@ -270,6 +323,12 @@ impl Engine {
         stream_name: &str,
     ) {
         let mapping = &entry.mapping;
+        // Batch capacity per moto's EventSourceMapping.batch_size: the
+        // GetRecords window carries at most that many records and the
+        // invocation slice is capped again locally — the cursor advances
+        // only through windows that were actually delivered (backlog above
+        // the batch size drains one poll at a time).
+        let batch_cap = (mapping.batch_size).max(1) as usize;
         let describe = native.kinesis.handle(kinesis::AwsRequest {
             service: "kinesis".into(),
             operation: "DescribeStream".into(),
@@ -372,7 +431,7 @@ impl Engine {
                 operation: "GetRecords".into(),
                 account: entry.account,
                 region: entry.region.clone(),
-                params: json!({"ShardIterator": iterator}),
+                params: json!({"ShardIterator": iterator, "Limit": batch_cap}),
                 body: Bytes::new(),
             });
             if records_resp.status != 200 {
@@ -398,34 +457,18 @@ impl Engine {
                 }
                 continue;
             }
+            // Extra slice belt-and-braces: the wire Limit caps the window,
+            // but the invocation never carries more than batch_size records
+            // even if a source misbehaves — undelivered remainder is picked
+            // up on the next poll from this cursor position.
+            let window: Vec<Value> = records.into_iter().take(batch_cap).collect();
 
             // Filter, build the event, invoke — the delivered cursor advances
             // only when the invocation succeeded (retry on failure).
-            let delivered: Vec<Value> = records
+            let delivered: Vec<Value> = window
                 .iter()
                 .filter(|r| filter_matches(mapping.filter_criteria.as_ref(), r))
-                .map(|r| {
-                    json!({
-                        "kinesis": {
-                            "kinesisSchemaVersion": "1.0",
-                            "partitionKey": r.get("PartitionKey"),
-                            "sequenceNumber": r.get("SequenceNumber"),
-                            "data": r.get("Data"),
-                            "approximateArrivalTimestamp": r.get("ApproximateArrivalTimestamp"),
-                        },
-                        "eventSource": "aws:kinesis",
-                        "eventVersion": "1.0",
-                        "eventID": format!(
-                            "{}:{}",
-                            shard,
-                            r.get("SequenceNumber").cloned().unwrap_or_default()
-                        ),
-                        "eventName": "aws:kinesis:record",
-                        "invokeIdentityArn": mapping.function_arn,
-                        "awsRegion": entry.region,
-                        "eventSourceARN": mapping.event_source_arn,
-                    })
-                })
+                .map(|r| kinesis_record(mapping, entry.role.as_ref(), &shard, &entry.region, r))
                 .collect();
             if delivered.is_empty() {
                 if let Some(next) = next {
@@ -1190,6 +1233,67 @@ mod tests {
         json!({"MessageId": id, "ReceiptHandle": format!("rh-{id}"), "Body": id})
     }
 
+    // -- kinesis envelope (mapping-carried execution role) --------------------
+
+    /// The kinesis-family variation of the shared test mapping: proper
+    /// function + stream ARNs.
+    fn kine_mapping() -> lambda::models::EventSourceMapping {
+        let mut m = test_mapping();
+        m.function_arn = "arn:aws:lambda:us-east-1:123456789012:function:kin-fn".into();
+        m.event_source_arn = "arn:aws:kinesis:us-east-1:123456789012:stream/s".into();
+        m
+    }
+
+    /// A wire row the kinesis crate returns from GetRecords (snake fields
+    /// the raw output carries).
+    fn kine_wire_record(seq: &str) -> Value {
+        json!({
+            "PartitionKey": "pk",
+            "SequenceNumber": seq,
+            "Data": "aGVsbG8=",
+            "ApproximateArrivalTimestamp": 1.5,
+        })
+    }
+
+    // moto builds the kinesis envelope's invokeIdentityArn from the
+    // function's EXECUTION role (func.role, which rides the snapshot entry)
+    // — the bare function ARN only substitutes while no role resolves.
+    #[test]
+    fn kinesis_envelope_carries_the_execution_role() {
+        let mapping = kine_mapping();
+        let rec = kinesis_record(
+            &mapping,
+            Some(&"arn:aws:iam::123456789012:role/executor".to_string()),
+            "shardId-000000000001",
+            "us-east-1",
+            &kine_wire_record("495689742199393"),
+        );
+        assert_eq!(
+            rec["invokeIdentityArn"],
+            json!("arn:aws:iam::123456789012:role/executor"),
+            "the envelope carries the execution role, not the function ARN"
+        );
+        assert_eq!(rec["eventSourceARN"], json!(mapping.event_source_arn));
+        assert!(!rec["kinesis"]["data"].is_null());
+        assert_eq!(
+            rec["eventID"],
+            json!("shardId-000000000001:495689742199393")
+        );
+
+        let bare = kinesis_record(
+            &mapping,
+            None,
+            "shardId-000000000001",
+            "us-east-1",
+            &kine_wire_record("1"),
+        );
+        assert_eq!(
+            bare["invokeIdentityArn"],
+            json!(mapping.function_arn),
+            "without a role the function ARN substitutes"
+        );
+    }
+
     // -- bisect frontier ----------------------------------------------------
 
     #[test]
@@ -1361,6 +1465,8 @@ mod tests {
             function_response_types: None,
             bisect_batch_on_function_error: false,
             maximum_retry_attempts: -1,
+            maximum_batching_window_in_seconds: None,
+            maximum_record_age_in_seconds: None,
             kinesis_bound_watermarks: None,
         }
     }

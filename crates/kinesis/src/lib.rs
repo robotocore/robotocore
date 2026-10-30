@@ -57,4 +57,10 @@ impl DefaultKinesisHandler {
     ) -> Vec<(String, String)> {
         self.inner.attach_watermarks(account, region, stream_name)
     }
+
+    /// CreateEventSourceMapping existence probe — see
+    /// `handler::KinesisHandler::has_stream`.
+    pub fn has_stream(&self, account: u64, region: &str, stream_name: &str) -> bool {
+        self.inner.has_stream(account, region, stream_name)
+    }
 }

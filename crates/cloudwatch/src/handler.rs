@@ -231,6 +231,13 @@ enum RuleListAction {
     Enable,
 }
 
+/// Subset predicate shared by ListMetrics / GetMetricStatistics /
+/// alarm evaluation: a candidate datum matches when its dimension set
+/// CONTAINS every (Name, Value) pair of the filter.
+fn dims_subset(datum: &[(String, String)], filter: &[(String, String)]) -> bool {
+    filter.iter().all(|f| datum.contains(f))
+}
+
 /// De-duplication key for ListMetrics: (namespace, metric name, dimensions).
 type MetricSet = Vec<(String, String, Vec<(String, String)>)>;
 
@@ -276,15 +283,21 @@ fn reason_value(v: f64) -> String {
 
 /// Aggregate one `Period`-wide window of the alarm's metric; `None` when the
 /// window carries no datapoints or the statistic cannot be computed (a
-/// "missing" period). Windows match on namespace + metric name only, with
-/// alarm dimensions ignored — the twin's documented real-CloudWatch
-/// evaluation matching. moto cites nothing here: 5.2.4 has no alarm
+/// "missing" period). Windows match on namespace + metric name, and a
+/// candidate datapoint matches when its dimension set CONTAINS the alarm's
+/// dimension set — the same `dims_subset` predicate `GetMetricStatistics`
+/// filters with (the real-AWS matching semantics: a datum carries the
+/// alarm's dimensions, possibly with extra splits). Without the containment
+/// filter two alarms watching the same metric in one namespace evaluated
+/// each other's dimension splits; a dimension-less alarm keeps plain
+/// namespace+metric matching. moto cites nothing here: 5.2.4 has no alarm
 /// evaluation, and its `MetricDatumBase::filter` serves
-/// get_metric_statistics / get_metric_data shape filtering, not alarms.
+/// get_metric_statistics / get_metric_data shape filtering.
 fn alarm_window_stat(
     metrics: &[MetricDatum],
     namespace: &str,
     metric_name: &str,
+    filter_dims: &[(String, String)],
     stat: &str,
     start_ms: i64,
     end_ms: i64,
@@ -294,6 +307,7 @@ fn alarm_window_stat(
     for md in metrics {
         if md.namespace == namespace
             && md.name == metric_name
+            && dims_subset(&md.dimensions, filter_dims)
             && md.timestamp > start_ms
             && md.timestamp <= end_ms
         {
@@ -399,6 +413,11 @@ fn alarm_candidate(
         .map(|m| m.max(1) as usize)
         .unwrap_or(eval_periods);
     let treat = field_str_or(alarm, "TreatMissingData", "missing");
+    // The alarm's own dimension set: a candidate datapoint matches when its
+    // dimension set CONTAINS these — the dims_subset predicate
+    // get_metric_statistics filters with (real-AWS matching semantics; a
+    // dimension-less alarm keeps plain namespace+metric matching).
+    let alarm_dims = dims_from_value(alarm.get("Dimensions"));
 
     // Anchor at max(now, the newest datapoint for the metric): caller-supplied
     // Timestamps that run ahead of the evaluator's clock would otherwise fall
@@ -407,7 +426,11 @@ fn alarm_candidate(
     // the anchor point lands in the newest window.
     let newest = metrics
         .iter()
-        .filter(|md| md.namespace == namespace && md.name == metric_name)
+        .filter(|md| {
+            md.namespace == namespace
+                && md.name == metric_name
+                && dims_subset(&md.dimensions, &alarm_dims)
+        })
         .map(|md| md.timestamp)
         .max()
         .unwrap_or(i64::MIN);
@@ -418,7 +441,15 @@ fn alarm_candidate(
     for i in 0..eval_periods {
         let end = anchor - (i as i64) * period_ms;
         let start = end - period_ms;
-        if let Some(v) = alarm_window_stat(metrics, &namespace, &metric_name, &stat, start, end) {
+        if let Some(v) = alarm_window_stat(
+            metrics,
+            &namespace,
+            &metric_name,
+            &alarm_dims,
+            &stat,
+            start,
+            end,
+        ) {
             good.push(AlarmWindow {
                 value: v,
                 timestamp: end,
@@ -1115,7 +1146,7 @@ impl CloudwatchHandler {
     }
 
     fn dims_subset(datum: &[(String, String)], filter: &[(String, String)]) -> bool {
-        filter.iter().all(|f| datum.contains(f))
+        dims_subset(datum, filter)
     }
 
     fn list_metrics(&self, req: &AwsRequest) -> AwsResponse {
@@ -2669,6 +2700,101 @@ mod tests {
         );
     }
 
+    /// The alarm's own dimension set narrows evaluation the way
+    /// GetMetricStatistics filters: a candidate datapoint matches when its
+    /// dimension set CONTAINS the alarm's dimensions (extra splits on the
+    /// datum are fine, missing ones are not). The alarm fires only on its
+    /// own set: a sibling split of the same metric never moves it, a
+    /// dimension-less alarm in the same namespace still matches everything.
+    #[test]
+    fn alarm_evaluation_respects_the_alarm_dimension_set() {
+        let handler = CloudwatchHandler::new();
+        handler.handle(make_req(
+            "PutMetricAlarm",
+            json!({
+                "AlarmName": "dim-web", "Namespace": "DimsNS", "MetricName": "Hits",
+                "ComparisonOperator": "GreaterThanThreshold", "EvaluationPeriods": 1,
+                "Period": 60, "Statistic": "Sum", "Threshold": 5.0,
+                "Dimensions": [{"Name": "Service", "Value": "web"}]
+            }),
+        ));
+        // Dimension-less sibling alarm watching the same metric + namespace.
+        handler.handle(make_req(
+            "PutMetricAlarm",
+            json!({
+                "AlarmName": "dim-all", "Namespace": "DimsNS", "MetricName": "Hits",
+                "ComparisonOperator": "GreaterThanThreshold", "EvaluationPeriods": 1,
+                "Period": 60, "Statistic": "Sum", "Threshold": 5.0
+            }),
+        ));
+        // Only the db split breaches — the dimensioned alarm must not see it.
+        handler.handle(make_req(
+            "PutMetricData",
+            json!({
+                "Namespace": "DimsNS",
+                "MetricData": [
+                    {"MetricName": "Hits", "Value": 10.0, "Timestamp": ts_of(0),
+                     "Dimensions": [{"Name": "Service", "Value": "db"}]}
+                ]
+            }),
+        ));
+        let desc = parse(&handler.handle(make_req(
+            "DescribeAlarms",
+            json!({"AlarmNames": ["dim-web", "dim-all"]}),
+        )));
+        let alarms = desc["MetricAlarms"].as_array().unwrap();
+        let by_name = |name: &str| {
+            alarms
+                .iter()
+                .find(|a| a["AlarmName"] == name)
+                .unwrap()
+                .clone()
+        };
+        let dim_all = by_name("dim-all");
+        assert_eq!(
+            dim_all["StateValue"], "ALARM",
+            "the dimension-less alarm keeps namespace+metric matching"
+        );
+        let dim_web = by_name("dim-web");
+        assert!(
+            dim_web["StateValue"] != "ALARM",
+            "a sibling split of the same metric must not breach the alarm: {}",
+            dim_web
+        );
+
+        // Its own split (+ an extra dimension on the datum, which the real
+        // dimension-subset semantics allow) breaches it.
+        handler.handle(make_req(
+            "PutMetricData",
+            json!({
+                "Namespace": "DimsNS",
+                "MetricData": [
+                    {"MetricName": "Hits", "Value": 10.0, "Timestamp": ts_of(61),
+                     "Dimensions": [
+                        {"Name": "Service", "Value": "web"},
+                        {"Name": "api", "Value": "one"}
+                     ]}
+                ]
+            }),
+        ));
+        let desc = parse(&handler.handle(make_req(
+            "DescribeAlarms",
+            json!({"AlarmNames": ["dim-web"]}),
+        )));
+        assert_eq!(
+            desc["MetricAlarms"][0]["StateValue"], "ALARM",
+            "the alarm fires on its own dimension set"
+        );
+        assert!(
+            desc["MetricAlarms"][0]["StateReason"]
+                .as_str()
+                .unwrap()
+                .contains("greater than the threshold"),
+            "reason: {}",
+            desc["MetricAlarms"][0]["StateReason"]
+        );
+    }
+
     /// TreatMissingData=breaching: an alarm whose metric produced no
     /// datapoints at all evaluates as if the missing datapoints were
     /// breaching (moto keeps alarms static; this is the real CloudWatch
@@ -2940,8 +3066,11 @@ mod tests {
         assert_eq!(desc["MetricAlarms"][0]["StateValue"], "ALARM");
     }
 
-    /// Alarm evaluation matches on namespace + metric name like moto —
-    /// dimensioned alarms still evaluate dimensioned datapoints.
+    /// Alarm evaluation candidates match with the GetMetricStatistics
+    /// subset predicate: a datapoint's dimension set must CONTAIN the
+    /// alarm's dimension set (this alarm's datapoint carries the exact
+    /// set; the sibling-split and dimension-less datapoints are covered by
+    /// `alarm_evaluation_respects_the_alarm_dimension_set`).
     #[test]
     fn dimensioned_alarms_evaluate_on_namespace_and_metric_name() {
         let handler = CloudwatchHandler::new();

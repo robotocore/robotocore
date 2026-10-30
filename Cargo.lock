@@ -325,7 +325,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "cloudwatch"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "bytes",
  "chrono",
@@ -337,7 +337,7 @@ dependencies = [
 
 [[package]]
 name = "cloudwatch-logs"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "bytes",
  "chrono",
@@ -468,7 +468,7 @@ dependencies = [
 
 [[package]]
 name = "dynamodb"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "base64",
  "bytes",
@@ -496,7 +496,7 @@ dependencies = [
 
 [[package]]
 name = "ecr"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "base64",
  "bytes",
@@ -511,7 +511,7 @@ dependencies = [
 
 [[package]]
 name = "ecs"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "bytes",
  "parking_lot",
@@ -559,7 +559,7 @@ dependencies = [
 
 [[package]]
 name = "events"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "bytes",
  "chrono",
@@ -589,7 +589,7 @@ checksum = "1c66915cc5391097de7a2b0b972e8505aa33c0df401fd3a6811dbdb32881ba48"
 
 [[package]]
 name = "firehose"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "base64",
  "bytes",
@@ -821,7 +821,7 @@ dependencies = [
 
 [[package]]
 name = "iam"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "base64",
  "bytes",
@@ -1004,7 +1004,7 @@ dependencies = [
 
 [[package]]
 name = "kinesis"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "base64",
  "bytes",
@@ -1019,7 +1019,7 @@ dependencies = [
 
 [[package]]
 name = "kms"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "aes-gcm",
  "base64",
@@ -1038,7 +1038,7 @@ dependencies = [
 
 [[package]]
 name = "lambda"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "base64",
  "bytes",
@@ -1443,7 +1443,7 @@ dependencies = [
 
 [[package]]
 name = "robotocore-rust"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "axum",
  "base64",
@@ -1492,7 +1492,7 @@ dependencies = [
 
 [[package]]
 name = "rotocore"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "base64",
  "bytes",
@@ -1554,7 +1554,7 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
 name = "s3"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "base64",
  "bytes",
@@ -1595,7 +1595,7 @@ dependencies = [
 
 [[package]]
 name = "secretsmanager"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "bytes",
  "chrono",
@@ -1763,7 +1763,7 @@ checksum = "5b3dc8af474f516a851ff4bd12db780f948b9250ad37211e4eec0bccea54e01b"
 
 [[package]]
 name = "sns"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "bytes",
  "chrono",
@@ -1805,7 +1805,7 @@ dependencies = [
 
 [[package]]
 name = "sqs"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "base64",
  "bytes",
@@ -1820,7 +1820,7 @@ dependencies = [
 
 [[package]]
 name = "ssm"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "bytes",
  "chrono",
@@ -1840,7 +1840,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "stepfunctions"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "bytes",
  "chrono",

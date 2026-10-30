@@ -7,6 +7,103 @@ Docker images. Each release gets a top-level section here; the project
 source of truth for the maintenance policy is [`CLAUDE.md`](CLAUDE.md)
 under *Changelog discipline*.
 
+## 2.0.1
+
+The v2.0.1 follow-through: the review waves against the merged 2.0 tree end
+with kinesis mappings that bind their stream position at attach time, a
+CloudWatch alarm engine that notifies through SNS and Lambda exactly like the
+real service, runtime-family executors riding the published image, and CI
+lanes whose gates read the tree instead of an artifact.
+
+### Kinesis ESM attach-time binding (2026-10-27)
+
+- **kinesis/esm-attach** — `CreateEventSourceMapping` for a `LATEST` kinesis
+  source registers the mapping on the stream synchronously (mirroring
+  moto's push-registration, `moto/kinesis/models.py`
+  `KinesisStream.lambda_event_source_mappings`), freezing one per-shard
+  `AT_SEQUENCE_NUMBER` watermark at attach time: a pre-attach record is no
+  longer replayed into the mapping and no post-attach record is lost to a
+  poller's first tick. The watermarks ride the mapping record itself
+  (`EventSourceMapping.kinesis_bound_watermarks`), LATEST-only — `TRIM_HORIZON`
+  keeps its replay contract — and a binding that would overshoot a shard's
+  live next sequence number (stream re-created, shard counters reset) is
+  discarded, rebinding at first poll sight (stale-rebind).
+
+### CloudWatch alarm engine (2026-10-27)
+
+- **cloudwatch/alarms** — metric alarms evaluate on the PutMetricData path:
+  the trailing `EvaluationPeriods` windows of `Period` aggregate with the
+  alarm's statistic, `DatapointsToAlarm`/`TreatMissingData` decide between
+  ALARM / OK / INSUFFICIENT_DATA / hold-in-place per the documented
+  real-CloudWatch rules, and every actual state transition delivers the
+  alarm's `AlarmActions` / `OKActions` / `InsufficientDataActions` through
+  SNS and Lambda with the real CloudWatch `AlarmName`/`NewStateValue`/
+  `NewStateReason`/`OldStateValue` notification envelope. moto 5.2.4 keeps
+  alarms static — this is the twin mirroring the real service.
+- **compat** — datapoint candidates now respect the alarm's dimension set
+  (a datapoint matches when its dimension set contains the alarm's — the
+  same subset predicate `GetMetricStatistics` filters with): two alarms
+  watching the same metric in one namespace no longer cross-fire on each
+  other's dimension splits.
+
+### Runtime families and images (2026-10-27)
+
+- **lambda/runtime-families** — native in-process executors for the managed
+  families: `ruby*` runs through `which ruby`, `java*` through javac+java
+  (the bridge compiles once per process), `dotnet*` through the dotnet CLI;
+  nodejs 18.x/20.x/22.x prefer their versioned `node18`/`node20`/`node22`
+  binaries with a plain-`node` fallback (divergence logged). `GET
+  /_robotocore/runtimes` reports what the running server can actually
+  execute.
+- **images/boto3-bundle** — the Docker images ship the boto3 site-packages
+  inside the bundled lambda runtime directory, so a deployed function's
+  `import boto3` runs from the image itself without vendored packages
+  (158MB → 202MB default image; the `runtimes` stage carries it along with
+  the versioned node binaries).
+
+### CI tree-truthfulness (2026-10-27)
+
+- **ci/tree-truth** — the CI, parity, IaC and app-integration lanes run the
+  twin built from the code under test through the new
+  `.github/actions/start-twin-from-source` composite (compile + health-wait
+  on the checkout), never the published image — a regression cannot pass a
+  gate on a stale artifact.
+- **parity/probe-freshness** — `make probe-freshness` fails the lane when a
+  `probes/<svc>.json` corpus is older than the newest commit touching that
+  service's implementation; it runs as the first step of `make parity`, and
+  a port lane is not done until its own scratch twin has been re-probed and
+  the manifest/coverage artifacts regenerated.
+- **release/runtimes-stage** — the release lane's `runtimes` image build
+  targets the renamed `runtimes` Dockerfile stage, so `:runtimes` really
+  carries the node + ruby executor toolchain it claims.
+
+### Review hardening (2026-10-27)
+
+- **review/zip-bomb** — a crafted 2MB deployment zip could expand past
+  250MB into the extraction dir on every invoke and fill the disk: all
+  executor families now enforce a running decompressed-bytes budget — the
+  `zip` crate's `extract_zip_into` for the custom-runtime path, the same
+  bound inside the Python shim and the Node bootstrap (checked pre-entry
+  against the central-directory uncompressed sizes, aborting with a
+  non-zero exit before the bomb writes) — and the stdin-fed family
+  executors carry a dedicated 6MB result window so a large handler response
+  no longer truncates into their 128KB log tail.
+- **review/alarms** — hardening pass over the alarm engine: a re-put
+  PutMetricAlarm resets the state the way moto's backend constructs a
+  fresh Alarm (newly-on-action alarms evaluate from the OK base the reset
+  makes observable), a staged action delivery re-validates the alarm's
+  current state before each ARN (a Lambda action re-entering the twin
+  mid-pass can no longer let the outer pass publish a stale notification),
+  and query-protocol integer members parse as numeric strings — the
+  query wire encodes Period/EvaluationPeriods scalars as strings, where a
+  bare `as_i64` silently degraded them to the API defaults.
+- **review/esm** — hardening pass over the ESM engine: the LATEST bind
+  watermarks live on the mapping record (state save/restore carries them;
+  no publish-then-bind window for a poll tick to race), only `LATEST`
+  sources bind and `TRIM_HORIZON` mappings retain their replay-from-zero
+  delivery, and a stream re-created under an existing mapping re-derives
+  its watermarks instead of pinning to a dead shard counter.
+
 ## 2.0.0
 
 The Python 2.x line is retired: robotocore 2.0 is a **pure-Rust twin**

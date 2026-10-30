@@ -3,7 +3,7 @@ members = ["rotocore", "crates/sqs", "crates/s3", "crates/dynamodb", "crates/sns
 resolver = "2"
 
 [workspace.package]
-version = "2.0.0"
+version = "2.0.1"
 edition = "2021"
 license = "MIT"
 

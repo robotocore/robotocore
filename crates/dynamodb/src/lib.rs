@@ -63,4 +63,10 @@ impl DefaultDynamoDbHandler {
         self.inner
             .stream_records_after(account, region, table_name, after_seq)
     }
+
+    /// CreateEventSourceMapping existence probe — see
+    /// `DynamoDbHandler::has_table`.
+    pub fn has_table(&self, account: u64, region: &str, table_name: &str) -> bool {
+        self.inner.has_table(account, region, table_name)
+    }
 }
