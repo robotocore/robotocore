@@ -28,7 +28,7 @@ parking_lot = "0.12"
 serde = { version = "1.0", features = ["derive"] }
 
 # Web server and async runtime
-axum = "0.7"
+axum = "0.8"
 tower = "0.4"
 hyper = "1.0"
 tokio = { version = "1", features = ["full"] }
