@@ -138,9 +138,7 @@ def history_is_attributable() -> bool:
     ).stdout.strip()
     if not tip_time:
         return True  # not detectable here; a separate gate failure will say so
-    probe_names = sorted(
-        probe_name_from_file(p) for p in PROBES.glob("*.json")
-    )[:3]
+    probe_names = sorted(probe_name_from_file(p) for p in PROBES.glob("*.json"))[:3]
     attributes = []
     for name in probe_names:
         t, _ = latest_impl_time(name)
