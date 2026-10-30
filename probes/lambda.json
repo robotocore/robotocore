@@ -1,434 +1,434 @@
 {
   "service": "lambda",
-  "generated_at": "2026-10-30T03:28:35.151836+00:00",
+  "generated_at": "2026-10-30T03:28:56.865098+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 0,
+    "working": 84,
     "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
-    "timeout": 84
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "AddLayerVersionPermission",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "AddPermission",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CheckpointDurableExecution",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-12-01/durable-executions/arn%3Aaws%3Alam)"
     },
     {
       "operation": "CreateAlias",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateCapacityProvider",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-11-30/capacity-providers)"
     },
     {
       "operation": "CreateCodeSigningConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "CreateEventSourceMapping",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "CreateFunction",
-      "status": "timeout",
-      "message": "endpoint unreachable (required-only retry)"
+      "status": "working",
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "CreateFunctionUrlConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteAlias",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteCapacityProvider",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-11-30/capacity-providers/probe-test-valu)"
     },
     {
       "operation": "DeleteCodeSigningConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteEventSourceMapping",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteFunctionCodeSigningConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteFunctionConcurrency",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteFunctionEventInvokeConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteFunctionUrlConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteLayerVersion",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "DeleteProvisionedConcurrencyConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetAccountSettings",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetAlias",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetCapacityProvider",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-11-30/capacity-providers/probe-test-valu)"
     },
     {
       "operation": "GetCodeSigningConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetDurableExecution",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-12-01/durable-executions/arn%3Aaws%3Alam)"
     },
     {
       "operation": "GetDurableExecutionHistory",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-12-01/durable-executions/arn%3Aaws%3Alam)"
     },
     {
       "operation": "GetDurableExecutionState",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-12-01/durable-executions/arn%3Aaws%3Alam)"
     },
     {
       "operation": "GetEventSourceMapping",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetFunction",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetFunctionCodeSigningConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetFunctionConcurrency",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetFunctionConfiguration",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetFunctionEventInvokeConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetFunctionRecursionConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetFunctionScalingConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetFunctionUrlConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetLayerVersion",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetLayerVersionByArn",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetLayerVersionPolicy",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetPolicy",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetProvisionedConcurrencyConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetRuntimeManagementConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "Invoke",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "InvokeAsync",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequestContent: The request payload is not valid JSON.)"
     },
     {
       "operation": "InvokeWithResponseStream",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListAliases",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListCapacityProviders",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-11-30/capacity-providers)"
     },
     {
       "operation": "ListCodeSigningConfigs",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListDurableExecutionsByFunction",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListEventSourceMappings",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListFunctionEventInvokeConfigs",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListFunctionUrlConfigs",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListFunctionVersionsByCapacityProvider",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-11-30/capacity-providers/probe-test-valu)"
     },
     {
       "operation": "ListFunctions",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListFunctionsByCodeSigningConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "ListLayerVersions",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListLayers",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListProvisionedConcurrencyConfigs",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListTags",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListVersionsByFunction",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PublishLayerVersion",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PublishVersion",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutFunctionCodeSigningConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutFunctionConcurrency",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutFunctionEventInvokeConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutFunctionRecursionConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutFunctionScalingConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutProvisionedConcurrencyConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "PutRuntimeManagementConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "RemoveLayerVersionPermission",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "RemovePermission",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "SendDurableExecutionCallbackFailure",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-12-01/durable-execution-callbacks/probe-)"
     },
     {
       "operation": "SendDurableExecutionCallbackHeartbeat",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-12-01/durable-execution-callbacks/probe-)"
     },
     {
       "operation": "SendDurableExecutionCallbackSuccess",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-12-01/durable-execution-callbacks/probe-)"
     },
     {
       "operation": "StopDurableExecution",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-12-01/durable-executions/arn%3Aaws%3Alam)"
     },
     {
       "operation": "TagResource",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UntagResource",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateAlias",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateCapacityProvider",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "likely implemented (InvalidRequest: Unknown path: /2025-11-30/capacity-providers/probe-test-valu)"
     },
     {
       "operation": "UpdateCodeSigningConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateEventSourceMapping",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateFunctionCode",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UpdateFunctionConfiguration",
-      "status": "timeout",
-      "message": "endpoint unreachable (required-only retry)"
+      "status": "working",
+      "message": "OK (required-only fill)"
     },
     {
       "operation": "UpdateFunctionEventInvokeConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "UpdateFunctionUrlConfig",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     }
   ]
 }

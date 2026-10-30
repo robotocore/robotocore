@@ -1,229 +1,229 @@
 {
   "service": "cloudwatch",
-  "generated_at": "2026-10-30T03:28:31.820898+00:00",
+  "generated_at": "2026-10-30T03:28:53.385764+00:00",
   "endpoint": "http://localhost:4566",
   "counts": {
-    "working": 0,
+    "working": 43,
     "needs_params": 0,
     "not_implemented": 0,
     "500_error": 0,
-    "timeout": 43
+    "timeout": 0
   },
   "operations": [
     {
       "operation": "DeleteAlarmMuteRule",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteAlarms",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteAnomalyDetector",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteDashboards",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Dashboard probe-test-value does not exist)"
     },
     {
       "operation": "DeleteInsightRules",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DeleteMetricStream",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeAlarmContributors",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeAlarmHistory",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeAlarms",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeAlarmsForMetric",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeAnomalyDetectors",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DescribeInsightRules",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DisableAlarmActions",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "DisableInsightRules",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "EnableAlarmActions",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "EnableInsightRules",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetAlarmMuteRule",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetDashboard",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "likely implemented (ResourceNotFound: Dashboard probe-test-value does not exist)"
     },
     {
       "operation": "GetInsightRuleReport",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetMetricData",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetMetricStatistics",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "GetMetricStream",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (ResourceNotFoundException)"
     },
     {
       "operation": "GetMetricWidgetImage",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListAlarmMuteRules",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListDashboards",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListManagedInsightRules",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListMetricStreams",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListMetrics",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "ListTagsForResource",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutAlarmMuteRule",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutAnomalyDetector",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutCompositeAlarm",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutDashboard",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "implemented (InvalidParameterValue)"
     },
     {
       "operation": "PutInsightRule",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutManagedInsightRules",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutMetricAlarm",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutMetricData",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "PutMetricStream",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "SetAlarmState",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StartMetricStreams",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "StopMetricStreams",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "TagResource",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     },
     {
       "operation": "UntagResource",
-      "status": "timeout",
-      "message": "endpoint unreachable (Could not connect to the endpoint URL: \"http://localhost:456)"
+      "status": "working",
+      "message": "OK"
     }
   ]
 }
