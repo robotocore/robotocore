@@ -15,7 +15,7 @@ chrono = { version = "0.4", features = ["serde"] }
 base64 = "0.22"
 sha2 = "0.10"
 hmac = "0.12"
-md5 = "0.7"
+md5 = "0.8"
 hex = "0.4"
 parking_lot = "0.12"
 urlencoding = "2.1"

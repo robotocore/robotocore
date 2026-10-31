@@ -19,6 +19,13 @@ under *Changelog discipline*.
   first; a body whose size disagrees with `x-amz-decoded-content-length` gets
   400 `IncompleteBody`. Affected the .NET SDK's default `PutObject` over plain
   HTTP and SDKs that stream checksummed uploads.
+- **CloudWatch `GetMetricData` returns MetricStat data.** Results were stored
+  under the metric's namespace and name but looked up by query `Id`, so every
+  `MetricStat` query came back with empty `Values` and `Timestamps`, and metric
+  math expressions over them had no inputs. Results are now keyed by `Id`, so
+  two queries on the same metric (for example `Average` and `Maximum`) get
+  their own values. Queries with `ReturnData: false` feed expressions and are
+  left out of `MetricDataResults`, as in moto and AWS.
 
 ## 2.0.2
 
