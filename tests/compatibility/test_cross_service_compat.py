@@ -2718,7 +2718,7 @@ class TestEventBridgeToFirehose:
             Targets=[{"Id": "fh1", "Arn": stream_arn}],
         )
 
-        events.put_events(
+        resp_put = events.put_events(
             Entries=[
                 {
                     "Source": "test.firehose",
@@ -2729,13 +2729,26 @@ class TestEventBridgeToFirehose:
         )
         time.sleep(2)
 
+        # The event was accepted for routing (FailedEntryCount is what a
+        # dropped event would trip on).
+        assert resp_put["Entries"][0]["EventId"]
+        assert resp_put["FailedEntryCount"] == 0
+
         # Verify via audit endpoint
         resp = urllib.request.urlopen(f"{TWIN_URL}/_robotocore/audit")
         audit = json.loads(resp.read())
         entries = audit.get("entries", audit.get("calls", []))
-        # Check that EventBridge PutEvents was logged
-        found = any("PutEvents" in str(entry) for entry in entries)
-        assert found, "Expected PutEvents in audit log"
+        # Binds this run's call to the audit log: an events.PutEvents row
+        # (not an arbitrary historical entry). The twin keeps no per-target
+        # dispatch state, so the acceptance row is the closest observable
+        # for the dispatched event.
+        found = any(
+            entry.get("service") == "events"
+            and entry.get("operation") == "PutEvents"
+            and entry.get("status_code", 500) == 200
+            for entry in entries
+        )
+        assert found, "Expected this call's events.PutEvents in the audit log"
 
         # Cleanup
         events.remove_targets(Rule=rule_name, Ids=["fh1"])
@@ -2940,7 +2953,7 @@ class TestEventBridgeSimulatedTargets:
             Targets=[{"Id": f"{service}1", "Arn": arn_pattern}],
         )
 
-        events.put_events(
+        resp_put = events.put_events(
             Entries=[
                 {
                     "Source": f"test.sim.{service}",
@@ -2951,12 +2964,23 @@ class TestEventBridgeSimulatedTargets:
         )
         time.sleep(1)
 
+        # The event was accepted for routing; the simulated targets are
+        # log-only no-op targets by contract (era parity), so their dispatch
+        # has no delivery surface to observe.
+        assert resp_put["Entries"][0]["EventId"]
+        assert resp_put["FailedEntryCount"] == 0
+
         # Verify via audit endpoint
         resp = urllib.request.urlopen(f"{TWIN_URL}/_robotocore/audit")
         audit = json.loads(resp.read())
         entries = audit.get("entries", audit.get("calls", []))
-        found = any("PutEvents" in str(entry) for entry in entries)
-        assert found, f"Expected PutEvents for {service} in audit log"
+        found = any(
+            entry.get("service") == "events"
+            and entry.get("operation") == "PutEvents"
+            and entry.get("status_code", 500) == 200
+            for entry in entries
+        )
+        assert found, f"Expected this call's events.PutEvents for {service} in the audit log"
 
         # Cleanup
         events.remove_targets(Rule=rule_name, Ids=[f"{service}1"])
@@ -3073,13 +3097,17 @@ class TestEventBridgeArchiveReplay:
         )
         time.sleep(2)
 
-        # Drain the initial delivery
+        # Drain the initial delivery — delete each received message so the
+        # 30s visibility window cannot re-deliver them into the replay poll
+        # window (every later message on the queue must be a replayed event).
         for _ in range(5):
-            sqs.receive_message(
+            drained = sqs.receive_message(
                 QueueUrl=queue_url,
                 MaxNumberOfMessages=10,
                 WaitTimeSeconds=1,
             )
+            for m in drained.get("Messages", []):
+                sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=m["ReceiptHandle"])
 
         # Start replay
         now = datetime.now(UTC)
@@ -3096,15 +3124,54 @@ class TestEventBridgeArchiveReplay:
         )
         assert "ReplayArn" in replay_resp
 
-        # Verify replay can be described
-        desc = events.describe_replay(ReplayName=f"replay-{suffix}")
-        assert desc["ReplayName"] == f"replay-{suffix}"
+        try:
+            # Verify replay can be described AND completed: poll to terminal
+            # state (portable to real AWS), then assert the replayed delivery —
+            # the drain-before-replay means every later message on the queue IS
+            # a replayed archived event (replaying zero events would answer
+            # COMPLETED with an empty SQS side and must fail).
+            deadline = time.monotonic() + 20
+            while time.monotonic() < deadline:
+                desc = events.describe_replay(ReplayName=f"replay-{suffix}")
+                if desc.get("State") == "COMPLETED":
+                    break
+                time.sleep(0.5)
+            assert desc.get("State") == "COMPLETED", f"replay state: {desc.get('State')}"
 
-        # Cleanup
-        events.remove_targets(Rule=rule_name, Ids=["sqs1"])
-        events.delete_rule(Name=rule_name)
-        events.delete_archive(ArchiveName=archive_name)
-        sqs.delete_queue(QueueUrl=queue_url)
+            replayed = []
+            replay_deadline = time.monotonic() + 10
+            while time.monotonic() < replay_deadline:
+                recv = sqs.receive_message(
+                    QueueUrl=queue_url,
+                    MaxNumberOfMessages=10,
+                    WaitTimeSeconds=1,
+                )
+                new_msgs = recv.get("Messages", [])
+                if new_msgs:
+                    replayed.extend(json.loads(m["Body"]) for m in new_msgs)
+                    for m in new_msgs:
+                        sqs.delete_message(
+                            QueueUrl=queue_url,
+                            ReceiptHandle=m["ReceiptHandle"],
+                        )
+                elif replayed:
+                    break
+            n = len(replayed)
+            assert n == 3, f"expected the 3 archived events replayed, got {n}"
+            assert all(body.get("source") == "test.replay" for body in replayed), replayed
+        finally:
+            # Best-effort teardown: a failed assert must release the stack,
+            # and a delete error must not mask the original failure.
+            for _cleanup in (
+                lambda: events.remove_targets(Rule=rule_name, Ids=["sqs1"]),
+                lambda: events.delete_rule(Name=rule_name),
+                lambda: events.delete_archive(ArchiveName=archive_name),
+                lambda: sqs.delete_queue(QueueUrl=queue_url),
+            ):
+                try:
+                    _cleanup()
+                except Exception:
+                    pass  # best-effort cleanup
 
 
 class TestLambdaDestinations:

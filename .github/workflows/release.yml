@@ -103,7 +103,8 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "Releasing version: $VERSION"
 
-      # Tag the commit before building so hatch-vcs picks up the version
+      # The image version rides the workspace constant (the Dockerfile has
+      # no ARG); this tag just names the release commit.
       - name: Create git tag
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: |
@@ -117,8 +118,6 @@ jobs:
           target: runtimes
           platforms: linux/amd64,linux/arm64
           push: true
-          build-args: |
-            SETUPTOOLS_SCM_PRETEND_VERSION=${{ steps.version.outputs.VERSION }}
           tags: |
             jackdanger/robotocore:${{ steps.version.outputs.VERSION }}
             jackdanger/robotocore:latest
@@ -135,8 +134,6 @@ jobs:
           target: java-and-dotnet
           platforms: linux/amd64,linux/arm64
           push: true
-          build-args: |
-            SETUPTOOLS_SCM_PRETEND_VERSION=${{ steps.version.outputs.VERSION }}
           tags: |
             jackdanger/robotocore:${{ steps.version.outputs.VERSION }}-java-and-dotnet
             jackdanger/robotocore:java-and-dotnet

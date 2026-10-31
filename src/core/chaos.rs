@@ -652,7 +652,18 @@ pub async fn intercept(
         .map(is_xml_protocol)
         .unwrap_or(false)
     {
-        // XML-protocol services expect XML error responses
+        // XML-protocol services expect XML error responses (admin-only
+        // config, but still the one hand-built XML in the request path —
+        // escape the interpolated code/message the way the rotocore
+        // serializers do).
+        let xml_escape = |value: &str| {
+            value
+                .replace('&', "&amp;")
+                .replace('<', "&lt;")
+                .replace('>', "&gt;")
+                .replace('"', "&quot;")
+                .replace('\'', "&apos;")
+        };
         (
             "application/xml",
             format!(
@@ -663,7 +674,9 @@ pub async fn intercept(
                  </Error>\
                  <RequestId>{}</RequestId>\
                  </ErrorResponse>",
-                error_code, rule.error_message, request_id
+                xml_escape(error_code),
+                xml_escape(&rule.error_message),
+                xml_escape(&request_id)
             ),
         )
     } else {

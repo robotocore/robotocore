@@ -153,13 +153,18 @@ def handler(event, context):
             MessageBody=json.dumps({"test": "delete-check"}),
         )
 
-        # Wait for ESM to process
-        time.sleep(5)
-
-        # Queue should be empty
-        attrs = sqs.get_queue_attributes(
-            QueueUrl=queue_url,
-            AttributeNames=["ApproximateNumberOfMessages"],
-        )
-        count = int(attrs["Attributes"]["ApproximateNumberOfMessages"])
+        # Wait for ESM to process — deadline poll, like every sibling wait
+        # in this suite (a sleep-only wait fails spuriously on a slow poll
+        # interval or a loaded machine).
+        deadline = time.monotonic() + 15
+        count = -1
+        while time.monotonic() < deadline:
+            attrs = sqs.get_queue_attributes(
+                QueueUrl=queue_url,
+                AttributeNames=["ApproximateNumberOfMessages"],
+            )
+            count = int(attrs["Attributes"]["ApproximateNumberOfMessages"])
+            if count == 0:
+                break
+            time.sleep(0.5)
         assert count == 0, f"Queue should be empty after ESM processing, got {count}"

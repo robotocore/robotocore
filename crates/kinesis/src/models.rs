@@ -20,6 +20,10 @@ pub struct KinesisRecord {
     pub sequence_number: String,
     pub timestamp: f64,
     pub shard_id: String,
+    /// The record's `ExplicitHashKey` when the writer pinned it (moto's
+    /// `KinesisRecord.explicit_hash_key` — a reshard re-fires routes by it).
+    #[serde(default)]
+    pub explicit_hash_key: Option<String>,
 }
 
 impl KinesisRecord {
@@ -30,6 +34,16 @@ impl KinesisRecord {
             "Data": base64::engine::general_purpose::STANDARD.encode(&self.data),
             "PartitionKey": self.partition_key,
         })
+    }
+
+    /// The hash a record routes by on a re-fire: a pinned ExplicitHashKey
+    /// wins (moto re-fires through `put_record(..., explicit_hash_key, ...)`),
+    /// the partition-key MD5 otherwise.
+    pub(crate) fn refire_hash(&self) -> u128 {
+        self.explicit_hash_key
+            .as_deref()
+            .and_then(|k| k.parse::<u128>().ok())
+            .unwrap_or_else(|| KinesisStream::hash_key(&self.partition_key))
     }
 }
 
@@ -42,7 +56,16 @@ pub struct Shard {
     #[serde(with = "crate::snapshot::u128_str")]
     pub hash_key_end: u128,
     pub starting_sequence_number: String,
-    pub parent_id: Option<String>,
+    #[serde(with = "crate::snapshot::rw")]
+    pub parent_id: RwLock<Option<String>>,
+    /// The adjacency partner of a merged pair (moto's merged shard carries
+    /// ParentShardId + AdjacentParentShardId).
+    #[serde(with = "crate::snapshot::rw")]
+    pub adjacent_parent_id: RwLock<Option<String>>,
+    /// Set when a reshard closes this shard: the last sequence number ever
+    /// assigned inside it. Open shards stay None.
+    #[serde(with = "crate::snapshot::rw")]
+    pub ending_sequence_number: RwLock<Option<u64>>,
     #[serde(with = "crate::snapshot::mutex_serde")]
     pub(crate) records: Mutex<Vec<KinesisRecord>>,
     #[serde(with = "crate::snapshot::mutex_u64")]
@@ -56,16 +79,25 @@ impl Shard {
             hash_key_start,
             hash_key_end,
             starting_sequence_number: "00000000000000000000".to_string(),
-            parent_id: None,
+            parent_id: RwLock::new(None),
+            adjacent_parent_id: RwLock::new(None),
+            ending_sequence_number: RwLock::new(None),
             records: Mutex::new(Vec::new()),
             sequence_counter: Mutex::new(0),
         }
     }
 
-    /// Drain this shard's stored records (used by SplitShard to carry
-    /// records into the successor shards, like moto re-fires them).
-    pub fn take_records(&self) -> Vec<KinesisRecord> {
-        self.records.lock().drain(..).collect()
+    /// Closed by a reshard (moto keeps closed shards in the stream's shard
+    /// list with an EndingSequenceNumber; consumers may still page their
+    /// history until retention expiry).
+    pub fn is_open(&self) -> bool {
+        self.ending_sequence_number.read().is_none()
+    }
+
+    /// The last sequence number assigned inside this shard (its counter) —
+    /// what a reshard's EndingSequenceNumber renders.
+    pub fn last_sequence_number(&self) -> String {
+        format!("{:020}", *self.sequence_counter.lock())
     }
 
     /// Store a record on this shard, returning the assigned sequence number.
@@ -74,6 +106,7 @@ impl Shard {
         shard_id: &str,
         partition_key: String,
         data: Vec<u8>,
+        explicit_hash_key: Option<String>,
     ) -> KinesisRecord {
         let mut counter = self.sequence_counter.lock();
         *counter += 1;
@@ -84,9 +117,18 @@ impl Shard {
             sequence_number: seq,
             timestamp: chrono::Utc::now().timestamp_millis() as f64 / 1000.0,
             shard_id: shard_id.to_string(),
+            explicit_hash_key,
         };
         self.records.lock().push(record.clone());
         record
+    }
+
+    /// A copy of this shard's stored records — the re-fire set a reshard
+    /// copies into its successors WITHOUT draining the shard (moto's
+    /// merge/update copy; the closed parent keeps its records so the paging
+    /// history contract stays real).
+    pub(crate) fn records_snapshot(&self) -> Vec<KinesisRecord> {
+        self.records.lock().clone()
     }
 
     /// Records at or after `start_sequence` plus the sequence to continue from
@@ -218,9 +260,13 @@ impl KinesisStream {
         let shards = self.shards.read();
         shards
             .iter()
-            .find(|s| s.hash_key_start <= hash && hash <= s.hash_key_end)
+            // Only open shards accept new records: a reshard's closed
+            // parents keep their (overlapping) ranges in the list for every
+            // consumer of history, and a first-match on that range would
+            // otherwise route new records into the closed shard.
+            .find(|s| s.is_open() && s.hash_key_start <= hash && hash <= s.hash_key_end)
             .cloned()
-            .or_else(|| shards.first().cloned())
+            .or_else(|| shards.iter().find(|s| s.is_open()).cloned())
     }
 
     /// Write a record; picks the shard via explicit hash key or partition key.
@@ -235,7 +281,12 @@ impl KinesisStream {
             None => Self::hash_key(partition_key),
         };
         let shard = self.select_shard(hash)?;
-        let record = shard.put_record(&shard.shard_id, partition_key.to_string(), data);
+        let record = shard.put_record(
+            &shard.shard_id,
+            partition_key.to_string(),
+            data,
+            explicit_hash_key.map(String::from),
+        );
         Some((shard.clone(), record))
     }
 

@@ -550,6 +550,16 @@ impl SqsStore {
         q.get(name).cloned()
     }
 
+    /// FIFO-tolerant lookup: the stored key keeps the `.fifo` suffix, so a
+    /// bare probe name resolves only when the matching queue exists.
+    pub fn get_queue_any(&self, name: &str) -> Option<Arc<RwLock<Queue>>> {
+        let q = self.queues.read();
+        match q.get(name).cloned() {
+            Some(queue) => Some(queue),
+            None => q.get(&format!("{name}.fifo")).cloned(),
+        }
+    }
+
     pub fn delete_queue(&self, name: &str) -> bool {
         let mut q = self.queues.write();
         q.remove(name).is_some()

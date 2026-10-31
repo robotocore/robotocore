@@ -7,6 +7,9 @@ storage statistics, presigned URL generation, and thumbnail tracking.
 
 from __future__ import annotations
 
+import pytest
+from botocore.exceptions import ClientError
+
 from .app import FileProcessingService
 from .models import FileStatus, UploadResult
 
@@ -64,12 +67,10 @@ class TestArchival:
 
         assert new_key == "archive/report.pdf"
 
-        # Verify the old key is gone
-        try:
+        # Verify the old key is gone: get_object must raise NoSuchKey.
+        with pytest.raises(ClientError) as exc:
             file_service.download_file("report.pdf")
-            assert False, "Expected error downloading deleted key"
-        except Exception:
-            pass  # best-effort cleanup
+        assert exc.value.response["Error"]["Code"] == "NoSuchKey"
 
         # Verify the file is at the new key
         body = file_service.download_file("archive/report.pdf")

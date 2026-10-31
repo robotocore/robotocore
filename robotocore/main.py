@@ -21,7 +21,6 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-HEALTH_TIMEOUT_S = 300  # a cold local cargo build may take a few minutes
 
 
 def _pick_binary() -> Path | None:
@@ -90,7 +89,7 @@ def main() -> int:
             ["cargo", "build"], cwd=str(ROOT), env={**os.environ, "RUST_PORT": port}
         )
         if proc.wait() != 0:
-            print("shim: cargo build --release failed", file=sys.stderr)
+            print("shim: cargo build failed", file=sys.stderr)
             return 1
     binary = _pick_binary()
     if binary is None:

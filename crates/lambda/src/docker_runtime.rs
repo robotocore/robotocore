@@ -359,18 +359,18 @@ pub(crate) fn ensure_dotnet_bridge(tfm: &str) -> Option<std::path::PathBuf> {
                 .env("DOTNET_NOLOGO", "1")
                 .env("DOTNET_SKIP_FIRST_TIME_EXPERIENCE", "1")
                 .env("DOTNET_SYSTEM_GLOBALIZATION_INVARIANT", "1")
-                .stdout(Stdio::null())
-                .stderr(Stdio::null());
-            let ok = builder
                 .arg("-c")
                 .arg("Release")
                 .arg("-f")
                 .arg(tfm)
                 .arg("-o")
-                .arg(&out_dir)
-                .status()
-                .ok()
-                .map(|s| s.success())
+                .arg(&out_dir);
+            // Bounded build (era dotnet.py bounded both builds at
+            // timeout+30; the local executors bounded theirs at 45s): a
+            // wedged dotnet build server or full disk must not hold this
+            // shard-wide CACHE mutex forever.
+            let ok = crate::runtime::run_bounded(builder, 45)
+                .map(|(status, _, _)| status == Some(0))
                 .unwrap_or(false)
                 && dll.exists();
             if ok {
@@ -645,8 +645,13 @@ pub(crate) fn compile_dotnet_source_if_needed(
         .current_dir(&staging)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let run = builder.output();
-    let ok = run.as_ref().map(|o| o.status.success()).unwrap_or(false);
+    // Bounded build (era dotnet.py bounded it at timeout+30): a wedged build
+    // server or a hung SDK must not suspend the invoke forever.
+    let run = crate::runtime::run_bounded(builder, 45);
+    let ok = run
+        .as_ref()
+        .map(|(status, _, _)| *status == Some(0))
+        .unwrap_or(false);
     if ok {
         for entry in std::fs::read_dir(&build_out)
             .map(|entries| entries.filter_map(|e| e.ok()).collect::<Vec<_>>())
@@ -658,23 +663,22 @@ pub(crate) fn compile_dotnet_source_if_needed(
         }
     }
     cleanup_staging();
-    match run {
-        Ok(_) if ok && dll.exists() => None,
-        _ => {
-            let stderr = run
-                .as_ref()
-                .map(|o| String::from_utf8_lossy(&o.stderr).to_string())
-                .unwrap_or_default();
-            Some(ExecResult {
-                payload: json!({
-                    "errorMessage": format!("Failed to compile .cs source files into '{assembly_name}.dll'"),
-                    "errorType": "Runtime.ImportModuleError",
-                })
-                .to_string(),
-                function_error: Some("Runtime.ImportModuleError".to_string()),
-                logs: stderr,
+    if ok && dll.exists() {
+        None
+    } else {
+        let stderr = run
+            .as_ref()
+            .map(|(_, _, stderr)| stderr.clone())
+            .unwrap_or_default();
+        Some(ExecResult {
+            payload: json!({
+                "errorMessage": format!("Failed to compile .cs source files into '{assembly_name}.dll'"),
+                "errorType": "Runtime.ImportModuleError",
             })
-        }
+            .to_string(),
+            function_error: Some("Runtime.ImportModuleError".to_string()),
+            logs: stderr,
+        })
     }
 }
 
@@ -1339,21 +1343,21 @@ pub(crate) fn run_subprocess(
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(DockerRunError::NotFound),
         Err(_) => return Err(DockerRunError::Io),
     };
-    // The python-era executor always wrote the event JSON to the docker run
-    // subprocess's stdin; the detached CLI ignores it, so write errors are
-    // swallowed (python's communicate() behavior).
-    if let Some(bytes) = input {
-        if let Some(mut stdin) = child.stdin.take() {
-            let _ = stdin.write_all(bytes);
-            let _ = stdin.flush();
-            drop(stdin);
-        }
-    }
-
-    // Drain pipes immediately, on dedicated threads, so a chatty container
-    // cannot deadlock on the OS pipe buffer while nobody reads.
+    // Communicate() discipline (runtime.rs communicate_event): drains before
+    // any write and the input fed from a dedicated thread, so a chatty
+    // container (or one that never reads stdin) cannot wedge the invoke
+    // thread — the deadline loop below kills the child either way.
     let stdout_rx = drain_thread(child.stdout.take(), DOCKER_OUTPUT_CAP);
     let stderr_rx = drain_thread(child.stderr.take(), DOCKER_OUTPUT_CAP);
+    if let Some(bytes) = input {
+        if let Some(mut stdin) = child.stdin.take() {
+            let bytes = bytes.to_vec();
+            std::thread::spawn(move || {
+                let _ = stdin.write_all(&bytes);
+                let _ = stdin.flush();
+            });
+        }
+    }
 
     let deadline = Instant::now() + Duration::from_secs(timeout_secs.max(1));
     let mut timed_out = false;
@@ -1566,10 +1570,17 @@ impl DockerCli for RealCli {
         event_json: &str,
         timeout: u32,
     ) -> Result<SubprocessOutput, DockerRunError> {
+        // The event rides stdin (`curl -d @-`), never exec argv — Linux's
+        // MAX_ARG_STRLEN caps a single argv string at ~128 KB, and every
+        // sync event in (128 KB, 6 MB) would fail execve with E2BIG and be
+        // misreported as a permanent invoke failure (review-found bug; the
+        // python-era executor piped the event through the container's
+        // stdin, which `docker exec -i` preserves).
         run_subprocess(
             &[
                 DOCKER.to_string(),
                 "exec".to_string(),
+                "-i".to_string(),
                 container_name.to_string(),
                 "curl".to_string(),
                 "-s".to_string(),
@@ -1577,9 +1588,9 @@ impl DockerCli for RealCli {
                 "POST".to_string(),
                 RUNTIME_INTERFACE_INVOKE_URL.to_string(),
                 "-d".to_string(),
-                event_json.to_string(),
+                "@-".to_string(),
             ],
-            None,
+            Some(event_json.as_bytes()),
             // Grace beyond the function timeout for the runtime round-trip,
             // as in the python-era `_invoke_via_runtime_interface`.
             u64::from(timeout.max(1)) + 5,
@@ -2078,16 +2089,10 @@ impl DockerLambdaExecutor {
 
         if timed_out {
             // Killed on the timeout budget, like the python-era
-            // subprocess.TimeoutExpired branch of docker run.
-            return ExecResult {
-                payload: json!({
-                    "errorMessage": format!("Task timed out after {timeout_secs}s"),
-                    "errorType": "Task.TimedOut",
-                })
-                .to_string(),
-                function_error: Some("Task.TimedOut".to_string()),
-                logs: format!("Function timed out after {timeout_secs}s"),
-            };
+            // subprocess.TimeoutExpired branch of docker run — the same
+            // `.00` message contract the other lanes' timeout helper
+            // renders (one shape for every execution mode).
+            return run_timed_out_result(timeout_secs, "");
         }
         if container_gone {
             return ExecResult {
@@ -2290,7 +2295,12 @@ impl DockerLambdaExecutor {
                     concat!(
                         "mkdir -p /tmp/rc-bridge\n",
                         "if ! javac -d /tmp/rc-bridge /var/bridge/RobotocoreJavaBridge.java 2>/dev/null; then\n",
-                        "  echo '{{\"errorMessage\":\"java bridge could not compile\",\"errorType\":\"Runtime.InvalidRuntime\"}}'\n",
+                        // Single-brace JSON: concatenate!() does plain
+                        // concatenation, so doubled braces stay literal and
+                        // the client's JSON parse of the bridge-failure
+                        // payload would fail (Runtime.InvalidRuntime shape
+                        // must be parsable, like the .NET sibling's echo).
+                        "  echo '{\"errorMessage\":\"java bridge could not compile\",\"errorType\":\"Runtime.InvalidRuntime\"}'\n",
                         "  exit 1\n",
                         "fi\n",
                         "CP=\"/tmp/rc-bridge:/var/task\"\n",
@@ -3146,7 +3156,9 @@ mod tests {
         let res = run_execute(&ex, "python3.12", r#"{}"#);
         assert_eq!(res.function_error.as_deref(), Some("Task.TimedOut"));
         let payload: Value = serde_json::from_str(&res.payload).unwrap();
-        assert_eq!(payload["errorMessage"], "Task timed out after 3s");
+        // Shared era contract: every lane's timeout renders `.00 seconds`
+        // (run_timed_out_result, same helper the family lanes use).
+        assert_eq!(payload["errorMessage"], "Task timed out after 3.00 seconds");
         assert_eq!(res.logs, "Function timed out after 3s");
         // The container is force-removed on timeout, exactly once.
         assert_eq!(cli.rm_calls().len(), 1);

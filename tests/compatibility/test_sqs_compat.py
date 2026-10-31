@@ -310,7 +310,7 @@ class TestSQSFIFO:
                     QueueUrl=fifo_queue_url,
                     ReceiptHandle=msg["ReceiptHandle"],
                 )
-        assert messages == [f"fifo msg {i}" for i in range(len(messages))]
+        assert messages == [f"fifo msg {i}" for i in range(5)]
 
     def test_fifo_deduplication(self, sqs, fifo_queue_url):
         # Content-based dedup is enabled on the fixture

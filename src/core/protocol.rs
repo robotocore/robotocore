@@ -164,11 +164,16 @@ pub fn parse_query_protocol(
     let mut raw_params: Vec<(String, String)> = Vec::new();
 
     for pair in body_str.split('&') {
-        if let Some((key, value)) = pair.split_once('=') {
-            let key = decode_form_value(key)?;
-            let value = decode_form_value(value)?;
-            raw_params.push((key, value));
-        }
+        // A valueless param (`key` with no `=`) is the empty-value member
+        // form — decode the bare key, store empty (dropping these silently
+        // changes `?cors`-style markers into invalid queries).
+        let (key_raw, value_raw) = match pair.split_once('=') {
+            Some((k, v)) => (k, v),
+            None => (pair, ""),
+        };
+        let key = decode_form_value(key_raw)?;
+        let value = decode_form_value(value_raw)?;
+        raw_params.push((key, value));
     }
 
     // Build params, handling member indices (e.g., TagKeys.member.1=env)
@@ -192,6 +197,19 @@ pub fn parse_query_protocol(
             // Nested key (e.g., CreateDate=...) - store as-is
             params.insert(key, Value::String(value));
         } else {
+            // Repeated scalar keys stay list-typed like rotocore's
+            // query_map: the first occurrence must survive a later one
+            // (last-scalar-wins turned repeated params into a silent
+            // single value).
+            if let Some(existing) = params.get_mut(&key) {
+                let mut list = match existing.take() {
+                    Value::Array(arr) => arr,
+                    prior => vec![prior],
+                };
+                list.push(Value::String(value));
+                *existing = Value::Array(list);
+                continue;
+            }
             params.insert(key, Value::String(value));
         }
     }
@@ -290,7 +308,9 @@ pub fn serialize_query_error(code: &str, message: &str, request_id: &str) -> Str
 
 fn value_to_xml_content(value: &Value) -> String {
     match value {
-        Value::String(s) => s.clone(),
+        // Strings are client-controlled content (GetCallerIdentity users,
+        // account ids, names) — escape or a `Name="</X>"` breaks the XML.
+        Value::String(s) => xml_escape(s),
         Value::Number(n) => n.to_string(),
         Value::Bool(b) => b.to_string(),
         Value::Null => String::new(),
@@ -304,13 +324,23 @@ fn value_to_xml_content(value: &Value) -> String {
             .map(|(k, v)| {
                 format!(
                     "<{key}>{val}</{key}>",
-                    key = k,
+                    key = xml_escape(k),
                     val = value_to_xml_content(v)
                 )
             })
             .collect::<Vec<_>>()
             .join(""),
     }
+}
+
+/// XML-escape one client-controlled fragment (same escaping the rotocore
+/// query-protocol serializer applies).
+fn xml_escape(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
 }
 
 /// Determine operation name from headers and body.

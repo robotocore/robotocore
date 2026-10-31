@@ -18,7 +18,7 @@ mechanically (1,146 of the 1,163 lack any fork handler; the handful of
 mislabels were re-homed in the classifier fix).
 
 But the contract is *not* the botocore surface. Today's measured state
-over all 10,268 modeled operations (158 registered services):
+over all 10,391 modeled operations (160 registered services):
 
 | bucket | ops | share | meaning |
 |---|---|---|---|
@@ -39,7 +39,7 @@ fork-present: the surface is dense in its long tail.
 ## 1. Definitions (the contract)
 
 - **Operation** = one wire method+URI (+X-Amz-Target) in a botocore
-  model. Exactly 10,268 across the 158 registered services.
+  model. Exactly 10,391 across the 160 registered services.
 - **Covered** means an operation (a) dispatches to a real rotocore arm,
   (b) answers a *modeled* wire envelope — HTTP 2xx/4xx whose code and
   body validate against the botocore output shape — and (c) has at
@@ -203,7 +203,7 @@ test asserting the exact deny envelope.
   retired.
 - Crash triage re-run after each region of clusters touches the
   family (the EC2 pattern: triage → implement faithful or modeled).
-- Final exit: `tooling/coverage.json` shows 10,268/10,268 covered,
+- Final exit: `tooling/coverage.json` shows 10,391/10,391 covered,
   modeled_deny ≤ declared absence, conformance green everywhere, and
   every op present on ≥ 2 of the 4 screens. That number — not a vibe —
   is the finish line.

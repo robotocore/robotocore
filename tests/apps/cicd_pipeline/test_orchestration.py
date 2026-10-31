@@ -1,6 +1,7 @@
 """Tests for pipeline orchestration via Step Functions."""
 
 import json
+import time
 
 
 class TestPipelineOrchestration:
@@ -42,8 +43,21 @@ class TestPipelineOrchestration:
                     branch="main",
                     commit_sha="execabc",
                 )
-                status = pipeline.get_execution_status(exec_arn)
-                assert status in ("RUNNING", "SUCCEEDED")
+                # Poll to the terminal status so a machine that starts but
+                # never finishes the chain cannot pass, and assert the final
+                # Deploy stage's output.
+                deadline = time.monotonic() + 30
+                status = "RUNNING"
+                while time.monotonic() < deadline:
+                    status = pipeline.get_execution_status(exec_arn)
+                    if status != "RUNNING":
+                        break
+                    time.sleep(0.25)
+                assert status == "SUCCEEDED", f"pipeline ended {status}"
+                output = json.loads(
+                    pipeline.stepfunctions.describe_execution(executionArn=exec_arn)["output"]
+                )
+                assert output == {"phase": "deploy", "status": "complete"}
             finally:
                 pipeline.stepfunctions.delete_state_machine(stateMachineArn=sm_arn)
         finally:

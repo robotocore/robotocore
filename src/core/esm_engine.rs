@@ -15,7 +15,8 @@
 //! - Failed deliveries are budgeted: after MAX_CONSECUTIVE_FAILURES failed
 //!   deliveries of the same batch the mapping's redelivery is parked (no
 //!   invokes, cursor pinned) until the source produces new content beyond
-//!   the failed watermark, the invocation succeeds again, or the mapping
+//!   the failed watermark (one probe per arrival — the kinesis shard
+//!   frontier drives this), the invocation succeeds again, or the mapping
 //!   config changes (an operator update resets the budget).
 //!
 //! The engine runs on a dedicated thread started by the server binary; the
@@ -28,6 +29,44 @@ use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
+
+/// Host base for the queue URLs the engine mints for its SQS polls —
+/// env-derived like the sqs crate's own QueueUrl host (`SQS_PUBLIC_BASE` /
+/// `RUST_PORT`; portability rule, AGENTS.md merge protocol item 5). The
+/// hardcoded `localhost:4566` broke non-default-port twins.
+fn queue_url_base_port() -> u16 {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static FALLBACK_LOGGED: AtomicBool = AtomicBool::new(false);
+    if let Ok(base) = std::env::var("SQS_PUBLIC_BASE") {
+        if let Some(port) = base
+            .split("://")
+            .last()
+            .and_then(|h| h.split('/').next())
+            .and_then(|h| h.rsplit(':').next())
+            .and_then(|p| p.parse().ok())
+        {
+            return port;
+        }
+    }
+    if let Ok(p) = std::env::var("RUST_PORT") {
+        if let Ok(port) = p.parse() {
+            return port;
+        }
+    }
+    if !FALLBACK_LOGGED.swap(true, Ordering::Relaxed) {
+        eprintln!(
+            "[esm] queue URLs minted with the canonical :4566 fallback (set SQS_PUBLIC_BASE or RUST_PORT to override)"
+        );
+    }
+    4566
+}
+
+fn minted_queue_url(account: u64, queue_name: &str) -> String {
+    format!(
+        "http://localhost:{port}/{account}/{queue_name}",
+        port = queue_url_base_port()
+    )
+}
 
 /// Poll cadence. The trigger suites sleep 5-15s and need sub-second delivery;
 /// 300ms is fast enough and cheap on an idle process.
@@ -60,7 +99,13 @@ struct RedeliveryGate {
 
 impl RedeliveryGate {
     /// Whether this poll may deliver the batch named by `fingerprint`.
-    fn may_deliver(&mut self, fingerprint: &str, config_state: &str) -> bool {
+    ///
+    /// `new_content` is the parked-mapping survival signal: the shard's
+    /// newest sequence moved past the failed watermark (a new record
+    /// landed). While parked, ONE probe is allowed per new-arrival — a
+    /// permanently broken batch retries only once per record put (bounded
+    /// retry), and a recovered function delivers and advances the cursor.
+    fn may_deliver(&mut self, fingerprint: &str, config_state: &str, new_content: bool) -> bool {
         if self.config_state.as_deref() != Some(config_state) {
             // ESM update — the operator's enable/disable lever. Reset.
             *self = Self {
@@ -70,6 +115,14 @@ impl RedeliveryGate {
             return true;
         }
         if self.failed_fingerprint.as_deref() != Some(fingerprint) {
+            return true;
+        }
+        if new_content {
+            // New records beyond the failed watermark: the batch is not the
+            // same dead content any more — retry it (the delivered batch is
+            // re-read from the pinned cursor, so this stays at-least-once,
+            // one attempt per arrival).
+            self.consecutive_failures = 0;
             return true;
         }
         self.consecutive_failures < MAX_CONSECUTIVE_FAILURES
@@ -103,25 +156,42 @@ pub fn start(native: Arc<NativeHandlers>) {
         let native = native.clone();
         move |account, region, arn| match classify_arn(arn) {
             Some(Source::Kinesis { stream_name }) => {
-                let marks = native.kinesis.attach_watermarks(account, region, &stream_name);
+                let marks = native
+                    .kinesis
+                    .attach_watermarks(account, region, &stream_name);
                 (!marks.is_empty()).then_some(marks)
             }
             _ => None,
         }
     }));
     // Source-existence probes for the same create path: the lambda crate
-    // validates a kinesis/dynamodb source through these (moto's create
-    // resolves the stream / owning table through its backends first).
+    // validates a kinesis stream / dynamodb streams ARN through these (moto's
+    // create resolves the stream / owning streams record through its
+    // backends first).
     lambda::bridge::register_kinesis_stream_probe(Arc::new({
         let native = native.clone();
-        move |account, region, stream_name| {
-            native.kinesis.has_stream(account, region, stream_name)
+        move |account, region, stream_name| native.kinesis.has_stream(account, region, stream_name)
+    }));
+    lambda::bridge::register_dynamodb_stream_probe(Arc::new({
+        let native = native.clone();
+        move |account, region, stream_arn| {
+            native.dynamodb.has_stream_arn(account, region, stream_arn)
         }
     }));
-    lambda::bridge::register_dynamodb_table_probe(Arc::new({
+    // SQS probe for the same create path (moto resolves the sqs queue
+    // through its backend; a dead ARN is a 404 "Invalid EventSourceArn").
+    lambda::bridge::register_sqs_queue_probe(Arc::new({
+        let native = native.clone();
+        move |account, region, queue_name| native.sqs.has_queue(account, region, queue_name)
+    }));
+    // LATEST dynamodb-streams attach seed: the same freeze-at-create
+    // semantics as the kinesis watermarks (new mappings replay no history).
+    lambda::bridge::register_ddb_stream_watermarks(Arc::new({
         let native = native.clone();
         move |account, region, table_name| {
-            native.dynamodb.has_table(account, region, table_name)
+            native
+                .dynamodb
+                .stream_latest_sequence(account, region, table_name)
         }
     }));
     std::thread::Builder::new()
@@ -391,10 +461,7 @@ impl Engine {
                             }
                         });
                     let (params_type, params_seq): (Value, Option<Value>) = match bound_seq {
-                        Some(seq) => (
-                            json!("AT_SEQUENCE_NUMBER"),
-                            Some(json!(seq)),
-                        ),
+                        Some(seq) => (json!("AT_SEQUENCE_NUMBER"), Some(json!(seq))),
                         None => (json!(Self::starting_position(mapping)), None),
                     };
                     let mut params = json!({
@@ -451,7 +518,14 @@ impl Engine {
                         self.kinesis_iterators.insert(key, next);
                     }
                     None => {
-                        // Shard exhausted; recreate from start-position tomorrow.
+                        // The kinesis crate always answers a NextShardIterator
+                        // token (even zero-record reads get one), so this arm
+                        // is not currently reachable; if a partner ever
+                        // answers `null` on exhaustion the cursor is REMOVED
+                        // — recreating from start-position would REPLAY the
+                        // whole closed shard, which is the one thing not to
+                        // do. Re-add deliberately (with reposition-by-
+                        // watermark) if a partner changes this contract.
                         self.kinesis_iterators.remove(&key);
                     }
                 }
@@ -489,10 +563,27 @@ impl Engine {
                     entry.account,
                     entry.region.clone(),
                     mapping.uuid.clone(),
-                    shard,
+                    shard.clone(),
                 ))
                 .or_default();
-            if !gate.may_deliver(&fingerprint, &config_signature(mapping)) {
+            // New-content signal for the parked-cursor survival rule: any
+            // assigned sequence beyond the failed batch's watermark means a
+            // record landed after the failure, so the stalled cursor gets
+            // one retry (the retry loop below re-reads the pinned window
+            // and now includes the arrival).
+            let failed_watermark = delivered
+                .last()
+                .and_then(|r| r["kinesis"]["sequenceNumber"].as_str())
+                .and_then(|s| s.parse::<u128>().ok());
+            let new_content = native
+                .kinesis
+                .shard_frontiers(entry.account, &entry.region, &stream_name)
+                .iter()
+                .find(|(sid, _)| sid == &shard)
+                .and_then(|(_, seq)| seq.parse::<u128>().ok())
+                .map(|latest| failed_watermark.map(|w| latest > w).unwrap_or(true))
+                .unwrap_or(false);
+            if !gate.may_deliver(&fingerprint, &config_signature(mapping), new_content) {
                 continue;
             }
             let result = native.lambda.invoke_engine_event(
@@ -502,7 +593,11 @@ impl Engine {
                 &json!({"Records": delivered}),
             );
             if result.function_error.is_none() {
-                tracing::debug!(stream = stream_name, records = delivered.len(), "esm: kinesis batch delivered");
+                tracing::debug!(
+                    stream = stream_name,
+                    records = delivered.len(),
+                    "esm: kinesis batch delivered"
+                );
                 gate.record_success();
                 match next {
                     Some(next) => {
@@ -535,6 +630,15 @@ impl Engine {
     ) {
         let mapping = &entry.mapping;
         let key = (entry.account, entry.region.clone(), mapping.uuid.clone());
+        if self.ddb_last_seq.get(&key).is_none() {
+            // First sight: a LATEST-attach mapping's seed freezes at attach
+            // (see `ddb_attached_watermark`) — the fresh mapping delivers
+            // nothing from the pre-attach history, mirroring the kinesis
+            // binding (real Lambda starts a new LATEST mapping empty).
+            if let Some(watermark) = mapping.ddb_attached_watermark.clone() {
+                self.ddb_last_seq.insert(key.clone(), watermark);
+            }
+        }
         let last = self.ddb_last_seq.get(&key).cloned();
         let Some(records) = native.dynamodb.stream_records_after(
             entry.account,
@@ -579,7 +683,7 @@ impl Engine {
                 String::new(),
             ))
             .or_default();
-        if !gate.may_deliver(&gate_fingerprint, &config_signature(mapping)) {
+        if !gate.may_deliver(&gate_fingerprint, &config_signature(mapping), false) {
             return;
         }
         let mut delivered_any = false;
@@ -648,7 +752,7 @@ fn bisect_halves(len: usize) -> Option<[(usize, usize); 2]> {
 /// enable/disable is the lever an operator has against a parked mapping).
 fn config_signature(mapping: &lambda::models::EventSourceMapping) -> String {
     format!(
-        "{}|{}|{}|{}|{}|{}|{}|{}",
+        "{}|{}|{}|{}|{:?}|{:?}|{}|{}",
         mapping.enabled,
         mapping.batch_size,
         mapping.function_arn,
@@ -707,7 +811,7 @@ impl Engine {
 
         if let Some(frontier) = self.sqs_frontier.remove(&mapping_key) {
             let gate = self.sqs_gate(entry);
-            if !gate.may_deliver(&frontier.fingerprint, &config) {
+            if !gate.may_deliver(&frontier.fingerprint, &config, false) {
                 // Parked: release the held half-batches back to the queue
                 // (visibility 0) and skip invoking anything this poll.
                 release_frontier(native, queue_arn, &frontier);
@@ -754,7 +858,7 @@ impl Engine {
             return;
         };
         // The SQS handler derives the queue from the URL's last segment.
-        let queue_url = format!("http://localhost:4566/{account}/{queue_name}");
+        let queue_url = minted_queue_url(account, &queue_name);
         let resp = sqs::SqsHandler::handle(
             &*native.sqs,
             sqs::AwsRequest {
@@ -803,7 +907,10 @@ impl Engine {
         // messages untouched, until new content (a different fingerprint)
         // or a config change (recorded by `may_deliver`) reopens delivery.
         let fingerprint = message_fingerprint(&matched);
-        if !self.sqs_gate(entry).may_deliver(&fingerprint, config) {
+        if !self
+            .sqs_gate(entry)
+            .may_deliver(&fingerprint, config, false)
+        {
             for msg in &matched {
                 change_sqs_visibility(
                     native,
@@ -848,7 +955,10 @@ impl Engine {
             }
         }
 
-        if !succeeded && mapping.bisect_batch_on_function_error && matched.len() > 1 {
+        if !succeeded
+            && mapping.bisect_batch_on_function_error.unwrap_or(false)
+            && matched.len() > 1
+        {
             // BisectBatchOnFunctionError: hold the failed halves for the
             // next poll instead of re-queueing them — the queue only ever
             // re-receives what the bifurcation genuinely gave up.
@@ -915,11 +1025,27 @@ fn drain_frontier_layer(
     let Some(queue_name) = queue_arn.rsplit(':').next().map(String::from) else {
         return (Vec::new(), false, false);
     };
-    let queue_url = format!("http://localhost:4566/{account}/{queue_name}");
+    let queue_url = minted_queue_url(account, &queue_name);
     let mut next: Vec<Vec<Value>> = Vec::new();
     let mut resolved_any = false;
     let mut failed_any = false;
     for batch in layers {
+        // Re-arm visibility on EVERY handle before re-invoke: the bisect
+        // loop reuses receipt handles captured at receive time, and each
+        // layer saw receives/in-flight time — a handle that silently
+        // expired would take the message back out of inflight (another
+        // receive → duplicate invoke) or make the stored delete no-op.
+        // Reset to a bounded hold before the attempt (real retry semantics).
+        for msg in batch {
+            change_sqs_visibility(
+                native,
+                account,
+                &region,
+                &queue_url,
+                msg["ReceiptHandle"].as_str().unwrap_or_default(),
+                30,
+            );
+        }
         let event = json!({
             "Records": batch
                 .iter()
@@ -974,7 +1100,7 @@ fn release_frontier(native: &Arc<NativeHandlers>, queue_arn: &str, frontier: &Sq
     let Some(queue_name) = queue_arn.rsplit(':').next().map(String::from) else {
         return;
     };
-    let queue_url = format!("http://localhost:4566/{account}/{queue_name}");
+    let queue_url = minted_queue_url(account, &queue_name);
     for batch in &frontier.layers {
         for msg in batch {
             change_sqs_visibility(
@@ -990,11 +1116,17 @@ fn release_frontier(native: &Arc<NativeHandlers>, queue_arn: &str, frontier: &Sq
 }
 
 impl Engine {
-    /// Drop engine state of mappings that vanished from the snapshot.
+    /// Drop engine state of mappings that vanished from the snapshot —
+    /// including the per-shard kinesis cursors and the DDB watermark map
+    /// (previously they grew without bound on mapping churn).
     fn prune(&mut self, active: &HashSet<MappingKey>) {
         self.gates
             .retain(|k, _| active.contains(&(k.0, k.1.clone(), k.2.clone())));
         self.sqs_frontier
+            .retain(|k, _| active.contains(&(k.0, k.1.clone(), k.2.clone())));
+        self.kinesis_iterators
+            .retain(|k, _| active.contains(&(k.0, k.1.clone(), k.2.clone())));
+        self.ddb_last_seq
             .retain(|k, _| active.contains(&(k.0, k.1.clone(), k.2.clone())));
     }
 }
@@ -1348,15 +1480,35 @@ mod tests {
         // Five failed delivery cycles of the same batch: each is allowed.
         for cycle in 1..=MAX_CONSECUTIVE_FAILURES {
             assert!(
-                gate.may_deliver("batch-a", cfg),
+                gate.may_deliver("batch-a", cfg, false),
                 "cycle {cycle} is inside the budget"
             );
             gate.record_failure("batch-a");
         }
         // Then the same batch parks; other content still delivers.
-        assert!(!gate.may_deliver("batch-a", cfg), "parked");
+        assert!(!gate.may_deliver("batch-a", cfg, false), "parked");
+        // The kinesis survival signal unparks the parked mapping for ONE
+        // probe per arrival (the shard frontier moved past the watermark).
+        // A failed probe parks again after the fresh budget is spent: the
+        // cycle bounded by per-arrival resets, never a flood.
         assert!(
-            gate.may_deliver("batch-b", cfg),
+            gate.may_deliver("batch-a", cfg, true),
+            "a new arrival probes the parked mapping once"
+        );
+        gate.record_failure("batch-a");
+        assert!(
+            gate.may_deliver("batch-a", cfg, false),
+            "the failed probe restarts a fresh (bounded) budget"
+        );
+        for _ in 0..MAX_CONSECUTIVE_FAILURES {
+            gate.record_failure("batch-a");
+        }
+        assert!(
+            !gate.may_deliver("batch-a", cfg, false),
+            "the fresh budget exhausts and re-parks the same dead content"
+        );
+        assert!(
+            gate.may_deliver("batch-b", cfg, false),
             "different content is always allowed"
         );
     }
@@ -1365,36 +1517,36 @@ mod tests {
     fn budget_restarts_the_count_per_new_record_batch() {
         let mut gate = RedeliveryGate::default();
         for _ in 0..MAX_CONSECUTIVE_FAILURES {
-            assert!(gate.may_deliver("batch-a", "cfg"));
+            assert!(gate.may_deliver("batch-a", "cfg", false));
             gate.record_failure("batch-a");
         }
-        assert!(!gate.may_deliver("batch-a", "cfg"));
+        assert!(!gate.may_deliver("batch-a", "cfg", false));
         // New records beyond the failed watermark unpark for one cycle.
-        assert!(gate.may_deliver("batch-ab", "cfg"));
+        assert!(gate.may_deliver("batch-ab", "cfg", false));
         gate.record_failure("batch-ab");
         // The count restarted for the new content: only the remaining
         // budget cycles deliver before the parked state returns.
         for cycle in 1..MAX_CONSECUTIVE_FAILURES {
             assert!(
-                gate.may_deliver("batch-ab", "cfg"),
+                gate.may_deliver("batch-ab", "cfg", false),
                 "cycle {cycle} of the restarted budget"
             );
             gate.record_failure("batch-ab");
         }
-        assert!(!gate.may_deliver("batch-ab", "cfg"));
+        assert!(!gate.may_deliver("batch-ab", "cfg", false));
     }
 
     #[test]
     fn budget_resets_on_success() {
         let mut gate = RedeliveryGate::default();
         for _ in 0..MAX_CONSECUTIVE_FAILURES {
-            assert!(gate.may_deliver("batch-a", "cfg"));
+            assert!(gate.may_deliver("batch-a", "cfg", false));
             gate.record_failure("batch-a");
         }
-        assert!(!gate.may_deliver("batch-a", "cfg"));
+        assert!(!gate.may_deliver("batch-a", "cfg", false));
         gate.record_success();
         assert!(
-            gate.may_deliver("batch-a", "cfg"),
+            gate.may_deliver("batch-a", "cfg", false),
             "success reopens delivery"
         );
     }
@@ -1403,13 +1555,13 @@ mod tests {
     fn budget_resets_when_the_mapping_is_updated() {
         let mut gate = RedeliveryGate::default();
         for _ in 0..MAX_CONSECUTIVE_FAILURES {
-            assert!(gate.may_deliver("batch-a", "old-config"));
+            assert!(gate.may_deliver("batch-a", "old-config", false));
             gate.record_failure("batch-a");
         }
-        assert!(!gate.may_deliver("batch-a", "old-config"));
+        assert!(!gate.may_deliver("batch-a", "old-config", false));
         // The operator's enable/disable lever: any salient config change
         // resets the budget in the same may_deliver check.
-        assert!(gate.may_deliver("batch-a", "new-config"));
+        assert!(gate.may_deliver("batch-a", "new-config", false));
     }
 
     // -- engine bookkeeping --------------------------------------------------
@@ -1463,11 +1615,12 @@ mod tests {
             starting_position: None,
             filter_criteria: None,
             function_response_types: None,
-            bisect_batch_on_function_error: false,
-            maximum_retry_attempts: -1,
+            bisect_batch_on_function_error: None,
+            maximum_retry_attempts: None,
             maximum_batching_window_in_seconds: None,
             maximum_record_age_in_seconds: None,
             kinesis_bound_watermarks: None,
+            ddb_attached_watermark: None,
         }
     }
 

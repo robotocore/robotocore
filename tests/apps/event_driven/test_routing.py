@@ -36,11 +36,9 @@ class TestEventRouting:
 
         messages = event_router.receive_messages(q_url)
         assert len(messages) >= 1
+        # The EventBridge→SQS envelope carries the event unconditionally.
         body = json.loads(messages[0]["Body"])
-        if "detail" in body:
-            assert body["detail"]["order_id"] == "ORD-001"
-        else:
-            assert "order_id" in str(body)
+        assert body["detail"]["order_id"] == "ORD-001"
 
     def test_publish_event_not_matching_rule_not_delivered(
         self, event_router: EventRouter, event_bus: str, unique_name: str
@@ -101,10 +99,11 @@ class TestEventRouting:
         event_router.publish_event(event_bus, event2)
 
         messages = event_router.receive_messages(q_url, expected=1, timeout=5)
-        assert len(messages) >= 1
+        assert len(messages) == 1
+        # Exactly the matching event: the OrderCancelled non-match is excluded.
         body = json.loads(messages[0]["Body"])
-        if "detail-type" in body:
-            assert body["detail-type"] == "OrderCreated"
+        assert body["detail-type"] == "OrderCreated"
+        assert body["detail"]["order_id"] == "ORD-HV-001"
 
     def test_multiple_rules_on_same_bus_route_to_different_targets(
         self, event_router: EventRouter, event_bus: str, unique_name: str
