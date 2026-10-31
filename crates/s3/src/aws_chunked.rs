@@ -36,11 +36,13 @@ pub fn is_aws_chunked(headers: &HashMap<String, String>) -> bool {
         })
 }
 
+/// A decoded aws-chunked body: the object bytes plus the key/value pairs
+/// that followed the final chunk.
+pub type DecodedBody = (Vec<u8>, Vec<(String, String)>);
+
 /// Returns the chunk data and trailer key/value pairs of an aws-chunked
 /// body, or why the framing is invalid.
-pub fn decode_with_trailers(
-    body: &[u8],
-) -> Result<(Vec<u8>, Vec<(String, String)>), &'static str> {
+pub fn decode_with_trailers(body: &[u8]) -> Result<DecodedBody, &'static str> {
     let mut data = Vec::with_capacity(body.len());
     let mut trailers: Vec<(String, String)> = Vec::new();
     let mut pos = 0;

@@ -1511,9 +1511,8 @@ impl CloudwatchHandler {
         // per-row order stays the caller's query order.
         let scan_by = str_param(&req.params, "ScanBy");
         let scan_descends = scan_by.is_empty() || scan_by == "TimestampDescending";
-        let row_descends = |is_stat: bool, is_select: bool| -> bool {
-            scan_descends && (is_stat || is_select)
-        };
+        let row_descends =
+            |is_stat: bool, is_select: bool| -> bool { scan_descends && (is_stat || is_select) };
         let queries: Vec<Value> = match req.params.get("MetricDataQueries") {
             Some(Value::Array(a)) => a.clone(),
             _ => vec![],
@@ -1605,7 +1604,7 @@ impl CloudwatchHandler {
             let mut timestamps = timestamps;
             let is_select = expression
                 .as_deref()
-                .map_or(false, |e| e.starts_with("SELECT"));
+                .is_some_and(|e| e.starts_with("SELECT"));
             if row_descends(stat_obj.is_some(), is_select) && !timestamps.is_empty() {
                 values.reverse();
                 timestamps.reverse();
