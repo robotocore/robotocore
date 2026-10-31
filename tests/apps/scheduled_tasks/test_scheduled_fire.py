@@ -44,21 +44,23 @@ class TestScheduledFire:
             ],
         )
 
-        # Wait for scheduler daemon to fire (5s check interval, up to 15s)
-        messages = wait_for_messages(sqs, queue_url, timeout=15, expected=1)
-        assert len(messages) >= 1, "Scheduled rule did not fire within 15s"
+        try:
+            # Wait for scheduler daemon to fire (5s check interval, up to 15s)
+            messages = wait_for_messages(sqs, queue_url, timeout=15, expected=1)
+            assert len(messages) >= 1, "Scheduled rule did not fire within 15s"
 
-        body = json.loads(messages[0]["Body"])
-        assert body.get("scheduled") is True
-        assert body.get("rule") == rule_name
-
-        # Cleanup (best-effort: a failed assert must still release the stack)
-        for _cleanup in (
-            lambda: events.remove_targets(Rule=rule_name, Ids=["sqs-target"]),
-            lambda: events.delete_rule(Name=rule_name),
-            lambda: sqs.delete_queue(QueueUrl=queue_url),
-        ):
-            try:
-                _cleanup()
-            except Exception:
-                pass  # best-effort cleanup
+            body = json.loads(messages[0]["Body"])
+            assert body.get("scheduled") is True
+            assert body.get("rule") == rule_name
+        finally:
+            # Best-effort teardown: a failed assert must release the stack,
+            # and a delete error must not mask the original failure.
+            for _cleanup in (
+                lambda: events.remove_targets(Rule=rule_name, Ids=["sqs-target"]),
+                lambda: events.delete_rule(Name=rule_name),
+                lambda: sqs.delete_queue(QueueUrl=queue_url),
+            ):
+                try:
+                    _cleanup()
+                except Exception:
+                    pass  # best-effort cleanup

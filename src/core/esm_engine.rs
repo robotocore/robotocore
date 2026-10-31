@@ -165,15 +165,18 @@ pub fn start(native: Arc<NativeHandlers>) {
         }
     }));
     // Source-existence probes for the same create path: the lambda crate
-    // validates a kinesis/dynamodb source through these (moto's create
-    // resolves the stream / owning table through its backends first).
+    // validates a kinesis stream / dynamodb streams ARN through these (moto's
+    // create resolves the stream / owning streams record through its
+    // backends first).
     lambda::bridge::register_kinesis_stream_probe(Arc::new({
         let native = native.clone();
         move |account, region, stream_name| native.kinesis.has_stream(account, region, stream_name)
     }));
-    lambda::bridge::register_dynamodb_table_probe(Arc::new({
+    lambda::bridge::register_dynamodb_stream_probe(Arc::new({
         let native = native.clone();
-        move |account, region, table_name| native.dynamodb.has_table(account, region, table_name)
+        move |account, region, stream_arn| {
+            native.dynamodb.has_stream_arn(account, region, stream_arn)
+        }
     }));
     // SQS probe for the same create path (moto resolves the sqs queue
     // through its backend; a dead ARN is a 404 "Invalid EventSourceArn").
@@ -749,7 +752,7 @@ fn bisect_halves(len: usize) -> Option<[(usize, usize); 2]> {
 /// enable/disable is the lever an operator has against a parked mapping).
 fn config_signature(mapping: &lambda::models::EventSourceMapping) -> String {
     format!(
-        "{}|{}|{}|{}|{}|{}|{}|{}",
+        "{}|{}|{}|{}|{:?}|{:?}|{}|{}",
         mapping.enabled,
         mapping.batch_size,
         mapping.function_arn,
@@ -952,7 +955,10 @@ impl Engine {
             }
         }
 
-        if !succeeded && mapping.bisect_batch_on_function_error && matched.len() > 1 {
+        if !succeeded
+            && mapping.bisect_batch_on_function_error.unwrap_or(false)
+            && matched.len() > 1
+        {
             // BisectBatchOnFunctionError: hold the failed halves for the
             // next poll instead of re-queueing them — the queue only ever
             // re-receives what the bifurcation genuinely gave up.
@@ -1609,8 +1615,8 @@ mod tests {
             starting_position: None,
             filter_criteria: None,
             function_response_types: None,
-            bisect_batch_on_function_error: false,
-            maximum_retry_attempts: -1,
+            bisect_batch_on_function_error: None,
+            maximum_retry_attempts: None,
             maximum_batching_window_in_seconds: None,
             maximum_record_age_in_seconds: None,
             kinesis_bound_watermarks: None,

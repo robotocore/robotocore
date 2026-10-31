@@ -32,6 +32,13 @@ under *Changelog discipline*.
   S3 included, keep the body as sent).
 - **CloudWatch `ListDashboards` returns `Size` as a number.** It was the
   body length as a string (`"105"`); the model says `long`.
+- **CloudWatch `GetMetricData` returns MetricStat data.** Results were stored
+  under the metric's namespace and name but looked up by query `Id`, so every
+  `MetricStat` query came back with empty `Values` and `Timestamps`, and metric
+  math expressions over them had no inputs. Results are now keyed by `Id`, so
+  two queries on the same metric (for example `Average` and `Maximum`) get
+  their own values. Queries with `ReturnData: false` feed expressions and are
+  left out of `MetricDataResults`, as in moto and AWS.
 
 ## 2.0.2
 

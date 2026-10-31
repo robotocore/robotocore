@@ -28,6 +28,20 @@ impl DefaultS3Handler {
     pub fn handle(&self, req: AwsRequest) -> AwsResponse {
         self.inner.handle(req)
     }
+
+    /// Bucket-rule CORS headers for a REAL (non-preflight) response — see
+    /// `handler::S3Handler::cors_rule_response_headers`.
+    pub fn cors_rule_response_headers(
+        &self,
+        account: u64,
+        region: &str,
+        bucket: Option<&str>,
+        origin: &str,
+        method: &str,
+    ) -> Option<Vec<(String, String)>> {
+        self.inner
+            .cors_rule_response_headers(account, region, bucket, origin, method)
+    }
 }
 
 impl Default for DefaultS3Handler {

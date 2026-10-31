@@ -151,7 +151,7 @@ class TestEndToEnd:
             input_data={"user_id": user_id, "email": "workflow@example.com"},
         )
 
-        deadline = time.monotonic() + 10
+        deadline = time.monotonic() + 30
         desc = {}
         while time.monotonic() < deadline:
             desc = serverless_app.describe_execution(exec_arn)

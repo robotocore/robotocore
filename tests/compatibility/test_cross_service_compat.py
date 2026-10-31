@@ -3097,13 +3097,17 @@ class TestEventBridgeArchiveReplay:
         )
         time.sleep(2)
 
-        # Drain the initial delivery
+        # Drain the initial delivery — delete each received message so the
+        # 30s visibility window cannot re-deliver them into the replay poll
+        # window (every later message on the queue must be a replayed event).
         for _ in range(5):
-            sqs.receive_message(
+            drained = sqs.receive_message(
                 QueueUrl=queue_url,
                 MaxNumberOfMessages=10,
                 WaitTimeSeconds=1,
             )
+            for m in drained.get("Messages", []):
+                sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=m["ReceiptHandle"])
 
         # Start replay
         now = datetime.now(UTC)
@@ -3120,51 +3124,54 @@ class TestEventBridgeArchiveReplay:
         )
         assert "ReplayArn" in replay_resp
 
-        # Verify replay can be described AND completed: poll to terminal
-        # state (portable to real AWS), then assert the replayed delivery —
-        # the drain-before-replay means every later message on the queue IS
-        # a replayed archived event (replaying zero events would answer
-        # COMPLETED with an empty SQS side and must fail).
-        deadline = time.monotonic() + 20
-        while time.monotonic() < deadline:
-            desc = events.describe_replay(ReplayName=f"replay-{suffix}")
-            if desc.get("State") == "COMPLETED":
-                break
-            time.sleep(0.5)
-        assert desc.get("State") == "COMPLETED", f"replay state: {desc.get('State')}"
+        try:
+            # Verify replay can be described AND completed: poll to terminal
+            # state (portable to real AWS), then assert the replayed delivery —
+            # the drain-before-replay means every later message on the queue IS
+            # a replayed archived event (replaying zero events would answer
+            # COMPLETED with an empty SQS side and must fail).
+            deadline = time.monotonic() + 20
+            while time.monotonic() < deadline:
+                desc = events.describe_replay(ReplayName=f"replay-{suffix}")
+                if desc.get("State") == "COMPLETED":
+                    break
+                time.sleep(0.5)
+            assert desc.get("State") == "COMPLETED", f"replay state: {desc.get('State')}"
 
-        replayed = []
-        replay_deadline = time.monotonic() + 10
-        while time.monotonic() < replay_deadline:
-            recv = sqs.receive_message(
-                QueueUrl=queue_url,
-                MaxNumberOfMessages=10,
-                WaitTimeSeconds=1,
-            )
-            new_msgs = recv.get("Messages", [])
-            if new_msgs:
-                replayed.extend(json.loads(m["Body"]) for m in new_msgs)
-                for m in new_msgs:
-                    sqs.delete_message(
-                        QueueUrl=queue_url,
-                        ReceiptHandle=m["ReceiptHandle"],
-                    )
-            elif replayed:
-                break
-        assert len(replayed) == 3, f"expected the 3 archived events replayed, got {len(replayed)}"
-        assert all(body.get("source") == "test.replay" for body in replayed), replayed
-
-        # Cleanup (best-effort: a failed assert must still release the stack)
-        for _cleanup in (
-            lambda: events.remove_targets(Rule=rule_name, Ids=["sqs1"]),
-            lambda: events.delete_rule(Name=rule_name),
-            lambda: events.delete_archive(ArchiveName=archive_name),
-            lambda: sqs.delete_queue(QueueUrl=queue_url),
-        ):
-            try:
-                _cleanup()
-            except Exception:
-                pass  # best-effort cleanup
+            replayed = []
+            replay_deadline = time.monotonic() + 10
+            while time.monotonic() < replay_deadline:
+                recv = sqs.receive_message(
+                    QueueUrl=queue_url,
+                    MaxNumberOfMessages=10,
+                    WaitTimeSeconds=1,
+                )
+                new_msgs = recv.get("Messages", [])
+                if new_msgs:
+                    replayed.extend(json.loads(m["Body"]) for m in new_msgs)
+                    for m in new_msgs:
+                        sqs.delete_message(
+                            QueueUrl=queue_url,
+                            ReceiptHandle=m["ReceiptHandle"],
+                        )
+                elif replayed:
+                    break
+            n = len(replayed)
+            assert n == 3, f"expected the 3 archived events replayed, got {n}"
+            assert all(body.get("source") == "test.replay" for body in replayed), replayed
+        finally:
+            # Best-effort teardown: a failed assert must release the stack,
+            # and a delete error must not mask the original failure.
+            for _cleanup in (
+                lambda: events.remove_targets(Rule=rule_name, Ids=["sqs1"]),
+                lambda: events.delete_rule(Name=rule_name),
+                lambda: events.delete_archive(ArchiveName=archive_name),
+                lambda: sqs.delete_queue(QueueUrl=queue_url),
+            ):
+                try:
+                    _cleanup()
+                except Exception:
+                    pass  # best-effort cleanup
 
 
 class TestLambdaDestinations:

@@ -657,7 +657,9 @@ impl MetricQuerySource {
         expected.iter().all(|f| datum.contains(f))
     }
 
-    fn collect(&self, metrics: &[MetricDatum], out: &mut BTreeMap<String, Value>) {
+    /// Bucket the matching datapoints into `out[id]`, keyed by the query
+    /// `Id` that result lookups and math expressions refer to.
+    fn collect(&self, id: &str, metrics: &[MetricDatum], out: &mut BTreeMap<String, Value>) {
         let mut filtered: Vec<&MetricDatum> = metrics
             .iter()
             .filter(|md| {
@@ -704,13 +706,9 @@ impl MetricQuerySource {
             bucket_start = bucket_end;
         }
         out.insert(
-            self.metric_key(),
+            id.to_string(),
             json!({ "Values": values, "Timestamps": timestamps }),
         );
-    }
-
-    fn metric_key(&self) -> String {
-        format!("{}/{}", self.namespace, self.metric_name)
     }
 }
 
@@ -1540,12 +1538,16 @@ impl CloudwatchHandler {
                 start_ms,
                 end_ms,
             };
-            source.collect(&metrics, &mut collected);
+            source.collect(&id, &metrics, &mut collected);
         }
 
-        // Second pass: emit results (evaluating expressions).
+        // Second pass: emit results (evaluating expressions). A query with
+        // ReturnData false only feeds expressions (moto: results_to_return).
         let mut results: Vec<Value> = Vec::new();
         for q in &queries {
+            if q.get("ReturnData").and_then(as_bool) == Some(false) {
+                continue;
+            }
             let id = field_str(q, "Id");
             let label = field_str_or(q, "Label", &id);
             let expression = as_str(q.get("Expression"));
@@ -2384,6 +2386,89 @@ mod tests {
         assert_eq!(dps[0]["Average"], 20.0);
         assert_eq!(dps[0]["ExtendedStatistics"]["p50"], 20.0);
         assert!((dps[0]["ExtendedStatistics"]["p99"].as_f64().unwrap() - 29.8).abs() < 1e-6);
+    }
+
+    fn put_and_window(handler: &CloudwatchHandler) -> (String, String) {
+        let start = chrono::Utc::now();
+        let now = start.to_rfc3339();
+        handler.handle(make_req(
+            "PutMetricData",
+            json!({
+                "Namespace": "GMD",
+                "MetricData": [
+                    {"MetricName": "Reads", "Value": 3.0, "Timestamp": now},
+                    {"MetricName": "Reads", "Value": 4.0, "Timestamp": now},
+                    {"MetricName": "Writes", "Value": 5.0, "Timestamp": now}
+                ]
+            }),
+        ));
+        (
+            (start - chrono::Duration::minutes(5)).to_rfc3339(),
+            (start + chrono::Duration::minutes(5)).to_rfc3339(),
+        )
+    }
+
+    fn stat_query(id: &str, metric: &str, stat: &str) -> Value {
+        json!({
+            "Id": id,
+            "MetricStat": {
+                "Metric": {"Namespace": "GMD", "MetricName": metric},
+                "Period": 600,
+                "Stat": stat
+            }
+        })
+    }
+
+    #[test]
+    fn get_metric_data_returns_each_metric_stat_by_id() {
+        let handler = CloudwatchHandler::new();
+        let (start, end) = put_and_window(&handler);
+        // Two queries on the same metric must not share one result.
+        let body = parse(&handler.handle(make_req(
+            "GetMetricData",
+            json!({
+                "StartTime": start, "EndTime": end,
+                "MetricDataQueries": [
+                    stat_query("sum", "Reads", "Sum"),
+                    stat_query("max", "Reads", "Maximum")
+                ]
+            }),
+        )));
+        let results = body["MetricDataResults"].as_array().unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0]["Id"], "sum");
+        assert_eq!(results[0]["Values"], json!([7.0]));
+        assert_eq!(results[0]["Timestamps"].as_array().unwrap().len(), 1);
+        assert_eq!(results[1]["Id"], "max");
+        assert_eq!(results[1]["Values"], json!([4.0]));
+    }
+
+    #[test]
+    fn get_metric_data_expression_over_hidden_queries() {
+        let handler = CloudwatchHandler::new();
+        let (start, end) = put_and_window(&handler);
+        let mut reads = stat_query("reads", "Reads", "Sum");
+        reads["ReturnData"] = json!(false);
+        // Query-protocol callers send the flag as a string.
+        let mut writes = stat_query("writes", "Writes", "Sum");
+        writes["ReturnData"] = json!("false");
+        let body = parse(&handler.handle(make_req(
+            "GetMetricData",
+            json!({
+                "StartTime": start, "EndTime": end,
+                "MetricDataQueries": [
+                    reads,
+                    writes,
+                    {"Id": "total", "Expression": "reads + writes", "Label": "Total"}
+                ]
+            }),
+        )));
+        let results = body["MetricDataResults"].as_array().unwrap();
+        assert_eq!(results.len(), 1, "ReturnData false queries are omitted");
+        assert_eq!(results[0]["Id"], "total");
+        assert_eq!(results[0]["Label"], "Total");
+        assert_eq!(results[0]["Values"], json!([12.0]));
+        assert_eq!(results[0]["Timestamps"].as_array().unwrap().len(), 1);
     }
 
     #[test]

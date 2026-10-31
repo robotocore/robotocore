@@ -85,10 +85,42 @@ pub struct SqsServiceHandler {
     inner: Arc<sqs::DefaultSqsHandler>,
 }
 
+/// Query-protocol GET requests carry `Action=` in the URL query, not the
+/// body — seed the crate params so the error-envelope choosers (XML for a
+/// form/query caller, JSON only for the `X-Amz-Target` bridges) see the
+/// action a POST form would have carried. Body params keep precedence.
+fn seed_query_action_param(params: serde_json::Value, query_string: &str) -> serde_json::Value {
+    if query_string.is_empty() {
+        return params;
+    }
+    let mut params = params;
+    if params.get("Action").is_some() {
+        return params;
+    }
+    for kv in query_string.split('&') {
+        let Some((k, v)) = kv.split_once('=') else {
+            continue;
+        };
+        if k == "Action" && !v.is_empty() {
+            if let (Some(obj), Ok(decoded)) = (params.as_object_mut(), urlencoding::decode(v)) {
+                obj.insert(
+                    "Action".to_string(),
+                    serde_json::Value::String(decoded.into_owned()),
+                );
+            }
+            break;
+        }
+    }
+    params
+}
+
 impl SqsServiceHandler {
     fn to_sqs_request(req: &ParsedRequest) -> sqs::protocol::AwsRequest {
-        let params: serde_json::Value = serde_json::to_value(&req.params)
-            .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+        let params = seed_query_action_param(
+            serde_json::to_value(&req.params)
+                .unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
+            &req.query_string,
+        );
         sqs::protocol::AwsRequest {
             service: req.service.clone(),
             operation: req.operation.clone(),
@@ -671,7 +703,10 @@ impl ServiceHandler for CloudWatchServiceHandler {
         &self,
         req: &ParsedRequest,
     ) -> Result<ParsedResponse, Box<dyn std::error::Error>> {
-        let params = serde_json::to_value(&req.params).unwrap_or_default();
+        let params = seed_query_action_param(
+            serde_json::to_value(&req.params).unwrap_or_default(),
+            &req.query_string,
+        );
         let r = cloudwatch::protocol::AwsRequest {
             service: req.service.clone(),
             operation: req.operation.clone(),
@@ -2293,26 +2328,31 @@ fn preflight_response(origin: Option<&str>) -> Response {
 /// Bucket-rule preflight straight to the S3 crate: a bucket-backed OPTIONS
 /// request consults the bucket's PutBucketCors rules (`Some(response)` when
 /// an S3 cors answer exists, `None` to fall through to the generic
-/// preflight).
-fn s3_options_preflight(state: &AppState, headers: &HeaderMap, path: &str) -> Option<Response> {
-    let parts: Vec<&str> = path.trim_start_matches('/').splitn(2, '/').collect();
-    let bucket = parts.first().filter(|b| !b.is_empty()).map(|s| *s);
-    let bucket = bucket?;
-    let key = parts.get(1).filter(|k| !k.is_empty()).map(|s| *s);
+/// preflight). A missing bucket answers None — the path may belong to
+/// apigw/the control plane, whose routes must not be hijacked by S3's
+/// NoSuchBucket; only an existing bucket answers from its rules (403
+/// AccessDenied is the rule-mismatch verdict on a REAL bucket).
+fn s3_options_preflight(
+    state: &AppState,
+    headers: &HeaderMap,
+    path: &str,
+    query: &str,
+) -> Option<Response> {
+    let (account, region, bucket, key) = s3_request_target(headers, path, query);
+    let bucket = bucket.as_deref()?;
     let mut header_map: HashMap<String, String> = HashMap::new();
     for (k, v) in headers.iter() {
         if let Ok(v) = v.to_str() {
             header_map.insert(k.as_str().to_lowercase(), v.to_string());
         }
     }
-    let account = extract_account_from_request(headers, "", &[]);
     let req = s3::protocol::AwsRequest {
         service: "s3".to_string(),
         operation: "OptionsPreFlight".to_string(),
         account,
-        region: "us-east-1".to_string(),
+        region,
         bucket: Some(bucket.to_string()),
-        key: key.map(String::from),
+        key,
         query_params: HashMap::new(),
         headers: header_map,
         method: "OPTIONS".to_string(),
@@ -2320,6 +2360,12 @@ fn s3_options_preflight(state: &AppState, headers: &HeaderMap, path: &str) -> Op
         params: serde_json::Value::Null,
     };
     let resp = state.registry.native.s3.handle(req);
+    if resp.status == 404 {
+        // Bucket missing in this (account, region) partition: not an S3
+        // surface — apigw/executor/control-plane routes answer OPTIONS
+        // themselves.
+        return None;
+    }
     let status = StatusCode::from_u16(resp.status).unwrap_or(StatusCode::OK);
     let mut response = Response::builder()
         .status(status)
@@ -2341,6 +2387,90 @@ fn s3_options_preflight(state: &AppState, headers: &HeaderMap, path: &str) -> Op
     Some(response)
 }
 
+/// The (account, region, bucket, key) an S3 request targets, used by the
+/// CORS layer's S3 arms. Bucket resolution prefers the virtual-hosted Host
+/// (`<bucket>.<endpoint-host>` — the same shapes the crate's
+/// `vhost_bucket_from_host` recognizes) and falls back to the leading path
+/// segments. Region rides the SigV4 credential scope (presigned S3 requests
+/// run in non-us-east-1 partitions); account via the shared extractor
+/// (Authorization header, then presigned query credentials).
+fn s3_request_target(
+    headers: &HeaderMap,
+    path: &str,
+    query: &str,
+) -> (u64, String, Option<String>, Option<String>) {
+    let host = headers
+        .get("host")
+        .and_then(|h| h.to_str().ok())
+        .map(|s| s.to_string());
+    let (bucket, key) = if let Some(bucket) = host
+        .as_deref()
+        .and_then(|h| s3::handler::S3Handler::vhost_bucket_from_host(Some(h)))
+    {
+        // Virtual-hosted form: the path (if any) is the key.
+        let key = path.trim_start_matches('/');
+        (Some(bucket), (!key.is_empty()).then(|| key.to_string()))
+    } else {
+        let trimmed = path.trim_start_matches('/');
+        if trimmed.is_empty() {
+            (None, None)
+        } else if let Some((b, k)) = trimmed.split_once('/') {
+            (Some(b.to_string()), Some(k.to_string()))
+        } else {
+            (Some(trimmed.to_string()), None)
+        }
+    };
+    let region =
+        credential_region_from_request(headers, query).unwrap_or_else(|| "us-east-1".to_string());
+    let account = extract_account_from_request(headers, query, &[]);
+    (account, region, bucket, key)
+}
+
+/// The SigV4 credential-scope REGION for a request: the `Credential=…/{date}
+/// /{region}/{service}/aws4_request` scope in the Authorization header, or
+/// the presigned `X-Amz-Credential` query member (percent-decoded). S3 state
+/// is (account, region)-keyed, so a scoped or presigned OPTIONS for another
+/// region must consult that partition, not the us-east-1 default.
+fn credential_region_from_request(headers: &HeaderMap, query_string: &str) -> Option<String> {
+    if let Some(auth) = headers.get("Authorization").and_then(|v| v.to_str().ok()) {
+        if let Some(cred) = auth.split("Credential=").nth(1) {
+            if let Some(region) = cred.split('/').nth(2) {
+                return Some(region.to_string());
+            }
+        }
+    }
+    for kv in query_string.split('&') {
+        let Some((k, v)) = kv.split_once('=') else {
+            continue;
+        };
+        if k == "X-Amz-Credential" {
+            if let Ok(cred) = urlencoding::decode(v) {
+                if let Some(region) = cred.split('/').nth(2) {
+                    return Some(region.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Fn-URL ownership (both wire forms) for the CORS layer: path form
+/// `/lambda-url/{id}/…` or host form `{id}.lambda-url.{region}.on.aws`;
+/// S3-vhost-looking hosts never take the host-form arm (an S3 bucket named
+/// like a URL would shadow — same guard the catch-all applies).
+fn is_furl_request(path: &str, host: Option<&str>) -> bool {
+    if crate::core::furl_exec::match_url(path).is_some() {
+        return true;
+    }
+    let Some(host) = host else {
+        return false;
+    };
+    if looks_like_s3_host(host) {
+        return false;
+    }
+    crate::core::furl_exec::match_url_host(host).is_some()
+}
+
 /// Browser CORS layer, wiring the previously-dead `src/cors.rs` builders:
 /// OPTIONS preflights (Origin + Access-Control-Request-Method) answer 204
 /// with the configured headers — except on surfaces with their own policy
@@ -2357,25 +2487,64 @@ async fn cors_middleware(
         .get("origin")
         .and_then(|v| v.to_str().ok())
         .map(String::from);
-    // Function-URL preflights answer from the URL config inside the
-    // executor; the layer must not shadow that policy.
-    let furl_owned = crate::core::furl_exec::match_url(req.uri().path()).is_some();
+    let req_path = req.uri().path().to_string();
+    let req_method = req.method().as_str().to_string();
+    let req_query = req.uri().query().unwrap_or("").to_string();
+    let req_host = req
+        .headers()
+        .get("host")
+        .and_then(|h| h.to_str().ok())
+        .map(|s| s.to_string())
+        .or_else(|| req.uri().host().map(|h| h.to_string()));
+    // Function-URL requests (path AND host form, S3-vhost hosts guarded)
+    // answer CORS from the URL config inside the executor; the layer must
+    // not shadow that policy.
+    let furl_owned = is_furl_request(&req_path, req_host.as_deref());
     let is_preflight = req.method() == Method::OPTIONS
         && origin.is_some()
         && req.headers().contains_key("access-control-request-method")
         && !cors_config().disable_preflight_processing;
 
     if is_preflight && !furl_owned {
-        if let Some(resp) = s3_options_preflight(&state, req.headers(), req.uri().path()) {
+        if let Some(resp) = s3_options_preflight(
+            &state,
+            req.headers(),
+            &req_path,
+            req.uri().query().unwrap_or(""),
+        ) {
             return resp;
         }
         return preflight_response(origin.as_deref());
     }
 
+    // S3 rule context for the response stage: the target triple is captured
+    // pre-route because `req` is moved into the handler.
+    let (account, region, bucket) = if furl_owned {
+        (0, String::new(), None)
+    } else {
+        let (account, region, bucket, _) = s3_request_target(req.headers(), &req_path, &req_query);
+        (account, region, bucket)
+    };
+
     let mut response = next.run(req).await;
     if let Some(origin) = origin.filter(|_| !furl_owned) {
-        let headers = crate::cors::build_cors_headers(cors_config(), Some(&origin));
-        append_cors_headers(&mut response, headers);
+        // A bucket with stored CORS rules answers REAL responses from its
+        // rules (Some(headers); Some(empty) = rule set rejects this
+        // origin/method — real S3 then sends no CORS headers). Unknown
+        // bucket / no rules fall through to the generic gateway headers.
+        match state.registry.native.s3.cors_rule_response_headers(
+            account,
+            &region,
+            bucket.as_deref(),
+            &origin,
+            &req_method,
+        ) {
+            Some(rule_headers) => append_cors_headers(&mut response, rule_headers),
+            None => {
+                let headers = crate::cors::build_cors_headers(cors_config(), Some(&origin));
+                append_cors_headers(&mut response, headers);
+            }
+        }
     }
     response
 }
@@ -4305,9 +4474,13 @@ mod tests {
         let body = BodyExt::collect(resp.into_body()).await.unwrap().to_bytes();
         assert!(body.is_empty(), "S3 preflight carries no body");
 
-        // Unmatched origin answers the bucket-level AccessDenied.
+        // Unmatched origin on a bucket with rules answers the bucket-level
+        // AccessDenied; a bucket that does not exist no longer hijacks the
+        // preflight — the crate's NoSuchBucket maps to None and the generic
+        // 204 answers (finding #1: apigw/executor/control-plane OPTIONS on
+        // non-S3 paths keep their own routes).
         let app = cors_test_app(|_| {
-            // No CORS rules on the (nonexistent) bucket: generic 204.
+            // No CORS rules on the (wrong) bucket: the S3 404 falls through.
         });
         let req = axum::http::Request::builder()
             .method(Method::OPTIONS)
@@ -4317,10 +4490,15 @@ mod tests {
             .body(axum::body::Body::empty())
             .unwrap();
         let resp = tower::ServiceExt::oneshot(app, req).await.unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::NO_CONTENT,
+            "unknown bucket no longer hijacks the preflight path"
+        );
         let body = BodyExt::collect(resp.into_body()).await.unwrap().to_bytes();
         assert!(
-            String::from_utf8_lossy(&body).contains("<Error>"),
-            "S3-shaped OPTIONS for an unknown bucket falls back to the crate's error path"
+            !String::from_utf8_lossy(&body).contains("<Error>"),
+            "no S3 error XML on the generic preflight"
         );
     }
 }
