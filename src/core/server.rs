@@ -2535,7 +2535,7 @@ pub fn build_router(
             post(crate::core::chaos::chaos_clear_rules),
         )
         .route(
-            "/_robotocore/chaos/rules/:rule_id",
+            "/_robotocore/chaos/rules/{rule_id}",
             delete(crate::core::chaos::chaos_delete_rule),
         )
         .fallback(catch_all_handler)
